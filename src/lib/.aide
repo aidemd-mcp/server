@@ -74,6 +74,30 @@ Pure functions returning string templates. No filesystem operations.
 - `getMethodologyMarker()` — the marker string for idempotency detection
 - `getCommands()` — map of 5 command filenames to their checklist content
 
+## configureIde/ — IDE File Association Setup
+
+Two functions, one per IDE family. Both are idempotent.
+
+### configureZed(projectRoot)
+- Reads `.zed/settings.json` from project root (creates if missing)
+- Merges `{ "file_types": { "Markdown": ["*.aide"] } }` into existing settings
+- Preserves all other settings — only touches `file_types.Markdown`
+- Returns InitStepResult with status "exists" | "created"
+- **Why not an extension:** Zed's markdown preview is hardcoded to the built-in
+  Markdown language. A custom language with `grammar = "markdown"` gets the
+  tree-sitter parser but not the preview pane. The extension API doesn't support
+  custom panels. `file_types` is the only path to rendered preview.
+
+### configureVscode(extensionsDir)
+- The `.vsix` is bundled at `extensions/vscode/aide-markdown-{version}.vsix`
+- Checks if already installed: `code --list-extensions | grep aide-markdown`
+- If not installed: `code --install-extension <path-to-vsix>`
+- Returns InitStepResult with status "exists" | "installed" | "skipped"
+- Skipped if `code` CLI is not on PATH (not an error — user may not have VS Code)
+- **Why this works:** VS Code extensions can map file associations to existing
+  built-in language IDs. `"id": "markdown"` with `"extensions": [".aide"]` gives
+  full syntax highlighting + preview with zero grammar bundling.
+
 ## Boundary Rule
 
 No MCP SDK types in this layer. Functions accept plain strings, return plain

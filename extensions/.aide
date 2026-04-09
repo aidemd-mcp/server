@@ -1,0 +1,65 @@
+# AIDE File Extension — IDE Support
+
+`.aide` files are markdown specs that live next to code. IDEs don't recognize the extension out of the box, so syntax highlighting and preview need to be configured.
+
+## Research
+
+### Zed — no extension possible for preview
+
+Zed's markdown preview is a **hardcoded built-in feature** tied to the `Markdown` language ID. It is not available to custom languages, even if they use the markdown tree-sitter grammar. Zed's extension API supports grammars, language servers, themes, and slash commands — but not custom panels or rendered views. There is no way to build an extension that provides markdown preview for a non-Markdown language.
+
+**What we tried and why it failed:**
+
+1. **Extension with `grammar = "markdown"`** — Zed's built-in query files (`.scm` for highlights, injections, etc.) are not inherited by extensions. Files parsed but had no highlighting or preview.
+2. **Bundling `.scm` files from `zed-industries/zed/crates/grammars/src/markdown/`** — Gave syntax highlighting but still no preview button, because preview is gated on the language being `Markdown`, not on the grammar being `markdown`.
+3. **Declaring `[grammars.markdown]` in `extension.toml`** pointing to `tree-sitter-grammars/tree-sitter-markdown` — Same result. The grammar loads, highlighting works, but the preview pane is never offered.
+
+**The only solution** is Zed's `file_types` setting, which tells Zed to treat `.aide` files as actual Markdown files (same language ID, same preview, same everything):
+
+```json
+{
+  "file_types": {
+    "Markdown": ["*.aide"]
+  }
+}
+```
+
+This can be set globally (`~/.config/zed/settings.json`) or per-project (`.zed/settings.json`). It is not distributable as an installable extension — it must be configured per machine or included in the project repo.
+
+### VS Code — extension works
+
+VS Code uses TextMate grammars. Extensions can contribute new file associations to existing built-in language IDs via `contributes.languages` in `package.json`. Declaring `"id": "markdown"` with `"extensions": [".aide"]` is sufficient — VS Code's built-in markdown grammar, highlighting, and preview all apply automatically. No grammar files need to be bundled.
+
+## Setup
+
+### Zed
+
+Add to Zed settings (`~/.config/zed/settings.json` or project `.zed/settings.json`):
+
+```json
+{
+  "file_types": {
+    "Markdown": ["*.aide"]
+  }
+}
+```
+
+No extension needed. This gives full markdown syntax highlighting + rendered preview.
+
+**MCP integration:** An agent can configure this automatically by writing or patching the user's Zed `settings.json` to include the `file_types` mapping above.
+
+### VS Code
+
+Install the extension from `extensions/vscode/`:
+
+```bash
+cd extensions/vscode
+npx @vscode/vsce package
+code --install-extension aide-markdown-0.0.1.vsix
+```
+
+To publish to the marketplace:
+```bash
+npx @vscode/vsce publish
+```
+Requires a Personal Access Token from the VS Code Marketplace.

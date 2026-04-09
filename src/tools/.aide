@@ -19,7 +19,7 @@ Each tool exports a Zod schema alongside its handler function:
 - `ReadInput` — required `path: string`
 - `ScaffoldInput` — required `directory: string`, required `type: enum`
 - `ValidateInput` — optional `path: string`
-- `InitInput` — optional `framework: enum`, optional `path: string`
+- `InitInput` — optional `framework: enum`, optional `path: string`, optional `skipIde: boolean`
 
 Schemas are parsed in index.ts's CallToolRequestSchema handler before the tool
 function is called. Tool functions receive already-validated typed arguments.
