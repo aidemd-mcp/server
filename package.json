@@ -19,7 +19,12 @@
 		"ai-agents",
 		"spec-documents"
 	],
+	"author": "TetsuKod.ai",
 	"license": "MIT",
+	"files": [
+		"dist",
+		"README.md"
+	],
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.12.1",
 		"zod": "^3.24.4"
