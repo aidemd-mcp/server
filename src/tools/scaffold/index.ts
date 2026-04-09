@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { readdir, writeFile, rename, mkdir } from "node:fs/promises";
+import { join, isAbsolute } from "node:path";
 
 export const ScaffoldInput = z.object({
 	directory: z.string().describe("Directory where the .aide file(s) will be created"),
@@ -6,6 +8,49 @@ export const ScaffoldInput = z.object({
 		.enum(["intent", "research", "both", "todo"])
 		.describe("Type of .aide file to create"),
 });
+
+const INTENT_TEMPLATE = `# Intent Spec
+
+## Strategy
+
+
+
+## Implementation Contract
+
+
+
+## Anti-Patterns
+
+`;
+
+const RESEARCH_TEMPLATE = `# Research
+
+## Sources
+
+
+
+## Data Points
+
+
+
+## Patterns
+
+`;
+
+const TODO_TEMPLATE = `# QA Checklist
+
+- [ ]
+`;
+
+/** List existing .aide files in a directory. */
+async function existingAideFiles(dir: string): Promise<string[]> {
+	try {
+		const entries = await readdir(dir);
+		return entries.filter((name) => name.endsWith(".aide"));
+	} catch {
+		return [];
+	}
+}
 
 /**
  * Create new .aide files with correct naming conventions.
@@ -21,6 +66,52 @@ export default async function scaffold(
 	directory: string,
 	type: "intent" | "research" | "both" | "todo",
 ): Promise<string> {
-	// TODO: implement — check existing files, apply naming rules, write templates
-	throw new Error("Not implemented");
+	const dir = isAbsolute(directory) ? directory : join(root, directory);
+
+	// Ensure directory exists
+	await mkdir(dir, { recursive: true });
+
+	const existing = await existingAideFiles(dir);
+	const actions: string[] = [];
+
+	if (type === "todo") {
+		const target = join(dir, "todo.aide");
+		await writeFile(target, TODO_TEMPLATE, "utf-8");
+		actions.push("Created todo.aide");
+	} else if (type === "intent") {
+		if (existing.includes("research.aide")) {
+			const target = join(dir, "intent.aide");
+			await writeFile(target, INTENT_TEMPLATE, "utf-8");
+			actions.push("Created intent.aide (research.aide exists, so using explicit name)");
+		} else {
+			const target = join(dir, ".aide");
+			await writeFile(target, INTENT_TEMPLATE, "utf-8");
+			actions.push("Created .aide");
+		}
+	} else if (type === "research") {
+		// If .aide exists, rename to intent.aide first
+		if (existing.includes(".aide") && !existing.includes("intent.aide")) {
+			await rename(join(dir, ".aide"), join(dir, "intent.aide"));
+			actions.push("Renamed .aide → intent.aide");
+		}
+		const target = join(dir, "research.aide");
+		await writeFile(target, RESEARCH_TEMPLATE, "utf-8");
+		actions.push("Created research.aide");
+	} else if (type === "both") {
+		// If .aide exists, remove it since we're creating intent.aide
+		if (existing.includes(".aide") && !existing.includes("intent.aide")) {
+			await rename(join(dir, ".aide"), join(dir, "intent.aide"));
+			actions.push("Renamed .aide → intent.aide");
+		} else if (!existing.includes("intent.aide")) {
+			await writeFile(join(dir, "intent.aide"), INTENT_TEMPLATE, "utf-8");
+			actions.push("Created intent.aide");
+		}
+		if (!existing.includes("research.aide")) {
+			await writeFile(join(dir, "research.aide"), RESEARCH_TEMPLATE, "utf-8");
+			actions.push("Created research.aide");
+		}
+	}
+
+	if (actions.length === 0) return "No changes needed — files already exist.";
+	return actions.join("\n");
 }
