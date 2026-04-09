@@ -74,7 +74,7 @@ export interface FrameworkConfig {
 /** Result of a single init step. */
 export interface InitStepResult {
 	name: string;
-	status: "created" | "exists" | "wired" | "skipped";
+	status: "created" | "exists" | "installed" | "wired" | "skipped";
 }
 
 /** Directories to skip during filesystem walks. */

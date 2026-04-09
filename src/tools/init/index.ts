@@ -4,6 +4,7 @@ import { join, dirname, isAbsolute } from "node:path";
 import type { FrameworkType, InitStepResult } from "../../types/index.js";
 import detectFramework from "../../lib/detectFramework/index.js";
 import { getMethodology, getMethodologyMarker, getCommands } from "../../lib/initContent/index.js";
+import { configureZed, configureVscode } from "../../lib/configureIde/index.js";
 
 export const InitInput = z.object({
 	framework: z
@@ -14,6 +15,10 @@ export const InitInput = z.object({
 		.string()
 		.optional()
 		.describe("Custom project root path (defaults to server working directory)"),
+	skipIde: z
+		.boolean()
+		.optional()
+		.describe("Skip IDE file association configuration (Zed settings, VS Code extension)"),
 });
 
 /** Check if a file exists. */
@@ -107,6 +112,7 @@ export default async function init(
 	root: string,
 	framework?: FrameworkType,
 	path?: string,
+	skipIde?: boolean,
 ): Promise<string> {
 	const projectRoot = path ? (isAbsolute(path) ? path : join(root, path)) : root;
 	const config = await detectFramework(projectRoot, framework);
@@ -119,17 +125,27 @@ export default async function init(
 	const commandResults = await scaffoldCommands(commandDir);
 	const mcpResult = await wireMcp(mcpConfigPath);
 
-	const allResults = [methodologyResult, ...commandResults, mcpResult];
-	const allExist = allResults.every((r) => r.status === "exists");
+	const ideResults: InitStepResult[] = [];
+	if (!skipIde) {
+		const zedResult = await configureZed(projectRoot);
+		ideResults.push(zedResult);
+
+		const extensionsDir = join(dirname(new URL(import.meta.url).pathname), "..", "..", "..", "extensions", "vscode");
+		const vscodeResult = await configureVscode(extensionsDir);
+		ideResults.push(vscodeResult);
+	}
+
+	const allResults = [methodologyResult, ...commandResults, mcpResult, ...ideResults];
+	const allExist = allResults.every((r) => r.status === "exists" || r.status === "skipped");
 
 	if (allExist) {
 		return `AIDE already initialized (${config.framework} framework detected).\n\nAll components present:\n${allResults.map((r) => `  - ${r.name}`).join("\n")}\n\nRun aide_discover to see existing specs.`;
 	}
 
 	const lines = allResults.map((r) => {
-		const icon = r.status === "exists" ? "-" : "\u2713";
+		const icon = r.status === "exists" || r.status === "skipped" ? "-" : "\u2713";
 		const label =
-			r.status === "created" ? "Created" : r.status === "wired" ? "Wired" : "Already exists";
+			r.status === "created" ? "Created" : r.status === "installed" ? "Installed" : r.status === "wired" ? "Wired" : r.status === "skipped" ? "Skipped" : "Already exists";
 		return `  ${icon} ${r.name}: ${label}`;
 	});
 

@@ -109,6 +109,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 						type: "string",
 						description: "Custom project root path (defaults to server working directory)",
 					},
+					skipIde: {
+						type: "boolean",
+						description: "Skip IDE file association configuration (Zed settings, VS Code extension)",
+					},
 				},
 			},
 		},
@@ -152,7 +156,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		}
 		case "aide_init": {
 			const parsed = InitInput.parse(args);
-			const result = await init(root, parsed.framework, parsed.path);
+			const result = await init(root, parsed.framework, parsed.path, parsed.skipIde);
 			return { content: [{ type: "text", text: result }] };
 		}
 		default:

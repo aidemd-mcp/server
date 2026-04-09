@@ -121,6 +121,6 @@ describe("init", () => {
 
 		const result = await init(tempDir);
 
-		expect(result).toContain("MCP config: Already exists");
+		expect(result).toContain("MCP config: Skipped");
 	});
 });
