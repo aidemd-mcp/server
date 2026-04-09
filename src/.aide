@@ -1,0 +1,67 @@
+# aidemd-mcp — Intent Spec
+
+## Core Insight
+
+The MCP tool descriptions ARE the knowledge injection. When an agent connects
+to this server and reads the tool list, it learns what .aide files are, how
+progressive disclosure works, and how to use them — no CLAUDE.md snippet, no
+external documentation, no configuration. The tool descriptions teach the
+convention by describing it.
+
+## The 4-Tool Contract
+
+### aide_discover
+- **Input:** optional `path` (subdirectory scope)
+- **Output:** tree-formatted string showing all .aide files with type tags and
+  summaries, collapsing directories with no specs
+- **Purpose:** teach the agent the project's spec architecture at a glance
+
+### aide_read
+- **Input:** required `path` to .aide file
+- **Output:** file content + type classification + sibling specs + extracted links
+- **Purpose:** drill into a specific spec with full context awareness
+
+### aide_scaffold
+- **Input:** required `directory` + `type` (intent/research/both/todo)
+- **Output:** confirmation string describing what was created/renamed
+- **Purpose:** enforce naming conventions automatically — agents never need to
+  remember the .aide vs intent.aide rules
+
+### aide_validate
+- **Input:** optional `path` (subdirectory scope)
+- **Output:** list of warnings (orphaned specs, missing specs, naming conflicts,
+  broken links, orphaned research)
+- **Purpose:** health check that catches spec drift as codebases evolve
+
+## Dependency Flow
+
+```
+types/     → pure type definitions, no imports
+lib/       → imports from types only, pure data transformations
+tools/     → imports from types and lib, thin MCP handlers
+index.ts   → imports from tools, wires MCP server
+```
+
+Horizontal isolation: lib modules don't import each other. Tools don't import
+each other. Each module composes from the layers below.
+
+## Anti-Patterns
+
+- **No CLAUDE.md dependency.** This server must work with any MCP-compatible
+  agent. The tool descriptions are the only teaching mechanism.
+- **No MCP types in lib.** The lib layer is pure filesystem + data. It returns
+  plain objects. Only the tools layer and index.ts touch MCP SDK types.
+- **No god files.** Each tool is its own module. Each lib function is its own
+  module. The entry point is wiring only.
+- **No summary truncation in tool descriptions.** Tool descriptions are the
+  primary teaching surface — they must be complete, not abbreviated.
+
+## Progressive Disclosure of This Server
+
+An agent (or human) reading this codebase follows the same tiers:
+
+1. `ls src/` → sees index.ts, types/, tools/, lib/ — knows it's a 4-tool MCP
+   server with separated types and a lib layer
+2. `ls src/tools/` → sees discover, read, scaffold, validate — knows the 4 tools
+3. `ls src/lib/` → sees scan, classify, buildTree — knows the data pipeline
+4. Opens a specific file only when implementing or debugging that module

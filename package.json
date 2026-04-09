@@ -1,0 +1,32 @@
+{
+	"name": "aidemd-mcp",
+	"version": "0.1.0",
+	"description": "MCP server that teaches any agent the AIDE methodology through tool descriptions and progressive disclosure tooling",
+	"type": "module",
+	"bin": {
+		"aidemd-mcp": "dist/index.js"
+	},
+	"main": "dist/index.js",
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest run"
+	},
+	"keywords": [
+		"mcp",
+		"aide",
+		"progressive-disclosure",
+		"ai-agents",
+		"spec-documents"
+	],
+	"license": "MIT",
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.12.1",
+		"zod": "^3.24.4"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.2",
+		"typescript": "^5.8.3",
+		"vitest": "^3.1.2"
+	}
+}

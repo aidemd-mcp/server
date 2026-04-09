@@ -1,0 +1,42 @@
+# Tools Layer — Intent Spec
+
+## Pattern: Thin Handlers
+
+Each tool module is a thin handler that:
+1. Receives parsed input (Zod schema already validated in index.ts)
+2. Delegates to lib functions for actual work
+3. Formats the result as a string or structured object for MCP response
+
+Tool modules contain NO filesystem logic, NO tree building, NO classification.
+They orchestrate lib calls and format output. If a tool needs new logic, that
+logic goes in lib/ as a new function.
+
+## Zod Input Schemas
+
+Each tool exports a Zod schema alongside its handler function:
+
+- `DiscoverInput` — optional `path: string`
+- `ReadInput` — required `path: string`
+- `ScaffoldInput` — required `directory: string`, required `type: enum`
+- `ValidateInput` — optional `path: string`
+
+Schemas are parsed in index.ts's CallToolRequestSchema handler before the tool
+function is called. Tool functions receive already-validated typed arguments.
+
+## Error Handling Contract
+
+- Tools return error text in the MCP response — they never throw.
+- If a path doesn't exist, return a clear message: "Path not found: <path>"
+- If no .aide files are found, return a helpful message, not an empty string.
+- Zod parse errors from invalid input are caught in index.ts and returned
+  as MCP error responses.
+
+## Tool Descriptions as Teaching Surface
+
+The tool descriptions in index.ts are the primary way agents learn AIDE.
+They must:
+- Explain what .aide files are (not assume prior knowledge)
+- List all file types with their purpose
+- State the key rule (never both .aide and intent.aide)
+- Be complete enough that an agent reading only the tool list understands
+  the full convention

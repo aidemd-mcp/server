@@ -1,0 +1,63 @@
+# Lib Layer — Intent Spec
+
+## Data Pipeline
+
+Three modules form a pipeline: scan → classify → buildTree.
+
+```
+scan/       → walks filesystem, returns raw AideFile[]
+classify/   → classifies files by type, detects anomalies
+buildTree/  → formats AideFile[] into a progressive disclosure tree string
+```
+
+Each module is independently usable. scan doesn't depend on classify.
+buildTree doesn't depend on scan. They compose through the shared AideFile type.
+
+## scan/ — Filesystem Walker
+
+**Input:** root directory path, optional subdirectory scope
+**Output:** ScanResult (root + AideFile[])
+
+- Recursive `fs.readdir` with `{ withFileTypes: true }`
+- Match files ending in `.aide`: `.aide`, `intent.aide`, `research.aide`, `todo.aide`
+- Skip directories: node_modules, .git, dist, build, .next, coverage, __pycache__
+- For each match: read first ~500 bytes, extract summary from first paragraph
+- Normalize all paths to POSIX (forward slashes) for consistent display
+- Summary extraction: first non-empty, non-heading line, truncated to ~80 chars
+
+## classify/ — Type Detection + Anomaly Detection
+
+### classifyFile(filename)
+- `.aide` → "intent"
+- `intent.aide` → "intent"
+- `research.aide` → "research"
+- `todo.aide` → "todo"
+
+### detectAnomalies(files, root)
+Groups files by directory and checks for:
+- **naming-conflict:** `.aide` + `intent.aide` in same folder
+- **orphaned-research:** `research.aide` without intent spec in same folder
+- **orphaned-spec:** .aide in folder with no `index.ts` (or similar orchestrator)
+- **missing-spec:** `index.ts` with 3+ relative `./` imports but no .aide file
+
+Orchestrator detection heuristic: an `index.ts` (or `index.js`) that contains
+2+ import statements from `./` subdirectories. This is a heuristic — label
+results as warnings, not errors.
+
+## buildTree/ — Progressive Disclosure Tree Builder
+
+**Input:** AideFile[], root path
+**Output:** formatted tree string
+
+- Group files by directory path
+- Collapse directories that contain no .aide files (skip intermediate empty dirs)
+- Draw tree with Unicode box-drawing characters (├──, └──, │)
+- Each leaf shows: `filename [type] — summary`
+- Type tag in brackets: [intent], [research], [todo]
+- Sort directories alphabetically, files within a directory by type then name
+
+## Boundary Rule
+
+No MCP SDK types in this layer. Functions accept plain strings, return plain
+objects (AideFile, ScanResult, ValidationWarning, etc.) from types/. The tools
+layer is responsible for bridging between MCP request/response and lib data.
