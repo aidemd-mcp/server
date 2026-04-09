@@ -69,6 +69,16 @@ Health check for `.aide` spec files. Detects orphaned specs, missing specs, nami
 
 **Input:** optional `path` (subdirectory to validate)
 
+### `aide_init`
+
+Bootstrap the AIDE development environment into a project with one command. Detects the agent framework, writes the AIDE methodology into the agent's config file, scaffolds slash commands for every pipeline phase (`/aide-research`, `/aide-spec`, `/aide-build`, `/aide-qa`, `/aide-fix`), and wires this MCP server into the project's MCP config.
+
+Supports Claude Code, Cursor, Windsurf, and Copilot. Auto-detects from marker files or accepts an override.
+
+**Input:** optional `framework` (`claude` | `cursor` | `windsurf` | `copilot`), optional `path` (project root)
+
+Each step is idempotent — running on an already-initialized project reports what's present without overwriting.
+
 ## Development
 
 ```bash

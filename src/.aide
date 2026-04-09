@@ -8,7 +8,7 @@ progressive disclosure works, and how to use them — no CLAUDE.md snippet, no
 external documentation, no configuration. The tool descriptions teach the
 convention by describing it.
 
-## The 4-Tool Contract
+## The 5-Tool Contract
 
 ### aide_discover
 - **Input:** optional `path` (subdirectory scope)
@@ -32,6 +32,13 @@ convention by describing it.
 - **Output:** list of warnings (orphaned specs, missing specs, naming conflicts,
   broken links, orphaned research)
 - **Purpose:** health check that catches spec drift as codebases evolve
+
+### aide_init
+- **Input:** optional `framework` (override), optional `path` (project root)
+- **Output:** summary string of what was created/already present
+- **Purpose:** one-command bootstrap that writes AIDE methodology to the agent's
+  config file, scaffolds slash commands for every pipeline phase, and wires the
+  MCP server into the project's MCP config. Idempotent — safe to run repeatedly.
 
 ## Dependency Flow
 

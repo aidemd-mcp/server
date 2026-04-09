@@ -2,7 +2,8 @@
 
 ## Data Pipeline
 
-Three modules form a pipeline: scan → classify → buildTree.
+Five modules: three form the discovery pipeline (scan → classify → buildTree),
+two support initialization (detectFramework, initContent).
 
 ```
 scan/       → walks filesystem, returns raw AideFile[]
@@ -55,6 +56,23 @@ results as warnings, not errors.
 - Each leaf shows: `filename [type] — summary`
 - Type tag in brackets: [intent], [research], [todo]
 - Sort directories alphabetically, files within a directory by type then name
+
+## detectFramework/ — Agent Framework Detection
+
+**Input:** root path, optional framework override
+**Output:** FrameworkConfig (framework type + config/command/MCP paths)
+
+- Checks for marker files/directories in priority order: Claude → Cursor → Windsurf → Copilot
+- If framework param provided, skips detection and returns config for that framework
+- Defaults to Claude Code if nothing detected
+
+## initContent/ — Template Content
+
+Pure functions returning string templates. No filesystem operations.
+
+- `getMethodology()` — AIDE methodology text with idempotency markers
+- `getMethodologyMarker()` — the marker string for idempotency detection
+- `getCommands()` — map of 5 command filenames to their checklist content
 
 ## Boundary Rule
 

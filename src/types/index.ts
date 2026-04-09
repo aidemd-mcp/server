@@ -56,6 +56,27 @@ export interface ReadResult {
 	links: string[];
 }
 
+/** Supported agent frameworks for aide_init. */
+export type FrameworkType = "claude" | "cursor" | "windsurf" | "copilot";
+
+/** Resolved paths for a detected agent framework. */
+export interface FrameworkConfig {
+	/** Which framework was detected (or overridden). */
+	framework: FrameworkType;
+	/** Path to the agent config file relative to project root (e.g., "CLAUDE.md"). */
+	configPath: string;
+	/** Directory for slash command files relative to project root. */
+	commandDir: string;
+	/** Path to MCP config file relative to project root. */
+	mcpConfigPath: string;
+}
+
+/** Result of a single init step. */
+export interface InitStepResult {
+	name: string;
+	status: "created" | "exists" | "wired" | "skipped";
+}
+
 /** Directories to skip during filesystem walks. */
 export const SKIP_DIRS = [
 	"node_modules",
