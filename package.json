@@ -20,6 +20,10 @@
 		"spec-documents"
 	],
 	"author": "TetsuKod.ai",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/aidemd-mcp/server.git"
+	},
 	"license": "MIT",
 	"files": [
 		"dist",
