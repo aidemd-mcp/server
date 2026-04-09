@@ -24,7 +24,7 @@ function toPosix(p: string): string {
 }
 
 /** Recursively walk a directory and collect all .aide files. */
-async function walk(dir: string, root: string, files: AideFile[]): Promise<void> {
+async function walk(dir: string, root: string, files: AideFile[], shallow: boolean): Promise<void> {
 	let entries;
 	try {
 		entries = await readdir(dir, { withFileTypes: true });
@@ -37,25 +37,27 @@ async function walk(dir: string, root: string, files: AideFile[]): Promise<void>
 
 		if (entry.isDirectory()) {
 			if (SKIP_DIRS.includes(entry.name as (typeof SKIP_DIRS)[number])) continue;
-			await walk(fullPath, root, files);
+			await walk(fullPath, root, files, shallow);
 			continue;
 		}
 
 		if (!entry.name.endsWith(".aide")) continue;
 
-		let content = "";
-		try {
-			const buf = await readFile(fullPath, { encoding: "utf-8" });
-			content = buf.slice(0, 500);
-		} catch {
-			// skip unreadable files
+		let summary = "";
+		if (!shallow) {
+			try {
+				const buf = await readFile(fullPath, { encoding: "utf-8" });
+				summary = extractSummary(buf.slice(0, 500));
+			} catch {
+				// skip unreadable files
+			}
 		}
 
 		files.push({
 			path: fullPath,
 			relativePath: toPosix(relative(root, fullPath)),
 			type: classifyFile(entry.name),
-			summary: extractSummary(content),
+			summary,
 		});
 	}
 }
@@ -65,9 +67,9 @@ async function walk(dir: string, root: string, files: AideFile[]): Promise<void>
  * Skips node_modules, .git, dist, build, .next, coverage, __pycache__.
  * Reads the first ~500 bytes of each file for summary extraction.
  */
-export default async function scan(root: string, path?: string): Promise<ScanResult> {
+export default async function scan(root: string, path?: string, shallow?: boolean): Promise<ScanResult> {
 	const scanRoot = path ? join(root, path) : root;
 	const files: AideFile[] = [];
-	await walk(scanRoot, root, files);
+	await walk(scanRoot, root, files, !!shallow);
 	return { root, files };
 }

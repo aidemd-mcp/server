@@ -99,6 +99,20 @@ describe("scan", () => {
 		expect(result.files[0].relativePath).not.toContain("\\");
 	});
 
+	it("shallow mode skips content reading — summaries are empty", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			"# Title\n\nThis is the first real content line of the spec.",
+		);
+
+		const result = await scan(tempDir, undefined, true);
+
+		expect(result.files).toHaveLength(1);
+		expect(result.files[0].summary).toBe("");
+		expect(result.files[0].type).toBe("intent");
+		expect(result.files[0].relativePath).toBe(".aide");
+	});
+
 	it("returns empty files array when no .aide files exist", async () => {
 		await writeFile(join(tempDir, "readme.md"), "Not an aide file");
 

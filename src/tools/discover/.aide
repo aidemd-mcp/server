@@ -1,0 +1,38 @@
+# aide_discover — Intent Spec
+
+## Strategy
+
+The discover tool itself follows progressive disclosure. It has two modes
+driven by whether a `path` argument is provided:
+
+**Shallow mode (no path):** Walks the entire project but only collects file
+paths and types — no file content is read. Returns a lightweight tree map
+the agent can use as a reference for the project's spec architecture. This
+is cheap: one `readdir` per directory, zero `readFile` calls.
+
+**Deep mode (with path):** Scans only the specified subtree. Reads the first
+~500 bytes of each `.aide` file to extract summaries, and runs anomaly
+detection (naming conflicts, orphaned specs). This gives the agent detailed
+context for the area it's actively working on.
+
+The agent's workflow:
+1. Call `aide_discover()` once → get the project map
+2. Identify which area is relevant to the current task
+3. Call `aide_discover({ path: "src/lib/scoring" })` → get detailed context
+4. Call `aide_read` on specific specs as needed
+
+## Implementation Contract
+
+- `discover(root)` → calls `scan(root, undefined, shallow=true)`
+- `discover(root, path)` → calls `scan(root, path, shallow=false)`
+- Shallow scan: no `readFile` calls, all summaries are empty strings
+- Deep scan: reads first 500 bytes per file, extracts summary, runs anomalies
+- `buildTree` handles both — empty summaries are omitted from output
+
+## Anti-Patterns
+
+- **Never read all file contents on a project-wide scan.** The whole point of
+  progressive disclosure is avoiding unnecessary context loading. A shallow
+  map is a pointer, not a dump.
+- **Don't run anomaly detection on shallow scans.** Anomalies require content
+  awareness and are only useful when the agent is focused on a specific area.

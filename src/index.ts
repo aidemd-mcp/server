@@ -32,13 +32,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_discover",
 			description:
-				"Scan for .aide spec files in this project. .aide files are progressive disclosure specs that live next to orchestrator code — they contain intent (strategy, implementation contracts, anti-patterns), research (sources, data, patterns), or QA checklists (todo). Read .aide files BEFORE reading code — they are the context layer between folder structure and implementation details.\n\nFile types:\n- .aide — Intent spec (default). Strategy, contracts, anti-patterns.\n- intent.aide — Same as .aide, used only when research.aide exists in the same folder.\n- research.aide — Raw research. Sources, data points, pattern synthesis.\n- todo.aide — QA checklist. Issues found by audit agents.\n\nNever have both .aide and intent.aide in the same folder.",
+				"Scan for .aide spec files in this project. Returns a tree map of where specs live, following progressive disclosure.\n\nWithout a path: returns a lightweight project-wide map — file locations and types only, no content. Use this once to understand the project's spec architecture.\n\nWith a path: returns a detailed subtree of that directory — includes summaries extracted from file content and anomaly warnings. Use this to drill into the area you're working on.\n\n.aide files are progressive disclosure specs that live next to orchestrator code — they contain intent (strategy, implementation contracts, anti-patterns), research (sources, data, patterns), or QA checklists (todo). Read .aide files BEFORE reading code — they are the context layer between folder structure and implementation details.\n\nFile types:\n- .aide — Intent spec (default). Strategy, contracts, anti-patterns.\n- intent.aide — Same as .aide, used only when research.aide exists in the same folder.\n- research.aide — Raw research. Sources, data points, pattern synthesis.\n- todo.aide — QA checklist. Issues found by audit agents.\n\nNever have both .aide and intent.aide in the same folder.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
 					path: {
 						type: "string",
-						description: "Subdirectory to scan (defaults to entire project)",
+						description:
+							"Subdirectory to drill into. When provided, returns detailed subtree with summaries and warnings. When omitted, returns a shallow project-wide map (locations and types only).",
 					},
 				},
 			},

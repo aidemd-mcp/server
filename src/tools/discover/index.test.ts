@@ -36,13 +36,26 @@ describe("discover", () => {
 		expect(result).toContain("[research]");
 	});
 
-	it("includes warnings when anomalies exist", async () => {
-		await writeFile(join(tempDir, ".aide"), "Intent");
+	it("shallow scan (no path) omits summaries and warnings", async () => {
+		await writeFile(join(tempDir, ".aide"), "# Title\n\nSummary content here");
 		await writeFile(join(tempDir, "intent.aide"), "Also intent");
 		await writeFile(join(tempDir, "index.ts"), "export default function() {}");
 
 		const result = await discover(tempDir);
 
+		expect(result).toContain("[intent]");
+		expect(result).not.toContain("Summary content here");
+		expect(result).not.toContain("⚠ Warnings:");
+	});
+
+	it("deep scan (with path) includes summaries and warnings", async () => {
+		await writeFile(join(tempDir, ".aide"), "# Title\n\nIntent summary");
+		await writeFile(join(tempDir, "intent.aide"), "Also intent");
+		await writeFile(join(tempDir, "index.ts"), "export default function() {}");
+
+		const result = await discover(tempDir, ".");
+
+		expect(result).toContain("Intent summary");
 		expect(result).toContain("⚠ Warnings:");
 		expect(result).toContain("Both .aide and intent.aide");
 	});

@@ -12,9 +12,12 @@ convention by describing it.
 
 ### aide_discover
 - **Input:** optional `path` (subdirectory scope)
-- **Output:** tree-formatted string showing all .aide files with type tags and
-  summaries, collapsing directories with no specs
-- **Purpose:** teach the agent the project's spec architecture at a glance
+- **Output:** tree-formatted map of .aide file locations with type tags
+- **Behavior:** follows progressive disclosure itself —
+  - No path → shallow project-wide map (locations and types only, no content read)
+  - With path → detailed subtree (summaries from content + anomaly warnings)
+- **Purpose:** give the agent a lightweight reference to where specs live. The agent
+  calls this once to see the map, then drills into specific areas with a path.
 
 ### aide_read
 - **Input:** required `path` to .aide file
