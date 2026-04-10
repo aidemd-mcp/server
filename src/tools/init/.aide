@@ -1,0 +1,209 @@
+---
+scope: src/tools/init
+intent: >
+  aide_init is the bootstrap — the one command that turns a cold
+  project into an AIDE-ready project. It auto-detects the host agent
+  framework, writes the AIDE methodology into the framework's config
+  file, scaffolds a slash command for every pipeline phase, wires the
+  MCP server into the project's MCP config, and configures the IDE so
+  `.aide` files render as Markdown. Every step is idempotent so the
+  tool is safe to re-run, and every step reports its own status so the
+  caller can see exactly what changed.
+outcomes:
+  desired:
+    - Auto-detection picks the right framework (Claude Code, Cursor,
+      Windsurf, Copilot-in-VSCode) from files already on disk, and the
+      caller can override the detection explicitly when they need to.
+    - The methodology block is written into the framework's canonical
+      config file (e.g. CLAUDE.md for Claude Code) exactly once.
+      Subsequent runs detect the block's marker and skip the write.
+    - Slash commands are scaffolded one file per pipeline phase into
+      the framework's command directory. Existing command files are
+      left untouched; only missing ones are created.
+    - The MCP config is patched to register the `aide` server. If the
+      file exists and parses, the server is added to its `mcpServers`
+      map; if the file is missing, a minimal config is created. An
+      existing `aide` entry is left alone.
+    - IDE configuration runs by default and can be skipped with a
+      flag. Zed gets a `.zed/settings.json` patch; VS Code gets the
+      bundled `.vsix` installed through the `code` CLI when that CLI
+      is available. Missing CLI is a skip, not an error.
+    - Every step's status — created, wired, installed, exists,
+      skipped — is reported in the final summary. A fully-cold run
+      reads as a list of creates; a fully-warm run reads as a list of
+      "already exists".
+    - Re-running the tool on a project that is already fully
+      initialized returns a summary saying so and changes nothing on
+      disk.
+  undesired:
+    - An init that appends the methodology block to the config file on
+      every run, so a project initialized three times contains three
+      copies of the block. Idempotency is an invariant, not a
+      nice-to-have.
+    - An init that overwrites an existing slash command because "the
+      template is the canonical version". The user may have customized
+      it. Customizations survive init.
+    - An init that clobbers the `mcpServers` map when it fails to
+      parse the existing MCP config, destroying every other server
+      the user had configured. Parse failure is a skip, not a rewrite.
+    - An init that fails the whole run when any single step fails. IDE
+      configuration failing because `code` is not on PATH should not
+      prevent the methodology, commands, and MCP wiring from being
+      written.
+    - An init that reaches for the network — downloading a `.vsix`,
+      fetching a template, contacting a marketplace. The tool must
+      succeed offline, because the developer running it may have no
+      network and because network calls turn a local operation into a
+      flaky one.
+    - An init whose success output is a single word ("done") or a
+      serialized status object. The caller needs to see exactly which
+      steps created files and which were skipped, because that is
+      the information they will paste into a commit or cite to a
+      teammate.
+---
+
+## Context
+
+Every new project that adopts AIDE has to cross the same cold-start
+gap: methodology documented where the agent will see it, pipeline slash
+commands scaffolded, the MCP server registered, and the IDE taught to
+render `.aide` as Markdown. Without a single tool that does all of
+this, each project rediscovers the list and gets one or two steps
+wrong — a methodology written in the wrong file, a slash command with
+a typo, an MCP config that registers the server under the wrong name,
+an IDE that still renders `.aide` as plain text. This tool exists to
+collapse the cold-start gap into one command, so the decision to adopt
+AIDE in a new project is trivially reversible and costs nothing to try.
+
+The tool composes private helpers that live as subfolders of this
+orchestrator: framework detection, methodology and command template
+content, the three idempotent write steps (`writeMethodology`,
+`scaffoldCommands`, `wireMcp`), and IDE configuration. Init itself is
+thin — it orchestrates those helpers, sequences their results, and
+shapes the final summary. The strategic decisions about *how* to
+configure each IDE, or *which* files count as a framework's canonical
+config, live next to the helpers that make those decisions.
+
+## Strategy
+
+**Each step is independently idempotent and independently reportable.**
+Every step — methodology write, command scaffold, MCP wire, Zed patch,
+VS Code install — knows how to detect its own "already done" state and
+reports `exists` when it finds one. The steps do not share state, so a
+step that fails or skips cannot corrupt the steps around it, and the
+final summary can honestly report a mix of creates and skips in the
+same run.
+
+**Failures in one step do not abort the others.** IDE configuration is
+the canonical example: a developer without the `code` CLI should still
+get a fully-configured methodology, commands, and MCP wiring. The tool
+treats each step as best-effort and surfaces the mix of outcomes in
+the summary. The alternative — abort on first failure — would make
+init brittle in exactly the environments where it needs to be
+reliable.
+
+**Host framework detection is a read-only inspection.** The detector
+looks at files already on disk (a `.claude` directory, a `cursor`
+config, a `.vscode/settings.json` with Copilot-ish keys) and returns
+the first match. Nothing is written during detection, and the caller
+can always override the result with an explicit `framework` parameter.
+This keeps detection safe to run speculatively and makes the override
+path a first-class escape hatch.
+
+**Network is never the happy path.** Every asset init needs is checked
+into the repo — the methodology text, the command templates, the
+bundled `.vsix`. A developer running init on a laptop with no network
+gets the same result as a developer running it online. Anything that
+would require a network round-trip is a design bug in this tool, not
+a feature to add.
+
+**Report the full transition, not just success or failure.** The
+summary names each step, labels its status, and orders them in
+execution order. The caller reads the summary once and knows exactly
+what changed on disk, which files to re-read, and which steps were
+already done. A cold run and a warm run produce the same shape of
+output — the only difference is which status words appear.
+
+## Good examples
+
+A developer runs `aide_init` on a fresh project in Claude Code and
+sees:
+
+> AIDE initialized (claude framework):
+>
+>   ✓ Methodology: Created
+>   ✓ aide-research: Created
+>   ✓ aide-spec: Created
+>   ✓ aide-build: Created
+>   ✓ aide-qa: Created
+>   ✓ aide-fix: Created
+>   ✓ MCP config: Wired
+>   ✓ Zed config: Created
+>   ✓ VS Code extension: Installed
+>
+> Config: CLAUDE.md
+> Commands: .claude/commands
+> MCP: .mcp.json
+>
+> New commands: aide-research, aide-spec, aide-build, aide-qa, aide-fix
+>
+> Next steps: run aide_discover to see existing specs, or /aide-research to start a new one.
+
+Every step accounted for, every path named, and a pointer to the next
+action. The developer reads one screen and knows the project is ready.
+
+A developer re-runs the same command on the same project and sees:
+
+> AIDE already initialized (claude framework detected).
+>
+> All components present:
+>   - Methodology
+>   - aide-research
+>   - aide-spec
+>   - aide-build
+>   - aide-qa
+>   - aide-fix
+>   - MCP config
+>   - Zed config
+>   - VS Code extension
+>
+> Run aide_discover to see existing specs.
+
+Nothing on disk changed, and the output says so plainly. The re-run
+was safe.
+
+A developer without the `code` CLI runs `aide_init` and the VS Code
+step is reported as `Skipped` while every other step still runs to
+completion. They install `code`, re-run init, and the VS Code step
+flips to `Installed` while every other step reports `Already exists`.
+The tool is composable with the developer's environment, not
+adversarial to it.
+
+## Bad examples
+
+An init that appends the methodology block to CLAUDE.md on every run,
+producing a file with three stacked copies after three runs. The
+idempotency invariant has been violated and the config file is now
+corrupted.
+
+An init that overwrites `.claude/commands/aide-build.md` with the
+bundled template, wiping out the user's customizations. The tool has
+no way to know what the customizations were for, and the user finds
+out by reading a diff they did not expect.
+
+An init that catches a parse error on the existing `.mcp.json` and
+responds by writing a fresh minimal config, destroying the user's
+other MCP server registrations. The right move is to skip the wire
+step and report the skip in the summary.
+
+An init that aborts the whole run because `code --version` exited
+non-zero. The developer wanted a configured methodology, commands,
+and MCP config; what they got was an error and an unconfigured
+project, because one optional step was missing an optional
+dependency.
+
+An init whose summary reads `done`. The developer has no idea which
+files changed, whether the methodology was written, whether the
+slash commands were new or pre-existing, or which IDE the tool
+configured. The single word is worse than no output, because it
+implies a report was generated.

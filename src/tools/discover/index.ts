@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { basename } from "node:path";
-import scan from "../../lib/scan/index.js";
-import buildTree from "../../lib/buildTree/index.js";
-import { detectAnomalies } from "../../lib/classify/index.js";
+import scan from "@/util/scan/index.js";
+import buildTree from "@/tools/discover/buildTree/index.js";
+import { detectAnomalies } from "@/util/classify/index.js";
 
 export const DiscoverInput = z.object({
 	path: z.string().optional().describe("Subdirectory to scan (defaults to entire project)"),

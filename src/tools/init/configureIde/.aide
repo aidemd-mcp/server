@@ -1,0 +1,196 @@
+---
+scope: src/tools/init/configureIde
+intent: >
+  configureIde is the execution site for AIDE's IDE-integration strategy:
+  the helpers aide_init calls to make `.aide` files render as Markdown in
+  every supported editor. The domain's core decision — Zed gets a config
+  patch, VS Code gets a bundled extension — is load-bearing and
+  counterintuitive, so the reasoning lives here next to the code that
+  enacts it, not in an asset folder somewhere else. Per-editor choices
+  match each editor's real extensibility model; the developer experience
+  is consistent even though the mechanism underneath is not.
+outcomes:
+  desired:
+    - Zed is configured by patching `.zed/settings.json` in the project
+      root, merging `*.aide` into the `file_types.Markdown` array.
+      Existing settings are preserved; only the Markdown file-type
+      mapping is touched.
+    - VS Code (and its forks — Cursor, Windsurf, Copilot-in-VSCode) is
+      configured by installing a bundled `.vsix` extension through the
+      `code` CLI. The extension declares `.aide` as belonging to the
+      editor's built-in Markdown language, so the full built-in grammar
+      and preview pane apply with zero grammar bundled.
+    - A missing `code` CLI is reported as `skipped`, not as an error.
+      The developer may not have the CLI on PATH; that is a normal
+      state, not a failure.
+    - An already-installed extension is reported as `exists` and the
+      install step is not re-run. Re-running configureVscode on a
+      project that already has the extension changes nothing.
+    - The bundled `.vsix` lives in-repo and is resolved by filename, so
+      installing it never touches the network, the marketplace, or a
+      build step. A developer on an offline laptop can still configure
+      VS Code.
+    - A malformed existing `.zed/settings.json` is reported as
+      `skipped`, never rewritten. The user's config file is not
+      something this tool is allowed to clobber on a parse error.
+  undesired:
+    - A Zed extension. Zed's extension API cannot produce a preview
+      pane for a non-Markdown language; every extension shape we
+      tried produced partial highlighting and no preview button. A
+      half-working Zed extension reads as a broken tool and is worse
+      than no extension at all.
+    - A VS Code extension that ships its own Markdown grammar instead
+      of aliasing to the built-in one. The editor already has a
+      Markdown grammar, a Markdown preview, and ongoing Markdown
+      improvements; shipping a custom grammar opts out of all three
+      and gains nothing.
+    - An init path that downloads or builds the `.vsix` at install
+      time. Any network call during init is a regression. The `.vsix`
+      must already be on disk when the helper runs.
+    - A Zed configurator that rewrites the entire settings file from
+      a template, destroying the user's themes, keybindings, and
+      language preferences. Only the Markdown file-type mapping is
+      this tool's concern.
+    - A VS Code configurator that errors the whole run when `code` is
+      not on PATH. The developer may not use VS Code; the tool must
+      degrade gracefully to `skipped` and let the rest of init
+      continue.
+    - Per-editor "consistency" that forces one editor into a shape
+      the other editor's API supports. Zed and VS Code have genuinely
+      different extensibility models, and a consistent shape would
+      force a broken Zed extension or throw away what VS Code's API
+      actually offers.
+---
+
+## Context
+
+The `.aide` suffix was chosen because it is distinctive, memorable, and
+has no collisions with existing formats — but the same properties mean
+no editor recognizes it out of the box. Without IDE support, `.aide`
+files render as plain unstyled text, and the whole convention starts to
+look like a hack. This module's job is to make the suffix visually
+first-class in every editor the project supports, using whatever
+mechanism each editor actually allows.
+
+The research that led to the Zed-vs-VS-Code split is load-bearing. The
+resulting decisions — "no Zed extension, yes VS Code extension" — are
+counterintuitive enough that without the reasoning on file the
+question gets re-litigated every time someone new looks at the folder.
+That reasoning lives in the Strategy section below so it stays next to
+the code it justifies.
+
+## Strategy
+
+**VS Code ships as a bundled extension because its API supports exactly
+the mapping we need.** VS Code lets an extension declare that a new
+file suffix should be handled by an existing built-in language.
+Declaring `.aide` as belonging to the editor's built-in Markdown
+language is enough: the built-in grammar, highlighting, and preview
+pane all apply automatically, with no grammar bundled and no
+maintenance cost as the editor's Markdown support evolves. The packaged
+`.vsix` is checked into the repo (under `extensions/vscode/`) so the
+helper can install it locally without touching the marketplace, and
+the same package works for every VS Code fork that speaks the same
+extension API — Cursor, Windsurf, Copilot-in-VSCode.
+
+**Zed ships as a config patch because its extension API cannot produce
+a preview pane.** Zed's Markdown preview is a hardcoded built-in view
+gated on a file's language being the built-in Markdown language — not
+on the file's grammar, not on anything an extension can influence.
+Zed's extension API exposes grammars, language servers, themes, and
+slash commands, but does not expose custom rendered views. No
+extension, no matter how it is shaped, can produce a preview pane for
+a non-Markdown language. We verified this the hard way: every extension
+shape we tried — custom language pointed at the Markdown grammar,
+bundled query files copied from Zed's own Markdown support, reusing
+the Markdown grammar by name — produced the same outcome. Highlighting
+ranged from broken to partial to working, and the preview button never
+appeared in any configuration, because preview is gated on language
+identity, not on grammar. The only path to rendered preview is the
+user-settings file-type mapping, which tells Zed to treat `.aide`
+files **as Markdown files** — same language, same preview, same
+everything. configureZed merges this setting into
+`.zed/settings.json` at init time, and there is no Zed extension to
+publish, maintain, or ship.
+
+**Per-editor strategies beat cross-editor consistency.** The instinct
+to ship one extension per editor in a consistent shape is wrong here.
+Zed and VS Code have genuinely different extensibility models, and a
+consistent shape would force either a broken Zed extension or a
+VS-Code-as-settings-patch approach that throws away the parts of the
+VS Code extension API that actually work. The right answer is to
+match each editor's real capability and let init handle the
+divergence — the developer experience is identical across editors
+even though the mechanism underneath is not.
+
+**Everything ships in-repo, nothing ships over the network.** The
+`.vsix` is checked in so init on a freshly-cloned machine can install
+it without a network call, a marketplace account, or a build step.
+New versions bump the filename, so the helper can pick the latest and
+install idempotently. Publishing to a marketplace is a maintainer
+activity, not an end-user activity, and this helper must never depend
+on it.
+
+**Preserve the user's config, always.** Both helpers read the existing
+file first, patch only the specific keys they care about, and write
+back. A parse failure on `.zed/settings.json` is a skip, not a
+rewrite — the user's config is not something we are allowed to
+clobber when we cannot understand it.
+
+## Good examples
+
+A developer clones a project and aide_init calls configureZed and
+configureVscode. The helpers report:
+
+> Zed config: Created
+> VS Code extension: Installed
+
+They open a `.aide` file in Zed: full syntax highlighting, the
+preview pane opens, headings and lists render the same as any `.md`
+file in the project. They open the same file in Cursor: full syntax
+highlighting, the preview pane opens, same result. Two editors, two
+mechanisms underneath, one consistent experience from the developer's
+seat.
+
+A developer with a heavily customized `.zed/settings.json` runs init
+a second time. configureZed reads the existing file, sees that the
+Markdown file-type mapping already includes `*.aide`, and writes
+nothing. Their custom theme, keybindings, and language settings are
+all untouched, and the helper reports `exists`.
+
+A developer without the `code` CLI on PATH runs init. configureVscode
+tries `code --version`, catches the failure, and reports `skipped`.
+Every other step in init continues to run, and the developer is
+never blocked from adopting AIDE just because they do not use VS
+Code.
+
+## Bad examples
+
+A Zed extension shipped alongside the VS Code one "for consistency".
+The developer installs it, opens a `.aide` file, and sees partially
+working highlighting but no preview button anywhere — not in the
+command palette, not on right-click, not on any shortcut. Their
+conclusion is that either the extension is half-finished or the AIDE
+convention itself is amateur, and they stop using `.aide` files. The
+extension technically installed and technically did something, and
+that is exactly why it is worse than shipping no Zed extension.
+
+A VS Code extension that ships its own Markdown grammar and registers
+`.aide` as a brand-new language. Highlighting looks almost right but
+subtly lags the editor's built-in Markdown — a new Markdown feature
+lands in VS Code and `.aide` files do not get it. The preview shortcut
+does nothing, because the built-in preview is bound to the built-in
+Markdown language, not to the custom one. Every friction point here is
+self-inflicted: the editor offered a zero-cost mapping to its own
+Markdown language and the extension declined it.
+
+A configureZed that encounters an unparseable `.zed/settings.json` and
+responds by writing a fresh one from a template. The user's themes,
+keybindings, and language settings are gone, and they find out by
+reading a diff they did not expect.
+
+A configureVscode that errors the whole init run because `code` is
+not on PATH. The developer does not use VS Code, never wanted the
+extension, and has now been blocked from writing methodology,
+scaffolding commands, and wiring MCP by a check they had no reason
+to care about.
