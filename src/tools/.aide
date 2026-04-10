@@ -1,43 +1,148 @@
-# Tools Layer — Intent Spec
+---
+scope: src/tools
+intent: >
+  The tools layer is where each AIDE lifecycle operation is exposed to the MCP
+  runtime as a thin handler. Every tool in this folder has one job: validate
+  its input, delegate all real work to the lib layer, and shape the result
+  into the text response the agent will read. The tool file's substance is
+  its description — the handler itself should be boring.
+outcomes:
+  desired:
+    - Each AIDE lifecycle operation is exposed as exactly one tool, and the
+      tool's substance lives in its description, not its handling logic.
+    - Real work — filesystem scanning, tree construction, classification,
+      scaffold generation, validation reasoning — happens in the lib layer.
+      The tools layer only receives a validated request, calls lib, and
+      formats the result.
+    - Input validation happens at the tools layer boundary so the agent gets
+      a readable message on bad input rather than a downstream crash.
+    - Errors return as text in the MCP response, never as thrown exceptions
+      that would surface to the agent as an opaque MCP error.
+    - Output is shaped for an agent to read, not a program to parse —
+      human-readable text with enough structure that the agent can pattern
+      match on sections but no JSON-as-string or other machine formats.
+  undesired:
+    - A tool that touches the filesystem directly instead of asking lib to do
+      the work. A tool reaching past its layer is the first sign the layering
+      has broken.
+    - A tool reaching into another tool's territory. Tools compose from lib,
+      never from each other — if two tools need the same logic, that logic
+      becomes a lib capability.
+    - A tool that throws on bad input, empty results, or missing paths.
+      Every failure mode must become a readable text response so the agent
+      gets actionable feedback instead of a cryptic MCP error.
+    - Tool descriptions that describe the input schema instead of teaching
+      the concept. The schema is machine-readable; the description is the
+      only place the convention gets taught.
+---
 
-## Pattern: Thin Handlers
+## Context
 
-Each tool module is a thin handler that:
-1. Receives parsed input (Zod schema already validated in index.ts)
-2. Delegates to lib functions for actual work
-3. Formats the result as a string or structured object for MCP response
+The tools layer is the seam where the MCP protocol meets the AIDE convention.
+MCP gives this layer one guaranteed capability — tool descriptions are
+presented to the model verbatim — and one hard constraint — handlers run
+behind a protocol that turns any thrown error into an opaque failure message
+the agent can't reason about. Every rule in this spec exists to protect that
+capability and work around that constraint.
 
-Tool modules contain NO filesystem logic, NO tree building, NO classification.
-They orchestrate lib calls and format output. If a tool needs new logic, that
-logic goes in lib/ as a new function.
+## Strategy
 
-## Zod Input Schemas
+**Handlers stay thin so descriptions can stay thick.** The teaching surface
+of this layer is the set of tool descriptions the agent receives at
+connection time — that is where AIDE conventions get taught. Pushing real
+work down into lib keeps the tool-level reading experience dominated by the
+description, not by implementation noise. If a tool's handling logic grows
+past "validate, delegate, format," the new complexity belongs one layer
+below.
 
-Each tool exports a Zod schema alongside its handler function:
+**Validate input at the boundary, before anything else runs.** The tools
+layer is the first place where an agent's request becomes structured data,
+so it is also the only place that can turn a malformed request into a
+readable message instead of a crash. Validation lives right next to the
+operation it guards so the accepted shape and the accepted behavior cannot
+drift apart.
 
-- `DiscoverInput` — optional `path: string`
-- `ReadInput` — required `path: string`
-- `ScaffoldInput` — required `directory: string`, required `type: enum`
-- `ValidateInput` — optional `path: string`
-- `InitInput` — optional `framework: enum`, optional `path: string`, optional `skipIde: boolean`
+**Never throw on expected failures.** Missing paths, empty result sets,
+bad inputs, and filesystem-access errors are all return values, not
+exceptions. The agent must see a message like "Path not found: foo/bar"
+and be able to adjust, not an opaque "MCP tool error" with no context. The
+only exceptions that should propagate are genuine programming bugs the
+agent can do nothing with.
 
-Schemas are parsed in index.ts's CallToolRequestSchema handler before the tool
-function is called. Tool functions receive already-validated typed arguments.
+**Compose from lib, never from siblings.** Tools do not reach into each
+other: the discover tool does not reach into the read tool; the validate
+tool does not reach into the scaffold tool. Shared logic lives in lib. This keeps each tool's failure modes
+independent and prevents a change in one tool from silently breaking
+another through the back door.
 
-## Error Handling Contract
+**Shape output for agents, not for programs.** An MCP response is text the
+model reads. Format it with headers and lists and plain English, not as
+JSON-stringified objects. The agent pattern-matches on text better than it
+parses serialized data, and the tokens are cheaper to read than to unpack.
 
-- Tools return error text in the MCP response — they never throw.
-- If a path doesn't exist, return a clear message: "Path not found: <path>"
-- If no .aide files are found, return a helpful message, not an empty string.
-- Zod parse errors from invalid input are caught in index.ts and returned
-  as MCP error responses.
+## Good examples
 
-## Tool Descriptions as Teaching Surface
+When the agent calls `aide_validate` with no arguments on a clean project,
+the response the agent sees is:
 
-The tool descriptions in index.ts are the primary way agents learn AIDE.
-They must:
-- Explain what .aide files are (not assume prior knowledge)
-- List all file types with their purpose
-- State the key rule (never both .aide and intent.aide)
-- Be complete enough that an agent reading only the tool list understands
-  the full convention
+> No issues found.
+
+When the agent calls `aide_validate` on a project with problems, the
+response is one line per issue in a consistent pattern:
+
+> [naming-conflict] src/service/foo — folder contains both `.aide` and `intent.aide`
+> [orphaned-research] src/service/bar — `research.aide` has no intent spec alongside
+> [missing-spec] src/service/baz — orchestrator imports 4 helpers but has no `.aide`
+
+Each line carries a bracketed issue type the agent can pattern-match on,
+followed by the offending path and a human-readable explanation. No
+envelope, no serialized structure — the text is the response.
+
+When the agent calls a tool with a path that doesn't exist, the response is:
+
+> Path not found: src/nonexistent
+
+The agent sees the actual problem and can retry with a corrected argument.
+No error is thrown; the MCP response is just this text.
+
+A well-written tool description — the thing an agent sees when MCP lists
+available tools — teaches the convention:
+
+> aide_scaffold — creates a new `.aide` spec (or a paired `intent.aide` +
+> `research.aide`) next to an orchestrator. Defaults to a single `.aide`
+> file. Use `intent.aide` + `research.aide` only when research is
+> inseparable from the code; prefer pushing research to the brain.
+
+This description explains *why* the tool exists, not just *what* it accepts.
+
+## Bad examples
+
+A tool response that dumps a serialized structure the agent has to parse:
+
+> {"warnings":[{"type":"naming-conflict","path":"src/service/foo","message":"both .aide and intent.aide"}],"summary":{"total":1}}
+
+The agent now has to reason about schema keys instead of reading a
+sentence. Every token in that envelope is a token the description could
+have used for teaching.
+
+A tool response that surfaces an internal failure as an MCP error instead
+of a text response: the agent receives "unexpected failure" with no context
+and cannot tell whether the project has no specs yet, the path is wrong,
+or the server itself is broken. All three failure modes look identical
+from the other side of the protocol.
+
+A tool description that parrots the input schema:
+
+> aide_scaffold(directory, type): creates a file. `type` is one of
+> "intent", "research", "both", "todo".
+
+This teaches nothing. The agent already has the parameter names from the
+schema, and it still has no idea when to use `intent` versus `both`, or
+that the `.aide`-vs-`intent.aide` distinction exists at all. The
+description is the only place that lesson can be taught, and this
+description wastes it.
+
+A tool response that mixes domain output with stack traces or internal
+paths from the server process. The agent sees noise it can't act on, and
+the meaningful signal — the one line that says what's actually wrong —
+gets buried in context that belongs in server logs, not in the response.

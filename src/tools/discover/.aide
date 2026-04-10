@@ -1,38 +1,152 @@
-# aide_discover — Intent Spec
+---
+scope: src/tools/discover
+intent: >
+  aide_discover is the map-making tool — the one an agent calls first to see
+  where .aide specs live in a project before deciding what to read. It must
+  honor progressive disclosure in its own behavior: cheap and shallow when
+  asked for the whole project, detailed and content-aware only when asked to
+  drill into a specific subtree. The agent uses it as a pointer, not a dump.
+outcomes:
+  desired:
+    - A call with no `path` returns a project-wide tree map containing file
+      locations and type tags only, with no file content inspected. This is
+      the shallow mode — cheap enough to call on every session start without
+      hesitation.
+    - A call with a `path` returns a detailed subtree of that directory
+      only, with summaries drawn from each file and anomaly warnings
+      reported alongside the tree. This is the content-aware mode — used
+      deliberately when focusing on a specific area.
+    - The tool's behavior teaches progressive disclosure by example: agents
+      reading the description learn the call-shallow-then-drill pattern and
+      carry it into how they approach the rest of the codebase.
+    - Output is a single human-readable tree the agent can scan visually,
+      with type tags (`[intent]`, `[research]`, `[todo]`) and inline summaries
+      only when summaries exist.
+  undesired:
+    - A shallow call that reads any file contents. The whole point of the
+      shallow mode is being cheap enough to call speculatively; reading
+      files silently turns it into the deep mode and burns context for no
+      benefit.
+    - A shallow call that runs anomaly detection. Anomalies require content
+      awareness and are only meaningful when the agent is focused on a
+      specific area — surfacing anomalies in the project-wide map either
+      floods the output or gives false negatives from missing content.
+    - A deep call that walks the entire project instead of just the requested
+      subtree. Drill-in is a focusing operation; widening it defeats the
+      purpose.
+    - Output that dumps summaries even when they're empty strings, producing
+      ragged tree lines with trailing " — " artifacts.
+---
+
+## Context
+
+discover is where an agent first meets the AIDE convention in practice.
+Every other tool is called in response to something discover revealed: read
+drills into a spec discover pointed at; scaffold creates into a gap discover
+showed; validate acts on anomalies discover only partially reveals. If
+discover gets its shape wrong, the whole workflow downstream of it pays the
+cost. The discipline of this tool is making its two modes each earn their
+runtime cost.
 
 ## Strategy
 
-The discover tool itself follows progressive disclosure. It has two modes
-driven by whether a `path` argument is provided:
+**Two modes, one switch: the presence of `path`.** No path means a
+shallow project-wide map — locations and type tags only, no content
+inspected. With a path means a deep subtree scan — summaries and anomaly
+warnings drawn from the files in that subtree. The switch is not hidden
+behind a flag; `path` is the switch, because that's the same field the
+agent is already using to scope its attention.
 
-**Shallow mode (no path):** Walks the entire project but only collects file
-paths and types — no file content is read. Returns a lightweight tree map
-the agent can use as a reference for the project's spec architecture. This
-is cheap: one `readdir` per directory, zero `readFile` calls.
+**Shallow is cheap on purpose.** The shallow mode exists so an agent can
+call discover at the start of every session without worrying about context
+burn. Reading file contents in the shallow mode would turn a cheap,
+predictable map into an unpredictable expense and force agents to guess
+when it's "safe" to call. The cheapness is the feature.
 
-**Deep mode (with path):** Scans only the specified subtree. Reads the first
-~500 bytes of each `.aide` file to extract summaries, and runs anomaly
-detection (naming conflicts, orphaned specs). This gives the agent detailed
-context for the area it's actively working on.
+**Deep is content-aware on purpose.** When the agent has already decided
+where to focus, summaries and anomaly warnings earn their cost. The agent
+is paying for context because it's about to spend context on that subtree
+anyway — summaries let it pick the right spec to read first, and anomaly
+warnings surface problems exactly where the agent is about to make
+changes.
 
-The agent's workflow:
-1. Call `aide_discover()` once → get the project map
-2. Identify which area is relevant to the current task
-3. Call `aide_discover({ path: "src/lib/scoring" })` → get detailed context
-4. Call `aide_read` on specific specs as needed
+**Let the tool's own behavior teach the pattern.** An agent reading the
+description for discover learns "call with no path for the map, call with
+a path to drill in" — and that pattern is progressive disclosure. The
+agent internalizes the shape once from discover and then applies it to
+the rest of the codebase automatically. This is the only tool in the
+server whose *behavior* is part of what it teaches.
 
-## Implementation Contract
+**Render the tree for human eyes, not program parsing.** Unicode
+box-drawing characters, alphabetical sort, one leaf per line, type tag in
+brackets, summary after an em-dash only when present. An empty summary
+collapses to "filename [type]" with no trailing punctuation. Agents read
+trees well; they tolerate ragged ones poorly.
 
-- `discover(root)` → calls `scan(root, undefined, shallow=true)`
-- `discover(root, path)` → calls `scan(root, path, shallow=false)`
-- Shallow scan: no `readFile` calls, all summaries are empty strings
-- Deep scan: reads first 500 bytes per file, extracts summary, runs anomalies
-- `buildTree` handles both — empty summaries are omitted from output
+## Good examples
 
-## Anti-Patterns
+An agent starts a session in an unfamiliar project and calls `aide_discover`
+with no arguments. The response is:
 
-- **Never read all file contents on a project-wide scan.** The whole point of
-  progressive disclosure is avoiding unnecessary context loading. A shallow
-  map is a pointer, not a dump.
-- **Don't run anomaly detection on shallow scans.** Anomalies require content
-  awareness and are only useful when the agent is focused on a specific area.
+> src/
+> ├── service/
+> │   ├── scoring/
+> │   │   ├── .aide [intent]
+> │   │   └── weightProfile/
+> │   │       └── .aide [intent]
+> │   └── outreach/
+> │       ├── research.aide [research]
+> │       ├── intent.aide [intent]
+> │       └── todo.aide [todo]
+
+Five files, one tree, no summaries, no warnings, no content reads. The
+agent now knows the project's spec architecture and decides to drill into
+`src/service/outreach` next.
+
+The agent then calls `aide_discover` again, this time scoped to the
+outreach subtree, and gets:
+
+> src/service/outreach/
+> ├── research.aide [research] — Synthesis of cold outreach response-rate studies across B2B SaaS
+> ├── intent.aide [intent] — Generate warm-intro emails that land in primary inbox
+> └── todo.aide [todo] — 3 unresolved issues from latest audit run
+
+Same files, but now with summaries pulled from each file's opening line.
+The agent has enough context to pick which spec to read first.
+
+## Bad examples
+
+A shallow call that returns this:
+
+> src/
+> ├── service/
+> │   ├── scoring/
+> │   │   ├── .aide [intent] — This module scores leads using a weighted profile match...
+
+The shallow mode has silently read file contents. It's no longer cheap; it
+no longer behaves the way the description promised; and the agent that
+called it speculatively just spent context it didn't mean to spend.
+
+A shallow call that reports anomalies for the whole project:
+
+> Warning: naming-conflict at src/service/foo (.aide + intent.aide)
+> Warning: orphaned-spec at src/util/bar
+
+The agent called discover for a map and got a health report instead.
+Anomaly warnings only belong in the deep subtree mode, where the agent has
+asked to focus on that area. Mixing them into a project-wide map dilutes
+the map, blurs what the shallow mode is for, and adds tokens the agent
+wasn't asking for.
+
+A deep call scoped to the outreach subtree that walks the full `src/`
+tree anyway, because "the user probably wanted the whole project". Drill-in
+is a focusing operation; widening it ignores the agent's explicit scope
+request and turns every deep call into the worst of both modes.
+
+A tree where summaries were extracted as empty strings but still printed:
+
+> ├── .aide [intent] —
+> ├── intent.aide [intent] —
+
+The trailing em-dashes tell the agent nothing and waste the visual space
+that would otherwise help it spot the meaningful entries.

@@ -1,65 +1,162 @@
-# AIDE File Extension — IDE Support
+---
+scope: extensions
+intent: >
+  The extensions folder exists so that a developer opening a `.aide` file in
+  any mainstream editor sees it rendered as Markdown — syntax highlighting,
+  preview pane, the same experience as a `.md` file. The `.aide` extension
+  is the visible face of the AIDE convention, and if it looks like a plain
+  text file the convention reads as amateur. This folder holds whatever
+  bundled assets are required to make each supported editor treat `.aide`
+  as Markdown, with per-editor strategies chosen according to what that
+  editor's extensibility model actually allows.
+outcomes:
+  desired:
+    - VS Code and its forks (Cursor, Windsurf, Copilot-in-VSCode) get a
+      bundled `.vsix` extension that makes `.aide` files use the editor's
+      built-in Markdown language, giving full syntax highlighting and a
+      working preview pane with no grammar bundled.
+    - Zed gets a configuration patch applied to `.zed/settings.json`, not an
+      extension. The only path to rendered preview for `.aide` files in Zed
+      is the user-settings file-type mapping, and `aide_init` is what applies it.
+    - Per-editor choices are made based on what the editor's extensibility
+      API actually supports, not on what would be consistent across editors.
+      A Zed extension that "sort of works" is worse than no extension.
+    - Each bundled asset is checked into the repo so `aide_init` can install
+      it without a network round-trip, marketplace account, or build step.
+  undesired:
+    - A Zed extension that produces partial highlighting but no preview pane,
+      because the developer's mental model is "extension installed = feature
+      works" and a silently-missing preview button reads as a broken tool.
+    - A VS Code extension that ships its own Markdown grammar instead of
+      reusing the built-in one. Extra maintenance, worse highlighting over
+      time as the editor's Markdown support evolves, and a preview pane that
+      has to be re-wired by hand.
+    - Assets that have to be built or published at install time. `aide_init`
+      runs on a developer's machine, which may be offline, unauthenticated,
+      or both. Anything that reaches for the network during init is wrong.
+---
 
-`.aide` files are markdown specs that live next to code. IDEs don't recognize the extension out of the box, so syntax highlighting and preview need to be configured.
+## Context
 
-## Research
+The `.aide` suffix was chosen because it is distinctive, memorable, and has no
+collisions with existing formats — but the same properties mean no editor
+recognizes it out of the box. Without IDE support, `.aide` files render as
+plain unstyled text, and the whole convention starts to look like a hack.
+This folder's job is to make the suffix visually first-class in every editor
+the project supports, using whatever mechanism each editor actually allows.
 
-### Zed — no extension possible for preview
+This folder is the orchestrator surface for the IDE-integration domain of
+aidemd-mcp: it holds the bundled assets that `aide_init` installs into each
+supported editor. The installer itself is thin; the strategic decisions about
+*what* to install per editor, and *why*, belong here next to the artifacts
+themselves.
 
-Zed's markdown preview is a **hardcoded built-in feature** tied to the `Markdown` language ID. It is not available to custom languages, even if they use the markdown tree-sitter grammar. Zed's extension API supports grammars, language servers, themes, and slash commands — but not custom panels or rendered views. There is no way to build an extension that provides markdown preview for a non-Markdown language.
+The research below is load-bearing for the Zed vs VS Code strategy split.
+It is captured in this spec because the resulting decisions — "no Zed
+extension, yes VS Code extension" — are counterintuitive, and without the
+reasoning on file the question gets re-litigated every time someone new
+looks at the folder.
 
-**What we tried and why it failed:**
+## Strategy
 
-1. **Extension with `grammar = "markdown"`** — Zed's built-in query files (`.scm` for highlights, injections, etc.) are not inherited by extensions. Files parsed but had no highlighting or preview.
-2. **Bundling `.scm` files from `zed-industries/zed/crates/grammars/src/markdown/`** — Gave syntax highlighting but still no preview button, because preview is gated on the language being `Markdown`, not on the grammar being `markdown`.
-3. **Declaring `[grammars.markdown]` in `extension.toml`** pointing to `tree-sitter-grammars/tree-sitter-markdown` — Same result. The grammar loads, highlighting works, but the preview pane is never offered.
+**VS Code ships as a bundled extension because its extension API supports
+exactly the mapping we need.** VS Code lets an extension declare that a new
+file suffix should be handled by an existing built-in language. Declaring
+`.aide` as belonging to the editor's built-in Markdown language is enough:
+the built-in grammar, highlighting, and preview pane all apply automatically,
+with no grammar bundled and no maintenance cost as the editor's Markdown
+support evolves. The packaged `.vsix` is checked into the repo so `aide_init`
+can install it locally without touching the marketplace, and the same
+package works for every VS Code fork that speaks the same extension API —
+Cursor, Windsurf, Copilot-in-VSCode.
 
-**The only solution** is Zed's `file_types` setting, which tells Zed to treat `.aide` files as actual Markdown files (same language ID, same preview, same everything):
+**Zed ships as a config patch because its extension API cannot produce a
+preview pane.** Zed's Markdown preview is a hardcoded built-in view that is
+gated on a file's language being the built-in Markdown language — not on the
+file's grammar, not on anything an extension can influence. Zed's extension API exposes grammars, language servers,
+themes, and slash commands, but does not expose custom rendered views. No
+extension, no matter how it is shaped, can produce a preview pane for a
+non-Markdown language. We verified this the hard way: every extension shape
+we tried — custom language pointed at the Markdown grammar, bundled query
+files copied from Zed's own Markdown support, reusing the Markdown grammar
+by name — produced the same outcome. Highlighting ranged from broken to
+partial to working, and the preview button never appeared in any
+configuration, because preview is gated on the language identity, not on
+grammar. The only path to rendered preview is the user-settings file-type
+mapping, which tells Zed to treat `.aide` files **as Markdown files** —
+same language, same preview, same everything. `aide_init` merges this
+setting into `.zed/settings.json` at init time, and there is no Zed
+extension to publish, maintain, or ship.
 
-```json
-{
-  "file_types": {
-    "Markdown": ["*.aide"]
-  }
-}
-```
+**Per-editor strategies beat cross-editor consistency.** The instinct to
+ship one extension per editor in a consistent shape is wrong here. Zed and
+VS Code have genuinely different extensibility models, and a consistent
+shape would force either a broken Zed extension or a VS-Code-as-settings-patch
+approach that throws away the parts of the VS Code extension API that
+actually work. The right answer is to match each editor's real capability
+and let `aide_init` handle the divergence — the developer experience is
+identical across editors even though the mechanism underneath is not.
 
-This can be set globally (`~/.config/zed/settings.json`) or per-project (`.zed/settings.json`). It is not distributable as an installable extension — it must be configured per machine or included in the project repo.
+**Everything ships in-repo, nothing ships over the network.** The `.vsix`
+is checked in so `aide_init` on a freshly-cloned machine can install it
+without a network call, a marketplace account, or a build step. New
+versions bump the filename, so the init tool can pick the latest and
+install idempotently. Publishing to a marketplace is a maintainer
+activity, not an end-user activity, and `aide_init` must never depend on it.
 
-### VS Code — extension works
+## Good examples
 
-VS Code uses TextMate grammars. Extensions can contribute new file associations to existing built-in language IDs via `contributes.languages` in `package.json`. Declaring `"id": "markdown"` with `"extensions": [".aide"]` is sufficient — VS Code's built-in markdown grammar, highlighting, and preview all apply automatically. No grammar files need to be bundled.
+A developer clones a project and runs `aide_init`. They see:
 
-## Setup
+> Configured .zed/settings.json — `.aide` will render as Markdown on next open.
+> Installed VS Code extension aide-markdown-0.0.1.
 
-### Zed
+They open a `.aide` file in Zed: full syntax highlighting, the preview pane
+opens, headings and lists render the same as any `.md` file in the project.
+They open the same file in Cursor: full syntax highlighting, the preview
+pane opens, same result. Two editors, two mechanisms underneath, one
+consistent experience from the developer's seat.
 
-Add to Zed settings (`~/.config/zed/settings.json` or project `.zed/settings.json`):
+A developer who already has a heavily customized `.zed/settings.json` runs
+`aide_init` a second time. The configurator reads the existing file, sees
+that the Markdown file-type mapping already includes `.aide`, and writes
+nothing. Their custom theme, keybindings, and language settings are all
+untouched, and the init run reports the Zed step as already configured.
 
-```json
-{
-  "file_types": {
-    "Markdown": ["*.aide"]
-  }
-}
-```
+A developer who has never run `aide_init` opens a `.aide` file in VS Code
+after installing the bundled extension by hand. The file is immediately
+recognized as Markdown: the language indicator in the status bar reads
+Markdown, the preview shortcut opens a working preview pane, and the
+outline view populates from the headings. No additional steps, no extra
+settings, no "enable preview for this file type" prompt.
 
-No extension needed. This gives full markdown syntax highlighting + rendered preview.
+## Bad examples
 
-**MCP integration:** An agent can configure this automatically by writing or patching the user's Zed `settings.json` to include the `file_types` mapping above.
+A developer installs a Zed extension for AIDE, opens a `.aide` file, and
+sees partially working syntax highlighting — headings are colored but code
+fences are not, or vice versa. They look for a preview button and find
+none. They right-click, search the command palette for "preview", and turn
+up nothing applicable. Their conclusion is that either the extension is
+half-finished or the AIDE convention itself is amateur, and they stop
+using `.aide` files on that machine. The extension technically installed
+and technically did something, and that is exactly why it is worse than
+shipping no Zed extension at all.
 
-### VS Code
+A developer installs a VS Code extension for AIDE that ships its own
+Markdown grammar and registers `.aide` as a brand-new language. Highlighting
+looks almost right but subtly lags the editor's built-in Markdown — a new
+Markdown feature lands in VS Code and `.aide` files do not get it. The
+preview shortcut does nothing on `.aide` files because the built-in preview
+is bound to the built-in Markdown language, not to this extension's custom
+one. The developer has to add a custom keybinding, or manually switch the
+file's language in the status bar every time they open one. Every friction
+point here is self-inflicted: the editor offered a zero-cost mapping to its
+own Markdown language and the extension declined it.
 
-Install the extension from `extensions/vscode/`:
-
-```bash
-cd extensions/vscode
-npx @vscode/vsce package
-code --install-extension aide-markdown-0.0.1.vsix
-```
-
-To publish to the marketplace:
-```bash
-npx @vscode/vsce publish
-```
-Requires a Personal Access Token from the VS Code Marketplace.
+A developer runs `aide_init` on a laptop with no network access. The tool
+tries to publish or download the VS Code extension from a marketplace,
+fails on the network call, and aborts before configuring Zed. The
+developer is left with a half-initialized project and an error message
+about missing credentials they should never have needed. Init is supposed
+to be a local, offline, idempotent operation — anything that reaches for
+the network during init has already failed its contract.
