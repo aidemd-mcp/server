@@ -27,9 +27,9 @@ describe("init", () => {
 		const config = await readFile(join(tempDir, "CLAUDE.md"), "utf-8");
 		expect(config).toContain("<!-- aide-methodology -->");
 
-		// Commands scaffolded
-		const commands = await readdir(join(tempDir, ".claude", "commands"));
-		expect(commands).toContain("aide-research.md");
+		// Commands scaffolded under the aide/ namespace subfolder
+		const commands = await readdir(join(tempDir, ".claude", "commands", "aide"));
+		expect(commands).toContain("research.md");
 
 		// MCP config wired
 		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8"));
@@ -51,8 +51,8 @@ describe("init", () => {
 		const config = await readFile(join(tempDir, ".cursorrules"), "utf-8");
 		expect(config).toContain("<!-- aide-methodology -->");
 
-		const commands = await readdir(join(tempDir, ".cursor", "commands"));
-		expect(commands).toContain("aide-research.md");
+		const commands = await readdir(join(tempDir, ".cursor", "commands", "aide"));
+		expect(commands).toContain("research.md");
 	});
 
 	it("respects path override", async () => {
