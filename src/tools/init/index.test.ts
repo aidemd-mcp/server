@@ -20,12 +20,25 @@ describe("init", () => {
 
 		expect(result).toContain("AIDE initialized");
 		expect(result).toContain("claude framework");
-		expect(result).toContain("Methodology");
+		expect(result).toContain("Methodology pointer");
+		expect(result).toContain(".aide/aide-spec.md");
+		expect(result).toContain(".aide/index.md");
+		expect(result).toContain("Doc hub: .aide");
 		expect(result).toContain("MCP config");
 
-		// Methodology written
+		// Pointer stub written into the config file (not the full body)
 		const config = await readFile(join(tempDir, "CLAUDE.md"), "utf-8");
 		expect(config).toContain("<!-- aide-methodology -->");
+		expect(config).toContain(".aide");
+
+		// Doc hub landed on disk
+		const hubFiles = await readdir(join(tempDir, ".aide"));
+		expect(hubFiles).toContain("aide-spec.md");
+		expect(hubFiles).toContain("aide-template.md");
+		expect(hubFiles).toContain("progressive-disclosure.md");
+		expect(hubFiles).toContain("agent-readable-code.md");
+		expect(hubFiles).toContain("automated-qa.md");
+		expect(hubFiles).toContain("index.md");
 
 		// Commands scaffolded under the aide/ namespace subfolder
 		const commands = await readdir(join(tempDir, ".claude", "commands", "aide"));

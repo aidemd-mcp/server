@@ -1,147 +1,237 @@
 ---
 scope: src/tools/init/writeMethodology
 intent: >
-  writeMethodology is the bridge between the canonical AIDE docs under
-  docs/ and the host project's agent config file (CLAUDE.md for Claude
-  Code, .cursorrules for Cursor, whatever the detected framework uses).
-  It reads the canonical docs at runtime, composes them into a
-  methodology block wrapped with the framework's expected shape, and
-  writes the block into the host's config file exactly once. Success
-  is a host project whose installed methodology is a byte-faithful
-  render of the canonical source with only a framework-specific
-  wrapper around it.
+  writeMethodology installs the host-side pointer stub — the short, marker-
+  bounded region inside the host framework's config file (CLAUDE.md,
+  .cursorrules, etc.) whose only job is to tell the agent that AIDE exists,
+  name the path to the progressively-disclosed `.aide/` doc hub on disk,
+  and instruct the agent to crawl that hub before writing or acting on any
+  `.aide` file. The stub is deliberately tiny so non-AIDE sessions in the
+  host project pay almost nothing to carry it, and the methodology body the
+  agent actually needs lives next to the work on disk where it can be read
+  on demand. Success is a host project whose config file gains a handful of
+  lines of pointer plus a crawl trigger, and loses the several-hundred-line
+  methodology dump that used to ship here.
 outcomes:
   desired:
-    - The installed methodology block is a faithful render of the
-      canonical docs read from `docs/` at runtime. A diff between the
-      installed block and the concatenated source docs shows only the
-      framework-specific wrapper (header, marker comments), never
-      content changes, paraphrases, reorderings, or summaries.
-    - The helper is idempotent through a single marker comment that
-      identifies an already-installed block. A re-run on a host
-      project that already has the block changes nothing on disk and
-      reports the status as `exists`.
-    - Content outside the marker-bounded block is preserved verbatim
-      across installs. A user's existing config content, edits above
-      or below the block, and any other agent-facing instructions
-      survive the write untouched.
+    - The installed region is a short pointer stub — a handful of lines
+      rather than a full methodology body. It names the host-side doc-hub
+      path, teaches the agent when to crawl (before writing or acting on
+      any `.aide` file), and tells the agent never to guess AIDE rules from
+      memory. It contains no canonical AIDE doctrine — the doctrine lives
+      in the installed hub, not in the stub.
+    - The stub's instructional text is sourced from canonical content read
+      through initContent at call time, not from literals baked into this
+      helper's source. Framework plumbing (marker comments, headers, the
+      rendered host-side path) is composed here; the teaching sentences
+      are not.
+    - The stub names the host-side doc-hub path explicitly so the agent has
+      zero guessing to do about where to look. The path and the location
+      the installer helper writes to must always agree; this stub is the
+      contract the installer fulfills.
+    - Idempotency is still detected via a marker comment. A re-run on a
+      host project whose config file already carries the marker returns
+      `exists` and writes nothing. Silent upgrades — overwriting a stale
+      stub with a newer one in place — are explicitly out of scope and
+      belong to a future explicit update path.
+    - Content outside the marker-bounded region is preserved verbatim on
+      every run. The helper owns only the bytes between its markers; the
+      user's existing config content, their team's private conventions,
+      and any other agent-facing instructions survive untouched.
   undesired:
-    - Any AIDE doctrine living as a template literal inside this
-      helper's source. The canonical docs are the single source of
-      truth; duplicating them here creates two sources that drift on
-      the first edit to either.
-    - The block appended to the config file on every run, producing
-      stacked duplicates. The marker check is the only correct shape
-      for idempotency here.
-    - Rewriting the config file from scratch and losing content the
-      user had outside the block. The helper is a surgical insert,
-      never a replace.
-    - A silent fallback to hardcoded content when the canonical docs
-      are missing or unreadable. If `docs/` cannot be read, the helper
-      must fail loudly, because shipping stale literals is exactly
-      the failure mode this architecture exists to prevent.
+    - The stub ships the full concatenated methodology body — the exact
+      regression this spec exists to reverse. Every line of canonical
+      doctrine inside the config file is a line the agent re-reads in
+      every session, AIDE-related or not, and a line that drifts the
+      moment the installed hub diverges from the stub.
+    - Any AIDE teaching sentence living as a template literal in this
+      helper's source. If the stub text needs to say "before writing or
+      acting on any `.aide` file, crawl the hub", that sentence must come
+      from canonical content read at runtime — the same invariant the
+      parent spec locks in for the full-body case still applies to the
+      stub.
+    - The stub naming the doc-hub path in terms that disagree with where
+      the installer helper actually writes the hub. A stub that points at
+      `.aide/` while the installer writes into `aide/` is worse than no
+      stub at all, because it sends agents to an empty directory and
+      teaches them the tooling is unreliable.
+    - A re-run that rewrites the stub in place to pick up a doctrine
+      edit, silently replacing a user's marker-bounded region without
+      them asking. Idempotency here means "do nothing on re-run"; upgrades
+      are always explicit.
+    - A failure path that falls back to an inline default stub when the
+      canonical source is missing or unreadable. Silent fallbacks to
+      embedded content are the failure mode the renderer architecture
+      exists to prevent, and the stub is no exception.
+    - Rewriting the config file from scratch and losing content the user
+      had outside the marker-bounded region. The helper is a surgical
+      insert, never a replace.
 ---
 
 ## Context
 
-The host project's config file is the primary documentation surface
-the agent reads on every session. Whatever lives in that file *is*
-what the agent believes about the project. If the methodology block
-there drifts away from the canonical docs, the agent is trained on
-stale doctrine and no human is notified. This helper is the single
-point at which canonical content crosses from the repo into a host
-project, so the burden of making the crossing faithful lives here and
-nowhere else.
+The host project's config file is the primary documentation surface the
+agent reads on every session — AIDE-related or not. Every line that lives
+between its opening and closing markers is a line every session pays for,
+because the agent re-reads the file from the top each time it starts work.
+Shipping the full AIDE methodology into that region made the agent pay the
+entire doctrine cost on every unrelated task: a bug fix in an unrelated
+module, a commit message, a README edit. The cost was invisible per-session
+but compounded across every minute of agent time the host project used.
 
-The framing the parent spec locks in — "this submodule is a renderer,
-not a source" — shows up in this helper as a hard rule: reading from
-`docs/` at runtime is the only acceptable way to get methodology text
-into the block that lands on the host's disk.
+The fix is to treat the config file the same way the rest of AIDE treats
+code: the short, high-traffic surface teaches *what exists and where to
+look*, and the long, low-traffic surface holds the actual content. The
+full methodology already lives in canonical form under this repo's
+`docs/`; a sibling helper installs it into the host project as a
+progressively-disclosed `.aide/` hub. This helper's job shrinks to
+installing the pointer that names that hub and the instruction that
+triggers a crawl into it.
+
+The parent spec's renderer invariants still govern — doctrine lives in
+`docs/`, this helper never embeds canonical text as literals, marker-based
+idempotency is the only supported shape, and content outside the region
+is sacred. This spec narrows those invariants to the stub case, not away
+from them.
 
 ## Strategy
 
-**Read from `docs/` at runtime, compose at call time, never embed.**
-The canonical docs are plain Markdown files the maintainer edits in
-place. This helper reads them on every call, concatenates them in a
-stable order, wraps them with the framework-specific header and
-marker comment, and writes the result. No caching across process
-boundaries, no build-time generation of the literal, no "snapshot"
-of the docs checked into this helper's source. The cost of reading a
-handful of short files at init time is invisible; the cost of letting
-a stale literal ship is not.
+**The delivery layer practices the same progressive disclosure it
+teaches.** The methodology's own rule is that agents crawl from a short
+pointer into deeper material on demand. Shipping a full-body methodology
+into the host config file violated that rule at the delivery layer: the
+doctrine that tells agents to crawl on demand was itself dumped up front.
+The stub shape restores the invariant — the config file gains a pointer,
+the agent crawls into the installed hub only when the task touches AIDE,
+and non-AIDE sessions skim past a handful of lines instead of several
+hundred.
 
-**Idempotency via a single marker comment.** The block is wrapped
-with a marker both before and after the content. On re-run the
-helper looks for the opening marker; if present, it reports `exists`
-and returns. It does not compare content against the current docs
-and it does not upgrade stale blocks in place — that is the job of a
-future explicit `aide_update` path, not this helper. Silent upgrades
-would hide exactly the kind of drift a maintainer needs to see.
+**Stub text comes from canonical content, framework plumbing does not.**
+The sentences the stub uses to teach "AIDE exists, here is the hub, crawl
+before acting" are AIDE doctrine and therefore ineligible to live as
+string literals in this helper's source. They are read through
+initContent from whatever canonical surface the architect chooses — a
+dedicated pointer doc, a short section of an existing canonical doc, or
+a new canonical doc created for this purpose — and composed into the
+stub at call time. The marker comment, the host-side path fragment, and
+the framework-specific header around the block are pure plumbing and can
+be composed locally. The dividing line is content versus container: if a
+sentence teaches an AIDE rule, it comes from `docs/`; if it glues
+canonical content into the host's config file shape, it is plumbing.
+
+**Path agreement with the installer is load-bearing.** The stub names the
+host-side hub path and the installer writes into that path. They must
+agree by construction, not by coincidence — a shared constant, a shared
+helper, a shared configuration surface, whatever the architect chooses.
+The worst failure mode of this refactor is a stub that points at a path
+the installer never created; the agent reads the stub, follows the
+pointer, finds nothing, and concludes the tooling is broken. The
+architect's plan owns the mechanism; this spec owns the invariant that
+the two sides cannot drift.
+
+**Idempotency stays marker-based, upgrades stay explicit.** The marker
+check is unchanged: if the opening marker is present in the host config
+file, the helper returns `exists` and writes nothing. A re-run does not
+detect a stale stub and replace it in place, because a user who has
+edited the marker-bounded region for their team's workflow would lose
+that edit silently on the next init. Intentional re-sync belongs to a
+future explicit update path, not to this helper's happy path. The stub
+being short does not change this — if anything, it makes the argument
+stronger, because a short stub is easy for a user to customize and
+exactly the kind of content a silent upgrade would steamroll.
 
 **Fail loudly when the canonical source is unreachable.** If the
-docs cannot be read, the helper returns an error rather than falling
-back to an inline default. There is no valid "graceful degradation"
-here, because every failure mode of this helper that ships stale or
-invented content is worse than a failed init. An init that aborts
-with "docs/aide-spec.md not found" is a bug report; an init that
-silently ships old doctrine is an invisible regression.
+canonical content that feeds the stub cannot be read, the helper returns
+an error naming the missing source rather than falling back to an inline
+default. The reasoning from the parent still applies: a visible bug
+report is strictly better than an invisible regression where the stub
+ships stale pointer text that disagrees with the installed hub.
 
-**Outside-the-block content is sacred.** The file can contain
-anything else — a project's own CLAUDE.md notes, unrelated agent
-instructions, a team's private conventions. This helper only owns
-the region between its markers; everything else is passed through
-byte-for-byte on every operation.
+**The surgical-insert invariant survives shrinking.** The region the
+helper owns got smaller, but the rule that everything outside it is
+sacred got no weaker. The helper finds the insertion point, writes its
+marker-bounded region, and leaves every other byte of the config file
+alone. A user with their own CLAUDE.md content above or below the
+region sees that content untouched across every init.
 
 ## Good examples
 
-A maintainer edits `docs/aide-spec.md` to clarify the cascading
-intent rule. They release a new version of the MCP server. A host
-project runs `aide_init` again; the methodology block in its
-CLAUDE.md is unchanged (because the marker already exists) but the
-maintainer knows the fix is available behind a future explicit
-update flow. The rule "re-init does not upgrade in place" held.
+A host project runs `aide_init` for the first time in a fresh Claude
+Code project whose `CLAUDE.md` is empty. The helper writes a short
+marker-bounded region at the top of the file — an opening marker
+comment, a header naming the methodology and the host-side doc-hub
+path, a handful of lines that say AIDE exists, that the full doc set
+lives at the hub path, that the agent should crawl the hub before
+writing or acting on any `.aide` file, and that the agent should never
+guess AIDE rules from memory. A closing marker comment closes the
+region. The file is a handful of lines long instead of several
+hundred. Every word inside the region that teaches something traces
+back to canonical content read through initContent; the only locally-
+composed pieces are the marker, the header, and the rendered host-side
+path.
 
-A host project runs `aide_init` for the first time. The resulting
-block in CLAUDE.md reads as an identifiable region: an opening marker
-comment, a header naming the methodology, the full body of each
-canonical doc in a stable order with their original section
-hierarchies intact, and a closing marker comment. Anything the
-developer had in CLAUDE.md before the run is still there, untouched,
-above or below the new block.
+A developer runs `aide_init` a second time on the same project. The
+helper sees the opening marker, returns `exists`, writes nothing, and
+the init summary reports the methodology step as already-present. The
+developer also runs init a third time, after manually customizing the
+stub's header with their team's name. The customization survives; the
+marker is still there; the helper reports `exists`; their edit is
+untouched.
 
-An init runs on a host project where the maintainer has manually
-pasted earlier AIDE rules into CLAUDE.md outside the block. The
-helper writes its marker-bounded block in the correct place and
-leaves the pasted text alone. The developer sees two adjacent
-methodology regions in their file, notices the duplication, deletes
-the older hand-pasted copy, and is left with a single source of
-truth that will stay current on future edits to `docs/`.
+A host project's config file has a hundred lines of unrelated agent
+instructions already in it when init runs for the first time. The
+helper writes its marker-bounded region at the correct insertion
+point and leaves every one of those hundred lines byte-identical
+above and below. The user's content is sacred outside the region; the
+helper is a surgical insert.
+
+An agent session opens the host project on an unrelated task — say,
+fixing a bug in a service module. The agent reads `CLAUDE.md`, sees
+the short stub, learns that AIDE exists and where the hub is, and
+consciously chooses not to crawl the hub because the task does not
+touch `.aide` files. Total session cost for carrying the AIDE
+methodology was a handful of lines, not several hundred. An hour
+later, the same agent picks up a different task that does touch
+`.aide` files; this time it follows the stub's pointer, reads the
+hub, and crawls into whichever canonical doc its task needs. The
+stub and the hub work together exactly the way `study-playbook` and
+the user's global brain already do.
 
 ## Bad examples
 
-A block installed into CLAUDE.md that reads "## AIDE — Autonomous
-Intel-Driven Engineering" when the canonical docs say "Autonomous
-Intent-Driven Engineering". The block was composed from a string
-literal in this helper's source that was written from memory. The
-single-source-of-truth invariant failed at the helper level; the host
-project now teaches its agent a version of AIDE that contradicts the
-canonical docs.
+A helper rewritten to look like the stub shape but with the
+teaching sentences typed inline as template literals: `const STUB =
+"...AIDE is..."`. The canonical doc now lives in two places —
+`docs/` and this helper's source — and a later edit to the canonical
+source will drift away from the shipped stub. The rewrite technically
+solved the "long block" problem and silently created the "two
+sources of truth" problem the parent spec exists to prevent.
 
-A re-run on an already-initialized project that appends a second
-block below the first, producing a CLAUDE.md with two copies of the
-methodology and two pairs of marker comments. The marker check was
-skipped or misaligned; the idempotency invariant is broken; the file
-is now corrupted.
+A stub that points at `aide/` while a sibling helper installs the
+hub into `.aide/`. The agent reads the stub, follows the pointer,
+finds nothing, and either gives up or invents a different location.
+The two sides were never tied together by a shared path source, and
+the refactor shipped with the mismatch invisible until an agent hit
+it in production.
 
-An init run on a project whose CLAUDE.md contains the team's own
-conventions above the marker block. The helper rewrites the file
-from scratch "to ensure a clean state" and wipes out the team's
-content. The surgical-insert invariant was violated; the user trusted
-the tool and lost work.
+A re-run that detects an older stub in place, composes a fresh one
+from the current canonical source, and writes the new version on top
+of the old. The user's hand-edit to the stub header is gone without
+a prompt or a warning; the next time they read their CLAUDE.md they
+find their customization missing and mistrust the tool. The stub is
+small enough to edit by hand, which is exactly why silent upgrades
+are worse here than they would have been for a long block.
 
-An init whose `docs/aide-spec.md` has been accidentally moved. The
-helper catches the missing file and falls back to an embedded
-default, silently shipping a six-month-old copy of the doctrine. The
-developer believes they got the current methodology; they did not;
-no one will notice until the drift causes a contradiction in a
-downstream decision.
+A helper whose canonical source is missing and which responds by
+writing an inline default stub with text typed from memory. The
+developer runs init and sees `created`, never knowing that the
+region in their config now points at the wrong path or teaches a
+stale crawl trigger. The failure mode the renderer architecture
+exists to prevent has moved from the full-body case into the stub
+case.
+
+A stub installed above a fifty-line block of the user's unrelated
+instructions — and a future refactor that "cleans up the insertion
+point" by rewriting the whole config file from scratch, wiping the
+fifty lines out. The region got smaller; the surgical-insert
+invariant got forgotten; the user trusted the tool and lost work.

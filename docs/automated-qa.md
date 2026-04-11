@@ -2,7 +2,7 @@
 
 The verification loop of [AIDE](./aide-spec.md). Spec documents define what correct output looks like — automated QA uses agents to verify that the system's actual output matches those specs, then iteratively fixes drift without human review of every line.
 
-This completes the AIDE cycle: research → specs → implementation → **audit against specs → fix → re-verify**.
+This completes the AIDE cycle: research → spec → plan → implementation → **QA against specs → fix → re-verify**.
 
 ## Why This Exists
 
@@ -12,9 +12,9 @@ Automated QA turns the `.aide` specs into a machine-readable rubric. The same sp
 
 ## The Two-Phase Pattern
 
-### Phase 1: Audit Agent
+### Phase 1: QA Agent
 
-A dedicated agent reads the `.aide` specs and the latest generated output, then produces a checklist of issues — each a discrete finding with a file path, line reference, and the spec rule it violates.
+The QA agent reads the `.aide` specs and the latest generated output, then produces a checklist of issues — each a discrete finding with a file path, line reference, and the spec rule it violates.
 
 **Inputs:**
 
@@ -32,11 +32,11 @@ A dedicated agent reads the `.aide` specs and the latest generated output, then 
 - [ ] **<output-path>:<line>** — <Next issue, same format.>
 ```
 
-**Key constraint:** the audit agent does NOT propose solutions. Solutions bias the fixing agent toward a specific approach before it reads the spec itself. The checklist says *what's wrong and where* — the fix agent decides *how*.
+**Key constraint:** the QA agent does NOT propose solutions. Solutions bias the implementor toward a specific approach before it reads the spec itself. The checklist says *what's wrong and where* — the implementor, invoked to work the `todo.aide`, decides *how*.
 
-### Phase 2: Fix Agent (One Issue Per Session)
+### Phase 2: Implementor in Fix Mode (One Issue Per Session)
 
-A separate agent session picks up the `todo.aide`, finds the first unchecked item, and works it:
+The fix loop is not a separate agent — it is the same [implementor](./aide-spec.md#the-agent-pipeline) that executes architect plans, invoked with a narrower scope and a stricter session protocol. One session per unchecked `todo.aide` item, clean context each time. Each session does exactly this:
 
 1. Read the `todo.aide`, find the next unchecked issue
 2. Read the relevant `.aide` specs — the actual strategy, not just the issue description
@@ -45,27 +45,27 @@ A separate agent session picks up the `todo.aide`, finds the first unchecked ite
 5. Compare the new output against the previous output for regressions
 6. Check off the item in the `todo.aide`
 
-Then a **new agent session** repeats for the next unchecked item.
+Then a **new implementor session** repeats for the next unchecked item.
 
 ### Why One-Per-Session
 
-Each fix modifies prompts, templates, or logic that affects all generated output. A single agent fixing five issues in sequence can't reliably regression-test — fix #3 might undo fix #1, and the agent won't notice because it's holding stale assumptions from thousands of tokens ago.
+The fix loop is an invocation discipline, not a separate agent. Each fix modifies prompts, templates, or logic that affects all generated output. A single session fixing five issues in sequence can't reliably regression-test — fix #3 might undo fix #1, and the implementor won't notice because it's holding stale assumptions from thousands of tokens ago. The same implementor that executes architect plans in build mode is perfectly capable of executing a single `todo.aide` item in fix mode; what changes is the scope and the protocol, not the agent.
 
 One-per-session means:
-- **Fresh context** — the agent reads current state, not cached assumptions
+- **Fresh context** — the implementor reads current state, not cached assumptions
 - **Clean diffs** — each fix is one change, one before/after comparison
 - **Regression isolation** — if output gets worse, you know exactly which fix caused it
 
 ## Regression Testing
 
-The fix agent must verify its change didn't make things worse.
+The implementor must verify its change didn't make things worse.
 
 1. Output lives in timestamped folders
 2. Before fixing, the latest folder is the baseline
 3. After fixing, run the generation command — a new timestamped folder appears
 4. Compare the new folder against the baseline
 
-A **positive effect** means the output more closely matches the AIDE specs. A **regression** means the output moved *further* from what the specs require. The fix agent checks both the targeted issue and surrounding output for unintended drift.
+A **positive effect** means the output more closely matches the AIDE specs. A **regression** means the output moved *further* from what the specs require. The implementor checks both the targeted issue and surrounding output for unintended drift.
 
 ## The `todo.aide` as Coordination
 
@@ -81,14 +81,14 @@ The `todo.aide` lives in the module it audits, scoped to a specific generation r
 
 The pattern requires three things:
 
-1. **`.aide` specs** alongside orchestrator code — the audit agent's source of truth
+1. **`.aide` specs** alongside orchestrator code — the QA agent's source of truth
 2. **A CLI command** that generates output into timestamped folders — so agents can trigger generation and compare runs
 3. **The `todo.aide` convention** — so the checklist has a predictable location
 
 ## When to Use
 
 - **LLM-generated prose** — emails, reports, summaries where tone and strategy compliance matter
-- **Prompt engineering iterations** — when tuning prompts, the audit agent catches drift you'd miss reading output manually
+- **Prompt engineering iterations** — when tuning prompts, the QA agent catches drift you'd miss reading output manually
 - **Any output governed by AIDE specs** — if a spec defines what correct looks like, an agent can verify against it
 
 Don't use this for code correctness — that's what tests are for. Use it when the output is subjective enough that "does this match the spec?" requires reading comprehension, not assertion checks.

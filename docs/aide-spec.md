@@ -1,14 +1,14 @@
 # AIDE Spec
 
-**Autonomous Intent-Driven Engineering (AIDE)** is a methodology where intent — not code, not tests, not prompts — is the primary driver of every implementation decision. An intent doc lives next to the code it governs; when the intent changes, the code changes; when the code drifts from the intent, the code is wrong. The intent doc is the contract every downstream agent (builder, auditor, fixer) works from.
+**Autonomous Intent-Driven Engineering (AIDE)** is a methodology where intent — not code, not tests, not prompts — is the primary driver of every implementation decision. An intent doc lives next to the code it governs; when the intent changes, the code changes; when the code drifts from the intent, the code is wrong. The intent doc is the contract every downstream agent (architect, implementor, QA) works from.
 
-The name is a double entendre. AIDE is also an **AI Domain Expert** — a research agent that lifts the domain-expertise burden off an engineering team. Building a legal processing app traditionally requires hiring a legal expert to shape requirements, catch edge cases, and translate statute into rules an engineer can implement. Building a medical triage tool traditionally requires a clinician. Building a tax system traditionally requires an accountant. AIDE collapses that role into the agent loop: the research agent reads the sources, synthesizes the strategy, and produces a `.aide` file that captures the expertise in a form the rest of the pipeline can act on. The engineer does not need to become a legal expert. The team does not need to hire one. The `.aide` file *is* the expertise.
+The name is a double entendre. AIDE is also an **AI Domain Expert** — a research agent that lifts the domain-expertise burden off an engineering team. Building a legal processing app traditionally requires hiring a legal expert to shape requirements, catch edge cases, and translate statute into rules an engineer can implement. Building a medical triage tool traditionally requires a clinician. Building a tax system traditionally requires an accountant. AIDE collapses that role into the agent loop: the research agent reads the sources, synthesizes the findings, and persists the result to the brain as durable knowledge a later planner session can draw from when writing the `.aide` intent spec. The engineer does not need to become a legal expert. The team does not need to hire one. The brain's research plus the planner's intent spec together *are* the expertise.
 
-The research layer is optional upstream. If a human domain expert writes the intent doc directly, the pipeline works the same way. The AI domain expert is how you arrive at intent when you would otherwise need to hire someone; once the intent doc exists, the rest of the methodology treats it as authoritative regardless of who authored it.
+The research layer is optional. It runs only when the module requires domain knowledge the team does not already have. When the domain is already understood — either because a research agent previously filled the brain or because the user holds the knowledge directly — the planner skips research and writes the intent spec from what is already available. Once the intent doc exists, the rest of the methodology treats it as authoritative regardless of how the planner arrived at it.
 
 AIDE is a three-layer model:
 
-- **The domain expert holds the research.** Whether that expert is a human, an AI research agent, or an existing knowledge base, the raw sources live outside the project — a vault, an MCP memory store, a team wiki. The intent doc is the distillation the rest of the pipeline consumes; the raw research is loaded only when it needs to be re-cited or extended.
+- **The brain holds durable knowledge.** External to the project — a vault, an MCP memory store, a team wiki. Two kinds of content live here: domain research (what the module is supposed to do in the real world) and engineering conventions (how this team writes code — the coding playbook). Different agents pull different slices: the planner draws on domain research when writing intent; the architect draws on the coding playbook when translating intent into a plan. Neither bloats the repo with reference material every session has to re-read.
 - **The `.aide` file holds the intent.** A short, structured brief living next to the orchestrator it governs. Strategy, outcomes, anti-patterns, domain examples. No code. This is the contract.
 - **The code holds itself.** The implementation is ephemeral — if the intent changes, the code changes. The spec persists; the code is its current expression.
 
@@ -19,7 +19,7 @@ AIDE is a three-layer model:
 | `.aide`         | The intent spec. Default and sufficient for most modules.                                                                                                                                                                                                               |
 | `intent.aide`   | Same as `.aide`, renamed for disambiguation when a `research.aide` exists in the same folder.                                                                                                                                                                           |
 | `research.aide` | Optional. Co-located research. Prefer external memory (brain, MCP) over this — every file in the repo fills context whether the agent reads it or not, and agents don't always honor "skip this" instructions. Only use when the research is inseparable from the code. |
-| `todo.aide`     | QA work queue. Produced by the audit agent next to the intent spec during the verification loop. One discrete issue per checkbox. Consumed by fix agents. See [Automated QA](./automated-qa.md).                                                                        |
+| `todo.aide`     | QA work queue. Produced by the QA agent next to the intent spec during the verification loop. One discrete issue per checkbox. Consumed by the implementor in fix mode, one session per item. See [Automated QA](./automated-qa.md).                                     |
 
 **Default to `.aide` alone.** Push research out to the brain or an MCP memory store. Only split into `research.aide` + `intent.aide` when the research genuinely can't live elsewhere. Never have both `.aide` and `intent.aide` in the same folder.
 
@@ -80,8 +80,8 @@ The canonical template lives at [AIDE Template](./aide-template.md). Agents shou
 |-------|---------|
 | `scope` | The module path this spec governs. One spec, one scope. |
 | `intent` | One paragraph, plain language: what this module is *for*. The north star every other field serves. Written so a human reading it cold understands the purpose in ten seconds. Everything in `outcomes` must be traceable back to this sentence. |
-| `outcomes.desired` | The success criteria. One or more statements describing what the module should produce. The audit agent measures actual output against this list. Keep it short — every extra entry dilutes the intent. |
-| `outcomes.undesired` | The failure modes. Outputs that look correct but violate intent — the green-tests-bad-output failures. The audit agent checks these explicitly even when tests pass. |
+| `outcomes.desired` | The success criteria. One or more statements describing what the module should produce. The QA agent measures actual output against this list. Keep it short — every extra entry dilutes the intent. |
+| `outcomes.undesired` | The failure modes. Outputs that look correct but violate intent — the green-tests-bad-output failures. The QA agent checks these explicitly even when tests pass. |
 
 **Scope, intent, outcomes. That's the whole contract.** Lifecycle fields like `status` or `revision` are deliberately omitted — they encode state that v1 has no orchestrator to consume, and every unused field is a token tax on every agent that reads the spec. Git history tracks change; the rule "if the intent changes, it's a new spec" is the forcing function. Lifecycle fields come back in a later revision alongside tooling that actually reads them.
 
@@ -121,7 +121,7 @@ Additional sections (references, constraints, state machine, etc.) are allowed w
 ### Frontmatter vs Strategy — what each layer owns
 
 - **Frontmatter (`intent` + `outcomes`)** declares *what* the module is for and *what* counts as success or failure. It is a contract — short, falsifiable, machine-readable.
-- **`## Strategy` body** answers *how* — the intent combined with research from the brain, compressed into actionable decisions a builder agent can execute without re-reading the sources.
+- **`## Strategy` body** answers *how* — the intent combined with research from the brain, compressed into actionable decisions the architect can turn into a plan and the implementor can execute without re-reading the sources.
 
 If the strategy contradicts the intent, the intent wins and the strategy is wrong. If a new research finding changes the strategy but not the intent, rewrite the strategy in place. If the intent itself changes, the scope and identity of the spec have changed — consider whether it should be a new spec entirely.
 
@@ -132,8 +132,8 @@ If the strategy contradicts the intent, the intent wins and the strategy is wron
 - **No code.** No filenames, no type signatures, no function bodies, no worked code examples. The code documents itself when it's written. The spec describes intent; the implementer figures out the code. Including code in a spec wastes tokens documenting something ephemeral.
 - **Domain examples only.** When you show an example, show what the *output* should look like in the domain (a real email, a real report section, a real API response), not what the code that produces it looks like.
 - **Each spec stands alone** except for inheritance from parent `.aide` files. Don't cross-reference sibling specs.
-- **Decisions, not descriptions.** Each paragraph in `## Strategy` should state a concrete choice and the reasoning that justifies it. A builder agent reading the strategy should know what to do *and* why that approach beats the alternatives.
-- **Citations ride alongside decisions.** When a decision is grounded in external data or research, name the source and the finding in-line. Don't footnote; don't link out to sources the builder would have to chase.
+- **Decisions, not descriptions.** Each paragraph in `## Strategy` should state a concrete choice and the reasoning that justifies it. An architect reading the strategy should know what to do *and* why that approach beats the alternatives, so the plan it produces can handle unanticipated edge cases without re-opening the spec.
+- **Citations ride alongside decisions.** When a decision is grounded in external data or research, name the source and the finding in-line. Don't footnote; don't link out to sources a downstream agent would have to chase.
 
 ## When to Write a `.aide`
 
@@ -155,13 +155,18 @@ The `outcomes` block gives the QA agent that understanding. `desired` tells it w
 
 ## The Agent Pipeline
 
-AIDE isn't one agent doing everything. It's a pipeline of specialized agents, each with a clear job:
+AIDE isn't one agent doing everything. It's a pipeline of specialized agents, each with one job and a narrow set of inputs. Splitting the roles is how each agent keeps its context small enough to stay accurate: the planner never reads the codebase, the architect never writes prose, the implementor never makes architectural decisions, and QA never writes code. Generalist agents drift because they carry everything at once; specialists don't.
 
-1. **Research agent (the AI domain expert)** — the stand-in for the legal expert, clinician, or industry analyst the team would otherwise need to hire. Ingests sources (vault notes, web search, MCP memory), synthesizes patterns, resolves conflicts, persists the research to the brain. Then distills the research into a `.aide` intent doc: frontmatter + the four required body sections. Downstream agents treat the output as authoritative domain expertise.
-2. **Builder agent** — reads the `.aide` spec, plans and implements the feature, writes tests, runs them until green.
-3. **Audit agent** — reads the spec (specifically the `outcomes` block), compares actual output against `outcomes.desired` and checks for anything in `outcomes.undesired`, writes a `todo.aide` checklist of discrete issues next to the spec. Does not propose solutions — only identifies what's wrong and where.
-4. **Fix agents** — one session per `todo.aide` item. Reads the spec + `todo.aide`, fixes one item, verifies no regressions, checks the box, commits. New session for the next item.
+1. **Research agent — *optional*.** The AI domain expert. Runs only when the module requires domain knowledge the team does not already have. Ingests sources (vault notes, web search, MCP memory), synthesizes patterns, resolves conflicts, and persists the result to the brain as durable research the planner can later draw from. The research agent never writes `.aide` files; its sole output is reusable knowledge parked in the brain. Skip this phase entirely when the domain is already understood — either because a prior research run filled the brain or because the user holds the knowledge directly.
 
-Every agent reads the same spec. No agent needs you to explain what to build or how to build it — that context is already in the files.
+2. **Planner agent.** Produces the `.aide` intent spec. Two modes: pull synthesized research from the brain when a research agent has run, or interview the user directly when no research exists. Either way the output is the same — frontmatter (`scope`, `intent`, `outcomes.desired`, `outcomes.undesired`) plus the four required body sections. The planner treats the brain's research (when present) as authoritative domain expertise and treats the user's answers (when not) as the same. The planner writes intent, not implementation: no file paths, no type signatures, no code.
+
+3. **Architect agent.** Translates intent into an implementation plan. Reads the `.aide` spec for what the module must produce, pulls the coding playbook from the brain for how this team writes code, and reads the current codebase for what already exists. Output is a step-by-step plan the implementor can execute without making architectural decisions mid-session — naming choices, sequencing, contracts, file placement, which existing helpers to reuse. The architect never writes code itself; the plan is written in terms concrete enough that the implementor only has to type, not think.
+
+4. **Implementor agent.** Executes plans. Reads the architect's plan and the `.aide` spec, writes the code, writes the tests, runs them until green. The same agent also runs the fix loop — one session per `todo.aide` item, clean context each time, same role with a narrower scope. Planning is the architect's job; architectural improvisation during implementation is out of scope. If the plan is ambiguous, the implementor escalates back to the architect rather than inventing an answer.
+
+5. **QA agent.** Reads the spec's `outcomes` block specifically, compares actual output against `outcomes.desired`, checks for anything in `outcomes.undesired`, and writes a `todo.aide` checklist of discrete issues next to the spec. Does not propose solutions — only identifies what's wrong and where. The implementor picks up the checklist one item at a time.
+
+Every agent reads the same `.aide` spec. No agent needs a human to explain what to build or how to build it — the context is already in the files: the brain for durable knowledge, the `.aide` for intent, the architect's plan for sequencing, the code for current state.
 
 See [Automated QA](./automated-qa.md) for the full QA verification loop.

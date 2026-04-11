@@ -6,13 +6,15 @@ import { fileURLToPath } from "node:url";
 /**
  * Cross-cutting regression guard for the init subtree.
  *
- * The three init helpers scanned below — writeMethodology, scaffoldCommands,
- * and initContent — all have `.aide` specs whose `outcomes.undesired` section
- * explicitly forbids AIDE doctrine living as a string literal in the helper's
- * source. See:
- *   - src/tools/init/writeMethodology/.aide (outcomes.undesired[0])
- *   - src/tools/init/scaffoldCommands/.aide (outcomes.undesired[0])
- *   - src/tools/init/initContent/.aide      (outcomes.undesired[3])
+ * The four init helpers scanned below — writeMethodology, scaffoldCommands,
+ * initContent, and installMethodologyDocs — all have `.aide` specs whose
+ * `outcomes.undesired` section explicitly forbids AIDE doctrine living as a
+ * string literal in the helper's source. See:
+ *   - src/tools/init/writeMethodology/.aide        (outcomes.undesired[1])
+ *   - src/tools/init/scaffoldCommands/.aide        (outcomes.undesired[0])
+ *   - src/tools/init/initContent/.aide             (outcomes.undesired[3])
+ *   - src/tools/init/installMethodologyDocs/.aide  (outcomes.undesired about
+ *                                                    hub index doctrine)
  * And the parent invariants in src/.aide ("no AIDE doctrine as string literals
  * in this submodule's source") and .aide (canonical docs are the single
  * source of truth).
@@ -42,6 +44,7 @@ const GUARDED_FILES = [
 	join(MODULE_DIR, "writeMethodology", "index.ts"),
 	join(MODULE_DIR, "scaffoldCommands", "index.ts"),
 	join(MODULE_DIR, "initContent", "index.ts"),
+	join(MODULE_DIR, "installMethodologyDocs", "index.ts"),
 ];
 
 const DOCTRINE_THRESHOLD = 200;

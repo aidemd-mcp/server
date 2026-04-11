@@ -21,14 +21,21 @@ outcomes:
       files and is the single source of truth. Editing those files is the
       only way to change what downstream host projects receive.
     - Two delivery channels, each with one clear job: MCP tool descriptions
-      teach AIDE at handshake time; aide_init installs the methodology block,
-      scaffolds pipeline slash commands, wires the MCP server into the host
-      project, and configures IDE preview. Together they cover the full
-      lifecycle from handshake to steady-state work.
+      teach AIDE at handshake time; aide_init installs a short pointer stub
+      into the host's config file, lands the progressively-disclosed
+      methodology doc hub onto the host's disk, scaffolds pipeline slash
+      commands, wires the MCP server into the host project, and configures
+      IDE preview. Together they cover the full lifecycle from handshake
+      to steady-state work. The stub-plus-hub shape of the methodology
+      delivery is load-bearing: every session in the host pays the stub
+      cost on every read of the config file, but pays the full doctrine
+      cost only when the task actually touches `.aide` files. Progressive
+      disclosure applies at the delivery layer, not just inside the docs.
     - Every downstream artifact the server ships — tool descriptions,
-      methodology blocks, slash command templates — is composed from the
-      canonical doc files at build or init time, never duplicated as an
-      inline string or hardcoded template.
+      host-installed pointer stubs, host-installed methodology docs,
+      slash command templates — is composed from the canonical doc
+      files at build or init time, never duplicated as an inline string
+      or hardcoded template.
     - A host project that runs aide_init once is AIDE-ready: the installing
       agent did not have to paraphrase, remember, or quote any AIDE rules to
       get there, because the tooling carried the full methodology into the
@@ -95,13 +102,26 @@ invariant has been broken and must be repaired, not worked around.
 
 **Two delivery channels, no third.** MCP tool descriptions teach AIDE at
 handshake time: what `.aide` files are, where they live, the naming rules,
-the read-before-code workflow. aide_init installs the rest: the
-methodology file agents read in the host's config, the slash commands
-that run the pipeline, the MCP wiring, and the IDE preview. The two
-channels are cleanly partitioned — handshake teaches concepts, init
+the read-before-code workflow. aide_init installs the rest: a short
+pointer stub into the host's config file, the full canonical methodology
+doc set into a dedicated host-side doc hub the stub points at, the slash
+commands that run the pipeline, the MCP wiring, and the IDE preview. The
+two channels are cleanly partitioned — handshake teaches concepts, init
 installs artifacts — and between them they cover the lifecycle an agent
 in a host project actually walks. Any proposal to add a third channel
 should be rejected and redirected into improving one of the existing two.
+
+**Methodology delivery honors progressive disclosure at the delivery
+layer.** The agent reads the host's config file on every session, so
+that surface carries only a short stub that names the installed doc hub
+and teaches the crawl trigger. The full canonical methodology lands as
+files on the host's disk, read on demand by sessions that actually touch
+`.aide` material. This mirrors what the user's global `study-playbook`
+skill does against the brain — a shallow pointer surface naming a deep
+content surface, with the agent crawling only when the task requires it.
+Shipping the full methodology body inside the stub region violates the
+pattern the methodology itself teaches, which is exactly the regression
+this architecture exists to prevent.
 
 **The repo eats its own dog food.** The MCP server is written using AIDE.
 Progressive disclosure in the folder tree, folders named after their
@@ -129,19 +149,41 @@ intent model is load-bearing even when it looks like cleanup.
 ## Good examples
 
 A maintainer edits `docs/aide-spec.md` to clarify how outcomes cascade
-from parent to child specs. They commit. On the next release, every host
-project that runs `aide_init` receives the updated methodology block
-verbatim, and every agent that connects to the MCP server sees the
-updated tool descriptions (in whichever tools the rule touched) because
-those descriptions were composed from the same doc file at build time.
-One edit in one file, full propagation, zero paraphrasing.
+from parent to child specs. They commit. On the next release, every
+host project that runs `aide_init` sees the updated text land inside
+its own `.aide/aide-spec.md` — the host-side doc hub contains a
+byte-faithful copy of the canonical doc, so the edit reaches every
+host project on its next init with no duplication anywhere in between.
+Every agent that connects to the MCP server also sees the updated tool
+descriptions (in whichever tools the rule touched), because those
+descriptions were composed from the same doc file at build time. One
+edit in one file, full propagation, zero paraphrasing, and the stub
+inside each host's config file keeps pointing at the same hub path it
+always did.
 
 An agent in a cold host project is told only "run aide_init." It does,
-reads back a summary naming the methodology file, five slash commands,
-the MCP registration, and the IDE configuration, and then starts the
-pipeline with `/aide-research`. At no point in that sequence did a human
-tell the agent what AIDE is, what a `.aide` file is, or how the phases
-fit together — every piece came through the tooling.
+reads back a summary naming the pointer stub in the config file, the
+installed host-side doc hub with every canonical methodology doc by
+name, the six pipeline slash commands, the MCP registration, and the
+IDE configuration, and then starts the pipeline with `/aide:research`.
+At no point in that sequence did a human tell the agent what AIDE is,
+what a `.aide` file is, or how the phases fit together — every piece
+came through the tooling.
+
+An agent opens a host project to implement a new feature unrelated to
+AIDE. Its first read is the host's config file, which contains a short
+pointer stub saying AIDE exists, naming the doc-hub path, and telling
+the agent to crawl the hub before writing or acting on any `.aide`
+file. The agent notes this, skips the hub for now because the task
+touches no specs, and proceeds with the feature work carrying only a
+handful of lines of AIDE context. An hour later, the same agent picks
+up a task that does touch a `.aide` file; it follows the stub's
+pointer into the hub, reads the hub index, drills into `aide-spec.md`
+and `aide-template.md`, and leaves the three canonical docs its task
+does not need unread. The delivery layer practiced the same
+progressive disclosure the methodology teaches — exactly the way the
+user's global `study-playbook` skill crawls the brain on demand
+instead of hoisting it into every session.
 
 A contributor adds a new tool to the MCP server. They read `/.aide`,
 narrow to `src/.aide`, narrow to their new submodule spec, and know
@@ -163,9 +205,25 @@ and forget to come back.
 A `writeMethodology/` helper that builds its output by concatenating
 hardcoded string literals instead of reading `docs/aide-spec.md`. The
 canonical doc and the shipped methodology drift apart on the first edit
-to either one, and a maintainer updating the doc has no way to know their
-change did not ship. The repo has two sources of truth and neither is
-marked authoritative.
+to either one, and a maintainer updating the doc has no way to know
+their change did not ship. The repo has two sources of truth and
+neither is marked authoritative.
+
+An `aide_init` that skips the doc-hub step and dumps the full
+concatenated methodology body inside the host's config file, the way
+it used to before this architecture was locked in. The agent pays the
+full doctrine cost on every read of the config file, the doctrine
+crowds out the host's own content, and the methodology's own
+progressive-disclosure rule is violated by the very tool whose job
+is to install it. The refactor passed its tests and broke the
+invariant it was supposed to enforce.
+
+A pointer stub that names a host-side doc-hub path at `.aide/` while
+the installer writes the hub into `aide/` (or any other mismatch of
+the same shape). The agent reads the stub, follows the pointer, and
+lands on a missing directory. The two sides were coincident string
+literals instead of a single shared path source, and the refactor
+shipped with its most load-bearing invariant broken at compile time.
 
 A proposal for `aide_explain`, a sixth tool that "walks an agent through
 the methodology interactively." The teaching surface now has three
@@ -175,7 +233,7 @@ fix the tool descriptions, not to add a channel that papers over their
 weakness.
 
 A canonical doc that introduces a new pipeline phase — say, "review" —
-without aide_init scaffolding an `/aide-review` slash command to match.
+without aide_init scaffolding an `/aide:review` slash command to match.
 Agents read the methodology, look for the command, can't find it, and
 conclude the system is incomplete. The doc was aspirational; the tooling
 was real; they disagreed; the agent trusted the tooling and lost trust

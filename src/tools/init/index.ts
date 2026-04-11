@@ -4,6 +4,7 @@ import type { FrameworkType, InitStepResult } from "@/types/index.js";
 import detectFramework from "@/tools/init/detectFramework/index.js";
 import { configureZed, configureVscode } from "@/tools/init/configureIde/index.js";
 import writeMethodology from "./writeMethodology/index.js";
+import installMethodologyDocs from "./installMethodologyDocs/index.js";
 import scaffoldCommands from "./scaffoldCommands/index.js";
 import wireMcp from "./wireMcp/index.js";
 
@@ -15,14 +16,21 @@ export const InitInput = z.object({
 
 /**
  * Bootstrap the AIDE development environment into a project.
- * Detects the agent framework, writes methodology, scaffolds slash commands,
- * and wires the MCP config. Each step is idempotent.
+ * Detects the agent framework, installs the host-side methodology doc
+ * hub, writes the AIDE pointer stub into the framework's config file,
+ * scaffolds slash commands, and wires the MCP config. Each step is
+ * idempotent and reports its status independently.
  */
 export default async function init(root: string, framework?: FrameworkType, path?: string, skipIde?: boolean): Promise<string> {
 	const projectRoot = path ? (isAbsolute(path) ? path : join(root, path)) : root;
 	const config = await detectFramework(projectRoot, framework);
 
-	const methodologyResult = await writeMethodology(join(projectRoot, config.configPath));
+	// Install the doc hub first so the stub's pointer always names a
+	// populated target on cold runs. Order is not load-bearing for
+	// idempotency — every step detects its own state — but landing the
+	// hub before the stub keeps the on-disk transition monotonic.
+	const docResults = await installMethodologyDocs(join(projectRoot, config.docHubDir));
+	const methodologyResult = await writeMethodology(join(projectRoot, config.configPath), config.docHubDir);
 	const commandResults = await scaffoldCommands(join(projectRoot, config.commandDir));
 	const mcpResult = await wireMcp(join(projectRoot, config.mcpConfigPath));
 
@@ -33,7 +41,7 @@ export default async function init(root: string, framework?: FrameworkType, path
 		ideResults.push(await configureVscode(extensionsDir));
 	}
 
-	const allResults = [methodologyResult, ...commandResults, mcpResult, ...ideResults];
+	const allResults = [methodologyResult, ...docResults, ...commandResults, mcpResult, ...ideResults];
 	const allExist = allResults.every((r) => r.status === "exists" || r.status === "skipped");
 
 	if (allExist) {
@@ -47,5 +55,5 @@ export default async function init(root: string, framework?: FrameworkType, path
 	});
 	const createdCommands = commandResults.filter((r) => r.status === "created").map((r) => r.name);
 
-	return `AIDE initialized (${config.framework} framework):\n\n${lines.join("\n")}\n\nConfig: ${config.configPath}\nCommands: ${config.commandDir}\nMCP: ${config.mcpConfigPath}${createdCommands.length > 0 ? `\n\nNew commands: ${createdCommands.join(", ")}` : ""}\n\nNext steps: run aide_discover to see existing specs, or /aide-research to start a new one.`;
+	return `AIDE initialized (${config.framework} framework):\n\n${lines.join("\n")}\n\nConfig: ${config.configPath}\nDoc hub: ${config.docHubDir}\nCommands: ${config.commandDir}\nMCP: ${config.mcpConfigPath}${createdCommands.length > 0 ? `\n\nNew commands: ${createdCommands.join(", ")}` : ""}\n\nNext steps: run aide_discover to see existing specs, or /aide:research to start a new one.`;
 }

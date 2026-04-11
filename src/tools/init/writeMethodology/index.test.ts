@@ -9,13 +9,7 @@ import writeMethodology from "./index.js";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const DOCS_ROOT = join(REPO_ROOT, "docs");
 
-const CANONICAL_METHODOLOGY_FILES = [
-	"aide-spec.md",
-	"aide-template.md",
-	"progressive-disclosure.md",
-	"agent-readable-code.md",
-	"automated-qa.md",
-];
+const HUB_DIR = ".aide";
 
 let tempDir: string;
 
@@ -28,22 +22,68 @@ afterEach(async () => {
 });
 
 describe("writeMethodology", () => {
-	it("creates config file with methodology when none exists", async () => {
+	it("creates config file with a marker-bounded pointer stub when none exists", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
 
-		const result = await writeMethodology(configPath);
+		const result = await writeMethodology(configPath, HUB_DIR);
 
-		expect(result).toEqual({ name: "Methodology", status: "created" });
+		expect(result).toEqual({ name: "Methodology pointer", status: "created" });
 		const config = await readFile(configPath, "utf-8");
 		expect(config).toContain("<!-- aide-methodology -->");
 	});
 
-	it("appends methodology to existing config without overwriting", async () => {
+	it("stub body is the canonical stub doc with the hub path substituted in", async () => {
+		const configPath = join(tempDir, "CLAUDE.md");
+
+		await writeMethodology(configPath, HUB_DIR);
+
+		const config = await readFile(configPath, "utf-8");
+		const canonicalStub = readFileSync(join(DOCS_ROOT, "methodology-stub.md"), "utf-8");
+		const expectedBody = canonicalStub.replaceAll("{{HUB_PATH}}", HUB_DIR);
+		expect(config).toContain(expectedBody);
+		expect(config).not.toContain("{{HUB_PATH}}");
+	});
+
+	it("stub names the host-side doc hub path passed in", async () => {
+		const configPath = join(tempDir, "CLAUDE.md");
+
+		await writeMethodology(configPath, HUB_DIR);
+
+		const config = await readFile(configPath, "utf-8");
+		expect(config).toContain(HUB_DIR);
+	});
+
+	it("stub does not ship the full canonical methodology body", async () => {
+		// Pins writeMethodology/.aide outcomes.undesired: "the stub ships the
+		// full concatenated methodology body". If a future change
+		// reintroduces the block, a distinctive line from aide-spec.md will
+		// reappear in the config file and this test will catch it.
+		const configPath = join(tempDir, "CLAUDE.md");
+
+		await writeMethodology(configPath, HUB_DIR);
+
+		const config = await readFile(configPath, "utf-8");
+		const canonicalSpec = readFileSync(join(DOCS_ROOT, "aide-spec.md"), "utf-8");
+		// Pick a long, distinctive line from aide-spec.md (not present in the
+		// stub) and assert it is absent from the written config.
+		const distinctive = canonicalSpec
+			.split("\n")
+			.find(
+				(line) =>
+					line.length > 60 &&
+					line.includes("progressive") === false &&
+					line.includes("AIDE") === false,
+			);
+		expect(distinctive).toBeTruthy();
+		if (distinctive) expect(config).not.toContain(distinctive);
+	});
+
+	it("appends stub to existing config without overwriting pre-existing content", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
 		const existing = "# My Project\n\nExisting content here.\n";
 		await writeFile(configPath, existing, "utf-8");
 
-		await writeMethodology(configPath);
+		await writeMethodology(configPath, HUB_DIR);
 
 		const config = await readFile(configPath, "utf-8");
 		expect(config).toContain("Existing content here.");
@@ -52,39 +92,11 @@ describe("writeMethodology", () => {
 
 	it("is idempotent — returns exists when marker already present", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
-		await writeMethodology(configPath);
+		await writeMethodology(configPath, HUB_DIR);
 
-		const result = await writeMethodology(configPath);
+		const result = await writeMethodology(configPath, HUB_DIR);
 
-		expect(result).toEqual({ name: "Methodology", status: "exists" });
-	});
-
-	it("composes the block verbatim from all five canonical methodology docs", async () => {
-		const configPath = join(tempDir, "CLAUDE.md");
-		await writeMethodology(configPath);
-		const config = await readFile(configPath, "utf-8");
-
-		for (const file of CANONICAL_METHODOLOGY_FILES) {
-			const bytes = readFileSync(join(DOCS_ROOT, file), "utf-8");
-			expect(config).toContain(bytes);
-		}
-	});
-
-	it("wraps the body in opening and closing markers with the body between them", async () => {
-		const configPath = join(tempDir, "CLAUDE.md");
-		await writeMethodology(configPath);
-		const config = await readFile(configPath, "utf-8");
-
-		const marker = "<!-- aide-methodology -->";
-		const first = config.indexOf(marker);
-		const last = config.lastIndexOf(marker);
-		expect(first).toBeGreaterThanOrEqual(0);
-		expect(last).toBeGreaterThan(first);
-
-		// At least one canonical doc's content sits between the two markers.
-		const between = config.slice(first + marker.length, last);
-		const aideSpec = readFileSync(join(DOCS_ROOT, "aide-spec.md"), "utf-8");
-		expect(between).toContain(aideSpec);
+		expect(result).toEqual({ name: "Methodology pointer", status: "exists" });
 	});
 
 	it("never reintroduces the stale 'Intel-Driven' wording from the old literal", async () => {
@@ -92,7 +104,7 @@ describe("writeMethodology", () => {
 		// mis-spelled "Intent-Driven" as "Intel-Driven". If a future change
 		// reintroduces an embedded literal, this is the cheapest detector.
 		const configPath = join(tempDir, "CLAUDE.md");
-		await writeMethodology(configPath);
+		await writeMethodology(configPath, HUB_DIR);
 		const config = await readFile(configPath, "utf-8");
 		expect(config).not.toContain("Intel-Driven");
 	});

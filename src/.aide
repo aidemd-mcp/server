@@ -6,8 +6,9 @@ intent: >
   every connecting client, and each tool description teaches the concept it
   invokes before describing how to call it. Channel two is aide_init, which
   reads the canonical doc files under docs/ and installs them into a host
-  project as a methodology block, pipeline slash commands, MCP wiring, and
-  IDE preview. Both channels pull from the same canonical docs — no AIDE
+  project as a pointer stub in the host's config file, a progressively-
+  disclosed methodology doc hub on the host's disk, pipeline slash
+  commands, MCP wiring, and IDE preview. Both channels pull from the same canonical docs — no AIDE
   doctrine is allowed to live inside this submodule's source code.
 outcomes:
   desired:
@@ -21,34 +22,43 @@ outcomes:
       intent.aide naming rule, the next-to-orchestrators placement rule,
       and the read-specs-before-code workflow. No "see docs", no
       abbreviation, no assumed prior knowledge.
-    - Tool descriptions and the methodology block installed by aide_init
-      are both composed from the canonical doc files under docs/ at build
-      or init time. The server's source code contains no AIDE doctrine as
-      string literals, so a doc edit is the only way to change what this
-      submodule ships.
+    - Tool descriptions, the pointer stub aide_init writes into the
+      host's config file, and the methodology doc hub aide_init
+      installs onto the host's disk are all composed from the canonical
+      doc files under docs/ at build or init time. The server's source
+      code contains no AIDE doctrine as string literals, so a doc edit
+      is the only way to change what this submodule ships.
     - Behavior is identical across every supported MCP client (Claude
       Code, Cursor, Windsurf, Copilot, Zed). Client-specific logic is
       confined to aide_init; the core four tools are client-agnostic.
     - aide_init turns a cold host project AIDE-ready in one command and
-      is safely re-runnable. Methodology written to the host's config
-      file, slash commands scaffolded for every pipeline phase, MCP
-      server wired into the project's MCP config, IDE file associations
-      configured. Every step is idempotent.
+      is safely re-runnable. Pointer stub written to the host's config
+      file, methodology doc hub installed onto the host's disk, slash
+      commands scaffolded for every pipeline phase, MCP server wired
+      into the project's MCP config, IDE file associations configured.
+      The stub names the doc-hub path the installer writes into, so the
+      two sides cannot drift. Every step is idempotent.
   undesired:
     - A tool description that points at an external document or says the
       agent should "read CLAUDE.md for details." The handshake is the
       only documentation surface this channel is guaranteed to deliver.
-    - A tool description or methodology block hand-written as a string
-      literal in this submodule's source, duplicating content that lives
-      in docs/. The duplicate drifts on the first edit to either side and
-      breaks the single-source-of-truth invariant inherited from the
-      parent.
+    - A tool description, pointer-stub teaching sentence, or
+      methodology doc hand-written as a string literal in this
+      submodule's source, duplicating content that lives in docs/. The
+      duplicate drifts on the first edit to either side and breaks the
+      single-source-of-truth invariant inherited from the parent.
+    - A pointer stub that names a host-side doc-hub path different
+      from the path the installer actually writes into. The two sides
+      must derive from a single shared source inside this submodule;
+      any arrangement that admits drift between them is broken on
+      arrival even if it passes its unit tests.
     - Divergent behavior between MCP clients on the same input. If Claude
       Code and Cursor see different results from `aide_discover`, the
       server has failed its client-parity invariant.
-    - aide_init that is not idempotent — a project initialized twice with
-      duplicated methodology blocks, duplicated slash commands, or a
-      broken .mcp.json is a corrupted project, not an initialized one.
+    - aide_init that is not idempotent — a project initialized twice
+      with stacked pointer stubs, duplicated doc-hub files, duplicated
+      slash commands, or a broken .mcp.json is a corrupted project,
+      not an initialized one.
     - A sixth tool added to the surface because a responsibility "didn't
       quite fit" one of the five. Dilution of the teaching surface is a
       regression even when the new tool is technically correct.
@@ -84,13 +94,28 @@ longer description is recovered every time an agent doesn't need to fetch
 an external doc, and dwarfed by the cost of an agent silently violating
 the convention.
 
-**Tool descriptions and methodology blocks are composed from docs/, never
-hand-written.** The canonical doc files under docs/ are read at build time
-(for tool description text) and at init time (for the methodology block
-aide_init writes into host projects). No AIDE doctrine lives as a string
-literal in this submodule's source — doctrine lives in docs/, and this
-submodule is a renderer. This is how the parent's single-source-of-truth
-invariant survives contact with the server's runtime.
+**Tool descriptions and host-installed methodology artifacts are composed
+from docs/, never hand-written.** The canonical doc files under docs/ are
+read at build time (for tool description text) and at init time (for both
+the pointer stub aide_init writes into the host's config file and the
+doc-hub files aide_init lands on the host's disk). No AIDE doctrine lives
+as a string literal in this submodule's source — doctrine lives in docs/,
+and this submodule is a renderer. This is how the parent's
+single-source-of-truth invariant survives contact with the server's
+runtime.
+
+**Delivery to the host practices progressive disclosure at the file
+layer, not just at the doc layer.** aide_init does not dump the full
+methodology into the host's config file. It writes a short pointer stub
+into the config file and lands the full methodology doc set into a
+dedicated doc hub on the host's disk. The config file — which the agent
+reads on every session — carries only the knowledge that AIDE exists,
+where the hub lives, and when to crawl into it. The hub itself is read
+only by sessions whose current task actually touches `.aide` files. The
+pattern mirrors how `study-playbook` works against the user's global
+brain: a shallow pointer surface that enumerates a deep content surface,
+with the agent crawling on demand instead of carrying everything on
+every read.
 
 **Five tools, one per lifecycle phase, no more.** Discover is the map;
 read is the drill; scaffold is the pen; validate is the health check;
@@ -133,8 +158,9 @@ at handshake time.
 A user runs `aide_init` on a fresh project and gets back a summary like:
 
 > Detected framework: Claude Code.
-> Created CLAUDE.md with AIDE methodology block.
-> Created slash commands for research, spec, build, QA, and fix phases.
+> Created CLAUDE.md with AIDE pointer stub naming the doc hub at .aide/.
+> Installed .aide/ doc hub with five canonical methodology docs and a hub index.
+> Created slash commands for research, spec, plan, build, QA, and fix phases.
 > Wired aidemd-mcp into .mcp.json.
 > Configured .zed/settings.json to render .aide as Markdown.
 > Skipped VS Code extension — `code` CLI not on PATH.
@@ -147,8 +173,20 @@ A maintainer edits `docs/aide-spec.md` to clarify the placement rule.
 They rebuild the server; the next agent to connect sees the updated text
 in the `aide_discover` tool description because the description template
 reads from the doc at build time. They also run `aide_init` on a host
-project; the installed methodology block contains the same updated text.
-One edit propagated to both channels through the canonical doc.
+project; the updated text lands in the host's `.aide/aide-spec.md`
+because the doc-hub installer reads the same canonical source. One edit
+propagated through both channels — handshake teaching and installed
+host-side content — with no duplication in between.
+
+An agent in a host project opens a file unrelated to AIDE to fix a bug.
+It reads CLAUDE.md at session start, sees the short pointer stub, notes
+that the `.aide/` doc hub exists, and consciously skips crawling it
+because the current task touches no `.aide` files. Total AIDE cost paid
+by that session: a handful of lines of stub. Later the same agent picks
+up a task that does touch `.aide` files, follows the stub's pointer into
+`.aide/`, reads the hub index, and drills into `aide-spec.md` and
+`aide-template.md` — and only those. The delivery layer practiced the
+same progressive disclosure the methodology teaches.
 
 ## Bad examples
 
@@ -165,10 +203,17 @@ the literal has not; the two now disagree, and the server's handshake
 ships a different doctrine than `aide_init` does. The
 single-source-of-truth invariant has been broken at the submodule level.
 
-An `aide_init` that appends its methodology block to CLAUDE.md on every
-run, so a project initialized three times has three stacked copies of
-the same block. Idempotency was treated as a nice-to-have instead of an
-invariant, and the file is now corrupted.
+An `aide_init` that appends its pointer stub to CLAUDE.md on every
+run, so a project initialized three times has three stacked
+marker-bounded regions. Idempotency was treated as a nice-to-have
+instead of an invariant, and the file is now corrupted.
+
+An `aide_init` that skips the doc-hub step and dumps the full
+methodology body inside CLAUDE.md's stub region instead. Every non-
+AIDE session in the host now re-reads several hundred lines of
+doctrine on every open, and the refactor that this shape was meant
+to enforce has been quietly reversed at the delivery layer while
+passing every test.
 
 A sixth tool — say `aide_lint` — added to the surface because validation
 rules "felt different" from health checks. Both tools show up in the

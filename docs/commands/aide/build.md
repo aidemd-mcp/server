@@ -1,13 +1,16 @@
 # /aide-build — Build Phase
 
-Implement from the intent spec.
+Execute the architect's implementation plan. This is the implementor phase in build mode — the session that turns a plan into working, tested code without making architectural decisions mid-session.
 
 ## Checklist
 
-- [ ] Read the intent spec (`.aide` or `intent.aide`) before touching code
-- [ ] Follow the spec as the implementation contract
-- [ ] The spec defines what "correct" means — not just passing tests
-- [ ] Write tests covering happy path and edge cases from the spec
-- [ ] Run tests until green
-- [ ] Run type checker (`tsc --noEmit` or equivalent)
-- [ ] Run `aide_validate` to check for spec issues
+- [ ] Read the architect's implementation plan produced by `/aide:plan`. The plan is the primary input — it names files, sequencing, contracts, and which existing helpers to reuse
+- [ ] Read the intent spec (`.aide` or `intent.aide`) for the target module. The plan tells you what to build; the spec tells you what counts as correct
+- [ ] Walk the full `.aide` chain from root to leaf — ancestor outcomes still apply to this module's output
+- [ ] Execute the plan top-to-bottom. Do not reorder steps, skip steps, or add steps. If a step is ambiguous, stop and escalate back to the architect via `/aide:plan` rather than inventing an answer
+- [ ] Write the code. No architectural improvisation — if a decision is not in the plan or the spec, it is out of scope for this session
+- [ ] Write tests covering every behavior the spec's `outcomes.desired` names, plus regression coverage for anything in `outcomes.undesired`
+- [ ] Run the tests until green
+- [ ] Run the type checker (`tsc --noEmit` or the project's equivalent)
+- [ ] Run `aide_validate` to check for spec issues introduced during the build
+- [ ] Hand off to `/aide:qa` — the QA agent will compare actual output against the spec's `outcomes` block

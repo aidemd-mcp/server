@@ -1,23 +1,33 @@
 ---
 scope: docs/commands/aide
 intent: >
-  docs/commands/aide/ is the canonical home of the five AIDE pipeline
-  slash command templates — one per pipeline phase. Each file is the
-  authoritative source text for one installed slash command, read at
-  init time by scaffoldCommands and rendered byte-faithful into the
-  host project's command directory under an `aide/` subfolder, so the
-  host's slash commands are namespaced as `/aide:research`,
-  `/aide:spec`, `/aide:build`, `/aide:qa`, and `/aide:fix`. Editing a
-  template here is the only way to change what scaffoldCommands
-  installs in every downstream host.
+  docs/commands/aide/ is the canonical home of the six AIDE pipeline
+  slash command templates — one per invocable pipeline phase. Each
+  file is the authoritative source text for one installed slash
+  command, read at init time by scaffoldCommands and rendered
+  byte-faithful into the host project's command directory under an
+  `aide/` subfolder, so the host's slash commands are namespaced as
+  `/aide:research`, `/aide:spec`, `/aide:plan`, `/aide:build`,
+  `/aide:qa`, and `/aide:fix`. Editing a template here is the only
+  way to change what scaffoldCommands installs in every downstream
+  host.
 outcomes:
   desired:
-    - Exactly five template files, one per pipeline phase, named
-      `research.md`, `spec.md`, `build.md`, `qa.md`, `fix.md`. The
-      bare phase names exist because the enclosing `aide/` folder
-      already carries the namespace — double-naming (`aide-research.md`)
-      would duplicate the namespace at every reference and break the
-      namespaced slash command syntax on the host side.
+    - Exactly six template files, one per invocable pipeline phase,
+      named `research.md`, `spec.md`, `plan.md`, `build.md`, `qa.md`,
+      `fix.md`. The bare phase names exist because the enclosing
+      `aide/` folder already carries the namespace — double-naming
+      (`aide-research.md`) would duplicate the namespace at every
+      reference and break the namespaced slash command syntax on the
+      host side.
+    - Phase count here reflects *invocable* phases, not *agent
+      roles*. The canonical spec describes five agent roles; the
+      implementor role is invoked two ways — executing an architect
+      plan (`/aide:build`) and working a `todo.aide` item
+      (`/aide:fix`) — because the session protocols differ even
+      though the agent is the same. The templates are indexed by
+      invocation, the pipeline is indexed by role, and the two
+      counts are not required to match.
     - Each template is a self-contained checklist an agent can execute
       as a session protocol for its pipeline phase. It must be
       complete enough to run without the agent having read any other
@@ -34,12 +44,12 @@ outcomes:
       a flat command directory into a grouped, namespaced pipeline
       the host agent can discover by tab-completion.
   undesired:
-    - A sixth template file added here without a corresponding
-      pipeline phase in the canonical spec and a corresponding
-      scaffoldCommands entry. File count here, phase count in the
-      spec, and name list in scaffoldCommands must stay synchronized;
-      a unilateral addition to any one of the three introduces
-      silent drift.
+    - A seventh template file added here without a corresponding
+      invocable phase in the canonical spec and a corresponding
+      scaffoldCommands entry. File count here, invocable phase count
+      in the spec, and name list in scaffoldCommands must stay
+      synchronized; a unilateral addition to any one of the three
+      introduces silent drift.
     - Template filenames that reintroduce the `aide-` prefix the
       namespace already carries. A file called `aide-research.md`
       inside `aide/` is saying "aide" twice, and the host scaffold
@@ -65,12 +75,17 @@ outcomes:
 
 ## Context
 
-The AIDE pipeline is defined in the canonical spec as five phases.
-An agent in a host project can read the methodology and understand
-the phases, but understanding a phase is not the same as running it.
-A running phase needs a session protocol: a checklist that tells the
-agent what to do, in what order, and what counts as done. That is
-what these templates provide.
+The AIDE pipeline is defined in the canonical spec as five agent
+roles, invoked across six session protocols: research, spec, plan,
+build, qa, and fix. An agent in a host project can read the
+methodology and understand the roles, but understanding a role is
+not the same as running a session. A running session needs a
+protocol: a checklist that tells the agent what to do, in what
+order, and what counts as done. That is what these templates
+provide — one per invocable phase, including both build and fix
+as distinct invocations of the implementor role because their
+session disciplines differ even though the underlying agent is the
+same.
 
 Before this folder existed, the five templates lived as string
 literals inside the init tooling. A maintainer who wanted to change
@@ -83,7 +98,7 @@ The namespace subfolder (`aide/`) exists because host frameworks
 that support slash commands treat nested folders as namespace
 prefixes. Installing `research.md` into `<command-dir>/aide/`
 produces the slash command `/aide:research`. That namespacing keeps
-the five pipeline commands visually grouped in tab completion, and
+the six pipeline commands visually grouped in tab completion, and
 prevents collision with any other commands the host already defines
 — a host with its own `build` command does not get its workflow
 hijacked by the AIDE pipeline.
@@ -99,19 +114,32 @@ Putting the namespace in both the folder name and the filename
 correct layout, and the filenames must be bare phase names for the
 result on the host side to read cleanly.
 
-**One file per pipeline phase, named for the phase.** The template
+**One file per invocable phase, named for the phase.** The template
 for the research phase is `research.md`. Its filename signals that
 unambiguously to any reader of the folder. Naming deviations — a
 generic name, a phase abbreviation, a version suffix — force
 readers to open files to understand the folder, which is the
 failure mode progressive disclosure exists to prevent.
 
+**Templates are indexed by invocation, not by agent role.** The
+canonical spec describes five roles, but the implementor role runs
+two different kinds of sessions: executing an architect plan
+(`/aide:build`) and working a `todo.aide` checkbox (`/aide:fix`).
+Each session has its own protocol — the build session reads a
+plan and produces fresh code, the fix session reads a single issue
+and produces a targeted correction — so each gets its own template
+even though the underlying agent is the same. Collapsing them into
+one template would force the implementor to branch on which mode
+it was invoked in, which is harder to get right than reading the
+template that matches the session.
+
 **Templates are checklists, not essays.** Each template is a
 session protocol the agent runs top-to-bottom. The format is a
 short context line and a checkbox list. Every item is imperative —
 something the agent does. Explanatory prose belongs in the canonical
-spec or the methodology block, not in the template; agents have
-already been taught the phases before they run a template.
+spec under `docs/` (which the host-side doc hub installs verbatim),
+not in the template; agents have already been taught the phases
+before they run a template.
 
 **Templates must be host-portable.** Once scaffolded, a template
 file lives in a project with no connection to this repository, the
@@ -121,22 +149,25 @@ in or be computable from the host project. A checklist item that
 says "see the canonical spec for details" is pointing at a resource
 the host does not have.
 
-**The three-way lock is mandatory.** File count here, phase count
-in the canonical spec, and name list in scaffoldCommands must stay
-synchronized. A change to one requires a change to all three in the
-same commit. This is not a soft convention — it is the mechanical
-guarantee that every phase the spec describes is runnable in every
-host, and that no command installs a phase the spec doesn't
-recognize.
+**The three-way lock is mandatory.** File count here, invocable
+phase count in the canonical spec, and name list in
+scaffoldCommands must stay synchronized. A change to one requires
+a change to all three in the same commit. This is not a soft
+convention — it is the mechanical guarantee that every phase the
+spec describes is runnable in every host, and that no command
+installs a phase the spec doesn't recognize. The lock is indexed
+by invocation, so `/aide:build` and `/aide:fix` count as two
+entries even though they invoke the same implementor role.
 
 ## Good examples
 
 A host project runs `aide_init`. Afterward, the developer types `/`
 in their agent UI and sees the AIDE pipeline commands grouped under
-a single namespace: `/aide:research`, `/aide:spec`, `/aide:build`,
-`/aide:qa`, `/aide:fix`. The grouping is visual and alphabetical;
-tab completion after typing `/aide:` shows the five phases and
-nothing else. The pipeline is discoverable without documentation.
+a single namespace: `/aide:research`, `/aide:spec`, `/aide:plan`,
+`/aide:build`, `/aide:qa`, `/aide:fix`. The grouping is visual and
+ordered by pipeline phase; tab completion after typing `/aide:`
+shows the six invocable phases and nothing else. The pipeline is
+discoverable without documentation.
 
 A research phase template (`research.md`) contains the checklist
 item: "Search the brain, then external sources, then team notes,
@@ -184,7 +215,7 @@ access to either resource. The agent running `/aide:build` hits a
 dead reference on the first try and loses trust in the pipeline.
 
 A sibling folder `docs/commands/cursor/` added for Cursor-specific
-command variants. The five pipeline phases have nothing to do with
+command variants. The six pipeline phases have nothing to do with
 which host framework is running them; the phase does what the
 phase does regardless of editor. A parallel folder tree doubles
 the three-way lock, forces every edit to ripple across duplicates,

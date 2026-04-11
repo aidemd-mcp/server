@@ -56,8 +56,9 @@ outcomes:
   - Write in decision form, not description form: each paragraph states a
     concrete choice (tactic, threshold, structural decision, sequencing rule)
     and the reasoning or data that justifies it.
-  - A builder agent must be able to read this and know what to do AND why that
-    approach beats the alternatives, so it can handle unanticipated edge cases.
+  - An architect agent must be able to read this and know what to do AND why
+    that approach beats the alternatives, so it can produce a plan the
+    implementor can execute without further architectural decisions.
   - Cite sources inline, compressed: name the source, name the number or finding
     that matters, move on. No footnotes.
   - No code, no filenames, no type signatures, no function names, no worked

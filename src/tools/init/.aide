@@ -3,28 +3,45 @@ scope: src/tools/init
 intent: >
   aide_init is the bootstrap — the one command that turns a cold
   project into an AIDE-ready project. It auto-detects the host agent
-  framework, writes the AIDE methodology into the framework's config
-  file, scaffolds a slash command for every pipeline phase, wires the
-  MCP server into the project's MCP config, and configures the IDE so
-  `.aide` files render as Markdown. Every step is idempotent so the
-  tool is safe to re-run, and every step reports its own status so the
-  caller can see exactly what changed.
+  framework, installs a short AIDE pointer stub into the framework's
+  config file, lands the progressively-disclosed methodology doc hub
+  onto the host's disk alongside it, scaffolds a slash command for
+  every pipeline phase, wires the MCP server into the project's MCP
+  config, and configures the IDE so `.aide` files render as Markdown.
+  Every step is idempotent so the tool is safe to re-run, and every
+  step reports its own status so the caller can see exactly what
+  changed.
 outcomes:
   desired:
     - Auto-detection picks the right framework (Claude Code, Cursor,
       Windsurf, Copilot-in-VSCode) from files already on disk, and the
       caller can override the detection explicitly when they need to.
-    - The methodology block is written into the framework's canonical
-      config file (e.g. CLAUDE.md for Claude Code) exactly once.
-      Subsequent runs detect the block's marker and skip the write.
-    - The five pipeline slash commands (research, spec, build, QA,
-      fix) are scaffolded into the host framework's command directory,
-      one file per phase, composed from the canonical command
-      templates under `docs/`. These commands are the entire runtime
-      of the AIDE pipeline in the host project — the audit agent, the
-      fix agents, the builder, the research agent all exist because
-      init put them there. Existing command files are left untouched;
-      only missing ones are created.
+    - The framework's canonical config file (e.g. CLAUDE.md for
+      Claude Code) receives a short marker-bounded pointer stub
+      exactly once — a handful of lines that name the host-side doc
+      hub and tell the agent when to crawl it. Subsequent runs detect
+      the stub's marker and skip the write.
+    - The host-side doc hub — a dedicated folder containing every
+      canonical methodology doc verbatim plus a hub index that links
+      to each one — is installed alongside the stub. The pointer in
+      the stub and the path the hub installs into are derived from a
+      single shared source, so the two sides cannot disagree. Agents
+      in the host project follow the stub's pointer to the hub and
+      crawl from there into whichever canonical doc the current task
+      requires, the same way `study-playbook` works against the
+      user's global brain.
+    - The six pipeline slash commands (research, spec, plan, build,
+      qa, fix) are scaffolded into an `aide/` subfolder of the host
+      framework's command directory, one file per phase, composed
+      from the canonical command templates under `docs/commands/aide/`.
+      The subfolder is load-bearing: host frameworks derive the slash
+      command namespace from folder nesting, so installing
+      `<command-dir>/aide/research.md` produces `/aide:research`.
+      These commands are the entire runtime of the AIDE pipeline in
+      the host project — the architect, the builder, the QA agent,
+      the fix agents, the research agent all exist because init put
+      them there. Existing command files are left untouched; only
+      missing ones are created.
     - The MCP config is patched to register the `aide` server. If the
       file exists and parses, the server is added to its `mcpServers`
       map; if the file is missing, a minimal config is created. An
@@ -41,14 +58,26 @@ outcomes:
       initialized returns a summary saying so and changes nothing on
       disk.
   undesired:
-    - An init that appends the methodology block to the config file on
+    - An init that appends the pointer stub to the config file on
       every run, so a project initialized three times contains three
-      copies of the block. Idempotency is an invariant, not a
-      nice-to-have.
-    - Slash command content or methodology content hand-written as
-      template literals inside this submodule's source instead of
-      composed from the canonical docs under `docs/`. The source of
-      truth is in `docs/`; anything else is a drifting duplicate.
+      stacked copies of the marker-bounded region. Idempotency is an
+      invariant, not a nice-to-have.
+    - An init that ships the full concatenated methodology body
+      inside the config file's marker-bounded region instead of a
+      short pointer stub. Every non-AIDE session in the host project
+      pays the cost of carrying the full doctrine on every read of
+      the config file, which is exactly the delivery-layer violation
+      of progressive disclosure this spec exists to reverse.
+    - An init whose pointer stub names a host-side doc-hub path that
+      disagrees with where the doc-hub installer actually writes the
+      hub. The two sides derive from a single shared source; any
+      arrangement that lets them drift by editing one side without
+      the other is a design regression.
+    - Slash command content, stub teaching text, or canonical
+      methodology content hand-written as template literals inside
+      this submodule's source instead of composed from the canonical
+      docs under `docs/`. The source of truth is in `docs/`; anything
+      else is a drifting duplicate.
     - An init that overwrites an existing slash command because "the
       template is the canonical version". The user may have customized
       it. Customizations survive init.
@@ -57,8 +86,8 @@ outcomes:
       the user had configured. Parse failure is a skip, not a rewrite.
     - An init that fails the whole run when any single step fails. IDE
       configuration failing because `code` is not on PATH should not
-      prevent the methodology, commands, and MCP wiring from being
-      written.
+      prevent the stub, the doc hub, the commands, or the MCP wiring
+      from being written.
     - An init that reaches for the network — downloading a `.vsix`,
       fetching a template, contacting a marketplace. The tool must
       succeed offline, because the developer running it may have no
@@ -74,24 +103,39 @@ outcomes:
 ## Context
 
 Every new project that adopts AIDE has to cross the same cold-start
-gap: methodology documented where the agent will see it, pipeline slash
-commands scaffolded, the MCP server registered, and the IDE taught to
-render `.aide` as Markdown. Without a single tool that does all of
-this, each project rediscovers the list and gets one or two steps
-wrong — a methodology written in the wrong file, a slash command with
-a typo, an MCP config that registers the server under the wrong name,
-an IDE that still renders `.aide` as plain text. This tool exists to
-collapse the cold-start gap into one command, so the decision to adopt
-AIDE in a new project is trivially reversible and costs nothing to try.
+gap: an entry-point pointer to AIDE in the surface the agent already
+reads on every session, the full methodology installed somewhere the
+agent can crawl on demand, pipeline slash commands scaffolded, the
+MCP server registered, and the IDE taught to render `.aide` as
+Markdown. Without a single tool that does all of this, each project
+rediscovers the list and gets one or two steps wrong — a stub written
+to the wrong file, a doc hub installed to a path the stub doesn't
+name, a slash command with a typo, an MCP config that registers the
+server under the wrong name, an IDE that still renders `.aide` as
+plain text. This tool exists to collapse the cold-start gap into one
+command, so the decision to adopt AIDE in a new project is trivially
+reversible and costs nothing to try.
+
+Methodology delivery inside this tool is split across two peer helpers
+on purpose. One installs the short pointer stub into the host's config
+file so the agent learns in its very first read of the session that
+AIDE exists and where the full material lives. The other installs the
+full material — the canonical methodology docs plus a hub index — into
+a dedicated doc-hub folder on the host's disk, so the agent reads only
+what the current task requires and only when the task requires it.
+The split mirrors the methodology's own progressive-disclosure rule at
+the delivery layer: the high-traffic surface teaches where to look,
+the low-traffic surface holds the actual content.
 
 The tool composes private helpers that live as subfolders of this
 orchestrator: framework detection, methodology and command template
-content, the three idempotent write steps (`writeMethodology`,
-`scaffoldCommands`, `wireMcp`), and IDE configuration. Init itself is
-thin — it orchestrates those helpers, sequences their results, and
-shapes the final summary. The strategic decisions about *how* to
-configure each IDE, or *which* files count as a framework's canonical
-config, live next to the helpers that make those decisions.
+content, the four idempotent write steps (`writeMethodology`,
+`installMethodologyDocs`, `scaffoldCommands`, `wireMcp`), and IDE
+configuration. Init itself is thin — it orchestrates those helpers,
+sequences their results, and shapes the final summary. The strategic
+decisions about *how* to configure each IDE, or *which* files count
+as a framework's canonical config, live next to the helpers that
+make those decisions.
 
 ## Strategy
 
@@ -140,23 +184,31 @@ sees:
 
 > AIDE initialized (claude framework):
 >
->   ✓ Methodology: Created
->   ✓ aide-research: Created
->   ✓ aide-spec: Created
->   ✓ aide-build: Created
->   ✓ aide-qa: Created
->   ✓ aide-fix: Created
+>   ✓ Methodology pointer: Created
+>   ✓ .aide/aide-spec.md: Created
+>   ✓ .aide/aide-template.md: Created
+>   ✓ .aide/progressive-disclosure.md: Created
+>   ✓ .aide/agent-readable-code.md: Created
+>   ✓ .aide/automated-qa.md: Created
+>   ✓ .aide/index.md: Created
+>   ✓ aide/research: Created
+>   ✓ aide/spec: Created
+>   ✓ aide/plan: Created
+>   ✓ aide/build: Created
+>   ✓ aide/qa: Created
+>   ✓ aide/fix: Created
 >   ✓ MCP config: Wired
 >   ✓ Zed config: Created
 >   ✓ VS Code extension: Installed
 >
 > Config: CLAUDE.md
-> Commands: .claude/commands
+> Doc hub: .aide
+> Commands: .claude/commands/aide
 > MCP: .mcp.json
 >
-> New commands: aide-research, aide-spec, aide-build, aide-qa, aide-fix
+> New commands: /aide:research, /aide:spec, /aide:plan, /aide:build, /aide:qa, /aide:fix
 >
-> Next steps: run aide_discover to see existing specs, or /aide-research to start a new one.
+> Next steps: run aide_discover to see existing specs, or /aide:research to start a new one.
 
 Every step accounted for, every path named, and a pointer to the next
 action. The developer reads one screen and knows the project is ready.
@@ -166,12 +218,19 @@ A developer re-runs the same command on the same project and sees:
 > AIDE already initialized (claude framework detected).
 >
 > All components present:
->   - Methodology
->   - aide-research
->   - aide-spec
->   - aide-build
->   - aide-qa
->   - aide-fix
+>   - Methodology pointer
+>   - .aide/aide-spec.md
+>   - .aide/aide-template.md
+>   - .aide/progressive-disclosure.md
+>   - .aide/agent-readable-code.md
+>   - .aide/automated-qa.md
+>   - .aide/index.md
+>   - aide/research
+>   - aide/spec
+>   - aide/plan
+>   - aide/build
+>   - aide/qa
+>   - aide/fix
 >   - MCP config
 >   - Zed config
 >   - VS Code extension
@@ -190,12 +249,26 @@ adversarial to it.
 
 ## Bad examples
 
-An init that appends the methodology block to CLAUDE.md on every run,
-producing a file with three stacked copies after three runs. The
-idempotency invariant has been violated and the config file is now
-corrupted.
+An init that appends the pointer stub to CLAUDE.md on every run,
+producing a file with three stacked marker-bounded regions after
+three runs. The idempotency invariant has been violated and the
+config file is now corrupted.
 
-An init that overwrites `.claude/commands/aide-build.md` with the
+An init whose stub names a host-side doc hub at `.aide/` while the
+installer writes the hub into `aide/`. The two sides shipped with
+coincident string literals instead of a shared path source; the
+agent follows the stub, lands on an empty directory, and concludes
+AIDE is broken. The refactor technically passed every test and
+failed its only load-bearing invariant.
+
+An init that installs a full concatenated methodology body into
+CLAUDE.md "because it's simpler than landing a whole doc hub on
+disk". The stub shape was skipped, progressive disclosure at the
+delivery layer was skipped, and every non-AIDE session in the host
+pays the full-body cost on every read. The regression this design
+exists to reverse has been reintroduced.
+
+An init that overwrites `.claude/commands/aide/build.md` with the
 bundled template, wiping out the user's customizations. The tool has
 no way to know what the customizations were for, and the user finds
 out by reading a diff they did not expect.

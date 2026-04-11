@@ -17,7 +17,16 @@ outcomes:
     - Every canonical doc is returned verbatim — no trimming, no
       reformatting, no summarization, no interpolation. Composition
       is the caller's responsibility, and happens downstream in
-      writeMethodology and scaffoldCommands.
+      writeMethodology, scaffoldCommands, and installMethodologyDocs.
+    - Consumers that operate on a subset of the canonical docs —
+      the methodology subset specifically — enumerate that subset
+      through this helper, not through hardcoded local lists. The
+      name-to-path registry already owns which canonical docs exist;
+      membership of the methodology subset is the same kind of
+      decision and belongs at the same chokepoint. Adding a new
+      canonical methodology doc is a one-file edit here, and every
+      downstream consumer picks it up automatically on the next
+      init.
     - Reads happen at call time against the live docs folder. The
       helper is free to cache within a single init invocation, but
       the returned content must always originate from the disk
@@ -31,6 +40,13 @@ outcomes:
       through initContent. Multiple readers multiply the
       single-source-of-truth surface and invite subtle drift between
       "what methodology sees" and "what scaffold sees".
+    - A consumer hardcoding its own list of methodology doc names
+      instead of asking this helper for the enumeration. A local
+      array inside installMethodologyDocs or writeMethodology
+      describing which docs count as "the methodology" is a second
+      source of truth for the same decision, and the one that
+      silently misses the next canonical-doc addition will be the
+      one maintained farthest from the registry.
     - initContent transforming doc content before returning it —
       rewriting headings, stripping frontmatter, extracting sections,
       renaming links. Transformation is consumer logic and belongs
@@ -96,6 +112,18 @@ mapping changes in this file and nowhere else. Exposing file paths
 across the interface would leak the folder layout into every
 consumer and lose the centrality benefit.
 
+**Enumeration of named subsets lives here too.** Knowing which
+canonical docs exist is one kind of source-of-truth decision;
+knowing which of those docs make up "the methodology" is the same
+kind of decision, and it lives at the same chokepoint. Consumers
+that operate on the methodology subset ask this helper to
+enumerate it and iterate whatever list comes back, so that adding
+or removing a methodology doc is one edit in the same registry
+that already owns the name-to-path mapping. Any downstream list
+hardcoded to the methodology set would silently drift on the next
+addition — and the farther from the registry the hardcoded list
+lives, the longer the drift stays invisible.
+
 ## Good examples
 
 writeMethodology asks initContent for the canonical spec body, the
@@ -106,12 +134,12 @@ receives. A later edit to any of those three docs propagates to
 every host project's next init with zero changes to writeMethodology
 and zero changes to initContent.
 
-scaffoldCommands asks initContent for the five pipeline command
-templates by name. initContent reads the five template files from
-docs/ (or wherever the canonical command templates live) and
-returns them as a map from canonical name to file content.
-scaffoldCommands writes each one to the host's command directory
-without mutating the returned strings.
+scaffoldCommands asks initContent for the six pipeline command
+templates by name. initContent reads the six template files from
+docs/commands/aide/ and returns them as a map from canonical name
+to file content. scaffoldCommands writes each one to an `aide/`
+subfolder of the host's command directory without mutating the
+returned strings.
 
 A maintainer moves the canonical docs from docs/ to docs/canonical/.
 They update initContent's internal path resolution in one place.

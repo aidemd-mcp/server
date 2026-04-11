@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 describe("scaffoldCommands", () => {
-	it("creates all 5 command files under the aide/ namespace subfolder", async () => {
+	it("creates all 6 command files under the aide/ namespace subfolder", async () => {
 		const commandDir = join(tempDir, "commands");
 
 		const results = await scaffoldCommands(commandDir);
@@ -28,6 +28,7 @@ describe("scaffoldCommands", () => {
 		const files = await readdir(join(commandDir, "aide"));
 		expect(files).toContain("research.md");
 		expect(files).toContain("spec.md");
+		expect(files).toContain("plan.md");
 		expect(files).toContain("build.md");
 		expect(files).toContain("qa.md");
 		expect(files).toContain("fix.md");
@@ -35,6 +36,7 @@ describe("scaffoldCommands", () => {
 		expect(results.map((r) => r.name)).toEqual([
 			"aide:research",
 			"aide:spec",
+			"aide:plan",
 			"aide:build",
 			"aide:qa",
 			"aide:fix",
@@ -46,7 +48,7 @@ describe("scaffoldCommands", () => {
 
 		await scaffoldCommands(commandDir);
 
-		const phases = ["research", "spec", "build", "qa", "fix"];
+		const phases = ["research", "spec", "plan", "build", "qa", "fix"];
 		for (const phase of phases) {
 			const installed = await readFile(join(commandDir, "aide", `${phase}.md`), "utf-8");
 			const canonical = readFileSync(join(DOCS_ROOT, "commands", "aide", `${phase}.md`), "utf-8");
@@ -78,6 +80,7 @@ describe("scaffoldCommands", () => {
 		expect(byName.get("aide:qa")).toBe("exists");
 		expect(byName.get("aide:research")).toBe("created");
 		expect(byName.get("aide:spec")).toBe("created");
+		expect(byName.get("aide:plan")).toBe("created");
 		expect(byName.get("aide:build")).toBe("created");
 		expect(byName.get("aide:fix")).toBe("created");
 	});
@@ -85,7 +88,7 @@ describe("scaffoldCommands", () => {
 	// Pins scaffoldCommands/.aide outcomes.undesired[4]: "a run that fails the
 	// whole step if one command template is missing". A failed canonical read
 	// for one phase must surface as `skipped` on its own entry while the other
-	// four phases still land successfully. No cascade, no short-circuit.
+	// five phases still land successfully. No cascade, no short-circuit.
 	it("does not cascade when one canonical template read fails", async () => {
 		const commandDir = join(tempDir, "commands");
 		const failingCanonical = "commands/aide/build";
@@ -108,10 +111,11 @@ describe("scaffoldCommands", () => {
 		const { default: scaffoldCommandsFresh } = await import("./index.js");
 		const results = await scaffoldCommandsFresh(commandDir);
 
-		expect(results).toHaveLength(5);
+		expect(results).toHaveLength(6);
 		expect(results.map((r) => r.name)).toEqual([
 			"aide:research",
 			"aide:spec",
+			"aide:plan",
 			"aide:build",
 			"aide:qa",
 			"aide:fix",
@@ -121,10 +125,11 @@ describe("scaffoldCommands", () => {
 		expect(byName.get("aide:build")).toBe("skipped");
 		expect(byName.get("aide:research")).toBe("created");
 		expect(byName.get("aide:spec")).toBe("created");
+		expect(byName.get("aide:plan")).toBe("created");
 		expect(byName.get("aide:qa")).toBe("created");
 		expect(byName.get("aide:fix")).toBe("created");
 
-		for (const phase of ["research", "spec", "qa", "fix"]) {
+		for (const phase of ["research", "spec", "plan", "qa", "fix"]) {
 			const contents = await readFile(
 				join(commandDir, "aide", `${phase}.md`),
 				"utf-8",

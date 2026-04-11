@@ -69,6 +69,16 @@ export interface FrameworkConfig {
 	commandDir: string;
 	/** Path to MCP config file relative to project root. */
 	mcpConfigPath: string;
+	/**
+	 * Directory for the host-side AIDE methodology doc hub, relative to the
+	 * project root. The sibling helpers `writeMethodology` and
+	 * `installMethodologyDocs` both derive the host-side hub location from
+	 * this single field — the stub names the path, the installer writes into
+	 * it, and any disagreement between the two sides would send agents to an
+	 * empty directory. Editing this value is the one-place change for the
+	 * host-side hub location across the init subtree.
+	 */
+	docHubDir: string;
 }
 
 /** Result of a single init step. */

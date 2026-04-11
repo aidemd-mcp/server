@@ -7,9 +7,9 @@ import {
 } from "@/tools/init/initContent/index.js";
 
 /**
- * Fixed registry of the five AIDE pipeline slash commands. Owning this list
+ * Fixed registry of the six AIDE pipeline slash commands. Owning this list
  * here — rather than discovering it from docs/commands/aide/ at runtime — is
- * the mechanical guarantee of the five-phase cap mandated by this helper's
+ * the mechanical guarantee of the six-phase cap mandated by this helper's
  * spec: a stray Markdown file committed under docs/commands/aide/ cannot
  * silently expand the pipeline.
  *
@@ -30,6 +30,7 @@ const COMMANDS: readonly {
 }[] = [
 	{ canonical: "commands/aide/research", hostPath: "aide/research.md", displayName: "aide:research" },
 	{ canonical: "commands/aide/spec", hostPath: "aide/spec.md", displayName: "aide:spec" },
+	{ canonical: "commands/aide/plan", hostPath: "aide/plan.md", displayName: "aide:plan" },
 	{ canonical: "commands/aide/build", hostPath: "aide/build.md", displayName: "aide:build" },
 	{ canonical: "commands/aide/qa", hostPath: "aide/qa.md", displayName: "aide:qa" },
 	{ canonical: "commands/aide/fix", hostPath: "aide/fix.md", displayName: "aide:fix" },
@@ -46,7 +47,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
- * Install the five AIDE pipeline slash commands under <commandDir>/aide/,
+ * Install the six AIDE pipeline slash commands under <commandDir>/aide/,
  * each a byte-faithful render of its canonical template read from docs/ via
  * readCanonicalDoc. Existing command files are preserved verbatim so user
  * customizations survive re-runs (idempotency invariant). A failed read for
