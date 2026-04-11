@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, dirname, basename, relative } from "node:path";
-import type { AideFile, AideFileType, ValidationWarning } from "../../types/index.js";
-import { SKIP_DIRS } from "../../types/index.js";
+import type { AideFile, AideFileType, ValidationWarning } from "@/types/index.js";
+import { SKIP_DIRS } from "@/types/index.js";
 
 /**
  * Classify a filename into an AideFileType based on naming conventions:

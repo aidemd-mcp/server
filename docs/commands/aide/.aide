@@ -1,0 +1,192 @@
+---
+scope: docs/commands/aide
+intent: >
+  docs/commands/aide/ is the canonical home of the five AIDE pipeline
+  slash command templates — one per pipeline phase. Each file is the
+  authoritative source text for one installed slash command, read at
+  init time by scaffoldCommands and rendered byte-faithful into the
+  host project's command directory under an `aide/` subfolder, so the
+  host's slash commands are namespaced as `/aide:research`,
+  `/aide:spec`, `/aide:build`, `/aide:qa`, and `/aide:fix`. Editing a
+  template here is the only way to change what scaffoldCommands
+  installs in every downstream host.
+outcomes:
+  desired:
+    - Exactly five template files, one per pipeline phase, named
+      `research.md`, `spec.md`, `build.md`, `qa.md`, `fix.md`. The
+      bare phase names exist because the enclosing `aide/` folder
+      already carries the namespace — double-naming (`aide-research.md`)
+      would duplicate the namespace at every reference and break the
+      namespaced slash command syntax on the host side.
+    - Each template is a self-contained checklist an agent can execute
+      as a session protocol for its pipeline phase. It must be
+      complete enough to run without the agent having read any other
+      file — the installed host will not have the source repo
+      available.
+    - Template content is decision-form and action-oriented. Every
+      checklist item is something an agent does, not something it
+      reads about or considers. Prose that describes the phase
+      without driving action is paraphrasing the spec, not extending
+      it.
+    - Installed on the host side at `<command-dir>/aide/<phase>.md`,
+      so the agent invokes them as `/aide:research`, `/aide:spec`,
+      etc. The namespace subfolder is load-bearing: it is what turns
+      a flat command directory into a grouped, namespaced pipeline
+      the host agent can discover by tab-completion.
+  undesired:
+    - A sixth template file added here without a corresponding
+      pipeline phase in the canonical spec and a corresponding
+      scaffoldCommands entry. File count here, phase count in the
+      spec, and name list in scaffoldCommands must stay synchronized;
+      a unilateral addition to any one of the three introduces
+      silent drift.
+    - Template filenames that reintroduce the `aide-` prefix the
+      namespace already carries. A file called `aide-research.md`
+      inside `aide/` is saying "aide" twice, and the host scaffold
+      would install it as `aide/aide-research.md`, producing
+      `/aide:aide-research` — a slash command nobody wanted.
+    - Template content that paraphrases the canonical spec rather
+      than directing action. A template is a checklist the agent
+      runs; it is not a summary of what the phase means. If a
+      checklist item reads like a description of the phase rather
+      than a step in it, the item is wrong.
+    - Templates that reference vault paths, brain notes, repository
+      internals, or any resource the installed host cannot resolve.
+      Once scaffolded, these files live in a host project with no
+      connection to this repo. Every resource reference must be
+      resolvable by the agent operating in the host.
+    - A sibling folder at this level (`cursor/`, `windsurf/`, etc.)
+      for host-specific variants. Pipeline phases are client-
+      agnostic; the reason a host framework exists is orthogonal to
+      what the phases do. Variants belong inside the templates as
+      branching logic, not as parallel folder trees that multiply
+      the three-way lock.
+---
+
+## Context
+
+The AIDE pipeline is defined in the canonical spec as five phases.
+An agent in a host project can read the methodology and understand
+the phases, but understanding a phase is not the same as running it.
+A running phase needs a session protocol: a checklist that tells the
+agent what to do, in what order, and what counts as done. That is
+what these templates provide.
+
+Before this folder existed, the five templates lived as string
+literals inside the init tooling. A maintainer who wanted to change
+a checklist item had to edit source code, rebuild the server, and
+release. Templates in a docs/ subfolder are editable Markdown — a
+diff here propagates to every host on its next init run, without a
+rebuild or release gate.
+
+The namespace subfolder (`aide/`) exists because host frameworks
+that support slash commands treat nested folders as namespace
+prefixes. Installing `research.md` into `<command-dir>/aide/`
+produces the slash command `/aide:research`. That namespacing keeps
+the five pipeline commands visually grouped in tab completion, and
+prevents collision with any other commands the host already defines
+— a host with its own `build` command does not get its workflow
+hijacked by the AIDE pipeline.
+
+## Strategy
+
+**The `aide/` folder is the namespace, not a prefix in the filename.**
+Host frameworks derive slash command namespaces from folder nesting:
+a file at `<command-dir>/aide/research.md` becomes `/aide:research`.
+Putting the namespace in both the folder name and the filename
+(`aide/aide-research.md`) would double the namespace, yielding
+`/aide:aide-research` on the host. Folder-as-namespace is the only
+correct layout, and the filenames must be bare phase names for the
+result on the host side to read cleanly.
+
+**One file per pipeline phase, named for the phase.** The template
+for the research phase is `research.md`. Its filename signals that
+unambiguously to any reader of the folder. Naming deviations — a
+generic name, a phase abbreviation, a version suffix — force
+readers to open files to understand the folder, which is the
+failure mode progressive disclosure exists to prevent.
+
+**Templates are checklists, not essays.** Each template is a
+session protocol the agent runs top-to-bottom. The format is a
+short context line and a checkbox list. Every item is imperative —
+something the agent does. Explanatory prose belongs in the canonical
+spec or the methodology block, not in the template; agents have
+already been taught the phases before they run a template.
+
+**Templates must be host-portable.** Once scaffolded, a template
+file lives in a project with no connection to this repository, the
+brain, or any external reference outside the host. Every resource a
+checklist item names — a tool, a file type, a command — must exist
+in or be computable from the host project. A checklist item that
+says "see the canonical spec for details" is pointing at a resource
+the host does not have.
+
+**The three-way lock is mandatory.** File count here, phase count
+in the canonical spec, and name list in scaffoldCommands must stay
+synchronized. A change to one requires a change to all three in the
+same commit. This is not a soft convention — it is the mechanical
+guarantee that every phase the spec describes is runnable in every
+host, and that no command installs a phase the spec doesn't
+recognize.
+
+## Good examples
+
+A host project runs `aide_init`. Afterward, the developer types `/`
+in their agent UI and sees the AIDE pipeline commands grouped under
+a single namespace: `/aide:research`, `/aide:spec`, `/aide:build`,
+`/aide:qa`, `/aide:fix`. The grouping is visual and alphabetical;
+tab completion after typing `/aide:` shows the five phases and
+nothing else. The pipeline is discoverable without documentation.
+
+A research phase template (`research.md`) contains the checklist
+item: "Search the brain, then external sources, then team notes,
+in that order — stop when coverage is sufficient, not when all
+sources are exhausted." The item is imperative, it directs a
+specific action sequence, and it gives the agent a stopping
+condition. An agent running `/aide:research` knows exactly what to
+do and when it is done.
+
+A fix phase template (`fix.md`) contains: "Fix ONE issue only. Do
+not fix adjacent issues discovered during the session — add them
+to the checklist instead." This is a protocol constraint that
+exists to keep fix sessions atomic. It belongs in the template,
+not in the spec, because it governs agent behavior during the
+session, not the methodology's architecture.
+
+## Bad examples
+
+A template file named `aide-research.md` placed inside the `aide/`
+folder. The host scaffold installs it at
+`<command-dir>/aide/aide-research.md`, and the slash command
+becomes `/aide:aide-research`. The namespace has been duplicated;
+every invocation reads awkwardly and the developer has to type the
+phase name twice. The fix is to rename the file to `research.md` —
+the folder carries the namespace.
+
+A template that opens with two paragraphs explaining why the
+research phase matters and how it fits into the pipeline. The
+agent running `/aide:research` has already received the methodology
+block and the tool descriptions — this is the third time it has
+been told what the phase is for. The template should start at the
+first checklist item.
+
+A QA template checklist item that reads: "Verify that the
+implementation honors the spec's cascading intent model, including
+all ancestor specs up the tree." The item is a description of a
+methodology concept, not a step the agent takes. A correct item
+says what the agent actually does: "Run aide_discover on the
+target module to load the full spec chain from root to leaf
+before comparing output."
+
+A build template that references a team-internal wiki or a vault
+note path. The host project that installs this template has no
+access to either resource. The agent running `/aide:build` hits a
+dead reference on the first try and loses trust in the pipeline.
+
+A sibling folder `docs/commands/cursor/` added for Cursor-specific
+command variants. The five pipeline phases have nothing to do with
+which host framework is running them; the phase does what the
+phase does regardless of editor. A parallel folder tree doubles
+the three-way lock, forces every edit to ripple across duplicates,
+and drifts silently the moment one side is updated without the
+other.

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { readFile, readdir } from "node:fs/promises";
 import { join, dirname, basename, isAbsolute, relative } from "node:path";
-import type { AideFile, ReadResult } from "../../types/index.js";
-import { classifyFile } from "../../lib/classify/index.js";
+import type { AideFile, ReadResult } from "@/types/index.js";
+import { classifyFile } from "@/util/classify/index.js";
 
 export const ReadInput = z.object({
 	path: z.string().describe("Path to the .aide file to read"),

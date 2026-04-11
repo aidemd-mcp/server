@@ -17,9 +17,14 @@ outcomes:
     - The methodology block is written into the framework's canonical
       config file (e.g. CLAUDE.md for Claude Code) exactly once.
       Subsequent runs detect the block's marker and skip the write.
-    - Slash commands are scaffolded one file per pipeline phase into
-      the framework's command directory. Existing command files are
-      left untouched; only missing ones are created.
+    - The five pipeline slash commands (research, spec, build, QA,
+      fix) are scaffolded into the host framework's command directory,
+      one file per phase, composed from the canonical command
+      templates under `docs/`. These commands are the entire runtime
+      of the AIDE pipeline in the host project — the audit agent, the
+      fix agents, the builder, the research agent all exist because
+      init put them there. Existing command files are left untouched;
+      only missing ones are created.
     - The MCP config is patched to register the `aide` server. If the
       file exists and parses, the server is added to its `mcpServers`
       map; if the file is missing, a minimal config is created. An
@@ -40,6 +45,10 @@ outcomes:
       every run, so a project initialized three times contains three
       copies of the block. Idempotency is an invariant, not a
       nice-to-have.
+    - Slash command content or methodology content hand-written as
+      template literals inside this submodule's source instead of
+      composed from the canonical docs under `docs/`. The source of
+      truth is in `docs/`; anything else is a drifting duplicate.
     - An init that overwrites an existing slash command because "the
       template is the canonical version". The user may have customized
       it. Customizations survive init.

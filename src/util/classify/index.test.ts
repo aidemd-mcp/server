@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { classifyFile, detectAnomalies } from "./index.js";
-import type { AideFile } from "../../types/index.js";
+import type { AideFile } from "@/types/index.js";
 
 function makeAideFile(overrides: Partial<AideFile> & { path: string; relativePath: string }): AideFile {
 	return {

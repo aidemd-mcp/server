@@ -90,25 +90,25 @@ with no arguments. The response is:
 
 > src/
 > ├── service/
-> │   ├── scoring/
+> │   ├── notifications/
 > │   │   ├── .aide [intent]
-> │   │   └── weightProfile/
+> │   │   └── retryPolicy/
 > │   │       └── .aide [intent]
-> │   └── outreach/
+> │   └── orders/
 > │       ├── research.aide [research]
 > │       ├── intent.aide [intent]
 > │       └── todo.aide [todo]
 
 Five files, one tree, no summaries, no warnings, no content reads. The
 agent now knows the project's spec architecture and decides to drill into
-`src/service/outreach` next.
+`src/service/orders` next.
 
 The agent then calls `aide_discover` again, this time scoped to the
-outreach subtree, and gets:
+orders subtree, and gets:
 
-> src/service/outreach/
-> ├── research.aide [research] — Synthesis of cold outreach response-rate studies across B2B SaaS
-> ├── intent.aide [intent] — Generate warm-intro emails that land in primary inbox
+> src/service/orders/
+> ├── research.aide [research] — Synthesis of order-completion patterns across common e-commerce platforms
+> ├── intent.aide [intent] — Create orders from validated payloads and emit confirmations
 > └── todo.aide [todo] — 3 unresolved issues from latest audit run
 
 Same files, but now with summaries pulled from each file's opening line.
@@ -120,8 +120,8 @@ A shallow call that returns this:
 
 > src/
 > ├── service/
-> │   ├── scoring/
-> │   │   ├── .aide [intent] — This module scores leads using a weighted profile match...
+> │   ├── notifications/
+> │   │   ├── .aide [intent] — This module routes notifications through a priority-based queue...
 
 The shallow mode has silently read file contents. It's no longer cheap; it
 no longer behaves the way the description promised; and the agent that
@@ -138,7 +138,7 @@ asked to focus on that area. Mixing them into a project-wide map dilutes
 the map, blurs what the shallow mode is for, and adds tokens the agent
 wasn't asking for.
 
-A deep call scoped to the outreach subtree that walks the full `src/`
+A deep call scoped to the orders subtree that walks the full `src/`
 tree anyway, because "the user probably wanted the whole project". Drill-in
 is a focusing operation; widening it ignores the agent's explicit scope
 request and turns every deep call into the worst of both modes.

@@ -1,8 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import type { AideFile, ScanResult } from "../../types/index.js";
-import { classifyFile } from "../classify/index.js";
-import { SKIP_DIRS } from "../../types/index.js";
+import type { AideFile, ScanResult } from "@/types/index.js";
+import { classifyFile } from "@/util/classify/index.js";
+import { SKIP_DIRS } from "@/types/index.js";
 
 /** Extract a summary from raw file content: first non-empty, non-heading line, truncated to ~80 chars. */
 function extractSummary(content: string): string {

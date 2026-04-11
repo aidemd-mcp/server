@@ -1,106 +1,134 @@
 ---
 scope: src
 intent: >
-  The aidemd-mcp server exists so that any MCP-compatible agent, upon connecting
-  to it, immediately knows how to read, write, and validate .aide specs without
-  being taught. The tool list IS the teaching surface — the convention transfers
-  at handshake time, not through CLAUDE.md, external docs, or user configuration.
-  Success is a brand-new agent session in a brand-new project using AIDE
-  correctly within its first few tool calls.
+  src/ is the MCP server that implements aidemd-mcp's two delivery channels.
+  Channel one is the handshake itself: the tool list is read verbatim by
+  every connecting client, and each tool description teaches the concept it
+  invokes before describing how to call it. Channel two is aide_init, which
+  reads the canonical doc files under docs/ and installs them into a host
+  project as a methodology block, pipeline slash commands, MCP wiring, and
+  IDE preview. Both channels pull from the same canonical docs — no AIDE
+  doctrine is allowed to live inside this submodule's source code.
 outcomes:
   desired:
-    - An agent reading only the tool list learns what .aide files are, the four
-      file types, the never-both-.aide-and-intent.aide naming rule, the
-      next-to-orchestrators placement rule, and the read-specs-before-code
-      workflow.
-    - Five tools cover the full AIDE lifecycle with no overlap — discover (map),
-      read (drill in), scaffold (create with naming enforcement), validate
-      (health check), init (one-command bootstrap).
-    - Behavior is identical across every supported MCP client (Claude Code,
-      Cursor, Windsurf, Copilot, Zed). Client-specific logic is confined to
-      aide_init; the core tools are client-agnostic.
-    - aide_init turns a cold project AIDE-ready in one command and is safely
-      re-runnable — methodology written to the host's config file, slash
-      commands scaffolded for every pipeline phase, MCP server wired into the
-      project's MCP config, IDE file associations configured.
-    - Every tool description is complete enough to teach the convention on its
-      own. No "see docs", no abbreviation, no assumed prior knowledge.
+    - Five tools cover the full AIDE lifecycle with no overlap — discover
+      (map), read (drill in), scaffold (create with naming enforcement),
+      validate (health check), init (one-command bootstrap). The surface
+      is capped at five.
+    - Every tool description is complete enough to teach the convention it
+      invokes on its own. An agent reading only the tool list learns what
+      `.aide` files are, the four file types, the never-both-.aide-and-
+      intent.aide naming rule, the next-to-orchestrators placement rule,
+      and the read-specs-before-code workflow. No "see docs", no
+      abbreviation, no assumed prior knowledge.
+    - Tool descriptions and the methodology block installed by aide_init
+      are both composed from the canonical doc files under docs/ at build
+      or init time. The server's source code contains no AIDE doctrine as
+      string literals, so a doc edit is the only way to change what this
+      submodule ships.
+    - Behavior is identical across every supported MCP client (Claude
+      Code, Cursor, Windsurf, Copilot, Zed). Client-specific logic is
+      confined to aide_init; the core four tools are client-agnostic.
+    - aide_init turns a cold host project AIDE-ready in one command and
+      is safely re-runnable. Methodology written to the host's config
+      file, slash commands scaffolded for every pipeline phase, MCP
+      server wired into the project's MCP config, IDE file associations
+      configured. Every step is idempotent.
   undesired:
-    - A tool description that points at an external document or says the agent
-      should "read CLAUDE.md for details". The handshake is the only
-      documentation the agent is guaranteed to see.
-    - Divergent behavior between MCP clients on the same input. If Claude Code
-      and Cursor see different results from `aide_discover`, the server has
-      failed its client-parity invariant.
+    - A tool description that points at an external document or says the
+      agent should "read CLAUDE.md for details." The handshake is the
+      only documentation surface this channel is guaranteed to deliver.
+    - A tool description or methodology block hand-written as a string
+      literal in this submodule's source, duplicating content that lives
+      in docs/. The duplicate drifts on the first edit to either side and
+      breaks the single-source-of-truth invariant inherited from the
+      parent.
+    - Divergent behavior between MCP clients on the same input. If Claude
+      Code and Cursor see different results from `aide_discover`, the
+      server has failed its client-parity invariant.
     - aide_init that is not idempotent — a project initialized twice with
-      duplicated methodology blocks, duplicated slash commands, or a broken
-      .mcp.json is a corrupted project, not an initialized one.
-    - A sixth tool added to the surface because a responsibility "didn't quite
-      fit" one of the five. Dilution of the teaching surface is a regression
-      even when the new tool is technically correct.
-    - Truncated descriptions justified by "token budget". Tokens spent teaching
-      are recovered every time an agent doesn't have to fetch an external doc
-      or silently violate the convention.
+      duplicated methodology blocks, duplicated slash commands, or a
+      broken .mcp.json is a corrupted project, not an initialized one.
+    - A sixth tool added to the surface because a responsibility "didn't
+      quite fit" one of the five. Dilution of the teaching surface is a
+      regression even when the new tool is technically correct.
+    - Truncated descriptions justified by "token budget." Tokens spent
+      teaching are recovered every time an agent doesn't have to fetch
+      an external doc or silently violate the convention.
 ---
 
 ## Context
 
-Every AI agent re-learns conventions from scratch at the start of every session.
-Teaching AIDE through a CLAUDE.md snippet works in one project with one agent
-framework, but it doesn't scale: each new project, each new framework, each new
-contributor must rediscover the rules, and any of those copies can go stale.
-aidemd-mcp moves the teaching into the MCP handshake itself, which is the only
-documentation surface a compliant MCP client is required to present to the
-model verbatim, in every session, in every project, without user action.
+This submodule implements both delivery channels the parent spec requires.
+The handshake channel matters because it is the only documentation surface
+a compliant MCP client is required to present to the model verbatim, in
+every session, in every project, without user action. The aide_init channel
+matters because a one-command bootstrap is the only onboarding path that
+does not depend on the installing agent remembering or paraphrasing what
+AIDE is. Between the two, the parent's "no paraphrasing, no per-project
+drift" guarantee lives or dies here.
 
-That protocol guarantee is the leverage point this module is built around. The
-entire server exists to protect and use it.
+Everything else — how many tools, how descriptions are written, how init
+handles idempotency — is in service of keeping those two channels faithful
+to the canonical docs above.
 
 ## Strategy
 
-**Treat the tool list as the primary teaching artifact, not as API reference.**
-Each description introduces the concept it invokes before invoking it:
-`aide_discover` explains what .aide files are and why you read them before
-code; `aide_scaffold` explains the naming-conflict rule before it describes
-its `type` enum. An agent that only ever reads the tool list must still come
-away with the full convention. The cost of a longer description is recovered
-every time an agent doesn't need to fetch an external doc, and dwarfed by the
-cost of an agent silently violating the convention.
+**The tool list is the primary teaching artifact for channel one, not an
+API reference.** Each description introduces the concept it invokes before
+invoking it: `aide_discover` explains what `.aide` files are and why you
+read them before code; `aide_scaffold` explains the naming-conflict rule
+before it describes its `type` enum. An agent that only ever reads the
+tool list must still come away with the full convention. The cost of a
+longer description is recovered every time an agent doesn't need to fetch
+an external doc, and dwarfed by the cost of an agent silently violating
+the convention.
 
-**Five tools, one per lifecycle phase, no more.** Discover is the map; read is
-the drill; scaffold is the pen; validate is the health check; init is the
-bootstrap. Adding a sixth tool requires showing that none of the five can
-absorb the responsibility. Fewer tools means less surface for an agent to get
-wrong and less description budget competing for attention at handshake time.
+**Tool descriptions and methodology blocks are composed from docs/, never
+hand-written.** The canonical doc files under docs/ are read at build time
+(for tool description text) and at init time (for the methodology block
+aide_init writes into host projects). No AIDE doctrine lives as a string
+literal in this submodule's source — doctrine lives in docs/, and this
+submodule is a renderer. This is how the parent's single-source-of-truth
+invariant survives contact with the server's runtime.
 
-**Client parity via MCP, not per-client shims.** The server speaks standard
-MCP over stdio. All client-specific branching lives in `aide_init`, which
-writes config files for whichever framework it detects. The core four tools
-are fed identical input schemas regardless of which client is talking, because
-parity is what lets the teaching surface be reused across clients.
+**Five tools, one per lifecycle phase, no more.** Discover is the map;
+read is the drill; scaffold is the pen; validate is the health check;
+init is the bootstrap. Adding a sixth tool requires showing that none of
+the five can absorb the responsibility. Fewer tools means less surface
+for an agent to get wrong and less description budget competing for
+attention at handshake time.
 
-**Idempotency as an invariant, not a feature.** Init, scaffold, and validate
-are all safe to re-run on a project already in that state. Agents retry tool
-calls when uncertain; a non-idempotent call corrupts on the retry. This is
-especially load-bearing for init, which writes files an agent should never
-feel nervous about re-running.
+**Client parity via MCP, not per-client shims.** The server speaks
+standard MCP over stdio. All client-specific branching lives in
+`aide_init`, which writes config files for whichever framework it
+detects. The core four tools are fed identical input schemas regardless
+of which client is talking, because parity is what lets the teaching
+surface be reused across clients.
+
+**Idempotency as an invariant, not a feature.** Init, scaffold, and
+validate are all safe to re-run on a project already in that state.
+Agents retry tool calls when uncertain; a non-idempotent call corrupts
+on the retry. This is especially load-bearing for init, which writes
+files an agent should never feel nervous about re-running.
 
 ## Good examples
 
-A new agent connects to aidemd-mcp for the first time and, before touching a
-single file, reasons:
+A new agent connects to aidemd-mcp for the first time and, before
+touching a single file, reasons:
 
-> There are .aide spec files next to orchestrator code that I should read
-> before I read the code. Four types exist: `.aide` is the default intent
-> spec; `intent.aide` is the same thing renamed when a `research.aide` sits
-> alongside; `research.aide` holds raw research; `todo.aide` is a QA queue.
-> I must never see both `.aide` and `intent.aide` in the same folder. My
-> workflow is: call `aide_discover` with no path for the project map, then
-> drill into the relevant subtree with a path, then `aide_read` specific
-> specs as needed.
+> There are .aide spec files next to orchestrator code that I should
+> read before I read the code. Four types exist: `.aide` is the default
+> intent spec; `intent.aide` is the same thing renamed when a
+> `research.aide` sits alongside; `research.aide` holds raw research;
+> `todo.aide` is a QA queue. I must never see both `.aide` and
+> `intent.aide` in the same folder. My workflow is: call `aide_discover`
+> with no path for the project map, then drill into the relevant subtree
+> with a path, then `aide_read` specific specs as needed.
 
-Every piece of that reasoning came from the tool list alone. No CLAUDE.md was
-read; no README was fetched. That is the target experience at handshake time.
+Every piece of that reasoning came from the tool list alone. No
+CLAUDE.md was read; no README was fetched. That is the target experience
+at handshake time.
 
 A user runs `aide_init` on a fresh project and gets back a summary like:
 
@@ -112,28 +140,38 @@ A user runs `aide_init` on a fresh project and gets back a summary like:
 > Skipped VS Code extension — `code` CLI not on PATH.
 
 Running the same command a second time returns the same summary with
-"already present" markers instead of "created", and nothing on disk changes.
+"already present" markers instead of "created", and nothing on disk
+changes.
+
+A maintainer edits `docs/aide-spec.md` to clarify the placement rule.
+They rebuild the server; the next agent to connect sees the updated text
+in the `aide_discover` tool description because the description template
+reads from the doc at build time. They also run `aide_init` on a host
+project; the installed methodology block contains the same updated text.
+One edit propagated to both channels through the canonical doc.
 
 ## Bad examples
 
-A tool description that reads "Scaffold new .aide files. See the AIDE docs for
-naming rules." The agent has learned nothing about the naming-conflict rule
-and will happily create a `.aide` next to an existing `research.aide`,
-producing exactly the corruption the tool was built to prevent. The
-description failed its only job.
+A tool description that reads "Scaffold new .aide files. See the AIDE
+docs for naming rules." The agent has learned nothing about the
+naming-conflict rule and will happily create a `.aide` next to an
+existing `research.aide`, producing exactly the corruption the tool was
+built to prevent. The description failed its only job.
 
-A tool description that enumerates file types without explaining when each
-applies — a bare list of ".aide, intent.aide, research.aide, todo.aide" with
-no accompanying rule. Agents pattern-match on the names, guess, and get it
-wrong. Teaching is not enumeration.
+A tool description hand-written as a template literal in
+`src/tools/scaffold/index.ts`, containing AIDE rules the maintainer
+typed from memory. The canonical doc under docs/ has since been updated;
+the literal has not; the two now disagree, and the server's handshake
+ships a different doctrine than `aide_init` does. The
+single-source-of-truth invariant has been broken at the submodule level.
 
-An `aide_init` that appends its methodology block to CLAUDE.md on every run,
-so a project initialized three times has three stacked copies of the same
-block. Idempotency was treated as a nice-to-have instead of an invariant, and
-the file is now corrupted.
+An `aide_init` that appends its methodology block to CLAUDE.md on every
+run, so a project initialized three times has three stacked copies of
+the same block. Idempotency was treated as a nice-to-have instead of an
+invariant, and the file is now corrupted.
 
 A sixth tool — say `aide_lint` — added to the surface because validation
 rules "felt different" from health checks. Both tools show up in the
-handshake, overlap in responsibility, and the agent has to guess which one to
-call. The teaching surface has been diluted for no gain, because the
-responsibility should have lived inside validate.
+handshake, overlap in responsibility, and the agent has to guess which
+one to call. The teaching surface has been diluted for no gain, because
+the responsibility should have lived inside validate.

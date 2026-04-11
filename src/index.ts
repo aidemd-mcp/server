@@ -6,11 +6,11 @@ import {
 	CallToolRequestSchema,
 	ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import discover, { DiscoverInput } from "./tools/discover/index.js";
-import read, { ReadInput } from "./tools/read/index.js";
-import scaffold, { ScaffoldInput } from "./tools/scaffold/index.js";
-import validate, { ValidateInput } from "./tools/validate/index.js";
-import init, { InitInput } from "./tools/init/index.js";
+import discover, { DiscoverInput } from "@/tools/discover/index.js";
+import read, { ReadInput } from "@/tools/read/index.js";
+import scaffold, { ScaffoldInput } from "@/tools/scaffold/index.js";
+import validate, { ValidateInput } from "@/tools/validate/index.js";
+import init, { InitInput } from "@/tools/init/index.js";
 
 /** Parse --root flag from CLI args, default to cwd. */
 function parseRoot(): string {

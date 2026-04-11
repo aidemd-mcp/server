@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { readFile, access } from "node:fs/promises";
 import { join, dirname, isAbsolute } from "node:path";
-import type { ValidationResult, ValidationWarning } from "../../types/index.js";
-import scan from "../../lib/scan/index.js";
-import { detectAnomalies } from "../../lib/classify/index.js";
+import type { ValidationResult, ValidationWarning } from "@/types/index.js";
+import scan from "@/util/scan/index.js";
+import { detectAnomalies } from "@/util/classify/index.js";
 
 export const ValidateInput = z.object({
 	path: z.string().optional().describe("Subdirectory to validate (defaults to entire project)"),

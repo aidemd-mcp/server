@@ -1,0 +1,188 @@
+---
+scope: .
+intent: >
+  This repository is the canonical home of the AIDE methodology — Autonomous
+  Intent-Driven Engineering, with a deliberate second reading as AI Domain
+  Expert — and the MCP server that delivers it to agents in host projects.
+  Intent is the primary driver: a `.aide` intent doc governs the code, and a
+  research agent plays the role of the human domain expert an engineering
+  team would otherwise need to hire. The repo has two jobs: author the
+  canonical docs, and ship them through the MCP handshake and aide_init.
+  Success is an agent in a brand-new host project receiving the full
+  methodology via tooling alone, then working intent-first — describing what
+  it wants in cascading layers of abstraction and letting the agent turn
+  those layers into code. Full autonomy through intent-driven development,
+  with AI domain experts filling the expertise gap, is the north star every
+  other decision in this repo must serve.
+outcomes:
+  desired:
+    - The canonical AIDE methodology — spec, template, progressive disclosure,
+      agent-readable code, automated QA — lives in this repo as editable doc
+      files and is the single source of truth. Editing those files is the
+      only way to change what downstream host projects receive.
+    - Two delivery channels, each with one clear job: MCP tool descriptions
+      teach AIDE at handshake time; aide_init installs the methodology block,
+      scaffolds pipeline slash commands, wires the MCP server into the host
+      project, and configures IDE preview. Together they cover the full
+      lifecycle from handshake to steady-state work.
+    - Every downstream artifact the server ships — tool descriptions,
+      methodology blocks, slash command templates — is composed from the
+      canonical doc files at build or init time, never duplicated as an
+      inline string or hardcoded template.
+    - A host project that runs aide_init once is AIDE-ready: the installing
+      agent did not have to paraphrase, remember, or quote any AIDE rules to
+      get there, because the tooling carried the full methodology into the
+      project.
+    - The repo itself exemplifies AIDE because the server is written using
+      it: progressive disclosure in the folder tree, agent-readable names,
+      `.aide` specs next to orchestrators, decisions-not-descriptions in
+      every spec. Cascading intent at every level, so a contributor can
+      write a new submodule spec by inheritance without re-deriving the
+      rules.
+  undesired:
+    - A rule, convention, or doctrine that lives anywhere other than the
+      canonical doc files — a commit message, a README, a code comment, a
+      per-project CLAUDE.md edit. If the change is not in the canonical
+      docs, it is not shipped, and it will drift away from whatever the
+      server actually delivers.
+    - Dual sources of truth: the same doctrine appearing in both this repo
+      and the original brain notes without one being marked authoritative
+      and the other deleted. Migration from the brain is a one-way move on
+      the same commit.
+    - A delivery channel other than MCP tool descriptions and aide_init —
+      a sixth tool that "also explains things," a server-side prompt, a
+      standalone CLI that teaches. Every additional channel fragments the
+      teaching surface and forces agents to guess where to look.
+    - A canonical doc that describes behavior the server does not actually
+      deliver. Aspirational docs are worse than missing docs, because
+      missing docs do not lie.
+    - A change that makes the cascading-intent model less faithful, less
+      complete, or less teachable — a child spec restating its parent, a
+      parent so narrow that its children have nothing to inherit, a helper
+      with a `.aide` file, an orchestrator without one. These are
+      regressions even when they add features.
+---
+
+## Context
+
+Before this repo existed, the AIDE methodology lived in a personal Obsidian
+vault. That worked for one maintainer but could not ship: every new project,
+every new contributor, every new agent framework had to rediscover the rules
+from a vault they did not have access to, and any CLAUDE.md snippet that
+tried to carry the rules forward went stale the moment the canonical vault
+notes changed.
+
+The MCP handshake is the only documentation surface a compliant MCP client
+is required to present to the model verbatim, in every session, in every
+project, without user action. aide_init is the only command needed to turn
+a cold host project into one that knows AIDE. Together those two channels
+give the methodology a delivery path that does not depend on the agent
+remembering anything across sessions or the user editing any file by hand.
+
+This repo's job is to author the methodology once, hold it as the single
+source of truth, and ship it through those two channels. Nothing else.
+
+## Strategy
+
+**Canonical docs are editable files, not compiled output.** The doc set
+lives in this repo as plain Markdown the maintainer can read, diff, and
+edit. Every downstream artifact — tool descriptions, methodology blocks,
+slash command templates — is composed from those files at build or init
+time. A doctrine change is one edit in one file; propagation to every
+downstream host project is automatic on their next init. If a maintainer
+ever has to edit two places to ship one change, the source-of-truth
+invariant has been broken and must be repaired, not worked around.
+
+**Two delivery channels, no third.** MCP tool descriptions teach AIDE at
+handshake time: what `.aide` files are, where they live, the naming rules,
+the read-before-code workflow. aide_init installs the rest: the
+methodology file agents read in the host's config, the slash commands
+that run the pipeline, the MCP wiring, and the IDE preview. The two
+channels are cleanly partitioned — handshake teaches concepts, init
+installs artifacts — and between them they cover the lifecycle an agent
+in a host project actually walks. Any proposal to add a third channel
+should be rejected and redirected into improving one of the existing two.
+
+**The repo eats its own dog food.** The MCP server is written using AIDE.
+Progressive disclosure in the folder tree, folders named after their
+default exports, JSDoc on every function, inline narration only on
+orchestrators, `.aide` specs next to orchestrators and nowhere else,
+decisions-not-descriptions in every spec. This is not stylistic — it is
+the forcing function. A rule that is wrong or unworkable shows up as
+pain in this repo before it ships to a host project. If a rule can't
+survive being lived under here, it doesn't belong in the canonical docs.
+
+**Migration from the brain is one-way.** Every doc that lands in this
+repo is deleted or archived from the brain on the same commit. Drift
+between two copies of a canonical doc is the worst kind of drift,
+because it silently propagates to every host project on its next init
+and no one notices which copy is authoritative.
+
+**Intent-driven development is the measurement.** Every change to this
+repo — a new doc, a new tool, a revised description, a refactored helper
+— is evaluated against one question: does this make "describe what you
+want in cascading layers of abstraction, let the agent build the code"
+more real or less real? A feature that adds surface but doesn't move that
+needle is a regression in disguise. A change that tightens the cascading
+intent model is load-bearing even when it looks like cleanup.
+
+## Good examples
+
+A maintainer edits `docs/aide-spec.md` to clarify how outcomes cascade
+from parent to child specs. They commit. On the next release, every host
+project that runs `aide_init` receives the updated methodology block
+verbatim, and every agent that connects to the MCP server sees the
+updated tool descriptions (in whichever tools the rule touched) because
+those descriptions were composed from the same doc file at build time.
+One edit in one file, full propagation, zero paraphrasing.
+
+An agent in a cold host project is told only "run aide_init." It does,
+reads back a summary naming the methodology file, five slash commands,
+the MCP registration, and the IDE configuration, and then starts the
+pipeline with `/aide-research`. At no point in that sequence did a human
+tell the agent what AIDE is, what a `.aide` file is, or how the phases
+fit together — every piece came through the tooling.
+
+A contributor adds a new tool to the MCP server. They read `/.aide`,
+narrow to `src/.aide`, narrow to their new submodule spec, and know
+exactly which invariants their addition must honor: five-tool cap, client
+parity, idempotency, progressive disclosure in the code, cascading intent
+in the spec. Three reads, full contract, no source files opened.
+
+## Bad examples
+
+A doctrine change that lands as a one-liner in a host project's CLAUDE.md
+after a maintainer "noticed something while using AIDE in production."
+The host project is correct for a week. The canonical docs in this repo
+still reflect the old rule. The next host project that runs aide_init
+receives the old rule because aide_init reads from the canonical docs,
+and the two projects now diverge invisibly. The fix is to land the
+change in this repo first and let it flow outward, not to patch the edge
+and forget to come back.
+
+A `writeMethodology/` helper that builds its output by concatenating
+hardcoded string literals instead of reading `docs/aide-spec.md`. The
+canonical doc and the shipped methodology drift apart on the first edit
+to either one, and a maintainer updating the doc has no way to know their
+change did not ship. The repo has two sources of truth and neither is
+marked authoritative.
+
+A proposal for `aide_explain`, a sixth tool that "walks an agent through
+the methodology interactively." The teaching surface now has three
+channels — handshake, init, explain — and an agent calling explain is an
+agent the tool descriptions failed to teach. The correct response is to
+fix the tool descriptions, not to add a channel that papers over their
+weakness.
+
+A canonical doc that introduces a new pipeline phase — say, "review" —
+without aide_init scaffolding an `/aide-review` slash command to match.
+Agents read the methodology, look for the command, can't find it, and
+conclude the system is incomplete. The doc was aspirational; the tooling
+was real; they disagreed; the agent trusted the tooling and lost trust
+in the doc.
+
+A child `.aide` that opens with "this repo is the canonical home of
+AIDE…" — a verbatim restatement of this spec's intent paragraph. The
+child has earned nothing by copying; every token spent restating is a
+token the child could have used to say what only it can say. Cascading
+intent failed because the child didn't cascade.

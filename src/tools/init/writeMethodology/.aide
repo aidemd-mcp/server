@@ -1,0 +1,147 @@
+---
+scope: src/tools/init/writeMethodology
+intent: >
+  writeMethodology is the bridge between the canonical AIDE docs under
+  docs/ and the host project's agent config file (CLAUDE.md for Claude
+  Code, .cursorrules for Cursor, whatever the detected framework uses).
+  It reads the canonical docs at runtime, composes them into a
+  methodology block wrapped with the framework's expected shape, and
+  writes the block into the host's config file exactly once. Success
+  is a host project whose installed methodology is a byte-faithful
+  render of the canonical source with only a framework-specific
+  wrapper around it.
+outcomes:
+  desired:
+    - The installed methodology block is a faithful render of the
+      canonical docs read from `docs/` at runtime. A diff between the
+      installed block and the concatenated source docs shows only the
+      framework-specific wrapper (header, marker comments), never
+      content changes, paraphrases, reorderings, or summaries.
+    - The helper is idempotent through a single marker comment that
+      identifies an already-installed block. A re-run on a host
+      project that already has the block changes nothing on disk and
+      reports the status as `exists`.
+    - Content outside the marker-bounded block is preserved verbatim
+      across installs. A user's existing config content, edits above
+      or below the block, and any other agent-facing instructions
+      survive the write untouched.
+  undesired:
+    - Any AIDE doctrine living as a template literal inside this
+      helper's source. The canonical docs are the single source of
+      truth; duplicating them here creates two sources that drift on
+      the first edit to either.
+    - The block appended to the config file on every run, producing
+      stacked duplicates. The marker check is the only correct shape
+      for idempotency here.
+    - Rewriting the config file from scratch and losing content the
+      user had outside the block. The helper is a surgical insert,
+      never a replace.
+    - A silent fallback to hardcoded content when the canonical docs
+      are missing or unreadable. If `docs/` cannot be read, the helper
+      must fail loudly, because shipping stale literals is exactly
+      the failure mode this architecture exists to prevent.
+---
+
+## Context
+
+The host project's config file is the primary documentation surface
+the agent reads on every session. Whatever lives in that file *is*
+what the agent believes about the project. If the methodology block
+there drifts away from the canonical docs, the agent is trained on
+stale doctrine and no human is notified. This helper is the single
+point at which canonical content crosses from the repo into a host
+project, so the burden of making the crossing faithful lives here and
+nowhere else.
+
+The framing the parent spec locks in — "this submodule is a renderer,
+not a source" — shows up in this helper as a hard rule: reading from
+`docs/` at runtime is the only acceptable way to get methodology text
+into the block that lands on the host's disk.
+
+## Strategy
+
+**Read from `docs/` at runtime, compose at call time, never embed.**
+The canonical docs are plain Markdown files the maintainer edits in
+place. This helper reads them on every call, concatenates them in a
+stable order, wraps them with the framework-specific header and
+marker comment, and writes the result. No caching across process
+boundaries, no build-time generation of the literal, no "snapshot"
+of the docs checked into this helper's source. The cost of reading a
+handful of short files at init time is invisible; the cost of letting
+a stale literal ship is not.
+
+**Idempotency via a single marker comment.** The block is wrapped
+with a marker both before and after the content. On re-run the
+helper looks for the opening marker; if present, it reports `exists`
+and returns. It does not compare content against the current docs
+and it does not upgrade stale blocks in place — that is the job of a
+future explicit `aide_update` path, not this helper. Silent upgrades
+would hide exactly the kind of drift a maintainer needs to see.
+
+**Fail loudly when the canonical source is unreachable.** If the
+docs cannot be read, the helper returns an error rather than falling
+back to an inline default. There is no valid "graceful degradation"
+here, because every failure mode of this helper that ships stale or
+invented content is worse than a failed init. An init that aborts
+with "docs/aide-spec.md not found" is a bug report; an init that
+silently ships old doctrine is an invisible regression.
+
+**Outside-the-block content is sacred.** The file can contain
+anything else — a project's own CLAUDE.md notes, unrelated agent
+instructions, a team's private conventions. This helper only owns
+the region between its markers; everything else is passed through
+byte-for-byte on every operation.
+
+## Good examples
+
+A maintainer edits `docs/aide-spec.md` to clarify the cascading
+intent rule. They release a new version of the MCP server. A host
+project runs `aide_init` again; the methodology block in its
+CLAUDE.md is unchanged (because the marker already exists) but the
+maintainer knows the fix is available behind a future explicit
+update flow. The rule "re-init does not upgrade in place" held.
+
+A host project runs `aide_init` for the first time. The resulting
+block in CLAUDE.md reads as an identifiable region: an opening marker
+comment, a header naming the methodology, the full body of each
+canonical doc in a stable order with their original section
+hierarchies intact, and a closing marker comment. Anything the
+developer had in CLAUDE.md before the run is still there, untouched,
+above or below the new block.
+
+An init runs on a host project where the maintainer has manually
+pasted earlier AIDE rules into CLAUDE.md outside the block. The
+helper writes its marker-bounded block in the correct place and
+leaves the pasted text alone. The developer sees two adjacent
+methodology regions in their file, notices the duplication, deletes
+the older hand-pasted copy, and is left with a single source of
+truth that will stay current on future edits to `docs/`.
+
+## Bad examples
+
+A block installed into CLAUDE.md that reads "## AIDE — Autonomous
+Intel-Driven Engineering" when the canonical docs say "Autonomous
+Intent-Driven Engineering". The block was composed from a string
+literal in this helper's source that was written from memory. The
+single-source-of-truth invariant failed at the helper level; the host
+project now teaches its agent a version of AIDE that contradicts the
+canonical docs.
+
+A re-run on an already-initialized project that appends a second
+block below the first, producing a CLAUDE.md with two copies of the
+methodology and two pairs of marker comments. The marker check was
+skipped or misaligned; the idempotency invariant is broken; the file
+is now corrupted.
+
+An init run on a project whose CLAUDE.md contains the team's own
+conventions above the marker block. The helper rewrites the file
+from scratch "to ensure a clean state" and wipes out the team's
+content. The surgical-insert invariant was violated; the user trusted
+the tool and lost work.
+
+An init whose `docs/aide-spec.md` has been accidentally moved. The
+helper catches the missing file and falls back to an embedded
+default, silently shipping a six-month-old copy of the doctrine. The
+developer believes they got the current methodology; they did not;
+no one will notice until the drift causes a contradiction in a
+downstream decision.

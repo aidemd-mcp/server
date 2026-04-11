@@ -1,0 +1,52 @@
+# todo.aide — initContent
+
+Audit against `src/tools/init/initContent/.aide`. The spec's target state
+is "sole reader of `docs/` in the init subtree, returns canonical content
+verbatim, never holds doc content as a literal". The current
+implementation holds all methodology text and all five command templates
+as template literals inside `index.ts` and does not read `docs/` at all.
+This is a direct violation of both `outcomes.desired` (reads at call
+time from docs/) and `outcomes.undesired` (content as literals, no
+fallbacks to hardcoded content).
+
+Fix agents: work one item per session. Each item is independently
+verifiable. Do not batch.
+
+## Issues
+
+- [ ] **src/tools/init/initContent/index.ts** — `getMethodology()` returns a
+      hand-written Markdown string literal containing a stale summary of
+      the AIDE methodology (opens with "Autonomous Intel-Driven
+      Engineering", which is the pre-reframe wording; canonical docs now
+      say "Autonomous Intent-Driven Engineering" with the AI Domain
+      Expert second reading). The literal also omits cascading intent,
+      the `outcomes.desired`/`outcomes.undesired` contract, the
+      progressive-disclosure tiers, and the agent-readable-code standard
+      — all of which are load-bearing in the canonical docs under
+      `docs/`. Violates `outcomes.desired` #1 ("sole reader of docs/")
+      and `outcomes.undesired` #4 ("Doc content held as a literal
+      inside this helper's source").
+
+- [ ] **src/tools/init/initContent/index.ts** — `getCommands()` returns a
+      map of five command files whose content is hand-written as
+      template literals in this file. The canonical command templates
+      do not yet exist under `docs/` at all; this file is the only copy
+      of that content in the repo. Violates the same outcomes as above
+      and additionally blocks `scaffoldCommands` from honoring its own
+      spec until `docs/commands/` exists.
+
+- [ ] **src/tools/init/initContent/index.ts** — there is no disk-read
+      path to `docs/` anywhere in the file. The helper's sole-reader
+      role described in its `.aide` is not implemented: no `readFile`,
+      no path resolution against `docs/`, no lookup-by-canonical-name
+      interface. The interface the consumers need (`writeMethodology`,
+      `scaffoldCommands`) does not exist yet. Violates `outcomes.desired`
+      #1 and #3.
+
+- [ ] **src/tools/init/initContent/index.ts** — no error path exists for
+      a missing or unreadable canonical doc, because no read happens.
+      Once the disk-read path lands, the helper must surface a loud
+      error naming the missing file rather than falling back to any
+      default. Tracked here so the fix for the three items above
+      cannot accidentally introduce a silent fallback. Violates
+      `outcomes.undesired` #3 ("silent fallback to hardcoded content").
