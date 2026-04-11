@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import installMethodologyDocs from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const DOCS_ROOT = join(REPO_ROOT, "docs");
+const METHODOLOGY_ROOT = join(REPO_ROOT, ".aide", "docs");
 
 const METHODOLOGY_FILES = [
 	"aide-spec.md",
@@ -49,14 +49,14 @@ describe("installMethodologyDocs", () => {
 		]);
 	});
 
-	it("writes each canonical doc byte-identical to its source under docs/", async () => {
+	it("writes each canonical doc byte-identical to its source under .aide/docs/", async () => {
 		const hubDir = join(tempDir, ".aide");
 
 		await installMethodologyDocs(hubDir);
 
 		for (const f of METHODOLOGY_FILES) {
 			const installed = await readFile(join(hubDir, f), "utf-8");
-			const canonical = readFileSync(join(DOCS_ROOT, f), "utf-8");
+			const canonical = readFileSync(join(METHODOLOGY_ROOT, f), "utf-8");
 			expect(installed).toBe(canonical);
 		}
 	});
@@ -82,7 +82,7 @@ describe("installMethodologyDocs", () => {
 		await installMethodologyDocs(hubDir);
 
 		const index = await readFile(join(hubDir, "index.md"), "utf-8");
-		const canonicalSpec = readFileSync(join(DOCS_ROOT, "aide-spec.md"), "utf-8");
+		const canonicalSpec = readFileSync(join(METHODOLOGY_ROOT, "aide-spec.md"), "utf-8");
 		// Take a distinctive sentence from aide-spec.md and assert it does
 		// not appear in the index.
 		const firstSentence = canonicalSpec

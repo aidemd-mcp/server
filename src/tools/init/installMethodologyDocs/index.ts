@@ -22,9 +22,9 @@ async function fileExists(path: string): Promise<boolean> {
  * list of relative links to each canonical doc in the hub. No
  * sentence inside the body teaches an AIDE rule, because any teaching
  * content would be canonical doctrine and would need to come from
- * `docs/` rather than from this helper. The crawl trigger and the
- * progressive-disclosure instruction are already delivered at the
- * pointer surface (through `docs/methodology-stub.md`), so the index
+ * the canonical docs rather than from this helper. The crawl trigger
+ * and the progressive-disclosure instruction are already delivered at
+ * the pointer surface (through `methodology-stub`), so the index
  * can stay pure plumbing here without leaving any teaching gap.
  */
 function composeHubIndex(entries: readonly { hostFilename: string }[]): string {
@@ -44,8 +44,8 @@ function composeHubIndex(entries: readonly { hostFilename: string }[]): string {
  * one canonical doc is reported as `skipped` for that single entry and
  * does not cascade into the other installs. Every byte of methodology
  * content is sourced through `readCanonicalDoc` — this helper never
- * reads `docs/` directly, which is the chokepoint invariant the init
- * subtree depends on.
+ * reads canonical files directly, which is the chokepoint invariant
+ * the init subtree depends on.
  */
 export default async function installMethodologyDocs(
 	docHubDir: string,

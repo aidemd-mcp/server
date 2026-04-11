@@ -24,7 +24,7 @@ async function safeReadFile(path: string): Promise<string> {
 /**
  * Compose the marker-bounded pointer stub. The stub body comes from the
  * canonical `methodology-stub` doc read through initContent — every
- * teaching sentence inside the body lives in `docs/`, not in this
+ * teaching sentence inside the body lives in the canonical docs, not in this
  * helper's source. This function only handles framework plumbing: the
  * host-path substitution, the surrounding marker comments, and the
  * newlines that separate them from the rest of the config file. If a

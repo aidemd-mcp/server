@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import writeMethodology from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const DOCS_ROOT = join(REPO_ROOT, "docs");
+const METHODOLOGY_ROOT = join(REPO_ROOT, ".aide", "docs");
 
 const HUB_DIR = ".aide";
 
@@ -38,7 +38,7 @@ describe("writeMethodology", () => {
 		await writeMethodology(configPath, HUB_DIR);
 
 		const config = await readFile(configPath, "utf-8");
-		const canonicalStub = readFileSync(join(DOCS_ROOT, "methodology-stub.md"), "utf-8");
+		const canonicalStub = readFileSync(join(METHODOLOGY_ROOT, "methodology-stub.md"), "utf-8");
 		const expectedBody = canonicalStub.replaceAll("{{HUB_PATH}}", HUB_DIR);
 		expect(config).toContain(expectedBody);
 		expect(config).not.toContain("{{HUB_PATH}}");
@@ -63,7 +63,7 @@ describe("writeMethodology", () => {
 		await writeMethodology(configPath, HUB_DIR);
 
 		const config = await readFile(configPath, "utf-8");
-		const canonicalSpec = readFileSync(join(DOCS_ROOT, "aide-spec.md"), "utf-8");
+		const canonicalSpec = readFileSync(join(METHODOLOGY_ROOT, "aide-spec.md"), "utf-8");
 		// Pick a long, distinctive line from aide-spec.md (not present in the
 		// stub) and assert it is absent from the written config.
 		const distinctive = canonicalSpec

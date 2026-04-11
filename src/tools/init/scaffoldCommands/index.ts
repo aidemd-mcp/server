@@ -8,16 +8,16 @@ import {
 
 /**
  * Fixed registry of the six AIDE pipeline slash commands. Owning this list
- * here — rather than discovering it from docs/commands/aide/ at runtime — is
+ * here — rather than discovering it from .claude/commands/aide/ at runtime — is
  * the mechanical guarantee of the six-phase cap mandated by this helper's
- * spec: a stray Markdown file committed under docs/commands/aide/ cannot
+ * spec: a stray Markdown file committed under .claude/commands/aide/ cannot
  * silently expand the pipeline.
  *
  * Host filename layout mirrors the canonical layout exactly: each template is
  * installed at <commandDir>/aide/<phase>.md. The `aide/` subfolder is the
  * namespace, not a filename prefix — host frameworks derive slash-command
  * namespaces from folder nesting, so a file at aide/research.md becomes
- * `/aide:research` on the host. This is the layout docs/commands/aide/.aide
+ * `/aide:research` on the host. This is the layout .claude/commands/aide/.aide
  * mandates: "filenames must be bare phase names ... the enclosing aide/
  * folder already carries the namespace". Reintroducing an `aide-` filename
  * prefix here would produce `/aide:aide-research` on the host — the exact
@@ -48,7 +48,7 @@ async function fileExists(path: string): Promise<boolean> {
 
 /**
  * Install the six AIDE pipeline slash commands under <commandDir>/aide/,
- * each a byte-faithful render of its canonical template read from docs/ via
+ * each a byte-faithful render of its canonical template read via
  * readCanonicalDoc. Existing command files are preserved verbatim so user
  * customizations survive re-runs (idempotency invariant). A failed read for
  * one command surfaces as a `skipped` status for that command only and does

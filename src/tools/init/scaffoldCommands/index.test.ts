@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import scaffoldCommands from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const DOCS_ROOT = join(REPO_ROOT, "docs");
+const COMMANDS_ROOT = join(REPO_ROOT, ".claude", "commands");
 
 let tempDir: string;
 
@@ -51,7 +51,7 @@ describe("scaffoldCommands", () => {
 		const phases = ["research", "spec", "plan", "build", "qa", "fix"];
 		for (const phase of phases) {
 			const installed = await readFile(join(commandDir, "aide", `${phase}.md`), "utf-8");
-			const canonical = readFileSync(join(DOCS_ROOT, "commands", "aide", `${phase}.md`), "utf-8");
+			const canonical = readFileSync(join(COMMANDS_ROOT, "aide", `${phase}.md`), "utf-8");
 			expect(installed).toBe(canonical);
 		}
 	});

@@ -5,16 +5,17 @@ import { describe, it, expect } from "vitest";
 import { getMethodologyMarker, readCanonicalDoc } from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const DOCS_ROOT = join(REPO_ROOT, "docs");
+const METHODOLOGY_ROOT = join(REPO_ROOT, ".aide", "docs");
+const COMMANDS_ROOT = join(REPO_ROOT, ".claude", "commands");
 
 describe("readCanonicalDoc", () => {
 	it("returns disk bytes verbatim for aide-spec", () => {
-		const onDisk = readFileSync(join(DOCS_ROOT, "aide-spec.md"), "utf-8");
+		const onDisk = readFileSync(join(METHODOLOGY_ROOT, "aide-spec.md"), "utf-8");
 		expect(readCanonicalDoc("aide-spec")).toBe(onDisk);
 	});
 
 	it("returns disk bytes verbatim for a command template", () => {
-		const onDisk = readFileSync(join(DOCS_ROOT, "commands", "aide", "research.md"), "utf-8");
+		const onDisk = readFileSync(join(COMMANDS_ROOT, "aide", "research.md"), "utf-8");
 		expect(readCanonicalDoc("commands/aide/research")).toBe(onDisk);
 	});
 
@@ -34,8 +35,8 @@ describe("readCanonicalDoc", () => {
 	 * entry would short-circuit the catch path we are trying to exercise.
 	 */
 	it("throws a loud error naming the canonical name when the doc is unreadable", () => {
-		const original = join(DOCS_ROOT, "automated-qa.md");
-		const sidelined = join(DOCS_ROOT, "automated-qa.md.missing-for-test");
+		const original = join(METHODOLOGY_ROOT, "automated-qa.md");
+		const sidelined = join(METHODOLOGY_ROOT, "automated-qa.md.missing-for-test");
 		renameSync(original, sidelined);
 		try {
 			expect(() => readCanonicalDoc("automated-qa")).toThrow(/automated-qa/);

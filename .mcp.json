@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "aide": {
+      "command": "node",
+      "args": ["D:/Code/Me/aidemd-mcp/dist/index.js"]
+    }
+  }
+}
