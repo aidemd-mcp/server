@@ -20,11 +20,12 @@ outcomes:
       any `.aide` file), and tells the agent never to guess AIDE rules from
       memory. It contains no canonical AIDE doctrine — the doctrine lives
       in the installed hub, not in the stub.
-    - The stub's instructional text is sourced from canonical content read
-      through initContent at call time, not from literals baked into this
-      helper's source. Framework plumbing (marker comments, headers, the
-      rendered host-side path) is composed here; the teaching sentences
-      are not.
+    - The stub's text is inlined in this helper's source as framework
+      plumbing. It is not canonical AIDE doctrine — it is a pointer
+      template whose only job is to name the hub path and trigger a
+      crawl — so it lives here rather than in `.aide/docs/`. The
+      doctrine the stub routes the agent to lives in the canonical
+      hub docs, not in the stub.
     - The stub names the host-side doc-hub path explicitly so the agent has
       zero guessing to do about where to look. The path and the location
       the installer helper writes to must always agree; this stub is the
@@ -44,12 +45,11 @@ outcomes:
       doctrine inside the config file is a line the agent re-reads in
       every session, AIDE-related or not, and a line that drifts the
       moment the installed hub diverges from the stub.
-    - Any AIDE teaching sentence living as a template literal in this
-      helper's source. If the stub text needs to say "before writing or
-      acting on any `.aide` file, crawl the hub", that sentence must come
-      from canonical content read at runtime — the same invariant the
-      parent spec locks in for the full-body case still applies to the
-      stub.
+    - A copy of any canonical hub doc's body inlined into the stub. The
+      stub routes the agent to the hub; it does not duplicate what the
+      hub teaches. The dividing line is "pointer to canonical content"
+      (plumbing, inline here is fine) versus "canonical content itself"
+      (doctrine, must come from `.aide/docs/`).
     - The stub naming the doc-hub path in terms that disagree with where
       the installer helper actually writes the hub. A stub that points at
       `.aide/` while the installer writes into `aide/` is worse than no
@@ -59,10 +59,6 @@ outcomes:
       edit, silently replacing a user's marker-bounded region without
       them asking. Idempotency here means "do nothing on re-run"; upgrades
       are always explicit.
-    - A failure path that falls back to an inline default stub when the
-      canonical source is missing or unreadable. Silent fallbacks to
-      embedded content are the failure mode the renderer architecture
-      exists to prevent, and the stub is no exception.
     - Rewriting the config file from scratch and losing content the user
       had outside the marker-bounded region. The helper is a surgical
       insert, never a replace.
@@ -89,10 +85,10 @@ installing the pointer that names that hub and the instruction that
 triggers a crawl into it.
 
 The parent spec's renderer invariants still govern — doctrine lives in
-`docs/`, this helper never embeds canonical text as literals, marker-based
-idempotency is the only supported shape, and content outside the region
-is sacred. This spec narrows those invariants to the stub case, not away
-from them.
+`.aide/docs/`, marker-based idempotency is the only supported shape,
+and content outside the region is sacred. This spec narrows the
+doctrine rule to "no canonical content inlined here" — the pointer
+template itself is framework plumbing and lives in source.
 
 ## Strategy
 
@@ -106,18 +102,17 @@ the agent crawls into the installed hub only when the task touches AIDE,
 and non-AIDE sessions skim past a handful of lines instead of several
 hundred.
 
-**Stub text comes from canonical content, framework plumbing does not.**
-The sentences the stub uses to teach "AIDE exists, here is the hub, crawl
-before acting" are AIDE doctrine and therefore ineligible to live as
-string literals in this helper's source. They are read through
-initContent from whatever canonical surface the architect chooses — a
-dedicated pointer doc, a short section of an existing canonical doc, or
-a new canonical doc created for this purpose — and composed into the
-stub at call time. The marker comment, the host-side path fragment, and
-the framework-specific header around the block are pure plumbing and can
-be composed locally. The dividing line is content versus container: if a
-sentence teaches an AIDE rule, it comes from `docs/`; if it glues
-canonical content into the host's config file shape, it is plumbing.
+**The stub is framework plumbing and lives inline in source.** The
+stub's sentences teach three things: AIDE exists, here is the hub
+path, crawl before acting. None of those are canonical doctrine —
+they are the routing layer that sends the agent to the doctrine. The
+doctrine itself lives in the hub docs the stub points at. Treating
+the stub as canonical would force edits to ripple through a second
+canonical file for no content benefit; treating it as inline plumbing
+keeps the pointer and its placeholder substitution in one place and
+lets the hub docs own every line that actually teaches an AIDE rule.
+The dividing line is "pointer" (inline) versus "what the pointer
+points at" (canonical under `.aide/docs/`).
 
 **Path agreement with the installer is load-bearing.** The stub names the
 host-side hub path and the installer writes into that path. They must
@@ -140,13 +135,6 @@ being short does not change this — if anything, it makes the argument
 stronger, because a short stub is easy for a user to customize and
 exactly the kind of content a silent upgrade would steamroll.
 
-**Fail loudly when the canonical source is unreachable.** If the
-canonical content that feeds the stub cannot be read, the helper returns
-an error naming the missing source rather than falling back to an inline
-default. The reasoning from the parent still applies: a visible bug
-report is strictly better than an invisible regression where the stub
-ships stale pointer text that disagrees with the installed hub.
-
 **The surgical-insert invariant survives shrinking.** The region the
 helper owns got smaller, but the rule that everything outside it is
 sacred got no weaker. The helper finds the insertion point, writes its
@@ -165,10 +153,10 @@ lives at the hub path, that the agent should crawl the hub before
 writing or acting on any `.aide` file, and that the agent should never
 guess AIDE rules from memory. A closing marker comment closes the
 region. The file is a handful of lines long instead of several
-hundred. Every word inside the region that teaches something traces
-back to canonical content read through initContent; the only locally-
-composed pieces are the marker, the header, and the rendered host-side
-path.
+hundred. The whole stub template — marker, header, pointer prose,
+and host-side path placeholder — lives inlined in this helper's
+source, because the stub is framework plumbing whose only job is to
+route the agent into the canonical hub.
 
 A developer runs `aide_init` a second time on the same project. The
 helper sees the opening marker, returns `exists`, writes nothing, and
@@ -199,13 +187,12 @@ the user's global brain already do.
 
 ## Bad examples
 
-A helper rewritten to look like the stub shape but with the
-teaching sentences typed inline as template literals: `const STUB =
-"...AIDE is..."`. The canonical doc now lives in two places —
-`docs/` and this helper's source — and a later edit to the canonical
-source will drift away from the shipped stub. The rewrite technically
-solved the "long block" problem and silently created the "two
-sources of truth" problem the parent spec exists to prevent.
+A helper whose inlined stub template copies a paragraph verbatim
+from `aide-spec.md` "so the agent gets the rule up front". The copy
+ages, the canonical doc moves on, and sessions in the host project
+read a stale version of the rule before crawling the current one.
+Inline plumbing is fine; inline duplication of canonical content is
+the regression this spec exists to prevent.
 
 A stub that points at `aide/` while a sibling helper installs the
 hub into `.aide/`. The agent reads the stub, follows the pointer,
@@ -221,14 +208,6 @@ a prompt or a warning; the next time they read their CLAUDE.md they
 find their customization missing and mistrust the tool. The stub is
 small enough to edit by hand, which is exactly why silent upgrades
 are worse here than they would have been for a long block.
-
-A helper whose canonical source is missing and which responds by
-writing an inline default stub with text typed from memory. The
-developer runs init and sees `created`, never knowing that the
-region in their config now points at the wrong path or teaches a
-stale crawl trigger. The failure mode the renderer architecture
-exists to prevent has moved from the full-body case into the stub
-case.
 
 A stub installed above a fifty-line block of the user's unrelated
 instructions — and a future refactor that "cleans up the insertion

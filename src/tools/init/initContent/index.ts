@@ -32,12 +32,12 @@ const REPO_ROOT = join(MODULE_DIR, "..", "..", "..", "..");
  * is reorganized, only this map changes.
  */
 const DOC_PATHS = {
+	"index": ".aide/docs/index.md",
 	"aide-spec": ".aide/docs/aide-spec.md",
 	"aide-template": ".aide/docs/aide-template.md",
 	"progressive-disclosure": ".aide/docs/progressive-disclosure.md",
 	"agent-readable-code": ".aide/docs/agent-readable-code.md",
 	"automated-qa": ".aide/docs/automated-qa.md",
-	"methodology-stub": ".aide/docs/methodology-stub.md",
 	"commands/aide/research": ".claude/commands/aide/research.md",
 	"commands/aide/spec": ".claude/commands/aide/spec.md",
 	"commands/aide/plan": ".claude/commands/aide/plan.md",
@@ -69,6 +69,7 @@ export interface MethodologyDocEntry {
  * "the methodology" in their own source.
  */
 const METHODOLOGY_DOCS: readonly MethodologyDocEntry[] = [
+	{ canonical: "index", hostFilename: "index.md" },
 	{ canonical: "aide-spec", hostFilename: "aide-spec.md" },
 	{ canonical: "aide-template", hostFilename: "aide-template.md" },
 	{ canonical: "progressive-disclosure", hostFilename: "progressive-disclosure.md" },

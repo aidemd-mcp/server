@@ -10,6 +10,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".."
 const METHODOLOGY_ROOT = join(REPO_ROOT, ".aide", "docs");
 
 const METHODOLOGY_FILES = [
+	"index.md",
 	"aide-spec.md",
 	"aide-template.md",
 	"progressive-disclosure.md",
@@ -28,25 +29,19 @@ afterEach(async () => {
 });
 
 describe("installMethodologyDocs", () => {
-	it("installs every canonical methodology doc plus a hub index on a cold run", async () => {
+	it("installs every canonical methodology doc on a cold run", async () => {
 		const hubDir = join(tempDir, ".aide");
 
 		const results = await installMethodologyDocs(hubDir);
 
 		const files = await readdir(hubDir);
 		for (const f of METHODOLOGY_FILES) expect(files).toContain(f);
-		expect(files).toContain("index.md");
 
-		expect(results).toHaveLength(METHODOLOGY_FILES.length + 1);
+		expect(results).toHaveLength(METHODOLOGY_FILES.length);
 		expect(results.every((r) => r.status === "created")).toBe(true);
-		expect(results.map((r) => r.name)).toEqual([
-			".aide/aide-spec.md",
-			".aide/aide-template.md",
-			".aide/progressive-disclosure.md",
-			".aide/agent-readable-code.md",
-			".aide/automated-qa.md",
-			".aide/index.md",
-		]);
+		expect(results.map((r) => r.name)).toEqual(
+			METHODOLOGY_FILES.map((f) => `.aide/${f}`),
+		);
 	});
 
 	it("writes each canonical doc byte-identical to its source under .aide/docs/", async () => {
@@ -59,37 +54,6 @@ describe("installMethodologyDocs", () => {
 			const canonical = readFileSync(join(METHODOLOGY_ROOT, f), "utf-8");
 			expect(installed).toBe(canonical);
 		}
-	});
-
-	it("hub index lists every methodology doc with relative markdown links", async () => {
-		const hubDir = join(tempDir, ".aide");
-
-		await installMethodologyDocs(hubDir);
-
-		const index = await readFile(join(hubDir, "index.md"), "utf-8");
-		for (const f of METHODOLOGY_FILES) {
-			expect(index).toContain(`[${f}](./${f})`);
-		}
-	});
-
-	it("hub index carries no inline AIDE doctrine", async () => {
-		// Pins installMethodologyDocs/.aide outcomes.undesired about teaching
-		// sentences living in the index. Any non-trivial excerpt from a
-		// canonical doc appearing in the index body would mean the index has
-		// become a renderer of doctrine rather than pure structure.
-		const hubDir = join(tempDir, ".aide");
-
-		await installMethodologyDocs(hubDir);
-
-		const index = await readFile(join(hubDir, "index.md"), "utf-8");
-		const canonicalSpec = readFileSync(join(METHODOLOGY_ROOT, "aide-spec.md"), "utf-8");
-		// Take a distinctive sentence from aide-spec.md and assert it does
-		// not appear in the index.
-		const firstSentence = canonicalSpec
-			.split("\n")
-			.find((line) => line.length > 40 && line.includes("AIDE"));
-		expect(firstSentence).toBeTruthy();
-		if (firstSentence) expect(index).not.toContain(firstSentence);
 	});
 
 	it("preserves an existing methodology doc verbatim across re-runs", async () => {
@@ -114,11 +78,11 @@ describe("installMethodologyDocs", () => {
 
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get(".aide/automated-qa.md")).toBe("exists");
+		expect(byName.get(".aide/index.md")).toBe("created");
 		expect(byName.get(".aide/aide-spec.md")).toBe("created");
 		expect(byName.get(".aide/aide-template.md")).toBe("created");
 		expect(byName.get(".aide/progressive-disclosure.md")).toBe("created");
 		expect(byName.get(".aide/agent-readable-code.md")).toBe("created");
-		expect(byName.get(".aide/index.md")).toBe("created");
 	});
 
 	// Pins installMethodologyDocs/.aide outcomes.undesired: "an install run
@@ -150,11 +114,11 @@ describe("installMethodologyDocs", () => {
 
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get(".aide/progressive-disclosure.md")).toBe("skipped");
+		expect(byName.get(".aide/index.md")).toBe("created");
 		expect(byName.get(".aide/aide-spec.md")).toBe("created");
 		expect(byName.get(".aide/aide-template.md")).toBe("created");
 		expect(byName.get(".aide/agent-readable-code.md")).toBe("created");
 		expect(byName.get(".aide/automated-qa.md")).toBe("created");
-		expect(byName.get(".aide/index.md")).toBe("created");
 
 		await expect(
 			readFile(join(hubDir, "progressive-disclosure.md"), "utf-8"),

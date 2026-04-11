@@ -1,16 +1,41 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { InitStepResult } from "@/types/index.js";
-import {
-	readCanonicalDoc,
-	getMethodologyMarker,
-} from "@/tools/init/initContent/index.js";
+import { getMethodologyMarker } from "@/tools/init/initContent/index.js";
 
-/** Placeholder token inside the canonical stub that names the host-side
+/** Placeholder token inside the stub template that names the host-side
  * doc hub path. writeMethodology substitutes this at install time with
  * the caller-supplied relative path, so the stub's pointer and the
  * installer's write target derive from a single shared source. */
 const HUB_PATH_PLACEHOLDER = "{{HUB_PATH}}";
+
+/**
+ * The pointer stub written into the host's agent config file. This is
+ * framework plumbing — not AIDE doctrine — because its only job is to
+ * tell the agent where the canonical docs live and that they must be
+ * crawled before acting on any `.aide` file. The doctrine itself lives
+ * in the canonical docs the stub points at; this template just routes
+ * the agent there.
+ */
+const STUB_TEMPLATE = `## AIDE — Autonomous Intent-Driven Engineering
+
+This project uses the AIDE methodology. AIDE treats a short \`.aide\` intent
+spec living next to orchestrator code as the contract every downstream
+agent (architect, implementor, QA) works from — when the intent changes,
+the code changes.
+
+The full canonical methodology is installed in this project at
+\`${HUB_PATH_PLACEHOLDER}/\`. Start at \`${HUB_PATH_PLACEHOLDER}/index.md\` for the doc list, then
+crawl into the specific canonical doc your current task requires. Read
+only what the task actually needs — the hub is organized for
+progressive disclosure, not for front-loading.
+
+**Before writing, editing, or acting on any \`.aide\` file, crawl the hub
+and read the canonical doc that governs the work you are about to do.**
+Never guess AIDE rules from memory: the files under \`${HUB_PATH_PLACEHOLDER}/\` are
+the authoritative source, and any decision that disagrees with them is
+wrong by definition.
+`;
 
 /** Read a file, returning empty string if it doesn't exist. */
 async function safeReadFile(path: string): Promise<string> {
@@ -22,22 +47,13 @@ async function safeReadFile(path: string): Promise<string> {
 }
 
 /**
- * Compose the marker-bounded pointer stub. The stub body comes from the
- * canonical `methodology-stub` doc read through initContent — every
- * teaching sentence inside the body lives in the canonical docs, not in this
- * helper's source. This function only handles framework plumbing: the
- * host-path substitution, the surrounding marker comments, and the
- * newlines that separate them from the rest of the config file. If a
- * future change reintroduces hand-written doctrine here, it is the
- * exact regression the parent spec's single-source-of-truth invariant
- * exists to prevent.
+ * Compose the marker-bounded pointer stub. The body is the inlined
+ * STUB_TEMPLATE with the host-side hub path substituted in; marker
+ * comments wrap it for idempotency detection.
  */
 function composeStub(docHubDir: string): string {
 	const marker = getMethodologyMarker();
-	const body = readCanonicalDoc("methodology-stub").replaceAll(
-		HUB_PATH_PLACEHOLDER,
-		docHubDir,
-	);
+	const body = STUB_TEMPLATE.replaceAll(HUB_PATH_PLACEHOLDER, docHubDir);
 	return `${marker}\n${body}\n${marker}`;
 }
 

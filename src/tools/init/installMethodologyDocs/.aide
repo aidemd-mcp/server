@@ -19,13 +19,14 @@ outcomes:
       `docs/`, no trimming, no reformatting, no paraphrasing, no
       reordered sections. The content an agent reads in the host is
       identical to what the maintainer edits upstream.
-    - A hub index file is installed alongside the doc set. The index's
-      only job is to name each installed doc and link to it by relative
-      path, so an agent following the stub's pointer lands on a file
-      that names everything in the hub and crawls from there. The hub
-      is the study-playbook pattern applied to the host-side methodology
-      surface.
-    - Every read of `docs/` goes through initContent. This helper does
+    - The hub index (`index.md`) is installed the same way every other
+      canonical doc is installed — it lives in `.aide/docs/` alongside
+      its siblings, is enumerated by initContent, and is written
+      verbatim by this helper's main loop. The index is not composed
+      in source; editing it is a one-file change in the canonical hub,
+      and that edit propagates to every future host project install
+      without any code change.
+    - Every read of `.aide/docs/` goes through initContent. This helper does
       not read the filesystem directly, and it does not hardcode the
       list of methodology docs in its own source — it asks initContent
       which canonical methodology docs exist and reads each one back by
@@ -83,12 +84,12 @@ outcomes:
       two sends the agent to an empty directory and destroys trust
       in the tooling. The two sides must derive from a common source,
       not from coincident string literals.
-    - A hub index file whose content is composed from doctrine
-      literals in this helper's source. The index is small enough to
-      feel like "framework plumbing", but any sentence in it that
-      teaches an AIDE rule is canonical content and must come from
-      `docs/` through initContent. The rendered paths and the
-      enclosing structure are plumbing; the teaching is not.
+    - A hub index whose content is composed in this helper's source
+      instead of being read from `.aide/docs/index.md` through
+      initContent. The index is a canonical doc like every other
+      file under the hub — a maintainer edit to the source file must
+      propagate into every host install without a code change on
+      this side.
     - Reaching for the network to fetch the canonical docs. The same
       rule the parent locks in applies here: every asset this helper
       installs must already be present on disk from the repo it was
@@ -129,24 +130,23 @@ belong in the methodology set.
 **The host-side hub mirrors the canonical shape, flat and verbatim.**
 Every canonical methodology doc is written to the host under its own
 canonical-name file, with its bytes unmodified from the source in
-`docs/`. There is no rewriting of headings, no stripping of
+`.aide/docs/`. There is no rewriting of headings, no stripping of
 frontmatter, no link rewriting, no composition. A file diff between
-the installed hub and the canonical source shows only the presence of
-the hub index file; every methodology doc itself is byte-identical.
-The reason is the same reason writeMethodology never transforms its
-content either: the moment this helper becomes "smart" about the
+the installed hub and the canonical source is empty: every file in
+the host hub is byte-identical to its source in `.aide/docs/`,
+index included. The moment this helper becomes "smart" about the
 canonical docs, it becomes a second source of truth and begins to
 drift on the first edit upstream.
 
-**The hub index file is a pure map, not a summary.** The installed
-hub needs some file the agent lands on first when it follows the
-stub's pointer — otherwise the agent has to scan a directory and guess
-what order to read things in. That landing file is a short index: one
-entry per installed doc, each entry naming the canonical doc and
-linking to it by relative path. The index does not summarize the
-docs, does not explain the methodology, and does not teach any AIDE
-rules of its own — those would be doctrine and would have to come
-from canonical content. The index is pure structure.
+**The hub index is canonical, not composed.** The installed hub
+needs a file the agent lands on first when it follows the stub's
+pointer — an index that names and links to every doc in the hub.
+That index lives in `.aide/docs/index.md` alongside its siblings,
+gets enumerated by initContent like every other methodology doc,
+and is written verbatim by the main install loop. Composing it in
+source would make the index a second surface the maintainer has to
+touch for any hub-level edit; keeping it canonical means a single
+file edit in the repo propagates to every future host install.
 
 **Enumeration lives in initContent, not here.** The list of which
 canonical docs belong to the methodology set is the kind of decision
@@ -195,16 +195,14 @@ failure has nothing at all.
 
 A host project runs `aide_init` for the first time. The helper asks
 initContent for the list of canonical methodology docs, receives
-five names, and iterates them. For each name it asks initContent for
-the doc's bytes, writes those bytes to the corresponding host-side
-file under the shared doc-hub path, and reports `created`. It then
-writes a small hub index file that lists each installed doc by name
-with a relative link, reporting that as `created` too. The init
-summary shows six `created` lines for this step (five docs plus the
-index) alongside the methodology stub, the scaffolded slash commands,
-and the MCP wiring. The developer opens the host-side hub folder and
-sees five files whose contents are byte-identical to the docs the
-maintainer edits in `docs/`, plus a hub index that links to each one.
+six names (index plus five methodology docs), and iterates them. For
+each name it asks initContent for the doc's bytes, writes those
+bytes to the corresponding host-side file under the shared doc-hub
+path, and reports `created`. The init summary shows six `created`
+lines for this step alongside the methodology stub, the scaffolded
+slash commands, and the MCP wiring. The developer opens the host-
+side hub folder and sees six files whose contents are byte-identical
+to the docs the maintainer edits in `.aide/docs/`.
 
 A developer re-runs `aide_init` on an already-initialized project.
 Every doc install checks the target, finds the file present, and
@@ -285,11 +283,11 @@ lands on a missing directory; the refactor technically shipped and
 is technically broken. A shared path source would have caught this
 at compile time; two coincident literals did not catch it at all.
 
-A hub index file whose body reads "## The AIDE Methodology — read
-these docs before writing any `.aide` file" with that sentence typed
-inline in the helper. The sentence teaches an AIDE rule, so it is
-canonical content, and it is living in this helper's source. The
-doctrine invariant has been broken at the index. The fix is to
-source the teaching sentence from canonical content through
-initContent, or to remove it from the index entirely and leave the
-index as a pure map of structure.
+A helper that composes the hub index in source instead of reading
+`.aide/docs/index.md` through initContent. A maintainer edits the
+canonical index file in the repo expecting the edit to ship; the
+next host init runs the composer, writes its own version on top,
+and the maintainer's edit is invisible to every host project. The
+index is a canonical doc like every other file under `.aide/docs/`;
+composing it anywhere else is a second source of truth for the same
+content.

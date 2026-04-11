@@ -32,15 +32,13 @@ describe("writeMethodology", () => {
 		expect(config).toContain("<!-- aide-methodology -->");
 	});
 
-	it("stub body is the canonical stub doc with the hub path substituted in", async () => {
+	it("stub body names the hub path and leaves no unsubstituted placeholders", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
 
 		await writeMethodology(configPath, HUB_DIR);
 
 		const config = await readFile(configPath, "utf-8");
-		const canonicalStub = readFileSync(join(METHODOLOGY_ROOT, "methodology-stub.md"), "utf-8");
-		const expectedBody = canonicalStub.replaceAll("{{HUB_PATH}}", HUB_DIR);
-		expect(config).toContain(expectedBody);
+		expect(config).toContain(`${HUB_DIR}/index.md`);
 		expect(config).not.toContain("{{HUB_PATH}}");
 	});
 
