@@ -29,7 +29,7 @@ export default async function init(root: string, framework?: FrameworkType, path
 	// populated target on cold runs. Order is not load-bearing for
 	// idempotency — every step detects its own state — but landing the
 	// hub before the stub keeps the on-disk transition monotonic.
-	const docResults = await installMethodologyDocs(join(projectRoot, config.docHubDir));
+	const docResults = await installMethodologyDocs(join(projectRoot, config.docHubDir), config.docHubDir);
 	const methodologyResult = await writeMethodology(join(projectRoot, config.configPath), config.docHubDir);
 	const commandResults = await scaffoldCommands(join(projectRoot, config.commandDir));
 	const mcpResult = await wireMcp(join(projectRoot, config.mcpConfigPath));

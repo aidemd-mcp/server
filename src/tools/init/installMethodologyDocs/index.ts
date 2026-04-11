@@ -49,6 +49,7 @@ function composeHubIndex(entries: readonly { hostFilename: string }[]): string {
  */
 export default async function installMethodologyDocs(
 	docHubDir: string,
+	displayPrefix: string = ".aide",
 ): Promise<InitStepResult[]> {
 	const results: InitStepResult[] = [];
 	await mkdir(docHubDir, { recursive: true });
@@ -61,7 +62,7 @@ export default async function installMethodologyDocs(
 	// uses, and the consistency across installers is deliberate.
 	for (const entry of entries) {
 		const targetPath = join(docHubDir, entry.hostFilename);
-		const displayName = `.aide/${entry.hostFilename}`;
+		const displayName = `${displayPrefix}/${entry.hostFilename}`;
 
 		if (await fileExists(targetPath)) {
 			results.push({ name: displayName, status: "exists" });
@@ -84,7 +85,7 @@ export default async function installMethodologyDocs(
 	// its content is pure structure (title + list of relative links), not
 	// canonical doctrine.
 	const indexPath = join(docHubDir, "index.md");
-	const indexDisplayName = ".aide/index.md";
+	const indexDisplayName = `${displayPrefix}/index.md`;
 	if (await fileExists(indexPath)) {
 		results.push({ name: indexDisplayName, status: "exists" });
 	} else {

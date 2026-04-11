@@ -11,10 +11,10 @@ import type { FrameworkType, FrameworkConfig } from "@/types/index.js";
  * hub location across every framework in a single edit.
  */
 const FRAMEWORK_CONFIGS: Record<FrameworkType, Omit<FrameworkConfig, "framework">> = {
-	claude: { configPath: "CLAUDE.md", commandDir: ".claude/commands", mcpConfigPath: ".mcp.json", docHubDir: ".aide" },
-	cursor: { configPath: ".cursorrules", commandDir: ".cursor/commands", mcpConfigPath: ".cursor/mcp.json", docHubDir: ".aide" },
-	windsurf: { configPath: ".windsurfrules", commandDir: ".windsurf/commands", mcpConfigPath: ".windsurf/mcp.json", docHubDir: ".aide" },
-	copilot: { configPath: ".github/copilot-instructions.md", commandDir: ".github/commands", mcpConfigPath: ".mcp.json", docHubDir: ".aide" },
+	claude: { configPath: "CLAUDE.md", commandDir: ".claude/commands", mcpConfigPath: ".mcp.json", docHubDir: ".aide/docs" },
+	cursor: { configPath: ".cursorrules", commandDir: ".cursor/commands", mcpConfigPath: ".cursor/mcp.json", docHubDir: ".aide/docs" },
+	windsurf: { configPath: ".windsurfrules", commandDir: ".windsurf/commands", mcpConfigPath: ".windsurf/mcp.json", docHubDir: ".aide/docs" },
+	copilot: { configPath: ".github/copilot-instructions.md", commandDir: ".github/commands", mcpConfigPath: ".mcp.json", docHubDir: ".aide/docs" },
 };
 
 const DETECTION_SIGNALS: { framework: FrameworkType; paths: string[] }[] = [
