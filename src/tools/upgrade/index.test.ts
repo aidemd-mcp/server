@@ -315,3 +315,85 @@ describe("upgrade", () => {
 		}
 	});
 });
+
+describe("upgrade — response shaping (server-handler logic)", () => {
+	/** Simulate the server handler's summary stripping. */
+	function stripCanonicalContent(result: UpgradeResult): UpgradeResult {
+		return {
+			...result,
+			categories: result.categories.map((cat) => ({
+				...cat,
+				files: cat.files.map(({ canonicalContent: _content, ...rest }) => rest),
+			})),
+		};
+	}
+
+	/** Simulate the server handler's category filtering. */
+	function filterCategory(result: UpgradeResult, category: string): UpgradeResult {
+		return {
+			...result,
+			categories: result.categories.filter((c) => c.category === category),
+		};
+	}
+
+	it("summary mode: no files carry canonicalContent field", async () => {
+		wireDefaultMocks();
+		// Force at least one differs so canonicalContent would exist
+		vi.mocked(compareFile)
+			.mockResolvedValueOnce("differs")
+			.mockResolvedValueOnce("differs")
+			.mockResolvedValueOnce("differs")
+			.mockResolvedValueOnce("differs")
+			.mockResolvedValueOnce("differs");
+
+		const result = await upgrade(tempDir);
+		const stripped = stripCanonicalContent(result);
+
+		for (const cat of stripped.categories) {
+			for (const file of cat.files) {
+				expect(file).not.toHaveProperty("canonicalContent");
+			}
+		}
+	});
+
+	it("summary mode: preserves metadata and summary counts", async () => {
+		wireDefaultMocks();
+		const result = await upgrade(tempDir);
+		const stripped = stripCanonicalContent(result);
+
+		expect(stripped.categories.length).toBe(result.categories.length);
+		for (let i = 0; i < stripped.categories.length; i++) {
+			expect(stripped.categories[i].category).toBe(result.categories[i].category);
+			expect(stripped.categories[i].summary).toEqual(result.categories[i].summary);
+			expect(stripped.categories[i].files.length).toBe(result.categories[i].files.length);
+		}
+	});
+
+	it("category filter: returns only the specified category", async () => {
+		wireDefaultMocks();
+		const result = await upgrade(tempDir);
+		const filtered = filterCategory(result, "commands");
+
+		expect(filtered.categories.length).toBe(1);
+		expect(filtered.categories[0].category).toBe("commands");
+	});
+
+	it("category filter: retains canonicalContent on differing files", async () => {
+		wireDefaultMocks();
+		vi.mocked(compareFile)
+			.mockResolvedValueOnce("differs")   // aide-spec.md
+			.mockResolvedValueOnce("differs")   // aide-template.md
+			.mockResolvedValueOnce("matches")   // versions.json
+			.mockResolvedValueOnce("differs")   // aide command
+			.mockResolvedValueOnce("differs");  // aide:research
+
+		const result = await upgrade(tempDir);
+		const filtered = filterCategory(result, "commands");
+
+		const differing = filtered.categories[0].files.filter((f) => f.status === "differs");
+		expect(differing.length).toBeGreaterThan(0);
+		for (const file of differing) {
+			expect(file.canonicalContent).toBeDefined();
+		}
+	});
+});

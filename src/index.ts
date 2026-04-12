@@ -97,7 +97,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_upgrade",
 			description:
-				"Compare the AIDE methodology artifacts in this project against the canonical versions and return structured JSON results grouped by category. Use this when the user asks to update AIDE, sync AIDE, refresh AIDE, check for AIDE updates, or bring AIDE up to date. This is NOT for editing user .aide specs — it inspects methodology infrastructure only.\n\nThe tool never writes files. It returns an UpgradeResult with per-category comparison results. As the calling agent, you must:\n1. Present each category that has drifted (differs/missing files) and ask the user which categories to apply\n2. For each confirmed category, write the files using the `canonicalContent` provided in each UpgradeFileResult\n3. For the `mcp` category, merge the `prescription` entry into the existing MCP config yourself (read → merge → write). If the MCP config is `malformed`, tell the user and ask how to proceed — do not overwrite\n4. For the `ide` category, apply Zed settings and VS Code extension separately after asking the user\n5. Skip categories where the summary shows `differs: 0, missing: 0` — nothing to update\n\nCategories: pointer-stub, methodology-docs, version-metadata, commands, agents, skills, mcp, ide.\n\nUpgrade surface (files this tool inspects — user code and user .aide specs are never touched):\n- AIDE pointer stub in the agent config file\n- Canonical methodology docs under .aide/docs/\n- versions.json metadata under .aide/docs/\n- Slash commands for all pipeline phases\n- Pipeline agent files\n- Skill templates\n- MCP server entry in the project's MCP config\n- IDE file association config (Zed settings, VS Code extension)\n\nSupports Claude Code (CLAUDE.md), Cursor (.cursorrules), Windsurf (.windsurfrules), and Copilot (.github/copilot-instructions.md). Auto-detects the framework or accepts an override.",
+				"Compare the AIDE methodology artifacts in this project against the canonical versions and return structured JSON results grouped by category. Use this when the user asks to update AIDE, sync AIDE, refresh AIDE, check for AIDE updates, or bring AIDE up to date. This is NOT for editing user .aide specs — it inspects methodology infrastructure only.\n\nThe tool uses a two-call pattern for progressive disclosure:\n\n**First call (no `category` param):** Returns a lightweight summary — every category with file names, statuses, and counts, but NO file content. Use this to understand what has drifted and present a summary to the user. Ask which categories they want to update.\n\n**Second call (with `category` param):** Returns only the specified category, now with full `canonicalContent` on each file result. Use the content to write/update files.\n\nRepeat the second call for each category the user confirms.\n\nAs the calling agent, you must:\n1. Call without `category` first to get the summary\n2. Present each drifted category (differs/missing) and ask the user which to apply\n3. For each confirmed category, call again with `category=X` to get the content, then write the files\n4. For the `mcp` category, merge the `prescription` entry into the existing MCP config (read → merge → write). If `malformed`, tell the user — do not overwrite\n5. For `ide`, ask about Zed and VS Code separately\n\nCategories: pointer-stub, methodology-docs, version-metadata, commands, agents, skills, mcp, ide.\n\nUpgrade surface (user code and user .aide specs are never touched):\n- AIDE pointer stub in the agent config file\n- Canonical methodology docs under .aide/docs/\n- versions.json metadata under .aide/docs/\n- Slash commands for all pipeline phases\n- Pipeline agent files, skill templates\n- MCP server entry in the project's MCP config\n- IDE file association config (Zed settings, VS Code extension)\n\nSupports Claude Code, Cursor, Windsurf, and Copilot. Auto-detects the framework or accepts an override.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -111,13 +111,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 						type: "string",
 						description: "Custom project root path (defaults to server working directory)",
 					},
+					category: {
+						type: "string",
+						enum: ["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide"],
+						description:
+							"Fetch full canonicalContent for this category only. Omit on the first call to get a metadata-only summary of all categories.",
+					},
 				},
 			},
 		},
 		{
 			name: "aide_init",
 			description:
-				"Bootstrap the AIDE development environment into a project. Returns structured JSON for agent consumption — not prose.\n\nThe response is an InitResult with three fields:\n- `framework`: the detected (or overridden) agent framework\n- `steps`: an array of InitStep objects, each with `name`, `status` (would-create/would-skip/exists), `category`, `filePath`, and optionally `content` (bytes to write) or `prescription` (MCP server entry to merge). Steps with `configMalformed: true` indicate the MCP config cannot be parsed.\n- `brainHints`: an array of BrainHint objects (source + path) for vault candidates the agent should present to the user\n\nAs the calling agent, you must:\n1. Present the detected framework and ask the user to confirm or override\n2. Summarize each category of would-create steps and ask the user to apply\n3. Ask the user where their brain vault is — offer the brainHints as suggestions\n4. Merge any MCP prescriptions into the config file yourself (read → merge → write)\n5. Apply IDE steps only after asking the user\n\nDo NOT auto-apply steps without user confirmation. Do NOT call this tool expecting it to write files — it is a planner only.",
+				"Bootstrap the AIDE development environment into a project. Returns structured JSON for agent consumption — not prose.\n\nThe tool uses a two-call pattern for progressive disclosure:\n\n**First call (no `category` param):** Returns a lightweight summary — every step with `name`, `status` (would-create/would-skip/exists), `category`, and `filePath`, but NO `content` fields. Also returns `brainHints` (vault candidates) and detected `framework`. Use this to understand what would be created and present a summary to the user.\n\n**Second call (with `category` param):** Returns only the steps for that category, now with full `content` on each would-create step. Use the content to write files.\n\nRepeat the second call for each category the user confirms.\n\nAs the calling agent, you must:\n1. Call without `category` first to get the summary\n2. Present the detected framework and ask the user to confirm or override\n3. Summarize each category of would-create steps and ask the user which to apply\n4. For each confirmed category, call again with `category=X` to get the content, then write the files\n5. Ask the user where their brain vault is — offer the brainHints as suggestions\n6. For MCP prescriptions, merge into the config file yourself (read → merge → write)\n7. Apply IDE steps only after asking the user\n\nDo NOT auto-apply steps without user confirmation. Do NOT call this tool expecting it to write files — it is a planner only.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -129,6 +135,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 					path: {
 						type: "string",
 						description: "Custom project root path (defaults to server working directory)",
+					},
+					category: {
+						type: "string",
+						enum: ["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide"],
+						description:
+							"Fetch full content for this category's steps only. Omit on the first call to get a metadata-only summary of all steps.",
 					},
 				},
 			},
@@ -174,11 +186,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		case "aide_init": {
 			const parsed = InitInput.parse(args);
 			const result = await init(root, parsed.framework, parsed.path);
+			if (parsed.category) {
+				// Category-specific call: filter to matching steps, keep content
+				result.steps = result.steps.filter((s) => s.category === parsed.category);
+			} else {
+				// Summary call: strip content to keep response small
+				result.steps = result.steps.map(({ content: _content, ...rest }) => rest);
+			}
 			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		case "aide_upgrade": {
 			const parsed = UpgradeInput.parse(args);
 			const result = await upgrade(root, parsed.framework, parsed.path);
+			if (parsed.category) {
+				// Category-specific call: filter to matching category, keep canonicalContent
+				result.categories = result.categories.filter((c) => c.category === parsed.category);
+			} else {
+				// Summary call: strip canonicalContent to keep response small
+				result.categories = result.categories.map((cat) => ({
+					...cat,
+					files: cat.files.map(({ canonicalContent: _content, ...rest }) => rest),
+				}));
+			}
 			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		default:

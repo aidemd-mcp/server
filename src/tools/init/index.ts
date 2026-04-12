@@ -25,6 +25,7 @@ import provisionBrain from "./provisionBrain/index.js";
 export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
 	path: z.string().optional().describe("Custom project root path (defaults to server working directory)"),
+	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide"]).optional().describe("When provided, return only steps for this category with full file content included. When omitted, return all steps as a metadata-only summary (no content fields)."),
 });
 
 /**

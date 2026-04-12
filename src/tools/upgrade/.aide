@@ -44,6 +44,14 @@ outcomes:
       updated (content differed and was replaced), unchanged (already
       matched canonical), or created (was missing). The agent
       composes its own summary from the structured data.
+    - The default response (no category parameter) is small enough
+      for an agent to comprehend in a single read — metadata and
+      summary counts only, no canonicalContent. Content is delivered
+      per-category on demand via a second call with the category
+      parameter, after the user confirms which categories to apply.
+      This two-call progressive disclosure pattern prevents the
+      agent from being overwhelmed by large JSON payloads and
+      resorting to programmatic parsing.
   undesired:
     - An upgrade that silently overwrites files without presenting
       the dry-run results to the user first. The agent-driven model
@@ -51,6 +59,11 @@ outcomes:
     - An upgrade that returns a pre-formatted prose summary instead
       of structured data. The agent needs structured JSON to drive
       the interactive per-category flow.
+    - An upgrade response that embeds full canonicalContent for all
+      categories in a single payload. Even structured, a large JSON
+      blob causes agents to parse programmatically instead of
+      interacting conversationally. Content must be deferred to
+      category-specific follow-up calls.
     - An upgrade that applies all categories at once without giving
       the user per-category control. The user may want to update
       methodology docs but keep their customized slash commands.

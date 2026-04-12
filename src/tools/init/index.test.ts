@@ -276,3 +276,84 @@ describe("init — structured JSON result", () => {
 		expect(extraKeys).toHaveLength(0);
 	});
 });
+
+describe("init — response shaping (server-handler logic)", () => {
+	/** Simulate the server handler's summary stripping. */
+	function stripContent(result: InitResult): InitResult {
+		return {
+			...result,
+			steps: result.steps.map(({ content: _content, ...rest }) => rest),
+		};
+	}
+
+	/** Simulate the server handler's category filtering. */
+	function filterCategory(result: InitResult, category: InitStep["category"]): InitResult {
+		return {
+			...result,
+			steps: result.steps.filter((s) => s.category === category),
+		};
+	}
+
+	it("summary mode: no steps carry content field", async () => {
+		const result = await init(tempDir);
+		const stripped = stripContent(result);
+
+		for (const step of stripped.steps) {
+			expect(step).not.toHaveProperty("content");
+		}
+	});
+
+	it("summary mode: preserves metadata fields (name, status, category, filePath)", async () => {
+		const result = await init(tempDir);
+		const stripped = stripContent(result);
+
+		expect(stripped.steps.length).toBe(result.steps.length);
+		for (const step of stripped.steps) {
+			expect(step.name).toBeTruthy();
+			expect(step.status).toBeTruthy();
+			expect(step.category).toBeTruthy();
+			expect(step).toHaveProperty("filePath");
+		}
+	});
+
+	it("summary mode: prescriptions are preserved (not stripped)", async () => {
+		const result = await init(tempDir);
+		const stripped = stripContent(result);
+
+		const mcpSteps = stripped.steps.filter((s) => s.category === "mcp" && s.prescription);
+		const originalMcpSteps = result.steps.filter((s) => s.category === "mcp" && s.prescription);
+		expect(mcpSteps.length).toBe(originalMcpSteps.length);
+	});
+
+	it("category filter: returns only steps of the specified category", async () => {
+		const result = await init(tempDir);
+		const filtered = filterCategory(result, "commands");
+
+		expect(filtered.steps.length).toBeGreaterThan(0);
+		for (const step of filtered.steps) {
+			expect(step.category).toBe("commands");
+		}
+	});
+
+	it("category filter: returned steps retain content", async () => {
+		const result = await init(tempDir);
+		const filtered = filterCategory(result, "commands");
+
+		const wouldCreate = filtered.steps.filter((s) => s.status === "would-create");
+		expect(wouldCreate.length).toBeGreaterThan(0);
+		for (const step of wouldCreate) {
+			expect(step.content).toBeTruthy();
+		}
+	});
+
+	it("summary JSON is significantly smaller than full result JSON", async () => {
+		const result = await init(tempDir);
+		const stripped = stripContent(result);
+
+		const fullSize = JSON.stringify(result).length;
+		const summarySize = JSON.stringify(stripped).length;
+
+		// Summary should be dramatically smaller (at least 50% reduction)
+		expect(summarySize).toBeLessThan(fullSize * 0.5);
+	});
+});

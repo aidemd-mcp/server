@@ -70,6 +70,14 @@ outcomes:
       not a pre-formatted summary the agent parrots. The agent
       composes its own conversational output from the structured
       data, tailored to the user's context.
+    - The default response (no category parameter) is small enough
+      for an agent to comprehend in a single read — metadata only,
+      no file content. Content is delivered per-category on demand
+      via a second call with the category parameter, after the user
+      confirms which categories to apply. This two-call progressive
+      disclosure pattern prevents the agent from being overwhelmed
+      by 50-100KB of JSON and resorting to programmatic parsing
+      instead of conversational interaction.
   undesired:
     - An init that executes all steps autonomously without user
       interaction. The whole point of the agent-driven model is that
@@ -91,6 +99,11 @@ outcomes:
     - An init that returns a pre-formatted prose summary instead of
       structured data. The agent needs structured JSON to drive the
       interactive flow — not a string it has to parse or parrot.
+    - An init response that embeds full file content for all steps
+      in a single payload. Even when steps are structured, a 50-100KB
+      JSON blob causes agents to write Python scripts to parse it
+      instead of walking the user through categories conversationally.
+      Content must be deferred to category-specific follow-up calls.
     - An init that appends the pointer stub on every run, fails the
       whole run on a single step failure, overwrites existing slash
       commands, hardcodes vault paths, or reaches for the network.
