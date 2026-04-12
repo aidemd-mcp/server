@@ -22,14 +22,29 @@ The QA agent reads the `.aide` specs and the latest generated output, then produ
 2. **Generated output** — the actual files the system produced
 3. **Judgement directive** — "use judgement; if it sounds wrong, flag it"
 
-**Output:** a `todo.aide` file in the module. Each item references the spec rule violated and the exact location of the problem.
+**Output:** a `todo.aide` re-alignment document in the module. See [todo.aide spec](./todo-aide.md) for the full format. Each issue references the spec rule violated, the exact location of the problem, and the pipeline stage where intent was lost.
+
+```yaml
+---
+intent: >
+  Which outcome(s) are violated — the gap between spec and reality.
+misalignment:
+  - implementation-drift
+  - test-gap
+---
+```
 
 ```markdown
 ## Issues
 
 - [ ] **<output-path>:<line>** — <What's wrong in one line.>
-      <Which spec rule this violates, referenced by spec section or field.>
+      Traces to: `outcomes.undesired[1]` | Misalignment: `implementation-drift`
 - [ ] **<output-path>:<line>** — <Next issue, same format.>
+      Traces to: `outcomes.desired[3]` | Misalignment: `test-gap`
+
+## Retro
+
+What would have caught this earlier? Which stage needs strengthening?
 ```
 
 **Key constraint:** the QA agent does NOT propose solutions. Solutions bias the implementor toward a specific approach before it reads the spec itself. The checklist says *what's wrong and where* — the implementor, invoked to work the `todo.aide`, decides *how*.
@@ -73,9 +88,11 @@ The `todo.aide` file is the handoff contract between agent sessions:
 
 1. **Work queue** — unchecked items are pending, checked items are done
 2. **Scope boundary** — each agent works exactly one item
-3. **Audit trail** — the completed checklist shows what was found and fixed
+3. **Re-alignment tool** — misalignment tags identify where in the pipeline intent was lost
+4. **Audit trail** — the completed checklist shows what was found and fixed
+5. **Process learning** — the `## Retro` section captures what would have caught issues earlier; the orchestrator promotes retro findings to the brain at `process/retro/` when the fix loop closes
 
-The `todo.aide` lives in the module it audits, scoped to a specific generation run. When all items are checked off, the QA cycle is complete.
+The `todo.aide` lives in the module it audits. When all items are checked off, the QA cycle is complete and retro is promoted to the brain as durable process learning.
 
 ## Prerequisites
 

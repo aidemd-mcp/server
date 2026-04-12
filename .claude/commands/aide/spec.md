@@ -1,21 +1,23 @@
 # /aide-spec — Spec Phase
 
-Produce the `.aide` intent spec. This is the planner phase — the session that turns either brain-resident research or direct user answers into the authoritative intent doc every downstream agent will work from.
+Produce the `.aide` intent spec **frontmatter only**. This is the planner phase — the session that interviews the user and captures the intent contract. Body sections (Context, Strategy, examples) are filled later by the Domain Expert in `/aide:synthesize` after research is complete.
 
 ## Checklist
 
-- [ ] Identify which mode this session is running in:
-  - **Brain mode** — a research agent has already filled the brain on this domain. Read the relevant brain notes first
-  - **Interview mode** — no research exists. Interview the user directly: what is the module for, who consumes its output, what does success look like, what does failure look like
+- [ ] Interview the user directly: what is the module for, who consumes its output, what does success look like, what does failure look like
+- [ ] If a parent `.aide` exists up the tree, use `aide_discover` to walk the chain and understand inherited context before writing
 - [ ] Read the AIDE template before writing — copy the fenced template block from the canonical template doc into the new file
 - [ ] Decide filename:
   - Use `.aide` if no `research.aide` exists in the target folder
   - Use `intent.aide` if `research.aide` exists in the same folder (co-located research is an escape hatch — prefer the brain)
-- [ ] Fill the frontmatter: `scope`, `intent` (one paragraph, plain language, ten-second north star), `outcomes.desired`, `outcomes.undesired`
-- [ ] Fill the four required body sections: `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`
-- [ ] Write strategy in decision form, not description form — each paragraph names a choice and the reasoning that justifies it. Cite data inline from the brain's research when applicable
-- [ ] If a parent `.aide` exists up the tree, read it first and narrow this spec rather than restate the parent's purpose, invariants, or tripwires
-- [ ] No code in the spec — no file paths, no type signatures, no function names, no worked code examples. The spec describes intent and strategy; implementation is the architect's and implementor's job
+- [ ] Fill the frontmatter ONLY:
+  - `scope` — the module path this spec governs
+  - `intent` — one paragraph, plain language, ten-second north star
+  - `outcomes.desired` — concrete, falsifiable success criteria
+  - `outcomes.undesired` — failure modes, especially the almost-right-but-wrong kind
+- [ ] Leave body sections (`## Context`, `## Strategy`, `## Good examples`, `## Bad examples`) as empty placeholders — the Domain Expert fills these in `/aide:synthesize`
+- [ ] No code in the spec — no file paths, no type signatures, no function names
 - [ ] Every `outcomes` entry must trace back to the `intent` paragraph. Cut any outcome that doesn't
+- [ ] Present the frontmatter to the user for confirmation
 - [ ] Run `aide_validate` to check the spec for structural issues
-- [ ] Hand off to `/aide:plan` — the architect is the next phase
+- [ ] Hand off to `/aide:research` if domain knowledge is needed, or `/aide:synthesize` if the brain already has sufficient research

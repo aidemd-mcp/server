@@ -1,11 +1,12 @@
 # /aide-fix — Fix Phase
 
-Work one unchecked item from the `todo.aide` checklist. This is the implementor phase in fix mode — the same agent that runs `/aide:build`, invoked with a narrower scope and a stricter one-session-per-item protocol.
+Work one unchecked item from the `todo.aide` checklist. This is the implementor phase in fix mode — the same agent that runs `/aide:build`, invoked with a narrower scope and a stricter one-session-per-item protocol. See [todo.aide spec](../../.aide/docs/todo-aide.md) for the file format.
 
 ## Checklist
 
 - [ ] Read the intent spec (`.aide` or `intent.aide`) in the target module
-- [ ] Read `todo.aide` and pick the next unchecked item. Do not pick ahead, do not bundle
+- [ ] Use `aide_discover` to walk the full `.aide` chain — understand the intent tree before touching code
+- [ ] Read `todo.aide` and pick the next unchecked item. Do not pick ahead, do not bundle. Read the item's `Misalignment` tag to understand where intent was lost
 - [ ] Fix exactly ONE issue. Do not fix adjacent issues discovered during the session — add them to the `todo.aide` checklist instead, unchecked, for future sessions
 - [ ] Base the fix on the spec, not on the one-line issue description. The description points at the problem; the spec is the source of truth for what correct looks like
 - [ ] Run the generation command (or equivalent) to produce fresh output after the fix
