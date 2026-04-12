@@ -1,0 +1,287 @@
+---
+intent: >
+  Implement aide_upgrade — a two-phase dry-run/confirm tool that replaces every
+  driftable methodology artifact on a host project with the current canonical
+  version, reporting per-file status (would update / unchanged / would create
+  for dry-run; updated / unchanged / created for confirm).
+---
+
+## Plan
+
+- [x] **Step 1 — Add UpgradeStepResult type to src/types/index.ts.**
+      Add a new interface `UpgradeStepResult` with two fields:
+      `name: string` and `status: UpgradeStatus`. Define a type alias
+      `UpgradeStatus` as the union
+      `"would update" | "unchanged" | "would create" | "updated" | "created"`.
+      Keep `InitStepResult` untouched — upgrade has its own result shape because
+      the status vocabulary is different (content-comparison-based, not
+      existence-based). No other changes in this file.
+
+- [x] **Step 2 — Export composeStub from writeMethodology.**
+      In `src/tools/init/writeMethodology/index.ts`, export the existing
+      `composeStub` function (currently module-private). Change
+      `function composeStub(docHubDir: string): string` to
+      `export function composeStub(docHubDir: string): string`.
+      No other changes — `writeMethodology` default export stays identical.
+      Upgrade needs `composeStub` to generate the canonical stub content for
+      byte comparison without triggering any write logic.
+
+- [x] **Step 3 — Export COMMANDS from scaffoldCommands.**
+      In `src/tools/init/scaffoldCommands/index.ts`, export the existing
+      `COMMANDS` array. Change `const COMMANDS:` to `export const COMMANDS:`.
+      No other changes. Upgrade needs to iterate the same command list to
+      know which files belong to the upgrade surface, without maintaining a
+      parallel registry.
+
+- [x] **Step 4 — Create the compareFile helper at
+      src/tools/upgrade/compareFile/index.ts.**
+      This is the byte-comparison core that both dry-run and confirm call.
+      Default export signature:
+      ```
+      export default async function compareFile(
+        hostPath: string,
+        canonicalContent: string,
+        write: boolean,
+      ): Promise<UpgradeStepResult["status"]>
+      ```
+      Behavior:
+      - Read `hostPath` from disk. If the file does not exist: if `write` is
+        true, create the file (mkdir -p its parent) and return `"created"`;
+        if `write` is false, return `"would create"`.
+      - If the file exists and its bytes equal `canonicalContent`: return
+        `"unchanged"` (regardless of `write` flag).
+      - If the file exists and bytes differ: if `write` is true, overwrite
+        the file and return `"updated"`; if `write` is false, return
+        `"would update"`.
+      Use `readFile` / `writeFile` from `node:fs/promises`. The comparison
+      is strict string equality (`===`) — no trimming, no normalization.
+
+- [x] **Step 5 — Create the spliceStub helper at
+      src/tools/upgrade/spliceStub/index.ts.**
+      This handles the pointer-stub replacement within marker boundaries.
+      Default export signature:
+      ```
+      export default async function spliceStub(
+        configPath: string,
+        docHubDir: string,
+        write: boolean,
+      ): Promise<UpgradeStepResult>
+      ```
+      Behavior:
+      - Import `getMethodologyMarker` from `initContent` and `composeStub`
+        from `writeMethodology` (exported in step 2).
+      - Read the config file from disk. If the file does not exist or does
+        not contain the marker: return `{ name: "Methodology pointer",
+        status: write ? "created" : "would create" }` and, if `write`,
+        write the full stub (same as init's create path — compose the stub
+        and append to empty or existing content).
+      - If the file contains the marker pair: extract the region between
+        (and including) the opening and closing marker lines. Generate the
+        canonical stub via `composeStub(docHubDir)`. Compare the extracted
+        region against the canonical stub. If they match, return
+        `{ name: "Methodology pointer", status: "unchanged" }`. If they
+        differ: if `write`, replace the marker-bounded region in the full
+        file content with the canonical stub and write the file back; return
+        `{ name: "Methodology pointer", status: write ? "updated" :
+        "would update" }`.
+      - The splice preserves everything before the opening marker and after
+        the closing marker. Use `indexOf` on the marker string to find
+        boundaries — the marker is a single HTML comment line so indexOf
+        is unambiguous.
+
+- [x] **Step 6 — Create the upgrade orchestrator at
+      src/tools/upgrade/index.ts.**
+      This is the tool entry point. Default export signature:
+      ```
+      export default async function upgrade(
+        root: string,
+        confirm: boolean,
+        framework?: FrameworkType,
+        path?: string,
+        skipIde?: boolean,
+      ): Promise<string>
+      ```
+      Also export the Zod input schema:
+      ```
+      export const UpgradeInput = z.object({
+        confirm: z.boolean().optional().default(false),
+        framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional(),
+        path: z.string().optional(),
+        skipIde: z.boolean().optional(),
+      });
+      ```
+      Orchestration sequence (mirrors init's order):
+      1. Resolve `projectRoot` from `root` + `path` (same logic as init).
+      2. Call `detectFramework(projectRoot, framework)` to get `FrameworkConfig`.
+      3. Walk the upgrade surface — collect `UpgradeStepResult[]`:
+         a. **Methodology docs**: iterate `listMethodologyDocs()`, for each
+            entry call `compareFile(join(docHubAbsolute, entry.hostFilename),
+            readCanonicalDoc(entry.canonical), confirm)`. Build result with
+            `name: displayPrefix/entry.hostFilename`.
+         b. **Pointer stub**: call `spliceStub(join(projectRoot,
+            config.configPath), config.docHubDir, confirm)`.
+         c. **Commands**: iterate the exported `COMMANDS` array from
+            scaffoldCommands, for each call
+            `compareFile(join(commandDirAbsolute, cmd.hostPath),
+            readCanonicalDoc(cmd.canonical), confirm)`. Build result with
+            `name: cmd.displayName`.
+         d. **MCP config**: call `compareFile(join(projectRoot,
+            config.mcpConfigPath), canonicalMcpContent, confirm)` where
+            `canonicalMcpContent` is derived by reading the existing MCP
+            config, parsing JSON, replacing/inserting the `aide` server
+            entry with the canonical shape `{ command: "npx", args:
+            ["aidemd-mcp"] }`, and serializing back. If the file doesn't
+            exist, the canonical content is the full
+            `{ mcpServers: { aide: ... } }` JSON. Because MCP config
+            contains other servers that must not be touched, this step
+            cannot use raw `compareFile` — instead, inline the comparison:
+            read existing JSON, check if `servers.aide` or
+            `servers["aidemd-mcp"]` deeply equals the canonical shape; if
+            yes return `unchanged`; if no and `confirm`, update just that
+            key and write; return the appropriate status. Name:
+            `"MCP config"`.
+         e. **IDE config** (unless `skipIde`): for Zed, read existing
+            `.zed/settings.json`, check if `file_types.Markdown` contains
+            `"*.aide"`; report `unchanged` or `would update`/`updated`
+            accordingly; if `confirm`, apply the setting. For VS Code,
+            check extension installation status; report accordingly. These
+            are already idempotent in init, so upgrade re-applies them
+            unconditionally when `confirm` is true — they are additive.
+            Names: `"Zed config"`, `"VS Code extension"`.
+      4. Format the output string:
+         - Use prefix symbols: `~` for would update/updated, `=` for
+           unchanged, `+` for would create/created.
+         - If `confirm` is false (dry-run):
+           - If all results are `unchanged`: return the "all match" message
+             (spec's good example: "All N methodology artifacts match
+             canonical. Nothing to upgrade.").
+           - Otherwise: list each result with its status, then compose the
+             warning. The warning names only the categories that have at
+             least one non-unchanged entry. Categories are: "methodology
+             docs", "slash commands", "pointer stub", "MCP config",
+             "IDE config". End with "To proceed, call aide_upgrade with
+             confirm: true."
+         - If `confirm` is true: list each result with final status, then
+           a summary line: "N files updated, M files created, P files
+           unchanged."
+
+- [x] **Step 7 — Register aide_upgrade in src/index.ts.**
+      Add import: `import upgrade, { UpgradeInput } from
+      "@/tools/upgrade/index.js";`.
+      Add tool definition to the `tools` array in `ListToolsRequestSchema`
+      handler:
+      ```
+      {
+        name: "aide_upgrade",
+        description: "Upgrade methodology artifacts to the latest canonical versions. ..."
+        inputSchema: {
+          type: "object",
+          properties: {
+            confirm: {
+              type: "boolean",
+              description: "When false (default), returns a dry-run preview showing which files would change. When true, overwrites all methodology artifacts with canonical versions. Always run without confirm first to review the blast radius."
+            },
+            framework: { ... same as init ... },
+            path: { ... same as init ... },
+            skipIde: { ... same as init ... },
+          },
+        },
+      }
+      ```
+      The description should teach the two-phase flow: default is preview,
+      confirm writes. Mention that customizations to commands and docs will
+      be overwritten. Mention that user code and user .aide specs are never
+      touched.
+      Add the `case "aide_upgrade"` branch in the `CallToolRequestSchema`
+      switch:
+      ```
+      case "aide_upgrade": {
+        const parsed = UpgradeInput.parse(args);
+        const result = await upgrade(root, parsed.confirm, parsed.framework, parsed.path, parsed.skipIde);
+        return { content: [{ type: "text", text: result }] };
+      }
+      ```
+
+- [x] **Step 8 — Tests for compareFile at
+      src/tools/upgrade/compareFile/index.test.ts.**
+      Co-located with source per playbook convention. Use Vitest, mock
+      `node:fs/promises`. Test cases:
+      - File does not exist + write=false -> "would create"
+      - File does not exist + write=true -> "created" (verify writeFile called)
+      - File exists, content matches canonical -> "unchanged" (both write values)
+      - File exists, content differs + write=false -> "would update"
+      - File exists, content differs + write=true -> "updated" (verify writeFile called)
+
+- [x] **Step 9 — Tests for spliceStub at
+      src/tools/upgrade/spliceStub/index.test.ts.**
+      Co-located. Use Vitest, mock `node:fs/promises`. Test cases:
+      - Config file missing -> would create / created
+      - Config file exists, no markers -> would create / created (appends)
+      - Config file with markers, stub matches canonical -> unchanged
+      - Config file with markers, stub differs -> would update / updated
+      - Splice preserves content before opening marker and after closing marker
+
+- [x] **Step 10 — Tests for the upgrade orchestrator at
+      src/tools/upgrade/index.test.ts.**
+      Co-located. Mock `detectFramework`, `readCanonicalDoc`,
+      `listMethodologyDocs`, `compareFile`, `spliceStub`, and the IDE
+      config functions. Test cases:
+      - All unchanged -> returns "all match" message, no warning
+      - Mixed statuses in dry-run -> returns preview with correct symbols
+        and composed warning naming only affected categories
+      - confirm=true -> returns final statuses with summary counts
+      - Framework override is forwarded to detectFramework
+      - skipIde=true -> IDE results omitted
+
+## Decisions
+
+**Upgrade does NOT call init's helpers directly.** The spec says "reuses
+init's helpers but bypasses their skip-if-exists guard." After reading the
+init helpers, their skip-if-exists logic is deeply interleaved with their
+write logic (the existence check is the first branch in each function, and
+the write path is the else branch). Adding an `overwrite` flag to each
+helper would change their signatures and risk breaking init's idempotency
+invariant. Instead, upgrade reuses init's *content infrastructure*
+(`readCanonicalDoc`, `listMethodologyDocs`, `composeStub`, `COMMANDS`) and
+builds its own compare-and-write flow via `compareFile` and `spliceStub`.
+This keeps init's helpers untouched and gives upgrade a clean code path
+optimized for byte comparison + conditional write.
+
+**composeStub is exported rather than duplicated.** The pointer stub
+template and marker logic live in `writeMethodology`. Rather than copying
+the template into upgrade (violating single source of truth), we export
+`composeStub` so upgrade can generate the canonical stub content for
+comparison. The export is additive — no existing consumer is affected.
+
+**COMMANDS is exported rather than duplicated.** Same rationale. The
+command registry is the single source of truth for which files belong to
+the command surface. Upgrade imports it rather than maintaining a parallel
+list.
+
+**MCP config comparison is inline, not via compareFile.** The MCP config
+file contains other servers that must not be disturbed. A whole-file
+comparison would flag the file as "would update" any time any non-aide
+server entry changed. Instead, upgrade reads the JSON, inspects only the
+`aide` / `aidemd-mcp` key, and compares that key's value against the
+canonical shape. This keeps the upgrade surface honest — it only reports
+MCP as changed when the aide entry itself has drifted.
+
+**IDE config uses the same additive pattern as init.** Zed config is a
+JSON merge (check for `*.aide` in `file_types.Markdown`), VS Code is an
+extension install check. Both are inherently idempotent, so upgrade can
+re-apply them unconditionally on confirm without risk. The dry-run still
+reports their status accurately by checking current state.
+
+**Single `write` boolean gates the entire surface.** The spec mandates
+all-or-nothing — no per-file opt-out. The `confirm` flag on the tool input
+maps directly to the `write` parameter threaded through every comparison
+call. This is the simplest possible implementation of the write gate and
+eliminates any possibility of partial upgrades.
+
+**UpgradeStepResult is a separate type from InitStepResult.** The status
+vocabularies are disjoint: init uses `created | exists | installed | wired
+| skipped`, upgrade uses `would update | unchanged | would create | updated
+| created`. Sharing a type would require a union of all statuses, which
+would weaken type safety — a caller expecting upgrade results could
+accidentally receive an init-shaped status. Separate types keep each tool's
+contract precise.

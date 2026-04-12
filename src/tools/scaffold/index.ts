@@ -5,8 +5,8 @@ import { join, isAbsolute } from "node:path";
 export const ScaffoldInput = z.object({
 	directory: z.string().describe("Directory where the .aide file(s) will be created"),
 	type: z
-		.enum(["intent", "research", "both", "todo"])
-		.describe("Type of .aide file to create"),
+		.enum(["intent", "research", "both", "todo", "plan"])
+		.describe("Type of .aide file to create (intent, research, both, todo, or plan)"),
 });
 
 const INTENT_TEMPLATE = `# Intent Spec
@@ -37,9 +37,22 @@ const RESEARCH_TEMPLATE = `# Research
 
 `;
 
-const TODO_TEMPLATE = `# QA Checklist
+const TODO_TEMPLATE = `# QA Re-alignment Document
 
 - [ ]
+`;
+
+const PLAN_TEMPLATE = `---
+intent: >
+
+---
+
+## Plan
+
+- [ ]
+
+## Decisions
+
 `;
 
 /** List existing .aide files in a directory. */
@@ -60,11 +73,12 @@ async function existingAideFiles(dir: string): Promise<string[]> {
  * - type=research → creates research.aide; renames existing .aide to intent.aide
  * - type=both → creates research.aide + intent.aide
  * - type=todo → creates todo.aide
+ * - type=plan → creates plan.aide
  */
 export default async function scaffold(
 	root: string,
 	directory: string,
-	type: "intent" | "research" | "both" | "todo",
+	type: "intent" | "research" | "both" | "todo" | "plan",
 ): Promise<string> {
 	const dir = isAbsolute(directory) ? directory : join(root, directory);
 
@@ -78,6 +92,10 @@ export default async function scaffold(
 		const target = join(dir, "todo.aide");
 		await writeFile(target, TODO_TEMPLATE, "utf-8");
 		actions.push("Created todo.aide");
+	} else if (type === "plan") {
+		const target = join(dir, "plan.aide");
+		await writeFile(target, PLAN_TEMPLATE, "utf-8");
+		actions.push("Created plan.aide");
 	} else if (type === "intent") {
 		if (existing.includes("research.aide")) {
 			const target = join(dir, "intent.aide");

@@ -30,8 +30,13 @@ outcomes:
       crawl from there into whichever canonical doc the current task
       requires, the same way `study-playbook` works against the
       user's global brain.
-    - The six pipeline slash commands (research, spec, plan, build,
-      qa, fix) are scaffolded into an `aide/` subfolder of the host
+    - The orchestrator entry point `/aide` is scaffolded as `aide.md`
+      at the command directory root — a peer of the `aide/` subfolder,
+      not inside it. This single file is the top-level entry point
+      that routes to the appropriate pipeline phase. It is installed
+      and reported independently from the seven phase commands.
+    - The seven pipeline slash commands (research, spec, synthesize,
+      plan, build, qa, fix) are scaffolded into an `aide/` subfolder of the host
       framework's command directory, one file per phase, composed
       from the canonical command templates under `docs/commands/aide/`.
       The subfolder is load-bearing: host frameworks derive the slash
@@ -187,12 +192,16 @@ sees:
 >   ✓ Methodology pointer: Created
 >   ✓ .aide/aide-spec.md: Created
 >   ✓ .aide/aide-template.md: Created
+>   ✓ .aide/plan-aide.md: Created
+>   ✓ .aide/todo-aide.md: Created
 >   ✓ .aide/progressive-disclosure.md: Created
 >   ✓ .aide/agent-readable-code.md: Created
 >   ✓ .aide/automated-qa.md: Created
 >   ✓ .aide/index.md: Created
+>   ✓ aide: Created
 >   ✓ aide/research: Created
 >   ✓ aide/spec: Created
+>   ✓ aide/synthesize: Created
 >   ✓ aide/plan: Created
 >   ✓ aide/build: Created
 >   ✓ aide/qa: Created
@@ -206,7 +215,7 @@ sees:
 > Commands: .claude/commands/aide
 > MCP: .mcp.json
 >
-> New commands: /aide:research, /aide:spec, /aide:plan, /aide:build, /aide:qa, /aide:fix
+> New commands: /aide, /aide:research, /aide:spec, /aide:synthesize, /aide:plan, /aide:build, /aide:qa, /aide:fix
 >
 > Next steps: run aide_discover to see existing specs, or /aide:research to start a new one.
 
@@ -221,12 +230,16 @@ A developer re-runs the same command on the same project and sees:
 >   - Methodology pointer
 >   - .aide/aide-spec.md
 >   - .aide/aide-template.md
+>   - .aide/plan-aide.md
+>   - .aide/todo-aide.md
 >   - .aide/progressive-disclosure.md
 >   - .aide/agent-readable-code.md
 >   - .aide/automated-qa.md
 >   - .aide/index.md
+>   - aide
 >   - aide/research
 >   - aide/spec
+>   - aide/synthesize
 >   - aide/plan
 >   - aide/build
 >   - aide/qa

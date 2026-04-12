@@ -20,22 +20,29 @@ afterEach(async () => {
 });
 
 describe("scaffoldCommands", () => {
-	it("creates all 6 command files under the aide/ namespace subfolder", async () => {
+	it("creates all 8 command files: orchestrator at root plus 7 phase commands under aide/", async () => {
 		const commandDir = join(tempDir, "commands");
 
 		const results = await scaffoldCommands(commandDir);
 
+		// Orchestrator lands at commandDir/aide.md (root peer of aide/ subfolder)
+		const rootFiles = await readdir(commandDir);
+		expect(rootFiles).toContain("aide.md");
+
 		const files = await readdir(join(commandDir, "aide"));
 		expect(files).toContain("research.md");
 		expect(files).toContain("spec.md");
+		expect(files).toContain("synthesize.md");
 		expect(files).toContain("plan.md");
 		expect(files).toContain("build.md");
 		expect(files).toContain("qa.md");
 		expect(files).toContain("fix.md");
 		expect(results.every((r) => r.status === "created")).toBe(true);
 		expect(results.map((r) => r.name)).toEqual([
+			"aide",
 			"aide:research",
 			"aide:spec",
+			"aide:synthesize",
 			"aide:plan",
 			"aide:build",
 			"aide:qa",
@@ -48,7 +55,12 @@ describe("scaffoldCommands", () => {
 
 		await scaffoldCommands(commandDir);
 
-		const phases = ["research", "spec", "plan", "build", "qa", "fix"];
+		// Verify orchestrator at root
+		const installedOrchestrator = await readFile(join(commandDir, "aide.md"), "utf-8");
+		const canonicalOrchestrator = readFileSync(join(COMMANDS_ROOT, "aide.md"), "utf-8");
+		expect(installedOrchestrator).toBe(canonicalOrchestrator);
+
+		const phases = ["research", "spec", "synthesize", "plan", "build", "qa", "fix"];
 		for (const phase of phases) {
 			const installed = await readFile(join(commandDir, "aide", `${phase}.md`), "utf-8");
 			const canonical = readFileSync(join(COMMANDS_ROOT, "aide", `${phase}.md`), "utf-8");
@@ -111,10 +123,12 @@ describe("scaffoldCommands", () => {
 		const { default: scaffoldCommandsFresh } = await import("./index.js");
 		const results = await scaffoldCommandsFresh(commandDir);
 
-		expect(results).toHaveLength(6);
+		expect(results).toHaveLength(8);
 		expect(results.map((r) => r.name)).toEqual([
+			"aide",
 			"aide:research",
 			"aide:spec",
+			"aide:synthesize",
 			"aide:plan",
 			"aide:build",
 			"aide:qa",
@@ -129,7 +143,7 @@ describe("scaffoldCommands", () => {
 		expect(byName.get("aide:qa")).toBe("created");
 		expect(byName.get("aide:fix")).toBe("created");
 
-		for (const phase of ["research", "spec", "plan", "qa", "fix"]) {
+		for (const phase of ["research", "spec", "synthesize", "plan", "qa", "fix"]) {
 			const contents = await readFile(
 				join(commandDir, "aide", `${phase}.md`),
 				"utf-8",

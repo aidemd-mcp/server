@@ -16,6 +16,8 @@ const METHODOLOGY_FILES = [
 	"progressive-disclosure.md",
 	"agent-readable-code.md",
 	"automated-qa.md",
+	"plan-aide.md",
+	"todo-aide.md",
 ];
 
 let tempDir: string;

@@ -1,5 +1,5 @@
-/** The three spec types plus QA checklist. */
-export type AideFileType = "intent" | "research" | "todo";
+/** The four .aide spec types: intent, research, plan, todo. */
+export type AideFileType = "intent" | "research" | "todo" | "plan";
 
 /** A discovered .aide file with metadata. */
 export interface AideFile {
@@ -85,6 +85,20 @@ export interface FrameworkConfig {
 export interface InitStepResult {
 	name: string;
 	status: "created" | "exists" | "installed" | "wired" | "skipped";
+}
+
+/** Status of a single upgrade step. */
+export type UpgradeStatus =
+	| "would update"
+	| "unchanged"
+	| "would create"
+	| "updated"
+	| "created";
+
+/** Result of a single upgrade step. */
+export interface UpgradeStepResult {
+	name: string;
+	status: UpgradeStatus;
 }
 
 /** Directories to skip during filesystem walks. */

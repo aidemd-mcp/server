@@ -11,6 +11,7 @@ import read, { ReadInput } from "@/tools/read/index.js";
 import scaffold, { ScaffoldInput } from "@/tools/scaffold/index.js";
 import validate, { ValidateInput } from "@/tools/validate/index.js";
 import init, { InitInput } from "@/tools/init/index.js";
+import upgrade, { UpgradeInput } from "@/tools/upgrade/index.js";
 
 /** Parse --root flag from CLI args, default to cwd. */
 function parseRoot(): string {
@@ -32,7 +33,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_discover",
 			description:
-				"Scan for .aide spec files in this project. Returns a tree map of where specs live, following progressive disclosure.\n\nWithout a path: returns a lightweight project-wide map — file locations and types only, no content. Use this once to understand the project's spec architecture.\n\nWith a path: returns a detailed subtree of that directory — includes summaries extracted from file content and anomaly warnings. Use this to drill into the area you're working on.\n\n.aide files are progressive disclosure specs that live next to orchestrator code — they contain intent (strategy, implementation contracts, anti-patterns), research (sources, data, patterns), or QA checklists (todo). Read .aide files BEFORE reading code — they are the context layer between folder structure and implementation details.\n\nFile types:\n- .aide — Intent spec (default). Strategy, contracts, anti-patterns.\n- intent.aide — Same as .aide, used only when research.aide exists in the same folder.\n- research.aide — Raw research. Sources, data points, pattern synthesis.\n- todo.aide — QA checklist. Issues found by audit agents.\n\nNever have both .aide and intent.aide in the same folder.",
+				"Scan for .aide spec files in this project. Returns a tree map of where specs live, following progressive disclosure.\n\nWithout a path: returns a lightweight project-wide map — file locations and types only, no content. Use this once to understand the project's spec architecture.\n\nWith a path: returns a detailed subtree of that directory — includes summaries extracted from file content and anomaly warnings. Use this to drill into the area you're working on.\n\n.aide files are progressive disclosure specs that live next to orchestrator code — they contain intent (strategy, implementation contracts, anti-patterns), research (sources, data, patterns), or QA checklists (todo). Read .aide files BEFORE reading code — they are the context layer between folder structure and implementation details.\n\nFile types (.aide, intent.aide, research.aide, plan.aide, todo.aide):\n- .aide — Intent spec (default). Strategy, contracts, anti-patterns.\n- intent.aide — Same as .aide, used only when research.aide exists in the same folder.\n- research.aide — Raw research. Sources, data points, pattern synthesis.\n- plan.aide -- Architect's implementation plan. Checkboxed steps for the implementor.\n- todo.aide — QA re-alignment document. Captures where implementation drifted from intent.\n\nNever have both .aide and intent.aide in the same folder.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -47,7 +48,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_read",
 			description:
-				"Read an .aide spec file with full context. Returns the file content, its classified type (intent/research/todo), related specs in the same directory, and links found in the content (relative paths, wikilinks, URLs). Use this after aide_discover to drill into a specific spec.",
+				"Read an .aide spec file with full context. Returns the file content, its classified type (intent/research/plan/todo), related specs in the same directory, and links found in the content (relative paths, wikilinks, URLs). Use this after aide_discover to drill into a specific spec.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -62,7 +63,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_scaffold",
 			description:
-				"Create new .aide spec files with automatic naming convention enforcement. Handles the naming rules: intent specs are .aide by default, but become intent.aide when research.aide exists in the same folder. Creating a research.aide auto-renames any existing .aide to intent.aide.\n\nTypes:\n- intent — Strategy, contracts, anti-patterns\n- research — Sources, data, patterns (triggers rename of existing .aide)\n- both — Creates research.aide + intent.aide pair\n- todo — QA checklist for audit agents",
+				"Create new .aide spec files with automatic naming convention enforcement. Handles the naming rules: intent specs are .aide by default, but become intent.aide when research.aide exists in the same folder. Creating a research.aide auto-renames any existing .aide to intent.aide.\n\nTypes:\n- intent — Strategy, contracts, anti-patterns\n- research — Sources, data, patterns (triggers rename of existing .aide)\n- both — Creates research.aide + intent.aide pair\n- todo — QA re-alignment document for QA agents\n- plan -- Architect's implementation plan (no naming interaction with intent/research)",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -72,7 +73,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 					},
 					type: {
 						type: "string",
-						enum: ["intent", "research", "both", "todo"],
+						enum: ["intent", "research", "both", "todo", "plan"],
 						description: "Type of .aide file to create",
 					},
 				},
@@ -94,9 +95,38 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 			},
 		},
 		{
+			name: "aide_upgrade",
+			description:
+				"Upgrade the AIDE methodology artifacts in a project to the canonical versions shipped with this MCP server. Operates in two phases.\n\nDefault (no confirm): returns a dry-run preview listing every file that would be overwritten — commands, docs, pointer stub, MCP config, and IDE config. No files are written.\n\nWith confirm: true: overwrites all methodology artifacts with the canonical versions. User code and user .aide specs are never touched — only the AIDE-owned surface is replaced.\n\nUpgrade surface (everything in this list may be overwritten):\n- Slash commands for all pipeline phases\n- Canonical methodology docs under .aide/docs/\n- AIDE pointer stub in the agent config file\n- MCP server entry in the project's MCP config\n- IDE file association config (unless skipIde is set)\n\nIf you have edited any commands, docs, or the pointer stub directly, those customizations will be lost. Customizations belong in your user .aide specs and application code, not in the methodology artifacts.\n\nSupports Claude Code (CLAUDE.md), Cursor (.cursorrules), Windsurf (.windsurfrules), and Copilot (.github/copilot-instructions.md). Auto-detects the framework or accepts an override.",
+			inputSchema: {
+				type: "object" as const,
+				properties: {
+					confirm: {
+						type: "boolean",
+						description:
+							"When false (default), returns a dry-run preview. When true, overwrites methodology artifacts with canonical versions.",
+					},
+					framework: {
+						type: "string",
+						enum: ["claude", "cursor", "windsurf", "copilot"],
+						description:
+							"Force a specific framework instead of auto-detecting. Auto-detection checks for framework-specific files/directories and defaults to Claude Code.",
+					},
+					path: {
+						type: "string",
+						description: "Custom project root path (defaults to server working directory)",
+					},
+					skipIde: {
+						type: "boolean",
+						description: "Skip IDE file association configuration (Zed settings, VS Code extension)",
+					},
+				},
+			},
+		},
+		{
 			name: "aide_init",
 			description:
-				"Bootstrap the AIDE development environment into a project. This is the one-command setup that installs a short AIDE pointer stub into the agent's config file, lands the full canonical methodology as a progressively-disclosed doc hub under the host's `.aide/` folder, scaffolds slash commands for every pipeline phase (research, spec, plan, build, QA, fix), and wires this MCP server into the project's MCP config.\n\nMethodology delivery is split on purpose: the config file carries only a short pointer stub that names the `.aide/` hub and tells the agent to crawl it before writing or acting on any `.aide` file — so non-AIDE sessions pay almost nothing to carry it. The full canonical docs live under `.aide/` on the host's disk, where the agent reads them on demand, the same way the `study-playbook` pattern works against external knowledge bases.\n\nSupports Claude Code (CLAUDE.md), Cursor (.cursorrules), Windsurf (.windsurfrules), and Copilot (.github/copilot-instructions.md). Auto-detects the framework or accepts an override.\n\nEach step is idempotent — running aide_init on an already-initialized project reports what's present without overwriting. After initialization, every agent session starts with the AIDE pointer stub in its config context, the full methodology sitting in `.aide/` on disk, slash commands for each pipeline phase, and MCP tools for discovery/reading/scaffolding/validation.",
+				"Bootstrap the AIDE development environment into a project. This is the one-command setup that installs a short AIDE pointer stub into the agent's config file, lands the full canonical methodology (seven canonical methodology docs) as a progressively-disclosed doc hub under the host's `.aide/` folder, scaffolds slash commands for every pipeline phase (research, spec, synthesize, plan, build, QA, fix) plus the /aide orchestrator entry point, and wires this MCP server into the project's MCP config.\n\nMethodology delivery is split on purpose: the config file carries only a short pointer stub that names the `.aide/` hub and tells the agent to crawl it before writing or acting on any `.aide` file — so non-AIDE sessions pay almost nothing to carry it. The full canonical docs live under `.aide/` on the host's disk, where the agent reads them on demand, the same way the `study-playbook` pattern works against external knowledge bases.\n\nSupports Claude Code (CLAUDE.md), Cursor (.cursorrules), Windsurf (.windsurfrules), and Copilot (.github/copilot-instructions.md). Auto-detects the framework or accepts an override.\n\nEach step is idempotent — running aide_init on an already-initialized project reports what's present without overwriting. After initialization, every agent session starts with the AIDE pointer stub in its config context, the full methodology sitting in `.aide/` on disk, slash commands for each pipeline phase, and MCP tools for discovery/reading/scaffolding/validation.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -158,6 +188,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		case "aide_init": {
 			const parsed = InitInput.parse(args);
 			const result = await init(root, parsed.framework, parsed.path, parsed.skipIde);
+			return { content: [{ type: "text", text: result }] };
+		}
+		case "aide_upgrade": {
+			const parsed = UpgradeInput.parse(args);
+			const result = await upgrade(root, parsed.confirm, parsed.framework, parsed.path, parsed.skipIde);
 			return { content: [{ type: "text", text: result }] };
 		}
 		default:

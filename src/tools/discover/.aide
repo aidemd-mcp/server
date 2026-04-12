@@ -20,7 +20,7 @@ outcomes:
       reading the description learn the call-shallow-then-drill pattern and
       carry it into how they approach the rest of the codebase.
     - Output is a single human-readable tree the agent can scan visually,
-      with type tags (`[intent]`, `[research]`, `[todo]`) and inline summaries
+      with type tags (`[intent]`, `[research]`, `[plan]`, `[todo]`) and inline summaries
       only when summaries exist.
   undesired:
     - A shallow call that reads any file contents. The whole point of the

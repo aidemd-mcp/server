@@ -1,12 +1,12 @@
 ---
 scope: src/tools/init/scaffoldCommands
 intent: >
-  scaffoldCommands installs the six AIDE pipeline slash commands
-  (research, spec, plan, build, qa, fix) into an `aide/` subfolder
+  scaffoldCommands installs the seven AIDE pipeline slash commands
+  (research, spec, synthesize, plan, build, qa, fix) into an `aide/` subfolder
   of the host framework's command directory. Each command file is a
   faithful render of a canonical command template that lives under
   docs/commands/aide/, read at runtime through initContent. These
-  six scaffolded files are the entire runtime of the AIDE pipeline
+  seven scaffolded files are the entire runtime of the AIDE pipeline
   in a host project — every pipeline phase the maintainer documents
   only becomes executable in a host project because this helper put
   the slash command there. The `aide/` subfolder is load-bearing:
@@ -15,15 +15,14 @@ intent: >
   becomes `/aide:research` in the host.
 outcomes:
   desired:
-    - Exactly six slash command files are scaffolded under an
-      `aide/` subfolder, one per pipeline phase: research, spec,
-      plan, build, qa, fix. The count is capped because pipeline-
-      phase dilution at the command layer is the same regression as
-      tool-surface dilution at the handshake layer. The filenames
-      are bare phase names (`research.md`, not `aide-research.md`)
-      because the enclosing `aide/` folder already carries the
-      namespace — double-naming would produce `/aide:aide-research`
-      on the host side.
+    - One slash command file is scaffolded per pipeline phase under an
+      `aide/` subfolder: research, spec, synthesize, plan, build, qa, fix.
+      Each command covers a distinct phase with no overlap; the set is
+      defined by the canonical command templates under docs/commands/aide/,
+      not by a hardcoded count. The filenames are bare phase names
+      (`research.md`, not `aide-research.md`) because the enclosing
+      `aide/` folder already carries the namespace — double-naming would
+      produce `/aide:aide-research` on the host side.
     - Each command file is a byte-faithful render of its canonical
       template read from docs/commands/aide/ at runtime. A diff
       between an installed command file and its template shows only
@@ -46,19 +45,22 @@ outcomes:
       template is authoritative." It is authoritative for new
       installs only. User customizations survive; the re-run reports
       `exists`, not `updated`.
-    - A seventh slash command added because a pipeline-phase
-      responsibility "felt different" from the existing six.
-      Pipeline dilution at the command layer fragments the workflow
-      and forces the agent to guess which command to run.
+    - A phase slash command added to this helper because a pipeline-phase
+      responsibility "felt different" from the existing phases, when the
+      responsibility could be absorbed by an existing phase command without
+      overlap. Pipeline dilution at the command layer fragments the
+      workflow and forces the agent to guess which command to run.
+      (The orchestrator `/aide`, scaffolded as `aide.md` at the command
+      directory root by a separate part of init, is not a phase command.)
     - Scaffolding into the command directory root instead of an
       `aide/` subfolder, producing flat filenames like
       `aide-research.md` that collide with the host's other commands
       and lose the namespace grouping the canonical docs mandate.
       The folder-as-namespace layout is the only correct shape.
     - A run that fails the whole step if one command template is
-      missing. Each of the six commands is independently installable
-      and independently reportable; one missing template is one
-      failed command, not a cascade failure.
+      missing. Each command is independently installable and
+      independently reportable; one missing template is one failed
+      command, not a cascade failure.
     - Scaffolding commands directly from disk reads of docs/. This
       helper must go through initContent; bypassing it breaks the
       single-reader invariant the init subtree depends on.
@@ -78,10 +80,10 @@ happens.
 
 Each command file is small and discrete — one pipeline phase, one
 checklist — but together they are load-bearing: delete any one of
-them and the pipeline has a hole. The six-count cap is not
-cosmetic; it enforces that the pipeline has exactly the phases the
-canonical docs describe, and no agent, command, or human can dilute
-it by adding a seventh.
+them and the pipeline has a hole. The phase set is defined by the
+canonical docs, and no agent, command, or human can dilute it by
+adding an overlapping phase without updating the canonical templates
+and the parent spec to justify the addition.
 
 ## Strategy
 
@@ -111,20 +113,22 @@ first-class and survive re-runs unconditionally. A future explicit
 `aide_upgrade` path can handle intentional re-sync; this helper
 never performs one by accident.
 
-**Six commands, counted and named.** The helper iterates over a
-fixed list of six canonical command names. Adding a seventh requires
-adding a seventh canonical template under docs/commands/aide/,
-updating the parent spec to justify the new phase, and changing the
-list here. All three changes land in the same PR or none of them
-do — this is the three-way lock the canonical command-hub spec
-declares mandatory. A helper that discovers its command list
-dynamically from the docs folder is a regression, because it lets
-a stray Markdown file in the wrong place silently expand the
-pipeline.
+**Phase commands are enumerated from a fixed list, not discovered
+dynamically.** The helper iterates over a fixed list of canonical command
+names. Adding a new phase requires adding a canonical template under
+docs/commands/aide/, updating the parent spec to justify the new phase,
+and extending the list here. All three changes land in the same PR or
+none of them do — this is the three-way lock the canonical command-hub
+spec declares mandatory. A helper that discovers its command list
+dynamically from the docs folder is a regression, because it lets a stray
+Markdown file in the wrong place silently expand the pipeline. Note: the
+orchestrator `/aide` is scaffolded as `aide.md` at the command directory
+root by a separate part of init — it is not a phase command and not in
+this helper's list.
 
 **Per-command status, not a single aggregate.** Each install reports
 its own result. The init summary needs to show "research: created,
-spec: exists, plan: created, build: created, qa: created, fix: exists"
+spec: exists, synthesize: created, plan: created, build: created, qa: created, fix: exists"
 so a developer reading the output knows exactly which files are new
 on this run. A single aggregate status hides the mix and forces the
 developer to inspect the directory manually.
@@ -132,9 +136,9 @@ developer to inspect the directory manually.
 ## Good examples
 
 A host project runs `aide_init` for the first time. The scaffold
-helper reads six templates from docs/commands/aide/ through
-initContent, writes six files into `.claude/commands/aide/` (or
-the equivalent for the detected framework), and returns six
+helper reads seven templates from docs/commands/aide/ through
+initContent, writes seven files into `.claude/commands/aide/` (or
+the equivalent for the detected framework), and returns seven
 `created` statuses. The init summary lists each command by name
 with its status. The developer can immediately type `/aide:research`
 in their next session and the pipeline begins.
@@ -143,7 +147,7 @@ A developer has customized `.claude/commands/aide/build.md` to add
 project-specific build steps. They run `aide_init` again to pick up
 a new MCP server registration. The scaffold helper sees the
 existing build file, reports `exists`, and leaves the customization
-intact. The other five commands also report `exists`. The
+intact. The other six commands also report `exists`. The
 developer's customization survived, and the re-run was safe.
 
 A maintainer edits the canonical research template in
@@ -183,13 +187,13 @@ contract with the canonical command-hub spec, and it was skipped.
 
 A scaffold helper that walks the docs/commands/aide/ directory at
 runtime and installs every .md file it finds. A stray scratch file
-committed to docs/commands/aide/ accidentally ships as a seventh
-slash command. The six-cap invariant was enforced nowhere, the
+committed to docs/commands/aide/ accidentally ships as an extra
+slash command. The fixed-list invariant was enforced nowhere, the
 pipeline dilutes silently, and nobody notices until an agent runs
 `/aide:wip` expecting something real.
 
 A scaffold helper that catches a missing template for one command
-and aborts the whole step, returning zero installs. The other five
+and aborts the whole step, returning zero installs. The other six
 commands could have been written successfully; instead the host
 project has a broken init and no pipeline at all, because one
 template was misplaced. Independent per-command reporting was the

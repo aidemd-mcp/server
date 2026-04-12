@@ -12,13 +12,13 @@ intent: >
   doctrine is allowed to live inside this submodule's source code.
 outcomes:
   desired:
-    - Five tools cover the full AIDE lifecycle with no overlap — discover
-      (map), read (drill in), scaffold (create with naming enforcement),
-      validate (health check), init (one-command bootstrap). The surface
-      is capped at five.
+    - The tool surface covers the full AIDE lifecycle — discover (map),
+      read (drill in), scaffold (create with naming enforcement), validate
+      (health check), init (one-command bootstrap). Each tool covers a
+      distinct lifecycle phase with no overlap between them.
     - Every tool description is complete enough to teach the convention it
       invokes on its own. An agent reading only the tool list learns what
-      `.aide` files are, the four file types, the never-both-.aide-and-
+      `.aide` files are, the five file types, the never-both-.aide-and-
       intent.aide naming rule, the next-to-orchestrators placement rule,
       and the read-specs-before-code workflow. No "see docs", no
       abbreviation, no assumed prior knowledge.
@@ -59,9 +59,11 @@ outcomes:
       with stacked pointer stubs, duplicated doc-hub files, duplicated
       slash commands, or a broken .mcp.json is a corrupted project,
       not an initialized one.
-    - A sixth tool added to the surface because a responsibility "didn't
-      quite fit" one of the five. Dilution of the teaching surface is a
-      regression even when the new tool is technically correct.
+    - A tool added to the surface because a responsibility "didn't quite
+      fit" an existing tool, when the responsibility could be absorbed
+      by one of the existing tools without overlap. Redundant tool surface
+      fragments the handshake and forces agents to guess which tool to
+      call.
     - Truncated descriptions justified by "token budget." Tokens spent
       teaching are recovered every time an agent doesn't have to fetch
       an external doc or silently violate the convention.
@@ -117,12 +119,12 @@ brain: a shallow pointer surface that enumerates a deep content surface,
 with the agent crawling on demand instead of carrying everything on
 every read.
 
-**Five tools, one per lifecycle phase, no more.** Discover is the map;
-read is the drill; scaffold is the pen; validate is the health check;
-init is the bootstrap. Adding a sixth tool requires showing that none of
-the five can absorb the responsibility. Fewer tools means less surface
-for an agent to get wrong and less description budget competing for
-attention at handshake time.
+**Each tool covers a distinct lifecycle phase with no overlap.** Discover
+is the map; read is the drill; scaffold is the pen; validate is the health
+check; init is the bootstrap. Adding a new tool requires showing that no
+existing tool can absorb the responsibility without overlap. A tighter
+surface means less for an agent to get wrong and less description budget
+competing for attention at handshake time.
 
 **Client parity via MCP, not per-client shims.** The server speaks
 standard MCP over stdio. All client-specific branching lives in
@@ -143,10 +145,11 @@ A new agent connects to aidemd-mcp for the first time and, before
 touching a single file, reasons:
 
 > There are .aide spec files next to orchestrator code that I should
-> read before I read the code. Four types exist: `.aide` is the default
+> read before I read the code. Five types exist: `.aide` is the default
 > intent spec; `intent.aide` is the same thing renamed when a
 > `research.aide` sits alongside; `research.aide` holds raw research;
-> `todo.aide` is a QA queue. I must never see both `.aide` and
+> `plan.aide` is the architect's checkboxed implementation plan;
+> `todo.aide` is a QA re-alignment document. I must never see both `.aide` and
 > `intent.aide` in the same folder. My workflow is: call `aide_discover`
 > with no path for the project map, then drill into the relevant subtree
 > with a path, then `aide_read` specific specs as needed.
@@ -159,8 +162,8 @@ A user runs `aide_init` on a fresh project and gets back a summary like:
 
 > Detected framework: Claude Code.
 > Created CLAUDE.md with AIDE pointer stub naming the doc hub at .aide/.
-> Installed .aide/ doc hub with five canonical methodology docs and a hub index.
-> Created slash commands for research, spec, plan, build, QA, and fix phases.
+> Installed .aide/ doc hub with seven canonical methodology docs and a hub index.
+> Created slash commands for research, spec, synthesize, plan, build, QA, and fix phases.
 > Wired aidemd-mcp into .mcp.json.
 > Configured .zed/settings.json to render .aide as Markdown.
 > Skipped VS Code extension — `code` CLI not on PATH.
@@ -215,8 +218,8 @@ doctrine on every open, and the refactor that this shape was meant
 to enforce has been quietly reversed at the delivery layer while
 passing every test.
 
-A sixth tool — say `aide_lint` — added to the surface because validation
-rules "felt different" from health checks. Both tools show up in the
-handshake, overlap in responsibility, and the agent has to guess which
-one to call. The teaching surface has been diluted for no gain, because
-the responsibility should have lived inside validate.
+A tool — say `aide_lint` — added to the surface because validation rules
+"felt different" from health checks. Both tools show up in the handshake,
+overlap in responsibility, and the agent has to guess which one to call.
+The surface has been diluted for no gain, because the responsibility should
+have lived inside validate.

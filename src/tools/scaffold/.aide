@@ -26,6 +26,9 @@ outcomes:
     - type=todo creates `todo.aide` unconditionally. todo specs are
       orthogonal to the intent/research pair and have no naming
       interaction with them.
+    - type=plan creates `plan.aide` unconditionally. plan specs are
+      orthogonal to the intent/research pair and have no naming
+      interaction with them.
     - Re-running scaffold on a folder that already contains the
       requested spec reports "no changes needed" and leaves every file
       on disk untouched.
@@ -67,6 +70,9 @@ when they have the full convention loaded in their head; agents
 cannot, because every session starts cold. This tool is where the
 rule is implemented once, so the rest of the system can trust that a
 spec created through scaffold is a spec that obeys the convention.
+`todo.aide` and `plan.aide` sit outside this rename machinery
+entirely — they are orthogonal file types with fixed names that are
+always safe to create without consulting the intent/research layout.
 
 ## Strategy
 
@@ -123,6 +129,15 @@ already contains `research.aide`. The response is:
 The caller asked for "intent"; the tool resolved the ambiguity using
 the naming rule and told the caller exactly which filename it picked
 and why.
+
+An agent calls `aide_scaffold` with `type=plan` on any folder. The
+response is:
+
+> Created plan.aide
+
+The folder's intent/research layout is untouched. `plan.aide` is
+always created under its fixed name regardless of what other specs
+are present.
 
 An agent calls `aide_scaffold` a second time on a folder that is
 already fully scaffolded. The response is:

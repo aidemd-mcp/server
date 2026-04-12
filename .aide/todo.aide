@@ -1,0 +1,47 @@
+---
+intent: >
+  Canonical docs updated in c32e887 (orchestrator, synthesize phase, plan.aide
+  spec, todo.aide spec, expanded file-type table, seven-doc hub) but downstream
+  .aide intent specs still reference the pre-commit state: four file types
+  instead of five, six pipeline commands instead of seven-plus, five canonical
+  docs instead of seven, and todo.aide described as a "QA queue" instead of a
+  re-alignment document. The specs no longer faithfully reflect the methodology
+  they are supposed to deliver.
+misalignment:
+  - implementation-drift
+---
+
+## Issues
+
+- [x] **src/.aide:21** — Teaches "the four file types" in tool descriptions; canonical `aide-spec.md` now defines five file types (`.aide`, `intent.aide`, `research.aide`, `plan.aide`, `todo.aide`).
+      Traces to: `outcomes.desired[2]` | Misalignment: `implementation-drift`
+
+- [x] **src/.aide:149-152** — Good example describes `todo.aide` as "a QA queue". Canonical docs redefine it as a "QA re-alignment document" with misalignment tags and a `## Retro` section.
+      Traces to: `outcomes.desired[2]` | Misalignment: `implementation-drift`
+
+- [x] **src/tools/init/.aide:33-34** — References "six pipeline slash commands (research, spec, plan, build, qa, fix)". Canonical pipeline now includes a synthesize phase (`/aide:synthesize`) and an orchestrator entry point (`/aide`).
+      Traces to: `outcomes.desired[3]` | Misalignment: `implementation-drift`
+
+- [x] **src/tools/init/.aide:194-209** — Good examples list exactly six scaffolded commands and six "already present" lines. Missing synthesize phase; summary shape no longer matches what init actually produces after the doc update.
+      Traces to: `outcomes.desired[2]` | Misalignment: `implementation-drift`
+
+- [x] **src/tools/init/scaffoldCommands/.aide:1-4** — Intent says "six AIDE pipeline slash commands (research, spec, plan, build, qa, fix)" and enforces a six-cap throughout. The canonical pipeline now has seven phase commands (adding synthesize). The "six-cap" language on lines 20, 81, 114, 116 is all stale.
+      Traces to: `outcomes.desired[3]` | Misalignment: `implementation-drift`
+
+- [x] **src/tools/init/installMethodologyDocs/.aide:101** — Context says "five canonical files under `docs/`". The hub index now lists seven docs (added `plan-aide.md` and `todo-aide.md`). The number "five" also appears in the bad-examples section (line 255) and good-examples section (line 198).
+      Traces to: `outcomes.desired[1]` | Misalignment: `implementation-drift`
+
+- [x] **src/tools/discover/.aide:23** — Type tags listed as `[intent]`, `[research]`, `[todo]`. Missing `[plan]` tag for the new `plan.aide` file type.
+      Traces to: `outcomes.desired[2]` | Misalignment: `implementation-drift`
+
+- [x] **src/tools/scaffold/.aide:1-28** — Supports types: intent, research, both, todo. Does not support `type=plan` for creating `plan.aide` files. The canonical `aide-spec.md` file-type table now includes `plan.aide` as a first-class file type that scaffold should know how to create.
+      Traces to: `outcomes.desired[1]` | Misalignment: `implementation-drift`
+
+## Retro
+
+Every issue traces to a single cause: the canonical docs were updated in one commit but the downstream `.aide` specs that encode the same facts were not updated in the same commit. The commit changed the source of truth; the renderers of that truth were left behind.
+
+What would have caught this earlier:
+- A pre-commit check (or a QA pass scoped to `.aide` files) that runs `aide_validate` and flags specs whose file-type counts, command counts, or doc counts disagree with the canonical docs.
+- A convention that any commit touching `.aide/docs/` also touches every downstream `.aide` that references the changed facts — enforced by review checklist, not tooling, until tooling can do it.
+- The orchestrator `/aide` could have been used to drive the doc change itself, which would have surfaced the propagation gap at the plan stage before code was written.

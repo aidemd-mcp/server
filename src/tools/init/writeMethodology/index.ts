@@ -51,7 +51,7 @@ async function safeReadFile(path: string): Promise<string> {
  * STUB_TEMPLATE with the host-side hub path substituted in; marker
  * comments wrap it for idempotency detection.
  */
-function composeStub(docHubDir: string): string {
+export function composeStub(docHubDir: string): string {
 	const marker = getMethodologyMarker();
 	const body = STUB_TEMPLATE.replaceAll(HUB_PATH_PLACEHOLDER, docHubDir);
 	return `${marker}\n${body}\n${marker}`;

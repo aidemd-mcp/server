@@ -71,7 +71,7 @@ describe("scaffold", () => {
 		expect(files).toContain("todo.aide");
 
 		const content = await readFile(join(tempDir, "todo.aide"), "utf-8");
-		expect(content).toContain("QA Checklist");
+		expect(content).toContain("QA Re-alignment Document");
 	});
 
 	it("creates directory if it does not exist", async () => {

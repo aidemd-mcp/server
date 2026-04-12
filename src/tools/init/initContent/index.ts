@@ -44,6 +44,10 @@ const DOC_PATHS = {
 	"commands/aide/build": ".claude/commands/aide/build.md",
 	"commands/aide/qa": ".claude/commands/aide/qa.md",
 	"commands/aide/fix": ".claude/commands/aide/fix.md",
+	"plan-aide": ".aide/docs/plan-aide.md",
+	"todo-aide": ".aide/docs/todo-aide.md",
+	"commands/aide/synthesize": ".claude/commands/aide/synthesize.md",
+	"commands/aide/aide": ".claude/commands/aide.md",
 } as const;
 
 export type CanonicalDocName = keyof typeof DOC_PATHS;
@@ -75,6 +79,8 @@ const METHODOLOGY_DOCS: readonly MethodologyDocEntry[] = [
 	{ canonical: "progressive-disclosure", hostFilename: "progressive-disclosure.md" },
 	{ canonical: "agent-readable-code", hostFilename: "agent-readable-code.md" },
 	{ canonical: "automated-qa", hostFilename: "automated-qa.md" },
+	{ canonical: "plan-aide", hostFilename: "plan-aide.md" },
+	{ canonical: "todo-aide", hostFilename: "todo-aide.md" },
 ];
 
 /** Per-process cache. Populated from disk reads in this process only — never

@@ -8,11 +8,13 @@ import { SKIP_DIRS } from "@/types/index.js";
  * - `.aide` or `intent.aide` → "intent"
  * - `research.aide` → "research"
  * - `todo.aide` → "todo"
+ * - `plan.aide` → "plan"
  */
 export function classifyFile(filename: string): AideFileType {
 	const base = basename(filename);
 	if (base === "research.aide") return "research";
 	if (base === "todo.aide") return "todo";
+	if (base === "plan.aide") return "plan";
 	return "intent";
 }
 

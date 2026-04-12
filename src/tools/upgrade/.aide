@@ -1,0 +1,261 @@
+---
+scope: src/tools/upgrade
+intent: >
+  aide_upgrade is the explicit "bring this host project up to date with
+  canonical" tool. It exists because aide_init is idempotent and never
+  overwrites existing files — which protects customizations but means
+  host projects get stale when canonical docs, commands, or the pointer
+  stub are updated upstream. aide_upgrade closes that gap: it replaces
+  every driftable methodology artifact on the host's disk with the
+  current canonical version, reports what changed, and warns before it
+  does so. A two-phase dry-run-then-confirm flow gives the caller a
+  chance to review the damage before any file is touched.
+outcomes:
+  desired:
+    - Without `confirm: true`, the tool returns a dry-run preview
+      listing every upgradable file with a prospective status —
+      `would update` (content differs from canonical), `unchanged`
+      (already matches canonical), or `would create` (missing on
+      host) — plus an explicit warning that customizations to
+      commands and docs will be overwritten on confirm. No file on
+      disk is modified during dry-run.
+    - With `confirm: true`, every methodology artifact is overwritten
+      with the current canonical version in a single pass — every
+      pipeline slash command (the orchestrator entry point and all
+      phase commands), every methodology doc in the `.aide/docs/`
+      hub, the hub index, the pointer stub's marker-bounded region
+      in the host's config file, the MCP server registration, and
+      IDE configuration. The upgrade surface is all-or-nothing;
+      there is no per-file opt-out.
+    - After upgrading, each file is reported with a final status:
+      `updated` (content differed and was replaced), `unchanged`
+      (already matched canonical), or `created` (was missing and
+      has been written, same as init would do). The caller reads
+      the summary once and knows exactly what changed on disk.
+    - Files outside the methodology surface are never touched. User
+      code, user `.aide` specs, and any file not installed by
+      aide_init are invisible to this tool.
+    - The dry-run warning is unambiguous: it names the specific
+      categories of files that will be overwritten and states that
+      any local customizations in those files will be lost. The
+      agent calling the tool is expected to present this warning to
+      the user before confirming.
+  undesired:
+    - An upgrade that silently overwrites files without a prior
+      dry-run preview. The two-phase flow exists because the tool
+      destructively replaces content the user may have customized;
+      skipping the preview turns a controlled upgrade into a
+      surprise data loss.
+    - An upgrade that touches user code, user `.aide` specs, or
+      any file outside the methodology surface. The upgrade scope
+      is the set of files aide_init installed — nothing else.
+    - A dry-run that modifies files on disk. The preview phase is
+      read-only; any side effect during dry-run is a bug, not an
+      optimization.
+    - An upgrade that offers per-file granularity — "update this
+      doc but keep that command." Partial upgrades create a host
+      whose methodology artifacts are at mixed versions, which is
+      harder to reason about than either fully-stale or
+      fully-current. All-or-nothing is the deliberate constraint.
+    - A dry-run whose warning is vague ("some files may change")
+      or absent. The warning must name the artifact categories and
+      state that customizations will be lost, because the caller
+      needs that information to make an informed confirm decision.
+    - An upgrade that reports only a success/failure boolean instead
+      of per-file statuses. The caller needs to know which files
+      actually changed, which were already current, and which were
+      newly created — the same reporting shape aide_init provides.
+---
+
+## Context
+
+aide_init is deliberately conservative: if a file exists, it stays. That
+invariant protects every customization the user has made to slash commands,
+methodology docs, even the pointer stub. But it also means a host project
+initialized six months ago still carries the six-month-old versions of
+every artifact init installed. When a canonical doc is rewritten, a command
+template is expanded, or the pointer stub learns a new teaching sentence,
+init has no path to deliver the update — re-running it just reports
+"already exists" for every step. The host drifts silently, and the drift
+compounds with every upstream improvement.
+
+aide_upgrade is the controlled demolition that closes this gap. It
+deliberately does what init deliberately refuses to do: overwrite every
+methodology artifact with the current canonical version. The two tools
+form a complementary pair — init is safe to run without thinking, upgrade
+is safe to run after thinking. The two-phase dry-run-then-confirm flow is
+the mechanism that converts "after thinking" from a social contract into a
+tool-enforced one: the caller always sees the blast radius before any file
+is touched, and must explicitly opt in to the overwrite.
+
+The upgrade surface is exactly the set of files init installs — pipeline
+slash commands, methodology docs, the hub index, the pointer stub, MCP
+wiring, IDE configuration. User code and user `.aide` specs are outside
+the surface and invisible to the tool. This boundary is load-bearing:
+upgrade must feel safe to confirm precisely because its scope is narrow
+and predictable.
+
+## Strategy
+
+**Upgrade reuses init's helpers but bypasses their skip-if-exists guard.**
+The init helpers — `writeMethodology`, `installMethodologyDocs`,
+`scaffoldCommands`, `wireMcp`, `configureIde` — already know how to read
+canonical content, resolve host paths, and write files. Each helper's
+idempotency check is what prevents init from overwriting. Upgrade calls
+the same content-reading and path-resolution logic but replaces the
+existence check with a content comparison: read the canonical version,
+read the host version, compare, and write if they differ. The helpers are
+the single source of truth for *which* files belong to the methodology
+surface; upgrade should never maintain a parallel file list.
+
+**Dry-run and confirm share a single code path with a write gate.** Both
+phases walk the same file list, read the same canonical content, and
+perform the same byte comparison against the host. The only difference is
+what happens after the comparison: dry-run records a prospective status
+(`would update`, `unchanged`, `would create`) and moves on; confirm
+records a final status (`updated`, `unchanged`, `created`) and writes the
+file. A boolean flag controls the gate. This eliminates the class of bugs
+where dry-run and confirm disagree about what would change, because they
+literally run the same logic.
+
+**Status is determined by byte comparison, not by file presence alone.**
+Init can get away with a simple existence check because it never
+overwrites. Upgrade cannot — it needs to distinguish "file exists and
+matches canonical" from "file exists and differs." The comparison is
+byte-level: read the canonical content from `readCanonicalDoc`, read the
+host file from disk, compare. If the host file is missing, the status is
+`would create` / `created`. If the bytes match, the status is `unchanged`.
+If the bytes differ, the status is `would update` / `updated`. No diffing
+algorithm is needed; the tool reports *that* files changed, not *how* they
+changed — the caller can run their own diff tool after the fact.
+
+**The pointer stub is replaced within its marker boundaries.** The stub
+lives inside a larger config file (CLAUDE.md, cursor rules, etc.) that
+contains user content outside the markers. Upgrade must replace only the
+marker-bounded region, leaving everything before the opening marker and
+after the closing marker untouched. This is the one write step that
+cannot simply overwrite the whole file — it must parse, splice, and
+rewrite. The markers are already byte-stable across refactors (init's
+`getMethodologyMarker` guarantees this), so the splice is reliable.
+
+**MCP wiring and IDE configuration follow the same overwrite-if-differs
+pattern.** The MCP config entry for the `aide` server is compared against
+the canonical shape and replaced if it differs; other servers in the
+config are untouched. Zed and VS Code configuration are re-applied
+unconditionally since they are additive (a Markdown file-type association,
+an extension install) and already idempotent in their own right.
+
+**The dry-run warning is composed, not a static string.** The warning
+enumerates the artifact categories that contain at least one `would update`
+or `would create` entry — "slash commands", "methodology docs", "pointer
+stub" — and states that local customizations in those categories will be
+lost. If every file is `unchanged`, the warning is replaced with a
+confirmation that the host is already current. This keeps the warning
+honest: it names only the categories that will actually be affected, so
+the caller is not alarmed by a generic message when only one doc has
+drifted.
+
+**All-or-nothing is enforced at the tool boundary, not at the helper
+level.** The confirm flag gates the entire upgrade — there is no
+per-helper or per-file opt-out. This is a deliberate constraint: a host
+whose methodology artifacts are at mixed canonical versions is harder to
+reason about than one that is either fully stale or fully current. The
+tool trades granularity for predictability.
+
+## Good examples
+
+A developer runs `aide_upgrade` without `confirm` on a host project that
+has drifted behind canonical:
+
+> AIDE upgrade preview (claude framework):
+>
+>   ~ Methodology pointer: would update
+>   = .aide/docs/aide-spec.md: unchanged
+>   ~ .aide/docs/aide-template.md: would update
+>   = .aide/docs/plan-aide.md: unchanged
+>   = .aide/docs/todo-aide.md: unchanged
+>   = .aide/docs/progressive-disclosure.md: unchanged
+>   = .aide/docs/agent-readable-code.md: unchanged
+>   ~ .aide/docs/automated-qa.md: would update
+>   = .aide/docs/index.md: unchanged
+>   = aide: unchanged
+>   ~ aide:research: would update
+>   = aide:spec: unchanged
+>   = aide:synthesize: unchanged
+>   = aide:plan: unchanged
+>   = aide:build: unchanged
+>   = aide:qa: unchanged
+>   = aide:fix: unchanged
+>   = MCP config: unchanged
+>   = Zed config: unchanged
+>   = VS Code extension: unchanged
+>
+>   Warning: confirming will overwrite local customizations in:
+>   methodology docs, slash commands, pointer stub.
+>
+>   To proceed, call aide_upgrade with confirm: true.
+
+The developer reviews the list, decides they are comfortable losing their
+local edits to `research.md` and the two methodology docs, and re-runs
+with `confirm: true`. The summary now reads `updated` where it previously
+read `would update`, and `unchanged` where it previously read `unchanged`.
+
+A developer runs `aide_upgrade` on a host project that is already fully
+current:
+
+> AIDE upgrade preview (claude framework):
+>
+>   All 20 methodology artifacts match canonical. Nothing to upgrade.
+
+No warning, no confirm prompt, no files touched. The tool recognized that
+the host is current and said so plainly.
+
+A developer runs `aide_upgrade` with `confirm: true` on a host that was
+initialized but is missing a newly-added command (a new pipeline phase was
+added upstream after their last init):
+
+> AIDE upgraded (claude framework):
+>
+>   = Methodology pointer: unchanged
+>   ...
+>   + aide:newphase: created
+>   ...
+>
+>   1 file created, 0 files updated, 19 files unchanged.
+
+The missing command was created with the same status label init would use.
+The upgrade surface expanded to include the new canonical artifact without
+the developer needing to re-run init.
+
+## Bad examples
+
+An upgrade that overwrites files the moment the tool is called, with no
+prior dry-run. The developer customized three slash commands over the
+past month; they are gone, and the only recovery is `git checkout`. The
+two-phase flow exists precisely to prevent this — skipping it turns a
+controlled operation into a destructive surprise.
+
+An upgrade that offers `--only=docs` or `--only=commands` flags so the
+developer can upgrade methodology docs without touching slash commands.
+The host now has docs at version N and commands at version N-2; an agent
+reading the spec references a concept the command template does not yet
+include; the mismatch surfaces as a confusing runtime failure three
+sessions later. All-or-nothing prevents mixed-version hosts.
+
+A dry-run that reports every file as `would update` because it compared
+file paths instead of file contents. The developer sees twenty files
+flagged for replacement, assumes a major upstream change, confirms, and
+finds that only two files actually differed. The comparison was presence-
+based, not content-based, and the inflated preview eroded trust in the
+tool's reporting.
+
+An upgrade that replaces the entire config file when updating the pointer
+stub, wiping out everything the user had written above and below the
+marker-bounded region. The stub replacement must splice within the
+markers; anything outside them belongs to the user.
+
+A dry-run whose warning reads "some files may be overwritten" without
+naming which categories are affected. The developer has no way to assess
+the blast radius without manually diffing each file. The warning failed
+its only job — giving the caller enough information to make an informed
+confirm decision.

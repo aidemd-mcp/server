@@ -98,7 +98,7 @@ outcomes:
 
 ## Context
 
-The AIDE methodology is a doc set — five canonical files under `docs/`
+The AIDE methodology is a doc set — seven canonical files under `docs/`
 — and before this helper existed, the only delivery mechanism for those
 files was to concatenate them into a single block inside the host's
 config file. That worked while the methodology was small, but the
@@ -195,13 +195,13 @@ failure has nothing at all.
 
 A host project runs `aide_init` for the first time. The helper asks
 initContent for the list of canonical methodology docs, receives
-six names (index plus five methodology docs), and iterates them. For
+eight names (index plus seven methodology docs), and iterates them. For
 each name it asks initContent for the doc's bytes, writes those
 bytes to the corresponding host-side file under the shared doc-hub
-path, and reports `created`. The init summary shows six `created`
+path, and reports `created`. The init summary shows eight `created`
 lines for this step alongside the methodology stub, the scaffolded
 slash commands, and the MCP wiring. The developer opens the host-
-side hub folder and sees six files whose contents are byte-identical
+side hub folder and sees eight files whose contents are byte-identical
 to the docs the maintainer edits in `.aide/docs/`.
 
 A developer re-runs `aide_init` on an already-initialized project.
@@ -222,7 +222,7 @@ A maintainer adds a new canonical methodology doc to `docs/` and
 extends initContent's enumeration API to include it. They release a
 new version of the server. On the next host-project init, this
 helper iterates the updated list without any code change of its own,
-installs the new doc alongside the five existing ones, and the hub
+installs the new doc alongside the seven existing ones, and the hub
 index now includes a link to the new doc. The change landed in one
 file (initContent's registry); this helper picked it up for free;
 the host project gained the new methodology surface without any
@@ -248,15 +248,16 @@ on the next host project fails with a file-not-found error that
 points at the wrong module.
 
 A helper that hardcodes a local array of methodology doc names —
-`["aide-spec", "aide-template", "progressive-disclosure",
-"agent-readable-code", "automated-qa"]` — inside its own source. A
-maintainer adds a sixth canonical doc to `docs/` and extends the
-initContent registry. The registry propagates through writeMethodology
-on the next build, but this helper silently continues installing five
-docs, and the hub index silently continues listing five entries. The
-new canonical doc exists in the registry and is invisible to host
-projects. The enumeration invariant has been broken by the second
-source of truth for what counts as "the methodology".
+`["aide-spec", "aide-template", "plan-aide", "todo-aide",
+"progressive-disclosure", "agent-readable-code", "automated-qa"]`
+— inside its own source. A maintainer adds an eighth canonical doc
+to `docs/` and extends the initContent registry. The registry
+propagates through writeMethodology on the next build, but this
+helper silently continues installing seven docs, and the hub index
+silently continues listing seven entries. The new canonical doc
+exists in the registry and is invisible to host projects. The
+enumeration invariant has been broken by the second source of truth
+for what counts as "the methodology".
 
 A helper that catches a read error on one canonical doc and aborts
 the whole install, returning zero files written. The host project

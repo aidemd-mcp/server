@@ -1,8 +1,8 @@
 import type { AideFile } from "@/types/index.js";
 import { basename } from "node:path";
 
-/** Sort priority for file types: intent first, then research, then todo. */
-const TYPE_ORDER = { intent: 0, research: 1, todo: 2 } as const;
+/** Sort priority for file types: intent first, then research, plan, then todo. */
+const TYPE_ORDER = { intent: 0, research: 1, plan: 2, todo: 3 } as const;
 
 /** Group files by their parent directory path. */
 function groupByDir(files: AideFile[]): Map<string, AideFile[]> {
@@ -31,7 +31,7 @@ function sortFiles(files: AideFile[]): AideFile[] {
  * Build a progressive disclosure tree string from discovered .aide files.
  * Collapses directories with no .aide files. Each entry shows:
  * - Relative path with tree-drawing characters
- * - File type tag in brackets: [intent], [research], [todo]
+ * - File type tag in brackets: [intent], [research], [plan], [todo]
  * - Truncated summary (~80 chars) from first paragraph
  */
 export default function buildTree(files: AideFile[], root: string): string {

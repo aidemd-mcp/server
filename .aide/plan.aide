@@ -1,0 +1,169 @@
+---
+intent: >
+  Bring the aidemd-mcp codebase into alignment with the canonical docs updated
+  in c32e887: five file types (adding plan), seven phase commands (adding
+  synthesize) plus the /aide orchestrator, seven canonical docs plus index
+  (adding plan-aide.md and todo-aide.md), todo.aide redefined as a QA
+  re-alignment document, and discover tags including [plan].
+---
+
+## Plan
+
+- [x] **Step 1 — src/types/index.ts line 2: expand AideFileType union.**
+      Change `"intent" | "research" | "todo"` to `"intent" | "research" | "todo" | "plan"`.
+      Update the JSDoc comment on line 1 from "The three spec types plus QA checklist"
+      to "The four spec types plus QA re-alignment document" (or equivalent wording
+      that reflects five file types total with plan included). No other changes in
+      this file.
+
+- [x] **Step 2 — src/util/classify/index.ts line 12-17: add plan.aide classification branch.**
+      Add a branch `if (base === "plan.aide") return "plan";` before the final
+      `return "intent"` fallback. Update the JSDoc on the function (lines 7-11) to
+      list all five patterns: `.aide` or `intent.aide` -> "intent", `research.aide` ->
+      "research", `todo.aide` -> "todo", `plan.aide` -> "plan". Order the branches
+      so the specific named files are checked before the catch-all intent return:
+      research, todo, plan, then fallback to intent.
+
+- [x] **Step 3 — src/tools/discover/buildTree/index.ts line 5: add plan to TYPE_ORDER.**
+      Change `{ intent: 0, research: 1, todo: 2 }` to
+      `{ intent: 0, research: 1, plan: 2, todo: 3 }`. Plan sorts after research
+      (it is the architect's artifact derived from the intent) and before todo
+      (which is the QA artifact). Update the JSDoc on line 4 to read:
+      "Sort priority for file types: intent first, then research, plan, then todo."
+      Also update the tree-rendering JSDoc on buildTree (line 34) to include `[plan]`
+      in the tag list: `[intent]`, `[research]`, `[plan]`, `[todo]`.
+
+- [x] **Step 4 — src/tools/scaffold/index.ts: add plan type and template.**
+      4a. Line 8: change the Zod enum from `["intent", "research", "both", "todo"]` to
+      `["intent", "research", "both", "todo", "plan"]`. Update the `.describe()` text
+      to mention plan.
+      4b. Add a `PLAN_TEMPLATE` constant after the existing `TODO_TEMPLATE` (after
+      line 43). Content should match the plan.aide spec format from
+      `.aide/docs/plan-aide.md` — a minimal scaffold with frontmatter `intent` field
+      and `## Plan` / `## Decisions` body sections:
+      ```
+      ---
+      intent: >
+
+      ---
+
+      ## Plan
+
+      - [ ]
+
+      ## Decisions
+
+      ```
+      4c. Line 67: change the `type` parameter signature from
+      `"intent" | "research" | "both" | "todo"` to
+      `"intent" | "research" | "both" | "todo" | "plan"`.
+      4d. Add a `plan` branch in the `if/else` chain (after the `todo` branch,
+      before `intent`). It should mirror the todo branch exactly in structure:
+      create `plan.aide` in the target directory using `PLAN_TEMPLATE`, push
+      action "Created plan.aide". Plan is orthogonal to intent/research naming
+      — no rename logic needed.
+      4e. Update the function-level JSDoc (lines 56-63) to document the new
+      `type=plan` branch: "type=plan -> creates plan.aide".
+
+- [x] **Step 5 — src/tools/init/initContent/index.ts: add plan-aide, todo-aide docs
+      and synthesize + aide orchestrator command entries.**
+      5a. DOC_PATHS (lines 34-47): add two methodology doc entries:
+      `"plan-aide": ".aide/docs/plan-aide.md"` and
+      `"todo-aide": ".aide/docs/todo-aide.md"`.
+      Add two command entries:
+      `"commands/aide/synthesize": ".claude/commands/aide/synthesize.md"` and
+      `"commands/aide/aide": ".claude/commands/aide.md"` (the orchestrator lives
+      at the commands root as `aide.md`, not inside the `aide/` subfolder — check
+      that the path `.claude/commands/aide.md` resolves correctly relative to
+      REPO_ROOT).
+      Note: the orchestrator canonical template is at `.claude/commands/aide.md`
+      which is a peer of the `aide/` folder, not inside it.
+      5b. METHODOLOGY_DOCS (lines 71-78): append two entries to the array:
+      `{ canonical: "plan-aide", hostFilename: "plan-aide.md" }` and
+      `{ canonical: "todo-aide", hostFilename: "todo-aide.md" }`.
+      These go after the existing `automated-qa` entry and before the closing
+      bracket. Keep insertion order matching the hub index reading order.
+
+- [x] **Step 6 — src/tools/init/scaffoldCommands/index.ts: add synthesize command
+      and /aide orchestrator.**
+      6a. COMMANDS array (lines 30-37): add the synthesize phase command entry:
+      `{ canonical: "commands/aide/synthesize", hostPath: "aide/synthesize.md", displayName: "aide:synthesize" }`.
+      Insert it between the `spec` entry and the `plan` entry to match pipeline
+      order: research, spec, synthesize, plan, build, qa, fix.
+      6b. Add the `/aide` orchestrator command entry:
+      `{ canonical: "commands/aide/aide", hostPath: "aide.md", displayName: "aide" }`.
+      **Important**: the orchestrator's `hostPath` is `"aide.md"` (at the command
+      directory root), NOT `"aide/aide.md"` (inside the subfolder). It is a peer
+      of the `aide/` subfolder. Place it as the first entry in the COMMANDS array
+      so it is installed and reported before the seven phase commands.
+      6c. Update the JSDoc comment on lines 9-25: change "six AIDE pipeline slash
+      commands" to "seven AIDE pipeline phase commands plus the /aide orchestrator
+      entry point". Explain that the orchestrator is installed as `aide.md` at
+      the command directory root (a peer of `aide/`), while phase commands go
+      inside `aide/`. Update any references to "six" or "six-phase cap" to
+      reflect the new count.
+
+- [x] **Step 7 — src/index.ts: update stale tool description strings.**
+      7a. `aide_discover` description (lines 34-35): where it lists file types,
+      add the plan.aide type. The current text lists four types (.aide, intent.aide,
+      research.aide, todo.aide). Add between research.aide and todo.aide:
+      `- plan.aide -- Architect's implementation plan. Checkboxed steps for the implementor.`
+      Also update the count text from "File types:" (which implies four) to
+      explicitly name all five. Update the description of todo.aide from
+      "QA checklist. Issues found by audit agents." to
+      "QA re-alignment document. Captures where implementation drifted from intent."
+      7b. `aide_read` description (line 50): change the parenthetical
+      `(intent/research/todo)` to `(intent/research/plan/todo)`.
+      7c. `aide_scaffold` description (lines 64-65): add `plan` to the Types list.
+      Add a line: `- plan -- Architect's implementation plan (no naming interaction
+      with intent/research)`. Also update the todo description from
+      "QA checklist for audit agents" to
+      "QA re-alignment document for QA agents".
+      Update the Zod enum in the inputSchema (line 75) from
+      `["intent", "research", "both", "todo"]` to
+      `["intent", "research", "both", "todo", "plan"]`.
+      7d. `aide_init` description (lines 98-99): update the text that says
+      "scaffolds slash commands for every pipeline phase (research, spec, plan,
+      build, QA, fix)" to include synthesize:
+      "scaffolds slash commands for every pipeline phase (research, spec,
+      synthesize, plan, build, QA, fix) plus the /aide orchestrator entry point".
+      Also ensure the methodology doc hub description mentions "seven canonical
+      methodology docs" (not five or six). Update "six pipeline slash commands"
+      references to "seven pipeline phase commands plus the /aide orchestrator".
+
+## Decisions
+
+**plan sorts between research and todo in TYPE_ORDER.** Plan is the architect's
+artifact that follows research synthesis and precedes implementation + QA. This
+matches the pipeline ordering: research -> synthesize -> plan -> build -> qa.
+Todo is the QA output that comes last in the lifecycle.
+
+**The orchestrator /aide is a COMMANDS entry, not a separate mechanism.** The
+scaffoldCommands helper already handles idempotent command installation. The
+orchestrator is just another command file with a different hostPath (command
+directory root instead of aide/ subfolder). Adding it to the same COMMANDS array
+avoids a second installation path and keeps reporting consistent.
+
+**The orchestrator entry goes first in the COMMANDS array.** Pipeline reporting
+order should show the entry point before the phases it routes to. This matches
+the init spec's good-example output where `aide:` appears before `aide/research:`.
+
+**PLAN_TEMPLATE follows the plan.aide spec format, not the intent template format.**
+The plan.aide canonical spec defines frontmatter with `intent` only, plus
+`## Plan` and `## Decisions` body sections. The scaffold template mirrors this
+structure with empty placeholders, same as the TODO_TEMPLATE mirrors the todo
+format.
+
+**No changes to aide_validate or aide_read.** Both tools work off the
+AideFileType union and classifyFile, which are being updated in steps 1-2.
+They will automatically handle plan.aide files once the type system includes
+"plan". No tool-specific changes needed.
+
+**The "commands/aide/aide" canonical name uses `aide` as both namespace and
+basename.** This looks redundant but is mechanically correct: the canonical
+name prefix `commands/aide/` means "lives under .claude/commands/aide/" in
+the repo, and `aide` is the bare filename. The hostPath `aide.md` (without
+the `aide/` prefix) is what places it at the command directory root on the
+host side. The asymmetry between canonical path and host path is intentional
+— the canonical source lives inside the aide/ folder in the repo, but the
+host install places it as a peer of that folder.
