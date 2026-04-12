@@ -6,7 +6,9 @@
       "Bash(rtk ls:*)",
       "Bash(rtk tsc:*)",
       "Bash(npx vitest:*)",
-      "mcp__aide__aide_validate"
+      "mcp__aide__aide_validate",
+      "mcp__aide__aide_read",
+      "mcp__aide__aide_scaffold"
     ]
   }
 }
