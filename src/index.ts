@@ -126,16 +126,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_init",
 			description:
-				"Bootstrap the AIDE development environment into a project. This is the one-command setup that installs a short AIDE pointer stub into the agent's config file, lands the full canonical methodology (seven canonical methodology docs) as a progressively-disclosed doc hub under the host's `.aide/` folder, scaffolds slash commands for every pipeline phase (research, spec, synthesize, plan, build, QA, fix) plus the /aide orchestrator entry point, and wires this MCP server into the project's MCP config.\n\nMethodology delivery is split on purpose: the config file carries only a short pointer stub that names the `.aide/` hub and tells the agent to crawl it before writing or acting on any `.aide` file — so non-AIDE sessions pay almost nothing to carry it. The full canonical docs live under `.aide/` on the host's disk, where the agent reads them on demand, the same way the `study-playbook` pattern works against external knowledge bases.\n\nSupports Claude Code (CLAUDE.md), Cursor (.cursorrules), Windsurf (.windsurfrules), and Copilot (.github/copilot-instructions.md). Auto-detects the framework or accepts an override.\n\nEach step is idempotent — running aide_init on an already-initialized project reports what's present without overwriting. After initialization, every agent session starts with the AIDE pointer stub in its config context, the full methodology sitting in `.aide/` on disk, slash commands for each pipeline phase, and MCP tools for discovery/reading/scaffolding/validation.",
+				"Bootstrap the AIDE development environment into a Claude Code project. This is the one-command setup that installs a short AIDE pointer stub into CLAUDE.md, lands the full canonical methodology docs as a progressively-disclosed doc hub under `.aide/docs/`, scaffolds slash commands for every pipeline phase (research, spec, synthesize, plan, build, QA, fix) plus the /aide orchestrator entry point, installs agent definitions and skill templates, wires this MCP server into `.mcp.json`, and provisions the brain layer (creates a minimal Obsidian vault if none exists and wires the Obsidian MCP server so agents declaring mcpServers: [obsidian] can persist and retrieve domain knowledge).\n\nMethodology delivery is split on purpose: CLAUDE.md carries only a short pointer stub that names the `.aide/docs/` hub and tells the agent to crawl it before writing or acting on any `.aide` file — so non-AIDE sessions pay almost nothing to carry it. The full canonical docs live under `.aide/docs/` on the host's disk, where the agent reads them on demand.\n\nBrain provisioning discovers the vault path via a priority chain: explicit brainPath parameter → AIDE_BRAIN_PATH environment variable → sibling my-brain/ directory next to the project → ~/my-brain. If a vault already exists, its contents are left alone. If no vault exists at the resolved path, a minimal scaffolding is created (research/, process/retro/, coding-playbook/). The Obsidian MCP server (@bitbonsai/mcpvault) is wired into .mcp.json unless it's already present there or in ~/.claude.json.\n\nEach step is idempotent — running aide_init on an already-initialized project reports what's present without overwriting. After initialization, every agent session starts with the AIDE pointer stub in CLAUDE.md, the full methodology in `.aide/docs/`, slash commands for each pipeline phase, agent definitions, skill templates, MCP tools for discovery/reading/scaffolding/validation, and brain access for research/retro/playbook agents.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
-					framework: {
-						type: "string",
-						enum: ["claude", "cursor", "windsurf", "copilot"],
-						description:
-							"Force a specific framework instead of auto-detecting. Auto-detection checks for framework-specific files/directories and defaults to Claude Code.",
-					},
 					path: {
 						type: "string",
 						description: "Custom project root path (defaults to server working directory)",
@@ -143,6 +137,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 					skipIde: {
 						type: "boolean",
 						description: "Skip IDE file association configuration (Zed settings, VS Code extension)",
+					},
+					brainPath: {
+						type: "string",
+						description: "Explicit Obsidian vault path for brain provisioning (auto-discovered if omitted via AIDE_BRAIN_PATH env var → sibling my-brain/ → ~/my-brain)",
 					},
 				},
 			},
