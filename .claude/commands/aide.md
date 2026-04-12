@@ -35,9 +35,32 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 
 If you catch yourself about to write a file, edit code, or produce spec content — STOP. That is a subagent's job. Spawn the agent instead.
 
+## HARD CONSTRAINT — Discover First
+
+**Before doing ANYTHING else, you MUST call the `aide_discover` MCP tool.**
+
+This is non-negotiable. When the user invokes `/aide`, your very first action — before asking questions, before checking files, before making any decisions — is to run `aide_discover`. This tool returns the full cascading intent tree with context specific to the AIDE methodology that native file-search tools cannot provide.
+
+**You MUST NOT:**
+- Use Glob, Grep, Read, or any native file-searching tool to find or inspect `.aide` files — `aide_discover` gives you everything you need in a richer, methodology-aware format
+- Skip the discover step because "the user already told me what they want"
+- Assume you know the state of the intent tree without running discover first
+- Make any resume or routing decisions before seeing the discover output
+
+**What discover gives you:**
+- The full cascading intent tree from root to leaves
+- The current state of every `.aide`, `plan.aide`, and `todo.aide` file
+- Which node in the tree the user's request maps to
+- Enough context to route to the correct pipeline stage without additional file reads
+
+**After running discover**, use the output to:
+1. Understand what the user is talking about and which part of the tree it refers to
+2. Determine the current pipeline state (see Resume Protocol below)
+3. Route to the correct stage
+
 ## Resume Protocol
 
-Before starting, detect the current state of the target module by checking which files exist. The file state IS the pipeline state:
+The discover output tells you the current state. The file state IS the pipeline state:
 
 | State detected | Resume from |
 |----------------|-------------|
@@ -48,8 +71,6 @@ Before starting, detect the current state of the target module by checking which
 | `plan.aide` fully checked, no `todo.aide` | **QA** — build is done |
 | `todo.aide` exists with unchecked items | **Fix** — QA found issues |
 | `todo.aide` fully checked | **Done** — promote retro to brain, report completion |
-
-Use `aide_discover` to walk the `.aide` chain and understand the intent tree before making any resume decisions.
 
 ## Pipeline
 
@@ -146,7 +167,7 @@ When all issues are resolved:
 
 - **DELEGATE EVERYTHING.** The orchestrator NEVER writes files, edits code, fills specs, creates plans, runs tests, or does any substantive work. Every phase is handled by its specialized agent via the Agent tool. This is the single most important rule. If you are tempted to "just do it quickly" — don't. Spawn the agent.
 - **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, brain notes.
-- **Use `aide_discover` liberally.** The orchestrator and every agent that reads intent must walk the `.aide` chain to understand the full intent tree.
+- **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context. Every agent that reads intent should also use it to walk the `.aide` chain.
 - **Pause for approval twice:** after spec frontmatter (Stage 1) and after plan (Stage 4). These are the two points where the user's input shapes the work.
 - **Detect and resume.** If the user runs `/aide` mid-pipeline, detect state from existing files and resume from the correct stage. Never restart from scratch if prior work exists.
 - **Research is filed by domain.** Brain notes go to `research/<domain>/`, not `research/<project>/`. The knowledge is reusable across projects.

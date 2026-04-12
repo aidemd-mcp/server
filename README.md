@@ -1,4 +1,4 @@
-# aidemd-mcp
+# @aidemd-mcp/server
 
 MCP server that teaches any agent the AIDE (Autonomous Intel-Driven Engineering) methodology. When an agent connects, the tool descriptions themselves teach the convention — no config or documentation injection needed.
 
@@ -22,7 +22,7 @@ Add to your MCP client config:
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["aidemd-mcp"]
+      "args": ["@aidemd-mcp/server"]
     }
   }
 }
@@ -35,7 +35,7 @@ Or with a custom project root:
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["aidemd-mcp", "--root", "/path/to/project"]
+      "args": ["@aidemd-mcp/server", "--root", "/path/to/project"]
     }
   }
 }

@@ -26,7 +26,7 @@ function parseRoot(): string {
 const root = parseRoot();
 
 const server = new Server(
-	{ name: "aidemd-mcp", version: "0.2.0" },
+	{ name: "@aidemd-mcp/server", version: "0.2.0" },
 	{ capabilities: { tools: {} } },
 );
 

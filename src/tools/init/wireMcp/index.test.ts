@@ -5,8 +5,8 @@ import { tmpdir, platform } from "node:os";
 import wireMcp from "./index.js";
 
 const expectedEntry = platform() === "win32"
-	? { command: "cmd", args: ["/c", "npx", "aidemd-mcp"] }
-	: { command: "npx", args: ["aidemd-mcp"] };
+	? { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }
+	: { command: "npx", args: ["@aidemd-mcp/server"] };
 
 let tempDir: string;
 
@@ -51,7 +51,7 @@ describe("wireMcp", () => {
 		const mcpPath = join(tempDir, ".mcp.json");
 		const existing = {
 			mcpServers: {
-				aide: { command: "npx", args: ["aidemd-mcp"] },
+				aide: { command: "npx", args: ["@aidemd-mcp/server"] },
 			},
 		};
 		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");

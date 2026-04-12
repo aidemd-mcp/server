@@ -4,7 +4,7 @@ import type { McpPrescription, UpgradeFileResult } from "@/types/index.js";
 /** Canonical aide server entry that upgrade checks and reports. */
 const CANONICAL_AIDE_SERVER: McpPrescription["entry"] = {
 	command: "npx",
-	args: ["aidemd-mcp"],
+	args: ["@aidemd-mcp/server"],
 };
 
 /** Read a file, returning undefined if it does not exist. */
@@ -28,8 +28,8 @@ async function safeReadFile(path: string): Promise<string | undefined> {
  * - `"differs"` when the aide entry is absent or differs. `prescription`
  *   carries the canonical server entry for the agent to merge.
  *
- * The `"aidemd-mcp"` legacy key is detected as `"differs"` so the agent
- * can migrate it to the canonical `"aide"` key.
+ * The legacy `"aidemd-mcp"` key (old unscoped package) is detected as
+ * `"differs"` so the agent can migrate it to the canonical `"aide"` key.
  */
 export default async function checkMcpConfig(
 	mcpConfigPath: string,
