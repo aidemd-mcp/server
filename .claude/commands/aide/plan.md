@@ -1,12 +1,14 @@
 # /aide-plan — Plan Phase
 
+> **Agent:** This command is executed by the `aide-architect` agent.
+
 Translate the intent spec into a step-by-step implementation plan. Output is a `plan.aide` file next to the `.aide` spec — checkboxed steps the implementor executes without making architectural decisions. See [plan.aide spec](../../.aide/docs/plan-aide.md) for the file format.
 
 ## Checklist
 
 - [ ] Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply
 - [ ] Read the complete intent spec (`.aide` or `intent.aide`) in the target module — frontmatter AND body sections must be filled. If body sections are empty, stop and escalate back to `/aide:synthesize`
-- [ ] Pull the coding playbook from the brain — naming conventions, folder structure, patterns to follow and anti-patterns to avoid
+- [ ] Pull the coding playbook from the brain using the `study-playbook` skill — naming conventions, folder structure, patterns to follow and anti-patterns to avoid
 - [ ] Scan the target module and its neighbors to understand what already exists — existing helpers to reuse, existing patterns to match, folders already in place
 - [ ] Write `plan.aide` next to the `.aide` spec with:
   - **Frontmatter:** `intent` — one-line summary of what this plan delivers

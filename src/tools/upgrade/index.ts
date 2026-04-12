@@ -5,7 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { FrameworkType, UpgradeStepResult } from "@/types/index.js";
 import detectFramework from "@/tools/init/detectFramework/index.js";
-import { readCanonicalDoc, listMethodologyDocs } from "@/tools/init/initContent/index.js";
+import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
 import { COMMANDS } from "@/tools/init/scaffoldCommands/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
@@ -233,6 +233,8 @@ export default async function upgrade(
 
 	const docHubAbsolute = join(projectRoot, config.docHubDir);
 	const commandDirAbsolute = join(projectRoot, config.commandDir);
+	const agentDirAbsolute = join(projectRoot, config.agentDir);
+	const skillDirAbsolute = join(projectRoot, config.skillDir);
 
 	const results: UpgradeStepResult[] = [];
 
@@ -261,7 +263,23 @@ export default async function upgrade(
 		results.push({ name: cmd.displayName, status });
 	}
 
-	// ── d. MCP config (inline — must not disturb other servers) ─────────────
+	// ── d. Agents ──────────────────────────────────────────────────────────
+	for (const entry of listAgents()) {
+		const hostPath = join(agentDirAbsolute, entry.hostFilename);
+		const canonical = readCanonicalDoc(entry.canonical);
+		const status = await compareFile(hostPath, canonical, confirm);
+		results.push({ name: `agents/${entry.hostFilename}`, status });
+	}
+
+	// ── e. Skills ──────────────────────────────────────────────────────────
+	for (const entry of listSkills()) {
+		const hostPath = join(skillDirAbsolute, entry.hostPath);
+		const canonical = readCanonicalDoc(entry.canonical);
+		const status = await compareFile(hostPath, canonical, confirm);
+		results.push({ name: `skills/${entry.hostPath}`, status });
+	}
+
+	// ── f. MCP config (inline — must not disturb other servers) ─────────────
 	results.push(await checkMcpConfig(join(projectRoot, config.mcpConfigPath), confirm));
 
 	// ── e. IDE config ────────────────────────────────────────────────────────
@@ -304,6 +322,14 @@ export default async function upgrade(
 	const cmdNames = new Set(COMMANDS.map((c) => c.displayName));
 	const cmdsChanged = results.some((r) => cmdNames.has(r.name) && isChanged(r.status));
 	if (cmdsChanged) affectedCategories.push("slash commands");
+
+	const agentNames = new Set(listAgents().map((e) => `agents/${e.hostFilename}`));
+	const agentsChanged = results.some((r) => agentNames.has(r.name) && isChanged(r.status));
+	if (agentsChanged) affectedCategories.push("agents");
+
+	const skillNames = new Set(listSkills().map((e) => `skills/${e.hostPath}`));
+	const skillsChanged = results.some((r) => skillNames.has(r.name) && isChanged(r.status));
+	if (skillsChanged) affectedCategories.push("skills");
 
 	const mcpChanged = results.some((r) => r.name === "MCP config" && isChanged(r.status));
 	if (mcpChanged) affectedCategories.push("MCP config");

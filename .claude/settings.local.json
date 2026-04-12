@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(rtk vitest:*)"
+      "Bash(rtk vitest:*)",
+      "mcp__aide__aide_discover",
+      "Bash(rtk ls:*)",
+      "Bash(rtk tsc:*)"
     ]
   }
 }

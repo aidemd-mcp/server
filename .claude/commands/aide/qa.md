@@ -1,5 +1,7 @@
 # /aide-qa — QA Phase
 
+> **Agent:** This command is executed by the `aide-qa` agent.
+
 Verify actual output against the intent spec. This is the QA agent phase — the session that compares the spec's `outcomes` block against actual implementation and produces a `todo.aide` re-alignment document. See [todo.aide spec](../../.aide/docs/todo-aide.md) for the file format.
 
 ## Checklist

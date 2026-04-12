@@ -24,6 +24,35 @@ createOrder/checkInventory/index.ts
 
 **The folder name is the function name.** `createOrder/checkInventory/index.ts` exports `checkInventory`. No mental mapping required — Tier 1 of progressive disclosure only works if this rule is absolute.
 
+## Cascading Domain Structure
+
+Structure cascades downward through domain layers — never flat. Each level narrows scope, and the folder path reads as a sentence describing what you're looking at.
+
+```
+# ✅ Cascading — each layer narrows scope
+cli/
+├── deploy/
+│   ├── worker/
+│   │   └── index.ts      ← cli > deploy > worker
+│   └── app/
+│       └── index.ts      ← cli > deploy > app
+├── migrate/
+│   └── index.ts
+└── index.ts               ← CLI entry point
+
+# ❌ Flat — everything at one level, names carry all the context
+cli/
+├── deployWorker.ts
+├── deployWorkerNoCache.ts
+├── deployApp.ts
+├── migrateDb.ts
+└── index.ts
+```
+
+Flat structures force redundant prefixes (`deployWorker`, `deployWorkerNoCache`, `deployApp`) because there's no hierarchy to carry context. Cascading structures let each folder carry one word of meaning, and options become siblings or flags at the right depth — not name-encoded duplicates.
+
+This applies everywhere: service modules, CLI commands, API routes, component trees. Think in layers. If you're working on something and notice a flat structure that would read better as a cascade, flag it.
+
 ## Eliminate Context Burn
 
 Context burn is any token the agent spends that doesn't help it complete the task. Common sources:

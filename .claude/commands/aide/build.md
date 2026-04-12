@@ -1,5 +1,7 @@
 # /aide-build — Build Phase
 
+> **Agent:** This command is executed by the `aide-implementor` agent.
+
 Execute the architect's implementation plan. This is the implementor phase in build mode — the session that turns `plan.aide` into working, tested code without making architectural decisions mid-session.
 
 ## Checklist

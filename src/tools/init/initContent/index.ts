@@ -48,6 +48,13 @@ const DOC_PATHS = {
 	"todo-aide": ".aide/docs/todo-aide.md",
 	"commands/aide/synthesize": ".claude/commands/aide/synthesize.md",
 	"commands/aide/aide": ".claude/commands/aide.md",
+	"agents/aide/aide-spec-writer": ".claude/agents/aide/aide-spec-writer.md",
+	"agents/aide/aide-researcher": ".claude/agents/aide/aide-researcher.md",
+	"agents/aide/aide-domain-expert": ".claude/agents/aide/aide-domain-expert.md",
+	"agents/aide/aide-architect": ".claude/agents/aide/aide-architect.md",
+	"agents/aide/aide-implementor": ".claude/agents/aide/aide-implementor.md",
+	"agents/aide/aide-qa": ".claude/agents/aide/aide-qa.md",
+	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
 } as const;
 
 export type CanonicalDocName = keyof typeof DOC_PATHS;
@@ -81,6 +88,45 @@ const METHODOLOGY_DOCS: readonly MethodologyDocEntry[] = [
 	{ canonical: "automated-qa", hostFilename: "automated-qa.md" },
 	{ canonical: "plan-aide", hostFilename: "plan-aide.md" },
 	{ canonical: "todo-aide", hostFilename: "todo-aide.md" },
+];
+
+/**
+ * An entry in the agent-doc enumeration. Consumers iterate this list to
+ * install the pipeline agent files into the host's agent directory.
+ */
+export interface AgentDocEntry {
+	readonly canonical: CanonicalDocName;
+	readonly hostFilename: string;
+}
+
+/**
+ * An entry in the skill-doc enumeration. Consumers iterate this list to
+ * install skill templates into the host's skill directory.
+ */
+export interface SkillDocEntry {
+	readonly canonical: CanonicalDocName;
+	readonly hostPath: string;
+}
+
+/**
+ * The canonical list of pipeline agent files that ship into the host's
+ * agent directory. Ordering is pipeline phase order.
+ */
+const AGENT_DOCS: readonly AgentDocEntry[] = [
+	{ canonical: "agents/aide/aide-spec-writer", hostFilename: "aide/aide-spec-writer.md" },
+	{ canonical: "agents/aide/aide-researcher", hostFilename: "aide/aide-researcher.md" },
+	{ canonical: "agents/aide/aide-domain-expert", hostFilename: "aide/aide-domain-expert.md" },
+	{ canonical: "agents/aide/aide-architect", hostFilename: "aide/aide-architect.md" },
+	{ canonical: "agents/aide/aide-implementor", hostFilename: "aide/aide-implementor.md" },
+	{ canonical: "agents/aide/aide-qa", hostFilename: "aide/aide-qa.md" },
+];
+
+/**
+ * The canonical list of skill templates that ship into the host's skill
+ * directory.
+ */
+const SKILL_DOCS: readonly SkillDocEntry[] = [
+	{ canonical: "skills/study-playbook", hostPath: "study-playbook/SKILL.md" },
 ];
 
 /** Per-process cache. Populated from disk reads in this process only — never
@@ -129,4 +175,20 @@ export function getMethodologyMarker(): string {
  */
 export function listMethodologyDocs(): readonly MethodologyDocEntry[] {
 	return METHODOLOGY_DOCS;
+}
+
+/**
+ * Return the canonical enumeration of pipeline agent files that belong in
+ * the host's agent directory.
+ */
+export function listAgents(): readonly AgentDocEntry[] {
+	return AGENT_DOCS;
+}
+
+/**
+ * Return the canonical enumeration of skill templates that belong in the
+ * host's skill directory.
+ */
+export function listSkills(): readonly SkillDocEntry[] {
+	return SKILL_DOCS;
 }

@@ -27,7 +27,7 @@ Interview the user to understand what they want to build. Ask about:
 - What does success look like? What does failure look like?
 - Any domain knowledge already available? (Skip research if so)
 
-Spin up a **Planner agent** that writes the `.aide` frontmatter only:
+Delegate to the `aide-spec-writer` agent to write the `.aide` frontmatter only:
 - `scope`, `intent`, `outcomes.desired`, `outcomes.undesired`
 - No body sections — those come from the Domain Expert after research
 
@@ -35,7 +35,7 @@ Present the frontmatter to the user for confirmation before proceeding.
 
 ### Stage 2: Research → `aide:research`
 
-Spin up a **Domain Expert agent** (fresh context) to fill the brain with domain knowledge.
+Delegate to the `aide-researcher` agent (fresh context) to fill the brain with domain knowledge.
 
 - Agent searches web, vault, MCP memory for relevant domain sources
 - Persists findings to the brain filed by **domain** (e.g., `research/email-marketing/`), not by project
@@ -43,7 +43,7 @@ Spin up a **Domain Expert agent** (fresh context) to fill the brain with domain 
 
 ### Stage 3: Synthesize → `aide:synthesize`
 
-Spin up a **Domain Expert agent** (fresh context, new instance) to complete the `.aide` body.
+Delegate to the `aide-domain-expert` agent (fresh context) to complete the `.aide` body.
 
 - Agent uses `aide_discover` to understand the intent tree
 - Reads the `.aide` frontmatter for intent
@@ -54,7 +54,7 @@ Present the completed spec to the user for review before proceeding.
 
 ### Stage 4: Plan → `aide:plan`
 
-Spin up an **Architect agent** (fresh context) to produce the implementation plan.
+Delegate to the `aide-architect` agent (fresh context) to produce the implementation plan.
 
 - Agent reads the complete `.aide` spec
 - Pulls the coding playbook from the brain
@@ -65,7 +65,7 @@ Spin up an **Architect agent** (fresh context) to produce the implementation pla
 
 ### Stage 5: Build → `aide:build`
 
-Spin up an **Implementor agent** (fresh context) to execute the plan.
+Delegate to the `aide-implementor` agent (fresh context) to execute the plan.
 
 - Agent reads `plan.aide` and the `.aide` spec
 - Executes steps top-to-bottom, checking boxes as they complete
@@ -73,7 +73,7 @@ Spin up an **Implementor agent** (fresh context) to execute the plan.
 
 ### Stage 6: QA → `aide:qa`
 
-Spin up a **QA agent** (fresh context) to verify output against intent.
+Delegate to the `aide-qa` agent (fresh context) to verify output against intent.
 
 - Agent uses `aide_discover` to walk the full `.aide` chain
 - Compares actual output against `outcomes.desired`
@@ -85,8 +85,8 @@ If no issues found, skip to completion.
 ### Stage 7: Fix loop → `aide:fix`
 
 For each unchecked item in `todo.aide`:
-- Spin up an **Implementor agent** (fresh context) to fix exactly ONE item
-- After fix, spin up **QA agent** (fresh context) to re-validate
+- Delegate to the `aide-implementor` agent (fresh context) to fix exactly ONE item
+- After fix, delegate to the `aide-qa` agent (fresh context) to re-validate
 
 Repeat until `todo.aide` is clear or a new `todo.aide` replaces it.
 

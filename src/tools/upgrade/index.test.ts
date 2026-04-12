@@ -25,7 +25,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 import detectFramework from "@/tools/init/detectFramework/index.js";
-import { readCanonicalDoc, listMethodologyDocs } from "@/tools/init/initContent/index.js";
+import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import upgrade from "./index.js";
@@ -38,6 +38,8 @@ const CLAUDE_CONFIG: FrameworkConfig = {
 	commandDir: ".claude/commands",
 	mcpConfigPath: ".mcp.json",
 	docHubDir: ".aide/docs",
+	agentDir: ".claude/agents",
+	skillDir: ".claude/skills",
 };
 
 const CURSOR_CONFIG: FrameworkConfig = {
@@ -46,6 +48,8 @@ const CURSOR_CONFIG: FrameworkConfig = {
 	commandDir: ".cursor/commands",
 	mcpConfigPath: ".cursor/mcp.json",
 	docHubDir: ".aide/docs",
+	agentDir: ".cursor/agents",
+	skillDir: ".cursor/skills",
 };
 
 /** Minimal two-entry methodology doc list returned by the mock. */
@@ -80,6 +84,8 @@ afterEach(async () => {
 function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 	vi.mocked(detectFramework).mockResolvedValue(config);
 	vi.mocked(listMethodologyDocs).mockReturnValue(MOCK_METHODOLOGY_DOCS);
+	vi.mocked(listAgents).mockReturnValue([]);
+	vi.mocked(listSkills).mockReturnValue([]);
 	vi.mocked(readCanonicalDoc).mockReturnValue("canonical content");
 }
 

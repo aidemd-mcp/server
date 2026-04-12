@@ -1,5 +1,7 @@
 # /aide-research — Research Phase (Optional)
 
+> **Agent:** This command is executed by the `aide-researcher` agent.
+
 Fill the brain with durable domain knowledge the synthesizer can later draw from. Run this phase only when the module requires domain expertise the team does not already have — skip it when the domain is already understood.
 
 ## Checklist

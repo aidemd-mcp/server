@@ -79,6 +79,10 @@ export interface FrameworkConfig {
 	 * host-side hub location across the init subtree.
 	 */
 	docHubDir: string;
+	/** Directory for agent files relative to project root. */
+	agentDir: string;
+	/** Directory for skill files relative to project root. */
+	skillDir: string;
 }
 
 /** Result of a single init step. */

@@ -1,5 +1,7 @@
 # /aide-spec — Spec Phase
 
+> **Agent:** This command is executed by the `aide-spec-writer` agent.
+
 Produce the `.aide` intent spec **frontmatter only**. This is the planner phase — the session that interviews the user and captures the intent contract. Body sections (Context, Strategy, examples) are filled later by the Domain Expert in `/aide:synthesize` after research is complete.
 
 ## Checklist

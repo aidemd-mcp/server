@@ -6,6 +6,8 @@ import { configureZed, configureVscode } from "@/tools/init/configureIde/index.j
 import writeMethodology from "./writeMethodology/index.js";
 import installMethodologyDocs from "./installMethodologyDocs/index.js";
 import scaffoldCommands from "./scaffoldCommands/index.js";
+import installAgents from "./installAgents/index.js";
+import installSkills from "./installSkills/index.js";
 import wireMcp from "./wireMcp/index.js";
 
 export const InitInput = z.object({
@@ -32,6 +34,8 @@ export default async function init(root: string, framework?: FrameworkType, path
 	const docResults = await installMethodologyDocs(join(projectRoot, config.docHubDir), config.docHubDir);
 	const methodologyResult = await writeMethodology(join(projectRoot, config.configPath), config.docHubDir);
 	const commandResults = await scaffoldCommands(join(projectRoot, config.commandDir));
+	const agentResults = await installAgents(join(projectRoot, config.agentDir));
+	const skillResults = await installSkills(join(projectRoot, config.skillDir));
 	const mcpResult = await wireMcp(join(projectRoot, config.mcpConfigPath));
 
 	const ideResults: InitStepResult[] = [];
@@ -41,7 +45,7 @@ export default async function init(root: string, framework?: FrameworkType, path
 		ideResults.push(await configureVscode(extensionsDir));
 	}
 
-	const allResults = [methodologyResult, ...docResults, ...commandResults, mcpResult, ...ideResults];
+	const allResults = [methodologyResult, ...docResults, ...commandResults, ...agentResults, ...skillResults, mcpResult, ...ideResults];
 	const allExist = allResults.every((r) => r.status === "exists" || r.status === "skipped");
 
 	if (allExist) {

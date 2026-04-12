@@ -1,5 +1,7 @@
 # /aide-fix — Fix Phase
 
+> **Agent:** This command is executed by the `aide-implementor` agent.
+
 Work one unchecked item from the `todo.aide` checklist. This is the implementor phase in fix mode — the same agent that runs `/aide:build`, invoked with a narrower scope and a stricter one-session-per-item protocol. See [todo.aide spec](../../.aide/docs/todo-aide.md) for the file format.
 
 ## Checklist

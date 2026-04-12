@@ -33,7 +33,7 @@ without re-deriving it.
 - **Every step gets a checkbox.** The implementor checks each box as it completes during `/aide:build`. Unchecked boxes are pending work; checked boxes are done.
 - **Steps execute top-to-bottom.** Sequencing is the architect's job. The implementor does not reorder, skip, or add steps. If a step is ambiguous, escalate back to `/aide:plan`.
 - **No code.** No function bodies, no worked examples, no copy-paste snippets. Steps describe decisions — file names, contracts, sequencing, reuse. The implementor writes the code.
-- **Every step traces to intent.** Each step must be traceable back to a line in the `.aide` spec or a rule in the coding playbook. If a step has no source, cut it or find the rule that justifies it.
+- **Every step traces to intent.** Each step must be traceable back to a line in the `.aide` spec, a rule in the coding playbook, or the [progressive disclosure](./progressive-disclosure.md) conventions (orchestrator/helper pattern, modularization, cascading structure). If a step has no source, cut it or find the rule that justifies it.
 - **Tests are steps.** Every behavior the spec's `outcomes.desired` names gets a corresponding test step in the plan.
 - **Decisions section is not optional.** The architect records *why* each structural choice was made. This prevents the implementor from second-guessing decisions mid-build and prevents future architects from re-debating settled choices.
 

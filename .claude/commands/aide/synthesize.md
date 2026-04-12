@@ -1,5 +1,7 @@
 # /aide-synthesize — Synthesize Phase
 
+> **Agent:** This command is executed by the `aide-domain-expert` agent.
+
 Read the intent spec's frontmatter and the brain's research, then fill in the `.aide` body sections (Context, Strategy, Good examples, Bad examples). This is a fresh Domain Expert session — it did not run the research phase and carries no prior context.
 
 ## Checklist
