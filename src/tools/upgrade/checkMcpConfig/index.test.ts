@@ -11,7 +11,7 @@ import checkMcpConfig from "./index.js";
 const mockReadFile = readFile as Mock;
 
 const MCP_PATH = "/project/.mcp.json";
-const CANONICAL_ENTRY = { command: "npx", args: ["aidemd-mcp"] };
+const CANONICAL_ENTRY = { command: "npx", args: ["@aidemd-mcp/server"] };
 
 function canonical(): string {
 	return JSON.stringify({ mcpServers: { aide: CANONICAL_ENTRY } }, null, 2) + "\n";

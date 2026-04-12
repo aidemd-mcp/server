@@ -76,7 +76,7 @@ describe("applyFiles", () => {
 
 	// ── MCP file: differs → pass through unchanged ────────────────────────────
 	it("passes through an mcp differs file unchanged with prescription intact", async () => {
-		const prescription = { key: "aide", entry: { command: "npx", args: ["aidemd-mcp"] } };
+		const prescription = { key: "aide", entry: { command: "npx", args: ["@aidemd-mcp/server"] } };
 		const file = makeFile({
 			status: "differs",
 			category: "mcp",
@@ -92,7 +92,7 @@ describe("applyFiles", () => {
 
 	// ── MCP file: missing → pass through unchanged ────────────────────────────
 	it("passes through an mcp missing file unchanged", async () => {
-		const prescription = { key: "aide", entry: { command: "npx", args: ["aidemd-mcp"] } };
+		const prescription = { key: "aide", entry: { command: "npx", args: ["@aidemd-mcp/server"] } };
 		const file = makeFile({
 			status: "missing",
 			category: "mcp",

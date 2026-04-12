@@ -20,8 +20,8 @@ async function pathExists(p: string): Promise<boolean> {
 const originalBrainPath = process.env.AIDE_BRAIN_PATH;
 
 const expectedAideMcpEntry = platform() === "win32"
-	? { command: "cmd", args: ["/c", "npx", "aidemd-mcp"] }
-	: { command: "npx", args: ["aidemd-mcp"] };
+	? { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }
+	: { command: "npx", args: ["@aidemd-mcp/server"] };
 
 let tempDir: string;
 

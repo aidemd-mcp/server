@@ -180,7 +180,7 @@ describe("upgrade", () => {
 	// ── Test 4: MCP config differs → prescription carried on the result ──────
 	it("includes prescription in mcp category when aide entry differs", async () => {
 		wireDefaultMocks();
-		const prescription = { key: "aide", entry: { command: "npx", args: ["aidemd-mcp"] } };
+		const prescription = { key: "aide", entry: { command: "npx", args: ["@aidemd-mcp/server"] } };
 		vi.mocked(checkMcpConfig).mockResolvedValue({
 			name: "MCP config",
 			filePath: join(tempDir, ".mcp.json"),

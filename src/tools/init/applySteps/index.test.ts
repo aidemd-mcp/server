@@ -126,7 +126,7 @@ describe("applySteps", () => {
 		const filePath = join(tempDir, ".mcp.json");
 		const prescription = {
 			key: "aide",
-			entry: { command: "npx", args: ["aidemd-mcp"] },
+			entry: { command: "npx", args: ["@aidemd-mcp/server"] },
 		};
 		const step: InitStep = {
 			name: "MCP config (aide)",
