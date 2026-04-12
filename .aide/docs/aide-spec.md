@@ -1,6 +1,6 @@
 # AIDE Spec
 
-**Autonomous Intent-Driven Engineering (AIDE)** is a methodology where intent — not code, not tests, not prompts — is the primary driver of every implementation decision. An intent doc lives next to the code it governs; when the intent changes, the code changes; when the code drifts from the intent, the code is wrong. The intent doc is the contract every downstream agent (architect, implementor, QA) works from.
+**Autonomous Intent-Driven Engineering (AIDE)** is a methodology where intent — not code, not tests, not prompts — is the primary driver of every implementation decision. An intent doc lives next to the code it governs; when the intent changes, the code changes; when the code drifts from the intent, the code is wrong. The intent doc is the contract every downstream agent (architect, implementor, QA) works from. Across a project, these intent docs form a **cascading intent tree**: a hierarchy of `.aide` specs rooted at the project level, where each child spec narrows the intent of its parent. The intent tree is the architecture of intent — agents navigate it from root to leaf to understand the full context of any module.
 
 The name is a double entendre. AIDE is also an **AI Domain Expert** — a research agent that lifts the domain-expertise burden off an engineering team. Building a legal processing app traditionally requires hiring a legal expert to shape requirements, catch edge cases, and translate statute into rules an engineer can implement. Building a medical triage tool traditionally requires a clinician. Building a tax system traditionally requires an accountant. AIDE collapses that role into the agent loop: the research agent reads the sources, synthesizes the findings, and persists the result to the brain as durable knowledge a later planner session can draw from when writing the `.aide` intent spec. The engineer does not need to become a legal expert. The team does not need to hire one. The brain's research plus the planner's intent spec together *are* the expertise.
 
@@ -28,7 +28,7 @@ AIDE is a three-layer model:
 
 `.aide` files live next to orchestrator `index.ts` files — **never next to helpers**. An orchestrator coordinates a pipeline; its spec provides the domain context for that pipeline. Helpers are small, focused functions — their folder name and code are self-explanatory.
 
-**Placement rule:** if a folder contains an orchestrator that coordinates helpers, it can have a `.aide`. If it contains a single-purpose helper, it doesn't.
+**Placement rule:** if a folder contains an orchestrator that coordinates helpers, it can have a `.aide`. If it contains a single-purpose helper, it doesn't. The one exception is the project root intent spec at `.aide/intent.aide` — the top of the cascading intent tree. It lives inside the `.aide/` folder because the project root has no orchestrator, and naming it `intent.aide` avoids ambiguity with the `.aide/` directory itself. All other specs inherit from it, directly or transitively.
 
 ### Inheritance
 
@@ -36,32 +36,47 @@ AIDE is a three-layer model:
 
 A submodule is any meaningful subdivision of the parent module — a pipeline stage, a strategy variant, a resource type, a rendering target, a channel, a subdomain of the problem. The tree reflects the composition of the module.
 
-### Example: nested module tree
+### Bootstrapping a project
+
+Every intent tree needs a root. The project root intent spec lives at `.aide/intent.aide` — inside the `.aide/` folder alongside the methodology docs, not as a bare file at the repo root. Its `scope` is `.` (the project root) or the project name. Its `intent` describes the project's purpose at the highest level. Its `outcomes` define the project-wide success criteria and failure modes that every deeper spec inherits.
+
+`aide_init` creates this file during project bootstrap. On the first `/aide` run against a new project, the planner creates it as Stage 1 before any module-level specs exist.
+
+Without a root intent spec, child specs have nothing to inherit from. They are forced to restate project-level context that belongs at the root — or worse, they omit it entirely, leaving gaps the architect and QA agents can't fill. The root spec establishes the project-wide contract; everything below narrows it.
+
+### Example: full project intent tree
 
 ```
-src/service/<feature>/
-├── .aide                              ← root strategy
-├── index.ts
-├── <submodule-a>/
-│   ├── .aide                          ← submodule-a strategy (inherits root)
-│   ├── index.ts
-│   ├── <submodule-a1>/
-│   │   ├── .aide                      ← submodule-a1 intent (inherits submodule-a)
-│   │   ├── index.ts
-│   │   └── <helper>/
-│   │       └── index.ts               ← helper (no .aide)
-│   ├── <submodule-a2>/
-│   │   ├── .aide
-│   │   └── index.ts
-│   └── <submodule-a3>/
-│       ├── .aide
-│       └── index.ts
-└── shared/
-    └── <helper>/
-        └── index.ts                   ← helper (no .aide)
+project-root/
+├── .aide/
+│   ├── intent.aide                    ← project root intent (top of the intent tree)
+│   └── docs/                          ← methodology docs (not specs)
+│       └── ...
+├── src/
+│   ├── .aide                          ← src-level intent (narrows project root)
+│   └── service/<feature>/
+│       ├── .aide                      ← feature strategy (narrows src-level)
+│       ├── index.ts
+│       ├── <submodule-a>/
+│       │   ├── .aide                  ← submodule-a strategy (inherits feature)
+│       │   ├── index.ts
+│       │   ├── <submodule-a1>/
+│       │   │   ├── .aide              ← submodule-a1 intent (inherits submodule-a)
+│       │   │   ├── index.ts
+│       │   │   └── <helper>/
+│       │   │       └── index.ts       ← helper (no .aide)
+│       │   ├── <submodule-a2>/
+│       │   │   ├── .aide
+│       │   │   └── index.ts
+│       │   └── <submodule-a3>/
+│       │       ├── .aide
+│       │       └── index.ts
+│       └── shared/
+│           └── <helper>/
+│               └── index.ts           ← helper (no .aide)
 ```
 
-Orchestrators have specs. Helpers don't. Deeper specs inherit from shallower ones. The shape of the tree matches the shape of the module — whatever best expresses its composition.
+The intent tree runs from `.aide/intent.aide` at the top down to the deepest feature submodule. Orchestrators have specs. Helpers don't. Deeper specs inherit from shallower ones. The shape of the tree matches the shape of the module — whatever best expresses its composition.
 
 ## Code Alongside the Spec
 
@@ -88,7 +103,9 @@ The canonical template lives at [AIDE Template](./aide-template.md). Agents shou
 
 `intent` states the purpose; `outcomes` is the intent-engineering contract that operationalizes it — desired is the target, undesired is the tripwire. Both outcome lists are two sides of the same declaration, and both must serve the intent above them.
 
-### Cascading intent
+### Cascading intent tree
+
+The **cascading intent tree** (or **intent tree**) is the hierarchy of `.aide` specs from `.aide/intent.aide` at the project root down to the deepest module-level spec. Intent flows downward: each child spec inherits everything above it and narrows it to the slice of the problem it owns. An agent navigating the intent tree reads from root to leaf — the full chain gives the complete context for any module.
 
 `intent` inherits down the tree just like the rest of the spec. A nested `.aide` doesn't restate the parent's purpose — it narrows it to the slice of the problem *this* module owns. The agent reads the parent spec first, then the child, and the child's intent is understood as a specialization of the parent.
 
@@ -106,7 +123,7 @@ A child spec should **not**:
 
 **Rule of thumb:** if a child `.aide` could be copy-pasted into a sibling folder and still make sense, it's too generic — push that content up to the parent. A child spec should only contain what's *specific to this submodule*.
 
-**Outcomes cascade strictly.** A child's outcomes don't replace the parent's — they narrow them. Every ancestor's `outcomes.desired` and `outcomes.undesired` still apply to the child's output. A submodule whose local output satisfies its own outcomes but violates a parent's intent is wrong in the context of the whole application. Agents must walk the full `.aide` chain from root to leaf (via `aide_discover`) before judging whether a module's output is valid — local validity is necessary but not sufficient.
+**Outcomes cascade strictly.** A child's outcomes don't replace the parent's — they narrow them. Every ancestor's `outcomes.desired` and `outcomes.undesired` still apply to the child's output. A submodule whose local output satisfies its own outcomes but violates a parent's intent is wrong in the context of the whole application. Agents must walk the full intent tree from root to leaf (via `aide_discover`) before judging whether a module's output is valid — local validity is necessary but not sufficient.
 
 ### Body sections (required)
 
@@ -164,13 +181,13 @@ The pipeline is driven by an **orchestrator** (`/aide`) that interviews the user
 
 2. **Domain Expert — research instance** (`/aide:research`). *Optional.* The AI domain expert. Runs only when the module requires domain knowledge the team does not already have. Ingests sources (vault notes, web search, MCP memory), synthesizes patterns, resolves conflicts, and persists the result to the brain filed by **domain** (e.g., `research/email-marketing/`), not by project — domain knowledge is reusable. If no external brain is available, falls back to a co-located `research.aide`. The research agent never writes `.aide` files; its sole output is reusable knowledge.
 
-3. **Domain Expert — synthesis instance** (`/aide:synthesize`). A fresh Domain Expert session (separate from the research instance to manage token cost). Uses `aide_discover` to walk the `.aide` chain and understand the intent tree, reads research from the brain (or `research.aide`), and fills the `.aide` body sections: `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`. Every strategy decision must trace to an outcome; anything that doesn't serve the intent gets cut.
+3. **Domain Expert — synthesis instance** (`/aide:synthesize`). A fresh Domain Expert session (separate from the research instance to manage token cost). Uses `aide_discover` to walk the intent tree, reads research from the brain (or `research.aide`), and fills the `.aide` body sections: `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`. Every strategy decision must trace to an outcome; anything that doesn't serve the intent gets cut.
 
 4. **Architect agent** (`/aide:plan`). Translates the complete `.aide` spec into a `plan.aide` — a checkboxed implementation plan the implementor executes top-to-bottom. Reads the `.aide` for what the module must produce, pulls the coding playbook from the brain for how this team writes code, and reads the current codebase for what already exists. Output: file placement, naming, sequencing, contracts, reuse decisions, test steps. No code. The plan is presented to the user for approval before build begins. See [plan.aide spec](./plan-aide.md).
 
 5. **Implementor agent** (`/aide:build`). Executes `plan.aide`. Reads the plan and the `.aide` spec, writes the code, writes the tests, checks each plan step off as it completes, runs tests until green. The same agent type also runs the fix loop (`/aide:fix`) — one session per `todo.aide` item, clean context each time. If the plan is ambiguous, escalates back to the architect rather than inventing an answer.
 
-6. **QA agent** (`/aide:qa`). Uses `aide_discover` to walk the full `.aide` chain, compares actual output against `outcomes.desired`, checks for anything in `outcomes.undesired`, and writes a `todo.aide` re-alignment document next to the spec. Each issue traces to a specific outcome and is tagged with the pipeline stage where intent was lost (`misalignment`). Includes a `## Retro` section capturing what would have caught the issues earlier. Does not propose solutions. See [todo.aide spec](./todo-aide.md).
+6. **QA agent** (`/aide:qa`). Uses `aide_discover` to walk the full intent tree, compares actual output against `outcomes.desired`, checks for anything in `outcomes.undesired`, and writes a `todo.aide` re-alignment document next to the spec. Each issue traces to a specific outcome and is tagged with the pipeline stage where intent was lost (`misalignment`). Includes a `## Retro` section capturing what would have caught the issues earlier. Does not propose solutions. See [todo.aide spec](./todo-aide.md).
 
 The fix loop cycles between QA and Implementor: QA produces `todo.aide`, the implementor fixes one item per session in clean context, QA re-validates. When all items are resolved, the orchestrator promotes the retro findings to the brain at `process/retro/` as durable process learning.
 
