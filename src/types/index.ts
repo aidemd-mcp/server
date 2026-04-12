@@ -135,10 +135,12 @@ export type InitCategory =
 	| "ide";
 
 /**
- * Status of a single init step. The tool is a planner only — it never writes.
- * These statuses reflect planning outcomes, not execution outcomes.
+ * Status of a single init step.
+ * `"would-create"`, `"would-skip"`, and `"exists"` are planning outcomes.
+ * `"created"` is an execution outcome returned by applySteps after the tool
+ * has written a file to disk during a category call.
  */
-export type InitStepStatus = "would-create" | "would-skip" | "exists";
+export type InitStepStatus = "would-create" | "would-skip" | "exists" | "created";
 
 /**
  * A single step in the init plan returned by aide_init.
@@ -160,6 +162,13 @@ export interface InitStep {
 	prescription?: McpPrescription;
 	/** True when the MCP config file exists but cannot be parsed as JSON. */
 	configMalformed?: boolean;
+	/**
+	 * CLI command the agent should execute for steps that require external
+	 * tooling (e.g. `code --install-extension <vsixPath>` for VS Code).
+	 * Present only on `would-create` IDE VS Code steps that pass through
+	 * applySteps without being written to disk.
+	 */
+	instructions?: string;
 }
 
 /**

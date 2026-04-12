@@ -1,237 +1,207 @@
 ---
 intent: >
-  Refactor aide_init from a monolithic executor returning prose into an
-  agent-driven planner returning structured JSON. The tool detects, inspects,
-  and reports; the calling agent interviews the user and applies changes.
-  MCP config changes become prescriptions. Brain vault path is never silently
-  resolved — the tool returns discovery hints for the agent to present.
+  Add "apply mode" to aide_init: when called with a `category` parameter,
+  the tool writes all would-create files to disk itself and returns a
+  lightweight manifest (no content). Fix the sentinel brain path collision
+  (todo.aide issue 7) and add test coverage for it (issue 8).
 ---
 
 ## Plan
 
-### Phase 1 — Shared types (coordinate with upgrade plan)
+### Phase 1 — Type changes
 
-- [x] **1.1 Define shared `McpPrescription` type in `src/types/index.ts`.**
-  Add a type representing a single MCP server prescription: `{ key: string;
-  entry: { command: string; args: string[] } }`. Both init and upgrade return
-  prescriptions instead of writing MCP config directly. This is the
-  single shared type that eliminates duplication of the prescription concept.
+- [x] **1.1 Add `"created"` to `InitStepStatus` in `src/types/index.ts`.**
+  The union becomes `"would-create" | "would-skip" | "exists" | "created"`.
+  `"created"` is the status returned when the tool has written a file to disk
+  during a category call. This is the only type change needed — `InitStep`
+  already has the right shape; the new status is additive.
 
-- [x] **1.2 Define `InitCategory` string literal union in `src/types/index.ts`.**
-  Values: `"framework"`, `"methodology"`, `"commands"`, `"agents"`,
-  `"skills"`, `"mcp"`, `"brain"`, `"ide"`. This is the discriminant the agent
-  uses to walk through categories with the user.
+- [x] **1.2 Add `brainPath` to `InitInput` Zod schema in `src/tools/init/index.ts`.**
+  Add `brainPath: z.string().optional().describe("Resolved brain vault path for the brain category. The agent provides this after interviewing the user.")`.
+  This parameter is required only when `category` is `"brain"` — the agent
+  passes the user-confirmed vault path so the tool can write scaffolding.
 
-- [x] **1.3 Define `InitStepStatus` string literal union in `src/types/index.ts`.**
-  Values: `"would-create"`, `"would-skip"`, `"exists"`. These replace the
-  current `InitStepResult.status` values which mix planning and execution
-  statuses. The tool is now a planner only — it never writes.
+### Phase 2 — Write-to-disk helper
 
-- [x] **1.4 Define `InitStep` interface in `src/types/index.ts`.**
-  Fields: `name: string`, `status: InitStepStatus`, `category: InitCategory`,
-  `filePath: string` (the target path on disk), `content?: string` (the
-  content to write — present for `would-create`, absent for `exists`).
-  For MCP steps, add `prescription?: McpPrescription` instead of `content`.
-  Add optional `configMalformed?: boolean` for MCP steps where the existing
-  config file cannot be parsed as JSON.
+- [x] **2.1 Create `src/tools/init/applySteps/index.ts`.**
+  Export default function `applySteps(steps: InitStep[]): Promise<InitStep[]>`.
+  For each step in the input array:
+  - If `status` is `"would-create"` and `content` is present: create parent
+    directories with `mkdir(dirname(filePath), { recursive: true })`, write
+    `content` to `filePath` via `writeFile`, return the step with `status`
+    changed to `"created"` and `content` removed.
+  - If `status` is `"would-create"` and the step is a brain vault step
+    (category `"brain"`): parse the `content` JSON array of directory names,
+    create each directory under `filePath` with `mkdir(recursive: true)`,
+    return with `status: "created"` and `content` removed.
+  - If `status` is `"exists"`, `"would-skip"`, or the step is an MCP
+    prescription (has `prescription` field): pass through unchanged. MCP
+    steps are never written by this helper — the agent merges prescriptions.
+  - If `status` is `"would-create"` and the step is an IDE VS Code step
+    (category `"ide"`, name contains "VS Code"): pass through unchanged with
+    an `instructions` field set to the `code --install-extension` command.
+    The agent executes this via shell.
+  The function never strips the `prescription` field — MCP steps keep their
+  prescription so the agent can still merge.
+  JSDoc explains that this is the "apply mode" writer — it turns plans into
+  disk state and returns the manifest the agent reports to the user.
 
-- [x] **1.5 Define `BrainHint` interface in `src/types/index.ts`.**
-  Fields: `source: "env" | "sibling" | "conventional"`, `path: string`.
-  The tool returns an array of these hints; the agent presents them as
-  suggestions and asks the user to confirm or provide a different path.
+### Phase 3 — Orchestrator changes
 
-- [x] **1.6 Define `InitResult` interface in `src/types/index.ts`.**
-  Fields: `framework: FrameworkType`, `steps: InitStep[]`,
-  `brainHints: BrainHint[]`. This is the structured JSON the tool returns.
-  No prose, no formatting.
+- [x] **3.1 Update init orchestrator signature in `src/tools/init/index.ts`.**
+  Add `brainPath?: string` as a fourth parameter to the `init` function.
+  When `brainPath` is provided, pass it to `provisionBrain` instead of using
+  the first brain hint. When `brainPath` is not provided and hints exist,
+  continue using `brainHints[0].path` for the planning check. When neither
+  is available, continue returning placeholder brain steps with empty
+  `filePath`.
 
-- [x] **1.7 Remove the old `InitStepResult` interface from `src/types/index.ts`.**
-  It is replaced by `InitStep`. All consumers will be updated in later steps.
-  Keep the removal in this step so the type system forces all callsites to
-  update.
+- [x] **3.2 Remove the sentinel brain path logic from the orchestrator.**
+  Currently when `brainHints` is empty, the orchestrator creates placeholder
+  steps with `filePath: ""`. This is correct. The old plan's issue 7 was
+  about a sentinel `join(projectRoot, "my-brain")` — that code has already
+  been replaced with the empty-string placeholder. Verify the placeholder
+  pattern is still in place and that no code path passes a fabricated path
+  to `provisionBrain`. If the empty-string pattern is intact, this step is
+  a verification-only no-op.
 
-### Phase 2 — Refactor detectFramework to separate brain resolution
+### Phase 4 — MCP handler changes
 
-- [x] **2.1 Extract `resolveBrainHints` into its own helper at
-  `src/tools/init/resolveBrainHints/index.ts`.**
-  Move the current `resolveBrainPath` logic from `detectFramework` but change
-  the return type: instead of returning a single path or undefined, return
-  `BrainHint[]` — an array of all discovered vault locations with their source
-  labels. The function checks env var, sibling path, and conventional path,
-  and returns every one that exists. The agent will present these to the user.
-  The function no longer picks a winner; it reports candidates.
+- [x] **4.1 Update the `aide_init` handler in `src/index.ts` to apply steps
+  when `category` is provided.**
+  Import `applySteps` from `@/tools/init/applySteps/index.js`.
+  In the `aide_init` case, after calling `init()`:
+  - When `parsed.category` is present: filter steps to that category (as
+    today), then pipe the filtered steps through `applySteps`. Replace
+    `result.steps` with the returned manifest. Do NOT strip content —
+    `applySteps` already removes it from written steps.
+  - When `parsed.category` is absent: strip content as today (metadata-only
+    summary).
+  Pass `parsed.brainPath` through to `init()` as the fourth argument.
 
-- [x] **2.2 Update `detectFramework/index.ts` to stop resolving brain path.**
-  Remove `brainPath` from `FrameworkConfig`. Remove the `brainPath` parameter
-  from `detectFramework`'s signature. The brain path is no longer resolved
-  during framework detection — it is resolved through agent-user conversation
-  using the hints from step 2.1. `detectFramework` returns only
-  framework-related config (framework, configPath, commandDir, mcpConfigPath,
-  docHubDir, agentDir, skillDir).
+- [x] **4.2 Update the `aide_init` tool description in `src/index.ts`.**
+  Rewrite the description to reflect apply mode. Key changes to the
+  description text:
+  - Second call (with `category`): "The tool writes all would-create files
+    to disk and returns a manifest — steps with `filePath`, `status`
+    (`created` or `exists`), and `name`, but NO `content`. The agent never
+    sees file content and never uses the Write tool for new files."
+  - MCP exception: "For MCP steps, the manifest includes `prescription`
+    data so the agent can read the existing config, merge, and write."
+  - Brain category: "When calling with `category=brain`, also pass
+    `brainPath` with the user-confirmed vault path."
+  - IDE exception: "IDE steps that need external tooling (VS Code CLI)
+    return instructions for the agent to execute."
+  - Remove all instructions about using the Write tool per file — the tool
+    now handles writing. Keep the instruction about MCP config merging.
 
-### Phase 3 — Refactor MCP helpers to return prescriptions
+- [x] **4.3 Update the `inputSchema` for `aide_init` in `src/index.ts`.**
+  Add `brainPath` to the schema properties:
+  ```
+  brainPath: {
+    type: "string",
+    description: "Resolved brain vault path. Required when category=brain. The agent provides this after interviewing the user."
+  }
+  ```
 
-- [x] **3.1 Refactor `wireMcp/index.ts` to return `InitStep` with a prescription.**
-  Instead of reading/writing the MCP config file, the helper reads the config
-  to determine status (`exists` if aide key present, `would-create` otherwise)
-  and returns the `McpPrescription` for the aide server. If the file is
-  malformed JSON, return a step with status `"would-create"` and
-  `configMalformed: true`. The helper never writes. Remove all `writeFile`
-  and `mkdir` calls.
+### Phase 5 — Tests
 
-- [x] **3.2 Refactor `provisionBrain/index.ts` to return `InitStep[]` with
-  prescription.**
-  The function signature changes: it receives a resolved `brainPath: string`
-  and the `mcpConfigPath: string` (to check obsidian entry status). It returns
-  two `InitStep` items: one for vault scaffolding (category `"brain"`, with
-  `content` describing the directories to create as a JSON array), one for the
-  obsidian MCP entry (category `"mcp"`, with `McpPrescription`). Neither step
-  writes to disk. Remove the `userMcpConfigPath` parameter — the agent handles
-  user-level config awareness. Remove the vault-not-resolved skip case — the
-  agent guarantees a path is provided before calling this function.
+- [x] **5.1 Create `src/tools/init/applySteps/index.test.ts`.**
+  Test cases:
+  - `would-create` file step: file is written to disk, returned step has
+    `status: "created"` and no `content` field.
+  - `would-create` brain vault step: directories listed in `content` JSON
+    are created under `filePath`, returned step has `status: "created"`.
+  - `exists` step: passes through unchanged, nothing written.
+  - `would-skip` step: passes through unchanged.
+  - MCP prescription step (`would-create` with `prescription`): passes
+    through unchanged, `prescription` preserved, nothing written.
+  - IDE VS Code step: passes through unchanged (not written by tool).
+  - Parent directory creation: step targeting a deeply nested path creates
+    all intermediate directories.
+  - Idempotency: applying the same steps twice does not fail (files already
+    exist on second run).
+  Use a temp directory per test. Co-locate test next to source per playbook
+  convention.
 
-### Phase 4 — Refactor remaining helpers to return InitStep
+- [x] **5.2 Add integration test for category call in
+  `src/tools/init/index.test.ts`.**
+  New `describe` block: "init — apply mode (category call)". Test cases:
+  - Call init, filter to "commands" category, pipe through `applySteps`:
+    all command files exist on disk after apply, returned steps have
+    `status: "created"` and no `content`.
+  - Call init with `category: "brain"` and a `brainPath`: vault directories
+    are created, brain step has `status: "created"`.
+  - MCP steps in a category call: `prescription` is preserved in the
+    returned manifest.
+  - Summary call (no category): no files are written, steps have `content`
+    stripped.
 
-- [x] **4.1 Refactor `writeMethodology/index.ts` to return `InitStep`.**
-  Check if the marker exists in the config file. Return `exists` or
-  `would-create` with the composed stub as `content`. Never write. Keep
-  `composeStub` as a named export — upgrade's `spliceStub` still uses it.
+- [x] **5.3 Add sentinel brain path collision test in
+  `src/tools/init/index.test.ts`.**
+  This addresses todo.aide issue 8. Test case:
+  - Create a `my-brain/` directory inside the temp project root.
+  - Call `init(isolated)` with no env var and an isolated subdirectory
+    (so sibling hint does not fire).
+  - Assert the brain vault step has `filePath: ""` and `status:
+    "would-create"` — NOT `status: "exists"` pointing at the inner
+    `my-brain/` directory.
+  - This proves the tool does not silently adopt an unconfirmed path.
 
-- [x] **4.2 Refactor `installMethodologyDocs/index.ts` to return `InitStep[]`.**
-  For each doc, check if the host file exists on disk. Return `exists` or
-  `would-create` with the canonical content as `content`. Never write.
-  Category is `"methodology"` for all steps.
+- [x] **5.4 Run `vitest run` and fix any type or assertion errors.**
 
-- [x] **4.3 Refactor `scaffoldCommands/index.ts` to return `InitStep[]`.**
-  For each command, check if the host file exists. Return `exists` or
-  `would-create` with the canonical content. Never write. The `COMMANDS`
-  export stays unchanged — upgrade still uses it. Category is `"commands"`.
+### Phase 6 — Cleanup
 
-- [x] **4.4 Refactor `installAgents/index.ts` to return `InitStep[]`.**
-  Same pattern as methodology docs. Check existence, return structured step.
-  Category is `"agents"`.
-
-- [x] **4.5 Refactor `installSkills/index.ts` to return `InitStep[]`.**
-  Same pattern. Check existence, return structured step. Category is
-  `"skills"`.
-
-- [x] **4.6 Refactor `configureIde/index.ts` to return `InitStep[]`.**
-  `configureZed`: check if `.zed/settings.json` has the `*.aide` entry,
-  return `exists` or `would-create` with the patched settings JSON as content.
-  `configureVscode`: check extension installation status, return `exists` or
-  `would-skip` (the agent will install). Neither function writes. Category
-  is `"ide"` for both.
-
-### Phase 5 — Rewrite the init orchestrator
-
-- [x] **5.1 Rewrite `src/tools/init/index.ts` to return `InitResult` (JSON).**
-  The orchestrator calls `detectFramework` (without brain args), then calls
-  each helper to collect `InitStep[]` arrays, collects `brainHints` from
-  `resolveBrainHints`, and assembles the `InitResult` object. No prose
-  formatting. No writing. The function signature changes from
-  `Promise<string>` to `Promise<InitResult>`. The `root` parameter stays
-  (needed for filesystem detection). Accept optional `framework` override
-  so the agent can re-call after user confirms/overrides detection.
-
-- [x] **5.2 Update `InitInput` Zod schema.**
-  Remove `brainPath` — the brain path is resolved through conversation, not
-  through a tool parameter. Remove `skipIde` — the agent decides per-category
-  based on user interaction. Keep `framework` (optional) so the agent can
-  re-call with a user-confirmed override. Keep `path` (optional project root
-  override).
-
-- [x] **5.3 Update the MCP server handler in `src/index.ts` for aide_init.**
-  Change the handler to return the `InitResult` as JSON via
-  `JSON.stringify`. Update the tool description to reflect the new
-  structured-response contract — emphasize that the response is structured
-  JSON for agent consumption, not prose. Update the `inputSchema` to match
-  the simplified `InitInput`.
-
-### Phase 6 — Tests
-
-- [x] **6.1 Rewrite `src/tools/init/index.test.ts`.**
-  The test now asserts on the structured `InitResult` object, not prose
-  strings. Key test cases from the spec:
-  - Fresh project: all steps are `would-create`, brain hints are populated
-    from env/sibling/conventional sources, framework is detected.
-  - Already initialized: all steps are `exists`.
-  - Framework override via parameter: detected framework matches the override.
-  - No brain hints found: `brainHints` is empty array (agent must ask user).
-  - MCP config malformed: the mcp step has `configMalformed: true`.
-  - Every step has correct `category`, `filePath`, and `content`/`prescription`.
-  - Idempotency: re-running on initialized project returns all `exists`.
-
-- [x] **6.2 Update helper-level tests.**
-  Each helper that changed signature needs its co-located `index.test.ts`
-  updated to assert on the new `InitStep` return type instead of
-  `InitStepResult`. Key helpers: `detectFramework` (no more brainPath in
-  return), `wireMcp` (returns prescription, no writes), `provisionBrain`
-  (returns prescription, no skip case), `writeMethodology` (no writes).
-
-- [x] **6.3 Write `resolveBrainHints/index.test.ts`.**
-  New helper needs tests: returns hints from env var, sibling path,
-  conventional path. Returns empty array when none found. Returns multiple
-  hints when multiple sources exist.
-
-- [x] **6.4 Run `vitest run` and fix any remaining type or assertion errors.**
+- [x] **6.1 Update `todo.aide` to check off issues 7 and 8.**
+  Issue 7 (sentinel brain path): mark as resolved — the empty-string
+  placeholder pattern prevents the collision. Issue 8 (test gap): mark as
+  resolved — step 5.3 covers it.
 
 ## Decisions
 
-**1. Tool returns structured JSON, not prose.**
-The spec is explicit: "The tool's response is structured data the agent
-interprets, not a pre-formatted summary the agent parrots." The current
-`Promise<string>` return becomes `Promise<InitResult>`. The MCP handler
-`JSON.stringify`s it. Traced to: spec `outcomes.desired` first bullet,
-spec `outcomes.undesired` sixth bullet.
+**1. `applySteps` is a new helper, not inline logic in the handler.**
+The MCP handler in `src/index.ts` should stay thin — it parses input, calls
+the orchestrator, shapes the response. The write-to-disk logic is a distinct
+responsibility (filesystem side effects) that belongs in its own testable
+helper under `src/tools/init/applySteps/`. This follows the orchestrator/
+helper pattern from progressive-disclosure.md and the folder-structure
+playbook convention.
 
-**2. Brain path removed from detectFramework.**
-The spec says the brain vault path "is always resolved through conversation,
-never through silent fallback." The current `resolveBrainPath` silently picks
-from a priority chain. Instead, we extract it as `resolveBrainHints` that
-returns all candidates, and the agent presents them. `FrameworkConfig.brainPath`
-is removed — framework detection is about the framework, not the brain.
-Traced to: spec `outcomes.undesired` second bullet, Strategy "Brain vault
-is required; location is flexible."
+**2. `"created"` is a new status, not a reuse of `"exists"`.**
+The spec says the category call returns `status` of `"created"` or
+`"exists"`. Using `"created"` rather than overloading `"exists"` gives the
+agent a clear signal that the file was just written in this call vs. was
+already present before the call. The agent can report "created 9 files"
+vs. "all files already present" accurately.
 
-**3. MCP changes are prescriptions, not writes.**
-The spec says "MCP config changes are returned as prescriptions — the key
-name and server entry the config needs — not written directly by the tool."
-`wireMcp` and `provisionBrain` return `McpPrescription` objects. The agent
-reads, merges, and writes. This eliminates the clobber-on-malformed-JSON
-path. Traced to: spec Strategy "MCP config changes are prescriptions, not
-writes."
+**3. `brainPath` is added to `InitInput`, not handled solely in the handler.**
+The brain category needs a user-confirmed vault path to write scaffolding.
+The cleanest contract is for the agent to pass this as a tool parameter
+when calling with `category=brain`. The orchestrator forwards it to
+`provisionBrain`. This avoids the handler needing to know about brain
+internals — it just passes the parameter through.
 
-**4. Keep `framework` in input, remove `brainPath` and `skipIde`.**
-The agent needs to re-call the tool if the user overrides the detected
-framework, so `framework` stays as an optional param. `brainPath` is
-removed because the spec requires agent-user conversation. `skipIde` is
-removed because the agent handles per-category decisions. Traced to: spec
-Strategy "The tool is a planner; the agent is the executor."
+**4. MCP steps are exempt from apply — prescriptions pass through.**
+The spec is explicit: "The agent only uses the Write tool for files that
+require intelligent merging — specifically MCP config." The apply helper
+skips steps that carry a `prescription` field. The agent receives the
+prescription in the manifest and performs the merge itself. This preserves
+the safety property that the tool never touches MCP config.
 
-**5. `configMalformed` flag instead of silent skip.**
-The current `wireMcp` returns `status: "skipped"` on malformed JSON. The
-spec requires the agent to surface this: "If the config is malformed JSON,
-the agent tells the user and asks how to proceed rather than silently
-clobbering." An explicit boolean flag on the step gives the agent the
-signal without overloading the status enum.
+**5. IDE VS Code steps pass through with instructions.**
+The VS Code extension install requires the `code` CLI, which is external
+tooling the tool cannot safely invoke as a side effect of a category call.
+The apply helper passes these through unchanged. The spec says: "IDE steps
+that require external tooling return instructions for the agent to execute."
 
-**6. Shared `McpPrescription` type for init and upgrade coordination.**
-Both tools return prescriptions for MCP config. Defining the type once in
-`src/types/index.ts` prevents duplication and ensures the agent's merge
-logic works the same way for both tools. Playbook convention: types
-centralized in `src/types/`, never scattered (folder-structure.md).
+**6. The sentinel collision (todo issue 7) is already fixed.**
+The current orchestrator uses `filePath: ""` as the placeholder when no
+hints exist — not a fabricated path. The plan adds a test (step 5.3) to
+lock this behavior and close the todo item. No code change needed for
+issue 7 itself.
 
-**7. `content` field carries the bytes the agent will write.**
-Each `InitStep` with status `would-create` includes the full file content
-so the agent can write it directly without calling back to the tool. This
-is necessary because the tool reads canonical content from disk (via
-`initContent`), and duplicating that logic in the agent would violate
-single-reader. Traced to: spec "The agent interprets this response and walks
-the user through it."
-
-**8. `resolveBrainHints` is a peer of `detectFramework`, not nested inside it.**
-Brain resolution is a separate concern from framework detection. The
-progressive disclosure rule says the folder name is the function name, and
-nesting brain logic inside detectFramework would hide it. As a sibling
-helper under `init/`, it is independently testable and discoverable.
-Playbook convention: orchestrator/helper pattern, folder-structure.md.
+**7. `content` is stripped from written steps in the manifest.**
+After `applySteps` writes a file, the returned step has `content` removed.
+This is the core of the "apply mode" contract: the agent never sees file
+content in category calls. The response stays small (manifest-only) and
+the agent cannot accidentally try to re-write what the tool already wrote.

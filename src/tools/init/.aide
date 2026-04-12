@@ -43,10 +43,16 @@ outcomes:
     - Framework auto-detection picks the right framework from files
       on disk, and the agent confirms the detection with the user
       before proceeding. The user can override.
-    - The methodology pointer stub, doc hub, slash commands, agents,
-      and skills follow the same pattern: the tool reports whether
-      each would be created or already exists, and the agent applies
-      the creates after presenting the summary to the user.
+    - The agent walks through categories ONE AT A TIME in a wizard
+      pattern using the AskUserQuestion tool with structured options
+      (not conversational questions). It presents a single category
+      (name + files), calls AskUserQuestion with Yes/Skip options,
+      waits for the user's selection, applies it, then moves to the
+      next. It never shows a summary table of all categories and
+      never offers "all" as an option. Each category is its own
+      interaction cycle: present → AskUserQuestion → wait → apply →
+      next. The user always picks from defined choices — they never
+      have to type a conversational response.
     - For MCP config, the tool returns a prescription — the server
       key name and the entry object — instead of writing the file.
       The agent reads the existing config, merges the entry, and
@@ -72,13 +78,38 @@ outcomes:
       data, tailored to the user's context.
     - The default response (no category parameter) is small enough
       for an agent to comprehend in a single read — metadata only,
-      no file content. Content is delivered per-category on demand
-      via a second call with the category parameter, after the user
-      confirms which categories to apply. This two-call progressive
-      disclosure pattern prevents the agent from being overwhelmed
-      by 50-100KB of JSON and resorting to programmatic parsing
-      instead of conversational interaction.
+      no file content.
+    - When called with a `category` parameter, the tool writes all
+      `would-create` files directly to disk itself and returns a
+      small manifest — an array of steps with `filePath`, `status`
+      (now `"created"` or `"exists"`), and `name`, but NO `content`
+      field. The agent never sees file content and never needs to
+      use the Write tool for new files. This eliminates the
+      50-100KB JSON response problem that caused agents to resort
+      to programmatic parsing via Node scripts instead of
+      conversational interaction.
+    - The agent only uses the Write tool for files that require
+      intelligent merging — specifically MCP config, where the
+      agent must read the existing config, merge prescriptions,
+      and write. For MCP steps, the category call still returns
+      the prescription data (not file content) so the agent can
+      perform the merge. Brain vault scaffolding (creating
+      directories) is also handled by the tool directly.
+    - IDE steps that require external tooling (e.g., VS Code
+      extension install via CLI) return instructions for the agent
+      to execute, since those aren't simple file writes.
   undesired:
+    - An init that presents a summary table of all categories and
+      asks "which do you want?" or offers "all" as an option. The
+      wizard must walk through categories one at a time — each
+      category is its own question-and-answer cycle. Showing
+      everything upfront defeats progressive disclosure and
+      overwhelms the user with decisions.
+    - An init that asks conversational questions instead of using
+      AskUserQuestion with structured options. Every pause point
+      must use AskUserQuestion with defined labels the user can
+      select — not open-ended text prompts like "Which categories
+      would you like me to apply?"
     - An init that executes all steps autonomously without user
       interaction. The whole point of the agent-driven model is that
       the user has a say at each category — framework, brain path,
@@ -99,6 +130,12 @@ outcomes:
     - An init that returns a pre-formatted prose summary instead of
       structured data. The agent needs structured JSON to drive the
       interactive flow — not a string it has to parse or parrot.
+    - A category call that returns full file content for the agent
+      to write. The category call must write files to disk itself
+      and return only a manifest. Returning content causes agents
+      to receive 13-50KB responses that get persisted to disk as
+      JSON files, which the agent then tries to parse with Node
+      scripts instead of using the Write tool per file.
     - An init response that embeds full file content for all steps
       in a single payload. Even when steps are structured, a 50-100KB
       JSON blob causes agents to write Python scripts to parse it
@@ -231,19 +268,19 @@ A developer runs `aide_init` on a fresh project. The agent responds:
 > I detected **Claude Code** as the framework (found `.claude/`
 > directory). Does that look right?
 
-The user confirms. The agent continues:
+The user confirms. The agent presents the FIRST category only:
 
-> Here's what I'll set up:
->
-> **Methodology:** Create CLAUDE.md pointer stub + .aide/docs/ hub
-> (7 docs + index)
-> **Commands:** Create /aide + 7 phase commands
-> **Agents:** Create 7 pipeline agent definitions
-> **Skills:** Create aide skill template
->
-> These are all new — nothing to overwrite. I'll apply these now.
+> **Methodology** — this will create the CLAUDE.md pointer stub and
+> 8 docs in .aide/docs/. Want me to set this up?
 
-After applying, the agent asks about the brain:
+The user says yes. The agent applies it, confirms "Done — created 9
+files," then presents the NEXT category:
+
+> **Commands** — this will create 9 slash commands in
+> .claude/commands/aide/. Want me to set these up?
+
+And so on, one category at a time. After all file categories, the
+agent asks about the brain:
 
 > AIDE needs a brain vault for research and retros. Do you have an
 > existing Obsidian vault you'd like to connect, or should I create
@@ -278,6 +315,13 @@ the MCP step with a "config-malformed" status. The agent says:
 The user decides. No data is lost without explicit consent.
 
 ## Bad examples
+
+An init that shows a table of all categories with their statuses and
+asks "Which categories do you want me to apply? You can say all."
+The developer sees seven categories, each with cryptic file counts,
+and has to make a blanket decision about things they don't understand
+yet. The wizard pattern exists so the user considers one category at
+a time, with enough context to make an informed yes/no.
 
 An init that executes everything and prints a summary. The developer
 had a vault at a non-standard path; the tool silently created a new

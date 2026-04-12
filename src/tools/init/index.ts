@@ -25,7 +25,8 @@ import provisionBrain from "./provisionBrain/index.js";
 export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
 	path: z.string().optional().describe("Custom project root path (defaults to server working directory)"),
-	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide"]).optional().describe("When provided, return only steps for this category with full file content included. When omitted, return all steps as a metadata-only summary (no content fields)."),
+	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
+	brainPath: z.string().optional().describe("Resolved brain vault path for the brain category. The agent provides this after interviewing the user."),
 });
 
 /**
@@ -43,11 +44,14 @@ export const InitInput = z.object({
  * @param root - Server working directory (from --root CLI arg or cwd).
  * @param framework - Optional framework override.
  * @param path - Optional project root override (absolute or relative to root).
+ * @param brainPath - User-confirmed vault path. When provided, forwarded to
+ *   provisionBrain instead of using the first discovered hint.
  */
 export default async function init(
 	root: string,
 	framework?: FrameworkType,
 	path?: string,
+	brainPath?: string,
 ): Promise<InitResult> {
 	const projectRoot = path ? (isAbsolute(path) ? path : join(root, path)) : root;
 	const config = await detectFramework(projectRoot, framework);
@@ -62,18 +66,19 @@ export default async function init(
 	const skillSteps = await installSkills(join(projectRoot, config.skillDir));
 	const mcpStep = await wireMcp(join(projectRoot, config.mcpConfigPath));
 
-	// Brain steps require a confirmed vault path. When hints exist, we use
-	// the first hint to check existing state (vault exists? obsidian MCP wired?).
-	// When no hints exist, we return placeholder steps signaling the agent must
-	// interview the user for a path before any vault work can proceed.
+	// Brain steps require a confirmed vault path. When brainPath is explicitly
+	// provided (agent-confirmed), use it directly. When hints exist, use the
+	// first hint to check existing state. When neither is available, return
+	// placeholder steps so the agent knows to interview the user first.
 	const brainMcpPath = join(projectRoot, config.mcpConfigPath);
 	let brainSteps: import("@/types/index.js").InitStep[];
-	if (brainHints.length > 0) {
-		brainSteps = await provisionBrain(brainHints[0].path, brainMcpPath);
+	const resolvedBrainPath = brainPath ?? (brainHints.length > 0 ? brainHints[0].path : undefined);
+	if (resolvedBrainPath) {
+		brainSteps = await provisionBrain(resolvedBrainPath, brainMcpPath);
 	} else {
-		// No hints discovered — the agent must ask the user for a path.
-		// Return would-create steps with empty filePaths so the agent knows
-		// brain provisioning is pending user input, not silently resolved.
+		// No hints discovered and no explicit brainPath — the agent must ask the
+		// user for a path. Return would-create steps with empty filePaths so the
+		// agent knows brain provisioning is pending user input, not silently resolved.
 		brainSteps = [
 			{ name: "Brain vault", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{ name: "MCP config (obsidian)", status: "would-create" as const, category: "mcp" as const, filePath: brainMcpPath },

@@ -1,0 +1,74 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import type { InitStep } from "@/types/index.js";
+
+/**
+ * Apply mode writer — turns a plan into disk state and returns the manifest
+ * the agent reports to the user.
+ *
+ * For each step:
+ * - `"would-create"` file steps (no `prescription` field, not a brain vault step):
+ *   creates parent directories and writes `content` to `filePath`. Returns the
+ *   step with `status` changed to `"created"` and `content` removed.
+ * - `"would-create"` brain vault steps (category `"brain"`): parses `content`
+ *   as a JSON array of directory names, creates each under `filePath` with
+ *   `recursive: true`. Returns with `status: "created"` and `content` removed.
+ * - `"would-create"` steps with a `prescription` field (MCP steps): passed
+ *   through unchanged — the agent merges prescriptions itself. Never written
+ *   by this helper.
+ * - `"would-create"` IDE VS Code steps (name contains "VS Code"): passed
+ *   through unchanged — requires the external `code` CLI. The agent executes
+ *   the extension install command.
+ * - `"exists"`, `"would-skip"` steps: passed through unchanged.
+ * - `"created"` steps (already applied): passed through unchanged (idempotent).
+ *
+ * The `prescription` field is never stripped — MCP steps keep their
+ * prescription so the agent can perform the merge.
+ */
+export default async function applySteps(steps: InitStep[]): Promise<InitStep[]> {
+	return Promise.all(steps.map(applyStep));
+}
+
+async function applyStep(step: InitStep): Promise<InitStep> {
+	// Only act on would-create steps that haven't been applied yet
+	if (step.status !== "would-create") {
+		return step;
+	}
+
+	// MCP steps carry a prescription — the agent merges them; never written here
+	if (step.prescription !== undefined) {
+		return step;
+	}
+
+	// IDE VS Code steps require the external `code` CLI — pass through with
+	// instructions so the agent knows what command to run
+	if (step.category === "ide" && step.name.includes("VS Code")) {
+		return { ...step, instructions: `code --install-extension ${step.filePath}` };
+	}
+
+	// Brain vault step — create directories listed in content JSON
+	if (step.category === "brain") {
+		if (step.content) {
+			const dirs: string[] = JSON.parse(step.content);
+			await Promise.all(
+				dirs.map((dir) => mkdir(`${step.filePath}/${dir}`, { recursive: true })),
+			);
+		} else {
+			// No content means placeholder (filePath is empty string) — pass through
+			return step;
+		}
+		const { content: _content, ...rest } = step;
+		return { ...rest, status: "created" };
+	}
+
+	// Regular file step — write content to filePath
+	if (step.content !== undefined) {
+		await mkdir(dirname(step.filePath), { recursive: true });
+		await writeFile(step.filePath, step.content, "utf-8");
+		const { content: _content, ...rest } = step;
+		return { ...rest, status: "created" };
+	}
+
+	// No content and not a special case — pass through unchanged
+	return step;
+}

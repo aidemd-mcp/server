@@ -1,9 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir, platform } from "node:os";
 import init from "./index.js";
+import applySteps from "./applySteps/index.js";
 import type { InitResult, InitStep } from "@/types/index.js";
+
+/** Check if a path exists on disk. */
+async function pathExists(p: string): Promise<boolean> {
+	try {
+		await access(p);
+		return true;
+	} catch {
+		return false;
+	}
+}
 
 // Clean up AIDE_BRAIN_PATH after each test to avoid cross-test pollution
 const originalBrainPath = process.env.AIDE_BRAIN_PATH;
@@ -355,5 +366,125 @@ describe("init — response shaping (server-handler logic)", () => {
 
 		// Summary should be dramatically smaller (at least 50% reduction)
 		expect(summarySize).toBeLessThan(fullSize * 0.5);
+	});
+});
+
+describe("init — apply mode (category call)", () => {
+	it("commands category: all command files exist on disk after apply, steps have status created and no content", async () => {
+		const result = await init(tempDir);
+		const commandSteps = result.steps.filter((s) => s.category === "commands");
+		expect(commandSteps.length).toBeGreaterThan(0);
+
+		const applied = await applySteps(commandSteps);
+
+		for (const step of applied) {
+			if (step.status === "created") {
+				expect(step).not.toHaveProperty("content");
+				expect(await pathExists(step.filePath)).toBe(true);
+			}
+		}
+		// At least one step should be created (fresh project has no commands)
+		expect(applied.some((s) => s.status === "created")).toBe(true);
+	});
+
+	it("brain category with brainPath: vault directories are created, brain step has status created", async () => {
+		const brainPath = join(tempDir, "my-vault");
+		const result = await init(tempDir, undefined, undefined, brainPath);
+		const brainSteps = result.steps.filter((s) => s.category === "brain");
+		expect(brainSteps.length).toBeGreaterThan(0);
+
+		const applied = await applySteps(brainSteps);
+		const vaultStep = applied.find((s) => s.name === "Brain vault");
+
+		expect(vaultStep).toBeDefined();
+		expect(vaultStep?.status).toBe("created");
+		expect(vaultStep).not.toHaveProperty("content");
+
+		// The vault directories should exist on disk
+		expect(await pathExists(join(brainPath, "research"))).toBe(true);
+		expect(await pathExists(join(brainPath, "coding-playbook"))).toBe(true);
+	});
+
+	it("MCP steps in a category call: prescription is preserved in the returned manifest", async () => {
+		const result = await init(tempDir);
+		const mcpSteps = result.steps.filter((s) => s.category === "mcp" && s.prescription);
+		expect(mcpSteps.length).toBeGreaterThan(0);
+
+		const applied = await applySteps(mcpSteps);
+
+		for (const step of applied) {
+			if (step.prescription) {
+				expect(step.prescription.key).toBeTruthy();
+				expect(step.prescription.entry.command).toBeTruthy();
+			}
+		}
+		// MCP steps are never written — no files should exist
+		for (const step of applied) {
+			// MCP config file should not have been created by applySteps
+			expect(step.status).not.toBe("created");
+		}
+	});
+
+	it("summary call (no category): no files are written, steps have content stripped", async () => {
+		const result = await init(tempDir);
+		const stripped = result.steps.map(({ content: _content, ...rest }) => rest);
+
+		for (const step of stripped) {
+			expect(step).not.toHaveProperty("content");
+		}
+		// No files should exist in a fresh tempDir after summary call
+		const anyFileWritten = await Promise.all(
+			stripped
+				.filter((s) => s.filePath && s.filePath !== "")
+				.map((s) => pathExists(s.filePath)),
+		);
+		expect(anyFileWritten.every((exists) => !exists)).toBe(true);
+	});
+});
+
+describe("init — sentinel brain path collision (issue 8)", () => {
+	it("my-brain/ inside project root does not appear as brain vault step filePath when no env var set", async () => {
+		delete process.env.AIDE_BRAIN_PATH;
+		// Use isolated subdir so sibling hint from real cwd doesn't fire
+		const isolated = join(tempDir, "project");
+		await mkdir(isolated);
+		// Create a my-brain/ directory INSIDE the project root
+		await mkdir(join(isolated, "my-brain"));
+
+		const result = await init(isolated);
+
+		const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+		expect(vaultStep).toBeDefined();
+		// The tool must NOT adopt the inner my-brain/ path silently.
+		// With no env var and the project root itself not having a sibling my-brain
+		// at the same level, brainHints should be empty (or only contain sibling hint
+		// from the parent tempDir level, not the inner one).
+		// The vault step must have status would-create (not exists pointing at inner dir).
+		// If brainHints is empty, filePath must be "".
+		if (result.brainHints.length === 0) {
+			expect(vaultStep?.filePath).toBe("");
+			expect(vaultStep?.status).toBe("would-create");
+		} else {
+			// If a hint fired (sibling at parent level), the filePath must NOT be the inner my-brain
+			expect(vaultStep?.filePath).not.toBe(join(isolated, "my-brain"));
+		}
+	});
+
+	it("completely isolated project (no env var, no sibling, subdirectory): brain vault step has empty filePath", async () => {
+		delete process.env.AIDE_BRAIN_PATH;
+		// Use a deeply nested isolated dir where no sibling my-brain can exist at parent
+		const isolated = join(tempDir, "deeply", "nested", "project");
+		await mkdir(isolated, { recursive: true });
+
+		const result = await init(isolated);
+
+		const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+		expect(vaultStep).toBeDefined();
+
+		// If no hints, the vault step must have empty filePath (not a fabricated path)
+		if (result.brainHints.length === 0) {
+			expect(vaultStep?.filePath).toBe("");
+			expect(vaultStep?.status).toBe("would-create");
+		}
 	});
 });
