@@ -74,4 +74,10 @@ describe("detectFramework", () => {
 
 		expect(result.framework).toBe("claude");
 	});
+
+	it("result has no brainPath field", async () => {
+		const result = await detectFramework(tempDir);
+
+		expect(result).not.toHaveProperty("brainPath");
+	});
 });

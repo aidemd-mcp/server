@@ -1,52 +1,237 @@
 ---
 intent: >
-  Add brain layer provisioning to aide_init — create a minimal Obsidian
-  vault when none exists and wire the Obsidian MCP server into the
-  project's MCP config, so pipeline agents with mcpServers: [obsidian]
-  can persist and retrieve domain knowledge.
+  Refactor aide_init from a monolithic executor returning prose into an
+  agent-driven planner returning structured JSON. The tool detects, inspects,
+  and reports; the calling agent interviews the user and applies changes.
+  MCP config changes become prescriptions. Brain vault path is never silently
+  resolved — the tool returns discovery hints for the agent to present.
 ---
 
 ## Plan
 
-- [x] **Add `brainPath` to `FrameworkConfig` in `src/types/index.ts`.** New optional field `brainPath?: string` on the interface. This is the resolved absolute path to the Obsidian vault. It is optional because brain provisioning may be skipped if no path can be resolved.
+### Phase 1 — Shared types (coordinate with upgrade plan)
 
-- [x] **Extend `detectFramework` to resolve the brain path.** After framework detection, resolve the vault path through a priority chain: (1) a new optional `brainPath` parameter passed to `detectFramework`, (2) the `AIDE_BRAIN_PATH` environment variable, (3) a sibling `my-brain/` directory next to `projectRoot` (i.e. `join(dirname(projectRoot), "my-brain")`), (4) `undefined` if none found. The resolved path (or undefined) is returned as `brainPath` on the `FrameworkConfig`. Detection only checks existence — it does not create anything.
+- [x] **1.1 Define shared `McpPrescription` type in `src/types/index.ts`.**
+  Add a type representing a single MCP server prescription: `{ key: string;
+  entry: { command: string; args: string[] } }`. Both init and upgrade return
+  prescriptions instead of writing MCP config directly. This is the
+  single shared type that eliminates duplication of the prescription concept.
 
-- [x] **Create `src/tools/init/provisionBrain/index.ts` — the brain provisioning helper.** Default export `provisionBrain(brainPath: string | undefined, mcpConfigPath: string): Promise<InitStepResult[]>`. Returns an array of two results: one for the vault scaffolding, one for the Obsidian MCP wiring. The function:
-  - If `brainPath` is `undefined`, returns both results as `skipped` (no vault path resolved).
-  - If a vault already exists at `brainPath` (check for `.obsidian/` dir or any `.md` file), returns vault result as `exists`. Does NOT modify existing vault contents.
-  - If no vault exists, creates the minimum directory scaffolding: `research/`, `process/retro/`, `coding-playbook/`. Returns vault result as `created`.
-  - For MCP wiring: reads the MCP config at `mcpConfigPath`, checks for an existing `obsidian` entry in `mcpServers`. If present, returns MCP result as `exists`. If absent, adds an `obsidian` entry with `command: "npx"` and `args: ["@bitbonsai/mcpvault", brainPath]` (with `cmd /c` wrapper on Windows, same pattern as the aide entry in `wireMcp`). If the config file doesn't exist yet, this step should still wire — either the aide step already created it or this step creates a minimal config. Parse failure is a skip, not a rewrite.
+- [x] **1.2 Define `InitCategory` string literal union in `src/types/index.ts`.**
+  Values: `"framework"`, `"methodology"`, `"commands"`, `"agents"`,
+  `"skills"`, `"mcp"`, `"brain"`, `"ide"`. This is the discriminant the agent
+  uses to walk through categories with the user.
 
-- [x] **Wire `provisionBrain` into the init orchestrator (`src/tools/init/index.ts`).** Import `provisionBrain` and call it after `wireMcp`, passing `config.brainPath` and the resolved `mcpConfigPath`. Spread its results into `allResults`. The brain results appear in the summary between `MCP config` (aide) and `Zed config`.
+- [x] **1.3 Define `InitStepStatus` string literal union in `src/types/index.ts`.**
+  Values: `"would-create"`, `"would-skip"`, `"exists"`. These replace the
+  current `InitStepResult.status` values which mix planning and execution
+  statuses. The tool is now a planner only — it never writes.
 
-- [x] **Add `brainPath` to `InitInput` schema.** New optional `brainPath` string parameter on the Zod schema, described as "Explicit Obsidian vault path (auto-discovered if omitted)". Pass it through to `detectFramework`.
+- [x] **1.4 Define `InitStep` interface in `src/types/index.ts`.**
+  Fields: `name: string`, `status: InitStepStatus`, `category: InitCategory`,
+  `filePath: string` (the target path on disk), `content?: string` (the
+  content to write — present for `would-create`, absent for `exists`).
+  For MCP steps, add `prescription?: McpPrescription` instead of `content`.
+  Add optional `configMalformed?: boolean` for MCP steps where the existing
+  config file cannot be parsed as JSON.
 
-- [x] **Update the init orchestrator's summary to include the brain path.** When `config.brainPath` is defined, append `Brain: <path>` to the summary footer (after the `MCP:` line). When undefined, omit it.
+- [x] **1.5 Define `BrainHint` interface in `src/types/index.ts`.**
+  Fields: `source: "env" | "sibling" | "conventional"`, `path: string`.
+  The tool returns an array of these hints; the agent presents them as
+  suggestions and asks the user to confirm or provide a different path.
 
-- [x] **Rename the existing MCP result from `"MCP config"` to `"MCP config (aide)"`.** This disambiguates it from the Obsidian MCP entry. Update `wireMcp/index.ts` to return `{ name: "MCP config (aide)", ... }`. The provisionBrain helper returns `"MCP config (obsidian)"` for its MCP result and `"Brain vault"` for the scaffolding result.
+- [x] **1.6 Define `InitResult` interface in `src/types/index.ts`.**
+  Fields: `framework: FrameworkType`, `steps: InitStep[]`,
+  `brainHints: BrainHint[]`. This is the structured JSON the tool returns.
+  No prose, no formatting.
 
-- [x] **Create `src/tools/init/provisionBrain/index.test.ts` — tests for brain provisioning.** Co-located test file. Test cases:
-  - No brainPath → both results skipped
-  - brainPath points to existing vault (has `.obsidian/` dir) → vault exists, MCP wired
-  - brainPath points to empty location → vault created with expected dirs, MCP wired
-  - Existing vault + existing obsidian MCP entry → both exist
-  - MCP config parse failure → vault created, MCP skipped
-  - Idempotency: run twice → second run reports exists for both
-  Use the same temp directory pattern as `index.test.ts` (mkdtemp/rm).
+- [x] **1.7 Remove the old `InitStepResult` interface from `src/types/index.ts`.**
+  It is replaced by `InitStep`. All consumers will be updated in later steps.
+  Keep the removal in this step so the type system forces all callsites to
+  update.
 
-- [x] **Update `src/tools/init/index.test.ts` — add brain provisioning to orchestrator tests.** The "fresh project" test should now also check for `Brain vault` in the result string. The idempotency test should still pass. Add a test that sets `AIDE_BRAIN_PATH` env var and verifies the vault is created at that path. Add a test that verifies an explicit `brainPath` parameter takes priority.
+### Phase 2 — Refactor detectFramework to separate brain resolution
+
+- [x] **2.1 Extract `resolveBrainHints` into its own helper at
+  `src/tools/init/resolveBrainHints/index.ts`.**
+  Move the current `resolveBrainPath` logic from `detectFramework` but change
+  the return type: instead of returning a single path or undefined, return
+  `BrainHint[]` — an array of all discovered vault locations with their source
+  labels. The function checks env var, sibling path, and conventional path,
+  and returns every one that exists. The agent will present these to the user.
+  The function no longer picks a winner; it reports candidates.
+
+- [x] **2.2 Update `detectFramework/index.ts` to stop resolving brain path.**
+  Remove `brainPath` from `FrameworkConfig`. Remove the `brainPath` parameter
+  from `detectFramework`'s signature. The brain path is no longer resolved
+  during framework detection — it is resolved through agent-user conversation
+  using the hints from step 2.1. `detectFramework` returns only
+  framework-related config (framework, configPath, commandDir, mcpConfigPath,
+  docHubDir, agentDir, skillDir).
+
+### Phase 3 — Refactor MCP helpers to return prescriptions
+
+- [x] **3.1 Refactor `wireMcp/index.ts` to return `InitStep` with a prescription.**
+  Instead of reading/writing the MCP config file, the helper reads the config
+  to determine status (`exists` if aide key present, `would-create` otherwise)
+  and returns the `McpPrescription` for the aide server. If the file is
+  malformed JSON, return a step with status `"would-create"` and
+  `configMalformed: true`. The helper never writes. Remove all `writeFile`
+  and `mkdir` calls.
+
+- [x] **3.2 Refactor `provisionBrain/index.ts` to return `InitStep[]` with
+  prescription.**
+  The function signature changes: it receives a resolved `brainPath: string`
+  and the `mcpConfigPath: string` (to check obsidian entry status). It returns
+  two `InitStep` items: one for vault scaffolding (category `"brain"`, with
+  `content` describing the directories to create as a JSON array), one for the
+  obsidian MCP entry (category `"mcp"`, with `McpPrescription`). Neither step
+  writes to disk. Remove the `userMcpConfigPath` parameter — the agent handles
+  user-level config awareness. Remove the vault-not-resolved skip case — the
+  agent guarantees a path is provided before calling this function.
+
+### Phase 4 — Refactor remaining helpers to return InitStep
+
+- [x] **4.1 Refactor `writeMethodology/index.ts` to return `InitStep`.**
+  Check if the marker exists in the config file. Return `exists` or
+  `would-create` with the composed stub as `content`. Never write. Keep
+  `composeStub` as a named export — upgrade's `spliceStub` still uses it.
+
+- [x] **4.2 Refactor `installMethodologyDocs/index.ts` to return `InitStep[]`.**
+  For each doc, check if the host file exists on disk. Return `exists` or
+  `would-create` with the canonical content as `content`. Never write.
+  Category is `"methodology"` for all steps.
+
+- [x] **4.3 Refactor `scaffoldCommands/index.ts` to return `InitStep[]`.**
+  For each command, check if the host file exists. Return `exists` or
+  `would-create` with the canonical content. Never write. The `COMMANDS`
+  export stays unchanged — upgrade still uses it. Category is `"commands"`.
+
+- [x] **4.4 Refactor `installAgents/index.ts` to return `InitStep[]`.**
+  Same pattern as methodology docs. Check existence, return structured step.
+  Category is `"agents"`.
+
+- [x] **4.5 Refactor `installSkills/index.ts` to return `InitStep[]`.**
+  Same pattern. Check existence, return structured step. Category is
+  `"skills"`.
+
+- [x] **4.6 Refactor `configureIde/index.ts` to return `InitStep[]`.**
+  `configureZed`: check if `.zed/settings.json` has the `*.aide` entry,
+  return `exists` or `would-create` with the patched settings JSON as content.
+  `configureVscode`: check extension installation status, return `exists` or
+  `would-skip` (the agent will install). Neither function writes. Category
+  is `"ide"` for both.
+
+### Phase 5 — Rewrite the init orchestrator
+
+- [x] **5.1 Rewrite `src/tools/init/index.ts` to return `InitResult` (JSON).**
+  The orchestrator calls `detectFramework` (without brain args), then calls
+  each helper to collect `InitStep[]` arrays, collects `brainHints` from
+  `resolveBrainHints`, and assembles the `InitResult` object. No prose
+  formatting. No writing. The function signature changes from
+  `Promise<string>` to `Promise<InitResult>`. The `root` parameter stays
+  (needed for filesystem detection). Accept optional `framework` override
+  so the agent can re-call after user confirms/overrides detection.
+
+- [x] **5.2 Update `InitInput` Zod schema.**
+  Remove `brainPath` — the brain path is resolved through conversation, not
+  through a tool parameter. Remove `skipIde` — the agent decides per-category
+  based on user interaction. Keep `framework` (optional) so the agent can
+  re-call with a user-confirmed override. Keep `path` (optional project root
+  override).
+
+- [x] **5.3 Update the MCP server handler in `src/index.ts` for aide_init.**
+  Change the handler to return the `InitResult` as JSON via
+  `JSON.stringify`. Update the tool description to reflect the new
+  structured-response contract — emphasize that the response is structured
+  JSON for agent consumption, not prose. Update the `inputSchema` to match
+  the simplified `InitInput`.
+
+### Phase 6 — Tests
+
+- [x] **6.1 Rewrite `src/tools/init/index.test.ts`.**
+  The test now asserts on the structured `InitResult` object, not prose
+  strings. Key test cases from the spec:
+  - Fresh project: all steps are `would-create`, brain hints are populated
+    from env/sibling/conventional sources, framework is detected.
+  - Already initialized: all steps are `exists`.
+  - Framework override via parameter: detected framework matches the override.
+  - No brain hints found: `brainHints` is empty array (agent must ask user).
+  - MCP config malformed: the mcp step has `configMalformed: true`.
+  - Every step has correct `category`, `filePath`, and `content`/`prescription`.
+  - Idempotency: re-running on initialized project returns all `exists`.
+
+- [x] **6.2 Update helper-level tests.**
+  Each helper that changed signature needs its co-located `index.test.ts`
+  updated to assert on the new `InitStep` return type instead of
+  `InitStepResult`. Key helpers: `detectFramework` (no more brainPath in
+  return), `wireMcp` (returns prescription, no writes), `provisionBrain`
+  (returns prescription, no skip case), `writeMethodology` (no writes).
+
+- [x] **6.3 Write `resolveBrainHints/index.test.ts`.**
+  New helper needs tests: returns hints from env var, sibling path,
+  conventional path. Returns empty array when none found. Returns multiple
+  hints when multiple sources exist.
+
+- [x] **6.4 Run `vitest run` and fix any remaining type or assertion errors.**
 
 ## Decisions
 
-**Priority chain for vault discovery, not a single default.** The spec says "discoverable or configurable, not hardcoded." A priority chain (explicit param → env var → sibling dir → undefined) gives the caller three ways to control it while still doing the right thing with zero configuration for the common case (brain vault is a sibling of the project). The `undefined` fallback means init gracefully skips brain provisioning rather than guessing a path — skipping is reported in the summary.
+**1. Tool returns structured JSON, not prose.**
+The spec is explicit: "The tool's response is structured data the agent
+interprets, not a pre-formatted summary the agent parrots." The current
+`Promise<string>` return becomes `Promise<InitResult>`. The MCP handler
+`JSON.stringify`s it. Traced to: spec `outcomes.desired` first bullet,
+spec `outcomes.undesired` sixth bullet.
 
-**Two results from provisionBrain, not one.** The vault scaffolding and the MCP wiring are independently reportable steps per the spec's strategy. A user who already has a vault but no MCP entry sees `Brain vault: Already exists` + `MCP config (obsidian): Wired`. Collapsing them into one result would hide which part was already done.
+**2. Brain path removed from detectFramework.**
+The spec says the brain vault path "is always resolved through conversation,
+never through silent fallback." The current `resolveBrainPath` silently picks
+from a priority chain. Instead, we extract it as `resolveBrainHints` that
+returns all candidates, and the agent presents them. `FrameworkConfig.brainPath`
+is removed — framework detection is about the framework, not the brain.
+Traced to: spec `outcomes.undesired` second bullet, Strategy "Brain vault
+is required; location is flexible."
 
-**`@bitbonsai/mcpvault` as the Obsidian MCP server package.** This is the package already in use in the user's global config. Using the same package ensures compatibility. The npx invocation pattern (`npx @bitbonsai/mcpvault <vaultPath>`) matches the aide server's npx pattern, keeping the MCP entries consistent.
+**3. MCP changes are prescriptions, not writes.**
+The spec says "MCP config changes are returned as prescriptions — the key
+name and server entry the config needs — not written directly by the tool."
+`wireMcp` and `provisionBrain` return `McpPrescription` objects. The agent
+reads, merges, and writes. This eliminates the clobber-on-malformed-JSON
+path. Traced to: spec Strategy "MCP config changes are prescriptions, not
+writes."
 
-**Vault existence check: `.obsidian/` dir or any `.md` file.** An Obsidian vault is conventionally marked by its `.obsidian/` configuration directory. But a user may have a brain directory with markdown files that isn't formally an Obsidian vault yet — init should still treat that as "existing content, don't touch." Checking for either signal prevents init from overwriting a proto-vault.
+**4. Keep `framework` in input, remove `brainPath` and `skipIde`.**
+The agent needs to re-call the tool if the user overrides the detected
+framework, so `framework` stays as an optional param. `brainPath` is
+removed because the spec requires agent-user conversation. `skipIde` is
+removed because the agent handles per-category decisions. Traced to: spec
+Strategy "The tool is a planner; the agent is the executor."
 
-**MCP wiring lives inside provisionBrain, not in wireMcp.** The aide and obsidian MCP entries are independent — the spec says so. But the obsidian entry is conceptually part of the brain layer, not the aide layer. Keeping it in `provisionBrain` means the brain provisioning helper is self-contained: if brainPath is undefined, no MCP entry is written either. The alternative — wiring obsidian inside `wireMcp` — would require `wireMcp` to know about brain paths, coupling two independent concerns.
+**5. `configMalformed` flag instead of silent skip.**
+The current `wireMcp` returns `status: "skipped"` on malformed JSON. The
+spec requires the agent to surface this: "If the config is malformed JSON,
+the agent tells the user and asks how to proceed rather than silently
+clobbering." An explicit boolean flag on the step gives the agent the
+signal without overloading the status enum.
 
-**Renaming `"MCP config"` to `"MCP config (aide)"`** is a minor breaking change to the summary output format. This is acceptable because the summary is human-readable prose, not a machine-parsed contract. The disambiguation is necessary now that two MCP entries exist.
+**6. Shared `McpPrescription` type for init and upgrade coordination.**
+Both tools return prescriptions for MCP config. Defining the type once in
+`src/types/index.ts` prevents duplication and ensures the agent's merge
+logic works the same way for both tools. Playbook convention: types
+centralized in `src/types/`, never scattered (folder-structure.md).
+
+**7. `content` field carries the bytes the agent will write.**
+Each `InitStep` with status `would-create` includes the full file content
+so the agent can write it directly without calling back to the tool. This
+is necessary because the tool reads canonical content from disk (via
+`initContent`), and duplicating that logic in the agent would violate
+single-reader. Traced to: spec "The agent interprets this response and walks
+the user through it."
+
+**8. `resolveBrainHints` is a peer of `detectFramework`, not nested inside it.**
+Brain resolution is a separate concern from framework detection. The
+progressive disclosure rule says the folder name is the function name, and
+nesting brain logic inside detectFramework would hide it. As a sibling
+helper under `init/`, it is independently testable and discoverable.
+Playbook convention: orchestrator/helper pattern, folder-structure.md.

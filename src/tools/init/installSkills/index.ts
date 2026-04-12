@@ -1,6 +1,6 @@
-import { writeFile, mkdir, access } from "node:fs/promises";
-import { join, dirname } from "node:path";
-import type { InitStepResult } from "@/types/index.js";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+import type { InitStep } from "@/types/index.js";
 import {
 	readCanonicalDoc,
 	listSkills,
@@ -17,23 +17,32 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
- * Install the canonical AIDE skill templates into the host's skill
- * directory. Each skill named by `listSkills()` is written verbatim.
- * Existing files are preserved so user customizations survive re-runs.
+ * Return planning steps for each canonical AIDE skill template.
+ *
+ * For each skill named by `listSkills()`, checks whether the host file
+ * already exists. Returns `exists` for present files, `would-create` with
+ * the canonical content for absent files. A failing canonical read returns
+ * `would-skip` for that entry only.
+ *
+ * This helper never writes to disk — it is a planner only.
  */
 export default async function installSkills(
 	skillDir: string,
 	displayPrefix: string = "skills",
-): Promise<InitStepResult[]> {
-	const results: InitStepResult[] = [];
-	await mkdir(skillDir, { recursive: true });
+): Promise<InitStep[]> {
+	const steps: InitStep[] = [];
 
 	for (const entry of listSkills()) {
 		const targetPath = join(skillDir, entry.hostPath);
 		const displayName = `${displayPrefix}/${entry.hostPath}`;
 
 		if (await fileExists(targetPath)) {
-			results.push({ name: displayName, status: "exists" });
+			steps.push({
+				name: displayName,
+				status: "exists",
+				category: "skills",
+				filePath: targetPath,
+			});
 			continue;
 		}
 
@@ -41,14 +50,23 @@ export default async function installSkills(
 		try {
 			content = readCanonicalDoc(entry.canonical);
 		} catch {
-			results.push({ name: displayName, status: "skipped" });
+			steps.push({
+				name: displayName,
+				status: "would-skip",
+				category: "skills",
+				filePath: targetPath,
+			});
 			continue;
 		}
 
-		await mkdir(dirname(targetPath), { recursive: true });
-		await writeFile(targetPath, content, "utf-8");
-		results.push({ name: displayName, status: "created" });
+		steps.push({
+			name: displayName,
+			status: "would-create",
+			category: "skills",
+			filePath: targetPath,
+			content,
+		});
 	}
 
-	return results;
+	return steps;
 }

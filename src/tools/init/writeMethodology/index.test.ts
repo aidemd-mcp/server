@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -22,48 +22,61 @@ afterEach(async () => {
 });
 
 describe("writeMethodology", () => {
-	it("creates config file with a marker-bounded pointer stub when none exists", async () => {
+	it("returns would-create step when config file does not exist", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
 
 		const result = await writeMethodology(configPath, HUB_DIR);
 
-		expect(result).toEqual({ name: "Methodology pointer", status: "created" });
-		const config = await readFile(configPath, "utf-8");
-		expect(config).toContain("<!-- aide-methodology -->");
+		expect(result.status).toBe("would-create");
+		expect(result.category).toBe("methodology");
+		expect(result.name).toBe("Methodology pointer");
 	});
 
-	it("stub body names the hub path and leaves no unsubstituted placeholders", async () => {
+	it("would-create content contains the marker and hub path", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
 
-		await writeMethodology(configPath, HUB_DIR);
+		const result = await writeMethodology(configPath, HUB_DIR);
 
-		const config = await readFile(configPath, "utf-8");
-		expect(config).toContain(`${HUB_DIR}/index.md`);
-		expect(config).not.toContain("{{HUB_PATH}}");
+		expect(result.content).toContain("<!-- aide-methodology -->");
+		expect(result.content).toContain(`${HUB_DIR}/index.md`);
 	});
 
-	it("stub names the host-side doc hub path passed in", async () => {
+	it("would-create content has no unsubstituted placeholders", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
 
-		await writeMethodology(configPath, HUB_DIR);
+		const result = await writeMethodology(configPath, HUB_DIR);
 
-		const config = await readFile(configPath, "utf-8");
-		expect(config).toContain(HUB_DIR);
+		expect(result.content).not.toContain("{{HUB_PATH}}");
 	});
 
-	it("stub does not ship the full canonical methodology body", async () => {
-		// Pins writeMethodology/.aide outcomes.undesired: "the stub ships the
-		// full concatenated methodology body". If a future change
-		// reintroduces the block, a distinctive line from aide-spec.md will
-		// reappear in the config file and this test will catch it.
+	it("would-create content includes existing file content before stub", async () => {
+		const configPath = join(tempDir, "CLAUDE.md");
+		const existing = "# My Project\n\nExisting content here.\n";
+		await writeFile(configPath, existing, "utf-8");
+
+		const result = await writeMethodology(configPath, HUB_DIR);
+
+		expect(result.status).toBe("would-create");
+		expect(result.content).toContain("Existing content here.");
+		expect(result.content).toContain("<!-- aide-methodology -->");
+	});
+
+	it("returns exists when marker is already present", async () => {
+		const configPath = join(tempDir, "CLAUDE.md");
+		await writeFile(configPath, "<!-- aide-methodology -->\nfoo\n<!-- aide-methodology -->\n");
+
+		const result = await writeMethodology(configPath, HUB_DIR);
+
+		expect(result.status).toBe("exists");
+		expect(result.content).toBeUndefined();
+	});
+
+	it("does not ship the full canonical methodology body in content", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
 
-		await writeMethodology(configPath, HUB_DIR);
+		const result = await writeMethodology(configPath, HUB_DIR);
 
-		const config = await readFile(configPath, "utf-8");
 		const canonicalSpec = readFileSync(join(METHODOLOGY_ROOT, "aide-spec.md"), "utf-8");
-		// Pick a long, distinctive line from aide-spec.md (not present in the
-		// stub) and assert it is absent from the written config.
 		const distinctive = canonicalSpec
 			.split("\n")
 			.find(
@@ -73,37 +86,30 @@ describe("writeMethodology", () => {
 					line.includes("AIDE") === false,
 			);
 		expect(distinctive).toBeTruthy();
-		if (distinctive) expect(config).not.toContain(distinctive);
+		if (distinctive) expect(result.content).not.toContain(distinctive);
 	});
 
-	it("appends stub to existing config without overwriting pre-existing content", async () => {
+	it("never writes to disk", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
-		const existing = "# My Project\n\nExisting content here.\n";
-		await writeFile(configPath, existing, "utf-8");
 
 		await writeMethodology(configPath, HUB_DIR);
 
-		const config = await readFile(configPath, "utf-8");
-		expect(config).toContain("Existing content here.");
-		expect(config).toContain("<!-- aide-methodology -->");
+		await expect(import("node:fs/promises").then((fs) => fs.readFile(configPath, "utf-8"))).rejects.toThrow();
 	});
 
-	it("is idempotent — returns exists when marker already present", async () => {
+	it("filePath matches configPath", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
-		await writeMethodology(configPath, HUB_DIR);
 
 		const result = await writeMethodology(configPath, HUB_DIR);
 
-		expect(result).toEqual({ name: "Methodology pointer", status: "exists" });
+		expect(result.filePath).toBe(configPath);
 	});
 
-	it("never reintroduces the stale 'Intel-Driven' wording from the old literal", async () => {
-		// Narrow textual regression guard: the pre-refactor literal path once
-		// mis-spelled "Intent-Driven" as "Intel-Driven". If a future change
-		// reintroduces an embedded literal, this is the cheapest detector.
+	it("never reintroduces the stale 'Intel-Driven' wording", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
-		await writeMethodology(configPath, HUB_DIR);
-		const config = await readFile(configPath, "utf-8");
-		expect(config).not.toContain("Intel-Driven");
+
+		const result = await writeMethodology(configPath, HUB_DIR);
+
+		expect(result.content).not.toContain("Intel-Driven");
 	});
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { configureZed } from "./index.js";
@@ -15,16 +15,23 @@ afterEach(async () => {
 });
 
 describe("configureZed", () => {
-	it("creates .zed/settings.json when none exists", async () => {
+	it("returns would-create when no settings.json exists", async () => {
 		const result = await configureZed(tempDir);
 
-		expect(result).toEqual({ name: "Zed config", status: "created" });
+		expect(result.status).toBe("would-create");
+		expect(result.category).toBe("ide");
+		expect(result.name).toBe("Zed config");
+	});
 
-		const settings = JSON.parse(await readFile(join(tempDir, ".zed", "settings.json"), "utf-8"));
+	it("would-create content has *.aide in Markdown file_types", async () => {
+		const result = await configureZed(tempDir);
+
+		expect(result.content).toBeTruthy();
+		const settings = JSON.parse(result.content!);
 		expect(settings.file_types.Markdown).toContain("*.aide");
 	});
 
-	it("merges into existing settings without overwriting", async () => {
+	it("would-create content preserves existing settings", async () => {
 		const existing = {
 			theme: "One Dark",
 			font_size: 14,
@@ -35,25 +42,24 @@ describe("configureZed", () => {
 
 		const result = await configureZed(tempDir);
 
-		expect(result.status).toBe("created");
-
-		const settings = JSON.parse(await readFile(join(tempDir, ".zed", "settings.json"), "utf-8"));
+		expect(result.status).toBe("would-create");
+		const settings = JSON.parse(result.content!);
 		expect(settings.theme).toBe("One Dark");
 		expect(settings.font_size).toBe(14);
 		expect(settings.file_types.YAML).toEqual(["*.yml"]);
 		expect(settings.file_types.Markdown).toContain("*.aide");
 	});
 
-	it("preserves existing Markdown file_types entries", async () => {
+	it("would-create content preserves existing Markdown file_types", async () => {
 		const existing = {
 			file_types: { Markdown: ["*.mdx", "*.mdoc"] },
 		};
 		await mkdir(join(tempDir, ".zed"), { recursive: true });
 		await writeFile(join(tempDir, ".zed", "settings.json"), JSON.stringify(existing), "utf-8");
 
-		await configureZed(tempDir);
+		const result = await configureZed(tempDir);
 
-		const settings = JSON.parse(await readFile(join(tempDir, ".zed", "settings.json"), "utf-8"));
+		const settings = JSON.parse(result.content!);
 		expect(settings.file_types.Markdown).toEqual(["*.mdx", "*.mdoc", "*.aide"]);
 	});
 
@@ -66,22 +72,29 @@ describe("configureZed", () => {
 
 		const result = await configureZed(tempDir);
 
-		expect(result).toEqual({ name: "Zed config", status: "exists" });
-	});
-
-	it("is idempotent — second run returns exists", async () => {
-		await configureZed(tempDir);
-		const result = await configureZed(tempDir);
-
 		expect(result.status).toBe("exists");
+		expect(result.content).toBeUndefined();
 	});
 
-	it("skips when settings.json contains invalid JSON", async () => {
+	it("returns would-skip when settings.json contains invalid JSON", async () => {
 		await mkdir(join(tempDir, ".zed"), { recursive: true });
 		await writeFile(join(tempDir, ".zed", "settings.json"), "not valid {{{", "utf-8");
 
 		const result = await configureZed(tempDir);
 
-		expect(result.status).toBe("skipped");
+		expect(result.status).toBe("would-skip");
+	});
+
+	it("never writes to disk", async () => {
+		await configureZed(tempDir);
+
+		await expect(access(join(tempDir, ".zed", "settings.json"))).rejects.toThrow();
+	});
+
+	it("filePath points to .zed/settings.json", async () => {
+		const result = await configureZed(tempDir);
+
+		expect(result.filePath).toContain(".zed");
+		expect(result.filePath).toContain("settings.json");
 	});
 });

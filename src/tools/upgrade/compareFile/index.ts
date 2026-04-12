@@ -1,21 +1,20 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
-import type { UpgradeStatus } from "@/types/index.js";
+import { readFile } from "node:fs/promises";
+import type { UpgradeFileStatus } from "@/types/index.js";
 
 /**
- * Compare a host file against canonical content and optionally overwrite.
+ * Compare a host file against canonical content.
  *
- * - File missing + write=false → "would create"
- * - File missing + write=true → creates file, returns "created"
- * - File exists, content matches → "unchanged"
- * - File exists, content differs + write=false → "would update"
- * - File exists, content differs + write=true → overwrites, returns "updated"
+ * Read-only — never writes. Returns:
+ * - `"missing"` when the file does not exist
+ * - `"matches"` when the file content is byte-identical to canonical
+ * - `"differs"` when the file exists but content differs
+ *
+ * Non-ENOENT read errors are re-thrown.
  */
 export default async function compareFile(
 	hostPath: string,
 	canonicalContent: string,
-	write: boolean,
-): Promise<UpgradeStatus> {
+): Promise<UpgradeFileStatus> {
 	let existing: string;
 
 	try {
@@ -24,26 +23,8 @@ export default async function compareFile(
 		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
 			throw err;
 		}
-
-		// File does not exist.
-		if (!write) {
-			return "would create";
-		}
-
-		await mkdir(dirname(hostPath), { recursive: true });
-		await writeFile(hostPath, canonicalContent, "utf-8");
-		return "created";
+		return "missing";
 	}
 
-	// File exists — compare content.
-	if (existing === canonicalContent) {
-		return "unchanged";
-	}
-
-	if (!write) {
-		return "would update";
-	}
-
-	await writeFile(hostPath, canonicalContent, "utf-8");
-	return "updated";
+	return existing === canonicalContent ? "matches" : "differs";
 }

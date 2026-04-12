@@ -1,6 +1,5 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
-import type { UpgradeStepResult } from "@/types/index.js";
+import { readFile } from "node:fs/promises";
+import type { UpgradeFileResult } from "@/types/index.js";
 import { getMethodologyMarker } from "@/tools/init/initContent/index.js";
 import { composeStub } from "@/tools/init/writeMethodology/index.js";
 
@@ -35,25 +34,20 @@ function findMarkerRegion(
 }
 
 /**
- * Splice the canonical AIDE methodology pointer stub into the host's agent
- * config file, or create the file when it is absent.
+ * Compare the canonical AIDE methodology pointer stub against what is in the
+ * host's agent config file. Read-only — never writes.
  *
- * Behaviour:
- * - File missing or marker absent → append (or create) the stub.
- *   Returns `"created"` on write, `"would create"` on dry-run.
- * - Marker pair present and stub matches canonical → no write.
- *   Returns `"unchanged"`.
- * - Marker pair present and stub differs → replace the bounded region.
- *   Returns `"updated"` on write, `"would update"` on dry-run.
- *
- * The splice preserves every byte before the opening marker and every byte
- * after the closing marker, changing only the marker-bounded region itself.
+ * Returns an `UpgradeFileResult` with category `"pointer-stub"`:
+ * - `"missing"` when the file is absent or markers are not present.
+ *   `canonicalContent` is the full file content after splicing in the stub.
+ * - `"matches"` when the stub in the file is byte-identical to canonical.
+ * - `"differs"` when the stub exists but differs from canonical.
+ *   `canonicalContent` is the full file content after splicing in the stub.
  */
 export default async function spliceStub(
 	configPath: string,
 	docHubDir: string,
-	write: boolean,
-): Promise<UpgradeStepResult> {
+): Promise<UpgradeFileResult> {
 	const marker = getMethodologyMarker();
 	const canonical = composeStub(docHubDir);
 
@@ -61,40 +55,53 @@ export default async function spliceStub(
 
 	// File missing or marker absent — treat as a fresh install.
 	if (existing === undefined || !existing.includes(marker)) {
-		if (write) {
-			const content =
-				existing !== undefined && existing.length > 0
-					? `${existing}\n\n${canonical}\n`
-					: `${canonical}\n`;
-			await mkdir(dirname(configPath), { recursive: true });
-			await writeFile(configPath, content, "utf-8");
-		}
-		return { name: STEP_NAME, status: write ? "created" : "would create" };
+		const canonicalContent =
+			existing !== undefined && existing.length > 0
+				? `${existing}\n\n${canonical}\n`
+				: `${canonical}\n`;
+		return {
+			name: STEP_NAME,
+			filePath: configPath,
+			status: "missing",
+			category: "pointer-stub",
+			canonicalContent,
+		};
 	}
 
 	// Marker pair found — locate the bounded region.
 	const region = findMarkerRegion(existing, marker);
 	if (region === null) {
 		// Opening marker present but no closing marker — treat as absent stub.
-		if (write) {
-			const content = `${existing}\n\n${canonical}\n`;
-			await writeFile(configPath, content, "utf-8");
-		}
-		return { name: STEP_NAME, status: write ? "created" : "would create" };
+		const canonicalContent = `${existing}\n\n${canonical}\n`;
+		return {
+			name: STEP_NAME,
+			filePath: configPath,
+			status: "missing",
+			category: "pointer-stub",
+			canonicalContent,
+		};
 	}
 
 	// Extract the current stub and compare to the canonical form.
 	const current = existing.slice(region.start, region.end);
 	if (current === canonical) {
-		return { name: STEP_NAME, status: "unchanged" };
+		return {
+			name: STEP_NAME,
+			filePath: configPath,
+			status: "matches",
+			category: "pointer-stub",
+		};
 	}
 
-	// Stubs differ — splice the canonical stub in place of the old region.
-	if (write) {
-		const before = existing.slice(0, region.start);
-		const after = existing.slice(region.end);
-		const spliced = `${before}${canonical}${after}`;
-		await writeFile(configPath, spliced, "utf-8");
-	}
-	return { name: STEP_NAME, status: write ? "updated" : "would update" };
+	// Stubs differ — compute the spliced content for the agent to write.
+	const before = existing.slice(0, region.start);
+	const after = existing.slice(region.end);
+	const canonicalContent = `${before}${canonical}${after}`;
+	return {
+		name: STEP_NAME,
+		filePath: configPath,
+		status: "differs",
+		category: "pointer-stub",
+		canonicalContent,
+	};
 }

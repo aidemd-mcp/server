@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { FrameworkConfig } from "@/types/index.js";
+import type { FrameworkConfig, UpgradeResult } from "@/types/index.js";
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -17,19 +17,16 @@ vi.mock("@/tools/init/scaffoldCommands/index.js", () => ({
 vi.mock("./compareFile/index.js");
 vi.mock("./spliceStub/index.js");
 vi.mock("./buildVersionsMeta/index.js");
-
-// execFile is used by checkVscodeExtension — mock it to avoid spawning `code`.
-vi.mock("node:child_process", () => ({
-	execFile: vi.fn((_cmd: string, _args: string[], cb: (err: Error | null, result?: { stdout: string }) => void) => {
-		cb(new Error("code not found"));
-	}),
-}));
+vi.mock("./checkMcpConfig/index.js");
+vi.mock("./checkIdeConfig/index.js");
 
 import detectFramework from "@/tools/init/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import buildVersionsMeta from "./buildVersionsMeta/index.js";
+import checkMcpConfig from "./checkMcpConfig/index.js";
+import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
 import upgrade from "./index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -54,27 +51,16 @@ const CURSOR_CONFIG: FrameworkConfig = {
 	skillDir: ".cursor/skills",
 };
 
-/** Minimal two-entry methodology doc list returned by the mock. */
 const MOCK_METHODOLOGY_DOCS = [
 	{ canonical: "aide-spec" as const, hostFilename: "aide-spec.md" },
 	{ canonical: "aide-template" as const, hostFilename: "aide-template.md" },
 ];
-
-// ── Test fixtures ─────────────────────────────────────────────────────────────
 
 let tempDir: string;
 
 beforeEach(async () => {
 	tempDir = await mkdtemp(join(tmpdir(), "aide-upgrade-"));
 	vi.resetAllMocks();
-
-	// Default mock for execFile: `code` CLI not available → VS Code check returns unchanged.
-	const { execFile } = await import("node:child_process");
-	(execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-		(_cmd: string, _args: string[], cb: (err: Error | null) => void) => {
-			cb(new Error("code not found"));
-		},
-	);
 });
 
 afterEach(async () => {
@@ -93,261 +79,239 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 		"aide-spec": { publishedAt: "2026-04-11T14:30:00+00:00", sourceCommit: "abc1234", previousCommit: "def5678" },
 		"aide-template": { publishedAt: "2026-03-15T09:00:00+00:00", sourceCommit: "b2c3d4e" },
 	});
+
+	// Default: all matching
+	vi.mocked(spliceStub).mockResolvedValue({
+		name: "Methodology pointer",
+		filePath: join(tempDir, "CLAUDE.md"),
+		status: "matches",
+		category: "pointer-stub",
+	});
+	vi.mocked(compareFile).mockResolvedValue("matches");
+	vi.mocked(checkMcpConfig).mockResolvedValue({
+		name: "MCP config",
+		filePath: join(tempDir, ".mcp.json"),
+		status: "matches",
+		category: "mcp",
+	});
+	vi.mocked(checkZedConfig).mockResolvedValue({
+		name: "Zed config",
+		filePath: join(tempDir, ".zed", "settings.json"),
+		status: "matches",
+		category: "ide",
+	});
+	vi.mocked(checkVscodeExtension).mockResolvedValue({
+		name: "VS Code extension",
+		filePath: "/path/to/aide-markdown-0.0.1.vsix",
+		status: "matches",
+		category: "ide",
+	});
+}
+
+// Helper: find a category result by name
+function findCategory(result: UpgradeResult, category: string) {
+	return result.categories.find((c) => c.category === category);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("upgrade", () => {
-	// ── Test 1: All unchanged → short-circuit message ───────────────────────
-	it("returns all-current message when every artifact is unchanged", async () => {
+	// ── Test 1: All matching → all category summaries have 0 diffs ──────────
+	it("returns all-matching summaries when every artifact matches", async () => {
 		wireDefaultMocks();
 
-		// stub returns unchanged
-		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "unchanged" });
-		// all docs and commands unchanged
-		vi.mocked(compareFile).mockResolvedValue("unchanged");
+		const result = await upgrade(tempDir);
 
-		// No .mcp.json exists → would create, but we need unchanged for this test.
-		// Provide a real .mcp.json with canonical content so checkMcpConfig reports unchanged.
-		const { writeFile } = await import("node:fs/promises");
-		const mcpPath = join(tempDir, ".mcp.json");
-		await writeFile(
-			mcpPath,
-			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
-			"utf-8",
-		);
+		expect(result.framework).toBe("claude");
+		expect(result.categories).toHaveLength(8);
 
-		const result = await upgrade(tempDir, false, undefined, undefined, true);
-
-		// Header is present
-		expect(result).toContain("AIDE upgrade preview (claude framework):");
-
-		// All-current short-circuit line
-		expect(result).toContain("All");
-		expect(result).toContain("methodology artifacts match canonical. Nothing to upgrade.");
-
-		// No warning block
-		expect(result).not.toContain("Warning");
-
-		// spliceStub and compareFile were called
-		expect(vi.mocked(spliceStub)).toHaveBeenCalled();
-		expect(vi.mocked(compareFile)).toHaveBeenCalled();
+		for (const cat of result.categories) {
+			expect(cat.summary.differs).toBe(0);
+			expect(cat.summary.missing).toBe(0);
+		}
 	});
 
-	// ── Test 2: Mixed statuses dry-run → preview with correct symbols ────────
-	it("returns dry-run preview with correct prefix symbols and composed warning", async () => {
+	// ── Test 2: Some drifted docs → methodology-docs category reports it ────
+	it("reports differs in methodology-docs category when docs have drifted", async () => {
 		wireDefaultMocks();
 
-		// stub has drifted
-		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "would update" });
-
-		// first doc drifted, second unchanged, versions.json unchanged, commands both unchanged
+		// First doc differs, second matches, versions match, commands match
 		vi.mocked(compareFile)
-			.mockResolvedValueOnce("would update")  // aide-spec.md
-			.mockResolvedValueOnce("unchanged")      // aide-template.md
-			.mockResolvedValueOnce("unchanged")      // versions.json
-			.mockResolvedValueOnce("would update")   // aide command (aide.md)
-			.mockResolvedValueOnce("unchanged");     // aide:research
+			.mockResolvedValueOnce("differs")   // aide-spec.md
+			.mockResolvedValueOnce("matches")   // aide-template.md
+			.mockResolvedValueOnce("matches")   // versions.json
+			.mockResolvedValueOnce("matches")   // aide command
+			.mockResolvedValueOnce("matches");  // aide:research
 
-		// MCP config: canonical — write a real file so checkMcpConfig is happy.
-		const { writeFile } = await import("node:fs/promises");
-		await writeFile(
-			join(tempDir, ".mcp.json"),
-			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
-			"utf-8",
-		);
+		const result = await upgrade(tempDir);
 
-		const result = await upgrade(tempDir, false, undefined, undefined, true);
+		const docsCat = findCategory(result, "methodology-docs");
+		expect(docsCat).toBeDefined();
+		expect(docsCat!.summary.differs).toBe(1);
+		expect(docsCat!.summary.matches).toBe(1);
 
-		// Header
-		expect(result).toContain("AIDE upgrade preview (claude framework):");
+		// The differing file has canonicalContent populated
+		const differingFile = docsCat!.files.find((f) => f.status === "differs");
+		expect(differingFile?.canonicalContent).toBe("canonical content");
 
-		// Prefix symbols
-		expect(result).toContain("  ~ Methodology pointer: would update");
-		expect(result).toContain("  ~ .aide/docs/aide-spec.md: would update");
-		expect(result).toContain("  = .aide/docs/aide-template.md: unchanged");
-		expect(result).toContain("  ~ aide: would update");
-		expect(result).toContain("  = aide:research: unchanged");
-
-		// Warning block present
-		expect(result).toContain("Warning: confirming will overwrite local customizations in:");
-
-		// Warning names only the affected categories
-		expect(result).toContain("pointer stub");
-		expect(result).toContain("methodology docs");
-		expect(result).toContain("slash commands");
-
-		// The warning names only affected categories — "MCP config" must not
-		// appear inside the warning text (it is fine if it appears in the file list).
-		const warningSection = result.slice(result.indexOf("Warning:"));
-		expect(warningSection).not.toContain("MCP config");
-
-		// Confirm prompt
-		expect(result).toContain("confirm: true");
+		// Other categories should still report all matching
+		const cmdsCat = findCategory(result, "commands");
+		expect(cmdsCat!.summary.differs).toBe(0);
 	});
 
-	// ── Test 3: confirm=true → final statuses with header and counts ─────────
-	it("returns final statuses with AIDE upgraded header and summary counts line", async () => {
+	// ── Test 3: MCP config malformed → mcp category reports malformed ────────
+	it("reports malformed status when MCP config cannot be parsed", async () => {
 		wireDefaultMocks();
+		vi.mocked(checkMcpConfig).mockResolvedValue({
+			name: "MCP config",
+			filePath: join(tempDir, ".mcp.json"),
+			status: "malformed",
+			category: "mcp",
+		});
 
-		// 1 stub created, 1 doc updated, 1 doc unchanged, versions.json created, 1 cmd created, 1 cmd unchanged
-		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "created" });
+		const result = await upgrade(tempDir);
+
+		const mcpCat = findCategory(result, "mcp");
+		expect(mcpCat).toBeDefined();
+		expect(mcpCat!.files[0].status).toBe("malformed");
+		expect(mcpCat!.files[0].prescription).toBeUndefined();
+	});
+
+	// ── Test 4: MCP config differs → prescription carried on the result ──────
+	it("includes prescription in mcp category when aide entry differs", async () => {
+		wireDefaultMocks();
+		const prescription = { key: "aide", entry: { command: "npx", args: ["aidemd-mcp"] } };
+		vi.mocked(checkMcpConfig).mockResolvedValue({
+			name: "MCP config",
+			filePath: join(tempDir, ".mcp.json"),
+			status: "differs",
+			category: "mcp",
+			prescription,
+		});
+
+		const result = await upgrade(tempDir);
+
+		const mcpCat = findCategory(result, "mcp");
+		expect(mcpCat!.files[0].status).toBe("differs");
+		expect(mcpCat!.files[0].prescription).toEqual(prescription);
+	});
+
+	// ── Test 5: Missing files → status 'missing' with canonicalContent ───────
+	it("populates canonicalContent for missing files", async () => {
+		wireDefaultMocks();
 
 		vi.mocked(compareFile)
-			.mockResolvedValueOnce("updated")     // aide-spec.md
-			.mockResolvedValueOnce("unchanged")   // aide-template.md
-			.mockResolvedValueOnce("created")     // versions.json
-			.mockResolvedValueOnce("created")     // aide.md (command)
-			.mockResolvedValueOnce("unchanged");  // aide:research
+			.mockResolvedValueOnce("missing")   // aide-spec.md
+			.mockResolvedValueOnce("matches")   // aide-template.md
+			.mockResolvedValueOnce("matches")   // versions.json
+			.mockResolvedValueOnce("matches")   // aide command
+			.mockResolvedValueOnce("matches");  // aide:research
 
-		// MCP config: canonical file present
-		const { writeFile } = await import("node:fs/promises");
-		await writeFile(
-			join(tempDir, ".mcp.json"),
-			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
-			"utf-8",
-		);
+		const result = await upgrade(tempDir);
 
-		const result = await upgrade(tempDir, true, undefined, undefined, true);
-
-		// Confirmed header
-		expect(result).toContain("AIDE upgraded (claude framework):");
-
-		// Final status symbols
-		expect(result).toContain("  + Methodology pointer: created");
-		expect(result).toContain("  ~ .aide/docs/aide-spec.md: updated");
-		expect(result).toContain("  = .aide/docs/aide-template.md: unchanged");
-		expect(result).toContain("  + aide: created");
-		expect(result).toContain("  = aide:research: unchanged");
-
-		// Summary counts: 3 created (stub + versions.json + aide command), 1 updated (aide-spec),
-		// at least 2 unchanged (aide-template + aide:research + MCP config)
-		expect(result).toContain("3 files created");
-		expect(result).toContain("1 file updated");
-		expect(result).toMatch(/\d+ files? unchanged/);
-
-		// No dry-run warning
-		expect(result).not.toContain("Warning");
+		const docsCat = findCategory(result, "methodology-docs");
+		const missingFile = docsCat!.files.find((f) => f.status === "missing");
+		expect(missingFile).toBeDefined();
+		expect(missingFile!.canonicalContent).toBe("canonical content");
 	});
 
-	// ── Test 4: Framework override forwarded to detectFramework ─────────────
+	// ── Test 6: Each file lands in the correct category ─────────────────────
+	it("groups files into correct categories", async () => {
+		wireDefaultMocks();
+
+		const result = await upgrade(tempDir);
+
+		const categories = result.categories.map((c) => c.category);
+		expect(categories).toContain("pointer-stub");
+		expect(categories).toContain("methodology-docs");
+		expect(categories).toContain("version-metadata");
+		expect(categories).toContain("commands");
+		expect(categories).toContain("agents");
+		expect(categories).toContain("skills");
+		expect(categories).toContain("mcp");
+		expect(categories).toContain("ide");
+
+		// methodology-docs should have 2 entries (from MOCK_METHODOLOGY_DOCS)
+		const docsCat = findCategory(result, "methodology-docs");
+		expect(docsCat!.files).toHaveLength(2);
+
+		// pointer-stub should have exactly 1 entry
+		const stubCat = findCategory(result, "pointer-stub");
+		expect(stubCat!.files).toHaveLength(1);
+
+		// version-metadata should have exactly 1 entry (versions.json)
+		const versionCat = findCategory(result, "version-metadata");
+		expect(versionCat!.files).toHaveLength(1);
+		expect(versionCat!.files[0].name).toContain("versions.json");
+
+		// commands should have 2 entries (from COMMANDS mock)
+		const cmdsCat = findCategory(result, "commands");
+		expect(cmdsCat!.files).toHaveLength(2);
+
+		// ide should have 2 entries (zed + vscode)
+		const ideCat = findCategory(result, "ide");
+		expect(ideCat!.files).toHaveLength(2);
+	});
+
+	// ── Test 7: Framework override forwarded to detectFramework ─────────────
 	it("forwards framework override to detectFramework", async () => {
 		wireDefaultMocks(CURSOR_CONFIG);
 		vi.mocked(detectFramework).mockResolvedValue(CURSOR_CONFIG);
 
-		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "unchanged" });
-		vi.mocked(compareFile).mockResolvedValue("unchanged");
+		const result = await upgrade(tempDir, "cursor");
 
-		const { writeFile, mkdir } = await import("node:fs/promises");
-		await mkdir(join(tempDir, ".cursor"), { recursive: true });
-		await writeFile(
-			join(tempDir, ".cursor", "mcp.json"),
-			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
-			"utf-8",
-		);
-
-		await upgrade(tempDir, false, "cursor", undefined, true);
-
-		// detectFramework was called with the framework override
+		expect(result.framework).toBe("cursor");
 		expect(vi.mocked(detectFramework)).toHaveBeenCalledWith(
 			expect.any(String),
 			"cursor",
 		);
 	});
 
-	// ── Test 5: skipIde=true → IDE results absent from output ───────────────
-	it("omits IDE results when skipIde is true", async () => {
+	// ── Test 8: No prose in result — structured data only ───────────────────
+	it("returns structured UpgradeResult, not a string", async () => {
 		wireDefaultMocks();
 
-		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "unchanged" });
-		vi.mocked(compareFile).mockResolvedValue("unchanged");
+		const result = await upgrade(tempDir);
 
-		const { writeFile } = await import("node:fs/promises");
-		await writeFile(
-			join(tempDir, ".mcp.json"),
-			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
-			"utf-8",
-		);
-
-		const resultWithSkip = await upgrade(tempDir, false, undefined, undefined, true);
-
-		// IDE names must not appear in the output at all
-		expect(resultWithSkip).not.toContain("Zed config");
-		expect(resultWithSkip).not.toContain("VS Code extension");
+		// Must be a proper object with the expected shape
+		expect(typeof result).toBe("object");
+		expect(result).toHaveProperty("framework");
+		expect(result).toHaveProperty("categories");
+		expect(Array.isArray(result.categories)).toBe(true);
 	});
 
-	it("includes IDE results when skipIde is false or omitted", async () => {
+	// ── Test 9: Summary counts are computed correctly ────────────────────────
+	it("computes summary totals accurately across all statuses", async () => {
 		wireDefaultMocks();
 
-		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "unchanged" });
-		vi.mocked(compareFile).mockResolvedValue("unchanged");
-
-		const { writeFile } = await import("node:fs/promises");
-		await writeFile(
-			join(tempDir, ".mcp.json"),
-			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
-			"utf-8",
-		);
-
-		// When code CLI is unavailable, Zed config is still checked (returns would create
-		// for missing settings file). This confirms the IDE branch ran.
-		const result = await upgrade(tempDir, false, undefined, undefined, false);
-
-		// At least one of the IDE names must appear
-		const hasIde = result.includes("Zed config") || result.includes("VS Code extension");
-		expect(hasIde).toBe(true);
-	});
-
-	// ── Test 6: versions.json appears in dry-run output ────────────────────
-	it("includes versions.json in dry-run preview", async () => {
-		wireDefaultMocks();
-
-		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "unchanged" });
-		// docs unchanged, but versions.json would create (first call for each doc returns unchanged,
-		// then versions.json compareFile call returns "would create")
 		vi.mocked(compareFile)
-			.mockResolvedValueOnce("unchanged")      // aide-spec.md
-			.mockResolvedValueOnce("unchanged")      // aide-template.md
-			.mockResolvedValueOnce("would create")   // versions.json
-			.mockResolvedValueOnce("unchanged")      // aide command
-			.mockResolvedValueOnce("unchanged");     // aide:research
+			.mockResolvedValueOnce("differs")   // aide-spec.md
+			.mockResolvedValueOnce("missing")   // aide-template.md
+			.mockResolvedValueOnce("matches")   // versions.json
+			.mockResolvedValueOnce("matches")   // aide command
+			.mockResolvedValueOnce("matches");  // aide:research
 
-		const { writeFile } = await import("node:fs/promises");
-		await writeFile(
-			join(tempDir, ".mcp.json"),
-			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
-			"utf-8",
-		);
+		const result = await upgrade(tempDir);
 
-		const result = await upgrade(tempDir, false, undefined, undefined, true);
-
-		expect(result).toContain(".aide/docs/versions.json: would create");
-		// versions.json is grouped with methodology docs in warnings
-		expect(result).toContain("methodology docs");
+		const docsCat = findCategory(result, "methodology-docs");
+		expect(docsCat!.summary.total).toBe(2);
+		expect(docsCat!.summary.differs).toBe(1);
+		expect(docsCat!.summary.missing).toBe(1);
+		expect(docsCat!.summary.matches).toBe(0);
 	});
 
-	// ── Test 7: versions.json appears in confirm output ────────────────────
-	it("includes versions.json in confirm output with correct status", async () => {
+	// ── Test 10: Matches do not carry canonicalContent ───────────────────────
+	it("omits canonicalContent for matching files", async () => {
 		wireDefaultMocks();
 
-		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "unchanged" });
-		vi.mocked(compareFile)
-			.mockResolvedValueOnce("unchanged")   // aide-spec.md
-			.mockResolvedValueOnce("unchanged")   // aide-template.md
-			.mockResolvedValueOnce("created")     // versions.json
-			.mockResolvedValueOnce("unchanged")   // aide command
-			.mockResolvedValueOnce("unchanged");  // aide:research
+		const result = await upgrade(tempDir);
 
-		const { writeFile } = await import("node:fs/promises");
-		await writeFile(
-			join(tempDir, ".mcp.json"),
-			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
-			"utf-8",
-		);
-
-		const result = await upgrade(tempDir, true, undefined, undefined, true);
-
-		expect(result).toContain(".aide/docs/versions.json: created");
-		expect(result).toContain("1 file created");
+		for (const cat of result.categories) {
+			for (const file of cat.files) {
+				if (file.status === "matches") {
+					expect(file.canonicalContent).toBeUndefined();
+				}
+			}
+		}
 	});
 });

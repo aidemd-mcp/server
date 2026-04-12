@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir, platform } from "node:os";
 import init from "./index.js";
+import type { InitResult, InitStep } from "@/types/index.js";
 
 // Clean up AIDE_BRAIN_PATH after each test to avoid cross-test pollution
 const originalBrainPath = process.env.AIDE_BRAIN_PATH;
 
-const expectedMcpEntry = platform() === "win32"
+const expectedAideMcpEntry = platform() === "win32"
 	? { command: "cmd", args: ["/c", "npx", "aidemd-mcp"] }
 	: { command: "npx", args: ["aidemd-mcp"] };
 
@@ -27,118 +28,251 @@ afterEach(async () => {
 	}
 });
 
-describe("init", () => {
-	it("sequences all helpers and reports their results for a fresh project", async () => {
-		const brainPath = join(tempDir, "test-brain");
+/** Find a step by name in the result. */
+function findStep(result: InitResult, name: string): InitStep | undefined {
+	return result.steps.find((s) => s.name === name);
+}
+
+/** Find all steps with a given category. */
+function stepsForCategory(result: InitResult, category: InitStep["category"]): InitStep[] {
+	return result.steps.filter((s) => s.category === category);
+}
+
+describe("init — structured JSON result", () => {
+	it("fresh project: returns InitResult with framework, steps, and brainHints", async () => {
+		const result = await init(tempDir);
+
+		expect(result).toHaveProperty("framework");
+		expect(result).toHaveProperty("steps");
+		expect(result).toHaveProperty("brainHints");
+		expect(Array.isArray(result.steps)).toBe(true);
+		expect(Array.isArray(result.brainHints)).toBe(true);
+	});
+
+	it("fresh project: detects claude framework by default", async () => {
+		const result = await init(tempDir);
+
+		expect(result.framework).toBe("claude");
+	});
+
+	it("fresh project: all non-IDE steps are would-create", async () => {
+		const result = await init(tempDir);
+
+		const nonIdeSteps = result.steps.filter((s) => s.category !== "ide");
+		const statuses = nonIdeSteps.map((s) => s.status);
+		// All should be would-create (nothing exists yet in a fresh tempDir)
+		expect(statuses.every((s) => s === "would-create" || s === "would-skip")).toBe(true);
+	});
+
+	it("fresh project: would-create steps carry content or prescription", async () => {
+		const result = await init(tempDir);
+
+		for (const step of result.steps) {
+			if (step.status === "would-create") {
+				// MCP steps carry prescription; file steps carry content
+				if (step.category === "mcp") {
+					// Obsidian MCP step may lack prescription when no brain hints (placeholder)
+					if (step.prescription) {
+						expect(step.prescription.key).toBeTruthy();
+						expect(step.prescription.entry.command).toBeTruthy();
+					}
+				} else if (step.category === "brain" && step.filePath === "") {
+					// Placeholder brain step — agent must interview user first
+					continue;
+				} else if (step.category !== "ide") {
+					// IDE vscode step may have no content (agent installs via CLI)
+					expect(step.content).toBeTruthy();
+				}
+			}
+		}
+	});
+
+	it("fresh project: every step has a filePath (brain vault may be empty when no hints)", async () => {
+		const result = await init(tempDir);
+
+		for (const step of result.steps) {
+			// Brain vault step has empty filePath when no hints — signals agent must ask user
+			if (step.name === "Brain vault" && result.brainHints.length === 0) {
+				expect(step.filePath).toBe("");
+			} else {
+				expect(step.filePath).toBeTruthy();
+			}
+		}
+	});
+
+	it("fresh project: every step has a category", async () => {
+		const result = await init(tempDir);
+
+		const validCategories = new Set(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide"]);
+		for (const step of result.steps) {
+			expect(validCategories.has(step.category)).toBe(true);
+		}
+	});
+
+	it("fresh project: brainHints empty when no vault on disk and no env var", async () => {
+		// Clear env var and ensure no sibling my-brain or ~/my-brain interference
+		delete process.env.AIDE_BRAIN_PATH;
+		// Use an isolated subdirectory to avoid sibling-path false positives
+		const isolated = join(tempDir, "project");
+		await mkdir(isolated);
+
+		const result = await init(isolated);
+
+		// The hint from env won't appear; sibling and conventional might if they
+		// happen to exist on this machine. We can only assert the env hint is absent.
+		const envHints = result.brainHints.filter((h) => h.source === "env");
+		expect(envHints).toHaveLength(0);
+	});
+
+	it("fresh project: brainHints contain env hint when AIDE_BRAIN_PATH points to existing dir", async () => {
+		const brainPath = join(tempDir, "vault");
+		await mkdir(brainPath);
 		process.env.AIDE_BRAIN_PATH = brainPath;
 
 		const result = await init(tempDir);
 
-		expect(result).toContain("AIDE initialized");
-		expect(result).toContain("claude framework");
-		expect(result).toContain("Methodology pointer");
-		expect(result).toContain(".aide/docs/aide-spec.md");
-		expect(result).toContain(".aide/docs/index.md");
-		expect(result).toContain("Doc hub: .aide/docs");
-		expect(result).toContain("MCP config");
-		expect(result).toContain("Brain vault");
-
-		// Pointer stub written into the config file (not the full body)
-		const config = await readFile(join(tempDir, "CLAUDE.md"), "utf-8");
-		expect(config).toContain("<!-- aide-methodology -->");
-		expect(config).toContain(".aide/docs");
-
-		// Doc hub landed on disk
-		const hubFiles = await readdir(join(tempDir, ".aide", "docs"));
-		expect(hubFiles).toContain("aide-spec.md");
-		expect(hubFiles).toContain("aide-template.md");
-		expect(hubFiles).toContain("progressive-disclosure.md");
-		expect(hubFiles).toContain("agent-readable-code.md");
-		expect(hubFiles).toContain("automated-qa.md");
-		expect(hubFiles).toContain("index.md");
-
-		// Commands scaffolded under the aide/ namespace subfolder
-		const commands = await readdir(join(tempDir, ".claude", "commands", "aide"));
-		expect(commands).toContain("research.md");
-
-		// MCP config wired
-		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8"));
-		expect(mcp.mcpServers.aide).toEqual(expectedMcpEntry);
-
-		// Brain vault was actually provisioned on disk — not just mentioned in output
-		const vaultEntries = await readdir(brainPath);
-		expect(vaultEntries).toContain("research");
-		expect(vaultEntries).toContain("coding-playbook");
-		expect(vaultEntries).toContain("process");
-
-		// Obsidian MCP is configured — either wired into the project config or
-		// already present in the user-level config (e.g. ~/.claude.json). The
-		// output must mention it and the result must not be "skipped".
-		expect(result).toContain("MCP config (obsidian)");
+		const envHints = result.brainHints.filter((h) => h.source === "env");
+		expect(envHints).toHaveLength(1);
+		expect(envHints[0].path).toBe(brainPath);
 	});
 
-	it("is idempotent — reports already initialized when run twice", async () => {
-		await init(tempDir);
+	it("fresh project: AIDE_BRAIN_PATH pointing to non-existent dir produces no hint", async () => {
+		process.env.AIDE_BRAIN_PATH = join(tempDir, "does-not-exist");
+
 		const result = await init(tempDir);
 
-		expect(result).toContain("AIDE already initialized");
+		const envHints = result.brainHints.filter((h) => h.source === "env");
+		expect(envHints).toHaveLength(0);
 	});
 
-	it("respects framework override", async () => {
+	it("fresh project: aide MCP prescription has correct key and entry", async () => {
+		const result = await init(tempDir);
+
+		const mcpStep = findStep(result, "MCP config (aide)");
+		expect(mcpStep).toBeDefined();
+		expect(mcpStep?.prescription?.key).toBe("aide");
+		expect(mcpStep?.prescription?.entry).toEqual(expectedAideMcpEntry);
+	});
+
+	it("fresh project: methodology category has pointer and doc steps", async () => {
+		const result = await init(tempDir);
+
+		const methodologySteps = stepsForCategory(result, "methodology");
+		expect(methodologySteps.length).toBeGreaterThan(1);
+
+		const pointer = findStep(result, "Methodology pointer");
+		expect(pointer).toBeDefined();
+		expect(pointer?.category).toBe("methodology");
+	});
+
+	it("fresh project: commands category includes aide:research", async () => {
+		const result = await init(tempDir);
+
+		const commandSteps = stepsForCategory(result, "commands");
+		expect(commandSteps.length).toBeGreaterThan(0);
+		const research = commandSteps.find((s) => s.name === "aide:research");
+		expect(research).toBeDefined();
+	});
+
+	it("fresh project: agents and skills categories are populated", async () => {
+		const result = await init(tempDir);
+
+		expect(stepsForCategory(result, "agents").length).toBeGreaterThan(0);
+		expect(stepsForCategory(result, "skills").length).toBeGreaterThan(0);
+	});
+
+	it("fresh project: brain steps are would-create with empty filePath when no hints", async () => {
+		delete process.env.AIDE_BRAIN_PATH;
+		// Use isolated subdir to avoid sibling my-brain collisions
+		const isolated = join(tempDir, "project");
+		await mkdir(isolated);
+
+		const result = await init(isolated);
+
+		const brainSteps = stepsForCategory(result, "brain");
+		expect(brainSteps.length).toBeGreaterThan(0);
+		// When no hints exist, brain vault step has empty filePath signaling
+		// the agent must interview the user before applying
+		const vaultStep = brainSteps.find((s) => s.name === "Brain vault");
+		expect(vaultStep).toBeDefined();
+		expect(vaultStep?.status).toBe("would-create");
+		expect(vaultStep?.filePath).toBe("");
+	});
+
+	it("idempotency — re-running on initialized content returns exists steps", async () => {
+		// Write some files that detectFramework and helper checks look at
+		await mkdir(join(tempDir, ".claude"));
+		await mkdir(join(tempDir, ".claude", "commands", "aide"), { recursive: true });
+		await writeFile(join(tempDir, "CLAUDE.md"), "<!-- aide-methodology -->\n\nfoo\n\n<!-- aide-methodology -->\n");
+		await writeFile(join(tempDir, ".mcp.json"), JSON.stringify({ mcpServers: { aide: expectedAideMcpEntry } }));
+
+		// After writing the methodology marker, pointer should be exists
+		const result = await init(tempDir);
+
+		const pointer = findStep(result, "Methodology pointer");
+		expect(pointer?.status).toBe("exists");
+
+		const mcpAide = findStep(result, "MCP config (aide)");
+		expect(mcpAide?.status).toBe("exists");
+	});
+
+	it("framework override — cursor framework propagates to steps", async () => {
 		const result = await init(tempDir, "cursor");
 
-		expect(result).toContain("cursor framework");
-
-		const config = await readFile(join(tempDir, ".cursorrules"), "utf-8");
-		expect(config).toContain("<!-- aide-methodology -->");
-
-		const commands = await readdir(join(tempDir, ".cursor", "commands", "aide"));
-		expect(commands).toContain("research.md");
+		expect(result.framework).toBe("cursor");
+		// Config path should be .cursorrules
+		const pointer = findStep(result, "Methodology pointer");
+		expect(pointer?.filePath).toContain(".cursorrules");
 	});
 
-	it("respects path override", async () => {
+	it("auto-detects cursor from .cursor directory", async () => {
+		await mkdir(join(tempDir, ".cursor"));
+
+		const result = await init(tempDir);
+
+		expect(result.framework).toBe("cursor");
+	});
+
+	it("path override — uses subproject root", async () => {
 		const subDir = join(tempDir, "subproject");
 		await mkdir(subDir);
 
 		const result = await init(tempDir, undefined, "subproject");
 
-		expect(result).toContain("AIDE initialized");
-		const config = await readFile(join(subDir, "CLAUDE.md"), "utf-8");
-		expect(config).toContain("<!-- aide-methodology -->");
+		expect(result.framework).toBe("claude");
+		const pointer = findStep(result, "Methodology pointer");
+		expect(pointer?.filePath).toContain("subproject");
 	});
 
-	it("uses detectFramework to pick up framework from on-disk files", async () => {
-		await mkdir(join(tempDir, ".cursor"));
+	it("MCP config malformed — configMalformed flag is set on mcp step", async () => {
+		await writeFile(join(tempDir, ".mcp.json"), "not valid json {{{", "utf-8");
 
 		const result = await init(tempDir);
 
-		expect(result).toContain("cursor framework");
+		const mcpStep = findStep(result, "MCP config (aide)");
+		expect(mcpStep?.configMalformed).toBe(true);
+		expect(mcpStep?.status).toBe("would-create");
+		// Prescription is still provided so agent can create a fresh config
+		expect(mcpStep?.prescription).toBeDefined();
 	});
 
-	it("creates vault at AIDE_BRAIN_PATH when env var is set", async () => {
-		const brainPath = join(tempDir, "env-brain");
-		process.env.AIDE_BRAIN_PATH = brainPath;
-
+	it("result is JSON-serializable", async () => {
 		const result = await init(tempDir);
 
-		expect(result).toContain("Brain vault");
-		expect(result).toContain(`Brain: ${brainPath}`);
-
-		const entries = await readdir(brainPath);
-		expect(entries).toContain("research");
-		expect(entries).toContain("coding-playbook");
+		expect(() => JSON.stringify(result)).not.toThrow();
+		const parsed = JSON.parse(JSON.stringify(result)) as InitResult;
+		expect(parsed.framework).toBe(result.framework);
+		expect(parsed.steps.length).toBe(result.steps.length);
 	});
 
-	it("explicit brainPath parameter takes priority over AIDE_BRAIN_PATH env var", async () => {
-		const envBrainPath = join(tempDir, "env-brain");
-		const explicitBrainPath = join(tempDir, "explicit-brain");
-		process.env.AIDE_BRAIN_PATH = envBrainPath;
+	it("no prose — result contains no formatted text fields", async () => {
+		const result = await init(tempDir);
 
-		const result = await init(tempDir, undefined, undefined, undefined, explicitBrainPath);
-
-		expect(result).toContain(`Brain: ${explicitBrainPath}`);
-		// Explicit path got the vault, not the env path
-		const entries = await readdir(explicitBrainPath);
-		expect(entries).toContain("research");
+		// The top-level result has no string fields beyond what InitResult declares
+		const keys = Object.keys(result);
+		expect(keys).toEqual(expect.arrayContaining(["framework", "steps", "brainHints"]));
+		// No extra string fields
+		const extraKeys = keys.filter((k) => !["framework", "steps", "brainHints"].includes(k));
+		expect(extraKeys).toHaveLength(0);
 	});
 });

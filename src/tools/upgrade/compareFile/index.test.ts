@@ -3,16 +3,12 @@ import type { Mock } from "vitest";
 
 vi.mock("node:fs/promises", () => ({
 	readFile: vi.fn(),
-	writeFile: vi.fn(),
-	mkdir: vi.fn(),
 }));
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import compareFile from "./index.js";
 
 const mockReadFile = readFile as Mock;
-const mockWriteFile = writeFile as Mock;
-const mockMkdir = mkdir as Mock;
 
 const HOST_PATH = "/project/.aide/docs/index.md";
 const CANONICAL = "# canonical content\n";
@@ -26,8 +22,6 @@ function enoent(): NodeJS.ErrnoException {
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	mockWriteFile.mockResolvedValue(undefined);
-	mockMkdir.mockResolvedValue(undefined);
 });
 
 describe("compareFile", () => {
@@ -36,32 +30,9 @@ describe("compareFile", () => {
 			mockReadFile.mockRejectedValue(enoent());
 		});
 
-		it("returns 'would create' when write=false", async () => {
-			const status = await compareFile(HOST_PATH, CANONICAL, false);
-			expect(status).toBe("would create");
-		});
-
-		it("does not call writeFile or mkdir when write=false", async () => {
-			await compareFile(HOST_PATH, CANONICAL, false);
-			expect(mockWriteFile).not.toHaveBeenCalled();
-			expect(mockMkdir).not.toHaveBeenCalled();
-		});
-
-		it("returns 'created' when write=true", async () => {
-			const status = await compareFile(HOST_PATH, CANONICAL, true);
-			expect(status).toBe("created");
-		});
-
-		it("calls mkdir with the parent dir and recursive=true when write=true", async () => {
-			await compareFile(HOST_PATH, CANONICAL, true);
-			expect(mockMkdir).toHaveBeenCalledOnce();
-			expect(mockMkdir).toHaveBeenCalledWith("/project/.aide/docs", { recursive: true });
-		});
-
-		it("calls writeFile with the canonical content when write=true", async () => {
-			await compareFile(HOST_PATH, CANONICAL, true);
-			expect(mockWriteFile).toHaveBeenCalledOnce();
-			expect(mockWriteFile).toHaveBeenCalledWith(HOST_PATH, CANONICAL, "utf-8");
+		it("returns 'missing'", async () => {
+			const status = await compareFile(HOST_PATH, CANONICAL);
+			expect(status).toBe("missing");
 		});
 	});
 
@@ -70,20 +41,9 @@ describe("compareFile", () => {
 			mockReadFile.mockResolvedValue(CANONICAL);
 		});
 
-		it("returns 'unchanged' when write=false", async () => {
-			const status = await compareFile(HOST_PATH, CANONICAL, false);
-			expect(status).toBe("unchanged");
-		});
-
-		it("returns 'unchanged' when write=true", async () => {
-			const status = await compareFile(HOST_PATH, CANONICAL, true);
-			expect(status).toBe("unchanged");
-		});
-
-		it("does not call writeFile regardless of the write flag", async () => {
-			await compareFile(HOST_PATH, CANONICAL, false);
-			await compareFile(HOST_PATH, CANONICAL, true);
-			expect(mockWriteFile).not.toHaveBeenCalled();
+		it("returns 'matches'", async () => {
+			const status = await compareFile(HOST_PATH, CANONICAL);
+			expect(status).toBe("matches");
 		});
 	});
 
@@ -92,25 +52,22 @@ describe("compareFile", () => {
 			mockReadFile.mockResolvedValue(DIFFERENT);
 		});
 
-		it("returns 'would update' when write=false", async () => {
-			const status = await compareFile(HOST_PATH, CANONICAL, false);
-			expect(status).toBe("would update");
+		it("returns 'differs'", async () => {
+			const status = await compareFile(HOST_PATH, CANONICAL);
+			expect(status).toBe("differs");
 		});
+	});
 
-		it("does not call writeFile when write=false", async () => {
-			await compareFile(HOST_PATH, CANONICAL, false);
-			expect(mockWriteFile).not.toHaveBeenCalled();
-		});
-
-		it("returns 'updated' when write=true", async () => {
-			const status = await compareFile(HOST_PATH, CANONICAL, true);
-			expect(status).toBe("updated");
-		});
-
-		it("calls writeFile with the canonical content when write=true", async () => {
-			await compareFile(HOST_PATH, CANONICAL, true);
-			expect(mockWriteFile).toHaveBeenCalledOnce();
-			expect(mockWriteFile).toHaveBeenCalledWith(HOST_PATH, CANONICAL, "utf-8");
+	describe("no filesystem writes occur", () => {
+		it("never calls writeFile or mkdir regardless of file state", async () => {
+			// Verify the module does not import write functions by ensuring the
+			// function only calls readFile.
+			mockReadFile.mockResolvedValue(CANONICAL);
+			await compareFile(HOST_PATH, CANONICAL);
+			// readFile was called once; no other fs calls happen (writeFile/mkdir
+			// are not imported by the refactored module).
+			expect(mockReadFile).toHaveBeenCalledOnce();
+			expect(mockReadFile).toHaveBeenCalledWith(HOST_PATH, "utf-8");
 		});
 	});
 
@@ -120,7 +77,7 @@ describe("compareFile", () => {
 			permissionError.code = "EACCES";
 			mockReadFile.mockRejectedValue(permissionError);
 
-			await expect(compareFile(HOST_PATH, CANONICAL, false)).rejects.toThrow("EACCES");
+			await expect(compareFile(HOST_PATH, CANONICAL)).rejects.toThrow("EACCES");
 		});
 	});
 });

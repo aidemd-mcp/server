@@ -97,15 +97,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_upgrade",
 			description:
-				"Update, upgrade, sync, or refresh the AIDE methodology artifacts in a project to the canonical versions shipped with this MCP server. Use this tool when the user asks to update AIDE, update the docs, update the commands, update the spec templates, sync AIDE, refresh AIDE, or bring AIDE up to date. This is NOT for editing user .aide specs — it updates the methodology infrastructure only.\n\nOperates in two phases.\n\nDefault (no confirm): returns a dry-run preview listing every file that would be overwritten — commands, docs, agents, skills, pointer stub, MCP config, and IDE config. No files are written.\n\nWith confirm: true: overwrites all methodology artifacts with the canonical versions. User code and user .aide specs are never touched — only the AIDE-owned surface is replaced.\n\nUpgrade surface (everything in this list may be overwritten):\n- Slash commands for all pipeline phases\n- Canonical methodology docs under .aide/docs/\n- Pipeline agent files under .claude/agents/aide/\n- Skill templates under .claude/skills/\n- AIDE pointer stub in the agent config file\n- MCP server entry in the project's MCP config\n- IDE file association config (unless skipIde is set)\n\nIf you have edited any commands, docs, agents, or the pointer stub directly, those customizations will be lost. Customizations belong in your user .aide specs and application code, not in the methodology artifacts.\n\nSupports Claude Code (CLAUDE.md), Cursor (.cursorrules), Windsurf (.windsurfrules), and Copilot (.github/copilot-instructions.md). Auto-detects the framework or accepts an override.",
+				"Compare the AIDE methodology artifacts in this project against the canonical versions and return structured JSON results grouped by category. Use this when the user asks to update AIDE, sync AIDE, refresh AIDE, check for AIDE updates, or bring AIDE up to date. This is NOT for editing user .aide specs — it inspects methodology infrastructure only.\n\nThe tool never writes files. It returns an UpgradeResult with per-category comparison results. As the calling agent, you must:\n1. Present each category that has drifted (differs/missing files) and ask the user which categories to apply\n2. For each confirmed category, write the files using the `canonicalContent` provided in each UpgradeFileResult\n3. For the `mcp` category, merge the `prescription` entry into the existing MCP config yourself (read → merge → write). If the MCP config is `malformed`, tell the user and ask how to proceed — do not overwrite\n4. For the `ide` category, apply Zed settings and VS Code extension separately after asking the user\n5. Skip categories where the summary shows `differs: 0, missing: 0` — nothing to update\n\nCategories: pointer-stub, methodology-docs, version-metadata, commands, agents, skills, mcp, ide.\n\nUpgrade surface (files this tool inspects — user code and user .aide specs are never touched):\n- AIDE pointer stub in the agent config file\n- Canonical methodology docs under .aide/docs/\n- versions.json metadata under .aide/docs/\n- Slash commands for all pipeline phases\n- Pipeline agent files\n- Skill templates\n- MCP server entry in the project's MCP config\n- IDE file association config (Zed settings, VS Code extension)\n\nSupports Claude Code (CLAUDE.md), Cursor (.cursorrules), Windsurf (.windsurfrules), and Copilot (.github/copilot-instructions.md). Auto-detects the framework or accepts an override.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
-					confirm: {
-						type: "boolean",
-						description:
-							"When false (default), returns a dry-run preview. When true, overwrites methodology artifacts with canonical versions.",
-					},
 					framework: {
 						type: "string",
 						enum: ["claude", "cursor", "windsurf", "copilot"],
@@ -116,31 +111,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 						type: "string",
 						description: "Custom project root path (defaults to server working directory)",
 					},
-					skipIde: {
-						type: "boolean",
-						description: "Skip IDE file association configuration (Zed settings, VS Code extension)",
-					},
 				},
 			},
 		},
 		{
 			name: "aide_init",
 			description:
-				"Bootstrap the AIDE development environment into a Claude Code project. This is the one-command setup that installs a short AIDE pointer stub into CLAUDE.md, lands the full canonical methodology docs as a progressively-disclosed doc hub under `.aide/docs/`, scaffolds slash commands for every pipeline phase (research, spec, synthesize, plan, build, QA, fix) plus the /aide orchestrator entry point, installs agent definitions and skill templates, wires this MCP server into `.mcp.json`, and provisions the brain layer (creates a minimal Obsidian vault if none exists and wires the Obsidian MCP server so agents declaring mcpServers: [obsidian] can persist and retrieve domain knowledge).\n\nMethodology delivery is split on purpose: CLAUDE.md carries only a short pointer stub that names the `.aide/docs/` hub and tells the agent to crawl it before writing or acting on any `.aide` file — so non-AIDE sessions pay almost nothing to carry it. The full canonical docs live under `.aide/docs/` on the host's disk, where the agent reads them on demand.\n\nBrain provisioning discovers the vault path via a priority chain: explicit brainPath parameter → AIDE_BRAIN_PATH environment variable → sibling my-brain/ directory next to the project → ~/my-brain. If a vault already exists, its contents are left alone. If no vault exists at the resolved path, a minimal scaffolding is created (research/, process/retro/, coding-playbook/). The Obsidian MCP server (@bitbonsai/mcpvault) is wired into .mcp.json unless it's already present there or in ~/.claude.json.\n\nEach step is idempotent — running aide_init on an already-initialized project reports what's present without overwriting. After initialization, every agent session starts with the AIDE pointer stub in CLAUDE.md, the full methodology in `.aide/docs/`, slash commands for each pipeline phase, agent definitions, skill templates, MCP tools for discovery/reading/scaffolding/validation, and brain access for research/retro/playbook agents.",
+				"Bootstrap the AIDE development environment into a project. Returns structured JSON for agent consumption — not prose.\n\nThe response is an InitResult with three fields:\n- `framework`: the detected (or overridden) agent framework\n- `steps`: an array of InitStep objects, each with `name`, `status` (would-create/would-skip/exists), `category`, `filePath`, and optionally `content` (bytes to write) or `prescription` (MCP server entry to merge). Steps with `configMalformed: true` indicate the MCP config cannot be parsed.\n- `brainHints`: an array of BrainHint objects (source + path) for vault candidates the agent should present to the user\n\nAs the calling agent, you must:\n1. Present the detected framework and ask the user to confirm or override\n2. Summarize each category of would-create steps and ask the user to apply\n3. Ask the user where their brain vault is — offer the brainHints as suggestions\n4. Merge any MCP prescriptions into the config file yourself (read → merge → write)\n5. Apply IDE steps only after asking the user\n\nDo NOT auto-apply steps without user confirmation. Do NOT call this tool expecting it to write files — it is a planner only.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
+					framework: {
+						type: "string",
+						enum: ["claude", "cursor", "windsurf", "copilot"],
+						description: "Force a specific framework instead of auto-detecting. Use this when re-calling after the user confirms or overrides detection.",
+					},
 					path: {
 						type: "string",
 						description: "Custom project root path (defaults to server working directory)",
-					},
-					skipIde: {
-						type: "boolean",
-						description: "Skip IDE file association configuration (Zed settings, VS Code extension)",
-					},
-					brainPath: {
-						type: "string",
-						description: "Explicit Obsidian vault path for brain provisioning (auto-discovered if omitted via AIDE_BRAIN_PATH env var → sibling my-brain/ → ~/my-brain)",
 					},
 				},
 			},
@@ -185,13 +173,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		}
 		case "aide_init": {
 			const parsed = InitInput.parse(args);
-			const result = await init(root, parsed.framework, parsed.path, parsed.skipIde, parsed.brainPath);
-			return { content: [{ type: "text", text: result }] };
+			const result = await init(root, parsed.framework, parsed.path);
+			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		case "aide_upgrade": {
 			const parsed = UpgradeInput.parse(args);
-			const result = await upgrade(root, parsed.confirm, parsed.framework, parsed.path, parsed.skipIde);
-			return { content: [{ type: "text", text: result }] };
+			const result = await upgrade(root, parsed.framework, parsed.path);
+			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		default:
 			throw new Error(`Unknown tool: ${name}`);

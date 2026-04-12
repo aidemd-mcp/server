@@ -1,6 +1,5 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
-import type { InitStepResult } from "@/types/index.js";
+import { readFile } from "node:fs/promises";
+import type { InitStep } from "@/types/index.js";
 import { getMethodologyMarker } from "@/tools/init/initContent/index.js";
 
 /** Placeholder token inside the stub template that names the host-side
@@ -66,38 +65,41 @@ export function composeStub(docHubDir: string): string {
 }
 
 /**
- * Install the AIDE pointer stub into the host's agent config file.
+ * Inspect the host's agent config file and return a planning step for the
+ * AIDE methodology pointer stub.
  *
- * The stub is a short marker-bounded region that tells the agent AIDE
- * exists, names the host-side doc hub at `docHubDir`, and instructs the
- * agent to crawl the hub before writing or acting on any `.aide` file.
- * The full canonical methodology does NOT live here — it lives in the
- * installed doc hub that the sibling helper lands on disk — so every
- * non-AIDE session in the host project pays only the stub cost on every
- * read of the config file.
+ * Returns `exists` if the marker is already present. Returns `would-create`
+ * with the composed stub as `content` — the caller writes the stub
+ * appended to the existing content (or as the full content when the file is
+ * absent).
  *
- * `docHubDir` is the host-relative form (e.g. `.aide`) because the stub
- * renders it as a display string the agent will read, not as a
- * filesystem target. The sibling installer receives the absolute form
- * separately; both derive from `FrameworkConfig.docHubDir`.
- *
- * Idempotency is marker-based: if the opening marker is already present
- * in the config file, the helper returns `exists` and writes nothing.
- * Upgrades are always explicit and belong to a future update path.
+ * This helper never writes to disk — it is a planner only. `composeStub`
+ * remains a named export so upgrade's `spliceStub` can continue to use it.
  */
 export default async function writeMethodology(
 	configPath: string,
 	docHubDir: string,
-): Promise<InitStepResult> {
+): Promise<InitStep> {
 	const existing = await safeReadFile(configPath);
 	const marker = getMethodologyMarker();
 
-	if (existing.includes(marker)) return { name: "Methodology pointer", status: "exists" };
+	if (existing.includes(marker)) {
+		return {
+			name: "Methodology pointer",
+			status: "exists",
+			category: "methodology",
+			filePath: configPath,
+		};
+	}
 
 	const stub = composeStub(docHubDir);
 	const content = existing ? `${existing}\n\n${stub}\n` : `${stub}\n`;
 
-	await mkdir(dirname(configPath), { recursive: true });
-	await writeFile(configPath, content, "utf-8");
-	return { name: "Methodology pointer", status: "created" };
+	return {
+		name: "Methodology pointer",
+		status: "would-create",
+		category: "methodology",
+		filePath: configPath,
+		content,
+	};
 }

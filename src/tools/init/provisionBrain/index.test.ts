@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir, platform } from "node:os";
 import provisionBrain from "./index.js";
@@ -28,52 +28,57 @@ function makeBrainPath(): string {
 }
 
 describe("provisionBrain", () => {
-	it("returns both results as skipped when brainPath is undefined", async () => {
+	it("returns two steps: vault and obsidian MCP", async () => {
+		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		const results = await provisionBrain(undefined, mcpPath);
+		const results = await provisionBrain(brainPath, mcpPath);
 
 		expect(results).toHaveLength(2);
-		expect(results[0]).toEqual({ name: "Brain vault", status: "skipped" });
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "skipped" });
+		expect(results[0].name).toBe("Brain vault");
+		expect(results[1].name).toBe("MCP config (obsidian)");
 	});
 
-	it("detects existing vault by .obsidian/ dir and wires MCP", async () => {
+	it("returns vault would-create with dirs content for a new location", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		const results = await provisionBrain(brainPath, mcpPath);
+
+		expect(results[0].status).toBe("would-create");
+		expect(results[0].category).toBe("brain");
+		// content is a JSON array of directories to create
+		expect(results[0].content).toBeTruthy();
+		const dirs = JSON.parse(results[0].content!);
+		expect(Array.isArray(dirs)).toBe(true);
+		expect(dirs).toContain("research");
+		expect(dirs).toContain("coding-playbook");
+	});
+
+	it("returns obsidian MCP would-create with prescription for new config", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		const results = await provisionBrain(brainPath, mcpPath);
+
+		expect(results[1].status).toBe("would-create");
+		expect(results[1].category).toBe("mcp");
+		expect(results[1].prescription?.key).toBe("obsidian");
+		expect(results[1].prescription?.entry).toEqual(expectedObsidianEntry(brainPath));
+	});
+
+	it("detects existing vault by .obsidian/ dir — vault step returns exists", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
 
 		const results = await provisionBrain(brainPath, mcpPath);
 
-		expect(results[0]).toEqual({ name: "Brain vault", status: "exists" });
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "wired" });
-
-		const mcp = JSON.parse(await readFile(mcpPath, "utf-8"));
-		expect(mcp.mcpServers.obsidian).toEqual(expectedObsidianEntry(brainPath));
+		expect(results[0].status).toBe("exists");
+		expect(results[0].content).toBeUndefined();
 	});
 
-	it("creates vault with expected dirs when brainPath is empty location", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[0]).toEqual({ name: "Brain vault", status: "created" });
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "wired" });
-
-		const entries = await readdir(brainPath);
-		expect(entries).toContain("research");
-		expect(entries).toContain("process");
-		expect(entries).toContain("coding-playbook");
-
-		const processEntries = await readdir(join(brainPath, "process"));
-		expect(processEntries).toContain("retro");
-
-		const mcp = JSON.parse(await readFile(mcpPath, "utf-8"));
-		expect(mcp.mcpServers.obsidian).toEqual(expectedObsidianEntry(brainPath));
-	});
-
-	it("detects existing vault by .md files and returns vault exists", async () => {
+	it("detects existing vault by non-empty dir — vault step returns exists", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 		await mkdir(brainPath, { recursive: true });
@@ -81,14 +86,12 @@ describe("provisionBrain", () => {
 
 		const results = await provisionBrain(brainPath, mcpPath);
 
-		expect(results[0]).toEqual({ name: "Brain vault", status: "exists" });
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "wired" });
+		expect(results[0].status).toBe("exists");
 	});
 
-	it("returns both exists when vault and obsidian MCP entry already present", async () => {
+	it("detects existing obsidian MCP entry — MCP step returns exists", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
-		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
 		const existing = {
 			mcpServers: {
 				obsidian: expectedObsidianEntry(brainPath),
@@ -98,107 +101,55 @@ describe("provisionBrain", () => {
 
 		const results = await provisionBrain(brainPath, mcpPath);
 
-		expect(results[0]).toEqual({ name: "Brain vault", status: "exists" });
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "exists" });
+		expect(results[1].status).toBe("exists");
+		expect(results[1].prescription).toBeUndefined();
 	});
 
-	it("skips MCP wiring when config file has invalid JSON", async () => {
+	it("returns configMalformed when MCP config has invalid JSON", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 		await writeFile(mcpPath, "not valid json {{{", "utf-8");
 
 		const results = await provisionBrain(brainPath, mcpPath);
 
-		// Vault was created (empty location)
-		expect(results[0]).toEqual({ name: "Brain vault", status: "created" });
-		// MCP is skipped due to parse failure
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "skipped" });
+		expect(results[1].status).toBe("would-create");
+		expect(results[1].configMalformed).toBe(true);
+		// Prescription is still provided so agent can proceed
+		expect(results[1].prescription).toBeDefined();
 	});
 
-	it("preserves other MCP server entries when adding obsidian", async () => {
+	it("never writes to disk", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
-		const existing = {
-			mcpServers: {
-				aide: { command: "npx", args: ["aidemd-mcp"] },
-				other: { command: "node", args: ["other.js"] },
-			},
-		};
-		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");
 
 		await provisionBrain(brainPath, mcpPath);
 
-		const mcp = JSON.parse(await readFile(mcpPath, "utf-8"));
-		expect(mcp.mcpServers.aide).toEqual({ command: "npx", args: ["aidemd-mcp"] });
-		expect(mcp.mcpServers.other).toEqual({ command: "node", args: ["other.js"] });
-		expect(mcp.mcpServers.obsidian).toEqual(expectedObsidianEntry(brainPath));
+		// Neither the brain dir nor the MCP config should have been created
+		await expect(import("node:fs/promises").then((fs) => fs.access(brainPath))).rejects.toThrow();
+		await expect(import("node:fs/promises").then((fs) => fs.readFile(mcpPath, "utf-8"))).rejects.toThrow();
 	});
 
-	it("returns MCP exists when obsidian is present in user-level config, no project entry written", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-		const userMcpPath = join(tempDir, ".claude.json");
-
-		// User-level config already has obsidian registered
-		const userConfig = {
-			mcpServers: {
-				obsidian: expectedObsidianEntry(brainPath),
-			},
-		};
-		await writeFile(userMcpPath, JSON.stringify(userConfig), "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath, userMcpPath);
-
-		// Vault is still created (empty location)
-		expect(results[0]).toEqual({ name: "Brain vault", status: "created" });
-		// MCP reports exists — already configured at user level
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "exists" });
-
-		// Project-level MCP config must NOT have been written
-		await expect(readFile(mcpPath, "utf-8")).rejects.toThrow();
-	});
-
-	it("falls through to project-level check when user-level config has no obsidian entry", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-		const userMcpPath = join(tempDir, ".claude.json");
-
-		// User-level config exists but lacks obsidian
-		const userConfig = { mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } };
-		await writeFile(userMcpPath, JSON.stringify(userConfig), "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath, userMcpPath);
-
-		// Should fall through and wire at the project level
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "wired" });
-		const mcp = JSON.parse(await readFile(mcpPath, "utf-8"));
-		expect(mcp.mcpServers.obsidian).toEqual(expectedObsidianEntry(brainPath));
-	});
-
-	it("ignores a malformed user-level config and falls through to project-level check", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-		const userMcpPath = join(tempDir, ".claude.json");
-
-		// Malformed user-level config
-		await writeFile(userMcpPath, "not valid json {{{", "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath, userMcpPath);
-
-		// Parse failure is silently ignored; project-level wiring proceeds
-		expect(results[1]).toEqual({ name: "MCP config (obsidian)", status: "wired" });
-	});
-
-	it("is idempotent — second run reports exists for both", async () => {
+	it("vault would-create step has the correct filePath", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		const first = await provisionBrain(brainPath, mcpPath);
-		expect(first[0].status).toBe("created");
-		expect(first[1].status).toBe("wired");
+		const results = await provisionBrain(brainPath, mcpPath);
 
-		const second = await provisionBrain(brainPath, mcpPath);
-		expect(second[0]).toEqual({ name: "Brain vault", status: "exists" });
-		expect(second[1]).toEqual({ name: "MCP config (obsidian)", status: "exists" });
+		expect(results[0].filePath).toBe(brainPath);
+	});
+
+	it("is idempotent — second call with existing vault and MCP returns both exists", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// Simulate fully provisioned state
+		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
+		const existing = { mcpServers: { obsidian: expectedObsidianEntry(brainPath) } };
+		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");
+
+		const results = await provisionBrain(brainPath, mcpPath);
+
+		expect(results[0].status).toBe("exists");
+		expect(results[1].status).toBe("exists");
 	});
 });

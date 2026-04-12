@@ -1,7 +1,6 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
-import type { InitStepResult } from "@/types/index.js";
+import type { InitStep, McpPrescription } from "@/types/index.js";
 
 /** Read a file, returning empty string if it doesn't exist. */
 async function safeReadFile(path: string): Promise<string> {
@@ -13,15 +12,27 @@ async function safeReadFile(path: string): Promise<string> {
 }
 
 /** Build the MCP server entry, wrapping with cmd /c on Windows. */
-function mcpEntry(): { command: string; args: string[] } {
+function mcpEntry(): McpPrescription["entry"] {
 	if (platform() === "win32") {
 		return { command: "cmd", args: ["/c", "npx", "aidemd-mcp"] };
 	}
 	return { command: "npx", args: ["aidemd-mcp"] };
 }
 
-/** Wire the MCP server into the project's MCP config. */
-export default async function wireMcp(mcpConfigPath: string): Promise<InitStepResult> {
+/**
+ * Inspect the project's MCP config and return a planning step for the aide
+ * server entry.
+ *
+ * Returns `exists` when an aide entry is already present. Returns
+ * `would-create` with a McpPrescription when the entry is absent.
+ * If the config file exists but contains malformed JSON, returns
+ * `would-create` with `configMalformed: true` so the agent can surface
+ * the issue to the user.
+ *
+ * This helper never writes to disk — it is a planner only.
+ */
+export default async function wireMcp(mcpConfigPath: string): Promise<InitStep> {
+	const prescription: McpPrescription = { key: "aide", entry: mcpEntry() };
 	const existing = await safeReadFile(mcpConfigPath);
 
 	if (existing) {
@@ -29,19 +40,37 @@ export default async function wireMcp(mcpConfigPath: string): Promise<InitStepRe
 			const config = JSON.parse(existing);
 			const servers = config.mcpServers || {};
 			if ("aide" in servers || "aidemd-mcp" in servers) {
-				return { name: "MCP config (aide)", status: "exists" };
+				return {
+					name: "MCP config (aide)",
+					status: "exists",
+					category: "mcp",
+					filePath: mcpConfigPath,
+				};
 			}
-			servers.aide = mcpEntry();
-			config.mcpServers = servers;
-			await writeFile(mcpConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-			return { name: "MCP config (aide)", status: "wired" };
+			return {
+				name: "MCP config (aide)",
+				status: "would-create",
+				category: "mcp",
+				filePath: mcpConfigPath,
+				prescription,
+			};
 		} catch {
-			return { name: "MCP config (aide)", status: "skipped" };
+			return {
+				name: "MCP config (aide)",
+				status: "would-create",
+				category: "mcp",
+				filePath: mcpConfigPath,
+				prescription,
+				configMalformed: true,
+			};
 		}
 	}
 
-	const config = { mcpServers: { aide: mcpEntry() } };
-	await mkdir(dirname(mcpConfigPath), { recursive: true });
-	await writeFile(mcpConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-	return { name: "MCP config (aide)", status: "wired" };
+	return {
+		name: "MCP config (aide)",
+		status: "would-create",
+		category: "mcp",
+		filePath: mcpConfigPath,
+		prescription,
+	};
 }

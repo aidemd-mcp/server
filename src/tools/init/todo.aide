@@ -51,12 +51,20 @@ misalignment:
   Traces to: desired outcome — "An existing Obsidian MCP entry is left alone"
   Misalignment: implementation-drift
 
+- [ ] **`src/tools/init/index.ts:73` — sentinel brain path `join(projectRoot, "my-brain")` can silently collide with a real directory.**
+  When `brainHints` is empty, the orchestrator fabricates a sentinel path `projectRoot/my-brain` and passes it to `provisionBrain`. If that directory exists on disk (e.g. a user who has a `my-brain` folder inside their project), `provisionBrain` reports the vault step as `status: "exists"` — meaning the agent sees "vault already provisioned" for a path it never confirmed with the user. The obsidian MCP step also generates a prescription pointing at this unconfirmed path. The spec requires brain vault path to always be resolved through agent-user conversation; the sentinel violates this by injecting an unchecked path into the response.
+  Traces to: desired outcome — "Brain vault interview is agent-driven. The agent asks the user where their vault is"; undesired outcome — "An init that silently assumes a brain vault path from a sibling folder, environment variable, or platform default without asking the user."
+  Misalignment: implementation-drift
+
+- [ ] **`src/tools/init/index.test.ts` — no test asserts the brain step `filePath` is the sentinel when no hints exist, so the collision bug is undetectable by the test suite.**
+  The "fresh project: brain steps are returned even without hints" test (line 174) only checks `brainSteps.length > 0` — it never inspects the `filePath` or status of the returned step. A test that asserts `status === "would-create"` on the brain step in a clean temp directory (no `my-brain` inside it) would catch the collision case and document the expected sentinel behavior for future readers.
+  Traces to: desired outcome — "The brain vault interview is agent-driven"; plan step 6.1 — "No brain hints found: `brainHints` is empty array"
+  Misalignment: test-gap
+
 ## Retro
 
-**Issue 1 (brainPath dropped at call site)** would have been caught by an integration test that passes an explicit `brainPath` through the MCP tool interface (`aide_init` handler) and asserts the vault was created at that path. The unit tests on `init()` directly exercise the function signature correctly — the gap is between the schema and the handler, a layer the unit tests don't cover.
+**Issues 1–6** are resolved from the prior implementation generation (all checkboxes marked). These are preserved for historical traceability.
 
-**Issue 2 (missing fourth priority chain leg)** would have been caught if plan.aide had been written from the `.aide` Strategy section rather than independently. The plan's Decisions section describes only three legs; the Strategy section names four. Any plan review that cross-checked the plan's Decisions against the spec's Strategy would have flagged the omission before implementation began.
+**Issue 7 (sentinel brain path collision)** would have been caught by a test that creates a `my-brain/` directory inside the temp project root and asserts the brain step status is still `would-create` with a predictable `filePath`. The orchestrator comment says "the agent must ask the user before any vault steps are applied" but nothing in the type system or test suite enforces that the sentinel path doesn't already exist. The fix options are: (a) omit the brain steps entirely when no hints are found and document a separate "brain-unresolved" field in `InitResult`, or (b) use a truly impossible sentinel path (e.g. empty string) that `provisionBrain` can detect and short-circuit to a known status regardless of disk state.
 
-**Issue 3 (skipped vs exists in warm-run summary)** and **Issue 4 (test does not verify vault creation)** share a root cause: the test was written to assert presence of string labels rather than to verify the actual disk state or result status. Outcome-focused assertions (check the vault directory exists, check the MCP config contains an obsidian entry) would have caught both issues.
-
-**Issue 5 (docstring mismatch)** is a doc-hygiene miss. Code review against the plan spec would have caught it.
+**Issue 8 (test gap for sentinel)** shares the same root cause: the test was written to verify presence (at least one brain step) rather than correctness of the step's content. Outcome-focused assertions on `filePath` and `status` would have documented the expected behavior and caught the collision.

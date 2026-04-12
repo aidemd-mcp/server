@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, writeFile, readdir, readFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, access } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -20,25 +20,13 @@ afterEach(async () => {
 });
 
 describe("scaffoldCommands", () => {
-	it("creates all 9 command files: orchestrator at root plus 8 phase commands under aide/", async () => {
+	it("returns would-create steps for all 10 commands on a cold run", async () => {
 		const commandDir = join(tempDir, "commands");
 
 		const results = await scaffoldCommands(commandDir);
 
-		// Orchestrator lands at commandDir/aide.md (root peer of aide/ subfolder)
-		const rootFiles = await readdir(commandDir);
-		expect(rootFiles).toContain("aide.md");
-
-		const files = await readdir(join(commandDir, "aide"));
-		expect(files).toContain("research.md");
-		expect(files).toContain("spec.md");
-		expect(files).toContain("synthesize.md");
-		expect(files).toContain("plan.md");
-		expect(files).toContain("build.md");
-		expect(files).toContain("qa.md");
-		expect(files).toContain("fix.md");
-		expect(files).toContain("upgrade.md");
-		expect(results.every((r) => r.status === "created")).toBe(true);
+		expect(results).toHaveLength(10);
+		expect(results.every((r) => r.status === "would-create")).toBe(true);
 		expect(results.map((r) => r.name)).toEqual([
 			"aide",
 			"aide:research",
@@ -49,41 +37,27 @@ describe("scaffoldCommands", () => {
 			"aide:qa",
 			"aide:fix",
 			"aide:upgrade",
+			"aide:init",
 		]);
 	});
 
-	it("writes each command byte-identical to its canonical doc", async () => {
+	it("would-create steps carry content matching canonical docs", async () => {
 		const commandDir = join(tempDir, "commands");
-
-		await scaffoldCommands(commandDir);
-
-		// Verify orchestrator at root
-		const installedOrchestrator = await readFile(join(commandDir, "aide.md"), "utf-8");
-		const canonicalOrchestrator = readFileSync(join(COMMANDS_ROOT, "aide.md"), "utf-8");
-		expect(installedOrchestrator).toBe(canonicalOrchestrator);
-
-		const phases = ["research", "spec", "synthesize", "plan", "build", "qa", "fix"];
-		for (const phase of phases) {
-			const installed = await readFile(join(commandDir, "aide", `${phase}.md`), "utf-8");
-			const canonical = readFileSync(join(COMMANDS_ROOT, "aide", `${phase}.md`), "utf-8");
-			expect(installed).toBe(canonical);
-		}
-	});
-
-	it("leaves existing command files untouched", async () => {
-		const commandDir = join(tempDir, "commands");
-		await scaffoldCommands(commandDir);
-		const customContent = "# Customized\n";
-		await writeFile(join(commandDir, "aide", "build.md"), customContent, "utf-8");
 
 		const results = await scaffoldCommands(commandDir);
 
-		const contents = await readFile(join(commandDir, "aide", "build.md"), "utf-8");
-		expect(contents).toBe(customContent);
-		expect(results.find((r) => r.name === "aide:build")?.status).toBe("exists");
+		// Orchestrator
+		const orchestrator = results.find((r) => r.name === "aide");
+		const canonicalOrchestrator = readFileSync(join(COMMANDS_ROOT, "aide.md"), "utf-8");
+		expect(orchestrator?.content).toBe(canonicalOrchestrator);
+
+		// Phase command
+		const research = results.find((r) => r.name === "aide:research");
+		const canonicalResearch = readFileSync(join(COMMANDS_ROOT, "aide", "research.md"), "utf-8");
+		expect(research?.content).toBe(canonicalResearch);
 	});
 
-	it("reports exists independently per command on a mixed run", async () => {
+	it("returns exists for commands that already exist on disk", async () => {
 		const commandDir = join(tempDir, "commands");
 		await mkdir(join(commandDir, "aide"), { recursive: true });
 		await writeFile(join(commandDir, "aide", "qa.md"), "# mine\n", "utf-8");
@@ -92,26 +66,45 @@ describe("scaffoldCommands", () => {
 
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get("aide:qa")).toBe("exists");
-		expect(byName.get("aide:research")).toBe("created");
-		expect(byName.get("aide:spec")).toBe("created");
-		expect(byName.get("aide:plan")).toBe("created");
-		expect(byName.get("aide:build")).toBe("created");
-		expect(byName.get("aide:fix")).toBe("created");
+		expect(byName.get("aide:research")).toBe("would-create");
+		expect(byName.get("aide:spec")).toBe("would-create");
+		expect(byName.get("aide:plan")).toBe("would-create");
+		expect(byName.get("aide:build")).toBe("would-create");
+		expect(byName.get("aide:fix")).toBe("would-create");
 	});
 
-	// Pins scaffoldCommands/.aide outcomes.undesired[4]: "a run that fails the
-	// whole step if one command template is missing". A failed canonical read
-	// for one phase must surface as `skipped` on its own entry while the other
-	// five phases still land successfully. No cascade, no short-circuit.
-	it("does not cascade when one canonical template read fails", async () => {
+	it("exists steps have no content field", async () => {
+		const commandDir = join(tempDir, "commands");
+		await mkdir(join(commandDir, "aide"), { recursive: true });
+		await writeFile(join(commandDir, "aide", "build.md"), "# custom\n", "utf-8");
+
+		const results = await scaffoldCommands(commandDir);
+
+		const build = results.find((r) => r.name === "aide:build");
+		expect(build?.status).toBe("exists");
+		expect(build?.content).toBeUndefined();
+	});
+
+	it("category is 'commands' for all steps", async () => {
+		const commandDir = join(tempDir, "commands");
+
+		const results = await scaffoldCommands(commandDir);
+
+		expect(results.every((r) => r.category === "commands")).toBe(true);
+	});
+
+	it("never writes to disk", async () => {
+		const commandDir = join(tempDir, "commands");
+
+		await scaffoldCommands(commandDir);
+
+		await expect(access(commandDir)).rejects.toThrow();
+	});
+
+	it("does not cascade when one canonical template read fails — returns would-skip for that entry", async () => {
 		const commandDir = join(tempDir, "commands");
 		const failingCanonical = "commands/aide/build";
 
-		// vi.doMock + resetModules + dynamic import scopes the mock to this
-		// test only. A top-level vi.mock would poison the sibling tests that
-		// need the real readCanonicalDoc. vi.spyOn on fs.readFileSync would be
-		// bypassed by initContent's module-scoped cache once any prior test
-		// in the process has populated it.
 		vi.resetModules();
 		vi.doMock("@/tools/init/initContent/index.js", () => ({
 			readCanonicalDoc: (name: string) => {
@@ -120,43 +113,21 @@ describe("scaffoldCommands", () => {
 				}
 				return `mocked content for ${name}\n`;
 			},
+			COMMANDS: undefined, // not used by scaffoldCommands directly
 		}));
 
 		const { default: scaffoldCommandsFresh } = await import("./index.js");
 		const results = await scaffoldCommandsFresh(commandDir);
 
-		expect(results).toHaveLength(9);
-		expect(results.map((r) => r.name)).toEqual([
-			"aide",
-			"aide:research",
-			"aide:spec",
-			"aide:synthesize",
-			"aide:plan",
-			"aide:build",
-			"aide:qa",
-			"aide:fix",
-			"aide:upgrade",
-		]);
-
+		expect(results).toHaveLength(10);
 		const byName = new Map(results.map((r) => [r.name, r.status]));
-		expect(byName.get("aide:build")).toBe("skipped");
-		expect(byName.get("aide:research")).toBe("created");
-		expect(byName.get("aide:spec")).toBe("created");
-		expect(byName.get("aide:plan")).toBe("created");
-		expect(byName.get("aide:qa")).toBe("created");
-		expect(byName.get("aide:fix")).toBe("created");
-
-		for (const phase of ["research", "spec", "synthesize", "plan", "qa", "fix"]) {
-			const contents = await readFile(
-				join(commandDir, "aide", `${phase}.md`),
-				"utf-8",
-			);
-			expect(contents).toBe(`mocked content for commands/aide/${phase}\n`);
-		}
-
-		await expect(
-			readFile(join(commandDir, "aide", "build.md"), "utf-8"),
-		).rejects.toThrow();
+		expect(byName.get("aide:build")).toBe("would-skip");
+		expect(byName.get("aide:research")).toBe("would-create");
+		expect(byName.get("aide:spec")).toBe("would-create");
+		expect(byName.get("aide:plan")).toBe("would-create");
+		expect(byName.get("aide:qa")).toBe("would-create");
+		expect(byName.get("aide:fix")).toBe("would-create");
+		expect(byName.get("aide:init")).toBe("would-create");
 
 		vi.doUnmock("@/tools/init/initContent/index.js");
 		vi.resetModules();

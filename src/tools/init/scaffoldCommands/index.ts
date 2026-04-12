@@ -1,6 +1,6 @@
-import { writeFile, mkdir, access } from "node:fs/promises";
-import { join, dirname } from "node:path";
-import type { InitStepResult } from "@/types/index.js";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+import type { InitStep } from "@/types/index.js";
 import {
 	readCanonicalDoc,
 	type CanonicalDocName,
@@ -39,6 +39,7 @@ export const COMMANDS: readonly {
 	{ canonical: "commands/aide/qa", hostPath: "aide/qa.md", displayName: "aide:qa" },
 	{ canonical: "commands/aide/fix", hostPath: "aide/fix.md", displayName: "aide:fix" },
 	{ canonical: "commands/aide/upgrade", hostPath: "aide/upgrade.md", displayName: "aide:upgrade" },
+	{ canonical: "commands/aide/init", hostPath: "aide/init.md", displayName: "aide:init" },
 ];
 
 /** Check if a file exists. */
@@ -52,26 +53,29 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
- * Install the /aide orchestrator entry point and the seven AIDE pipeline phase
- * commands. The orchestrator is written to <commandDir>/aide.md (root peer of
- * the aide/ subfolder); phase commands go to <commandDir>/aide/<phase>.md.
- * Each file is a byte-faithful render of its canonical template read via
- * readCanonicalDoc. Existing command files are preserved verbatim so user
- * customizations survive re-runs (idempotency invariant). A failed read for
- * one command surfaces as a `skipped` status for that command only and does
- * not abort the remaining installs — per-command reporting is load-bearing
- * because it is the only signal the caller has for which phases landed on
- * this run.
+ * Return planning steps for the /aide orchestrator and pipeline phase commands.
+ *
+ * For each command in COMMANDS, checks whether the host file already exists.
+ * Returns `exists` for present files, `would-create` with the canonical content
+ * for absent files. A failed canonical read returns `would-skip` for that
+ * command only.
+ *
+ * The COMMANDS export stays unchanged — upgrade's logic still uses it.
+ * This helper never writes to disk — it is a planner only.
  */
-export default async function scaffoldCommands(commandDir: string): Promise<InitStepResult[]> {
-	const results: InitStepResult[] = [];
-	await mkdir(commandDir, { recursive: true });
+export default async function scaffoldCommands(commandDir: string): Promise<InitStep[]> {
+	const steps: InitStep[] = [];
 
 	for (const cmd of COMMANDS) {
 		const filePath = join(commandDir, cmd.hostPath);
 
 		if (await fileExists(filePath)) {
-			results.push({ name: cmd.displayName, status: "exists" });
+			steps.push({
+				name: cmd.displayName,
+				status: "exists",
+				category: "commands",
+				filePath,
+			});
 			continue;
 		}
 
@@ -79,14 +83,23 @@ export default async function scaffoldCommands(commandDir: string): Promise<Init
 		try {
 			content = readCanonicalDoc(cmd.canonical);
 		} catch {
-			results.push({ name: cmd.displayName, status: "skipped" });
+			steps.push({
+				name: cmd.displayName,
+				status: "would-skip",
+				category: "commands",
+				filePath,
+			});
 			continue;
 		}
 
-		await mkdir(dirname(filePath), { recursive: true });
-		await writeFile(filePath, content, "utf-8");
-		results.push({ name: cmd.displayName, status: "created" });
+		steps.push({
+			name: cmd.displayName,
+			status: "would-create",
+			category: "commands",
+			filePath,
+			content,
+		});
 	}
 
-	return results;
+	return steps;
 }

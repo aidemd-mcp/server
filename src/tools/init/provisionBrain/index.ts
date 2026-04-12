@@ -1,20 +1,7 @@
-import { readFile, writeFile, mkdir, access, readdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { readFile, access, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { platform } from "node:os";
-import type { InitStepResult } from "@/types/index.js";
-
-/**
- * Read and parse a JSON config file. Returns null if the file does not exist
- * or cannot be parsed — callers treat null as "no usable config".
- */
-async function safeReadJson(path: string): Promise<Record<string, unknown> | null> {
-	try {
-		const content = await readFile(path, "utf-8");
-		return JSON.parse(content) as Record<string, unknown>;
-	} catch {
-		return null;
-	}
-}
+import type { InitStep, McpPrescription } from "@/types/index.js";
 
 /** Check if a path exists. */
 async function exists(path: string): Promise<boolean> {
@@ -47,87 +34,72 @@ async function safeReadFile(path: string): Promise<string> {
 	}
 }
 
-/**
- * Check whether a user-level MCP config already has an `obsidian` entry.
- * Returns true if the file exists, parses, and contains `mcpServers.obsidian`.
- * Parse failures are silently ignored (returns false).
- */
-async function obsidianInUserConfig(userMcpConfigPath: string): Promise<boolean> {
-	const config = await safeReadJson(userMcpConfigPath);
-	if (!config) return false;
-	const servers = config.mcpServers;
-	if (typeof servers !== "object" || servers === null) return false;
-	return "obsidian" in (servers as Record<string, unknown>);
-}
-
 /** Build the Obsidian MCP server entry, wrapping with cmd /c on Windows. */
-function obsidianMcpEntry(brainPath: string): { command: string; args: string[] } {
+function obsidianMcpEntry(brainPath: string): McpPrescription["entry"] {
 	if (platform() === "win32") {
 		return { command: "cmd", args: ["/c", "npx", "@bitbonsai/mcpvault", brainPath] };
 	}
 	return { command: "npx", args: ["@bitbonsai/mcpvault", brainPath] };
 }
 
+/** The vault directories that init scaffolds into a fresh vault. */
+const VAULT_DIRS = ["research", "process/retro", "coding-playbook"] as const;
+
 /**
- * Provision the brain layer: scaffold a minimal Obsidian vault when none exists
- * and wire the Obsidian MCP server into the project's MCP config.
+ * Return planning steps for brain vault scaffolding and Obsidian MCP wiring.
  *
- * Returns two results: one for the vault scaffolding, one for MCP wiring.
- * Both are skipped when brainPath is undefined. Both are independently reportable.
+ * The function signature requires a resolved `brainPath` — the caller (agent)
+ * guarantees a path is provided before calling. Returns two `InitStep` items:
  *
- * @param userMcpConfigPath - Optional path to the user-level MCP config (e.g.
- *   `~/.claude.json` for Claude Code). When provided, the obsidian entry is
- *   checked there first — if already present globally, MCP wiring returns
- *   `exists` without touching the project-level config.
+ * 1. Vault scaffolding (category `"brain"`): `exists` if vault is already
+ *    populated, `would-create` with the directories list as JSON content.
+ * 2. Obsidian MCP entry (category `"mcp"`): `exists` if the obsidian key is
+ *    already in the config, `would-create` with a `McpPrescription`.
+ *    If the config file is malformed JSON, returns `would-create` with
+ *    `configMalformed: true`.
+ *
+ * Neither step writes to disk — this helper is a planner only.
  */
 export default async function provisionBrain(
-	brainPath: string | undefined,
+	brainPath: string,
 	mcpConfigPath: string,
-	userMcpConfigPath?: string,
-): Promise<InitStepResult[]> {
-	if (brainPath === undefined) {
-		return [
-			{ name: "Brain vault", status: "skipped" },
-			{ name: "MCP config (obsidian)", status: "skipped" },
-		];
-	}
+): Promise<InitStep[]> {
+	// Vault scaffolding step
+	const vaultStep = await buildVaultStep(brainPath);
 
-	// Vault scaffolding
-	const vaultResult = await provisionVault(brainPath);
+	// Obsidian MCP step
+	const mcpStep = await buildObsidianMcpStep(brainPath, mcpConfigPath);
 
-	// MCP wiring
-	const mcpResult = await wireObsidianMcp(brainPath, mcpConfigPath, userMcpConfigPath);
-
-	return [vaultResult, mcpResult];
+	return [vaultStep, mcpStep];
 }
 
-/** Scaffold the vault directory structure if no vault exists yet. */
-async function provisionVault(brainPath: string): Promise<InitStepResult> {
+/** Build the vault scaffolding planning step. */
+async function buildVaultStep(brainPath: string): Promise<InitStep> {
 	if (await vaultExists(brainPath)) {
-		return { name: "Brain vault", status: "exists" };
+		return {
+			name: "Brain vault",
+			status: "exists",
+			category: "brain",
+			filePath: brainPath,
+		};
 	}
 
-	const dirs = [
-		brainPath,
-		join(brainPath, "research"),
-		join(brainPath, "process", "retro"),
-		join(brainPath, "coding-playbook"),
-	];
-
-	for (const dir of dirs) {
-		await mkdir(dir, { recursive: true });
-	}
-
-	return { name: "Brain vault", status: "created" };
+	return {
+		name: "Brain vault",
+		status: "would-create",
+		category: "brain",
+		filePath: brainPath,
+		content: JSON.stringify(VAULT_DIRS),
+	};
 }
 
-/** Wire the Obsidian MCP entry into the project's MCP config. */
-async function wireObsidianMcp(brainPath: string, mcpConfigPath: string, userMcpConfigPath?: string): Promise<InitStepResult> {
-	// If obsidian is already registered in the user-level config, skip the
-	// project-level write — no duplicate entry needed.
-	if (userMcpConfigPath && await obsidianInUserConfig(userMcpConfigPath)) {
-		return { name: "MCP config (obsidian)", status: "exists" };
-	}
+/** Build the Obsidian MCP wiring planning step. */
+async function buildObsidianMcpStep(brainPath: string, mcpConfigPath: string): Promise<InitStep> {
+	const prescription: McpPrescription = {
+		key: "obsidian",
+		entry: obsidianMcpEntry(brainPath),
+	};
+
 	const existing = await safeReadFile(mcpConfigPath);
 
 	if (existing) {
@@ -135,20 +107,37 @@ async function wireObsidianMcp(brainPath: string, mcpConfigPath: string, userMcp
 			const config = JSON.parse(existing);
 			const servers = config.mcpServers || {};
 			if ("obsidian" in servers) {
-				return { name: "MCP config (obsidian)", status: "exists" };
+				return {
+					name: "MCP config (obsidian)",
+					status: "exists",
+					category: "mcp",
+					filePath: mcpConfigPath,
+				};
 			}
-			servers.obsidian = obsidianMcpEntry(brainPath);
-			config.mcpServers = servers;
-			await writeFile(mcpConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-			return { name: "MCP config (obsidian)", status: "wired" };
+			return {
+				name: "MCP config (obsidian)",
+				status: "would-create",
+				category: "mcp",
+				filePath: mcpConfigPath,
+				prescription,
+			};
 		} catch {
-			return { name: "MCP config (obsidian)", status: "skipped" };
+			return {
+				name: "MCP config (obsidian)",
+				status: "would-create",
+				category: "mcp",
+				filePath: mcpConfigPath,
+				prescription,
+				configMalformed: true,
+			};
 		}
 	}
 
-	// Config file doesn't exist yet — create a minimal one
-	const config = { mcpServers: { obsidian: obsidianMcpEntry(brainPath) } };
-	await mkdir(dirname(mcpConfigPath), { recursive: true });
-	await writeFile(mcpConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-	return { name: "MCP config (obsidian)", status: "wired" };
+	return {
+		name: "MCP config (obsidian)",
+		status: "would-create",
+		category: "mcp",
+		filePath: mcpConfigPath,
+		prescription,
+	};
 }

@@ -3,18 +3,14 @@ import type { Mock } from "vitest";
 
 vi.mock("node:fs/promises", () => ({
 	readFile: vi.fn(),
-	writeFile: vi.fn(),
-	mkdir: vi.fn(),
 }));
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import spliceStub from "./index.js";
 import { composeStub } from "@/tools/init/writeMethodology/index.js";
 import { getMethodologyMarker } from "@/tools/init/initContent/index.js";
 
 const mockReadFile = readFile as Mock;
-const mockWriteFile = writeFile as Mock;
-const mockMkdir = mkdir as Mock;
 
 const CONFIG_PATH = "/project/CLAUDE.md";
 const DOC_HUB_DIR = ".aide";
@@ -23,8 +19,6 @@ const CANONICAL = composeStub(DOC_HUB_DIR);
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	mockWriteFile.mockResolvedValue(undefined);
-	mockMkdir.mockResolvedValue(undefined);
 });
 
 describe("spliceStub", () => {
@@ -33,32 +27,24 @@ describe("spliceStub", () => {
 			mockReadFile.mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
 		});
 
-		it("returns 'would create' when write=false", async () => {
-			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR, false);
-			expect(result).toEqual({ name: "Methodology pointer", status: "would create" });
+		it("returns status 'missing'", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.status).toBe("missing");
 		});
 
-		it("does not call writeFile or mkdir when write=false", async () => {
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, false);
-			expect(mockWriteFile).not.toHaveBeenCalled();
-			expect(mockMkdir).not.toHaveBeenCalled();
+		it("returns category 'pointer-stub'", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.category).toBe("pointer-stub");
 		});
 
-		it("returns 'created' when write=true", async () => {
-			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(result).toEqual({ name: "Methodology pointer", status: "created" });
+		it("includes canonicalContent with stub as sole content", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.canonicalContent).toBe(`${CANONICAL}\n`);
 		});
 
-		it("calls mkdir with the parent dir and recursive=true when write=true", async () => {
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(mockMkdir).toHaveBeenCalledOnce();
-			expect(mockMkdir).toHaveBeenCalledWith("/project", { recursive: true });
-		});
-
-		it("calls writeFile with the stub as sole content when write=true", async () => {
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(mockWriteFile).toHaveBeenCalledOnce();
-			expect(mockWriteFile).toHaveBeenCalledWith(CONFIG_PATH, `${CANONICAL}\n`, "utf-8");
+		it("includes filePath", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.filePath).toBe(CONFIG_PATH);
 		});
 	});
 
@@ -69,29 +55,14 @@ describe("spliceStub", () => {
 			mockReadFile.mockResolvedValue(EXISTING);
 		});
 
-		it("returns 'would create' when write=false", async () => {
-			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR, false);
-			expect(result).toEqual({ name: "Methodology pointer", status: "would create" });
+		it("returns status 'missing'", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.status).toBe("missing");
 		});
 
-		it("does not call writeFile when write=false", async () => {
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, false);
-			expect(mockWriteFile).not.toHaveBeenCalled();
-		});
-
-		it("returns 'created' when write=true", async () => {
-			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(result).toEqual({ name: "Methodology pointer", status: "created" });
-		});
-
-		it("appends stub to existing content when write=true", async () => {
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(mockWriteFile).toHaveBeenCalledOnce();
-			expect(mockWriteFile).toHaveBeenCalledWith(
-				CONFIG_PATH,
-				`${EXISTING}\n\n${CANONICAL}\n`,
-				"utf-8",
-			);
+		it("canonicalContent appends stub to existing content", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.canonicalContent).toBe(`${EXISTING}\n\n${CANONICAL}\n`);
 		});
 	});
 
@@ -100,20 +71,14 @@ describe("spliceStub", () => {
 			mockReadFile.mockResolvedValue(`${CANONICAL}\n`);
 		});
 
-		it("returns 'unchanged' when write=false", async () => {
-			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR, false);
-			expect(result).toEqual({ name: "Methodology pointer", status: "unchanged" });
+		it("returns status 'matches'", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.status).toBe("matches");
 		});
 
-		it("returns 'unchanged' when write=true", async () => {
-			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(result).toEqual({ name: "Methodology pointer", status: "unchanged" });
-		});
-
-		it("does not call writeFile regardless of write flag", async () => {
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, false);
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(mockWriteFile).not.toHaveBeenCalled();
+		it("does not include canonicalContent", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.canonicalContent).toBeUndefined();
 		});
 	});
 
@@ -125,25 +90,14 @@ describe("spliceStub", () => {
 			mockReadFile.mockResolvedValue(`${STALE_STUB}\n`);
 		});
 
-		it("returns 'would update' when write=false", async () => {
-			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR, false);
-			expect(result).toEqual({ name: "Methodology pointer", status: "would update" });
+		it("returns status 'differs'", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.status).toBe("differs");
 		});
 
-		it("does not call writeFile when write=false", async () => {
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, false);
-			expect(mockWriteFile).not.toHaveBeenCalled();
-		});
-
-		it("returns 'updated' when write=true", async () => {
-			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(result).toEqual({ name: "Methodology pointer", status: "updated" });
-		});
-
-		it("writes the canonical stub in place of the stale region when write=true", async () => {
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
-			expect(mockWriteFile).toHaveBeenCalledOnce();
-			expect(mockWriteFile).toHaveBeenCalledWith(CONFIG_PATH, `${CANONICAL}\n`, "utf-8");
+		it("canonicalContent has the canonical stub spliced in", async () => {
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			expect(result.canonicalContent).toBe(`${CANONICAL}\n`);
 		});
 	});
 
@@ -155,13 +109,22 @@ describe("spliceStub", () => {
 			const AFTER = "\n\n## Appendix\n\nTrailing content.\n";
 			mockReadFile.mockResolvedValue(`${BEFORE}${STALE_STUB}${AFTER}`);
 
-			await spliceStub(CONFIG_PATH, DOC_HUB_DIR, true);
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
 
-			expect(mockWriteFile).toHaveBeenCalledOnce();
-			const [, writtenContent] = mockWriteFile.mock.calls[0] as [string, string, string];
-			expect(writtenContent).toBe(`${BEFORE}${CANONICAL}${AFTER}`);
-			expect(writtenContent).toContain("Some existing notes.");
-			expect(writtenContent).toContain("Trailing content.");
+			expect(result.status).toBe("differs");
+			expect(result.canonicalContent).toBe(`${BEFORE}${CANONICAL}${AFTER}`);
+			expect(result.canonicalContent).toContain("Some existing notes.");
+			expect(result.canonicalContent).toContain("Trailing content.");
+		});
+	});
+
+	describe("no filesystem writes occur", () => {
+		it("never calls writeFile regardless of status", async () => {
+			mockReadFile.mockResolvedValue(`${CANONICAL}\n`);
+			const result = await spliceStub(CONFIG_PATH, DOC_HUB_DIR);
+			// The refactored module only imports readFile — confirmed by type check.
+			expect(result.status).toBe("matches");
+			expect(mockReadFile).toHaveBeenCalledOnce();
 		});
 	});
 });

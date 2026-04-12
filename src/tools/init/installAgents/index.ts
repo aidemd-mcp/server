@@ -1,6 +1,6 @@
-import { writeFile, mkdir, access } from "node:fs/promises";
-import { join, dirname } from "node:path";
-import type { InitStepResult } from "@/types/index.js";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+import type { InitStep } from "@/types/index.js";
 import {
 	readCanonicalDoc,
 	listAgents,
@@ -17,25 +17,32 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
- * Install the canonical AIDE pipeline agent files into the host's agent
- * directory. Each agent named by `listAgents()` is written verbatim into
- * a namespaced subfolder under `agentDir`. Existing files are preserved
- * so user customizations survive re-runs. A failing read of one agent is
- * reported as `skipped` for that entry only.
+ * Return planning steps for each canonical AIDE pipeline agent file.
+ *
+ * For each agent named by `listAgents()`, checks whether the host file
+ * already exists. Returns `exists` for present files, `would-create` with
+ * the canonical content for absent files. A failing canonical read returns
+ * `would-skip` for that entry only.
+ *
+ * This helper never writes to disk — it is a planner only.
  */
 export default async function installAgents(
 	agentDir: string,
 	displayPrefix: string = "agents",
-): Promise<InitStepResult[]> {
-	const results: InitStepResult[] = [];
-	await mkdir(agentDir, { recursive: true });
+): Promise<InitStep[]> {
+	const steps: InitStep[] = [];
 
 	for (const entry of listAgents()) {
 		const targetPath = join(agentDir, entry.hostFilename);
 		const displayName = `${displayPrefix}/${entry.hostFilename}`;
 
 		if (await fileExists(targetPath)) {
-			results.push({ name: displayName, status: "exists" });
+			steps.push({
+				name: displayName,
+				status: "exists",
+				category: "agents",
+				filePath: targetPath,
+			});
 			continue;
 		}
 
@@ -43,14 +50,23 @@ export default async function installAgents(
 		try {
 			content = readCanonicalDoc(entry.canonical);
 		} catch {
-			results.push({ name: displayName, status: "skipped" });
+			steps.push({
+				name: displayName,
+				status: "would-skip",
+				category: "agents",
+				filePath: targetPath,
+			});
 			continue;
 		}
 
-		await mkdir(dirname(targetPath), { recursive: true });
-		await writeFile(targetPath, content, "utf-8");
-		results.push({ name: displayName, status: "created" });
+		steps.push({
+			name: displayName,
+			status: "would-create",
+			category: "agents",
+			filePath: targetPath,
+			content,
+		});
 	}
 
-	return results;
+	return steps;
 }
