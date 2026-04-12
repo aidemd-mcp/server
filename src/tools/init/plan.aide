@@ -1,0 +1,52 @@
+---
+intent: >
+  Add brain layer provisioning to aide_init — create a minimal Obsidian
+  vault when none exists and wire the Obsidian MCP server into the
+  project's MCP config, so pipeline agents with mcpServers: [obsidian]
+  can persist and retrieve domain knowledge.
+---
+
+## Plan
+
+- [x] **Add `brainPath` to `FrameworkConfig` in `src/types/index.ts`.** New optional field `brainPath?: string` on the interface. This is the resolved absolute path to the Obsidian vault. It is optional because brain provisioning may be skipped if no path can be resolved.
+
+- [x] **Extend `detectFramework` to resolve the brain path.** After framework detection, resolve the vault path through a priority chain: (1) a new optional `brainPath` parameter passed to `detectFramework`, (2) the `AIDE_BRAIN_PATH` environment variable, (3) a sibling `my-brain/` directory next to `projectRoot` (i.e. `join(dirname(projectRoot), "my-brain")`), (4) `undefined` if none found. The resolved path (or undefined) is returned as `brainPath` on the `FrameworkConfig`. Detection only checks existence — it does not create anything.
+
+- [x] **Create `src/tools/init/provisionBrain/index.ts` — the brain provisioning helper.** Default export `provisionBrain(brainPath: string | undefined, mcpConfigPath: string): Promise<InitStepResult[]>`. Returns an array of two results: one for the vault scaffolding, one for the Obsidian MCP wiring. The function:
+  - If `brainPath` is `undefined`, returns both results as `skipped` (no vault path resolved).
+  - If a vault already exists at `brainPath` (check for `.obsidian/` dir or any `.md` file), returns vault result as `exists`. Does NOT modify existing vault contents.
+  - If no vault exists, creates the minimum directory scaffolding: `research/`, `process/retro/`, `coding-playbook/`. Returns vault result as `created`.
+  - For MCP wiring: reads the MCP config at `mcpConfigPath`, checks for an existing `obsidian` entry in `mcpServers`. If present, returns MCP result as `exists`. If absent, adds an `obsidian` entry with `command: "npx"` and `args: ["@bitbonsai/mcpvault", brainPath]` (with `cmd /c` wrapper on Windows, same pattern as the aide entry in `wireMcp`). If the config file doesn't exist yet, this step should still wire — either the aide step already created it or this step creates a minimal config. Parse failure is a skip, not a rewrite.
+
+- [x] **Wire `provisionBrain` into the init orchestrator (`src/tools/init/index.ts`).** Import `provisionBrain` and call it after `wireMcp`, passing `config.brainPath` and the resolved `mcpConfigPath`. Spread its results into `allResults`. The brain results appear in the summary between `MCP config` (aide) and `Zed config`.
+
+- [x] **Add `brainPath` to `InitInput` schema.** New optional `brainPath` string parameter on the Zod schema, described as "Explicit Obsidian vault path (auto-discovered if omitted)". Pass it through to `detectFramework`.
+
+- [x] **Update the init orchestrator's summary to include the brain path.** When `config.brainPath` is defined, append `Brain: <path>` to the summary footer (after the `MCP:` line). When undefined, omit it.
+
+- [x] **Rename the existing MCP result from `"MCP config"` to `"MCP config (aide)"`.** This disambiguates it from the Obsidian MCP entry. Update `wireMcp/index.ts` to return `{ name: "MCP config (aide)", ... }`. The provisionBrain helper returns `"MCP config (obsidian)"` for its MCP result and `"Brain vault"` for the scaffolding result.
+
+- [x] **Create `src/tools/init/provisionBrain/index.test.ts` — tests for brain provisioning.** Co-located test file. Test cases:
+  - No brainPath → both results skipped
+  - brainPath points to existing vault (has `.obsidian/` dir) → vault exists, MCP wired
+  - brainPath points to empty location → vault created with expected dirs, MCP wired
+  - Existing vault + existing obsidian MCP entry → both exist
+  - MCP config parse failure → vault created, MCP skipped
+  - Idempotency: run twice → second run reports exists for both
+  Use the same temp directory pattern as `index.test.ts` (mkdtemp/rm).
+
+- [x] **Update `src/tools/init/index.test.ts` — add brain provisioning to orchestrator tests.** The "fresh project" test should now also check for `Brain vault` in the result string. The idempotency test should still pass. Add a test that sets `AIDE_BRAIN_PATH` env var and verifies the vault is created at that path. Add a test that verifies an explicit `brainPath` parameter takes priority.
+
+## Decisions
+
+**Priority chain for vault discovery, not a single default.** The spec says "discoverable or configurable, not hardcoded." A priority chain (explicit param → env var → sibling dir → undefined) gives the caller three ways to control it while still doing the right thing with zero configuration for the common case (brain vault is a sibling of the project). The `undefined` fallback means init gracefully skips brain provisioning rather than guessing a path — skipping is reported in the summary.
+
+**Two results from provisionBrain, not one.** The vault scaffolding and the MCP wiring are independently reportable steps per the spec's strategy. A user who already has a vault but no MCP entry sees `Brain vault: Already exists` + `MCP config (obsidian): Wired`. Collapsing them into one result would hide which part was already done.
+
+**`@bitbonsai/mcpvault` as the Obsidian MCP server package.** This is the package already in use in the user's global config. Using the same package ensures compatibility. The npx invocation pattern (`npx @bitbonsai/mcpvault <vaultPath>`) matches the aide server's npx pattern, keeping the MCP entries consistent.
+
+**Vault existence check: `.obsidian/` dir or any `.md` file.** An Obsidian vault is conventionally marked by its `.obsidian/` configuration directory. But a user may have a brain directory with markdown files that isn't formally an Obsidian vault yet — init should still treat that as "existing content, don't touch." Checking for either signal prevents init from overwriting a proto-vault.
+
+**MCP wiring lives inside provisionBrain, not in wireMcp.** The aide and obsidian MCP entries are independent — the spec says so. But the obsidian entry is conceptually part of the brain layer, not the aide layer. Keeping it in `provisionBrain` means the brain provisioning helper is self-contained: if brainPath is undefined, no MCP entry is written either. The alternative — wiring obsidian inside `wireMcp` — would require `wireMcp` to know about brain paths, coupling two independent concerns.
+
+**Renaming `"MCP config"` to `"MCP config (aide)"`** is a minor breaking change to the summary output format. This is acceptable because the summary is human-readable prose, not a machine-parsed contract. The disambiguation is necessary now that two MCP entries exist.

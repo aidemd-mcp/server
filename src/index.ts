@@ -187,7 +187,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		}
 		case "aide_init": {
 			const parsed = InitInput.parse(args);
-			const result = await init(root, parsed.framework, parsed.path, parsed.skipIde);
+			const result = await init(root, parsed.framework, parsed.path, parsed.skipIde, parsed.brainPath);
 			return { content: [{ type: "text", text: result }] };
 		}
 		case "aide_upgrade": {

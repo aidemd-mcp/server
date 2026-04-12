@@ -24,7 +24,7 @@ describe("wireMcp", () => {
 
 		const result = await wireMcp(mcpPath);
 
-		expect(result).toEqual({ name: "MCP config", status: "wired" });
+		expect(result).toEqual({ name: "MCP config (aide)", status: "wired" });
 		const mcp = JSON.parse(await readFile(mcpPath, "utf-8"));
 		expect(mcp.mcpServers.aide).toEqual(expectedEntry);
 	});
@@ -56,7 +56,7 @@ describe("wireMcp", () => {
 
 		const result = await wireMcp(mcpPath);
 
-		expect(result).toEqual({ name: "MCP config", status: "exists" });
+		expect(result).toEqual({ name: "MCP config (aide)", status: "exists" });
 	});
 
 	it("skips when MCP config contains invalid JSON", async () => {
@@ -65,6 +65,6 @@ describe("wireMcp", () => {
 
 		const result = await wireMcp(mcpPath);
 
-		expect(result).toEqual({ name: "MCP config", status: "skipped" });
+		expect(result).toEqual({ name: "MCP config (aide)", status: "skipped" });
 	});
 });

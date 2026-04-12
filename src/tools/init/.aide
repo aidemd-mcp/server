@@ -6,11 +6,14 @@ intent: >
   framework, installs a short AIDE pointer stub into the framework's
   config file, lands the progressively-disclosed methodology doc hub
   onto the host's disk alongside it, scaffolds a slash command for
-  every pipeline phase, wires the MCP server into the project's MCP
-  config, and configures the IDE so `.aide` files render as Markdown.
-  Every step is idempotent so the tool is safe to re-run, and every
-  step reports its own status so the caller can see exactly what
-  changed.
+  every pipeline phase, installs pipeline agent definitions and skill
+  templates, wires the MCP server into the project's MCP config,
+  provisions the brain layer (creates an Obsidian vault if none exists
+  and wires the Obsidian MCP server into the project's MCP config so
+  agents that declare brain access can reach it), and configures the
+  IDE so `.aide` files render as Markdown. Every step is idempotent
+  so the tool is safe to re-run, and every step reports its own status
+  so the caller can see exactly what changed.
 outcomes:
   desired:
     - Auto-detection picks the right framework (Claude Code, Cursor,
@@ -51,6 +54,14 @@ outcomes:
       file exists and parses, the server is added to its `mcpServers`
       map; if the file is missing, a minimal config is created. An
       existing `aide` entry is left alone.
+    - The brain layer is provisioned. If no Obsidian vault exists at
+      the expected location, a minimal vault is created with the
+      directory structure the pipeline agents expect (research/,
+      process/retro/, coding-playbook/). The Obsidian MCP server is
+      wired into the project's MCP config so agents that declare
+      `mcpServers: [obsidian]` in their frontmatter can reach it.
+      An existing Obsidian MCP entry is left alone. If a vault
+      already exists, its structure is not modified.
     - IDE configuration runs by default and can be skipped with a
       flag. Zed gets a `.zed/settings.json` patch; VS Code gets the
       bundled `.vsix` installed through the `code` CLI when that CLI
@@ -93,6 +104,12 @@ outcomes:
       configuration failing because `code` is not on PATH should not
       prevent the stub, the doc hub, the commands, or the MCP wiring
       from being written.
+    - An init that overwrites or restructures an existing Obsidian
+      vault. The vault may contain the user's personal notes, research,
+      and playbook. Init creates the minimum scaffolding only when no
+      vault exists; it never rearranges existing content.
+    - An init that hardcodes a vault path. The vault location should
+      be discoverable or configurable, not baked into source.
     - An init that reaches for the network — downloading a `.vsix`,
       fetching a template, contacting a marketplace. The tool must
       succeed offline, because the developer running it may have no
@@ -111,15 +128,17 @@ Every new project that adopts AIDE has to cross the same cold-start
 gap: an entry-point pointer to AIDE in the surface the agent already
 reads on every session, the full methodology installed somewhere the
 agent can crawl on demand, pipeline slash commands scaffolded, the
-MCP server registered, and the IDE taught to render `.aide` as
-Markdown. Without a single tool that does all of this, each project
-rediscovers the list and gets one or two steps wrong — a stub written
-to the wrong file, a doc hub installed to a path the stub doesn't
-name, a slash command with a typo, an MCP config that registers the
-server under the wrong name, an IDE that still renders `.aide` as
-plain text. This tool exists to collapse the cold-start gap into one
-command, so the decision to adopt AIDE in a new project is trivially
-reversible and costs nothing to try.
+MCP server registered, the brain layer provisioned so pipeline agents
+can persist and retrieve domain knowledge, and the IDE taught to
+render `.aide` as Markdown. Without a single tool that does all of
+this, each project rediscovers the list and gets one or two steps
+wrong — a stub written to the wrong file, a doc hub installed to a
+path the stub doesn't name, a slash command with a typo, an MCP
+config that registers the server under the wrong name, no vault for
+the research agent to write to, or an IDE that still renders `.aide`
+as plain text. This tool exists to collapse the cold-start gap into
+one command, so the decision to adopt AIDE in a new project is
+trivially reversible and costs nothing to try.
 
 Methodology delivery inside this tool is split across two peer helpers
 on purpose. One installs the short pointer stub into the host's config
@@ -132,33 +151,47 @@ The split mirrors the methodology's own progressive-disclosure rule at
 the delivery layer: the high-traffic surface teaches where to look,
 the low-traffic surface holds the actual content.
 
+The brain layer is the pipeline's shared memory. The research agent
+writes domain findings to `research/<domain>/`, QA promotes retros to
+`process/retro/`, and the coding playbook lives under
+`coding-playbook/`. Without a vault and an Obsidian MCP server entry,
+agents that declare `mcpServers: [obsidian]` in their frontmatter
+silently lose brain access — their research vanishes, retros are
+never persisted, and the pipeline cannot learn across runs. Init
+provisions this layer: it creates a minimal vault with the expected
+directory scaffolding when no vault exists, and wires the Obsidian
+MCP server into the project's MCP config alongside the aide server.
+The vault path is discoverable — init checks a known set of locations
+and accepts an explicit override — never hardcoded into source.
+
 The tool composes private helpers that live as subfolders of this
 orchestrator: framework detection, methodology and command template
-content, the four idempotent write steps (`writeMethodology`,
-`installMethodologyDocs`, `scaffoldCommands`, `wireMcp`), and IDE
-configuration. Init itself is thin — it orchestrates those helpers,
-sequences their results, and shapes the final summary. The strategic
-decisions about *how* to configure each IDE, or *which* files count
-as a framework's canonical config, live next to the helpers that
-make those decisions.
+content, the idempotent write steps (`writeMethodology`,
+`installMethodologyDocs`, `scaffoldCommands`, `wireMcp`,
+`provisionBrain`), agent and skill installers, and IDE configuration.
+Init itself is thin — it orchestrates those helpers, sequences their
+results, and shapes the final summary. The strategic decisions about
+*how* to configure each IDE, *which* files count as a framework's
+canonical config, or *where* to find or create the brain vault live
+next to the helpers that make those decisions.
 
 ## Strategy
 
 **Each step is independently idempotent and independently reportable.**
-Every step — methodology write, command scaffold, MCP wire, Zed patch,
-VS Code install — knows how to detect its own "already done" state and
-reports `exists` when it finds one. The steps do not share state, so a
-step that fails or skips cannot corrupt the steps around it, and the
-final summary can honestly report a mix of creates and skips in the
-same run.
+Every step — methodology write, command scaffold, MCP wire, brain
+provision, Zed patch, VS Code install — knows how to detect its own
+"already done" state and reports `exists` when it finds one. The steps
+do not share state, so a step that fails or skips cannot corrupt the
+steps around it, and the final summary can honestly report a mix of
+creates and skips in the same run.
 
 **Failures in one step do not abort the others.** IDE configuration is
 the canonical example: a developer without the `code` CLI should still
-get a fully-configured methodology, commands, and MCP wiring. The tool
-treats each step as best-effort and surfaces the mix of outcomes in
-the summary. The alternative — abort on first failure — would make
-init brittle in exactly the environments where it needs to be
-reliable.
+get a fully-configured methodology, commands, MCP wiring, and brain
+layer. The tool treats each step as best-effort and surfaces the mix
+of outcomes in the summary. The alternative — abort on first failure —
+would make init brittle in exactly the environments where it needs to
+be reliable.
 
 **Host framework detection is a read-only inspection.** The detector
 looks at files already on disk (a `.claude` directory, a `cursor`
@@ -167,6 +200,24 @@ the first match. Nothing is written during detection, and the caller
 can always override the result with an explicit `framework` parameter.
 This keeps detection safe to run speculatively and makes the override
 path a first-class escape hatch.
+
+**Brain vault path is discoverable, not hardcoded.** The brain
+provisioner resolves the vault path through a priority chain: an
+explicit parameter from the caller, an environment variable
+(`AIDE_BRAIN_PATH`), a sibling `my-brain/` directory next to the
+project root, or a platform-conventional location. The resolved path
+is reported in the summary so the user sees exactly where the vault
+lives. If a vault already exists at the resolved path, init leaves
+its contents alone — it never restructures an existing vault. If no
+vault exists, init creates the minimum directory scaffolding the
+pipeline expects (`research/`, `process/retro/`, `coding-playbook/`)
+and nothing more.
+
+**Obsidian MCP wiring follows the same pattern as aide MCP wiring.**
+The Obsidian server entry is added to the same `mcpServers` map in
+the same config file, using the same parse-or-skip safety as the aide
+entry. An existing `obsidian` entry is left alone. The two entries are
+independent — wiring one does not depend on or affect the other.
 
 **Network is never the happy path.** Every asset init needs is checked
 into the repo — the methodology text, the command templates, the
@@ -206,7 +257,9 @@ sees:
 >   ✓ aide/build: Created
 >   ✓ aide/qa: Created
 >   ✓ aide/fix: Created
->   ✓ MCP config: Wired
+>   ✓ MCP config (aide): Wired
+>   ✓ Brain vault: Created (d:/Code/Me/my-brain)
+>   ✓ MCP config (obsidian): Wired
 >   ✓ Zed config: Created
 >   ✓ VS Code extension: Installed
 >
@@ -214,6 +267,7 @@ sees:
 > Doc hub: .aide
 > Commands: .claude/commands/aide
 > MCP: .mcp.json
+> Brain: d:/Code/Me/my-brain
 >
 > New commands: /aide, /aide:research, /aide:spec, /aide:synthesize, /aide:plan, /aide:build, /aide:qa, /aide:fix
 >
@@ -244,7 +298,9 @@ A developer re-runs the same command on the same project and sees:
 >   - aide/build
 >   - aide/qa
 >   - aide/fix
->   - MCP config
+>   - MCP config (aide)
+>   - Brain vault
+>   - MCP config (obsidian)
 >   - Zed config
 >   - VS Code extension
 >
@@ -296,6 +352,25 @@ non-zero. The developer wanted a configured methodology, commands,
 and MCP config; what they got was an error and an unconfigured
 project, because one optional step was missing an optional
 dependency.
+
+An init that hardcodes `d:/Code/Me/my-brain` as the vault path in
+source. The next user who runs init on a different machine gets a
+vault created at a path that doesn't exist on their filesystem, or
+worse, writes into an unrelated directory. The vault path is resolved
+through discovery, not baked into a string literal.
+
+An init that finds an existing Obsidian vault and "helpfully"
+rearranges its folder structure to match the expected scaffolding.
+The vault may contain years of personal notes, research, and playbook
+content. Init creates scaffolding only when no vault exists; it never
+touches existing content.
+
+An init that wires the Obsidian MCP server but doesn't create the
+vault, or creates the vault but doesn't wire the server. The two
+operations are a pair — agents need both the vault on disk and the
+MCP route to reach it. Doing one without the other leaves the brain
+layer half-provisioned, and the failure mode is silent: the research
+agent runs, writes to nothing, and reports success.
 
 An init whose summary reads `done`. The developer has no idea which
 files changed, whether the methodology was written, whether the

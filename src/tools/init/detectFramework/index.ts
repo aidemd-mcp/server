@@ -1,5 +1,6 @@
 import { access } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 import type { FrameworkType, FrameworkConfig } from "@/types/index.js";
 
 /**
@@ -35,23 +36,49 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
+ * Resolve the Obsidian vault path through the priority chain:
+ * 1. explicit brainPath parameter
+ * 2. AIDE_BRAIN_PATH environment variable
+ * 3. sibling my-brain/ directory next to projectRoot
+ * 4. platform-conventional location: ~/my-brain
+ * Detection only checks existence — it does not create anything.
+ */
+async function resolveBrainPath(projectRoot: string, brainPath?: string): Promise<string | undefined> {
+	if (brainPath) return brainPath;
+
+	const envPath = process.env.AIDE_BRAIN_PATH;
+	if (envPath) return envPath;
+
+	const siblingPath = join(dirname(projectRoot), "my-brain");
+	if (await exists(siblingPath)) return siblingPath;
+
+	const conventionalPath = join(homedir(), "my-brain");
+	if (await exists(conventionalPath)) return conventionalPath;
+
+	return undefined;
+}
+
+/**
  * Detect the agent framework in use, or return config for a specified framework.
  * Checks for framework-specific marker files/directories. Defaults to Claude Code
- * if nothing is detected.
+ * if nothing is detected. Resolves the brain vault path via a priority chain.
  */
 export default async function detectFramework(
 	root: string,
 	framework?: FrameworkType,
+	brainPath?: string,
 ): Promise<FrameworkConfig> {
-	if (framework) return { framework, ...FRAMEWORK_CONFIGS[framework] };
+	const resolvedBrainPath = await resolveBrainPath(root, brainPath);
+
+	if (framework) return { framework, ...FRAMEWORK_CONFIGS[framework], brainPath: resolvedBrainPath };
 
 	for (const signal of DETECTION_SIGNALS) {
 		for (const path of signal.paths) {
 			if (await exists(join(root, path))) {
-				return { framework: signal.framework, ...FRAMEWORK_CONFIGS[signal.framework] };
+				return { framework: signal.framework, ...FRAMEWORK_CONFIGS[signal.framework], brainPath: resolvedBrainPath };
 			}
 		}
 	}
 
-	return { framework: "claude", ...FRAMEWORK_CONFIGS.claude };
+	return { framework: "claude", ...FRAMEWORK_CONFIGS.claude, brainPath: resolvedBrainPath };
 }

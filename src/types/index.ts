@@ -83,6 +83,13 @@ export interface FrameworkConfig {
 	agentDir: string;
 	/** Directory for skill files relative to project root. */
 	skillDir: string;
+	/**
+	 * Resolved absolute path to the Obsidian vault, if one was found or
+	 * configured. Undefined when brain provisioning is skipped (no path could
+	 * be resolved via the priority chain: explicit param → AIDE_BRAIN_PATH
+	 * env var → sibling my-brain/ dir → undefined).
+	 */
+	brainPath?: string;
 }
 
 /** Result of a single init step. */

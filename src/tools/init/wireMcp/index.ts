@@ -29,19 +29,19 @@ export default async function wireMcp(mcpConfigPath: string): Promise<InitStepRe
 			const config = JSON.parse(existing);
 			const servers = config.mcpServers || {};
 			if ("aide" in servers || "aidemd-mcp" in servers) {
-				return { name: "MCP config", status: "exists" };
+				return { name: "MCP config (aide)", status: "exists" };
 			}
 			servers.aide = mcpEntry();
 			config.mcpServers = servers;
 			await writeFile(mcpConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-			return { name: "MCP config", status: "wired" };
+			return { name: "MCP config (aide)", status: "wired" };
 		} catch {
-			return { name: "MCP config", status: "skipped" };
+			return { name: "MCP config (aide)", status: "skipped" };
 		}
 	}
 
 	const config = { mcpServers: { aide: mcpEntry() } };
 	await mkdir(dirname(mcpConfigPath), { recursive: true });
 	await writeFile(mcpConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-	return { name: "MCP config", status: "wired" };
+	return { name: "MCP config (aide)", status: "wired" };
 }

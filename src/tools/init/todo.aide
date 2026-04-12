@@ -1,0 +1,62 @@
+---
+intent: >
+  Brain layer provisioning: vault created when none exists, Obsidian MCP wired,
+  vault path discoverable or configurable (not hardcoded), both operations paired,
+  every step's status reported in the final summary.
+misalignment:
+  - implementation-drift
+  - test-gap
+---
+
+# QA Re-alignment Document
+
+## Issues
+
+- [x] **`src/index.ts:190` — `brainPath` parameter is parsed from `InitInput` but never forwarded to `init()`.**
+  The call is `init(root, parsed.framework, parsed.path, parsed.skipIde)` — `parsed.brainPath` is silently dropped.
+  Any caller who passes an explicit `brainPath` through the MCP interface gets nothing; the value is dead.
+  Traces to: desired outcome — "Vault path discoverable or configurable, not hardcoded" (explicit override is the #1 leg of the priority chain)
+  Misalignment: implementation-drift
+
+- [x] **`src/tools/init/detectFramework/index.ts:44-54` — priority chain is missing the fourth leg ("platform-conventional location").**
+  The spec's Strategy section names four legs: explicit param → `AIDE_BRAIN_PATH` env var → sibling `my-brain/` dir → platform-conventional location.
+  The implementation returns `undefined` after the sibling check and never attempts a platform-conventional location.
+  The plan.aide for this feature also omits the fourth leg entirely, but the intent spec (`.aide` Strategy) is authoritative.
+  Traces to: desired outcome — "Vault path discoverable or configurable, not hardcoded" (the full four-leg chain is the contract)
+  Misalignment: implementation-drift
+
+- [x] **`src/tools/init/index.ts:52-55` — warm-run summary lists skipped brain results as "All components present".**
+  When `brainPath` resolves to `undefined` (no vault found via the priority chain), both brain results carry `status: "skipped"`.
+  `allExist` treats `"skipped"` the same as `"exists"`, so on a re-run the output reads "All components present: — Brain vault — MCP config (obsidian)" even when neither was ever provisioned.
+  The spec says "a fully-warm run reads as a list of 'already exists'" — skipped steps are a different condition (not applicable, not present).
+  Traces to: desired outcome — "Every step's status reported in the final summary"
+  Misalignment: implementation-drift
+
+- [x] **`src/tools/init/index.test.ts:31-64` — "fresh project" test does not verify that brain provisioning actually ran.**
+  The assertion `expect(result).toContain("Brain vault")` passes whether the vault was created or skipped, because the name "Brain vault" appears in both cases.
+  The test calls `init(tempDir)` with no `AIDE_BRAIN_PATH` set and no `my-brain` sibling, so `brainPath` is `undefined` and the brain layer is silently skipped.
+  A test claiming to verify a "fresh project" should verify the vault was created (or document why it is explicitly skipped in that scenario).
+  Traces to: desired outcome — "Brain layer is provisioned — minimal vault created when none exists"
+  Misalignment: test-gap
+
+- [x] **`src/tools/init/provisionBrain/index.ts:16-26` — `vaultExists` docstring disagrees with implementation.**
+  The docstring says "any .md file, or any entries" but the code implements `entries.length > 0` (any entry, not specifically `.md` files).
+  The plan.aide spec says "check for `.obsidian/` dir or any `.md` file."
+  The broader `entries.length > 0` behaviour is arguably safer (more conservative), but the mismatch between spec, comment, and code is a documentation bug that will mislead future readers about the intended detection contract.
+  Traces to: undesired outcome — "Init that overwrites or restructures an existing Obsidian vault"
+  Misalignment: implementation-drift
+
+- [x] **`src/tools/init/provisionBrain/index.ts` — Obsidian MCP wiring only checks the project-level MCP config, not the user-level config.**
+  The Obsidian MCP server may already be configured globally (e.g. in `~/.claude.json` `mcpServers`). The current implementation reads only the project-level config file (`mcpConfigPath`) for an existing `obsidian` entry. When the user already has a global entry, init adds a redundant project-level duplicate. The check should also inspect the user-level MCP config (framework-dependent: `~/.claude.json` for Claude Code) and skip wiring if `obsidian` is already present there.
+  Traces to: desired outcome — "An existing Obsidian MCP entry is left alone"
+  Misalignment: implementation-drift
+
+## Retro
+
+**Issue 1 (brainPath dropped at call site)** would have been caught by an integration test that passes an explicit `brainPath` through the MCP tool interface (`aide_init` handler) and asserts the vault was created at that path. The unit tests on `init()` directly exercise the function signature correctly — the gap is between the schema and the handler, a layer the unit tests don't cover.
+
+**Issue 2 (missing fourth priority chain leg)** would have been caught if plan.aide had been written from the `.aide` Strategy section rather than independently. The plan's Decisions section describes only three legs; the Strategy section names four. Any plan review that cross-checked the plan's Decisions against the spec's Strategy would have flagged the omission before implementation began.
+
+**Issue 3 (skipped vs exists in warm-run summary)** and **Issue 4 (test does not verify vault creation)** share a root cause: the test was written to assert presence of string labels rather than to verify the actual disk state or result status. Outcome-focused assertions (check the vault directory exists, check the MCP config contains an obsidian entry) would have caught both issues.
+
+**Issue 5 (docstring mismatch)** is a doc-hygiene miss. Code review against the plan spec would have caught it.
