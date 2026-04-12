@@ -1,0 +1,92 @@
+---
+intent: >
+  Convert the TUI tree navigation from flat (every node is a cursor stop) to
+  two-level folder-first navigation — folders are the primary cursor stops,
+  files are revealed only when a folder is expanded inline.
+---
+
+## Plan
+
+### 1. Add expansion state to App
+
+- [ ] In `src/cli/App/index.tsx`, add a `useState<Set<string>>` called `expandedDirs` (initialized to empty Set). This tracks which dir paths have been expanded by the user. It lives in App because App already owns all navigation state (cursorIndex, mode, searchFilter).
+
+### 2. Update flattenTree to accept expandedDirs
+
+- [ ] In `src/cli/flattenTree/index.ts`, change the signature of `flattenTree` to accept a second parameter `expandedDirs: Set<string>` (default: empty Set). When iterating nodes, always emit dir nodes. Only emit a dir's children when `expandedDirs.has(node.path)`. The `FlatNode` interface stays unchanged.
+
+### 3. Wire flattenTree calls through App
+
+- [ ] In `src/cli/App/index.tsx`, update every call site that invokes `flattenTree()` to pass `expandedDirs` as the second argument. This includes the initial `useState` initializer, the `toggleDeepView` callback, and any place `setFlatNodes` is called. Also add a `useEffect` that recomputes `flatNodes` from `treeNodes` whenever `expandedDirs` changes — call `setFlatNodes(flattenTree(treeNodes, expandedDirs))`. Remove the separate `shallowFlatNodes` cache since it was precomputed with the old flatten-all behavior — the effect-based recomputation replaces it.
+
+### 4. Create findPrimaryIntent helper
+
+- [ ] Create `src/cli/findPrimaryIntent/index.ts`. Default export: `findPrimaryIntent(node: TreeNode): AideFile | null`. Given a dir-kind TreeNode, search its `children` array for the first file child whose type is `"intent"` (i.e. `.aide` or `intent.aide`). Return that `AideFile`, or null if the dir has no intent file. This is a pure synchronous function — no filesystem reads, just array lookup on the already-loaded tree data. Add JSDoc explaining its role in powering the detail panel auto-load for dir nodes.
+
+### 5. Update selectedFile derivation to support dir nodes
+
+- [ ] In `src/cli/App/index.tsx`, change the `selectedFile` derivation. Currently it returns null when the cursor is on a dir node. Instead, when `cursorNode.node.kind === "dir"`, call `findPrimaryIntent(cursorNode.node)` to get the dir's primary intent file. The detail panel will then auto-load and display frontmatter for that intent file as the cursor lands on each folder. Import `findPrimaryIntent` at the top of App.
+
+### 6. Update keyboard handling for Enter on dir nodes
+
+- [ ] In `src/cli/App/index.tsx`, modify the `key.return` handler in tree mode. Currently it calls `drillIntoFile` on selectedFile. New behavior: if the cursor is on a dir node (`cursorNode.node.kind === "dir"`), toggle that dir's path in `expandedDirs` (add if absent, remove if present). When expanding, advance the cursor by 1 so it lands on the first child. When collapsing, keep the cursor on the dir node. If the cursor is on a file node (inside an expanded folder), call `drillIntoFile` as before.
+
+### 7. Update keyboard handling for Escape/Backspace in tree mode
+
+- [ ] In `src/cli/App/index.tsx`, modify the Escape handler in tree mode. New priority order: (1) If cursor is inside an expanded dir's children (cursor is on a file node), find the parent dir by walking backward through `visibleNodes` to the nearest preceding dir node at a shallower depth. Collapse that dir by removing it from `expandedDirs`, and move cursor to that dir's index. (2) Else if `searchFilter` is non-empty, clear it and reset cursor. (3) Else exit the app. Backspace behavior stays as-is (trims search filter character by character) — it should NOT collapse dirs, only Escape does that.
+
+### 8. Update TreePanel rendering for expand/collapse indicators
+
+- [ ] In `src/cli/TreePanel/index.tsx`, add an `expandedDirs` prop (type `Set<string>`). In `renderRow`, when rendering a dir node, show a visual indicator: `"v "` prefix when the dir is in `expandedDirs`, `"> "` prefix when collapsed. Update the footer hint text: show `"[enter] expand"` when cursor is on a collapsed dir, `"[enter] collapse"` when on an expanded dir, and `"[enter] drill in"` when on a file. Accept a new prop `cursorOnDir: boolean` and `cursorDirExpanded: boolean` to control which hint to display.
+
+### 9. Update search/filter to work at the folder level
+
+- [ ] In `src/cli/App/index.tsx`, update the `visibleNodes` filtering logic. Current behavior matches file `relativePath` and `summary`. New behavior: a dir node is visible if ANY of its children (from the full tree, not just expanded/visible children) match the search term in their `relativePath` or `summary`. File nodes inside an expanded dir are visible only if they individually match the search term. Dir nodes whose children all fail to match are hidden entirely. This preserves folder-first navigation while allowing search to surface folders by their contents.
+
+### 10. Update existing tests for two-level navigation
+
+- [ ] In `src/cli/App/index.test.tsx`, update tests that assume flat navigation:
+  - "moves cursor down on down arrow" — cursor now moves between dir nodes only (skipping hidden file children). Adjust assertions.
+  - "switches to drill-in mode on Enter" — now requires two steps: Enter to expand the dir, Down to move to the file, Enter again to drill in. Update the sequence and assertions.
+  - "search filter hides directories with no matching children" — this should still pass but verify the assertion matches the new folder-level filtering.
+  - "Escape in drill-in mode returns to tree view" — still valid, no changes needed.
+
+### 11. Add new tests for folder expansion
+
+- [ ] In `src/cli/App/index.test.tsx`, add tests:
+  - **"Enter on dir expands it and shows children"**: Render with mockNodes. Press Enter on a dir. Verify the frame now contains the child file name (e.g. ".aide") that was previously hidden.
+  - **"Enter on expanded dir collapses it"**: Expand a dir, press Enter on it again. Verify children disappear from the frame.
+  - **"Escape inside expanded dir collapses parent"**: Expand a dir, arrow Down into a child file, press Escape. Verify the dir collapses and the frame no longer shows the child file.
+  - **"Detail panel auto-loads intent for dir node"**: Render with cursor on a dir that has an intent child. Wait for async frontmatter load. Verify detail panel shows scope and intent text (not "Select a file to preview").
+  - **"Enter on file inside expanded dir triggers drill-in"**: Expand a dir, arrow to a file, press Enter. Verify drill-in mode renders with scope/intent/outcomes.
+
+### 12. Add unit test for findPrimaryIntent
+
+- [ ] Create `src/cli/findPrimaryIntent/index.test.ts`. Test cases: (a) dir with a single intent-type child returns that child's AideFile, (b) dir with multiple children of mixed types returns the first intent-type one, (c) dir with no intent children (only research/plan/todo) returns null, (d) file-kind node input returns null.
+
+### 13. Add unit tests for updated flattenTree
+
+- [ ] In `src/cli/flattenTree/index.test.ts` (create if needed), add tests: (a) empty `expandedDirs` produces only dir nodes — no file children, (b) expanding a dir by adding its path to the Set includes its file children in the output, (c) expanding one dir does not include children from other dirs, (d) backward compat — calling with default second arg (empty Set) collapses everything.
+
+## Decisions
+
+**1. expandedDirs as `Set<string>` in App, not per-node state.**
+The TreeNode type is shared across the codebase (used by buildTreeData, flattenTree, and the MCP tools). Adding an `expanded` boolean to TreeNode would couple view state to the data model. A separate `Set<string>` keyed by dir path keeps view state in App where it belongs — same pattern as `searchFilter` and `cursorIndex`. Traced to: progressive disclosure docs (code structure carries shape, not view state) and .aide spec (App owns view state, delegates to presentational components).
+
+**2. flattenTree as the gatekeeper for expansion visibility.**
+Rather than filtering expanded/collapsed children in App's `visibleNodes` computation (which handles search), the expansion logic lives in `flattenTree`. This means `flattenTree` always returns only the structurally visible nodes (dirs + expanded children), and `visibleNodes` further filters by search. Two-stage pipeline: structural visibility (flattenTree) then search visibility (visibleNodes filter). The alternative — doing both in one pass — would tangle two independent concerns. Traced to: playbook conventions (single responsibility, orchestrator delegates to helpers).
+
+**3. findPrimaryIntent as a separate helper, not inline logic.**
+The logic to pick the primary intent file from a dir's children is reusable (detail panel auto-load, potential future features like folder-level summaries) and independently testable. Per the orchestrator/helper pattern, it gets its own subfolder under `src/cli/`. The function is synchronous and pure — it reads from the already-loaded TreeNode data, not the filesystem. Traced to: progressive disclosure (helpers in subfolders, folder name = function name).
+
+**4. Dir nodes always remain cursor stops, even when expanded.**
+When a dir is expanded, the dir node itself stays in the flat list as a cursor stop so the user can press Enter again to collapse. File children appear after their parent dir at depth+1. The cursor landing on a dir auto-loads its intent in the detail panel. This matches the mental model of a file explorer where folders are always interactive. Traced to: desired behavior spec (Enter on folder toggles expand/collapse).
+
+**5. No changes to buildTreeData or TreeNode type.**
+The tree data model already has the right shape — dirs contain children arrays. The change is purely in how flattenTree selects which nodes to emit and how App handles keyboard events. This minimizes blast radius and avoids touching shared types that the MCP discover/read tools depend on. Traced to: playbook (no scope creep, horizontal isolation).
+
+**6. Escape priority: collapse-before-clear-before-exit.**
+When the user is "inside" an expanded folder (cursor on a file child), Escape collapses the folder and returns cursor to the dir — it does NOT clear the search filter or exit the app. This gives Escape a hierarchical feel: unwind one level at a time. Only when cursor is at the folder level, no dirs expanded around the cursor, and no search filter does Escape exit. Traced to: desired behavior spec (Escape/Backspace inside expanded folder collapses it).
+
+**7. Backspace does not collapse — only Escape does.**
+Backspace is reserved for trimming the search filter, character by character. Overloading Backspace to also collapse dirs when the search filter is empty would create ambiguity (did the user want to type, or navigate?). Escape is the unambiguous "go back" key. Traced to: .aide spec strategy (keyboard navigation follows terminal conventions, not custom bindings).

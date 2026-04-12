@@ -1,0 +1,60 @@
+---
+intent: >
+  Realign the TUI implementation with the .aide spec — specifically the
+  drill-in keyboard interaction, the deep/shallow toggle correctness, the
+  cursor-filter desync, and the untested drill-in Enter path.
+  (Round 2: one regression found in the fix for issue #4.)
+misalignment:
+  - implementation-drift
+  - test-gap
+---
+
+## Issues — Round 1 (all resolved in fix loop)
+
+- [x] `src/cli/App/index.tsx:141-185` — Drill-in mode keyboard handler handles only Escape/Backspace. Up/Down (scroll) and Enter (expand section) are never dispatched to DrillInPanel. The footer hint "[↑↓] scroll  [enter] expand section" is shown but the actions it promises are dead — no scroll position state exists in App, and DrillInPanel's `expanded` Set is never mutated because no keypress ever reaches it.
+  Traces to: desired outcome — "Body sections rendered as collapsible or scrollable content below the frontmatter card" (the "enter to expand section" behavior is spec-mandated interactivity, not cosmetic)
+  Misalignment: implementation-drift
+
+- [x] `src/cli/App/index.tsx:121-138` — Toggling deep view OFF (line 122-124) only sets `isDeepView = false`; it does NOT restore the shallow `treeNodes`/`flatNodes`. Deep summaries therefore persist in the tree after the user toggles back to shallow view.
+  Traces to: desired outcome — "toggle between shallow (locations + types only) and deep (with summaries) views" — the toggle must be reversible; summaries must disappear when the user returns to shallow.
+  Misalignment: implementation-drift
+
+- [x] `src/cli/TreePanel/index.tsx:26,81` — The `isDeepView` prop is declared and received but never read inside the render body. Summary display (line 54, 68-72) is gated only on `file.summary` being truthy, not on `isDeepView`. If the shallow scan ever returns non-empty summaries (or after a deep scan populates them and the above bug leaves them in state), shallow view will still show summaries. The prop is structural dead code.
+  Traces to: desired outcome — "shallow view shows only file locations and type tags" — summaries must be conditionally suppressed by the `isDeepView` flag.
+  Misalignment: implementation-drift
+
+- [x] `src/cli/App/index.tsx:59-67` vs `src/cli/TreePanel/index.tsx:82-95` — App and TreePanel each compute their own independent `visibleNodes` from the same `flatNodes` + `searchFilter` inputs, but with different dir-inclusion logic. App always includes all dir nodes (line 61: `if kind === "dir" return true`), while TreePanel only includes a dir if at least one child file matches (lines 84-89). This means the cursor index App calculates is over a larger set than what TreePanel renders, causing the highlighted cursor row to be wrong (or invisible) during search.
+  Traces to: desired outcome — "search/filter by typing" — the filter must produce a consistent highlighted row between the cursor owner (App) and the renderer (TreePanel).
+  Misalignment: implementation-drift
+
+- [x] `src/cli/App/index.test.tsx:80-91` — The test for Enter triggering drill-in moves the cursor down once (to index 1) and presses Enter, then asserts the frame contains ".aide". The test does not verify that the frame shows the DrillInPanel's card layout (scope, intent, outcomes), only that the string ".aide" appears — which is already present in tree mode. The test cannot catch the drill-in rendering breaking.
+  Traces to: desired outcome — "Drilling into any .aide file opens a formatted inspection view — frontmatter rendered as a styled card"
+  Misalignment: test-gap
+
+- [x] `src/cli/App/index.test.tsx` — There is no test that exercises the Enter key in drill-in mode (expand body section) or Up/Down in drill-in mode (scroll). Given issue #1 above (those keys are unimplemented), tests would fail — but their absence also means the gap went undetected.
+  Traces to: desired outcome — "[enter] expand section" and "[↑↓] scroll" in drill-in mode
+  Misalignment: test-gap
+
+## Issues — Round 2 (regression from fix loop)
+
+- [ ] `src/cli/App/index.tsx:68-73` — The dir-node predicate in `visibleNodes` asks whether any file in the entire `flatNodes` array matches the search filter, not whether any child of this specific directory matches. During a search, if any single file in the project matches the filter, every directory node passes the predicate and is included in `visibleNodes`, even directories that contain no matching files. The fix for issue #4 correctly lifted `visibleNodes` to App and removed the dual-computation bug, but introduced a scoping defect in the dir predicate.
+  Concretely: given a tree with `src/tools/init/intent.aide` and `src/cli/.aide`, typing "init" should show only `src/tools/init/` and its children. Instead, `src/cli/` is also shown (dir predicate matches because `intent.aide` satisfies the global `flatNodes.some` check).
+  Traces to: desired outcome — "search/filter by typing" — filtered tree must contain only directories with at least one matching descendant.
+  Misalignment: implementation-drift
+
+## Retro
+
+**What would have caught issue #1 (dead drill-in keyboard) earlier?**
+The plan (Phase 6) explicitly specifies: "Drill-in mode: Up/Down scroll within the detail view. Enter expands/collapses the focused body section." A plan-stage checkpoint that cross-referenced the keyboard state machine against DrillInPanel's props would have caught that no dispatch path existed. The test for drill-in mode (Phase 9, App integration test) should have been written to press Enter on a collapsed section and assert the section expands — that test would have immediately exposed the missing handler.
+
+**What would have caught issue #2 (toggle doesn't restore shallow)** earlier?
+The plan says "Store both shallow and deep scan results so toggling back to shallow is instant." The implementation never stores the shallow results — it discards them when deep scan replaces `treeNodes`. A plan-stage review would have noted the missing shallow cache variable. A test that toggles deep on, then off, then asserts no summaries in the rendered tree would have caught it at the test stage.
+
+**What would have caught issue #3 (isDeepView unused in TreePanel) earlier?**
+A TypeScript lint rule for unused destructured props, or a code review pass that checked every prop in the interface is read at least once in the render body. This is a classic case of a prop that was wired in the interface but whose usage was forgotten when writing the render path.
+
+**What would have caught issue #4 (cursor-filter desync) earlier?**
+The dual computation of `visibleNodes` in two separate components is an architecture smell — the spec strategy says "all state is lifted to App" (TreePanel "manages no state"). Lifting the filter computation entirely into App and passing computed `visibleNodes` down to TreePanel (instead of re-deriving it) would have eliminated the divergence by construction. A test that typed a search string and checked the highlighted row matched a file in the filtered list would have caught this at test time.
+
+**What would have caught the Round 2 regression (dir predicate scoping) earlier?**
+A test that renders a two-directory tree, types a search term that matches only one directory's files, and asserts the other directory is NOT in the rendered output. The fix loop added no search-filter correctness tests — it only verified that `visibleNodes` was computed once. A regression test pinned to the concrete behavior would have caught the scoping defect immediately.

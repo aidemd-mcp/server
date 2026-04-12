@@ -1,26 +1,26 @@
 {
-    "name": "aide-markdown",
-    "displayName": "AIDE Spec",
-    "description": "Markdown syntax and preview for .aide spec files",
-    "version": "0.0.1",
-    "publisher": "tetsukod",
-    "engines": {
-        "vscode": "^1.50.0"
-    },
-    "categories": [
-        "Languages"
-    ],
-    "contributes": {
-        "languages": [
-            {
-                "id": "markdown",
-                "extensions": [
-                    ".aide"
-                ],
-                "aliases": [
-                    "AIDE Spec"
-                ]
-            }
+  "name": "aide-markdown",
+  "displayName": "AIDE Spec",
+  "description": "Markdown syntax and preview for .aide spec files",
+  "version": "0.0.1",
+  "publisher": "tetsukodai",
+  "engines": {
+    "vscode": "^1.50.0"
+  },
+  "categories": [
+    "Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "markdown",
+        "extensions": [
+          ".aide"
+        ],
+        "aliases": [
+          "AIDE Spec"
         ]
-    }
+      }
+    ]
+  }
 }

@@ -1,0 +1,208 @@
+---
+scope: cli
+intent: >
+  Give developers a terminal-native way to explore and inspect the .aide intent
+  tree of any project — a single command that renders the full hierarchy as a
+  navigable, searchable TUI so a human can understand the intent structure at a
+  glance without opening individual files or running MCP tools manually.
+outcomes:
+  desired:
+    - A two-panel layout: navigable intent tree on the left, detail pane on the right showing contextual info for the selected node.
+    - Tree supports keyboard navigation (arrow keys, enter to drill in, escape/backspace to go back), search/filter by typing, and a toggle between shallow (locations + types only) and deep (with summaries) views.
+    - Drilling into any .aide file opens a formatted inspection view — frontmatter rendered as a styled card with scope at top, intent below it, and desired/undesired outcomes displayed side-by-side in their own bordered regions.
+    - Body sections (Context, Strategy, Good examples, Bad examples) rendered as collapsible or scrollable content below the frontmatter card.
+    - Ships as a bin entry in the aidemd-mcp package so users get the command automatically when the MCP is installed — no separate install step.
+  undesired:
+    - A static dump that requires re-running the command to see different parts of the tree — the whole point is persistent interactive navigation.
+    - Frontmatter rendered as raw YAML — the nested outcomes structure must be visually parsed into labeled, bordered regions, not shown as indented key-value pairs.
+    - Requiring the MCP server to be running — the TUI reads the filesystem directly, reusing the scan/classify logic but not the MCP transport.
+    - A full CLI framework with subcommands, flags, and help text — this is one command, one view, zero arguments beyond an optional project root path.
+---
+
+## Context
+
+The MCP server gives agents a programmatic way to explore intent trees, but the human maintainer has no equivalent. Understanding a project's intent structure today means opening individual files, mentally reconstructing parent-child relationships, and reading raw YAML frontmatter. For a project with ten or twenty specs spread across nested modules, this is slow enough that most developers stop doing it and lose track of how their intent tree has grown.
+
+A terminal-native explorer solves this by making the intent tree a first-class navigable artifact. The developer launches one command, sees the full hierarchy, drills into any node, reads the formatted intent and outcomes, and walks back out — all without leaving the terminal or parsing YAML mentally. The same scan and classify logic that the MCP server uses to answer agent queries powers the TUI, so the human and the agent always see the same tree.
+
+This module ships inside the existing package rather than as a standalone install. Developers who adopt the MCP server get the explorer automatically. No second install step, no version drift between the server and the explorer, no separate release pipeline.
+
+## Strategy
+
+**Two-panel split with the tree as the primary navigation surface.** The left panel shows the intent tree — directories as collapsible groups, specs as leaf nodes tagged by type. The right panel shows contextual detail for whatever node is currently highlighted. This split lets the developer scan the full tree structure while previewing content without committing to a drill-in. The tree panel gets roughly 35-40% of terminal width; the detail panel gets the rest. The tree stays visible at all times except during full drill-in view.
+
+**Shallow view is the default; deep view is opt-in.** On launch the tree shows only file locations and type tags — the same information the MCP server's shallow scan returns. A single keypress toggles to deep view, which reads file content and adds truncated summaries next to each node. This mirrors the progressive disclosure the methodology itself teaches: show structure first, detail on demand. It also keeps startup instant for large projects because shallow scan does no file reads.
+
+**Keyboard navigation follows terminal conventions, not custom bindings.** Arrow keys move the cursor. Enter drills into a node. Escape or backspace walks back up. A search mode activates on typing any letter, filtering the tree to nodes whose path or summary matches the input. Tab toggles shallow/deep. These are the bindings a developer expects from any tree-navigation TUI; custom keybindings would require documentation the single-command design explicitly rejects.
+
+**Frontmatter renders as a structured card, not raw YAML.** The drill-in view for a single spec file presents frontmatter in a bordered card layout: scope at the top as a heading, intent as a wrapped paragraph below it, then desired and undesired outcomes side by side (or stacked on narrow terminals) in their own labeled bordered regions. Each outcome is a bullet in its region. This visual parsing is the core differentiator — the raw YAML with nested indentation is what the spec's undesired outcomes explicitly prohibit.
+
+**Body sections render as scrollable regions below the frontmatter card.** Context, Strategy, Good examples, and Bad examples each get their own labeled region. On initial drill-in, body sections are collapsed to a single summary line each (first sentence or "N paragraphs"). The developer can expand any section to read the full content, scrolling within the section without losing the frontmatter card above. This prevents a long Strategy section from pushing outcomes off-screen.
+
+**Reuse the existing scan and classify utilities directly.** The scan walker and file classifier are pure functions that take a root path and return typed results. The TUI imports them as library code, not through the MCP transport layer. This means the TUI has zero dependency on the MCP server running, and the tree the human sees is structurally identical to the tree an agent sees through the discover tool. If scan or classify gain new capabilities (new file types, new skip directories), the TUI inherits them automatically.
+
+**The buildTree formatter is not reused — the TUI builds its own component tree.** The existing buildTree helper produces a flat string with box-drawing characters, designed for plain-text MCP responses. The TUI needs a stateful component tree where each node tracks selection, expansion, and highlight state. The scan results feed directly into the component tree; the string formatter is bypassed entirely.
+
+**Single entry point, no argument parsing framework.** The command accepts one optional positional argument: the project root path. If omitted, it defaults to the current working directory. No flags, no subcommands, no help text beyond a one-line usage hint on invalid input. The Ink runtime handles the rest. This keeps the surface area minimal and avoids the complexity budget that a CLI framework like Commander or Yargs would introduce for a single-view tool.
+
+**Ink components follow a flat hierarchy.** The top-level app component owns the view state (tree view vs. drill-in view) and delegates to two presentational components: one for the tree panel and one for the detail/drill-in panel. The tree panel component manages cursor position, expansion state, and search filter. The detail panel component receives the selected file's parsed content and renders the card layout. No deeper nesting — Ink's layout model handles the rest with flexbox-style composition.
+
+## Good examples
+
+A developer runs the command in a project with six specs. The terminal shows:
+
+```
+┌─ Intent Tree ───────────────┬─ Detail ─────────────────────────────┐
+│                              │                                      │
+│  . /                         │  scope: .                            │
+│  └── .aide [intent]          │                                      │
+│                              │  This repository is the canonical    │
+│  src/tools/discover/         │  home of the AIDE methodology —      │
+│  └── .aide [intent]          │  Autonomous Intent-Driven            │
+│                              │  Engineering...                      │
+│  src/tools/init/             │                                      │
+│  ├── intent.aide [intent]    │  ✓ desired (5)                       │
+│  └── research.aide [research]│  ✗ undesired (6)                     │
+│                              │                                      │
+│  src/tools/read/             │                                      │
+│  └── .aide [intent]          │                                      │
+│                              │                                      │
+│  src/cli/                    │                                      │
+│  └── .aide [intent]          │                                      │
+│                              │                                      │
+│                              │                                      │
+│  [↑↓] navigate  [enter]     │                                      │
+│  drill in  [tab] deep view   │                                      │
+└──────────────────────────────┴──────────────────────────────────────┘
+```
+
+The developer presses Enter on the root `.aide` and sees the drill-in view:
+
+```
+┌─ . / .aide ─────────────────────────────────────────────────────────┐
+│                                                                      │
+│  scope: .                                                            │
+│                                                                      │
+│  This repository is the canonical home of the AIDE methodology —     │
+│  Autonomous Intent-Driven Engineering, with a deliberate second      │
+│  reading as AI Domain Expert — and the MCP server that delivers it   │
+│  to agents in host projects.                                         │
+│                                                                      │
+│  ┌─ Desired Outcomes ──────────┬─ Undesired Outcomes ──────────────┐ │
+│  │                              │                                    │ │
+│  │  • The canonical AIDE        │  • A rule, convention, or          │ │
+│  │    methodology lives in      │    doctrine that lives anywhere    │ │
+│  │    this repo as editable     │    other than the canonical doc    │ │
+│  │    doc files...              │    files...                        │ │
+│  │                              │                                    │ │
+│  │  • Two delivery channels,    │  • Dual sources of truth: the     │ │
+│  │    each with one clear       │    same doctrine appearing in     │ │
+│  │    job...                    │    both this repo and the          │ │
+│  │                              │    original brain notes...        │ │
+│  │  • Every downstream          │                                    │ │
+│  │    artifact the server       │  • A delivery channel other       │ │
+│  │    ships...                  │    than MCP tool descriptions     │ │
+│  │                              │    and aide_init...               │ │
+│  └──────────────────────────────┴────────────────────────────────────┘ │
+│                                                                      │
+│  ▸ Context (2 paragraphs)                                            │
+│  ▸ Strategy (7 decisions)                                            │
+│  ▸ Good examples (4 scenarios)                                       │
+│  ▸ Bad examples (6 scenarios)                                        │
+│                                                                      │
+│  [esc] back  [↑↓] scroll  [enter] expand section                    │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+The developer toggles to deep view with Tab. Each tree node now shows a truncated summary:
+
+```
+│  ./                                                                  │
+│  └── .aide [intent] — This repository is the canonical home of...    │
+│                                                                      │
+│  src/tools/discover/                                                 │
+│  └── .aide [intent] — Scan for .aide files and return a progre...    │
+```
+
+The developer types "init" and the tree filters to show only nodes whose path contains "init":
+
+```
+│  src/tools/init/                                                     │
+│  ├── intent.aide [intent]                                            │
+│  └── research.aide [research]                                        │
+```
+
+## Bad examples
+
+A flat list of file paths with no hierarchy or grouping:
+
+```
+.aide - intent
+src/tools/discover/.aide - intent
+src/tools/init/intent.aide - intent
+src/tools/init/research.aide - research
+src/tools/read/.aide - intent
+```
+
+This is the MCP discover output pasted into a terminal. It shows the same information but destroys the spatial relationships. A developer cannot see at a glance which specs are siblings, which directories have multiple file types, or where the tree is deep versus shallow.
+
+Raw YAML frontmatter dumped verbatim when drilling into a file:
+
+```
+---
+scope: .
+intent: >
+  This repository is the canonical home of the AIDE methodology...
+outcomes:
+  desired:
+    - The canonical AIDE methodology — spec, template, progressive
+      disclosure, agent-readable code, automated QA — lives in this
+      repo as editable doc files...
+    - Two delivery channels, each with one clear job...
+  undesired:
+    - A rule, convention, or doctrine that lives anywhere other than...
+---
+```
+
+The nested YAML indentation makes outcomes harder to read than the source file. The developer opened the TUI to avoid reading YAML; showing YAML defeats the purpose. Desired and undesired outcomes are visually indistinguishable except by their parent key name, buried in the nesting.
+
+A static one-shot dump that prints the tree and exits:
+
+```
+$ aide-tree
+./
+└── .aide [intent]
+src/tools/discover/
+└── .aide [intent]
+...
+$
+```
+
+The developer wanted to explore. Instead they got a printout they have to re-run with different arguments to see a different part of the tree. This is the MCP discover tool rendered to stdout — useful for an agent, useless for a human who wants to browse.
+
+A TUI that requires flags to configure its view:
+
+```
+$ aide-tree --deep --filter=init --panel=right --format=card
+```
+
+This turns a browse-and-explore tool into a query tool. The developer has to know what they want before they start, which is the opposite of exploration. Every flag is a decision pushed from runtime to launch time, where it does not belong.
+
+A drill-in view that shows all body sections expanded by default, pushing outcomes below the fold:
+
+```
+┌─ .aide ─────────────────────────────────────────────────────────────┐
+│  scope: .                                                            │
+│  This repository is the canonical home of...                         │
+│                                                                      │
+│  ## Context                                                          │
+│  Before this repo existed, the AIDE methodology lived in a personal  │
+│  Obsidian vault. That worked for one maintainer but could not ship:  │
+│  every new project, every new contributor, every new agent framework  │
+│  had to rediscover the rules from a vault they did not have access   │
+│  to, and any CLAUDE.md snippet that tried to carry the rules forward │
+│  went stale the moment the canonical vault notes changed.            │
+│  ... (scrolls for 40 more lines before outcomes appear)              │
+```
+
+The developer drilled in to see what this spec is *for* — intent and outcomes. Instead they got a wall of prose that buries the contract below the fold. Body sections must be collapsed by default so the frontmatter card dominates the initial view.
