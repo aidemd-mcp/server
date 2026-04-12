@@ -1,216 +1,217 @@
 ---
 intent: >
-  Refactor aide_upgrade from a two-phase dry-run/confirm executor returning
-  prose into an agent-driven comparator returning structured JSON grouped by
-  category. The tool compares and reports; the agent presents per-category
-  results and applies only what the user confirms. MCP config changes become
-  prescriptions. Malformed JSON is reported as a status, never clobbered.
+  Add apply mode to aide_upgrade: when called with a `category` parameter,
+  the tool writes all differs/missing files directly to disk and returns a
+  manifest (no canonicalContent). Same pattern as init's applySteps. The
+  agent never sees file content and never uses the Write tool for
+  methodology files.
 ---
 
 ## Plan
 
-### Phase 1 — Shared types (coordinate with init plan)
+### Phase 1 — Expand `UpgradeFileStatus` type
 
-Steps 1.1 through 1.1 are defined in the init plan and executed there first.
-The `McpPrescription` type in `src/types/index.ts` is shared by both tools.
-This plan depends on that type being present.
+- [x] **1.1 Add `"updated"` and `"created"` to `UpgradeFileStatus` in `src/types/index.ts`.**
+  Current values: `"matches" | "differs" | "missing" | "malformed"`. Add
+  `"updated"` and `"created"` as execution outcomes (parallel to init's
+  `"created"` status). After apply, `"differs"` becomes `"updated"`,
+  `"missing"` becomes `"created"`, `"matches"` stays as-is. The union
+  becomes: `"matches" | "differs" | "missing" | "malformed" | "updated" | "created"`.
+  Traced to: spec desired outcome "each file is reported with a final
+  status: updated, unchanged, or created".
 
-- [x] **1.1 Define `UpgradeCategory` string literal union in `src/types/index.ts`.**
-  Values: `"pointer-stub"`, `"methodology-docs"`, `"version-metadata"`,
-  `"commands"`, `"agents"`, `"skills"`, `"mcp"`, `"ide"`. These are the
-  per-category groups the agent presents to the user. The user confirms or
-  declines each category independently.
+- [x] **1.2 Add optional `instructions?: string` field to `UpgradeFileResult` in `src/types/index.ts`.**
+  Same as init's `InitStep.instructions`. Used by IDE VS Code steps that
+  require the external `code` CLI. The apply helper populates this instead
+  of writing to disk. Traced to: spec desired outcome "IDE steps that
+  require external tooling return an `instructions` field".
 
-- [x] **1.2 Define `UpgradeFileStatus` string literal union in `src/types/index.ts`.**
-  Values: `"matches"`, `"differs"`, `"missing"`, `"malformed"`. These replace
-  the current `UpgradeStatus` which mixed dry-run and write-phase statuses
-  (`"would update"`, `"updated"`, etc.). The tool is now read-only — it
-  only reports comparison results. `"malformed"` is for MCP config only.
+### Phase 2 — Create the `applyFiles` helper
 
-- [x] **1.3 Define `UpgradeFileResult` interface in `src/types/index.ts`.**
-  Fields: `name: string`, `filePath: string`, `status: UpgradeFileStatus`,
-  `category: UpgradeCategory`, `canonicalContent?: string` (the content to
-  write if the agent applies — present for `differs` and `missing`),
-  `prescription?: McpPrescription` (for MCP category only).
+- [x] **2.1 Create `src/tools/upgrade/applyFiles/index.ts`.**
+  This is the upgrade-specific apply helper, parallel to init's
+  `src/tools/init/applySteps/index.ts`. Default export:
+  `applyFiles(files: UpgradeFileResult[]) => Promise<UpgradeFileResult[]>`.
 
-- [x] **1.4 Define `UpgradeCategoryResult` interface in `src/types/index.ts`.**
-  Fields: `category: UpgradeCategory`, `files: UpgradeFileResult[]`,
-  `summary: { total: number; differs: number; missing: number; matches: number }`.
-  The agent uses the summary to decide whether to present the category at all
-  (skip categories where everything matches).
+  The function maps over each `UpgradeFileResult` and applies it:
 
-- [x] **1.5 Define `UpgradeResult` interface in `src/types/index.ts`.**
-  Fields: `framework: FrameworkType`, `categories: UpgradeCategoryResult[]`.
-  This is the structured JSON the tool returns. No prose, no formatting.
+  - **`"differs"` status, NOT mcp category, NOT VS Code IDE:** Write
+    `canonicalContent` to `filePath` (mkdir parent, writeFile). Return the
+    result with `status: "updated"`, `canonicalContent` stripped.
 
-- [x] **1.6 Remove old `UpgradeStatus` and `UpgradeStepResult` from
-  `src/types/index.ts`.**
-  They are replaced by `UpgradeFileStatus` and `UpgradeFileResult`. Removal
-  here forces all consumers to update.
+  - **`"missing"` status, NOT mcp category, NOT VS Code IDE:** Write
+    `canonicalContent` to `filePath` (mkdir parent, writeFile). Return the
+    result with `status: "created"`, `canonicalContent` stripped.
 
-### Phase 2 — Refactor compareFile to return structured data
+  - **`"differs"` or `"missing"` with mcp category:** Pass through
+    unchanged. The agent merges prescriptions itself. Discriminant:
+    `file.category === "mcp"`. Traced to: spec "The agent only uses the
+    Write tool for MCP config (intelligent merge via prescriptions)."
 
-- [x] **2.1 Refactor `compareFile/index.ts` to return `UpgradeFileStatus`.**
-  Remove the `write` parameter entirely — the tool never writes. The function
-  reads the host file and compares against canonical content. Returns
-  `"matches"`, `"differs"`, or `"missing"`. No `mkdir`, no `writeFile`.
-  Signature becomes: `(hostPath: string, canonicalContent: string) =>
-  Promise<UpgradeFileStatus>`.
+  - **`"differs"` IDE VS Code step (name contains "VS Code"):** Pass
+    through with `instructions` field set to
+    `code --install-extension <filePath>`. Do NOT write to disk. Traced
+    to: spec "IDE steps that require external tooling return an
+    `instructions` field for the agent to execute."
 
-### Phase 3 — Refactor spliceStub to return structured data
+  - **`"differs"` IDE Zed step:** Has `canonicalContent` — write to disk
+    normally, return with `status: "updated"`, content stripped.
 
-- [x] **3.1 Refactor `spliceStub/index.ts` to return `UpgradeFileResult`.**
-  Remove the `write` parameter. The function reads the config file, locates
-  the marker-bounded region, compares the current stub against canonical, and
-  returns an `UpgradeFileResult` with status `matches`, `differs`, or
-  `missing`. For `differs` and `missing`, include `canonicalContent` with the
-  full config file content after splicing (so the agent can write it directly).
-  Category is `"pointer-stub"`.
+  - **`"missing"` IDE Zed step:** Write to disk, return with
+    `status: "created"`, content stripped.
 
-### Phase 4 — Refactor MCP comparison
+  - **`"matches"`, `"malformed"`, `"updated"`, `"created"`:** Pass through
+    unchanged (already applied or no action needed).
 
-- [x] **4.1 Extract `checkMcpConfig` from the upgrade orchestrator into
-  `src/tools/upgrade/checkMcpConfig/index.ts`.**
-  Currently this is an inline function in the orchestrator. Extract it to its
-  own helper following the orchestrator/helper pattern. It returns an
-  `UpgradeFileResult` with category `"mcp"`. When the config is malformed
-  JSON, return status `"malformed"` (no prescription, no canonicalContent).
-  When the aide entry differs from canonical, return status `"differs"` with
-  the `McpPrescription`. When it matches, return `"matches"`. When the file
-  is missing, return `"missing"` with the prescription. Never write.
+  JSDoc on the default export explaining the dispatch logic and which
+  categories get special treatment. Inline narration on each branch.
 
-### Phase 5 — Refactor IDE comparison
+  **Why a separate helper instead of reusing init's `applySteps`:** The
+  input types differ (`UpgradeFileResult` vs `InitStep`), the status
+  values differ (`differs`/`missing` vs `would-create`), and the special
+  cases differ (upgrade has pointer-stub splicing already computed, init
+  has brain vault directories). Sharing would require a generalized
+  abstraction that obscures both tools' logic. Two focused helpers are
+  clearer than one polymorphic one. Playbook convention: keep shared code
+  as close to consumers as possible; do not force a shared abstraction
+  when the overlap is only the write-to-disk mechanic.
 
-- [x] **5.1 Extract `checkZedConfig` and `checkVscodeExtension` into
-  `src/tools/upgrade/checkIdeConfig/index.ts`.**
-  Currently these are inline functions in the orchestrator. Extract them as
-  named exports in a new helper. Each returns `UpgradeFileResult` with
-  category `"ide"`. Zed: compare settings file for `*.aide` entry. VS Code:
-  check extension list. Neither writes. Malformed Zed settings return
-  `"malformed"` status.
+### Phase 3 — Update the handler in `src/index.ts`
 
-### Phase 6 — Rewrite the upgrade orchestrator
+- [x] **3.1 Import `applyFiles` in `src/index.ts`.**
+  Add: `import applyFiles from "@/tools/upgrade/applyFiles/index.js";`
+  alongside the existing `import upgrade` and `import applySteps`.
 
-- [x] **6.1 Rewrite `src/tools/upgrade/index.ts` to return `UpgradeResult`.**
-  The orchestrator calls `detectFramework`, then runs comparison for each
-  category: pointer stub (via `spliceStub`), methodology docs (via
-  `compareFile` loop), version metadata (via `compareFile` on
-  `buildVersionsMeta` output), commands (via `compareFile` loop), agents
-  (via `compareFile` loop), skills (via `compareFile` loop), MCP config
-  (via `checkMcpConfig`), IDE config (via `checkIdeConfig`). Group results
-  into `UpgradeCategoryResult` objects with computed summaries. Return the
-  `UpgradeResult`. No writing, no prose formatting.
+- [x] **3.2 Update the `aide_upgrade` handler's category branch.**
+  Current code (lines 208-210):
+  ```
+  if (parsed.category) {
+    result.categories = result.categories.filter((c) => c.category === parsed.category);
+  }
+  ```
+  Change to: filter to the matching category, then run `applyFiles` on
+  that category's `files` array, then rebuild the category result with the
+  applied files and recomputed summary. Strip `canonicalContent` from the
+  response (it should already be stripped by `applyFiles`, but defense in
+  depth). The summary should now count `"updated"` and `"created"` instead
+  of `"differs"` and `"missing"`.
 
-- [x] **6.2 Update `UpgradeInput` Zod schema.**
-  Remove `confirm` — there is no confirm phase in the tool anymore; the agent
-  applies changes directly. Remove `skipIde` — the agent handles per-category
-  decisions. Keep `framework` (optional override) and `path` (optional
-  project root).
+  Specifically:
+  1. Filter `result.categories` to the requested category.
+  2. For each category (there will be exactly one after filtering), call
+     `applyFiles(cat.files)` to get the applied file results.
+  3. Replace `cat.files` with the applied results.
+  4. Recompute `cat.summary` from the new statuses: count `updated`,
+     `created`, `matches`, and `malformed`.
 
-- [x] **6.3 Update the MCP server handler in `src/index.ts` for aide_upgrade.**
-  Change the handler to return the `UpgradeResult` as JSON via
-  `JSON.stringify`. Update the tool description to reflect the new
-  structured-response, per-category contract. Update the `inputSchema` to
-  match the simplified `UpgradeInput`.
+  The else branch (summary call, no category) stays the same — strip
+  `canonicalContent` from all files.
 
-### Phase 7 — Tests
+- [x] **3.3 Update the `aide_upgrade` tool description in `src/index.ts`.**
+  The tool description currently tells the agent to use the Write tool for
+  each file. Update it to reflect apply mode:
 
-- [x] **7.1 Rewrite `src/tools/upgrade/index.test.ts`.**
-  The test now asserts on the structured `UpgradeResult` object, not prose
-  strings. Key test cases from the spec:
-  - All matching: every category summary has `differs: 0, missing: 0`.
-  - Some drifted: methodology docs category has `differs > 0`, other
-    categories match. Verify `canonicalContent` is populated on differing
-    files.
-  - MCP config malformed: mcp category file has status `"malformed"`, no
-    prescription.
-  - MCP config differs: mcp category file has status `"differs"` with
-    prescription containing the canonical aide server entry.
-  - Missing files: status is `"missing"` with `canonicalContent` populated.
-  - Categories are correctly grouped — each file lands in the right category.
-  - Framework override works.
+  - First call (no `category`): unchanged — returns metadata-only summary.
+  - Second call (with `category`): the tool writes files to disk itself
+    and returns a manifest with `filePath`, `status` (`"updated"`,
+    `"created"`, `"matches"`), and `name` — NO `canonicalContent`.
+  - MCP exception: MCP category still returns `prescription` data for
+    the agent to merge.
+  - IDE VS Code exception: returns `instructions` field for the agent to
+    execute.
+  - Remove all guidance about using the Write tool for methodology files.
+  - Keep the AskUserQuestion wizard pattern guidance.
 
-- [x] **7.2 Update `compareFile/index.test.ts`.**
-  Remove all test cases for `write: true`. Add test for `"missing"` status
-  (file does not exist). Verify no filesystem writes occur.
+### Phase 4 — Update `buildCategoryResult` summary
 
-- [x] **7.3 Update `spliceStub` tests.**
-  Remove write-phase assertions. Assert on `UpgradeFileResult` structure
-  with `canonicalContent` for the differs/missing cases.
+- [x] **4.1 Update `buildCategoryResult` in `src/tools/upgrade/index.ts` to
+  handle post-apply statuses.**
+  The current summary only counts `differs`, `missing`, and `matches`.
+  After apply mode, files may have `"updated"` or `"created"` statuses.
+  Add `updated` and `created` counts to the summary object. This is
+  needed because the handler recomputes the summary after applying files.
 
-- [x] **7.4 Write `checkMcpConfig/index.test.ts`.**
-  New helper needs tests: malformed JSON returns `"malformed"`, matching
-  aide entry returns `"matches"`, differing entry returns `"differs"` with
-  prescription, missing file returns `"missing"` with prescription, legacy
-  `aidemd-mcp` key is detected as `"differs"`.
+  Update the `UpgradeCategoryResult.summary` type in `src/types/index.ts`
+  to include optional `updated?: number` and `created?: number` fields.
+  Keep the existing fields — the summary call still uses `differs` and
+  `missing`; the category call uses `updated` and `created`.
 
-- [x] **7.5 Write `checkIdeConfig/index.test.ts`.**
-  Zed: exists with `*.aide` returns `"matches"`, exists without returns
-  `"differs"`, missing file returns `"missing"`. VS Code: extension
-  installed returns `"matches"`, not installed returns `"differs"`.
+### Phase 5 — Tests
 
-- [x] **7.6 Run `vitest run` and fix any remaining type or assertion errors.**
+- [x] **5.1 Create `src/tools/upgrade/applyFiles/index.test.ts`.**
+  Test cases mirroring init's `applySteps` test patterns:
+
+  - **Regular file with `"differs"` status:** writes to disk, returns
+    `status: "updated"`, no `canonicalContent` in result.
+  - **Regular file with `"missing"` status:** creates parent dirs, writes
+    to disk, returns `status: "created"`, no `canonicalContent`.
+  - **File with `"matches"` status:** passes through unchanged, no disk
+    write.
+  - **MCP file with `"differs"` status:** passes through unchanged with
+    `prescription` intact. No disk write.
+  - **MCP file with `"missing"` status:** passes through unchanged with
+    `prescription` intact.
+  - **MCP file with `"malformed"` status:** passes through unchanged.
+  - **IDE VS Code file with `"differs"` status:** passes through with
+    `instructions` field added. No disk write.
+  - **IDE Zed file with `"differs"` status:** writes to disk, returns
+    `status: "updated"`.
+  - **IDE Zed file with `"missing"` status:** writes to disk, returns
+    `status: "created"`.
+  - **Pointer-stub with `"differs"` status:** writes `canonicalContent`
+    (the full spliced config) to disk. Returns `status: "updated"`.
+  - **Idempotency:** file already `"updated"` or `"created"` passes
+    through unchanged.
+
+  Mock `fs/promises` (`mkdir`, `writeFile`) to verify disk operations
+  without actual I/O. Use `vi.mock("node:fs/promises")`.
+
+- [x] **5.2 Update `src/tools/upgrade/index.test.ts` to cover the handler's
+  apply-mode branch.**
+  Add test cases that call `upgrade` with a `category` parameter and
+  verify the response contains applied statuses (`"updated"`, `"created"`)
+  instead of comparison statuses (`"differs"`, `"missing"`), and that
+  `canonicalContent` is absent from the response.
+
+- [x] **5.3 Run `vitest run` and fix any type errors or test failures.**
 
 ## Decisions
 
-**1. Tool returns structured JSON grouped by category, not prose.**
-The spec is explicit: "The tool always returns a structured JSON response
-— never a pre-formatted string — containing per-file comparison results
-grouped by category." The current `Promise<string>` return becomes
-`Promise<UpgradeResult>`. Traced to: spec `outcomes.desired` first bullet,
-spec `outcomes.undesired` second bullet.
+**1. Separate `applyFiles` helper for upgrade, not reusing init's `applySteps`.**
+The types are different (`UpgradeFileResult` vs `InitStep`), the status
+discriminants are different (`differs`/`missing` vs `would-create`), and
+the special-case logic differs (upgrade has no brain vault steps; init has
+no pointer-stub or malformed MCP). A shared abstraction would need a
+generic that papers over these differences and makes both tools harder to
+understand. Two focused, 40-line helpers are better than one polymorphic
+80-line helper. Playbook: folder-structure.md shared submodule escalation
+("single consumer -> stays in that operation's folder").
 
-**2. Remove `confirm` parameter entirely.**
-The current two-phase dry-run/confirm model is replaced by the agent-driven
-model where the tool only compares and the agent applies. There is no
-`confirm: true` path in the tool. The agent reads the structured results,
-presents per-category, and writes files directly using the `canonicalContent`
-provided. Traced to: spec Strategy "The tool is a comparator; the agent is
-the executor."
+**2. Apply happens in the handler, not in the upgrade orchestrator.**
+The upgrade orchestrator (`src/tools/upgrade/index.ts`) stays read-only —
+it only compares. The handler in `src/index.ts` calls `applyFiles` after
+filtering to the requested category. This mirrors the init pattern where
+`applySteps` is called in the handler, not inside the init function. The
+orchestrator's JSDoc says "read-only — never writes" and that contract
+stays true. Traced to: spec Strategy "The tool is a comparator."
 
-**3. Per-category grouping with summaries.**
-The spec requires "per-category control replaces all-or-nothing confirm."
-Each `UpgradeCategoryResult` includes a summary so the agent can skip
-all-matching categories and only present drifted ones to the user. The
-user confirms per-category, not per-file (spec: "Within a category, all
-files are updated together — no per-file opt-out").
+**3. `"updated"` and `"created"` as new status values, not reusing `"differs"` and `"missing"`.**
+The spec explicitly names these post-apply statuses. Using distinct values
+lets the agent distinguish between "I need to present this for
+confirmation" (differs/missing) and "this has been applied" (updated/
+created). It also makes the response self-documenting. Traced to: spec
+desired outcome "each file is reported with a final status: updated
+(content differed and was replaced) ... or created (was missing)".
 
-**4. `canonicalContent` on differs/missing results.**
-The agent needs the content to write without calling back to the tool.
-For `differs` and `missing` files, the result includes the full canonical
-content. For `matches`, it is omitted (no write needed). This mirrors the
-init plan's `content` field pattern. The agent writes the file at the
-`filePath` with the `canonicalContent` bytes.
+**4. Summary type gains optional `updated` and `created` counts.**
+The summary object currently has `total`, `differs`, `missing`, `matches`.
+After apply, the response needs to report how many files were updated vs
+created. Adding these as optional fields (not present in summary-only
+calls) avoids breaking the existing summary shape while supporting the
+apply-mode response. The handler recomputes the summary after applying.
 
-**5. `"malformed"` as an explicit file status.**
-The spec says "When the existing MCP config is malformed JSON, the tool
-reports 'malformed' status instead of clobbering." This is a first-class
-status value, not a flag, because it replaces what was previously a silent
-overwrite. The agent handles the user conversation when it sees this status.
-Traced to: spec `outcomes.desired` fourth bullet.
-
-**6. Extract inline helpers into proper subfolders.**
-The current upgrade orchestrator has `checkMcpConfig`, `checkZedConfig`, and
-`checkVscodeExtension` as inline functions. Progressive disclosure requires
-helpers in subfolders with `index.ts` and default exports. Extracting them
-makes the folder tree readable (Tier 1) and each helper independently
-testable. Playbook convention: orchestrator/helper pattern
-(progressive-disclosure.md, folder-structure.md).
-
-**7. Shared `McpPrescription` type with init.**
-Both plans use the same prescription type defined in `src/types/index.ts`.
-This is the coordination point: the agent's MCP merge logic is identical
-whether it came from init or upgrade. One type, one merge path.
-
-**8. `compareFile` loses its write parameter.**
-The function was doing double duty: comparison and conditional write. The
-spec's agent-driven model means the tool never writes. Removing the `write`
-parameter makes the function pure (read two things, compare, return status).
-This simplifies testing and eliminates the possibility of accidental writes.
-
-**9. `spliceStub` returns the full spliced content, not just a status.**
-The agent needs to write the config file with the stub spliced in. Computing
-the spliced content requires marker detection logic that lives in
-`spliceStub`. Rather than duplicate that logic in the agent, `spliceStub`
-returns the full post-splice content as `canonicalContent`. The agent
-writes it as-is.
+**5. VS Code IDE steps get `instructions` field, same as init.**
+The VS Code extension install requires the external `code` CLI, which the
+MCP server cannot invoke. The `instructions` field tells the agent what
+command to run. This is the same pattern init uses. Zed settings are a
+regular JSON file write and go through the normal apply path.

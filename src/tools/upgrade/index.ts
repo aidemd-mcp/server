@@ -28,7 +28,7 @@ export const UpgradeInput = z.object({
 	category: z
 		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide"])
 		.optional()
-		.describe("When provided, return only this category with full canonicalContent included. When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
+		.describe("When provided, write all differs/missing files for this category to disk and return a manifest (no canonicalContent). When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
 });
 
 /** Build an `UpgradeCategoryResult` from a flat list of file results. */

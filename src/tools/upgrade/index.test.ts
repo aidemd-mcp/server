@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { FrameworkConfig, UpgradeResult } from "@/types/index.js";
+import type { FrameworkConfig, UpgradeCategoryResult, UpgradeResult } from "@/types/index.js";
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -395,5 +395,119 @@ describe("upgrade — response shaping (server-handler logic)", () => {
 		for (const file of differing) {
 			expect(file.canonicalContent).toBeDefined();
 		}
+	});
+});
+
+// ── Apply mode handler simulation ─────────────────────────────────────────────
+// Tests that simulate the server handler's apply-mode branch: filter to a
+// category, call applyFiles, recompute summary, strip canonicalContent.
+
+vi.mock("./applyFiles/index.js");
+import applyFiles from "./applyFiles/index.js";
+
+describe("upgrade — apply mode (handler simulation)", () => {
+	/** Simulate the handler's apply-mode path for a single category. */
+	async function simulateApplyMode(
+		result: UpgradeResult,
+		category: string,
+	): Promise<UpgradeCategoryResult[]> {
+		const filtered = result.categories.filter((c) => c.category === category);
+		return Promise.all(
+			filtered.map(async (cat) => {
+				const appliedFiles = await applyFiles(cat.files);
+				const summary = {
+					total: appliedFiles.length,
+					differs: appliedFiles.filter((f) => f.status === "differs").length,
+					missing: appliedFiles.filter((f) => f.status === "missing").length,
+					matches: appliedFiles.filter((f) => f.status === "matches").length,
+					updated: appliedFiles.filter((f) => f.status === "updated").length,
+					created: appliedFiles.filter((f) => f.status === "created").length,
+					unchanged: appliedFiles.filter((f) => f.status === "unchanged").length,
+				};
+				const manifestFiles = appliedFiles.map(({ canonicalContent: _content, ...rest }) => rest);
+				return { ...cat, files: manifestFiles, summary };
+			}),
+		);
+	}
+
+	it("apply mode: returns updated/created statuses after applying differs/missing files", async () => {
+		wireDefaultMocks();
+		vi.mocked(compareFile)
+			.mockResolvedValueOnce("differs")   // aide-spec.md
+			.mockResolvedValueOnce("missing")   // aide-template.md
+			.mockResolvedValueOnce("matches")   // versions.json
+			.mockResolvedValueOnce("matches")   // aide command
+			.mockResolvedValueOnce("matches");  // aide:research
+
+		// applyFiles maps differs→updated, missing→created
+		vi.mocked(applyFiles).mockImplementation(async (files) =>
+			files.map((f) => {
+				if (f.status === "differs") return { ...f, status: "updated" as const, canonicalContent: undefined };
+				if (f.status === "missing") return { ...f, status: "created" as const, canonicalContent: undefined };
+				return f;
+			}),
+		);
+
+		const result = await upgrade(tempDir);
+		const applied = await simulateApplyMode(result, "methodology-docs");
+
+		expect(applied).toHaveLength(1);
+		const cat = applied[0];
+		expect(cat.summary.updated).toBe(1);
+		expect(cat.summary.created).toBe(1);
+		expect(cat.summary.differs).toBe(0);
+		expect(cat.summary.missing).toBe(0);
+	});
+
+	it("apply mode: no canonicalContent in manifest files", async () => {
+		wireDefaultMocks();
+		vi.mocked(compareFile)
+			.mockResolvedValueOnce("differs")
+			.mockResolvedValueOnce("differs")
+			.mockResolvedValueOnce("matches")
+			.mockResolvedValueOnce("matches")
+			.mockResolvedValueOnce("matches");
+
+		vi.mocked(applyFiles).mockImplementation(async (files) =>
+			files.map((f) => ({
+				...f,
+				status: f.status === "differs" ? ("updated" as const) : f.status,
+				canonicalContent: undefined,
+			})),
+		);
+
+		const result = await upgrade(tempDir);
+		const applied = await simulateApplyMode(result, "methodology-docs");
+
+		for (const file of applied[0].files) {
+			expect(file).not.toHaveProperty("canonicalContent");
+		}
+	});
+
+	it("apply mode: summary total matches file count", async () => {
+		wireDefaultMocks();
+		vi.mocked(compareFile).mockResolvedValue("differs");
+
+		vi.mocked(applyFiles).mockImplementation(async (files) =>
+			files.map((f) => ({ ...f, status: "updated" as const, canonicalContent: undefined })),
+		);
+
+		const result = await upgrade(tempDir);
+		const applied = await simulateApplyMode(result, "methodology-docs");
+
+		const cat = applied[0];
+		expect(cat.summary.total).toBe(cat.files.length);
+		expect(cat.summary.updated).toBe(cat.files.length);
+	});
+
+	it("apply mode: only returns the requested category", async () => {
+		wireDefaultMocks();
+		vi.mocked(applyFiles).mockImplementation(async (files) => files);
+
+		const result = await upgrade(tempDir);
+		const applied = await simulateApplyMode(result, "commands");
+
+		expect(applied).toHaveLength(1);
+		expect(applied[0].category).toBe("commands");
 	});
 });

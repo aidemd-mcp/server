@@ -1,0 +1,65 @@
+---
+intent: >
+  src/tools/upgrade apply-mode implementation QA — verifying against the
+  outcomes.desired and outcomes.undesired contract in .aide
+misalignment:
+  - plan-gap
+  - implementation-drift
+---
+
+## Issues
+
+- [x] **`src/tools/upgrade/index.ts` line 31 — stale Zod schema description contradicts apply-mode behavior**
+  `UpgradeInput.category.describe()` still reads: "return only this category with
+  full canonicalContent included." This is the pre-apply-mode behavior. The actual
+  behavior is: write files to disk and return a manifest with no `canonicalContent`.
+  Any MCP client that surfaces schema-level descriptions (e.g., Cursor, Windsurf) will
+  instruct the calling LLM to expect `canonicalContent` in the response — the exact
+  anti-pattern the apply-mode was designed to prevent.
+  **Traces to:** desired outcome "A category call that returns canonicalContent for
+  the agent to write" is the undesired[3] tripwire. The stale description tells agents
+  to expect content, which primes hallucination of the write-tool pattern.
+  **Misalignment:** `plan-gap` — plan step 3.3 says "Update the `aide_upgrade` tool
+  description in `src/index.ts`" but does not name the Zod `.describe()` string in
+  `src/tools/upgrade/index.ts` as a target. The intent was clear; the plan was
+  incomplete.
+
+- [x] **`src/types/index.ts` lines 53 / `src/tools/upgrade/.aide` lines 44, 53, 149, 197 — `"unchanged"` status named in spec but never implemented**
+  The spec names three distinct terminal statuses for the category-call manifest:
+  `"updated"`, `"created"`, and `"unchanged"`. The word `"unchanged"` appears four
+  times in the spec, including in the outcomes block (line 44) and in the explicit
+  manifest contract (line 53: `status` (`"updated"`, `"created"`, or `"unchanged"`)).
+  The implementation uses `"matches"` for this third status — both in
+  `UpgradeFileStatus` type and in the manifest returned by the handler. The tests
+  assert `status === "matches"` for already-current files in the manifest.
+  This is a name contract violation: the spec authored a three-value terminal
+  vocabulary, the implementation delivered a two-value vocabulary plus a holdover
+  dry-run status (`"matches"`) that was never supposed to appear in apply output.
+  An agent reading the spec and then calling `category=X` will find `"matches"` where
+  the spec told it to expect `"unchanged"` — ambiguity at the vocabulary boundary.
+  **Traces to:** desired outcome line 44-46 ("each file is reported with a final
+  status: updated … unchanged … or created") and the manifest contract on line 53.
+  **Misalignment:** `implementation-drift` — the plan (step 1.1) explicitly says
+  "`"matches"` stays as-is" when listing post-apply statuses, diverging from the spec
+  vocabulary. The plan introduced the drift; the implementor followed the plan. The
+  plan should have specified `"unchanged"` to match the spec's named terminal status.
+
+## Retro
+
+Both issues would have been caught at **plan review time** before implementation
+began:
+
+1. Plan 3.3 lists only `src/index.ts` for the description update. A plan reviewer
+   reading the Zod schema would have caught that `.describe()` is also agent-visible.
+   Adding "and the Zod `.describe()` on `UpgradeInput.category` in `index.ts`" to
+   that checklist item would have closed the gap.
+
+2. Plan step 1.1 says "`"matches"` stays as-is" — which directly contradicts the
+   spec's `"unchanged"` terminal vocabulary. A plan reviewer cross-checking 1.1's
+   status list against the spec's desired outcome on line 44 would have flagged the
+   naming mismatch before any code was written. The fix in the plan would have been
+   a one-word change: rename `"matches"` to `"unchanged"` in the post-apply status
+   list and add a note that `"matches"` remains valid for dry-run output only.
+
+**Stage to strengthen:** plan review — specifically, explicit cross-checks between
+the plan's named constants/strings and the spec's named terminal values.

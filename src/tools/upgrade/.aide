@@ -46,12 +46,25 @@ outcomes:
       composes its own summary from the structured data.
     - The default response (no category parameter) is small enough
       for an agent to comprehend in a single read — metadata and
-      summary counts only, no canonicalContent. Content is delivered
-      per-category on demand via a second call with the category
-      parameter, after the user confirms which categories to apply.
-      This two-call progressive disclosure pattern prevents the
-      agent from being overwhelmed by large JSON payloads and
-      resorting to programmatic parsing.
+      summary counts only, no canonicalContent.
+    - When called with a `category` parameter, the tool writes all
+      differs/missing files directly to disk itself and returns a
+      manifest — file results with `filePath`, `status` (now
+      `"updated"`, `"created"`, or `"unchanged"`), and `name`, but
+      NO `canonicalContent` field. The agent never sees file content
+      and never uses the Write tool for methodology files. This
+      eliminates large JSON responses that cause agents to use the
+      Write tool and risk hallucinating content instead of copying
+      canonical verbatim.
+    - The agent only uses the Write tool for MCP config (intelligent
+      merge via prescriptions). For MCP results, the category call
+      still returns the prescription data so the agent can merge.
+    - The pointer-stub category is a special case: the tool splices
+      the canonical stub within marker boundaries in the config
+      file, preserving user content outside the markers. This is
+      handled by the tool directly during apply.
+    - IDE steps that require external tooling (VS Code CLI) return
+      an `instructions` field for the agent to execute.
   undesired:
     - An upgrade that silently overwrites files without presenting
       the dry-run results to the user first. The agent-driven model
@@ -64,6 +77,11 @@ outcomes:
       blob causes agents to parse programmatically instead of
       interacting conversationally. Content must be deferred to
       category-specific follow-up calls.
+    - A category call that returns canonicalContent for the agent to
+      write. The category call must write files to disk itself and
+      return only a manifest. Returning content causes agents to
+      either hallucinate file content when using the Write tool or
+      resort to Node scripts to extract content from persisted JSON.
     - An upgrade that applies all categories at once without giving
       the user per-category control. The user may want to update
       methodology docs but keep their customized slash commands.

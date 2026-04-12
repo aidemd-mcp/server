@@ -213,11 +213,15 @@ export type UpgradeCategory =
 
 /**
  * Comparison status for a single file in an upgrade run.
- * The tool is read-only — these statuses reflect comparison results, not
- * write outcomes. `"malformed"` is used only for MCP config that cannot
- * be parsed as JSON.
+ * `"matches"`, `"differs"`, `"missing"`, and `"malformed"` are comparison
+ * outcomes returned by the dry-run phase. `"updated"`, `"created"`, and
+ * `"unchanged"` are execution outcomes returned by applyFiles after the tool
+ * has written (or confirmed) files during a category call — parallel to
+ * init's `"created"` status. `"unchanged"` means the file already matched
+ * canonical and no write was needed. `"malformed"` is used only for MCP
+ * config that cannot be parsed as JSON.
  */
-export type UpgradeFileStatus = "matches" | "differs" | "missing" | "malformed";
+export type UpgradeFileStatus = "matches" | "differs" | "missing" | "malformed" | "updated" | "created" | "unchanged";
 
 /**
  * Result of comparing a single file against its canonical version.
@@ -236,7 +240,8 @@ export interface UpgradeFileResult {
 	category: UpgradeCategory;
 	/**
 	 * Full canonical content to write — present for `differs` and `missing`,
-	 * absent for `matches` and `malformed`.
+	 * absent for `matches` and `malformed`. Stripped from the response after
+	 * applyFiles writes the content to disk.
 	 */
 	canonicalContent?: string;
 	/**
@@ -244,6 +249,13 @@ export interface UpgradeFileResult {
 	 * results. The agent merges this entry into the existing config.
 	 */
 	prescription?: McpPrescription;
+	/**
+	 * CLI command the agent should execute for steps that require external
+	 * tooling (e.g. `code --install-extension <vsixPath>` for VS Code).
+	 * Present only on IDE VS Code steps that pass through applyFiles without
+	 * being written to disk.
+	 */
+	instructions?: string;
 }
 
 /**
@@ -262,6 +274,12 @@ export interface UpgradeCategoryResult {
 		differs: number;
 		missing: number;
 		matches: number;
+		/** Present after applyFiles — number of files updated (were differs). */
+		updated?: number;
+		/** Present after applyFiles — number of files created (were missing). */
+		created?: number;
+		/** Present after applyFiles — number of files already current (were matches). */
+		unchanged?: number;
 	};
 }
 
