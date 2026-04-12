@@ -86,7 +86,7 @@ See [Progressive Disclosure](./progressive-disclosure.md) for the full pattern: 
 
 ## Spec Structure
 
-Every `.aide` file follows the same structure. **Frontmatter is required, and the four body sections below are required.** Without structure, agents generate freeform specs that don't scale — repeatability comes from the template.
+Every `.aide` file follows the same structure. **Frontmatter is required, and the five body sections below are required.** Without structure, agents generate freeform specs that don't scale — repeatability comes from the template.
 
 The canonical template lives at [AIDE Template](./aide-template.md). Agents should read the template before writing a new spec.
 
@@ -127,14 +127,15 @@ A child spec should **not**:
 
 ### Body sections (required)
 
-Every spec has the same four body sections. See [AIDE Template](./aide-template.md) for the full template with inline guidance.
+Every spec has the same five body sections. See [AIDE Template](./aide-template.md) for the full template with inline guidance.
 
 - **`## Context`** — Why this module exists and the domain-level background an agent needs to make good decisions. No code.
 - **`## Strategy`** — The synthesized approach. How this module honors its `intent` and achieves its `outcomes.desired`. Research pulled from the brain gets distilled here into decisions — specific tactics, thresholds, structural choices, and the reasoning behind each one. Write in decision form ("do X because Y"), not description form. Cite data inline. No code.
 - **`## Good examples`** — Concrete domain output that illustrates success. Real output, not code. Pattern material for QA agents verifying the system's output.
 - **`## Bad examples`** — Concrete domain output that illustrates failure, especially the almost-right-but-wrong cases. Expands on `outcomes.undesired` with recognizable failure material.
+- **`## References`** — A flat list of brain notes the synthesis agent read during strategy writing, each as a path plus a one-line description of what was drawn from it. Its purpose is human auditability: a reviewer can trace every strategy decision back to the research that informed it without re-running the pipeline. Populated by the synthesis agent as a side effect of normal synthesis — not filled manually after the fact. Paths are not required to be valid links; the description is the fallback by design.
 
-Additional sections (references, constraints, state machine, etc.) are allowed when the module needs them. These four are the floor.
+Additional sections (constraints, state machine, etc.) are allowed when the module needs them. These five are the floor.
 
 ### Frontmatter vs Strategy — what each layer owns
 
@@ -181,7 +182,7 @@ The pipeline is driven by an **orchestrator** (`/aide`) that interviews the user
 
 2. **Domain Expert — research instance** (`/aide:research`). *Optional.* The AI domain expert. Runs only when the module requires domain knowledge the team does not already have. Ingests sources (vault notes, web search, MCP memory), synthesizes patterns, resolves conflicts, and persists the result to the brain filed by **domain** (e.g., `research/email-marketing/`), not by project — domain knowledge is reusable. If no external brain is available, falls back to a co-located `research.aide`. The research agent never writes `.aide` files; its sole output is reusable knowledge.
 
-3. **Domain Expert — synthesis instance** (`/aide:synthesize`). A fresh Domain Expert session (separate from the research instance to manage token cost). Uses `aide_discover` to walk the intent tree, reads research from the brain (or `research.aide`), and fills the `.aide` body sections: `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`. Every strategy decision must trace to an outcome; anything that doesn't serve the intent gets cut.
+3. **Domain Expert — synthesis instance** (`/aide:synthesize`). A fresh Domain Expert session (separate from the research instance to manage token cost). Uses `aide_discover` to walk the intent tree, reads research from the brain (or `research.aide`), and fills the `.aide` body sections: `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`, `## References`. Every strategy decision must trace to an outcome; anything that doesn't serve the intent gets cut.
 
 4. **Architect agent** (`/aide:plan`). Translates the complete `.aide` spec into a `plan.aide` — a checkboxed implementation plan the implementor executes top-to-bottom. Reads the `.aide` for what the module must produce, pulls the coding playbook from the brain for how this team writes code, and reads the current codebase for what already exists. Output: file placement, naming, sequencing, contracts, reuse decisions, test steps. No code. The plan is presented to the user for approval before build begins. See [plan.aide spec](./plan-aide.md).
 

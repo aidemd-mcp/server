@@ -1,0 +1,127 @@
+---
+scope: .aide/docs
+intent: >
+  Add a References section to the AIDE spec template and methodology so the
+  synthesis agent leaves a human-readable breadcrumb trail of which brain notes
+  it read when writing the Strategy. A reviewer looking at any .aide spec should
+  be able to trace every strategy decision back to the research that informed it,
+  without chasing the agent or re-running the pipeline. The mechanism is zero
+  infrastructure — path plus description, no UUIDs, no frontmatter changes, no
+  machine-readable pointers.
+outcomes:
+  desired:
+    - The AIDE template includes a `## References` section after `## Bad examples`
+      where the synthesis agent logs each brain note it read, as a path plus a
+      one-line description of what it drew from that note.
+    - The aide-spec doc describes the References section alongside the four
+      existing body sections, making clear it is populated by the synthesis agent
+      and serves human auditability, not tooling.
+    - The synthesis agent instructions explicitly require logging every brain note
+      read during strategy writing into the References section, so the breadcrumb
+      trail is a side effect of normal synthesis, not a separate step.
+    - A reviewer can read the References section and understand why each strategy
+      decision was made and what research backed it, even if the original brain
+      notes have moved — the description provides enough context to locate the
+      source again.
+  undesired:
+    - References that are machine-readable metadata (UUIDs, frontmatter fields,
+      structured pointers) rather than a simple human-readable list — this adds
+      infrastructure with no consumer.
+    - A References section that lists notes the agent opened but did not actually
+      use in the Strategy — padding the list destroys the signal that connects
+      each reference to a decision.
+    - References that duplicate the Strategy by restating the finding in full
+      instead of naming the source and what was drawn from it — the description
+      is a breadcrumb, not a summary.
+    - A requirement that references stay valid links — brain notes move, and the
+      description is the fallback by design, not an afterthought.
+---
+
+## Context
+
+The AIDE synthesis agent reads brain notes, distills them into Strategy decisions, and moves on. The finished spec carries the decisions but not the trail -- a reviewer seeing "do X because Y" in the Strategy has no way to verify what research note "Y" came from, whether the agent read it correctly, or whether other notes in the brain contradicted it. The only person who can answer those questions is the agent that wrote the spec, and that agent's context is gone the moment the session ends.
+
+This is an auditability gap. Every other link in the AIDE pipeline is traceable through files: the planner's intent is in the frontmatter, the architect's plan is in the plan.aide, the QA agent's findings are in the todo.aide. But the synthesis agent's reading list -- the bridge between raw research and the decisions in Strategy -- disappears. A reviewer who wants to challenge a strategy decision has to re-search the brain themselves, guess which notes the agent found, and hope nothing has moved since.
+
+The aide-spec doc already permits additional sections beyond the four required body sections (line 137: "Additional sections are allowed when the module needs them"). A References section formalizes the one the synthesis agent should have been leaving all along, without changing the frontmatter contract or adding infrastructure. The description on each entry is the load-bearing part: brain notes move, paths go stale, but a one-line description of what was drawn from a note gives a reviewer enough to relocate the source or judge the decision without it.
+
+## Strategy
+
+**References is a fifth body section, not a frontmatter field.** Adding it to frontmatter would mean every agent that reads the spec pays a token cost for metadata only the reviewer consumes. A body section after Bad examples keeps it out of the machine-readable contract and positions it as human-readable audit material -- the same relationship Bad examples has to outcomes.undesired. The aide-spec doc's existing allowance for additional sections already covers this; what changes is that the template includes it by default and the methodology doc names it alongside the four required sections.
+
+**Each entry is a path plus a one-line description of what was drawn from the note.** The path says where the note lived at synthesis time. The description says what finding or data point the agent pulled into the Strategy. Together they let a reviewer trace a strategy decision back to its source without re-reading the note -- and if the note has moved, the description provides enough context to find it again or judge the decision independently. No UUIDs, no structured metadata, no frontmatter pointers. The format is a flat list, one bullet per note, human-scannable in under thirty seconds. This directly serves the outcome that a reviewer can trace decisions even when original notes have moved.
+
+**Only notes that informed a strategy decision belong in References.** A note the agent opened, scanned, and discarded adds noise that breaks the signal between reference and decision. The test is simple: if removing a reference would leave no strategy decision ungrounded, the reference is padding and should be cut. This mirrors the writing standard already in the aide-spec doc -- "every section must drive a decision; cut anything that doesn't" -- applied to the audit trail itself. This guards against the undesired outcome of a padded list that destroys the connection between each reference and the decisions it supports.
+
+**The synthesis agent logs references as a side effect of normal synthesis, not as a separate step.** The agent already reads brain notes during step 3 of its process and distills them into Strategy during step 5. Logging each note it actually uses into a References section at write time costs one bullet per note and zero additional brain searches. Making it a separate post-hoc step would tempt the agent to reconstruct the list from memory rather than record it live, which defeats the purpose. The agent instructions should add reference-logging to the existing synthesis flow rather than appending a new phase.
+
+**Descriptions are breadcrumbs, not summaries.** A description that restates the full finding duplicates the Strategy and doubles the spec's length for no new information. The description names the source and identifies which data point or pattern was drawn from it -- enough to trace, not enough to replace reading the original. This guards against the undesired outcome where References becomes a shadow copy of Strategy.
+
+**References paths are not required to be valid links.** Brain notes move, vaults restructure, research gets archived. The spec's own intent says descriptions are the fallback by design, not an afterthought. No tooling should validate reference paths, and no agent should treat a stale path as an error. The path is a hint; the description is the contract.
+
+## Good examples
+
+A References section from a spec whose Strategy cites three brain notes:
+
+> ## References
+>
+> - research/cold-email/subject-line-data -- Open-rate benchmarks by subject line length and personalization type; sourced the "under 45 characters, company-name personalization" threshold used in Strategy.
+> - research/cold-email/spam-trigger-patterns -- List of phrases and formatting patterns that trigger spam filters in major providers; informed the "avoid all-caps, exclamation marks, and filler adjectives" constraint.
+> - research/cold-email/reply-rate-studies -- Comparison of CTA styles by reply rate across three SaaS outreach studies; grounded the "single question CTA" decision over multi-option closings.
+
+Each entry names a path, names the specific finding drawn from it, and maps to a visible decision in the Strategy. A reviewer can read the three bullets and know exactly which research backs which decision without opening a single note.
+
+A References section where one note contributed to multiple strategy decisions:
+
+> ## References
+>
+> - research/scoring/digital-presence-signals -- Coverage of which local-business signals (GMB completeness, review velocity, website mobile score) correlate with outreach receptivity; informed both the signal-weighting tiers and the "skip businesses with no web presence" filtering rule.
+> - research/scoring/false-positive-patterns -- Catalogue of signals that look positive but indicate businesses unlikely to convert (e.g., recent rebrand activity inflating web presence scores); grounded the "suppress scores during active rebrand" guard.
+
+The second entry supports a single guard-rail decision. The first supports two. Neither entry restates the full finding -- each names just enough to trace.
+
+## Bad examples
+
+A References section that lists every note the agent opened:
+
+> ## References
+>
+> - research/cold-email/subject-line-data -- Open-rate benchmarks.
+> - research/cold-email/industry-overview -- General overview of cold email as a channel.
+> - research/cold-email/competitor-tools -- List of competing products in the outreach space.
+> - research/cold-email/spam-trigger-patterns -- Spam filter trigger phrases.
+> - research/cold-email/reply-rate-studies -- Reply rate data.
+> - research/cold-email/legal-compliance -- CAN-SPAM and GDPR summary.
+
+The agent opened six notes but only three informed Strategy decisions. "industry-overview" and "competitor-tools" contributed nothing to any decision. "legal-compliance" was read but no compliance decision appears in the Strategy. The list is padded, and a reviewer cannot tell which references are load-bearing. The descriptions are also too terse -- "Open-rate benchmarks" does not say which benchmark or which decision it informed.
+
+A References section that duplicates Strategy:
+
+> ## References
+>
+> - research/cold-email/subject-line-data -- Subject lines under 45 characters with company-name personalization achieve 23% higher open rates than generic lines over 60 characters. Lines using first-name personalization show diminishing returns after the first touchpoint. The optimal range is 38-44 characters for B2B outreach to local service businesses, with the company name placed in the first five words.
+
+This is not a breadcrumb -- it is the full finding restated. The Strategy already contains the decision this data supports. The description should name the source and the data point ("open-rate benchmarks by subject line length; sourced the under-45-character threshold"), not reproduce the analysis.
+
+A References section with machine-readable metadata:
+
+> ## References
+>
+> ```yaml
+> - id: ref-001
+>   path: research/cold-email/subject-line-data
+>   hash: a3f2c1d
+>   accessed: 2025-01-15T14:32:00Z
+>   relevance: 0.92
+>   tags: [open-rate, subject-line, personalization]
+> ```
+
+No consumer exists for this structure. No tool parses it. The hash will be stale by the next vault sync. The relevance score is a number the agent invented. Every field beyond path and description is infrastructure without a consumer -- exactly the kind of overhead the intent says to avoid.
+
+A References section where paths are treated as contracts:
+
+> ## References
+>
+> - ~~research/cold-email/subject-line-data~~ -- **BROKEN LINK: note not found at expected path. Requires investigation before this spec can be trusted.**
+
+The path was never a contract. Brain notes move. The description ("open-rate benchmarks by subject line length; sourced the under-45-character threshold") gives a reviewer everything needed to relocate the source or evaluate the decision on its own merits. Flagging a stale path as a trust-breaking error misunderstands what the reference is for.
