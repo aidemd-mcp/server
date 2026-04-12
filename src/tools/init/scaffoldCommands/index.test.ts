@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 describe("scaffoldCommands", () => {
-	it("creates all 8 command files: orchestrator at root plus 7 phase commands under aide/", async () => {
+	it("creates all 9 command files: orchestrator at root plus 8 phase commands under aide/", async () => {
 		const commandDir = join(tempDir, "commands");
 
 		const results = await scaffoldCommands(commandDir);
@@ -37,6 +37,7 @@ describe("scaffoldCommands", () => {
 		expect(files).toContain("build.md");
 		expect(files).toContain("qa.md");
 		expect(files).toContain("fix.md");
+		expect(files).toContain("upgrade.md");
 		expect(results.every((r) => r.status === "created")).toBe(true);
 		expect(results.map((r) => r.name)).toEqual([
 			"aide",
@@ -47,6 +48,7 @@ describe("scaffoldCommands", () => {
 			"aide:build",
 			"aide:qa",
 			"aide:fix",
+			"aide:upgrade",
 		]);
 	});
 
@@ -123,7 +125,7 @@ describe("scaffoldCommands", () => {
 		const { default: scaffoldCommandsFresh } = await import("./index.js");
 		const results = await scaffoldCommandsFresh(commandDir);
 
-		expect(results).toHaveLength(8);
+		expect(results).toHaveLength(9);
 		expect(results.map((r) => r.name)).toEqual([
 			"aide",
 			"aide:research",
@@ -133,6 +135,7 @@ describe("scaffoldCommands", () => {
 			"aide:build",
 			"aide:qa",
 			"aide:fix",
+			"aide:upgrade",
 		]);
 
 		const byName = new Map(results.map((r) => [r.name, r.status]));

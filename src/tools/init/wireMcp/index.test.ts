@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, platform } from "node:os";
 import wireMcp from "./index.js";
+
+const expectedEntry = platform() === "win32"
+	? { command: "cmd", args: ["/c", "npx", "aidemd-mcp"] }
+	: { command: "npx", args: ["aidemd-mcp"] };
 
 let tempDir: string;
 
@@ -22,7 +26,7 @@ describe("wireMcp", () => {
 
 		expect(result).toEqual({ name: "MCP config", status: "wired" });
 		const mcp = JSON.parse(await readFile(mcpPath, "utf-8"));
-		expect(mcp.mcpServers.aide).toEqual({ command: "npx", args: ["aidemd-mcp"] });
+		expect(mcp.mcpServers.aide).toEqual(expectedEntry);
 	});
 
 	it("adds to existing MCP config without overwriting other servers", async () => {
@@ -38,7 +42,7 @@ describe("wireMcp", () => {
 
 		const mcp = JSON.parse(await readFile(mcpPath, "utf-8"));
 		expect(mcp.mcpServers.other).toEqual({ command: "node", args: ["other.js"] });
-		expect(mcp.mcpServers.aide).toEqual({ command: "npx", args: ["aidemd-mcp"] });
+		expect(mcp.mcpServers.aide).toEqual(expectedEntry);
 	});
 
 	it("returns exists when aide entry is already wired", async () => {

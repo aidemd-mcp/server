@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, platform } from "node:os";
 import init from "./index.js";
+
+const expectedMcpEntry = platform() === "win32"
+	? { command: "cmd", args: ["/c", "npx", "aidemd-mcp"] }
+	: { command: "npx", args: ["aidemd-mcp"] };
 
 let tempDir: string;
 
@@ -46,7 +50,7 @@ describe("init", () => {
 
 		// MCP config wired
 		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8"));
-		expect(mcp.mcpServers.aide).toEqual({ command: "npx", args: ["aidemd-mcp"] });
+		expect(mcp.mcpServers.aide).toEqual(expectedMcpEntry);
 	});
 
 	it("is idempotent — reports already initialized when run twice", async () => {

@@ -47,6 +47,7 @@ const DOC_PATHS = {
 	"plan-aide": ".aide/docs/plan-aide.md",
 	"todo-aide": ".aide/docs/todo-aide.md",
 	"commands/aide/synthesize": ".claude/commands/aide/synthesize.md",
+	"commands/aide/upgrade": ".claude/commands/aide/upgrade.md",
 	"commands/aide/aide": ".claude/commands/aide.md",
 	"agents/aide/aide-spec-writer": ".claude/agents/aide/aide-spec-writer.md",
 	"agents/aide/aide-researcher": ".claude/agents/aide/aide-researcher.md",

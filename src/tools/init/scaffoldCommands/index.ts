@@ -38,6 +38,7 @@ export const COMMANDS: readonly {
 	{ canonical: "commands/aide/build", hostPath: "aide/build.md", displayName: "aide:build" },
 	{ canonical: "commands/aide/qa", hostPath: "aide/qa.md", displayName: "aide:qa" },
 	{ canonical: "commands/aide/fix", hostPath: "aide/fix.md", displayName: "aide:fix" },
+	{ canonical: "commands/aide/upgrade", hostPath: "aide/upgrade.md", displayName: "aide:upgrade" },
 ];
 
 /** Check if a file exists. */
