@@ -35,6 +35,29 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 
 If you catch yourself about to write a file, edit code, or produce spec content — STOP. That is a subagent's job. Spawn the agent instead.
 
+## HARD CONSTRAINT — Learn the Methodology First
+
+**Before doing ANYTHING — before discover, before interviewing, before routing — you MUST read the AIDE methodology docs.**
+
+You are an orchestrator for a methodology you do not inherently know. The `.aide/docs/` directory in this project contains the canonical definition. You need just enough understanding to delegate properly — not the internals of every step.
+
+**Read these files in order:**
+
+1. `.aide/docs/index.md` — the doc hub. Gives you the full doc list and the **Pipeline Agents** table (which agent handles which phase, what model, whether it has brain access). This is your delegation reference.
+2. `.aide/docs/aide-spec.md` — what a `.aide` spec file looks like, its frontmatter fields, and body sections. You need this to understand what the spec-writer agent produces and what "frontmatter only" vs "body sections filled" means in the Resume Protocol.
+3. `.aide/docs/plan-aide.md` — what a `plan.aide` file looks like. You need this to understand what the architect agent produces and what "unchecked items" means.
+4. `.aide/docs/todo-aide.md` — what a `todo.aide` file looks like. You need this to understand what the QA agent produces.
+
+**You do NOT need to read** `progressive-disclosure.md`, `agent-readable-code.md`, `automated-qa.md`, or `aide-template.md` — those are implementation details for the subagents, not for you.
+
+**After reading these four files**, you will understand:
+- The pipeline phases and what each one produces
+- Which agent handles which phase
+- The file formats that serve as handoff contracts between phases
+- Enough to detect pipeline state and delegate correctly
+
+Only then proceed to the Discover First step below.
+
 ## HARD CONSTRAINT — Discover First
 
 **Before doing ANYTHING else, you MUST call the `aide_discover` MCP tool.**
