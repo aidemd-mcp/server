@@ -1,0 +1,61 @@
+---
+scope: src/tools/upgrade/buildVersionsMeta
+type: plan
+---
+
+## Implementation Plan
+
+### Step 1: Create the buildVersionsMeta helper
+
+File: `src/tools/upgrade/buildVersionsMeta/index.ts`
+
+- [x] Define `VersionMeta` interface: `{ publishedAt: string; sourceCommit: string; previousCommit?: string }`
+- [x] Define `VersionsMap` type: `Record<string, VersionMeta>`
+- [x] Export default async function `buildVersionsMeta()` that:
+  1. Resolves `REPO_ROOT` from `import.meta.url` (same 4-hop pattern as `initContent`)
+  2. Iterates `listMethodologyDocs()` from initContent
+  3. For each doc, derives the slug from `hostFilename` (strip `.md`)
+  4. Runs `git log --follow --format="%H %aI" -n 2 -- .aide/docs/<hostFilename>` with `cwd: REPO_ROOT`
+  5. Parses stdout lines: line 0 = latest commit (SHA + timestamp), line 1 = previous commit if exists
+  6. Builds `VersionMeta` entry: `publishedAt` from timestamp, `sourceCommit` as first 7 chars of SHA, `previousCommit` as first 7 chars of prior SHA (omit field if no prior)
+  7. Skips slugs where git log returns empty (uncommitted file)
+  8. Returns the assembled `VersionsMap`
+- [x] Wrap the git exec in try/catch — if git is unavailable, return `{}`
+- [x] Use `execFile` (not `exec`) via `promisify` for safety — same pattern as upgrade/index.ts
+
+### Step 2: Integrate into upgrade orchestrator
+
+File: `src/tools/upgrade/index.ts`
+
+- [x] Import `buildVersionsMeta` from `./buildVersionsMeta/index.js`
+- [x] After phase B (methodology docs loop), add phase B2:
+  1. Call `await buildVersionsMeta()`
+  2. Serialize result as `JSON.stringify(versionsMap, null, 2) + "\n"`
+  3. Write to `join(docHubAbsolute, "versions.json")` via `compareFile(hostPath, content, confirm)`
+  4. Push result to `results` array with name `${config.docHubDir}/versions.json`
+- [x] Add "versions.json" to the methodology docs category in the dry-run warning logic (it's a methodology artifact, so it should be grouped with docs)
+
+### Step 3: Write tests for buildVersionsMeta
+
+File: `src/tools/upgrade/buildVersionsMeta/index.test.ts`
+
+- [x] Test: returns correct VersionMeta when git log returns two commits
+- [x] Test: omits previousCommit when git log returns only one commit
+- [x] Test: omits slug when git log returns empty output (uncommitted file)
+- [x] Test: returns empty object when git command fails (git not available)
+
+### Step 4: Update upgrade orchestrator tests
+
+File: `src/tools/upgrade/index.test.ts`
+
+- [x] Add mock for `buildVersionsMeta` module
+- [x] Verify versions.json appears in dry-run output with correct status
+- [x] Verify versions.json appears in confirm output
+- [x] Verify versions.json is counted in the "methodology docs" warning category
+
+### Decisions
+
+- **versions.json grouped with methodology docs in warnings**: It's a methodology artifact derived from the docs, so it belongs in the "methodology docs" category rather than being its own category. This keeps the warning concise.
+- **Slug derived from hostFilename**: Using `hostFilename.replace(/\.md$/, "")` rather than the `canonical` key, because the consuming project sees hostFilenames, not canonical names.
+- **REPO_ROOT resolved independently**: The helper resolves its own repo root rather than accepting it as a parameter, because the repo root is an intrinsic property of where the MCP server code lives — same pattern as initContent. The helper is 3 levels deep from repo root (src/tools/upgrade/buildVersionsMeta), so it needs a 4-hop walk just like initContent (src/tools/init/initContent).
+- **git log with --follow**: Tracks file renames so history survives doc reorganizations.

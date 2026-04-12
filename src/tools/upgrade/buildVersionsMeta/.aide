@@ -1,0 +1,41 @@
+---
+scope: src/tools/upgrade/buildVersionsMeta
+intent: >
+  buildVersionsMeta extracts git commit metadata for each methodology doc
+  from the MCP server's own repo history and returns it as a JSON object
+  keyed by doc slug. The upgrade orchestrator writes this as
+  .aide/docs/versions.json alongside the docs themselves, giving consuming
+  projects citation data (publication date, source commit, previous commit)
+  without needing GitHub API access. The data comes entirely from local
+  git log — no network calls, no external APIs.
+outcomes:
+  desired:
+    - Returns a Record<string, VersionMeta> where keys are doc slugs
+      (filename without .md extension, e.g. "aide-spec", "index") and
+      values contain publishedAt (ISO 8601 author timestamp), sourceCommit
+      (7-char short SHA), and optionally previousCommit (7-char short SHA
+      of the prior commit touching that file, omitted if no prior version).
+    - Git history is queried against the MCP server's own repo (resolved
+      from import.meta.url, same as initContent), not the host project.
+      The command is git log --follow --format="%H %aI" -2 -- <path> for
+      each methodology doc.
+    - When a doc has never been committed (new file not yet tracked), that
+      slug is omitted from the output rather than throwing.
+    - The upgrade orchestrator writes the JSON as .aide/docs/versions.json
+      using compareFile (same byte-comparison + write-gate pattern as all
+      other methodology artifacts), so it participates in dry-run preview
+      and is overwritten on every confirm.
+    - The versions.json entry appears in the upgrade output with the same
+      prefix symbol and status reporting as other methodology files.
+  undesired:
+    - Network calls or GitHub API access. All data comes from local git.
+    - Querying git history from the host project's repo. The host's git
+      log tracks sync operations, not real document revisions. The source
+      of truth is this repo's history.
+    - Crashing when git is unavailable or a doc has no commits. Graceful
+      degradation: return an empty object if git fails entirely, omit
+      individual slugs that have no history.
+    - A versions.json that contains entries for non-methodology files
+      (commands, agents, skills). Only the docs in the .aide/docs/ hub
+      get version metadata.
+---

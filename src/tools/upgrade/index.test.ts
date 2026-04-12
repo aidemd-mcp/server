@@ -16,6 +16,7 @@ vi.mock("@/tools/init/scaffoldCommands/index.js", () => ({
 }));
 vi.mock("./compareFile/index.js");
 vi.mock("./spliceStub/index.js");
+vi.mock("./buildVersionsMeta/index.js");
 
 // execFile is used by checkVscodeExtension — mock it to avoid spawning `code`.
 vi.mock("node:child_process", () => ({
@@ -28,6 +29,7 @@ import detectFramework from "@/tools/init/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
+import buildVersionsMeta from "./buildVersionsMeta/index.js";
 import upgrade from "./index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -87,6 +89,10 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 	vi.mocked(listAgents).mockReturnValue([]);
 	vi.mocked(listSkills).mockReturnValue([]);
 	vi.mocked(readCanonicalDoc).mockReturnValue("canonical content");
+	vi.mocked(buildVersionsMeta).mockResolvedValue({
+		"aide-spec": { publishedAt: "2026-04-11T14:30:00+00:00", sourceCommit: "abc1234", previousCommit: "def5678" },
+		"aide-template": { publishedAt: "2026-03-15T09:00:00+00:00", sourceCommit: "b2c3d4e" },
+	});
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -135,10 +141,11 @@ describe("upgrade", () => {
 		// stub has drifted
 		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "would update" });
 
-		// first doc drifted, second unchanged, commands both unchanged
+		// first doc drifted, second unchanged, versions.json unchanged, commands both unchanged
 		vi.mocked(compareFile)
 			.mockResolvedValueOnce("would update")  // aide-spec.md
 			.mockResolvedValueOnce("unchanged")      // aide-template.md
+			.mockResolvedValueOnce("unchanged")      // versions.json
 			.mockResolvedValueOnce("would update")   // aide command (aide.md)
 			.mockResolvedValueOnce("unchanged");     // aide:research
 
@@ -183,12 +190,13 @@ describe("upgrade", () => {
 	it("returns final statuses with AIDE upgraded header and summary counts line", async () => {
 		wireDefaultMocks();
 
-		// 1 stub created, 1 doc updated, 1 doc unchanged, 1 cmd created, 1 cmd unchanged
+		// 1 stub created, 1 doc updated, 1 doc unchanged, versions.json created, 1 cmd created, 1 cmd unchanged
 		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "created" });
 
 		vi.mocked(compareFile)
 			.mockResolvedValueOnce("updated")     // aide-spec.md
 			.mockResolvedValueOnce("unchanged")   // aide-template.md
+			.mockResolvedValueOnce("created")     // versions.json
 			.mockResolvedValueOnce("created")     // aide.md (command)
 			.mockResolvedValueOnce("unchanged");  // aide:research
 
@@ -212,9 +220,9 @@ describe("upgrade", () => {
 		expect(result).toContain("  + aide: created");
 		expect(result).toContain("  = aide:research: unchanged");
 
-		// Summary counts: 2 created (stub + aide command), 1 updated (aide-spec),
+		// Summary counts: 3 created (stub + versions.json + aide command), 1 updated (aide-spec),
 		// at least 2 unchanged (aide-template + aide:research + MCP config)
-		expect(result).toContain("2 files created");
+		expect(result).toContain("3 files created");
 		expect(result).toContain("1 file updated");
 		expect(result).toMatch(/\d+ files? unchanged/);
 
@@ -288,5 +296,58 @@ describe("upgrade", () => {
 		// At least one of the IDE names must appear
 		const hasIde = result.includes("Zed config") || result.includes("VS Code extension");
 		expect(hasIde).toBe(true);
+	});
+
+	// ── Test 6: versions.json appears in dry-run output ────────────────────
+	it("includes versions.json in dry-run preview", async () => {
+		wireDefaultMocks();
+
+		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "unchanged" });
+		// docs unchanged, but versions.json would create (first call for each doc returns unchanged,
+		// then versions.json compareFile call returns "would create")
+		vi.mocked(compareFile)
+			.mockResolvedValueOnce("unchanged")      // aide-spec.md
+			.mockResolvedValueOnce("unchanged")      // aide-template.md
+			.mockResolvedValueOnce("would create")   // versions.json
+			.mockResolvedValueOnce("unchanged")      // aide command
+			.mockResolvedValueOnce("unchanged");     // aide:research
+
+		const { writeFile } = await import("node:fs/promises");
+		await writeFile(
+			join(tempDir, ".mcp.json"),
+			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
+			"utf-8",
+		);
+
+		const result = await upgrade(tempDir, false, undefined, undefined, true);
+
+		expect(result).toContain(".aide/docs/versions.json: would create");
+		// versions.json is grouped with methodology docs in warnings
+		expect(result).toContain("methodology docs");
+	});
+
+	// ── Test 7: versions.json appears in confirm output ────────────────────
+	it("includes versions.json in confirm output with correct status", async () => {
+		wireDefaultMocks();
+
+		vi.mocked(spliceStub).mockResolvedValue({ name: "Methodology pointer", status: "unchanged" });
+		vi.mocked(compareFile)
+			.mockResolvedValueOnce("unchanged")   // aide-spec.md
+			.mockResolvedValueOnce("unchanged")   // aide-template.md
+			.mockResolvedValueOnce("created")     // versions.json
+			.mockResolvedValueOnce("unchanged")   // aide command
+			.mockResolvedValueOnce("unchanged");  // aide:research
+
+		const { writeFile } = await import("node:fs/promises");
+		await writeFile(
+			join(tempDir, ".mcp.json"),
+			JSON.stringify({ mcpServers: { aide: { command: "npx", args: ["aidemd-mcp"] } } }, null, 2) + "\n",
+			"utf-8",
+		);
+
+		const result = await upgrade(tempDir, true, undefined, undefined, true);
+
+		expect(result).toContain(".aide/docs/versions.json: created");
+		expect(result).toContain("1 file created");
 	});
 });

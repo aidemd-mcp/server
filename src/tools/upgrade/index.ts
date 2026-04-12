@@ -9,6 +9,7 @@ import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@
 import { COMMANDS } from "@/tools/init/scaffoldCommands/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
+import buildVersionsMeta from "./buildVersionsMeta/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -255,6 +256,13 @@ export default async function upgrade(
 		results.push({ name: `${config.docHubDir}/${entry.hostFilename}`, status });
 	}
 
+	// ── b2. Version metadata ────────────────────────────────────────────────
+	const versionsMap = await buildVersionsMeta();
+	const versionsJson = JSON.stringify(versionsMap, null, 2) + "\n";
+	const versionsHostPath = join(docHubAbsolute, "versions.json");
+	const versionsStatus = await compareFile(versionsHostPath, versionsJson, confirm);
+	results.push({ name: `${config.docHubDir}/versions.json`, status: versionsStatus });
+
 	// ── c. Commands ─────────────────────────────────────────────────────────
 	for (const cmd of COMMANDS) {
 		const hostPath = join(commandDirAbsolute, cmd.hostPath);
@@ -316,6 +324,7 @@ export default async function upgrade(
 	if (stubChanged) affectedCategories.push("pointer stub");
 
 	const docNames = new Set(listMethodologyDocs().map((e) => `${config.docHubDir}/${e.hostFilename}`));
+	docNames.add(`${config.docHubDir}/versions.json`);
 	const docsChanged = results.some((r) => docNames.has(r.name) && isChanged(r.status));
 	if (docsChanged) affectedCategories.push("methodology docs");
 
