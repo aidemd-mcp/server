@@ -10,7 +10,7 @@
 
 ## Pipeline Agents
 
-AIDE ships six canonical agents that `aide_init` installs to `.claude/agents/aide/`. Each agent maps to one pipeline role:
+AIDE ships seven canonical agents that `aide_init` installs to `.claude/agents/aide/`. Each agent maps to one pipeline role:
 
 | Agent | Model | Phase(s) | Brain Access |
 |---|---|---|---|

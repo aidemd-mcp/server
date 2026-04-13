@@ -64,8 +64,8 @@ outcomes:
 
 ## Context
 
-The AIDE pipeline currently defines six phases (spec, research, synthesize,
-plan, build, QA/fix), each described by a slash command that tells the
+The AIDE pipeline currently defines seven phases (spec, research, synthesize,
+plan, build, QA/fix, refactor), each described by a slash command that tells the
 orchestrating agent what to do. But the commands have no agents to delegate
 to — they say "spin up a Planner agent" without shipping one. Users must
 define their own agents or rely on the orchestrator to inline the work,
@@ -86,7 +86,7 @@ the agents teach the workflow pattern, not our content.
 
 ## Strategy
 
-**One agent per pipeline role, not per phase.** Six agents map to the six
+**One agent per pipeline role, not per phase.** Seven agents map to the seven
 distinct roles the pipeline needs. The implementor serves both build and
 fix phases — same role, same prompt, different inputs. The researcher and
 domain expert are separate agents because their brain-access patterns

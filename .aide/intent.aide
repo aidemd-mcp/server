@@ -174,7 +174,7 @@ always did.
 An agent in a cold host project is told only "run aide_init." It does,
 reads back a summary naming the pointer stub in the config file, the
 installed host-side doc hub with every canonical methodology doc by
-name, the six pipeline slash commands, the MCP registration, and the
+name, the pipeline slash commands, the MCP registration, and the
 IDE configuration, and then starts the pipeline with `/aide:research`.
 At no point in that sequence did a human tell the agent what AIDE is,
 what a `.aide` file is, or how the phases fit together — every piece

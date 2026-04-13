@@ -7,7 +7,7 @@ import {
 } from "@/tools/init/initContent/index.js";
 
 /**
- * Fixed registry of the /aide orchestrator entry point plus the seven AIDE
+ * Fixed registry of the /aide orchestrator entry point plus the eight AIDE
  * pipeline phase commands. Owning this list here — rather than discovering it
  * from .claude/commands/ at runtime — is the mechanical guarantee that a stray
  * Markdown file committed under .claude/commands/aide/ cannot silently expand

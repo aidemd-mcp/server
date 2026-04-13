@@ -204,7 +204,7 @@ developer to inspect the directory manually.
 A host project runs `aide_init` for the first time. The scaffold
 helper reads templates from docs/commands/aide/ through initContent,
 writes files into `.claude/commands/aide/` (or the equivalent for
-the detected framework) — the seven pipeline phase commands plus the
+the detected framework) — the eight pipeline phase commands plus the
 update-playbook maintenance command — and returns a `created` status
 for each. The init summary lists each command by name with its
 status. The developer can immediately type `/aide:research` in their

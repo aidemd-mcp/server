@@ -134,8 +134,8 @@ receives. A later edit to any of those three docs propagates to
 every host project's next init with zero changes to writeMethodology
 and zero changes to initContent.
 
-scaffoldCommands asks initContent for the six pipeline command
-templates by name. initContent reads the six template files from
+scaffoldCommands asks initContent for the pipeline command
+templates by name. initContent reads the template files from
 docs/commands/aide/ and returns them as a map from canonical name
 to file content. scaffoldCommands writes each one to an `aide/`
 subfolder of the host's command directory without mutating the
