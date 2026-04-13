@@ -17,7 +17,10 @@ afterEach(async () => {
 describe("validate", () => {
 	it("returns no warnings for a healthy project", async () => {
 		await writeFile(join(tempDir, "index.ts"), "export default function() {}");
-		await writeFile(join(tempDir, ".aide"), "Clean spec with no links");
+		await writeFile(
+			join(tempDir, ".aide"),
+			"---\ndescription: A healthy spec with all required fields\n---\nClean spec with no links",
+		);
 
 		const result = await validate(tempDir);
 
@@ -66,5 +69,30 @@ describe("validate", () => {
 		const orphaned = result.warnings.find((w) => w.kind === "orphaned-research");
 
 		expect(orphaned).toBeDefined();
+	});
+
+	it("detects missing description field and returns missing-description warning", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			"---\nscope: some-scope\nintent: Some intent\n---\n",
+		);
+
+		const result = await validate(tempDir);
+		const missing = result.warnings.find((w) => w.kind === "missing-description");
+
+		expect(missing).toBeDefined();
+		expect(missing!.message).toContain("description");
+	});
+
+	it("does not warn about missing description when description is present", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			"---\ndescription: A complete spec\nscope: some-scope\nintent: Some intent\n---\n",
+		);
+
+		const result = await validate(tempDir);
+		const missing = result.warnings.find((w) => w.kind === "missing-description");
+
+		expect(missing).toBeUndefined();
 	});
 });

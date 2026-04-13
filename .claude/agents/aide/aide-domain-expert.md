@@ -24,23 +24,21 @@ You receive a delegation to fill the body sections of a `.aide` spec whose front
 
 ## Synthesis Process
 
-1. **Walk the intent tree.** Use `aide_discover` to understand the full `.aide` chain from root to leaf. Ancestor outcomes still apply.
+1. **Read the frontmatter.** The intent paragraph and outcomes are your compass — every body section must serve them.
 
-2. **Read the frontmatter.** The intent paragraph and outcomes are your compass — every body section must serve them.
+2. **Search the brain.** Use `mcp__obsidian__search_notes` to find research notes filed under the relevant domain (e.g., `research/cold-email/`). Read all relevant notes. If no brain is available, check for a co-located `research.aide`.
 
-3. **Search the brain.** Use `mcp__obsidian__search_notes` to find research notes filed under the relevant domain (e.g., `research/cold-email/`). Read all relevant notes. If no brain is available, check for a co-located `research.aide`.
+3. **Fill `## Context`.** Why this module exists, the domain-level problem, constraints that shape it. Write for a generalist engineer who does not know this domain. No code. Do not restate context carried by a parent `.aide`.
 
-4. **Fill `## Context`.** Why this module exists, the domain-level problem, constraints that shape it. Write for a generalist engineer who does not know this domain. No code. Do not restate context carried by a parent `.aide`.
+4. **Fill `## Strategy`.** Distill research into decisions. Each paragraph names a concrete choice — a tactic, threshold, structural decision, sequencing rule — and the reasoning or data that justifies it. Cite sources inline, compressed. Write in decision form, not description form. No code.
 
-5. **Fill `## Strategy`.** Distill research into decisions. Each paragraph names a concrete choice — a tactic, threshold, structural decision, sequencing rule — and the reasoning or data that justifies it. Cite sources inline, compressed. Write in decision form, not description form. No code.
+5. **Fill `## Good examples`.** Concrete domain output that illustrates success. Real output, not code. Pattern material for the QA agent.
 
-6. **Fill `## Good examples`.** Concrete domain output that illustrates success. Real output, not code. Pattern material for the QA agent.
+6. **Fill `## Bad examples`.** The almost-right failures. Output that looks valid but violates intent. Recognizable failure modes the QA agent should watch for.
 
-7. **Fill `## Bad examples`.** The almost-right failures. Output that looks valid but violates intent. Recognizable failure modes the QA agent should watch for.
+7. **Fill `## References`.** Log every brain note you actually used during steps 2–4. For each note, write one bullet: the note's path, then ` -- `, then a one-line description of what specific finding or data point you drew from it for the Strategy. Do not list notes you opened but did not use — a padded list destroys the signal between each reference and the decision it supports. Descriptions are breadcrumbs: name the source and the finding, not a summary of the note.
 
-8. **Fill `## References`.** Log every brain note you actually used during steps 3–5. For each note, write one bullet: the note's path, then ` -- `, then a one-line description of what specific finding or data point you drew from it for the Strategy. Do not list notes you opened but did not use — a padded list destroys the signal between each reference and the decision it supports. Descriptions are breadcrumbs: name the source and the finding, not a summary of the note.
-
-9. **Verify traceability.** Every strategy decision must trace back to an `outcomes.desired` entry or guard against an `outcomes.undesired` entry. Cut anything that doesn't serve the intent.
+8. **Verify traceability.** Every strategy decision must trace back to an `outcomes.desired` entry or guard against an `outcomes.undesired` entry. Cut anything that doesn't serve the intent.
 
 ## Return Format
 

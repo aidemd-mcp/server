@@ -4,39 +4,33 @@ import type { AideFile, ScanResult } from "@/types/index.js";
 import { classifyFile } from "@/util/classify/index.js";
 import { SKIP_DIRS } from "@/types/index.js";
 
-/** Extract the intent field from YAML frontmatter as the summary, truncated to ~80 chars. */
+/** Extract the first meaningful body line as the summary, truncated to ~80 chars. */
 function extractSummary(content: string): string {
 	const lines = content.split("\n");
 
-	// Confirm frontmatter starts with ---
-	if (!lines[0] || lines[0].trim() !== "---") return "";
+	let bodyStart = 0;
 
-	// Find the intent field (don't require closing --- to be in the slice)
-	let intent = "";
-	for (let i = 1; i < lines.length; i++) {
-		const line = lines[i];
-		if (line.trim() === "---") break; // end of frontmatter
-		if (/^intent:\s*/.test(line)) {
-			const inline = line.replace(/^intent:\s*/, "").trim();
-			// Block scalar (> or |) — value is on subsequent indented lines
-			if (inline === ">" || inline === "|" || inline === ">-" || inline === "|-") {
-				const parts: string[] = [];
-				for (let j = i + 1; j < lines.length; j++) {
-					if (lines[j].trim() === "---") break;
-					if (/^\s+/.test(lines[j])) parts.push(lines[j].trim());
-					else break; // hit a top-level key like outcomes:
-				}
-				intent = parts.join(" ");
-			} else {
-				intent = inline;
+	// Skip YAML frontmatter if present
+	if (lines[0] && lines[0].trim() === "---") {
+		let closingIdx = -1;
+		for (let i = 1; i < lines.length; i++) {
+			if (lines[i].trim() === "---") {
+				closingIdx = i;
+				break;
 			}
-			break;
 		}
+		bodyStart = closingIdx !== -1 ? closingIdx + 1 : lines.length;
 	}
 
-	if (!intent) return "";
-	if (intent.length <= 80) return intent;
-	return intent.slice(0, 77) + "...";
+	// Find the first non-empty, non-heading line after frontmatter
+	for (let i = bodyStart; i < lines.length; i++) {
+		const line = lines[i].trim();
+		if (!line || line.startsWith("#")) continue;
+		if (line.length <= 80) return line;
+		return line.slice(0, 77) + "...";
+	}
+
+	return "";
 }
 
 /** Normalize a Windows or mixed path to POSIX forward slashes. */
@@ -86,7 +80,7 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 /**
  * Recursively walk the filesystem from `root` and collect all .aide files.
  * Skips node_modules, .git, dist, build, .next, coverage, __pycache__.
- * Reads the first ~1000 bytes of each file to extract the intent field as summary.
+ * Reads the first ~1000 bytes of each file to extract the first meaningful body line as summary.
  */
 export default async function scan(root: string, path?: string, shallow?: boolean): Promise<ScanResult> {
 	const scanRoot = path ? join(root, path) : root;

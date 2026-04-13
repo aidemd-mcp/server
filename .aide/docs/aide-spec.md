@@ -92,14 +92,16 @@ The canonical template lives at [AIDE Template](./aide-template.md). Agents shou
 
 ### Frontmatter (required)
 
-| Field | Purpose |
-|-------|---------|
-| `scope` | The module path this spec governs. One spec, one scope. |
-| `intent` | One paragraph, plain language: what this module is *for*. The north star every other field serves. Written so a human reading it cold understands the purpose in ten seconds. Everything in `outcomes` must be traceable back to this sentence. |
-| `outcomes.desired` | The success criteria. One or more statements describing what the module should produce. The QA agent measures actual output against this list. Keep it short — every extra entry dilutes the intent. |
-| `outcomes.undesired` | The failure modes. Outputs that look correct but violate intent — the green-tests-bad-output failures. The QA agent checks these explicitly even when tests pass. |
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `scope` | Yes | The module path this spec governs. One spec, one scope. |
+| `description` | Yes | One-line purpose statement. Makes ancestor chains in `aide_discover` self-contained — agents reading the chain understand what each spec governs without opening it. |
+| `intent` | Yes | One paragraph, plain language: what this module is *for*. The north star every other field serves. Written so a human reading it cold understands the purpose in ten seconds. Everything in `outcomes` must be traceable back to this sentence. |
+| `outcomes.desired` | Yes | The success criteria. One or more statements describing what the module should produce. The QA agent measures actual output against this list. Keep it short — every extra entry dilutes the intent. |
+| `outcomes.undesired` | Yes | The failure modes. Outputs that look correct but violate intent — the green-tests-bad-output failures. The QA agent checks these explicitly even when tests pass. |
+| `status` | No | Alignment state set by tooling, not by the spec writer. Omit for pending (default — no review has happened). Set to `aligned` by the aligner agent after verification; set to `misaligned` by the QA agent when drift is detected. Surfaced inline in `aide_discover` output so agents reading the ancestor chain see alignment state without opening each spec. |
 
-**Scope, intent, outcomes. That's the whole contract.** Lifecycle fields like `status` or `revision` are deliberately omitted — they encode state that v1 has no orchestrator to consume, and every unused field is a token tax on every agent that reads the spec. Git history tracks change; the rule "if the intent changes, it's a new spec" is the forcing function. Lifecycle fields come back in a later revision alongside tooling that actually reads them.
+**Scope, description, intent, outcomes. That's the whole contract.** `status` is the one lifecycle field that exists, added alongside the tooling that reads it — the `aide_discover` ancestor chain surfaces it inline, and `aide_validate` warns when it is absent. Its three states are implicit pending (field absent — no review has happened), `aligned` (set by the aligner agent after verification), and `misaligned` (set by the QA agent when drift is detected). The field is never set by the spec writer directly; it is a tool-verified signal. No other lifecycle fields exist — `revision` and similar state encodings are deliberately omitted. Git history tracks change; the rule "if the intent changes, it's a new spec" is the forcing function.
 
 `intent` states the purpose; `outcomes` is the intent-engineering contract that operationalizes it — desired is the target, undesired is the tripwire. Both outcome lists are two sides of the same declaration, and both must serve the intent above them.
 

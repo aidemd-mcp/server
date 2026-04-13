@@ -7,10 +7,11 @@
 - [progressive-disclosure.md](./progressive-disclosure.md)
 - [agent-readable-code.md](./agent-readable-code.md)
 - [automated-qa.md](./automated-qa.md)
+- [cascading-alignment.md](./cascading-alignment.md)
 
 ## Pipeline Agents
 
-AIDE ships seven canonical agents that `aide_init` installs to `.claude/agents/aide/`. Each agent maps to one pipeline role:
+AIDE ships eight canonical agents that `aide_init` installs to `.claude/agents/aide/`. Each agent maps to one pipeline role:
 
 | Agent | Model | Phase(s) | Brain Access |
 |---|---|---|---|
@@ -20,6 +21,7 @@ AIDE ships seven canonical agents that `aide_init` installs to `.claude/agents/a
 | `aide-architect` | opus | plan | read (playbook) |
 | `aide-implementor` | sonnet | build, fix | none |
 | `aide-qa` | sonnet | qa | none |
+| `aide-aligner` | opus | align | none |
 | `aide-auditor` | opus | refactor | read (playbook) |
 
 The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation.

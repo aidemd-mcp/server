@@ -7,7 +7,6 @@ Produce the `.aide` intent spec **frontmatter only**. This is the planner phase 
 ## Checklist
 
 - [ ] Interview the user directly: what is the module for, who consumes its output, what does success look like, what does failure look like
-- [ ] If a parent `.aide` exists up the tree, use `aide_discover` to walk the chain and understand inherited context before writing
 - [ ] Read the AIDE template before writing — copy the fenced template block from the canonical template doc into the new file
 - [ ] Decide filename:
   - Use `.aide` if no `research.aide` exists in the target folder

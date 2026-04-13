@@ -34,15 +34,13 @@ Specifically:
 
 ## Planning Process
 
-1. **Walk the intent tree.** Use `aide_discover` to understand the full `.aide` chain. Ancestor outcomes apply.
+1. **Read the complete spec.** Frontmatter AND body. The intent tells you what to build; the strategy tells you how to think about it; the examples tell you what correct and incorrect look like.
 
-2. **Read the complete spec.** Frontmatter AND body. The intent tells you what to build; the strategy tells you how to think about it; the examples tell you what correct and incorrect look like.
+2. **Consult the playbook.** Load conventions for the relevant domains — naming, file structure, patterns, anti-patterns.
 
-3. **Consult the playbook.** Load conventions for the relevant domains — naming, file structure, patterns, anti-patterns.
+3. **Scan the codebase.** Read the target module and its neighbors. Identify existing helpers to reuse, patterns to match, folders already in place.
 
-4. **Scan the codebase.** Read the target module and its neighbors. Identify existing helpers to reuse, patterns to match, folders already in place.
-
-5. **Write `plan.aide`.** Format:
+4. **Write `plan.aide`.** Format:
    - **Frontmatter:** `intent` — one-line summary of what this plan delivers
    - **`## Plan`** — checkboxed steps the implementor executes top-to-bottom:
      - Which files to create, modify, or delete

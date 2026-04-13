@@ -26,7 +26,7 @@ You are NOT QA. QA validates implementation against the `.aide` spec's `outcomes
 
 ## Auditing Process
 
-1. **Read the intent spec.** Use `aide_discover` to understand the `.aide` chain for the module you're auditing. The spec gives you the module's purpose — you need this to judge whether a convention applies.
+1. **Read the intent spec.** Read the `.aide` spec for the module you're auditing. The spec gives you the module's purpose — you need this to judge whether a convention applies.
 
 2. **Consult the playbook.** Use the `study-playbook` skill to load conventions top-down (hub → section hub → content notes → wikilinks). This is your primary reference. Load every section that could apply to the code you're reviewing — naming, file structure, testing, patterns, anti-patterns. Be thorough: a convention you didn't load is a convention you can't audit against.
 

@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import scan from "@/util/scan/index.js";
 import buildTree from "@/tools/discover/buildTree/index.js";
+import buildAncestorChain from "./buildAncestorChain/index.js";
 import { detectAnomalies } from "@/util/classify/index.js";
 
 export const DiscoverInput = z.object({
@@ -33,9 +34,12 @@ export default async function discover(root: string, path?: string): Promise<str
 
 	const tree = buildTree(files, root);
 
-	// Only run anomaly detection on deep (scoped) scans
+	// Only run anomaly detection and ancestor chain on deep (scoped) scans
+	let ancestorChain = "";
 	let warningBlock = "";
 	if (!shallow) {
+		ancestorChain = await buildAncestorChain(root, join(root, path));
+
 		const anomalies = await detectAnomalies(files, root);
 		if (anomalies.length > 0) {
 			const lines = anomalies.map((w) => `  ${w.path} — ${w.message}`);
@@ -43,5 +47,11 @@ export default async function discover(root: string, path?: string): Promise<str
 		}
 	}
 
-	return `${header}\n\n${tree}${warningBlock}`;
+	// Build output: header + optional ancestor chain + tree + optional warnings
+	// Each block separated by a blank line when present
+	const parts: string[] = [header];
+	if (ancestorChain) parts.push(ancestorChain);
+	parts.push(tree);
+
+	return parts.join("\n\n") + warningBlock;
 }

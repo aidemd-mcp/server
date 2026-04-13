@@ -1,0 +1,121 @@
+---
+intent: >
+  Implement cascading alignment — a new aide-aligner agent, /aide:align command,
+  cascading-alignment methodology doc, orchestrator and index updates, and cleanup
+  of duplicated tree-walking instructions from existing agent definitions.
+---
+
+## Plan
+
+### 1. Create the cascading-alignment methodology doc
+
+- [x] Create `.aide/docs/cascading-alignment.md` documenting the cascading alignment protocol. This doc must describe **actual behavior only** — what the discover tool, validate tool, and aligner agent do, not aspirational features. Content to cover:
+  - The alignment problem: specs can contradict ancestor outcomes, and no agent currently owns detection
+  - The `status` field lifecycle: `pending` (implicit default — no field), `aligned` (set by aligner after full-tree walk), `misaligned` (set by aligner on drift detection, or by QA incidentally)
+  - The aligner's role: spec-vs-spec comparison, NOT code-vs-spec (that is QA). The aligner walks top-down using `aide_discover`'s ancestor chain, compares child outcomes against every ancestor's outcomes, flags drift on the LEAF that deviated (never the ancestor)
+  - `todo.aide` production: the aligner produces `todo.aide` at each misaligned node with concrete items naming which child outcome conflicts with which ancestor outcome
+  - Non-blocking semantics: `status: misaligned` is informational, not a pipeline gate. Teams may intentionally diverge
+  - QA interaction: QA can set `misaligned` incidentally during code-vs-spec review but cannot set `aligned` — only the aligner confirms alignment through a deliberate full-tree walk
+  - How misalignment flows: aligner flags leaf, produces todo.aide, spec-writer resolves informed by the todo — aligner never rewrites spec intent or outcomes
+- [x] Follow the structure and tone of existing docs under `.aide/docs/` (e.g., `aide-spec.md`, `todo-aide.md`). Use the same heading conventions and writing standards
+- [x] Traces to: spec desired #7 (methodology doc exists), spec undesired #5 (doc describes actual behavior)
+
+### 2. Update `.aide/docs/index.md`
+
+- [x] Add `aide-aligner` to the Pipeline Agents table with: model `opus`, phase `align`, brain access `none`. Place it after `aide-qa` in the table since alignment checking logically follows QA in the pipeline flow
+- [x] Add `cascading-alignment.md` to the doc list at the top, with a link in the same format as existing entries (e.g., `- [cascading-alignment.md](./cascading-alignment.md)`)
+- [x] Update the agent count in any prose that references the number of canonical agents (currently "seven canonical agents" — becomes "eight")
+- [x] Traces to: spec desired #7 (methodology doc referenced from index), spec desired #1 (aligner listed as pipeline agent)
+
+### 3. Create the aide-aligner agent definition
+
+- [x] Create `.claude/agents/aide/aide-aligner.md` following the exact frontmatter and structural patterns of existing agent definitions (use `aide-qa.md` as the closest structural model since both are verification agents that produce `todo.aide`)
+- [x] Frontmatter fields:
+  - `name: aide-aligner`
+  - `description:` — follow the pattern of existing descriptions: one sentence stating when to use, then Examples section with 2-3 delegation scenarios. Key phrase: "Use this agent when you need to verify that specs across the intent tree are internally consistent — comparing child outcomes against ancestor outcomes to detect intent drift."
+  - `model: opus` (alignment requires reasoning about intent semantics across multiple spec levels)
+  - `color: green` (distinct from qa=orange, architect=red, implementor=pink, auditor=yellow, spec-writer=purple, domain-expert=purple, researcher=cyan)
+  - `memory: user`
+  - No `skills` or `mcpServers` — the aligner does NOT need brain/playbook access. It reads specs via `aide_read` and navigates via `aide_discover`
+- [x] Body structure — sections in order:
+  - Opening paragraph: "You are the alignment verifier..." — one role sentence establishing spec-vs-spec (not code-vs-spec)
+  - `## Your Role` — delegation to verify spec alignment. "You do NOT delegate to other agents."
+  - `## Important Distinction` — explicitly separate from QA. QA checks code-vs-spec, aligner checks spec-vs-spec. Merging them produces an agent that does neither well. Model this section on the auditor's "Important Distinction" section
+  - `## Alignment Process` — numbered steps:
+    1. Call `aide_discover` on the target path to get the full ancestor chain
+    2. For each spec in the chain (top-down), read it via `aide_read` — load intent and outcomes
+    3. At each child, compare its `outcomes.desired` and `outcomes.undesired` against every ancestor's outcomes. Look for: contradictions (child desired conflicts with ancestor undesired), undermining (child narrows in a way that makes an ancestor outcome unreachable), omissions (ancestor has a critical outcome the child's scope touches but doesn't address)
+    4. When drift is found: set `status: misaligned` on the LEAF spec's frontmatter (never the ancestor). Produce `todo.aide` at the leaf with items naming the specific conflict — "Leaf desired outcome #N conflicts with ancestor [path] undesired outcome #M"
+    5. When no drift is found at a node: set `status: aligned` on that spec's frontmatter
+    6. Report results
+  - `## Producing todo.aide` — format section mirroring QA's todo.aide section but adapted for alignment issues. Frontmatter `misalignment` value is always `spec-gap` since alignment issues are by definition spec-level. Each issue traces to specific outcomes in both the leaf and the ancestor
+  - `## Status Field Semantics` — brief section: `pending` (default, no field), `aligned` (set by this agent only), `misaligned` (set by this agent or QA incidentally). Reference `cascading-alignment.md` for the full protocol
+  - `## Return Format` — verdict (ALIGNED/MISALIGNED), specs checked count, misalignments found count, todo.aide paths if created, recommended next step (/aide:spec to revise misaligned specs)
+  - `## What You Do NOT Do` — list: do not rewrite spec outcomes (detect and flag only), do not check code (that is QA), do not set `aligned` without a full tree walk, do not block the pipeline (misalignment is informational), do not delegate
+  - `## Update your agent memory` section following existing pattern
+- [x] Traces to: spec desired #1 (aligner exists, distinct from QA), spec desired #2 (walks top-down, produces todo.aide), spec desired #3 (sets status fields, only agent that confirms alignment), spec undesired #1 (not conflated with QA), spec undesired #4 (never rewrites specs)
+
+### 4. Create the `/aide:align` command
+
+- [x] Create `.claude/commands/aide/align.md` following the exact structural pattern of existing commands (use `qa.md` as the closest model — both are verification commands)
+- [x] Content:
+  - Title: `# /aide-align — Alignment Phase`
+  - Agent note: `> **Agent:** This command is executed by the aide-aligner agent.`
+  - One-paragraph description: verify spec-vs-spec alignment across the intent tree. Not QA (code-vs-spec). Produces `todo.aide` at misaligned nodes with concrete realignment items
+  - `## Checklist` — checkboxed steps mirroring the agent's alignment process but written as command instructions:
+    - Call `aide_discover` on the target path
+    - Read each spec in the ancestor chain via `aide_read`
+    - Compare child outcomes against every ancestor's outcomes top-down
+    - For misaligned specs: set `status: misaligned`, produce `todo.aide` with specific conflicts
+    - For aligned specs: set `status: aligned`
+    - Report results with verdict, counts, and recommended next steps
+    - Do NOT rewrite spec outcomes — flag only
+- [x] Traces to: spec desired #5 (/aide:align command exists)
+
+### 5. Remove tree-walking instructions from existing agents
+
+- [x] Modify `.claude/agents/aide/aide-qa.md`: Remove step 2 (`2. **Walk the intent tree.** Use aide_discover to trace the full .aide chain from root to leaf. Ancestor outcomes still apply.`) and renumber remaining steps (current 3 becomes 2, etc.)
+- [x] Modify `.claude/agents/aide/aide-architect.md`: Remove step 1 (`1. **Walk the intent tree.** Use aide_discover to understand the full .aide chain. Ancestor outcomes apply.`) from the Planning Process section and renumber remaining steps
+- [x] Modify `.claude/agents/aide/aide-implementor.md`: Remove step 3 (`3. **Walk the intent tree.** Use aide_discover to understand ancestor outcomes that still apply.`) from Build Mode and renumber remaining steps
+- [x] Modify `.claude/agents/aide/aide-domain-expert.md`: Remove step 1 (`1. **Walk the intent tree.** Use aide_discover to understand the full .aide chain from root to leaf. Ancestor outcomes still apply.`) from the Synthesis Process section and renumber remaining steps
+- [x] Modify `.claude/agents/aide/aide-spec-writer.md`: Remove the sentence `If a parent .aide exists up the tree, use aide_discover to walk the chain and understand inherited context before writing. Child specs inherit parent context — do not restate it.` from the Input Expectations section. The spec-writer does not need tree-walking instructions — it writes frontmatter from a user interview, and the discover tool's output teaches context when called
+- [x] Modify `.claude/agents/aide/aide-auditor.md`: In step 1 of the Auditing Process, replace the current text `1. **Read the intent spec.** Use aide_discover to understand the .aide chain for the module you're auditing. The spec gives you the module's purpose — you need this to judge whether a convention applies.` with `1. **Read the intent spec.** Read the .aide spec for the module you're auditing. The spec gives you the module's purpose — you need this to judge whether a convention applies.` — remove the discover reference since the auditor's job is playbook conformance, not tree-walking
+- [x] After all modifications, verify no agent definition still contains "Walk the intent tree" or "walk the chain" as an instruction step
+- [x] Traces to: spec desired #6 (agents no longer contain verbose tree-walking instructions), spec undesired #3 (no multi-paragraph discover instructions)
+
+### 6. Update the orchestrator command
+
+- [x] Modify `.claude/commands/aide.md` to add the aligner:
+  - In the delegation list under "HARD CONSTRAINT — Delegation Only", add: `- Align: aide-aligner`
+  - In the Pipeline Agents table (if referenced), add the aligner entry
+  - Add a new section `### Align → aide:align` after the Refactor section (alignment is a standalone operation, not part of the linear pipeline). Content:
+    - "This is NOT part of the feature pipeline." (same framing as Refactor)
+    - Detecting alignment intent: if the user mentions alignment checking, spec consistency, intent drift, or cascading outcomes — route to align
+    - The orchestrator delegates to `aide-aligner` via Agent tool
+    - The aligner reports results; orchestrator relays to user
+  - Add logic guidance for **suggesting alignment**: the orchestrator should suggest `/aide:align` when discover output shows `status: misaligned` flags on any spec, or when a spec edit touches outcomes (the user just modified desired/undesired outcomes). This is a suggestion, not automatic invocation
+  - Under the Rules section, add a bullet about alignment suggestion behavior
+- [x] Traces to: spec desired #5 (command invocable by user or suggestable by orchestrator)
+
+## Decisions
+
+### Aligner uses opus model
+The aligner compares semantic intent across multiple spec levels — "does this child's desired outcome #3 contradict the root's undesired outcome #2?" This requires reasoning about meaning, not pattern matching. Opus is the right model for intent-level judgment. This matches the spec-writer and domain-expert (both opus) which also reason about intent semantics.
+
+### Aligner gets no brain/playbook access
+The aligner reads specs and compares outcomes. It does not need coding conventions (playbook) or domain research (brain). Keeping its tool surface minimal reduces context burn and keeps it focused on its single job: spec-vs-spec comparison. It uses only `aide_discover` and `aide_read`.
+
+### Color assignment: green
+All existing agent colors are taken (red, pink, orange, yellow, purple x2, cyan). Green is the remaining distinct color and semantically fits — green for "aligned/verified."
+
+### Misalignment tag is always `spec-gap`
+When the aligner produces `todo.aide`, the `misalignment` value is always `spec-gap` because alignment issues are definitionally spec-level problems — the spec itself contradicts an ancestor. This is distinct from QA's use of `implementation-drift`, `plan-gap`, etc.
+
+### Alignment section placed after Refactor in orchestrator
+Alignment is a standalone operation like Refactor — not part of the linear spec-research-plan-build-qa pipeline. It can be run at any time. Placing it after Refactor groups the non-pipeline operations together.
+
+### Tree-walking removal scope
+Four agents have explicit "Walk the intent tree" numbered steps that get fully removed. Two agents (spec-writer, auditor) have lighter discover references that are either removed entirely (spec-writer) or simplified (auditor) because their jobs don't require tree-walking. The researcher has no discover references and is untouched. This matches the spec's intent: agents that need discover call it because it is a tool available to them, not because their instructions tell them to.
+
+### Methodology doc created first (Step 1)
+The doc is referenced by the agent definition and the index. Creating it first means subsequent steps can reference it without forward-dependency concerns.

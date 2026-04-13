@@ -1,0 +1,245 @@
+---
+scope: .claude
+description: AIDE harness — agents, commands, skills, and methodology docs that drive the intent pipeline
+intent: >
+  The AIDE harness gains cascading alignment — the ability for agents to verify
+  that every spec in a tree honors the intent of its ancestors, and for drift
+  to be detected, flagged, and repaired without blocking the pipeline. A new
+  aide-aligner agent walks the spec tree top-down comparing each spec's
+  outcomes against its ancestors' outcomes, producing realignment items where
+  drift is found. The /aide:align command invokes this agent. Existing agent
+  definitions are simplified by removing verbose tree-walking instructions —
+  the enhanced discover tool's ancestor chain output teaches the protocol
+  directly, so agents learn by calling the tool, not by reading paragraphs
+  of instruction. A new methodology doc captures the cascading alignment
+  protocol as canonical doctrine.
+outcomes:
+  desired:
+    - An aide-aligner agent exists, distinct from the QA agent, whose sole
+      job is spec-vs-spec alignment — comparing a child spec's outcomes
+      against every ancestor's outcomes to detect intent drift. QA checks
+      code-vs-spec; the aligner checks spec-vs-spec.
+    - The aligner walks the tree top-down using the discover tool's ancestor
+      chain, compares outcomes at each level, and produces a todo.aide at
+      each misaligned node listing concrete realignment items.
+    - The aligner sets status: misaligned on specs where it finds drift and
+      status: aligned on specs it has verified. It is the only agent that
+      can confirm alignment through a deliberate full-tree walk.
+    - The QA agent can set status: misaligned incidentally while reviewing
+      code-vs-spec, but cannot set aligned — only the aligner confirms
+      alignment.
+    - A /aide:align command exists that invokes the aligner agent, callable
+      by the user or suggestable by the orchestrator when drift is suspected.
+    - Agent definitions across the harness no longer contain verbose
+      tree-walking instructions. Agents call discover, the tool's output
+      teaches the protocol, and agents report misalignment flags they
+      encounter. If an agent needs paragraphs of instruction to use
+      discover correctly, that is a discover design failure, not an agent
+      instruction gap.
+    - A cascading-alignment.md methodology doc exists under .aide/docs/
+      documenting the protocol, the status field semantics, the aligner's
+      role, and how misalignment flows through the pipeline.
+  undesired:
+    - The aligner conflated with the QA agent. QA validates code against
+      spec outcomes; the aligner validates spec outcomes against ancestor
+      spec outcomes. Merging them produces an agent that does neither job
+      well and confuses which contract it is checking.
+    - Misalignment that blocks the pipeline. The status flag is
+      informational — it surfaces drift for human or agent judgment, not
+      a gate that stops work. A team may intentionally diverge a child
+      from its parent; blocking would make that impossible.
+    - Agent definitions that duplicate the discover tool's teaching by
+      including multi-paragraph instructions on how to walk the intent
+      tree. If agents need those instructions, the tool's description
+      and output are not doing their job — fix the tool, not the agents.
+    - An aligner that modifies spec intent or outcomes directly. The
+      aligner detects and flags; it does not rewrite. Realignment items
+      go into todo.aide for a human or spec-writer to resolve.
+    - A cascading-alignment doc that describes aspirational behavior the
+      tooling does not actually support. The doc must describe what the
+      discover tool, validate tool, and aligner agent actually do, not
+      what they might do someday.
+---
+
+## Context
+
+The AIDE pipeline has agents that read specs, agents that write code, and
+agents that validate results — but no agent whose job is to verify that
+the specs themselves are internally consistent across the tree. A child
+spec can contradict its parent's outcomes and no one catches it until QA
+fails in a confusing way, or worse, the implementation faithfully serves
+a child intent that violates the root intent. This is the cascading
+alignment problem: intent trees grow, specs multiply, and drift between
+levels accumulates silently.
+
+The existing agents each contain a "walk the intent tree" instruction
+telling them to call discover and consider ancestor outcomes. These
+instructions are short (one line each) but they represent duplicated
+responsibility — every agent is told to watch for alignment, yet none
+of them owns it. The result is diffuse accountability: alignment is
+everyone's side job and no one's primary job.
+
+The harness also lacks a canonical doc explaining how alignment works,
+what the status field means, and how misalignment flows through the
+pipeline. Without that doc, every new agent or contributor re-derives
+the protocol from scattered instructions across six agent definitions.
+
+## Strategy
+
+**Separate spec-vs-spec from code-vs-spec.** The aligner agent checks
+one thing: does a child spec's outcomes contradict or undermine any
+ancestor's outcomes? QA checks a different thing: does the implementation
+satisfy the spec's outcomes? These are different contracts requiring
+different verification strategies. Merging them into one agent forces
+the agent to context-switch between reading code and reading specs,
+and makes it unclear which contract a finding refers to. The aligner
+owns alignment; QA owns conformance. Each agent's findings are
+unambiguous because each agent checks exactly one relationship.
+(Traces to: desired #1, undesired #1)
+
+**Walk top-down, flag at the leaf.** The aligner uses discover's
+ancestor chain to walk from root to the target spec, comparing
+outcomes at each level. When drift is found, the misalignment flag
+goes on the leaf that deviated, not the ancestor that set the rule.
+This preserves the ancestor as the source of truth and makes it
+clear which spec needs revision. The aligner produces a todo.aide at
+each misaligned node with concrete realignment items — what
+specifically conflicts and which ancestor outcome it violates. It
+never rewrites the spec's intent or outcomes directly; that is the
+spec-writer's job, informed by the todo.aide.
+(Traces to: desired #2, undesired #4)
+
+**Status is informational, not a gate.** The status field has three
+states: pending (implicit default, no field needed), aligned (set by
+the aligner after a deliberate full-tree walk), and misaligned (set
+by the aligner when drift is found, or by QA incidentally). The
+aligner is the only agent that can confirm alignment — setting
+aligned requires a deliberate full-tree walk, not an incidental
+observation. QA can set misaligned when it notices spec-level
+contradictions during code review, but it cannot confirm alignment
+because it never performs a full tree walk. Misalignment is
+non-blocking: it surfaces drift for human judgment without stopping
+the pipeline. A team may intentionally diverge a child from its
+parent; a blocking gate would make that impossible.
+(Traces to: desired #3, desired #4, undesired #2)
+
+**The /aide:align command is user-invoked, not automatic.** Alignment
+checking is expensive — it walks the full tree and compares outcomes at
+every level. Running it automatically on every spec change would slow
+the pipeline and produce noise during active development when specs are
+still being drafted. Instead, the orchestrator can suggest running
+/aide:align when discover output shows misalignment flags or when a
+spec edit touches outcomes, but the user decides when to invoke it.
+(Traces to: desired #5)
+
+**Agents learn discover by calling it, not by reading instructions
+about it.** The current agent definitions each contain a one-line
+"walk the intent tree" instruction. While these are not the
+multi-paragraph instructions the spec warns against, they represent
+duplicated responsibility that belongs in the tool, not in six agent
+files. The discover tool's enhanced output — ancestor chain with
+descriptions, misalignment flags — should teach the protocol directly.
+Agents should still report misalignment flags they encounter in
+discover output, but the instruction to do so should be minimal:
+acknowledge what discover tells you, not re-derive how to use it.
+If removing these instructions causes agents to misuse discover,
+that signals a discover output design problem to fix at the tool
+level.
+(Traces to: desired #6, undesired #3)
+
+**The methodology doc describes actual behavior.** The
+cascading-alignment.md doc under .aide/docs/ documents what the
+discover tool, validate tool, and aligner agent actually do — not
+what they might do someday. It covers the status field lifecycle,
+the aligner's role, how QA interacts with alignment, and how
+misalignment flows through the pipeline. If the doc names a
+capability the tooling does not support, the doc is wrong.
+(Traces to: desired #7, undesired #5)
+
+## Good examples
+
+The user runs /aide:align targeting a module three levels deep. The
+aligner calls discover, receives the ancestor chain: root spec,
+mid-level spec, leaf spec. It compares the leaf's outcomes against the
+mid-level's outcomes — no conflicts. It compares the leaf's outcomes
+against the root's outcomes — one desired outcome in the leaf
+contradicts an undesired outcome in the root. The aligner produces a
+todo.aide at the leaf with one item: "Leaf desired outcome #3 conflicts
+with root undesired outcome #2 — leaf says X should always happen, root
+says X is a failure mode." It sets the leaf's status to misaligned.
+The mid-level and root specs are untouched. The pipeline continues;
+nothing is blocked.
+
+QA is reviewing an implementation and notices that the spec it is
+validating against has an outcome that contradicts the parent spec's
+intent. QA sets status: misaligned on the leaf and notes the
+contradiction in its todo.aide under a "spec-gap" misalignment tag.
+QA does not attempt to resolve the contradiction or set anything to
+aligned — it finishes its code-vs-spec review and returns its verdict.
+The user later runs /aide:align to get a full alignment assessment.
+
+An agent calls discover on a module. The output includes the ancestor
+chain with a one-line description of each ancestor's intent. The agent
+reads this output and understands exactly where this module sits in the
+tree and what constraints it inherits — without any instruction in its
+agent definition telling it how to interpret discover's output. The
+tool's output was self-teaching.
+
+After the aligner confirms alignment across a subtree, a contributor
+adds a new child spec. Its status is implicitly pending — no status
+field in the frontmatter. The parent's status remains aligned because
+alignment was confirmed before the child existed. The next /aide:align
+run picks up the new child, compares it against ancestors, and either
+confirms it as aligned or flags it as misaligned. The parent's status
+is not retroactively changed by the child's addition.
+
+## Bad examples
+
+An aligner agent that reads a misaligned child spec and rewrites its
+outcomes to match the parent. The aligner's job is to detect and flag,
+not to resolve. The spec-writer resolves, informed by the todo.aide
+the aligner produced. An aligner that rewrites specs is an agent that
+makes intent decisions it was never authorized to make.
+
+A QA agent that runs a full tree walk and sets status: aligned on every
+spec it touches. QA's job is code-vs-spec. It encounters alignment
+issues incidentally — it can flag misaligned, but confirming alignment
+requires a deliberate full-tree walk that only the aligner performs.
+A QA agent setting aligned conflates the two contracts and gives false
+confidence that spec-vs-spec alignment was checked when it was not.
+
+An agent definition that contains three paragraphs explaining how to
+call discover, what the ancestor chain means, how to interpret
+misalignment flags, and when to escalate. If the agent needs this
+much instruction, discover's output is not doing its job. The fix is
+to improve discover's output format and descriptions, not to
+compensate with verbose agent instructions.
+
+A cascading-alignment.md doc that describes a "deep alignment mode"
+where the aligner recursively verifies every transitive descendant
+of a spec, but the aligner agent and discover tool have no such
+capability. The doc described aspirational behavior and will mislead
+every agent that reads it into expecting features that do not exist.
+
+Misalignment that blocks the pipeline: a status: misaligned flag on a
+spec causes the orchestrator to refuse to plan or build against it.
+A contributor who intentionally diverged a child spec from its parent
+for good reasons is now unable to proceed until they undo the
+divergence or get the aligner to approve it. The status field became
+a gate instead of an informational signal.
+
+An aligner that flags misalignment on the parent spec rather than
+the leaf. The root spec says "no X." A child spec says "always X."
+The aligner marks the root as misaligned. Now the root — which set
+the original rule — carries a flag suggesting it is the one that
+drifted. The flag belongs on the child that deviated from the
+ancestor's constraint.
+
+## References
+
+- `.aide/intent.aide` -- Root spec establishing that canonical docs must describe actual behavior, not aspirational behavior, and that cascading intent must flow faithfully from root to leaf.
+- `.claude/agents/aide/aide-qa.md` -- Current QA agent definition showing the one-line "walk the intent tree" instruction pattern and QA's code-vs-spec scope, which the aligner must not duplicate.
+- `.claude/agents/aide/aide-architect.md` -- Architect agent showing the same one-line tree-walking instruction pattern and how agents currently receive discover context.
+- `.claude/agents/aide/aide-implementor.md` -- Implementor agent confirming the tree-walking instruction is a single sentence across all agents, not the multi-paragraph duplication the spec warns against.
+- `.claude/agents/aide/aide-spec-writer.md` -- Spec writer agent showing how discover is referenced for inherited context, confirming agents already use discover but each carries its own instruction to do so.
+- `.aide/docs/aide-spec.md` -- Canonical AIDE methodology doc defining the intent tree, inheritance model, and file type semantics that the aligner and alignment doc must be consistent with.

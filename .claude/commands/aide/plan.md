@@ -6,7 +6,6 @@ Translate the intent spec into a step-by-step implementation plan. Output is a `
 
 ## Checklist
 
-- [ ] Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply
 - [ ] Read the complete intent spec (`.aide` or `intent.aide`) in the target module — frontmatter AND body sections must be filled. If body sections are empty, stop and escalate back to `/aide:synthesize`
 - [ ] Pull the coding playbook from the brain using the `study-playbook` skill — naming conventions, folder structure, patterns to follow and anti-patterns to avoid
 - [ ] Scan the target module and its neighbors to understand what already exists — existing helpers to reuse, existing patterns to match, folders already in place

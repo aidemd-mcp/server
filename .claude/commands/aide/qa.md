@@ -7,7 +7,6 @@ Verify actual output against the intent spec. This is the QA agent phase — the
 ## Checklist
 
 - [ ] Read the intent spec (`.aide` or `intent.aide`) in the target module
-- [ ] Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply to this module's output
 - [ ] Focus on the `outcomes` block specifically:
   - Does the actual output satisfy every item in `outcomes.desired`?
   - Does the actual output trip any item in `outcomes.undesired`?

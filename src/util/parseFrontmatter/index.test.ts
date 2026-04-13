@@ -130,4 +130,87 @@ Body here.
 		expect(result.frontmatter).not.toBeNull();
 		expect(result.frontmatter!.intent).toContain("This is a multiline");
 	});
+
+	it("parses description field when present", () => {
+		const raw = `---
+scope: tools/discover
+description: Map-making tool that returns spec locations and ancestor intent chains
+intent: Find .aide files.
+---
+`;
+
+		const result = parseFrontmatter(raw);
+
+		expect(result.frontmatter).not.toBeNull();
+		expect(result.frontmatter!.description).toBe(
+			"Map-making tool that returns spec locations and ancestor intent chains",
+		);
+	});
+
+	it("omits description from frontmatter when field is absent", () => {
+		const raw = `---
+scope: tools/discover
+intent: Find .aide files.
+---
+`;
+
+		const result = parseFrontmatter(raw);
+
+		expect(result.frontmatter).not.toBeNull();
+		expect(result.frontmatter!.description).toBeUndefined();
+	});
+
+	it("parses status: aligned", () => {
+		const raw = `---
+scope: src
+description: MCP server delivery channels
+status: aligned
+---
+`;
+
+		const result = parseFrontmatter(raw);
+
+		expect(result.frontmatter).not.toBeNull();
+		expect(result.frontmatter!.status).toBe("aligned");
+	});
+
+	it("parses status: misaligned", () => {
+		const raw = `---
+scope: src/service
+description: Service modules
+status: misaligned
+---
+`;
+
+		const result = parseFrontmatter(raw);
+
+		expect(result.frontmatter).not.toBeNull();
+		expect(result.frontmatter!.status).toBe("misaligned");
+	});
+
+	it("silently drops status when value is not a valid literal", () => {
+		const raw = `---
+scope: src
+status: pending
+---
+`;
+
+		const result = parseFrontmatter(raw);
+
+		expect(result.frontmatter).not.toBeNull();
+		expect(result.frontmatter!.status).toBeUndefined();
+	});
+
+	it("silently drops status when value is an arbitrary string", () => {
+		const raw = `---
+scope: src
+status: in-review
+---
+`;
+
+		const result = parseFrontmatter(raw);
+
+		expect(result.frontmatter).not.toBeNull();
+		expect(result.frontmatter!.status).toBeUndefined();
+	});
 });

@@ -33,6 +33,7 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 - Stage 6 (QA): `aide-qa`
 - Stage 7 (Fix): `aide-implementor` then `aide-qa`
 - Refactor: `aide-auditor` (one per `.aide` section, then `aide-implementor` + `aide-qa`)
+- Align: `aide-aligner`
 
 If you catch yourself about to write a file, edit code, or produce spec content — STOP. That is a subagent's job. Spawn the agent instead.
 
@@ -172,7 +173,6 @@ Do NOT write any code yourself. Do NOT run builds or tests yourself. The impleme
 **Your job (orchestrator):** Confirm the build is complete, then delegate.
 
 **Then delegate** to the `aide-qa` agent (via Agent tool, `subagent_type: aide-qa`). The agent will:
-- Use `aide_discover` to walk the full `.aide` chain
 - Compare actual output against `outcomes.desired`
 - Check for `outcomes.undesired` violations
 - Produce `todo.aide` with issues, misalignment tags, and retro
@@ -221,13 +221,34 @@ When all issues are resolved:
 
 6. **Report completion.** Summarize drift items found, fixed, and verified across all sections.
 
+### Align → `aide:align`
+
+**This is NOT part of the feature pipeline.** Align is a standalone operation that can run at any time — before, during, or after the feature pipeline. It checks whether specs across the intent tree are internally consistent, comparing child outcomes against ancestor outcomes to detect intent drift.
+
+**Detecting alignment intent:** If the user mentions alignment checking, spec consistency, intent drift, cascading outcomes, or whether child specs contradict ancestor specs — this is an align task. Do NOT start the spec→research→plan→build flow. Route to the align flow instead.
+
+**How the align flow works:**
+
+1. **Confirm the target path.** If the user doesn't provide a path, ask for one. Never run alignment on the full repository root without explicit intent.
+
+2. **Delegate to the aligner.** Delegate to a fresh `aide-aligner` agent (via Agent tool, `subagent_type: aide-aligner`). The prompt must include:
+   - The target path to align
+   - That this is a spec-vs-spec alignment check, not a code-vs-spec QA check
+
+3. **Relay results.** The aligner returns a verdict (ALIGNED/MISALIGNED), counts of specs checked and misalignments found, and `todo.aide` paths for any misaligned nodes. Present this to the user. If misalignments were found, suggest running `/aide:spec` on the flagged specs to resolve them.
+
+**Suggesting alignment (proactive guidance):** The orchestrator should suggest `/aide:align` in two situations — it is a suggestion, not automatic invocation:
+- When `aide_discover` output shows `status: misaligned` on any spec in the tree
+- When a spec edit (Stage 1) modifies `outcomes.desired` or `outcomes.undesired` — a changed outcome may now conflict with a child or ancestor spec
+
 ## Rules
 
 - **DELEGATE EVERYTHING.** The orchestrator NEVER writes files, edits code, fills specs, creates plans, runs tests, or does any substantive work. Every phase is handled by its specialized agent via the Agent tool. This is the single most important rule. If you are tempted to "just do it quickly" — don't. Spawn the agent.
 - **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, brain notes.
-- **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context. Every agent that reads intent should also use it to walk the `.aide` chain.
+- **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context.
 - **Pause for approval twice:** after spec frontmatter (Stage 1) and after plan (Stage 4). These are the two points where the user's input shapes the work.
 - **Detect and resume.** If the user runs `/aide` mid-pipeline, detect state from existing files and resume from the correct stage. Never restart from scratch if prior work exists.
 - **Research is filed by domain.** Brain notes go to `research/<domain>/`, not `research/<project>/`. The knowledge is reusable across projects.
 - **Retro is promoted.** When the fix loop closes, extract the `## Retro` section and persist it to `process/retro/` in the brain. This is how the pipeline learns.
 - **No shortcuts.** Even if the task seems trivial, the pipeline exists to maintain intent alignment. A "simple" task handled outside the pipeline is how drift starts. Always delegate.
+- **Suggest alignment, don't force it.** When discover output shows `status: misaligned` on any spec, or when a spec edit touches outcomes, suggest `/aide:align` to the user. Do not invoke it automatically — misalignment is informational, not a pipeline gate. The user decides whether to act.

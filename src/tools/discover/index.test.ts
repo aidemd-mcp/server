@@ -70,4 +70,51 @@ describe("discover", () => {
 
 		expect(result).toContain("1 spec found");
 	});
+
+	it("deep scan includes ancestor chain before subtree when ancestors exist", async () => {
+		// Root-level ancestor spec
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+		await writeFile(
+			join(tempDir, ".aide", "intent.aide"),
+			"---\ndescription: Root project intent\n---\n",
+		);
+
+		// Target subtree with its own spec
+		await mkdir(join(tempDir, "src"), { recursive: true });
+		await writeFile(join(tempDir, "src", ".aide"), "---\ndescription: Src spec\n---\n");
+
+		const result = await discover(tempDir, "src");
+
+		expect(result).toContain("Ancestor chain:");
+		expect(result).toContain("Root project intent");
+
+		// Ancestor chain must appear before the tree
+		const ancestorIndex = result.indexOf("Ancestor chain:");
+		const treeIndex = result.indexOf("src/");
+		expect(ancestorIndex).toBeGreaterThanOrEqual(0);
+		expect(treeIndex).toBeGreaterThanOrEqual(0);
+		expect(ancestorIndex).toBeLessThan(treeIndex);
+	});
+
+	it("deep scan with no ancestors above target omits ancestor chain section", async () => {
+		// No specs above the target — only a spec inside the target
+		await mkdir(join(tempDir, "sub"), { recursive: true });
+		await writeFile(join(tempDir, "sub", ".aide"), "---\ndescription: Sub spec\n---\n");
+
+		const result = await discover(tempDir, "sub");
+
+		expect(result).not.toContain("Ancestor chain:");
+	});
+
+	it("shallow scan (no path) does not include ancestor chain", async () => {
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+		await writeFile(
+			join(tempDir, ".aide", "intent.aide"),
+			"---\ndescription: Root intent\n---\n",
+		);
+
+		const result = await discover(tempDir);
+
+		expect(result).not.toContain("Ancestor chain:");
+	});
 });

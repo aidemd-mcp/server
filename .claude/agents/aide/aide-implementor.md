@@ -22,19 +22,17 @@ You operate in two modes:
 
 2. **Read the intent spec** (`.aide` or `intent.aide`). The plan tells you what to build; the spec tells you what counts as correct.
 
-3. **Walk the intent tree.** Use `aide_discover` to understand ancestor outcomes that still apply.
+3. **Execute steps top-to-bottom.** Check each checkbox in `plan.aide` as you complete it. Do not reorder, skip, or add steps.
 
-4. **Execute steps top-to-bottom.** Check each checkbox in `plan.aide` as you complete it. Do not reorder, skip, or add steps.
+4. **Match existing patterns.** Before writing new code, read surrounding files to absorb conventions — naming, file structure, error handling, import style. Your code should look like it was written by the same team.
 
-5. **Match existing patterns.** Before writing new code, read surrounding files to absorb conventions — naming, file structure, error handling, import style. Your code should look like it was written by the same team.
-
-6. **Run verification after each significant change:**
+5. **Run verification after each significant change:**
    - Type checking: `rtk tsc --noEmit`
    - Linting: `rtk lint` (if configured)
    - Tests: `rtk vitest run` or equivalent
    - Build: `rtk npm run build` (if touching build-affecting code)
 
-7. **Write tests** covering every behavior the spec's `outcomes.desired` names, plus regression coverage for `outcomes.undesired`.
+6. **Write tests** covering every behavior the spec's `outcomes.desired` names, plus regression coverage for `outcomes.undesired`.
 
 ## Fix Mode
 

@@ -1,0 +1,56 @@
+---
+intent: >
+  Desired outcome #6 is violated — tree-walking instructions were removed from agent
+  definitions and the previously-failing command file (spec.md), but five other command
+  files under .claude/commands/aide/ still carry the identical instruction. The fix was
+  applied narrowly rather than to the full instruction surface.
+misalignment:
+  - implementation-drift
+  - plan-gap
+---
+
+## Issues
+
+- [x] `.claude/commands/aide/spec.md` line 10: "If a parent `.aide` exists up the tree, use `aide_discover` to walk the chain and understand inherited context before writing" — tree-walking instruction survives in the command file after being removed from the agent definition.
+  Traces to: desired #6 (agents no longer contain verbose tree-walking instructions), undesired #3 (agents should not duplicate the discover tool's teaching)
+  Misalignment: implementation-drift
+
+- [x] `.claude/commands/aide.md` line ~176 (Stage 6 QA section): The orchestrator describes what the QA agent will do as "Use `aide_discover` to walk the full `.aide` chain" — but the QA agent's Verification Process no longer contains this step. The orchestrator is describing removed behavior.
+  Traces to: desired #6 (tree-walking instructions removed from agents), undesired #3
+  Misalignment: implementation-drift
+
+- [x] `.claude/commands/aide.md` line ~249 (Rules section): "Every agent that reads intent should also use it to walk the `.aide` chain." — this rule directly contradicts the intent of desired outcome #6 and undesired #3. The whole point of this implementation was that agents should NOT be instructed to walk the tree; the discover tool's output teaches the protocol.
+  Traces to: desired #6, undesired #3 (no multi-paragraph or repeated tree-walking instructions)
+  Misalignment: implementation-drift
+
+- [x] `.claude/commands/aide.md` alignment suggestion guidance (Rules section bullet, ~line 255): States the orchestrator should suggest `/aide:align` "when a spec edit (Stage 1 or Stage 3) modifies `outcomes.desired` or `outcomes.undesired`." Stage 3 is Synthesize — the domain expert fills Context/Strategy/examples, not the outcomes block. Outcomes are written in Stage 1 (spec-writer) and can only be modified via a spec edit at Stage 1. The Stage 3 reference is factually wrong and may cause the orchestrator to skip alignment suggestions after genuine outcome edits in Stage 1 (if it reasons that only Stage 3 edits trigger them).
+  Traces to: desired #5 (command invocable by user or suggestable by orchestrator when drift is suspected)
+  Misalignment: implementation-drift
+
+- [x] `.claude/commands/aide/qa.md` line 10: "Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply to this module's output" — tree-walking instruction survives in the QA command file, duplicating the discover tool's teaching.
+  Traces to: desired #6 (agent definitions no longer contain verbose tree-walking instructions), undesired #3 (no duplicated tree-walking instructions)
+  Misalignment: implementation-drift
+
+- [x] `.claude/commands/aide/build.md` line 11: "Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply to this module's output" — same instruction survives in the build command file.
+  Traces to: desired #6, undesired #3
+  Misalignment: implementation-drift
+
+- [x] `.claude/commands/aide/plan.md` line 9: "Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply" — same instruction survives in the plan command file.
+  Traces to: desired #6, undesired #3
+  Misalignment: implementation-drift
+
+- [x] `.claude/commands/aide/synthesize.md` line 9: "Use `aide_discover` to walk the full `.aide` chain from root to leaf — understand the intent tree before writing anything" — same instruction survives in the synthesize command file.
+  Traces to: desired #6, undesired #3
+  Misalignment: implementation-drift
+
+- [x] `.claude/commands/aide/fix.md` line 10: "Use `aide_discover` to walk the full `.aide` chain — understand the intent tree before touching code" — same instruction survives in the fix command file.
+  Traces to: desired #6, undesired #3
+  Misalignment: implementation-drift
+
+## Retro
+
+The spec.md command file gap (Issue 1) would have been caught if the plan's scope for Step 5 had explicitly listed both the agent definition files AND their corresponding command files for each agent. The plan named `aide-spec-writer.md` (agent) but not `aide/spec.md` (command) — a parallel file that carries the same checklist-form instructions. The commands directory is a separate instruction surface that mirrors agent behavior; any cleanup of agent instructions should check for corresponding command files.
+
+Issues 2 and 3 (orchestrator drift) would have been caught by reading the full orchestrator command after implementing the QA agent changes. The plan updated the orchestrator to add the Align section but did not include a step to audit the existing QA section and Rules section for now-stale tree-walking references. Adding a final "audit existing orchestrator content for stale references" sub-step to the orchestrator update would have caught this.
+
+Issue 4 (Stage 3 factual error) would have been caught by cross-referencing the alignment suggestion guidance against the pipeline stage definitions in the same file. Stage 3's description in aide.md is explicit that the domain expert fills body sections, not outcomes.

@@ -15,6 +15,7 @@
 ````markdown
 ---
 scope: <module path this spec governs, e.g. service/<module-name>. One spec, one scope.>
+description: <one-line purpose statement — used by aide_discover ancestor chains so agents understand what this spec governs without opening it>
 intent: >
   One paragraph, plain language, written so a human reading it cold understands
   the purpose of this module in under ten seconds. State the problem being solved

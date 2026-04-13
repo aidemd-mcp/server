@@ -5,6 +5,8 @@ export type AideFileType = "intent" | "research" | "todo" | "plan";
 export interface AideFrontmatter {
 	/** Module scope label (e.g. ".", "cli", "tools/discover"). */
 	scope?: string;
+	/** One-line purpose statement. Makes ancestor chains in aide_discover self-contained. */
+	description?: string;
 	/** Human-readable intent statement for this module. */
 	intent?: string;
 	/** Desired and undesired outcome lists. */
@@ -12,6 +14,12 @@ export interface AideFrontmatter {
 		desired: string[];
 		undesired: string[];
 	};
+	/**
+	 * Alignment state. Omit for pending (the implicit default — no review yet).
+	 * Set to "aligned" by the aligner agent; set to "misaligned" by QA on drift.
+	 * "pending" is never stored or surfaced — its absence is the signal.
+	 */
+	status?: "aligned" | "misaligned";
 }
 
 /** A parsed body section split on `##` headings. */
@@ -52,7 +60,8 @@ export interface ValidationWarning {
 		| "missing-spec"
 		| "naming-conflict"
 		| "broken-link"
-		| "orphaned-research";
+		| "orphaned-research"
+		| "missing-description";
 	/** Path relative to project root where the issue was found. */
 	path: string;
 	/** Human-readable description of the issue. */

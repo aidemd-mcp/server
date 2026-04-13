@@ -4,6 +4,7 @@ import { join, dirname, isAbsolute } from "node:path";
 import type { ValidationResult, ValidationWarning } from "@/types/index.js";
 import scan from "@/util/scan/index.js";
 import { detectAnomalies } from "@/util/classify/index.js";
+import parseFrontmatter from "@/util/parseFrontmatter/index.js";
 
 export const ValidateInput = z.object({
 	path: z.string().optional().describe("Subdirectory to validate (defaults to entire project)"),
@@ -52,12 +53,21 @@ export default async function validate(root: string, path?: string): Promise<Val
 	// Structural anomalies
 	const warnings: ValidationWarning[] = await detectAnomalies(files, root);
 
-	// Broken link checks
+	// Broken link and missing-description checks
 	for (const file of files) {
 		try {
 			const content = await readFile(file.path, "utf-8");
 			const linkWarnings = await checkBrokenLinks(file.path, content, file.relativePath);
 			warnings.push(...linkWarnings);
+
+			const { frontmatter } = parseFrontmatter(content);
+			if (!frontmatter?.description) {
+				warnings.push({
+					kind: "missing-description",
+					path: file.relativePath,
+					message: "Missing or empty description field in frontmatter",
+				});
+			}
 		} catch {
 			// skip unreadable files
 		}

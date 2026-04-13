@@ -34,7 +34,9 @@ function coerceFrontmatter(raw: unknown): AideFrontmatter {
 
 	const fm: AideFrontmatter = {};
 	if (typeof obj.scope === "string") fm.scope = obj.scope;
+	if (typeof obj.description === "string") fm.description = obj.description;
 	if (typeof obj.intent === "string") fm.intent = obj.intent;
+	if (obj.status === "aligned" || obj.status === "misaligned") fm.status = obj.status;
 
 	if (obj.outcomes && typeof obj.outcomes === "object") {
 		const outcomes = obj.outcomes as Record<string, unknown>;

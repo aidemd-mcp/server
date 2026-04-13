@@ -20,8 +20,6 @@ You will be given:
 - A target module or directory where the `.aide` file should live
 - Optionally, context about what the user wants to build
 
-If a parent `.aide` exists up the tree, use `aide_discover` to walk the chain and understand inherited context before writing. Child specs inherit parent context — do not restate it.
-
 ## Interview Protocol
 
 Ask the user directly about:
