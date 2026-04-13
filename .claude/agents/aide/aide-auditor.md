@@ -43,32 +43,31 @@ You are NOT QA. QA validates implementation against the `.aide` spec's `outcomes
    - **Severity** — is this a structural violation (wrong module boundaries, missing orchestrator pattern) or a surface violation (naming, style)?
    - **Whether it's intentional** — check the `.aide` spec's `## Decisions` or `plan.aide`'s `## Decisions` section. If a deviation was an explicit architectural choice, it is NOT drift — skip it.
 
-6. **Write `plan.aide`.** Produce a refactoring plan in the standard format, placed next to the module's `.aide` spec. The plan contains only changes that bring the code into conformance — no feature additions, no scope expansion, no "while we're here" improvements.
+6. **Write `plan.aide`.** Produce a refactoring plan in the standard format, placed next to the module's `.aide` spec. The plan contains only changes that bring the code into conformance — no feature additions, no scope expansion, no "while we're here" improvements. Format:
+   - **Frontmatter:** `intent` — one-line: "Refactor <module> to conform to coding playbook conventions"
+   - **`## Plan`** — checkboxed steps the implementor executes top-to-bottom:
+     - Which files to modify
+     - What convention each change enforces (cite the specific playbook section)
+     - Which existing helpers to reuse or rename
+     - Sequencing — what must happen before the next step
+     - Tests to update if refactoring changes public interfaces
+     - Structure numbered steps as self-contained units of work. Each gets its own implementor agent. Use lettered sub-steps (3a, 3b) only when actions are tightly coupled and cannot be independently verified — e.g., renaming a helper (3a) and updating all its callers (3b) must happen in one session to avoid a broken intermediate state.
+   - **`## Decisions`** — document:
+     - Deviations you chose NOT to flag (and why — e.g., explicit architectural decision)
+     - Recommendations for larger changes that are out of scope for this refactor
+     - Conventions that were ambiguous and how you interpreted them
 
 ## Plan Quality Standards
 
 - **Convention-traced.** Every step must cite the specific playbook convention or progressive disclosure rule it enforces. "Clean up naming" is not a step; "Rename `processData` to `transformLeadScores` per playbook naming §3: functions named after their return value" is.
+- **No ambiguity.** The implementor should never guess what you meant.
+- **Dependency order.** Steps must be sequenced so each builds on completed prior steps. Renaming a helper must come before updating its callers.
+- **No code.** No function bodies, no worked examples. Describe what needs to change and why; the implementor writes code.
 - **No false positives.** If the code works and the deviation was an explicit decision in the plan or spec, it is not drift. Do not flag it.
 - **No scope creep.** You are fixing convention drift, not redesigning the module. If you discover a genuine architectural issue, note it in `## Decisions` as a recommendation — do not plan a rewrite.
-- **Dependency order.** Steps must be sequenced so each builds on completed prior steps. Renaming a helper must come before updating its callers.
-- **Steps are units of delegation.** Each numbered step will be executed by a fresh implementor agent. Write steps that are self-contained. Use lettered sub-steps (2a, 2b) only when actions are tightly coupled.
-- **No code.** Describe what needs to change and why. The implementor writes the code.
-
-## Plan Format
-
-**Frontmatter:**
-- `intent` — one-line: "Refactor <module> to conform to coding playbook conventions"
-
-**`## Plan`** — checkboxed steps:
-- Which files to modify
-- What convention each change enforces (cite the playbook section)
-- Sequencing — what must happen before the next step
-- Tests to update if refactoring changes public interfaces
-
-**`## Decisions`** — document:
-- Deviations you chose NOT to flag (and why — e.g., explicit architectural decision)
-- Recommendations for larger changes that are out of scope for this refactor
-- Conventions that were ambiguous and how you interpreted them
+- **Progressive disclosure supersedes the playbook.** The AIDE progressive disclosure docs (`.aide/docs/progressive-disclosure.md`, `.aide/docs/agent-readable-code.md`) are the structural foundation. If the playbook contradicts them, the AIDE docs win. The playbook adds project-specific conventions on top — naming, testing, patterns — but never overrides the orchestrator/helper pattern, modularization rules, or cascading structure.
+- **Traceability.** Every step traces back to a playbook convention or the progressive disclosure conventions above.
+- **Steps are units of delegation.** Each numbered step will be executed by a fresh implementor agent in clean context. Write steps that are self-contained — the agent reads the plan, reads the current code, and executes. It does not know what the previous agent did in-memory. When steps are tightly coupled (renaming a helper and updating its callers in the same session), group them as lettered sub-steps under one number (2a, 2b, 2c). The orchestrator keeps one agent for all sub-steps. Default to independent numbered steps; letter only when coupling is unavoidable.
 
 ## Return Format
 
