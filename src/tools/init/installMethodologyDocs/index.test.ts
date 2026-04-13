@@ -18,6 +18,7 @@ const METHODOLOGY_FILES = [
 	"automated-qa.md",
 	"plan-aide.md",
 	"todo-aide.md",
+	"cascading-alignment.md",
 ];
 
 let tempDir: string;

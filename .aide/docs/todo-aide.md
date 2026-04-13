@@ -21,7 +21,7 @@ Each entry in `misalignment` names the pipeline stage where intent was lost in t
 | Value | Meaning |
 |-------|---------|
 | `spec-gap` | The intent spec didn't capture something important — a missing outcome, an ambiguous intent, an edge case the spec should have named |
-| `research-gap` | Domain knowledge was incomplete, outdated, or wrong — the brain didn't have what the planner needed |
+| `research-gap` | Domain knowledge was incomplete, outdated, or wrong — the brain didn't have what the strategist needed |
 | `strategy-gap` | Strategy didn't account for an edge case or made a decision that doesn't hold under real conditions |
 | `plan-gap` | The architect missed a step, made a wrong structural call, or left ambiguity the implementor had to improvise around |
 | `implementation-drift` | Code deviated from the plan — the implementor made an unauthorized architectural decision or misread a step |

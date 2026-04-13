@@ -25,7 +25,7 @@ describe("scaffoldCommands", () => {
 
 		const results = await scaffoldCommands(commandDir);
 
-		expect(results).toHaveLength(12);
+		expect(results).toHaveLength(13);
 		expect(results.every((r) => r.status === "would-create")).toBe(true);
 		expect(results.map((r) => r.name)).toEqual([
 			"aide",
@@ -40,6 +40,7 @@ describe("scaffoldCommands", () => {
 			"aide:init",
 			"aide:update-playbook",
 			"aide:refactor",
+			"aide:align",
 		]);
 	});
 
@@ -121,7 +122,7 @@ describe("scaffoldCommands", () => {
 		const { default: scaffoldCommandsFresh } = await import("./index.js");
 		const results = await scaffoldCommandsFresh(commandDir);
 
-		expect(results).toHaveLength(12);
+		expect(results).toHaveLength(13);
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get("aide:build")).toBe("would-skip");
 		expect(byName.get("aide:research")).toBe("would-create");

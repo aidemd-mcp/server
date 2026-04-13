@@ -75,10 +75,8 @@ There are two lookup paths — use the right one:
 | What you need | Where to look |
 |---------------|---------------|
 | Coding conventions, patterns | \`study-playbook\` skill (not search) |
-| Project context, goals, status | \`projects/<project>.md\` |
-| Tasks for a project | \`kanban/board.md\` |
-| Session logs, prior work | \`journal/log/\` (search by project name or topic) |
-| Research, reference material | \`research/\` (search by domain) |
+| Domain research, reference material | \`research/\` (search by domain) |
+| QA retros, process learnings | \`process/retro/\` |
 `;
 
 /** Markdown template for the coding-playbook hub note. Contains the five-section

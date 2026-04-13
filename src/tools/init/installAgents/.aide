@@ -1,35 +1,39 @@
 ---
 scope: src/tools/init/installAgents
+status: aligned
 intent: >
   Install the canonical AIDE pipeline agent files into the host project's
   `.claude/agents/` directory. Each agent maps to one pipeline phase —
-  spec-writer, researcher, domain-expert, architect, implementor, QA —
-  and carries its own system prompt, tool allowlist, model assignment,
-  and MCP server declarations (including Obsidian MCP for brain access).
-  Agents are the runtime identity of each pipeline phase: the slash
-  commands orchestrate, the agents execute. Existing agent files in the
-  host project are never overwritten — customizations survive init.
+  spec-writer, domain-expert, strategist, architect, implementor, QA,
+  aligner, auditor — and carries its own system prompt, tool allowlist,
+  model assignment, and MCP server declarations (including Obsidian MCP
+  for brain access). Agents are the runtime identity of each pipeline
+  phase: the slash commands orchestrate, the agents execute. Existing
+  agent files in the host project are never overwritten — customizations
+  survive init.
 outcomes:
   desired:
-    - Six agent files are installed to `.claude/agents/`: aide-spec-writer,
-      aide-researcher, aide-domain-expert, aide-architect, aide-implementor,
-      aide-qa. Each has YAML frontmatter (name, description, tools, model,
-      mcpServers, color) and a Markdown body that serves as the agent's
-      system prompt.
+    - Eight agent files are installed to `.claude/agents/aide/`:
+      aide-spec-writer, aide-domain-expert, aide-strategist,
+      aide-architect, aide-implementor, aide-qa, aide-aligner,
+      aide-auditor. Each has YAML frontmatter (name, description, tools,
+      model, mcpServers, color) and a Markdown body that serves as the
+      agent's system prompt.
     - Agent content is read through the initContent chokepoint — the same
       `readCanonicalDoc()` path used by methodology docs and commands. No
       agent content is hardcoded as template literals in this module.
     - Obsidian MCP is declared in `mcpServers` for agents that need brain
-      access — researcher (write), domain-expert (read), architect (read).
-      The declaration is portable (server name reference, not inline config)
-      so the host project provides its own Obsidian MCP wiring.
+      access — domain-expert (write), strategist (read), architect (read),
+      auditor (read). The declaration is portable (server name reference,
+      not inline config) so the host project provides its own Obsidian MCP
+      wiring.
     - A generic `study-playbook` skill template is installed to
       `.claude/skills/study-playbook/SKILL.md` in the host project. It
       teaches the hub-navigation pattern against the host's own
       coding-playbook vault path. Existing skills are not overwritten.
     - Model assignments match task demands — opus for deep reasoning
-      (spec-writer, domain-expert, architect), sonnet for throughput
-      (researcher, implementor, QA).
+      (spec-writer, strategist, architect, aligner, auditor), sonnet for
+      throughput (domain-expert, implementor, QA).
     - The AIDE methodology docs specify the canonical agent list so that
       any reader of the docs knows which agents exist and which phases
       invoke them.
@@ -64,11 +68,11 @@ outcomes:
 
 ## Context
 
-The AIDE pipeline currently defines seven phases (spec, research, synthesize,
-plan, build, QA/fix, refactor), each described by a slash command that tells the
-orchestrating agent what to do. But the commands have no agents to delegate
-to — they say "spin up a Planner agent" without shipping one. Users must
-define their own agents or rely on the orchestrator to inline the work,
+The AIDE pipeline currently defines eight phases (spec, research, synthesize,
+plan, build, QA/fix, align, refactor), each described by a slash command that
+tells the orchestrating agent what to do. But the commands have no agents to
+delegate to — they say "spin up a Planner agent" without shipping one. Users
+must define their own agents or rely on the orchestrator to inline the work,
 which defeats the fresh-context-per-phase architecture that makes the
 pipeline reliable.
 
@@ -80,18 +84,18 @@ The orchestrator delegates by naming the agent in the prompt or via
 `@agent-<name>` mention.
 
 AIDE is opinionated about the knowledge layer: Obsidian MCP is the brain.
-The researcher writes to it, the domain expert reads from it, the architect
-reads the coding playbook from it. Host projects bring their own vault —
-the agents teach the workflow pattern, not our content.
+The domain expert writes to it, the strategist reads from it, the architect
+and auditor read the coding playbook from it. Host projects bring their own
+vault — the agents teach the workflow pattern, not our content.
 
 ## Strategy
 
-**One agent per pipeline role, not per phase.** Seven agents map to the seven
+**One agent per pipeline role, not per phase.** Eight agents map to the eight
 distinct roles the pipeline needs. The implementor serves both build and
-fix phases — same role, same prompt, different inputs. The researcher and
-domain expert are separate agents because their brain-access patterns
-differ (write-heavy vs read-heavy) and their reasoning demands differ
-(volume research vs deep synthesis).
+fix phases — same role, same prompt, different inputs. The domain expert and
+strategist are separate agents because their brain-access patterns differ
+(write-heavy vs read-heavy) and their reasoning demands differ (volume
+research vs deep synthesis).
 
 **Agents declare MCP servers by name reference, not inline config.** An
 agent that needs Obsidian declares `mcpServers: [obsidian]`. The host
@@ -100,16 +104,18 @@ path, connection details). This keeps agents portable across vaults while
 being opinionated that Obsidian is the brain layer.
 
 **Model assignments optimize for task shape.** Opus for roles that require
-deep reasoning under ambiguity (spec-writer distilling intent, domain-expert
-synthesizing research, architect making structural decisions). Sonnet for
-roles that require throughput and pattern-matching (researcher doing volume
+deep reasoning under ambiguity (spec-writer distilling intent, strategist
+synthesizing research, architect making structural decisions, aligner
+resolving drift, auditor evaluating refactor targets). Sonnet for roles
+that require throughput and pattern-matching (domain-expert doing volume
 web research, implementor executing plans, QA doing systematic checking).
 
 **The study-playbook skill ships as a generic template.** It teaches the
 hub-navigation pattern (read index → identify sections → drill into child
 notes → follow wikilinks) but points at the host's own `coding-playbook/`
 vault path. The host builds their own playbook; the skill teaches them how
-to consume it. The architect agent's prompt references this skill by name.
+to consume it. The architect and auditor agents' prompts reference this
+skill by name.
 
 **Agent files flow through the initContent chokepoint.** Canonical agent
 `.md` files live in the repo at `.claude/agents/`. The `initContent` module
@@ -127,17 +133,19 @@ pattern. The command owns the what; the agent owns the how.
 A fresh `aide_init` run reports agents alongside everything else:
 
 > ✓ aide-spec-writer: Created
-> ✓ aide-researcher: Created
 > ✓ aide-domain-expert: Created
+> ✓ aide-strategist: Created
 > ✓ aide-architect: Created
 > ✓ aide-implementor: Created
 > ✓ aide-qa: Created
+> ✓ aide-aligner: Created
+> ✓ aide-auditor: Created
 > ✓ study-playbook skill: Created
 
 A re-run on the same project:
 
 > - aide-spec-writer: Already exists
-> - aide-researcher: Already exists
+> - aide-domain-expert: Already exists
 > ...
 
 A host project that has customized `aide-architect.md` with project-specific

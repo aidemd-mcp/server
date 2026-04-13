@@ -16,13 +16,13 @@ AIDE ships eight canonical agents that `aide_init` installs to `.claude/agents/a
 | Agent | Model | Phase(s) | Brain Access |
 |---|---|---|---|
 | `aide-spec-writer` | opus | spec | none |
-| `aide-researcher` | sonnet | research | write |
-| `aide-domain-expert` | opus | synthesize | read |
-| `aide-architect` | opus | plan | read (playbook) |
+| `aide-domain-expert` | sonnet | research | write |
+| `aide-strategist` | opus | synthesize | read |
+| `aide-architect` | opus | plan | read (playbook + brain) |
 | `aide-implementor` | sonnet | build, fix | none |
 | `aide-qa` | sonnet | qa | none |
 | `aide-aligner` | opus | align | none |
-| `aide-auditor` | opus | refactor | read (playbook) |
+| `aide-auditor` | opus | refactor | read (playbook + brain) |
 
 The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation.
 
@@ -35,4 +35,4 @@ AIDE ships two canonical skills that `aide_init` installs to `.claude/skills/`:
 | `study-playbook` | Navigate the coding playbook hub top-down to load conventions before writing or reviewing code |
 | `brain` | General-purpose vault access — read the vault CLAUDE.md, follow its navigation rules, fulfill the user's request |
 
-The `aide-architect` agent declares this skill in its frontmatter. Host projects build their own coding playbook in their Obsidian vault; the skill teaches the navigation pattern.
+The `aide-architect` and `aide-auditor` agents declare this skill in their frontmatter. Host projects build their own coding playbook in their Obsidian vault; the skill teaches the navigation pattern.

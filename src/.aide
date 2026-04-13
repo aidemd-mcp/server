@@ -1,5 +1,6 @@
 ---
 scope: src
+status: aligned
 intent: >
   src/ is the MCP server that implements aidemd-mcp's two delivery channels.
   Channel one is the handshake itself: the tool list is read verbatim by
@@ -14,8 +15,9 @@ outcomes:
   desired:
     - The tool surface covers the full AIDE lifecycle — discover (map),
       read (drill in), scaffold (create with naming enforcement), validate
-      (health check), init (one-command bootstrap). Each tool covers a
-      distinct lifecycle phase with no overlap between them.
+      (health check), init (one-command bootstrap), upgrade (bring stale
+      host projects up to date). Each tool covers a distinct lifecycle
+      phase with no overlap between them.
     - Every tool description is complete enough to teach the convention it
       invokes on its own. An agent reading only the tool list learns what
       `.aide` files are, the five file types, the never-both-.aide-and-
@@ -30,7 +32,7 @@ outcomes:
       is the only way to change what this submodule ships.
     - Behavior is identical across every supported MCP client (Claude
       Code, Cursor, Windsurf, Copilot, Zed). Client-specific logic is
-      confined to aide_init; the core four tools are client-agnostic.
+      confined to aide_init; the remaining five tools are client-agnostic.
     - aide_init turns a cold host project AIDE-ready in one command and
       is safely re-runnable. Pointer stub written to the host's config
       file, methodology doc hub installed onto the host's disk, slash
@@ -121,17 +123,17 @@ every read.
 
 **Each tool covers a distinct lifecycle phase with no overlap.** Discover
 is the map; read is the drill; scaffold is the pen; validate is the health
-check; init is the bootstrap. Adding a new tool requires showing that no
-existing tool can absorb the responsibility without overlap. A tighter
-surface means less for an agent to get wrong and less description budget
-competing for attention at handshake time.
+check; init is the bootstrap; upgrade is the updater. Adding a new tool
+requires showing that no existing tool can absorb the responsibility
+without overlap. A tighter surface means less for an agent to get wrong
+and less description budget competing for attention at handshake time.
 
 **Client parity via MCP, not per-client shims.** The server speaks
 standard MCP over stdio. All client-specific branching lives in
 `aide_init`, which writes config files for whichever framework it
-detects. The core four tools are fed identical input schemas regardless
-of which client is talking, because parity is what lets the teaching
-surface be reused across clients.
+detects. The remaining five tools are fed identical input schemas
+regardless of which client is talking, because parity is what lets the
+teaching surface be reused across clients.
 
 **Idempotency as an invariant, not a feature.** Init, scaffold, and
 validate are all safe to re-run on a project already in that state.

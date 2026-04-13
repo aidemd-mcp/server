@@ -1,34 +1,36 @@
 ---
 scope: src/tools/init/scaffoldCommands
+status: aligned
 intent: >
-  scaffoldCommands installs the AIDE pipeline slash commands and the
-  update-playbook maintenance command into an `aide/` subfolder of
-  the host framework's command directory. The pipeline commands
-  (research, spec, synthesize, plan, build, qa, fix) are faithful
-  renders of canonical command templates from docs/commands/aide/,
-  read at runtime through initContent. The update-playbook command
-  gives maintainers a way to evolve their coding playbook — adding
-  conventions, detecting drift between the task routing table and
-  actual playbook sections, and keeping the hub's intent mapping in
-  sync with structural changes. Together these scaffolded files are
-  the entire runtime of the AIDE pipeline plus its playbook
-  maintenance surface in a host project. The `aide/` subfolder is
-  load-bearing: host frameworks derive the slash command namespace
-  from folder nesting, so a file installed at
-  `<command-dir>/aide/research.md` becomes `/aide:research` in the
-  host.
+  scaffoldCommands installs the full AIDE command surface into a host
+  project: the `/aide` orchestrator at the command directory root, the
+  seven pipeline phase commands (research, spec, synthesize, plan, build,
+  qa, fix), three lifecycle commands (upgrade, init, align), and two
+  maintenance commands (update-playbook, refactor) — 13 entries total from
+  the fixed COMMANDS registry. All command files are faithful renders of
+  canonical templates from docs/commands/aide/, read at runtime through
+  initContent. The `aide/` subfolder is load-bearing: host frameworks derive
+  the slash command namespace from folder nesting, so a file installed at
+  `<command-dir>/aide/research.md` becomes `/aide:research` in the host.
+  Together these scaffolded files are the entire runtime of the AIDE pipeline
+  plus its maintenance and lifecycle surfaces in a host project.
 outcomes:
   desired:
-    - One slash command file is scaffolded per pipeline phase under an
-      `aide/` subfolder: research, spec, synthesize, plan, build, qa, fix,
-      plus the update-playbook maintenance command. Each pipeline command
-      covers a distinct phase with no overlap; update-playbook is not a
-      pipeline phase but a maintenance surface that lives alongside them.
-      The set is defined by the canonical command templates under
-      docs/commands/aide/, not by a hardcoded count. The filenames are
-      bare phase names (`research.md`, not `aide-research.md`) because the
-      enclosing `aide/` folder already carries the namespace —
-      double-naming would produce `/aide:aide-research` on the host side.
+    - One slash command file is scaffolded per entry in the COMMANDS registry.
+      The registry currently contains 13 entries: the `/aide` orchestrator
+      (installed as `aide.md` at the command directory root) plus 12 subcommands
+      installed under an `aide/` subfolder — the seven pipeline phases
+      (research, spec, synthesize, plan, build, qa, fix), three lifecycle
+      commands (upgrade, init, align), and two maintenance commands
+      (update-playbook, refactor). Each pipeline phase command covers a
+      distinct phase with no overlap; the non-phase commands provide
+      maintenance, alignment, and upgrade surfaces that ship alongside them.
+      The set is defined by the fixed COMMANDS registry, not by runtime
+      discovery. The subcommand filenames are bare phase names
+      (`research.md`, not `aide-research.md`) because the enclosing `aide/`
+      folder already carries the namespace — double-naming would produce
+      `/aide:aide-research` on the host side. The orchestrator lives one
+      level up (`aide.md`) so it registers as the plain `/aide` command.
     - Each command file is a byte-faithful render of its canonical
       template read from docs/commands/aide/ at runtime. A diff
       between an installed command file and its template shows only
@@ -157,20 +159,18 @@ first-class and survive re-runs unconditionally. A future explicit
 `aide_upgrade` path can handle intentional re-sync; this helper
 never performs one by accident.
 
-**Phase commands are enumerated from a fixed list, not discovered
-dynamically.** The helper iterates over a fixed list of canonical command
-names. Adding a new phase requires adding a canonical template under
-docs/commands/aide/, updating the parent spec to justify the new phase,
-and extending the list here. All three changes land in the same PR or
-none of them do — this is the three-way lock the canonical command-hub
-spec declares mandatory. A helper that discovers its command list
+**Commands are enumerated from a fixed registry, not discovered dynamically.**
+The helper iterates over a fixed COMMANDS registry of 13 entries: the
+orchestrator (`aide.md` at the command directory root) plus 12 subcommands
+under `aide/` — the seven pipeline phases (research, spec, synthesize, plan,
+build, qa, fix), three lifecycle commands (upgrade, init, align), and two
+maintenance commands (update-playbook, refactor). Adding a new command requires
+adding a canonical template under docs/commands/aide/, updating the parent spec
+to justify the addition, and extending the registry here. All three changes land
+in the same PR or none of them do — this is the three-way lock the canonical
+command-hub spec declares mandatory. A helper that discovers its command list
 dynamically from the docs folder is a regression, because it lets a stray
-Markdown file in the wrong place silently expand the pipeline. The
-update-playbook command is part of this fixed list — it is not a pipeline
-phase but a maintenance command that ships alongside them. Note: the
-orchestrator `/aide` is scaffolded as `aide.md` at the command directory
-root by a separate part of init — it is not a phase command and not in
-this helper's list.
+Markdown file in the wrong place silently expand the pipeline.
 
 **The study-playbook skill is a generic crawling protocol.** It teaches
 agents the mechanics of navigating any playbook hub top-down: what a hub
@@ -193,28 +193,30 @@ stale rows that point to removed sections, and suggesting
 reorganization when sections have shifted domains.
 
 **Per-command status, not a single aggregate.** Each install reports
-its own result. The init summary needs to show "research: created,
-spec: exists, synthesize: created, plan: created, build: created, qa: created, fix: exists"
-so a developer reading the output knows exactly which files are new
-on this run. A single aggregate status hides the mix and forces the
+its own result. The init summary needs to show a status for each of the
+13 commands — for example "aide: created, research: created, spec: exists,
+synthesize: created, plan: created, build: created, qa: created, fix: exists,
+upgrade: created, init: created, update-playbook: created, refactor: created,
+align: created" — so a developer reading the output knows exactly which files
+are new on this run. A single aggregate status hides the mix and forces the
 developer to inspect the directory manually.
 
 ## Good examples
 
 A host project runs `aide_init` for the first time. The scaffold
 helper reads templates from docs/commands/aide/ through initContent,
-writes files into `.claude/commands/aide/` (or the equivalent for
-the detected framework) — the eight pipeline phase commands plus the
-update-playbook maintenance command — and returns a `created` status
-for each. The init summary lists each command by name with its
-status. The developer can immediately type `/aide:research` in their
-next session and the pipeline begins.
+writes `aide.md` at the command directory root (the orchestrator) and
+12 subcommand files into `.claude/commands/aide/` (or the equivalent for
+the detected framework) — all 13 entries in the COMMANDS registry — and
+returns a `created` status for each. The init summary lists each command
+by name with its status. The developer can immediately type `/aide:research`
+in their next session and the pipeline begins.
 
 A developer has customized `.claude/commands/aide/build.md` to add
 project-specific build steps. They run `aide_init` again to pick up
 a new MCP server registration. The scaffold helper sees the
 existing build file, reports `exists`, and leaves the customization
-intact. The other six commands also report `exists`. The
+intact. The other 12 commands also report `exists`. The
 developer's customization survived, and the re-run was safe.
 
 A maintainer edits the canonical research template in

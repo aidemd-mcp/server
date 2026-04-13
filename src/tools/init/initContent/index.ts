@@ -53,12 +53,15 @@ const DOC_PATHS = {
 	"commands/aide/aide": ".claude/commands/aide.md",
 	"commands/aide/refactor": ".claude/commands/aide/refactor.md",
 	"agents/aide/aide-spec-writer": ".claude/agents/aide/aide-spec-writer.md",
-	"agents/aide/aide-researcher": ".claude/agents/aide/aide-researcher.md",
 	"agents/aide/aide-domain-expert": ".claude/agents/aide/aide-domain-expert.md",
+	"agents/aide/aide-strategist": ".claude/agents/aide/aide-strategist.md",
 	"agents/aide/aide-architect": ".claude/agents/aide/aide-architect.md",
 	"agents/aide/aide-implementor": ".claude/agents/aide/aide-implementor.md",
 	"agents/aide/aide-qa": ".claude/agents/aide/aide-qa.md",
 	"agents/aide/aide-auditor": ".claude/agents/aide/aide-auditor.md",
+	"agents/aide/aide-aligner": ".claude/agents/aide/aide-aligner.md",
+	"commands/aide/align": ".claude/commands/aide/align.md",
+	"cascading-alignment": ".aide/docs/cascading-alignment.md",
 	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
 	"skills/brain": ".claude/skills/brain/SKILL.md",
 } as const;
@@ -94,6 +97,7 @@ const METHODOLOGY_DOCS: readonly MethodologyDocEntry[] = [
 	{ canonical: "automated-qa", hostFilename: "automated-qa.md" },
 	{ canonical: "plan-aide", hostFilename: "plan-aide.md" },
 	{ canonical: "todo-aide", hostFilename: "todo-aide.md" },
+	{ canonical: "cascading-alignment", hostFilename: "cascading-alignment.md" },
 ];
 
 /**
@@ -120,12 +124,13 @@ export interface SkillDocEntry {
  */
 const AGENT_DOCS: readonly AgentDocEntry[] = [
 	{ canonical: "agents/aide/aide-spec-writer", hostFilename: "aide/aide-spec-writer.md" },
-	{ canonical: "agents/aide/aide-researcher", hostFilename: "aide/aide-researcher.md" },
 	{ canonical: "agents/aide/aide-domain-expert", hostFilename: "aide/aide-domain-expert.md" },
+	{ canonical: "agents/aide/aide-strategist", hostFilename: "aide/aide-strategist.md" },
 	{ canonical: "agents/aide/aide-architect", hostFilename: "aide/aide-architect.md" },
 	{ canonical: "agents/aide/aide-implementor", hostFilename: "aide/aide-implementor.md" },
 	{ canonical: "agents/aide/aide-qa", hostFilename: "aide/aide-qa.md" },
 	{ canonical: "agents/aide/aide-auditor", hostFilename: "aide/aide-auditor.md" },
+	{ canonical: "agents/aide/aide-aligner", hostFilename: "aide/aide-aligner.md" },
 ];
 
 /**

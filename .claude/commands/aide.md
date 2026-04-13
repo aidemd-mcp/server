@@ -26,8 +26,8 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 
 **Delegation means using the Agent tool** with the correct `subagent_type` for each phase:
 - Stage 1 (Spec): `aide-spec-writer`
-- Stage 2 (Research): `aide-researcher`
-- Stage 3 (Synthesize): `aide-domain-expert`
+- Stage 2 (Research): `aide-domain-expert`
+- Stage 3 (Synthesize): `aide-strategist`
 - Stage 4 (Plan): `aide-architect`
 - Stage 5 (Build): `aide-implementor`
 - Stage 6 (QA): `aide-qa`
@@ -83,9 +83,23 @@ This is non-negotiable. When the user invokes `/aide`, your very first action �
 2. Determine the current pipeline state (see Resume Protocol below)
 3. Route to the correct stage
 
+## Routing — Explicit Intent Beats File State
+
+**Before consulting the Resume Protocol, check whether the user explicitly requested a specific phase or flow.** If they did, route directly to that phase — the Resume Protocol does not apply.
+
+Explicit requests override file state. Examples:
+- "run an alignment check" → **Align**, even if file state says QA is next
+- "do a refactor on src/tools/" → **Refactor**, even if no `plan.aide` exists
+- "start the spec for this module" → **Stage 1 (Spec)**, even if a prior spec exists
+- "plan this" → **Stage 4 (Plan)**, even if the spec has no body sections yet
+- "run QA" → **Stage 6 (QA)**, even if `plan.aide` has unchecked items
+- "build it" → **Stage 5 (Build)**, even if no plan exists yet (ask for one first)
+
+**The Resume Protocol only fires when the user's request is ambiguous** — when they invoke `/aide` without specifying a phase, or describe what they want to do without naming a specific pipeline stage. In those cases, use file state to infer where to pick up.
+
 ## Resume Protocol
 
-The discover output tells you the current state. The file state IS the pipeline state:
+When the user's request does not map to a specific phase, the discover output tells you the current state. The file state IS the pipeline state:
 
 | State detected | Resume from |
 |----------------|-------------|
@@ -119,17 +133,17 @@ After the agent returns, relay the result and confirm the user is satisfied befo
 
 **Your job (orchestrator):** Ask the user whether domain knowledge already exists in the brain. If yes, skip to Stage 3. If no, delegate.
 
-**Then delegate** to the `aide-researcher` agent (via Agent tool, `subagent_type: aide-researcher`). The agent will:
+**Then delegate** to the `aide-domain-expert` agent (via Agent tool, `subagent_type: aide-domain-expert`). The agent will:
 - Search web, vault, MCP memory for relevant domain sources
 - Persist findings to the brain filed by **domain** (e.g., `research/email-marketing/`), not by project
 
-Do NOT research anything yourself. The researcher agent has specialized tools and context for this.
+Do NOT research anything yourself. The domain expert agent has specialized tools and context for this.
 
 ### Stage 3: Synthesize → `aide:synthesize`
 
 **Your job (orchestrator):** Confirm research is complete, then delegate.
 
-**Then delegate** to the `aide-domain-expert` agent (via Agent tool, `subagent_type: aide-domain-expert`). The agent will:
+**Then delegate** to the `aide-strategist` agent (via Agent tool, `subagent_type: aide-strategist`). The agent will:
 - Use `aide_discover` to understand the intent tree
 - Read the `.aide` frontmatter for intent
 - Read the brain's research notes for domain knowledge

@@ -7,8 +7,8 @@ import {
 } from "@/tools/init/initContent/index.js";
 
 /**
- * Fixed registry of the /aide orchestrator entry point plus the eight AIDE
- * pipeline phase commands. Owning this list here — rather than discovering it
+ * Fixed registry of the /aide orchestrator entry point plus the AIDE pipeline
+ * phase commands. Owning this list here — rather than discovering it
  * from .claude/commands/ at runtime — is the mechanical guarantee that a stray
  * Markdown file committed under .claude/commands/aide/ cannot silently expand
  * the pipeline.
@@ -42,6 +42,7 @@ export const COMMANDS: readonly {
 	{ canonical: "commands/aide/init", hostPath: "aide/init.md", displayName: "aide:init" },
 	{ canonical: "commands/aide/update-playbook", hostPath: "aide/update-playbook.md", displayName: "aide:update-playbook" },
 	{ canonical: "commands/aide/refactor", hostPath: "aide/refactor.md", displayName: "aide:refactor" },
+	{ canonical: "commands/aide/align", hostPath: "aide/align.md", displayName: "aide:align" },
 ];
 
 /** Check if a file exists. */

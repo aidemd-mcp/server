@@ -1,47 +1,31 @@
 ---
-intent:
-  - "outcomes.desired[0]: update-playbook command must be scaffolded alongside the seven pipeline commands"
-  - "outcomes.desired[4]: study-playbook skill must contain only generic crawling mechanics, no environment-specific content"
-  - "outcomes.desired[5]: update-playbook command must include a housekeeping step for drift detection"
-  - "outcomes.undesired[6]: study-playbook must not contain intent mapping tables, task-to-section routing, or specific section names"
-  - "outcomes.undesired[7]: update-playbook must not be missing the drift detection housekeeping step"
+intent: >
+  scaffoldCommands spec enumerates seven phase commands plus update-playbook
+  but the actual COMMANDS registry and canonical command set includes thirteen
+  entries (orchestrator + 12 subcommands including align, refactor, upgrade,
+  init). The spec's command count, fixed-list description, and good-example
+  status reports are all stale relative to the canonical command surface.
 misalignment:
-  - implementation-drift
-  - plan-gap
+  - spec-gap
 ---
 
 ## Issues
 
-- [x] `src/tools/init/scaffoldCommands/index.ts` lines 28–43: `COMMANDS` registry has no entry for `update-playbook`. The spec requires the fixed list to include the maintenance command alongside the seven pipeline phases. No `{ canonical: "commands/aide/update-playbook", hostPath: "aide/update-playbook.md", displayName: "aide:update-playbook" }` entry exists.
-  Traces to: `outcomes.desired[0]` — "plus the update-playbook maintenance command"
-  Misalignment: implementation-drift
+- [x] `src/tools/init/scaffoldCommands/.aide` outcomes.desired[0]: "One slash command file is scaffolded per pipeline phase: research, spec, synthesize, plan, build, qa, fix, plus the update-playbook maintenance command"
+  The actual COMMANDS array in scaffoldCommands/index.ts includes 13 entries: aide (orchestrator), research, spec, synthesize, plan, build, qa, fix, upgrade, init, update-playbook, refactor, align. The spec's enumeration omits the orchestrator, upgrade, init, refactor, and align. The spec should enumerate the full set or describe the enumeration mechanism without a hardcoded count.
+  Traces to: .aide/docs/index.md -> Pipeline Agents table (eight agents = eight phases including align and refactor); .aide/intent.aide -> outcomes.desired[1] (two delivery channels covering the full lifecycle)
+  Misalignment: spec-gap
 
-- [x] `src/tools/init/initContent/index.ts` lines 34–60: `DOC_PATHS` registry has no entry for `"commands/aide/update-playbook"`. `readCanonicalDoc` would throw (or fail to compile) on that key. The path registration must exist before the `COMMANDS` entry can resolve.
-  Traces to: `outcomes.desired[0]` — update-playbook must be installable through initContent
-  Misalignment: implementation-drift
+- [x] `src/tools/init/scaffoldCommands/.aide` Good examples section: status report shows "the eight pipeline phase commands plus the update-playbook maintenance command"
+  The actual scaffolded set is 13 commands. The good example's status report shape no longer matches what the tool actually produces.
+  Traces to: .aide/intent.aide -> outcomes.undesired[3] (a canonical doc that describes behavior the server does not actually deliver)
+  Misalignment: spec-gap
 
-- [x] `.claude/commands/aide/`: no `update-playbook.md` file exists. This is the canonical template that `readCanonicalDoc` reads at runtime and that gets byte-faithfully installed into host projects. Without the source file, the entire update-playbook scaffold chain is broken from template through initContent through scaffoldCommands. The template must also contain the drift-detection housekeeping step (desired outcome [5]) — its absence means that requirement cannot currently be satisfied even if the other two registration gaps were closed.
-  Traces to: `outcomes.desired[1]` — byte-faithful render of canonical template; `outcomes.desired[5]` — update-playbook includes drift-detection housekeeping step; `outcomes.undesired[7]` — update-playbook missing drift detection
-  Misalignment: plan-gap
-
-- [x] `.claude/skills/study-playbook/SKILL.md` lines 28–29: Step 1 reads "The hub starts with a **Task Routing** table that maps task domains to sections. Match your current task against the table to identify which 1–3 sections apply." This names a specific artifact ("Task Routing" table), asserts where it appears (top of hub), and constrains the result to a count ("1–3 sections"). All three are environment-specific assumptions. The spec requires zero such references — crawling mechanics only.
-  Traces to: `outcomes.desired[4]` — "zero environment-specific content: no intent mapping tables, no task-to-section routing, no references to specific playbook section names"; `outcomes.undesired[6]` — skill must not contain task-to-section routing
-  Misalignment: implementation-drift
-
-- [x] `.claude/skills/study-playbook/SKILL.md` line 30: "Do NOT read all sections — only the ones the routing table points you to." The phrase "the routing table" presupposes that a named routing table is the operative navigation artifact. This is an implicit structural assumption. Generic crawling protocol should describe how to traverse hub links, not name a specific artifact the user's hub may not have.
-  Traces to: `outcomes.desired[4]`; `outcomes.undesired[6]`
-  Misalignment: implementation-drift
-
-- [x] `.claude/skills/study-playbook/SKILL.md` lines 29, 33–35: Step 2 uses path examples `coding-playbook/services/services.md` and `coding-playbook/services/error-handling.md`. These are specific to the author's playbook layout. A user with a different vault structure sees path examples that do not match their actual organization and may misapply the instructions. All concrete path examples must be removed or replaced with structural placeholders.
-  Traces to: `outcomes.desired[4]` — zero environment-specific content; `outcomes.undesired[6]`
-  Misalignment: implementation-drift
+- [x] `src/tools/init/scaffoldCommands/.aide` Strategy section: "research, spec, synthesize, plan, build, qa, fix, plus the update-playbook maintenance command"
+  Strategy's fixed-list description omits the same five commands as the outcomes. The "eight" count in the strategy ("the other six commands also report exists") is also stale.
+  Traces to: .aide/docs/index.md -> Pipeline Agents table (canonical pipeline surface)
+  Misalignment: spec-gap
 
 ## Retro
 
-**What would have caught these earlier?**
-
-Issues 1–3 (update-playbook not wired) would have been caught at the **plan stage** if the plan included an explicit three-part checklist matching the spec's three-way lock: (1) canonical template file exists, (2) `DOC_PATHS` entry registered, (3) `COMMANDS` entry added. The spec names this invariant explicitly in the strategy section — "all three changes land in the same PR or none of them do" — but no plan item enforced it. A plan that maps directly to the three-way lock surface would have surfaced the gap before any implementation started.
-
-Issues 4–6 (environment-coupled skill) would have been caught at the **spec stage** if the "zero environment-specific content" outcome had existed before the skill was last edited. The skill predates this spec revision. Future revisions to desired outcomes that constrain existing canonical files should trigger a QA pass on those files immediately — the spec change and the file change should be a single unit of work, not a deferred follow-up.
-
-A lightweight QA heuristic for skill templates: grep for hardcoded path fragments (containing `/`), named artifacts in quotes, and numeric constraints on section counts. Any of those patterns in a skill that claims to be generic is a candidate finding.
+The scaffoldCommands spec was written when the pipeline had fewer commands. Each subsequent addition (upgrade, init, refactor, align) updated the COMMANDS array in index.ts and the DOC_PATHS registry in initContent, but none of those commits updated the scaffoldCommands spec's enumeration. The spec-writer should have run aide_discover after any commit that adds a new command to verify the spec's counts still match reality. An alignment check triggered by changes to the COMMANDS array would have caught this on each addition.

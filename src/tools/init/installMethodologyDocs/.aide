@@ -1,5 +1,6 @@
 ---
 scope: src/tools/init/installMethodologyDocs
+status: aligned
 intent: >
   installMethodologyDocs is the helper that lands the progressively-
   disclosed AIDE methodology hub onto the host project's disk. It reads

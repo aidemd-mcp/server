@@ -1,5 +1,6 @@
 ---
 scope: src/tools/init/initContent
+status: aligned
 intent: >
   initContent is the source-of-truth reader for the init subtree. It
   is the only helper under init/ that touches the canonical docs

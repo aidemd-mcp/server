@@ -1,6 +1,6 @@
 # /aide-research — Research Phase (Optional)
 
-> **Agent:** This command is executed by the `aide-researcher` agent.
+> **Agent:** This command is executed by the `aide-domain-expert` agent.
 
 Fill the brain with durable domain knowledge the synthesizer can later draw from. Run this phase only when the module requires domain expertise the team does not already have — skip it when the domain is already understood.
 
@@ -18,4 +18,4 @@ Fill the brain with durable domain knowledge the synthesizer can later draw from
   - Patterns observed across sources
   - Conflicts resolved (where sources disagreed, which direction chosen and why)
 - [ ] Stop when coverage is sufficient for the synthesizer to fill the `.aide` body sections, not when all sources are exhausted
-- [ ] Hand off to `/aide:synthesize` — the Domain Expert (fresh instance) will read your research and fill the spec's body sections
+- [ ] Hand off to `/aide:synthesize` — the strategist (fresh session) will read your research and fill the spec's body sections

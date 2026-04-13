@@ -1,0 +1,19 @@
+---
+intent: >
+  src/.aide outcomes.desired[0] enumerates five MCP tools but the server
+  ships six (aide_upgrade exists as a full tool with its own spec and
+  implementation). The tool-surface description contradicts reality.
+misalignment:
+  - spec-gap
+---
+
+## Issues
+
+- [x] `src/.aide` outcomes.desired[0]: "The tool surface covers the full AIDE lifecycle -- discover (map), read (drill in), scaffold (create with naming enforcement), validate (health check), init (one-command bootstrap). Each tool covers a distinct lifecycle phase with no overlap between them."
+  The server ships six tools, not five. aide_upgrade exists at src/tools/upgrade/ with its own .aide spec, plan.aide, and full implementation. The five-tool enumeration omits upgrade entirely. This is not a case of a redundant tool -- the root spec (.aide/intent.aide) acknowledges two delivery channels and aide_upgrade serves a distinct lifecycle phase (bring stale host projects up to date) that no other tool covers.
+  Traces to: .aide/intent.aide -> outcomes.desired[1] (two delivery channels, each with one clear job -- upgrade is part of the init channel's lifecycle)
+  Misalignment: spec-gap
+
+## Retro
+
+The aide_upgrade tool was added after src/.aide was written, and the spec's tool enumeration was not updated. Any commit that adds a new tool directory under src/tools/ should trigger an update to src/.aide's tool-surface outcome. The spec-writer should have run aide_discover to check whether the parent spec's enumeration still matched reality after the upgrade tool was introduced.

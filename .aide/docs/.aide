@@ -1,5 +1,6 @@
 ---
 scope: .aide/docs
+status: aligned
 intent: >
   Add a References section to the AIDE spec template and methodology so the
   synthesis agent leaves a human-readable breadcrumb trail of which brain notes

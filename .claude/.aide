@@ -1,5 +1,6 @@
 ---
 scope: .claude
+status: aligned
 description: AIDE harness — agents, commands, skills, and methodology docs that drive the intent pipeline
 intent: >
   The AIDE harness gains cascading alignment — the ability for agents to verify
