@@ -9,6 +9,14 @@ vi.mock("@/util/scan/index.js", () => ({
 	default: vi.fn().mockResolvedValue({ root: "/mock", files: [] }),
 }));
 
+// Mock spawnSync so the editor escape hatch doesn't launch a real process.
+const { mockSpawnSync } = vi.hoisted(() => ({
+	mockSpawnSync: vi.fn().mockReturnValue({ status: 0 }),
+}));
+vi.mock("node:child_process", () => ({
+	spawnSync: mockSpawnSync,
+}));
+
 // Mock readFile with frontmatter that includes scope, intent, outcomes, and body sections.
 const { MOCK_FILE_CONTENT } = vi.hoisted(() => ({
 	MOCK_FILE_CONTENT: `---
@@ -185,6 +193,9 @@ describe("App", () => {
 		// Wait for async readFile to resolve.
 		await new Promise((r) => setTimeout(r, 50));
 		const frame = lastFrame() ?? "";
+		// Tree panel must remain visible — two-panel layout is always preserved.
+		expect(frame).toContain("Intent Tree");
+		expect(frame).toContain(". /");
 		// Drill-in card layout must show scope, intent text, and outcomes sections.
 		expect(frame).toContain("scope:");
 		expect(frame).toContain("cli");
@@ -193,10 +204,10 @@ describe("App", () => {
 		expect(frame).toContain("Undesired Outcomes");
 		// Footer hint for drill-in mode.
 		expect(frame).toContain("[esc] back");
-		expect(frame).toContain("expand section");
+		expect(frame).toContain("next section");
 	});
 
-	it("drill-in mode: Up/Down moves section focus and Enter expands the focused section", async () => {
+	it("drill-in mode: Tab expands sections one at a time", async () => {
 		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
 		// Navigate to file and drill in (two-level navigation).
 		stdin.write("\r"); // expand dir
@@ -206,28 +217,75 @@ describe("App", () => {
 		await flush();
 		await new Promise((r) => setTimeout(r, 50));
 
-		// In drill-in mode, focus starts at section 0 (Context).
-		// Press Down to move focus to section 1 (Strategy).
-		stdin.write("\x1B[B");
-		await flush();
-		// Press Enter to expand the focused section (Strategy).
-		stdin.write("\r");
+		// In drill-in mode, all sections start collapsed (no section expanded).
+		// Press Tab to expand the first section (Context, index 0).
+		stdin.write("\t");
 		await flush();
 		await new Promise((r) => setTimeout(r, 20));
-		const frameAfterExpand = lastFrame() ?? "";
-		// The expanded section should show its content.
-		expect(frameAfterExpand).toContain("Strategy");
-		expect(frameAfterExpand).toContain("▾"); // expanded indicator
+		const frameAfterFirstTab = lastFrame() ?? "";
+		// First section (Context) is now expanded.
+		expect(frameAfterFirstTab).toContain("Context");
+		expect(frameAfterFirstTab).toContain("▾"); // expanded indicator
 
-		// Press Enter again to collapse it.
-		stdin.write("\r");
+		// Press Tab again — first section collapses, second section (Strategy) expands.
+		stdin.write("\t");
 		await flush();
 		await new Promise((r) => setTimeout(r, 20));
-		const frameAfterCollapse = lastFrame() ?? "";
-		expect(frameAfterCollapse).toContain("▸"); // collapsed indicator
+		const frameAfterSecondTab = lastFrame() ?? "";
+		expect(frameAfterSecondTab).toContain("Strategy");
+		expect(frameAfterSecondTab).toContain("▾"); // second section expanded
 	});
 
-	it("drill-in mode: Up arrow moves section focus, Enter expands that section", async () => {
+	it("drill-in mode: Up/Down navigates tree cursor and right panel updates to show new file", async () => {
+		// Use two dirs each with one file so Down in drill-in mode moves to the second dir.
+		const nodes: TreeNode[] = [
+			makeDirNode(".", [makeNode(".aide")]),
+			makeDirNode("src/tools/init", [makeNode("src/tools/init/intent.aide")]),
+		];
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={nodes} />);
+
+		// Expand first dir so its file child is accessible.
+		stdin.write("\r"); // expand "." dir — cursor moves to .aide child
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+
+		// Drill into the .aide file.
+		stdin.write("\r"); // Enter on .aide file
+		await flush();
+		await new Promise((r) => setTimeout(r, 50));
+
+		// Confirm we are in drill-in mode.
+		const frameDrillIn = lastFrame() ?? "";
+		expect(frameDrillIn).toContain("[esc] back");
+		// Tree panel must still show both dirs.
+		expect(frameDrillIn).toContain(". /");
+		expect(frameDrillIn).toContain("src/tools/init/");
+
+		// Press Down — cursor moves to next visible node (src/tools/init dir).
+		// The right panel should update to show that dir's primary intent file.
+		stdin.write("\x1B[B"); // down arrow
+		await flush();
+		await new Promise((r) => setTimeout(r, 50));
+		const frameAfterDown = lastFrame() ?? "";
+		// Still in drill-in mode (two-panel layout, [esc] back still visible).
+		expect(frameAfterDown).toContain("[esc] back");
+		// Tree panel still visible.
+		expect(frameAfterDown).toContain("Intent Tree");
+		// Right panel now shows the newly selected file's drill-in content.
+		expect(frameAfterDown).toContain("scope:");
+
+		// Press Up — cursor moves back to the .aide file.
+		stdin.write("\x1B[A"); // up arrow
+		await flush();
+		await new Promise((r) => setTimeout(r, 50));
+		const frameAfterUp = lastFrame() ?? "";
+		// Still in drill-in mode.
+		expect(frameAfterUp).toContain("[esc] back");
+		// Tree panel still visible.
+		expect(frameAfterUp).toContain("Intent Tree");
+	});
+
+	it("drill-in mode: Tab cycles through body sections one at a time", async () => {
 		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
 		// Navigate to file and drill in (two-level navigation).
 		stdin.write("\r"); // expand dir
@@ -237,18 +295,78 @@ describe("App", () => {
 		await flush();
 		await new Promise((r) => setTimeout(r, 50));
 
-		// Move focus down to section 1 then back up to section 0.
-		stdin.write("\x1B[B"); // down
-		await flush();
-		stdin.write("\x1B[A"); // up — back to section 0 (Context)
-		await flush();
-		// Expand section 0 (Context).
-		stdin.write("\r");
+		// All sections start collapsed (no ▾ visible, only ▸ indicators).
+		const frameInitial = lastFrame() ?? "";
+		expect(frameInitial).not.toContain("▾");
+
+		// Tab 1: null -> 0 — section 0 (Context) expands.
+		stdin.write("\t");
 		await flush();
 		await new Promise((r) => setTimeout(r, 20));
-		const frame = lastFrame() ?? "";
-		expect(frame).toContain("Context");
-		expect(frame).toContain("▾"); // section 0 is expanded
+		const frameTab1 = lastFrame() ?? "";
+		expect(frameTab1).toContain("▾"); // at least one expanded
+		expect(frameTab1).toContain("Context");
+		expect(frameTab1).toContain("Some context paragraphs here");
+
+		// Tab 2: 0 -> 1 — section 0 collapses, section 1 (Strategy) expands.
+		stdin.write("\t");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		const frameTab2 = lastFrame() ?? "";
+		expect(frameTab2).toContain("▾"); // section 1 is expanded
+		expect(frameTab2).toContain("Strategy");
+		expect(frameTab2).toContain("Some strategy paragraphs here");
+
+		// Tab 3: 1 -> null — all sections collapse (both show ▸, none show ▾).
+		stdin.write("\t");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		const frameTab3 = lastFrame() ?? "";
+		expect(frameTab3).not.toContain("▾");
+		expect(frameTab3).toContain("▸"); // collapsed indicator visible
+
+		// Tab 4: null -> 0 — wraps around, section 0 (Context) expands again.
+		stdin.write("\t");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		const frameTab4 = lastFrame() ?? "";
+		expect(frameTab4).toContain("▾"); // section 0 expanded again
+		expect(frameTab4).toContain("Context");
+	});
+
+	it("drill-in mode: only one section expanded at a time", async () => {
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
+		// Navigate to file and drill in (two-level navigation).
+		stdin.write("\r"); // expand dir
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		stdin.write("\r"); // drill into file
+		await flush();
+		await new Promise((r) => setTimeout(r, 50));
+
+		// Tab 1: expand section 0 — only section 0 (Context) shows ▾.
+		stdin.write("\t");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		const frameAfterTab1 = lastFrame() ?? "";
+		// Count ▾ occurrences — only one section should be expanded.
+		const expandedCountAfterTab1 = (frameAfterTab1.match(/▾/g) ?? []).length;
+		expect(expandedCountAfterTab1).toBe(1);
+		// Section 0 (Context) is expanded; section 1 (Strategy) is collapsed.
+		expect(frameAfterTab1).toContain("Context");
+		expect(frameAfterTab1).toContain("Strategy");
+
+		// Tab 2: section 0 collapses, section 1 (Strategy) expands.
+		stdin.write("\t");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		const frameAfterTab2 = lastFrame() ?? "";
+		// Still exactly one ▾ — never two.
+		const expandedCountAfterTab2 = (frameAfterTab2.match(/▾/g) ?? []).length;
+		expect(expandedCountAfterTab2).toBe(1);
+		// Section 0 now shows ▸ (collapsed); section 1 shows ▾ (expanded).
+		expect(frameAfterTab2).toContain("▸"); // at least one collapsed indicator
+		expect(frameAfterTab2).toContain("▾"); // exactly one expanded indicator
 	});
 
 	it("search filter hides directories with no matching children", async () => {
@@ -297,7 +415,7 @@ describe("App", () => {
 		expect(frame).not.toContain("cli/.aide");
 	});
 
-	it("footer hint shows expand/collapse (not drill in) when searching and cursor is on a dir", async () => {
+	it("footer hint shows expand/collapse (not drill in) in tree panel when searching and cursor is on a dir", async () => {
 		const nodes: TreeNode[] = [
 			makeDirNode("src/tools/discover", [makeNode("src/tools/discover/.aide")]),
 			makeDirNode("src/tools/init", [makeNode("src/tools/init/intent.aide")]),
@@ -314,9 +432,12 @@ describe("App", () => {
 		stdin.write("t");
 		await flush();
 		const frame = lastFrame() ?? "";
-		// Cursor is on a dir node — hint must reflect expand/collapse, not drill in.
+		// Cursor is on a dir node — tree panel hint must reflect expand/collapse.
 		expect(frame).toContain("expand");
-		expect(frame).not.toContain("drill in");
+		// The tree panel footer should not say "drill in" (that comes from the detail panel preview footer,
+		// which is separate from the tree navigation hint).
+		// Check that the tree panel specifically shows expand, not drill-in, for this cursor position.
+		expect(frame).toContain("[enter] expand");
 	});
 
 	it("Escape in drill-in mode returns to tree view", async () => {
@@ -331,8 +452,13 @@ describe("App", () => {
 		stdin.write("\x1B"); // Escape back
 		await new Promise((r) => setTimeout(r, 30)); // escape flush delay
 		const frame = lastFrame() ?? "";
+		// Tree panel remains visible.
 		expect(frame).toContain("Intent Tree");
 		expect(frame).toContain("Detail");
+		// Right panel reverts to preview mode — shows outcome counts, not full outcome text.
+		expect(frame).toMatch(/desired \(/);
+		expect(frame).not.toContain("Desired Outcomes");
+		expect(frame).not.toContain("Undesired Outcomes");
 	});
 
 	it("Detail panel auto-loads intent for dir node", async () => {
@@ -357,9 +483,51 @@ describe("App", () => {
 		await flush();
 		await new Promise((r) => setTimeout(r, 50));
 		const frame = lastFrame() ?? "";
+		// Tree panel remains visible alongside drill-in content.
+		expect(frame).toContain("Intent Tree");
+		expect(frame).toContain(". /");
+		// Drill-in content is shown in the right panel.
 		expect(frame).toContain("scope:");
 		expect(frame).toContain("Desired Outcomes");
 		expect(frame).toContain("Undesired Outcomes");
 		expect(frame).toContain("[esc] back");
+	});
+
+	it("tree panel remains visible during drill-in", async () => {
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
+		// Two-level navigation: expand dir, then drill into file.
+		stdin.write("\r"); // expand "." dir — cursor moves to .aide child
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		stdin.write("\r"); // drill into .aide file
+		await flush();
+		// Wait for async readFile to resolve.
+		await new Promise((r) => setTimeout(r, 50));
+		const frame = lastFrame() ?? "";
+		// The tree panel must remain visible — no full-screen takeover.
+		expect(frame).toContain("Intent Tree");
+		expect(frame).toContain(". /");
+		expect(frame).toContain("src/tools/init/");
+		// The drill-in content must coexist in the same frame.
+		expect(frame).toContain("scope:");
+	});
+
+	it("drill-in mode: [e] opens file in editor", async () => {
+		mockSpawnSync.mockClear();
+		const { stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
+		// Two-level navigation: expand dir, then drill into file.
+		stdin.write("\r"); // expand dir — cursor moves to .aide child
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		stdin.write("\r"); // drill into .aide file
+		await flush();
+		await new Promise((r) => setTimeout(r, 50));
+		// Press [e] — should call spawnSync with the drilled file's absolute path.
+		stdin.write("e");
+		await flush();
+		expect(mockSpawnSync).toHaveBeenCalledOnce();
+		const [, args, opts] = mockSpawnSync.mock.calls[0] as [string, string[], Record<string, unknown>];
+		expect(args).toContain("/mock/.aide");
+		expect(opts).toMatchObject({ stdio: "inherit" });
 	});
 });

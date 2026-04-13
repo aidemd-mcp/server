@@ -5,6 +5,7 @@ intent: >
   cursor-filter desync, and the untested drill-in Enter path.
   (Round 2: one regression found in the fix for issue #4.)
   (Round 3: hint text inconsistency during search + dir cursor, and missing test coverage for that path.)
+  (Round 4: tree cursor frozen during drill-in mode — spec says tree remains navigable throughout.)
 misalignment:
   - implementation-drift
   - test-gap
@@ -53,6 +54,16 @@ misalignment:
   Traces to: plan step 8 — "context-aware footer hints"; prior retro pattern ("a regression test pinned to the concrete behavior would have caught the defect immediately")
   Misalignment: test-gap
 
+## Issues — Round 4 (dual-panel refactor QA)
+
+- [x] `src/cli/App/index.tsx:263-296` — In drill-in mode, Up/Down arrow keys are consumed exclusively to move `drillFocused` (body section cursor). The tree cursor (`cursorIndex`) is not updated. The user cannot navigate to a different file while in drill-in mode without pressing Escape first. The spec strategy says "the left panel (tree) is unaffected and remains navigable" and the Good examples section explicitly shows: "While in drill-in view, the developer uses arrow keys on the left panel to highlight a different file. The right panel updates to show that file's content, staying in drill-in mode." Neither behavior is present.
+  Traces to: desired outcome 3 — "The tree on the left remains visible and active throughout"; spec strategy — "the left panel (tree) is unaffected and remains navigable"
+  Misalignment: implementation-drift
+
+- [x] `src/cli/App/index.test.tsx` — No test navigates the tree cursor while in drill-in mode. The "tree panel remains visible during drill-in" test (line 471) asserts tree content is rendered, but it does not press Up/Down in drill-in mode and assert the tree cursor moved or that a different file's content appears in the right panel. This gap allowed the frozen-cursor behavior to pass all 43 tests undetected.
+  Traces to: desired outcome 3 — "The tree on the left remains visible and active throughout"; spec strategy — "remains navigable"
+  Misalignment: test-gap
+
 ## Retro
 
 **What would have caught issue #1 (dead drill-in keyboard) earlier?**
@@ -72,3 +83,6 @@ A test that renders a two-directory tree, types a search term that matches only 
 
 **What would have caught the Round 3 hint inconsistency earlier?**
 Plan step 8 explicitly lists the three hint states. A reviewer cross-referencing the TreePanel hint logic against those three states would have spotted that the `searchFilter` branch pre-empts the `cursorOnDir` branch rather than composing with it. A test that types a search string and asserts the hint text based on cursor type — not just that the app renders — would have caught it. Footer hints have been a persistent source of drift across all three rounds; the pattern is that hint logic is written once and never regression-tested as navigation modes compose.
+
+**What would have caught the Round 4 tree-navigation gap earlier?**
+The spec strategy paragraph contains the phrase "remains navigable" — a QA pass that reads every sentence of the Strategy section and maps it to a concrete keyboard handler would have flagged that no Up/Down handler in drill-in mode advances `cursorIndex`. The plan does not mention tree navigation during drill-in at all — the plan scope was narrowly focused on eliminating the full-screen mode and wiring the detail panel, and the "tree stays navigable" constraint was never translated into a plan step or a test. A plan that adds a drill-in mode should always include a step: "verify that all tree-mode keyboard actions that the spec says are active during drill-in remain wired." The absence of a test for "arrow key moves tree cursor while in drill-in mode" is the detection failure — a test that drills in, presses Down, and asserts `src/tools/init/` is highlighted would have exposed it immediately.

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { spawnSync } from "node:child_process";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
 import { readFile } from "node:fs/promises";
 import type { AideFile, AideFrontmatter, BodySection, TreeNode } from "@/types/index.js";
@@ -7,7 +8,6 @@ import type { FlatNode } from "@/cli/flattenTree/index.js";
 import buildTreeData from "@/cli/buildTreeData/index.js";
 import TreePanel from "@/cli/TreePanel/index.js";
 import DetailPanel from "@/cli/DetailPanel/index.js";
-import DrillInPanel from "@/cli/DrillInPanel/index.js";
 import parseFrontmatter from "@/util/parseFrontmatter/index.js";
 import parseBody from "@/util/parseBody/index.js";
 import scan from "@/util/scan/index.js";
@@ -29,7 +29,7 @@ interface AppProps {
 
 /**
  * Top-level TUI orchestrator. Owns view state (tree vs drill-in) and delegates
- * to TreePanel, DetailPanel, and DrillInPanel. Handles all keyboard input.
+ * to TreePanel and DetailPanel. Handles all keyboard input.
  */
 export default function App({ root, initialNodes }: AppProps): React.ReactElement {
 	const { exit } = useApp();
@@ -59,9 +59,8 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 	const [drilledFile, setDrilledFile] = useState<AideFile | null>(null);
 	const [drillData, setDrillData] = useState<DrillData | null>(null);
 	const [drillCache] = useState<Map<string, DrillData>>(new Map());
-	// Drill-in keyboard state: focused section index and expanded set.
-	const [drillFocused, setDrillFocused] = useState(0);
-	const [drillExpanded, setDrillExpanded] = useState<Set<number>>(new Set());
+	// Single expanded section in drill-in mode; Tab cycles through sections.
+	const [expandedSection, setExpandedSection] = useState<number | null>(null);
 
 	// --- Detail panel frontmatter (for currently selected file) ---
 	const [selectedFrontmatter, setSelectedFrontmatter] = useState<AideFrontmatter | null>(null);
@@ -136,8 +135,7 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 	/** Load and parse a file for drill-in view. */
 	const drillIntoFile = useCallback(async (file: AideFile) => {
 		setDrilledFile(file);
-		setDrillFocused(0);
-		setDrillExpanded(new Set());
+		setExpandedSection(null);
 		setMode("drill-in");
 
 		if (drillCache.has(file.path)) {
@@ -268,47 +266,50 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 			return;
 		}
 
-		const sectionCount = (drillData?.sections ?? []).filter((s) => s.heading !== "").length;
-
 		if (key.upArrow) {
-			setDrillFocused((f) => Math.max(0, f - 1));
+			const next = Math.max(0, clampedCursor - 1);
+			setCursorIndex(next);
+			const nextNode = visibleNodes[next];
+			const nextFile = nextNode
+				? nextNode.node.kind === "file"
+					? nextNode.node.file
+					: findPrimaryIntent(nextNode.node)
+				: null;
+			if (nextFile) drillIntoFile(nextFile);
 			return;
 		}
 		if (key.downArrow) {
-			setDrillFocused((f) => Math.min(Math.max(0, sectionCount - 1), f + 1));
+			const next = Math.min(visibleNodes.length - 1, clampedCursor + 1);
+			setCursorIndex(next);
+			const nextNode = visibleNodes[next];
+			const nextFile = nextNode
+				? nextNode.node.kind === "file"
+					? nextNode.node.file
+					: findPrimaryIntent(nextNode.node)
+				: null;
+			if (nextFile) drillIntoFile(nextFile);
 			return;
 		}
-		if (key.return) {
+		if (key.tab) {
+			const sectionCount = (drillData?.sections ?? []).filter((s) => s.heading !== "").length;
 			if (sectionCount === 0) return;
-			setDrillExpanded((prev) => {
-				const next = new Set(prev);
-				if (next.has(drillFocused)) {
-					next.delete(drillFocused);
-				} else {
-					next.add(drillFocused);
-				}
-				return next;
+			setExpandedSection((prev) => {
+				if (prev === null) return 0;
+				if (prev >= sectionCount - 1) return null;
+				return prev + 1;
 			});
+			return;
 		}
+		if (input === "e" && drilledFile) {
+			const editor = process.env.VISUAL ?? process.env.EDITOR ?? "code";
+			spawnSync(editor, [drilledFile.path], { stdio: "inherit" });
+			return;
+		}
+		// Enter is a no-op in drill-in mode.
 	});
 
 	// --- Layout ---
 	const treeWidth = Math.floor(columns * 0.38);
-
-	if (mode === "drill-in" && drilledFile) {
-		const label = drilledFile.relativePath;
-		return (
-			<Box flexDirection="column" width={columns}>
-				<DrillInPanel
-					label={label}
-					frontmatter={drillData?.frontmatter ?? null}
-					sections={drillData?.sections ?? []}
-					focusedSection={drillFocused}
-					expanded={drillExpanded}
-				/>
-			</Box>
-		);
-	}
 
 	return (
 		<Box flexDirection="row" width={columns}>
@@ -340,7 +341,14 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 				borderColor="white"
 			>
 				<Text bold> Detail</Text>
-				<DetailPanel file={selectedFile} frontmatter={selectedFrontmatter} />
+				<DetailPanel
+					file={selectedFile}
+					frontmatter={mode === "drill-in" ? (drillData?.frontmatter ?? null) : selectedFrontmatter}
+					mode={mode === "drill-in" ? "drill-in" : "preview"}
+					sections={drillData?.sections ?? []}
+					expandedSection={expandedSection}
+					drilledFilePath={drilledFile?.relativePath ?? null}
+				/>
 			</Box>
 		</Box>
 	);
