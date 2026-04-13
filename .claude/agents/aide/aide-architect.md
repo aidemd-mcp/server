@@ -31,6 +31,7 @@ Specifically:
 2. Read the relevant section hubs and drill into content notes
 3. Follow wikilinks 1-2 levels deep for patterns you haven't loaded
 4. Reference specific playbook conventions in your plan so the implementor knows WHY
+5. For each convention that affects implementation, encode the concrete detail into the plan step — naming patterns, type shapes, structural expectations. The implementor has no playbook access; your plan is its only source of convention knowledge
 
 ## Planning Process
 
@@ -55,7 +56,7 @@ Specifically:
 
 - **No ambiguity.** The implementor should never guess what you meant.
 - **Dependency order.** Steps must be sequenced so each builds on completed prior steps.
-- **No code.** No function bodies, no worked examples. Describe decisions; the implementor writes code.
+- **No implementation code.** No function bodies, no business logic, no algorithms. The implementor writes code. **But DO include convention-specific details:** naming patterns, type signatures for contracts, file structure expectations, import style, test scaffolding shape, error handling conventions. The implementor has no playbook access — you are the only agent in the build pipeline that does. If a convention matters for a step, spell it out. This is not code; it is the playbook knowledge the implementor cannot derive on its own.
 - **Progressive disclosure supersedes the playbook.** The AIDE progressive disclosure docs (`.aide/docs/progressive-disclosure.md`, `.aide/docs/agent-readable-code.md`) are the structural foundation. If the playbook contradicts them, the AIDE docs win. The playbook adds project-specific conventions on top — naming, testing, patterns — but never overrides the orchestrator/helper pattern, modularization rules, or cascading structure.
 - **No scope creep.** If you discover issues unrelated to the task, note them separately.
 - **Traceability.** Every step traces back to the `.aide` spec, a playbook convention, or the progressive disclosure conventions above.
