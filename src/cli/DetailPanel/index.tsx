@@ -18,7 +18,7 @@ function truncate(s: string, maxLen: number): string {
  * for the currently selected file. Shows a welcome hint when no file is selected.
  */
 export default function DetailPanel({ file, frontmatter }: DetailPanelProps): React.ReactElement {
-	if (!file || !frontmatter) {
+	if (!file) {
 		return (
 			<Box flexDirection="column" paddingX={2} paddingY={1}>
 				<Text color="gray">Select a file to preview</Text>
@@ -29,8 +29,19 @@ export default function DetailPanel({ file, frontmatter }: DetailPanelProps): Re
 		);
 	}
 
-	const scope = frontmatter.scope ?? "(no scope)";
-	const intent = frontmatter.intent ? truncate(frontmatter.intent, 160) : "(no intent)";
+	if (!frontmatter) {
+		return (
+			<Box flexDirection="column" paddingX={2} paddingY={1}>
+				<Text color="red">[FAILED TO PARSE]</Text>
+				<Box marginTop={1}>
+					<Text color="gray">{file.relativePath}</Text>
+				</Box>
+			</Box>
+		);
+	}
+
+	const scope = frontmatter.scope ?? "[FAILED TO PARSE]";
+	const intent = frontmatter.intent ? truncate(frontmatter.intent, 160) : "[FAILED TO PARSE]";
 	const desiredCount = frontmatter.outcomes?.desired.length ?? 0;
 	const undesiredCount = frontmatter.outcomes?.undesired.length ?? 0;
 

@@ -16,11 +16,13 @@ intent: >
   other decision in this repo must serve.
 outcomes:
   desired:
-    - The canonical AIDE methodology — spec, template, progressive disclosure,
+    - >-
+      The canonical AIDE methodology — spec, template, progressive disclosure,
       agent-readable code, automated QA — lives in this repo as editable doc
       files and is the single source of truth. Editing those files is the
       only way to change what downstream host projects receive.
-    - Two delivery channels, each with one clear job: MCP tool descriptions
+    - >-
+      Two delivery channels, each with one clear job: MCP tool descriptions
       teach AIDE at handshake time; aide_init installs a short pointer stub
       into the host's config file, lands the progressively-disclosed
       methodology doc hub onto the host's disk, scaffolds pipeline slash
@@ -31,39 +33,47 @@ outcomes:
       cost on every read of the config file, but pays the full doctrine
       cost only when the task actually touches `.aide` files. Progressive
       disclosure applies at the delivery layer, not just inside the docs.
-    - Every downstream artifact the server ships — tool descriptions,
+    - >-
+      Every downstream artifact the server ships — tool descriptions,
       host-installed pointer stubs, host-installed methodology docs,
       slash command templates — is composed from the canonical doc
       files at build or init time, never duplicated as an inline string
       or hardcoded template.
-    - A host project that runs aide_init once is AIDE-ready: the installing
+    - >-
+      A host project that runs aide_init once is AIDE-ready: the installing
       agent did not have to paraphrase, remember, or quote any AIDE rules to
       get there, because the tooling carried the full methodology into the
       project.
-    - The repo itself exemplifies AIDE because the server is written using
+    - >-
+      The repo itself exemplifies AIDE because the server is written using
       it: progressive disclosure in the folder tree, agent-readable names,
       `.aide` specs next to orchestrators, decisions-not-descriptions in
       every spec. Cascading intent at every level, so a contributor can
       write a new submodule spec by inheritance without re-deriving the
       rules.
   undesired:
-    - A rule, convention, or doctrine that lives anywhere other than the
+    - >-
+      A rule, convention, or doctrine that lives anywhere other than the
       canonical doc files — a commit message, a README, a code comment, a
       per-project CLAUDE.md edit. If the change is not in the canonical
       docs, it is not shipped, and it will drift away from whatever the
       server actually delivers.
-    - Dual sources of truth: the same doctrine appearing in both this repo
+    - >-
+      Dual sources of truth: the same doctrine appearing in both this repo
       and the original brain notes without one being marked authoritative
       and the other deleted. Migration from the brain is a one-way move on
       the same commit.
-    - A delivery channel other than MCP tool descriptions and aide_init —
+    - >-
+      A delivery channel other than MCP tool descriptions and aide_init —
       a sixth tool that "also explains things," a server-side prompt, a
       standalone CLI that teaches. Every additional channel fragments the
       teaching surface and forces agents to guess where to look.
-    - A canonical doc that describes behavior the server does not actually
+    - >-
+      A canonical doc that describes behavior the server does not actually
       deliver. Aspirational docs are worse than missing docs, because
       missing docs do not lie.
-    - A change that makes the cascading-intent model less faithful, less
+    - >-
+      A change that makes the cascading-intent model less faithful, less
       complete, or less teachable — a child spec restating its parent, a
       parent so narrow that its children have nothing to inherit, a helper
       with a `.aide` file, an orchestrator without one. These are

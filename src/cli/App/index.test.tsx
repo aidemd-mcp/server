@@ -82,8 +82,10 @@ describe("App", () => {
 	it("does not show file children before a dir is expanded", () => {
 		const { lastFrame } = render(<App root="/mock" initialNodes={mockNodes} />);
 		const frame = lastFrame() ?? "";
-		// .aide file is a child of "." dir — should not appear until dir is expanded.
-		expect(frame).not.toContain(".aide");
+		// .aide file is a child of "." dir — should not appear as a tree row until dir is expanded.
+		// The detail panel may show the file path via findPrimaryIntent, so check for the
+		// tree-specific file row indicator (file rows are indented children, not dir rows with "> ").
+		expect(frame).not.toContain("intent.aide");
 	});
 
 	it("shows navigation hints in tree panel", () => {

@@ -107,8 +107,8 @@ export default function DrillInPanel({ label, frontmatter, sections, focusedSect
 	const columns = stdout?.columns ?? 80;
 	const wide = columns >= 80;
 
-	const scope = frontmatter?.scope ?? "(no scope)";
-	const intent = frontmatter?.intent ?? "(no intent)";
+	const scope = frontmatter?.scope ?? "[FAILED TO PARSE]";
+	const intent = frontmatter?.intent ?? "[FAILED TO PARSE]";
 	const desired = frontmatter?.outcomes?.desired ?? [];
 	const undesired = frontmatter?.outcomes?.undesired ?? [];
 
