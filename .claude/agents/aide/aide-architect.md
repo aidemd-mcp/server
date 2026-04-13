@@ -50,6 +50,7 @@ Specifically:
      - Function boundaries and contracts between steps
      - Sequencing — what must exist before the next step
      - Tests to write for each behavior the spec names
+     - Structure numbered steps as self-contained units of work. Each gets its own implementor agent. Use lettered sub-steps (3a, 3b) only when actions are tightly coupled and cannot be independently verified.
    - **`## Decisions`** — architectural choices: why X over Y, naming rationale, tradeoffs
 
 ## Plan Quality Standards
@@ -60,6 +61,7 @@ Specifically:
 - **Progressive disclosure supersedes the playbook.** The AIDE progressive disclosure docs (`.aide/docs/progressive-disclosure.md`, `.aide/docs/agent-readable-code.md`) are the structural foundation. If the playbook contradicts them, the AIDE docs win. The playbook adds project-specific conventions on top — naming, testing, patterns — but never overrides the orchestrator/helper pattern, modularization rules, or cascading structure.
 - **No scope creep.** If you discover issues unrelated to the task, note them separately.
 - **Traceability.** Every step traces back to the `.aide` spec, a playbook convention, or the progressive disclosure conventions above.
+- **Steps are units of delegation.** Each numbered step will be executed by a fresh implementor agent in clean context. Write steps that are self-contained — the agent reads the plan, reads the current code, and executes. It does not know what the previous agent did in-memory. When steps are tightly coupled (creating a helper and wiring it into the caller in the same session), group them as lettered sub-steps under one number (2a, 2b, 2c). The orchestrator keeps one agent for all sub-steps. Default to independent numbered steps; letter only when coupling is unavoidable.
 
 ## Return Format
 

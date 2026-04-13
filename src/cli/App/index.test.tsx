@@ -70,10 +70,20 @@ describe("App", () => {
 		expect(frame).toContain("Detail");
 	});
 
-	it("shows file entries in the tree panel", () => {
+	it("shows dir entries in the tree panel (folders as primary cursor stops)", () => {
 		const { lastFrame } = render(<App root="/mock" initialNodes={mockNodes} />);
 		const frame = lastFrame() ?? "";
-		expect(frame).toContain(".aide");
+		// Dir nodes visible by default (files are hidden until expanded).
+		// Root dir renders as ". /" (the TreePanel label for path ".").
+		expect(frame).toContain(". /");
+		expect(frame).toContain("src/tools/init/");
+	});
+
+	it("does not show file children before a dir is expanded", () => {
+		const { lastFrame } = render(<App root="/mock" initialNodes={mockNodes} />);
+		const frame = lastFrame() ?? "";
+		// .aide file is a child of "." dir — should not appear until dir is expanded.
+		expect(frame).not.toContain(".aide");
 	});
 
 	it("shows navigation hints in tree panel", () => {
@@ -107,21 +117,68 @@ describe("App", () => {
 		expect(frame).toContain("tab");
 	});
 
-	it("moves cursor down on down arrow", async () => {
+	it("moves cursor down on down arrow (between dir nodes)", async () => {
 		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
-		stdin.write("\x1B[B"); // down arrow
+		stdin.write("\x1B[B"); // down arrow — moves from dir 0 to dir 1
 		await flush();
 		const frame = lastFrame() ?? "";
-		// Component still renders without crash.
+		// Component still renders without crash, cursor moved to second dir.
 		expect(frame).toContain("Intent Tree");
+		expect(frame).toContain("src/tools/init/");
 	});
 
-	it("switches to drill-in mode on Enter and renders card layout (scope, intent, outcomes)", async () => {
+	it("Enter on dir expands it and shows children", async () => {
 		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
-		// Move down to first file node (index 1 = the .aide file child).
-		stdin.write("\x1B[B");
+		// Cursor starts on first dir node (".").
+		stdin.write("\r"); // Enter — expand dir
 		await flush();
-		stdin.write("\r"); // Enter — selectedFile is now .aide
+		await new Promise((r) => setTimeout(r, 20));
+		const frame = lastFrame() ?? "";
+		// After expanding, the child .aide file should appear.
+		expect(frame).toContain(".aide");
+	});
+
+	it("Enter on expanded dir collapses it", async () => {
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
+		// Expand the first dir.
+		stdin.write("\r");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		// Cursor advanced to child — move back up to dir.
+		stdin.write("\x1B[A"); // up arrow back to dir
+		await flush();
+		// Collapse the dir.
+		stdin.write("\r");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		const frame = lastFrame() ?? "";
+		// Child file should no longer appear.
+		expect(frame).not.toContain(".aide");
+	});
+
+	it("Escape inside expanded dir collapses parent and returns cursor to dir", async () => {
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
+		// Expand first dir — cursor moves to child.
+		stdin.write("\r");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		// Cursor is now on the .aide file child. Press Escape — should collapse dir.
+		stdin.write("\x1B");
+		await new Promise((r) => setTimeout(r, 30));
+		const frame = lastFrame() ?? "";
+		// Child file should be gone, dir still visible (rendered as ". /").
+		expect(frame).not.toContain(".aide");
+		expect(frame).toContain(". /");
+	});
+
+	it("switches to drill-in mode on Enter (two-level: expand dir, select file, drill in)", async () => {
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
+		// Step 1: Enter on first dir node to expand it.
+		stdin.write("\r");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		// Cursor advanced to first child (.aide file). Step 2: Enter to drill in.
+		stdin.write("\r");
 		await flush();
 		// Wait for async readFile to resolve.
 		await new Promise((r) => setTimeout(r, 50));
@@ -139,10 +196,11 @@ describe("App", () => {
 
 	it("drill-in mode: Up/Down moves section focus and Enter expands the focused section", async () => {
 		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
-		// Navigate to file and drill in.
-		stdin.write("\x1B[B");
+		// Navigate to file and drill in (two-level navigation).
+		stdin.write("\r"); // expand dir
 		await flush();
-		stdin.write("\r"); // Enter
+		await new Promise((r) => setTimeout(r, 20));
+		stdin.write("\r"); // drill into file
 		await flush();
 		await new Promise((r) => setTimeout(r, 50));
 
@@ -169,10 +227,11 @@ describe("App", () => {
 
 	it("drill-in mode: Up arrow moves section focus, Enter expands that section", async () => {
 		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
-		// Navigate to file and drill in.
-		stdin.write("\x1B[B");
+		// Navigate to file and drill in (two-level navigation).
+		stdin.write("\r"); // expand dir
 		await flush();
-		stdin.write("\r"); // Enter
+		await new Promise((r) => setTimeout(r, 20));
+		stdin.write("\r"); // drill into file
 		await flush();
 		await new Promise((r) => setTimeout(r, 50));
 
@@ -210,11 +269,61 @@ describe("App", () => {
 		expect(frame).not.toContain("discover");
 	});
 
+	it("search filter does not show a dir whose name is a prefix of a matching sibling dir", async () => {
+		// Regression: "src/cli".startsWith("src/cli") is true, but so is
+		// "src/cli-extra/intent.aide".startsWith("src/cli"). The predicate must
+		// check actual tree children, not path prefixes, so src/cli is excluded
+		// when only src/cli-extra contains a matching file.
+		const nodes: TreeNode[] = [
+			makeDirNode("src/cli", [makeNode("src/cli/.aide")]),
+			makeDirNode("src/cli-extra", [makeNode("src/cli-extra/intent.aide")]),
+		];
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={nodes} />);
+		// Type "extra" — only src/cli-extra and its child should be visible.
+		stdin.write("e");
+		await flush();
+		stdin.write("x");
+		await flush();
+		stdin.write("t");
+		await flush();
+		stdin.write("r");
+		await flush();
+		stdin.write("a");
+		await flush();
+		const frame = lastFrame() ?? "";
+		expect(frame).toContain("cli-extra");
+		expect(frame).not.toContain("cli/.aide");
+	});
+
+	it("footer hint shows expand/collapse (not drill in) when searching and cursor is on a dir", async () => {
+		const nodes: TreeNode[] = [
+			makeDirNode("src/tools/discover", [makeNode("src/tools/discover/.aide")]),
+			makeDirNode("src/tools/init", [makeNode("src/tools/init/intent.aide")]),
+		];
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={nodes} />);
+		// Type "init" — filters tree so only src/tools/init dir (and its child) are visible.
+		// Cursor lands on the dir node.
+		stdin.write("i");
+		await flush();
+		stdin.write("n");
+		await flush();
+		stdin.write("i");
+		await flush();
+		stdin.write("t");
+		await flush();
+		const frame = lastFrame() ?? "";
+		// Cursor is on a dir node — hint must reflect expand/collapse, not drill in.
+		expect(frame).toContain("expand");
+		expect(frame).not.toContain("drill in");
+	});
+
 	it("Escape in drill-in mode returns to tree view", async () => {
 		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
-		stdin.write("\x1B[B");
+		// Two-level navigation: expand dir, then drill into file.
+		stdin.write("\r"); // expand dir
 		await flush();
-		stdin.write("\r"); // Enter drill-in
+		await new Promise((r) => setTimeout(r, 20));
+		stdin.write("\r"); // drill into file
 		await flush();
 		await new Promise((r) => setTimeout(r, 50));
 		stdin.write("\x1B"); // Escape back
@@ -222,5 +331,33 @@ describe("App", () => {
 		const frame = lastFrame() ?? "";
 		expect(frame).toContain("Intent Tree");
 		expect(frame).toContain("Detail");
+	});
+
+	it("Detail panel auto-loads intent for dir node", async () => {
+		const { lastFrame } = render(<App root="/mock" initialNodes={mockNodes} />);
+		// Cursor starts on first dir "." which has a child .aide of type intent.
+		// Wait for async frontmatter load.
+		await new Promise((r) => setTimeout(r, 50));
+		const frame = lastFrame() ?? "";
+		// Detail panel should show the intent frontmatter, not "Select a file to preview".
+		expect(frame).toContain("cli");
+		expect(frame).toContain("terminal-native");
+	});
+
+	it("Enter on file inside expanded dir triggers drill-in", async () => {
+		const { lastFrame, stdin } = render(<App root="/mock" initialNodes={mockNodes} />);
+		// Expand first dir, cursor moves to file child.
+		stdin.write("\r");
+		await flush();
+		await new Promise((r) => setTimeout(r, 20));
+		// Press Enter on the file to drill in.
+		stdin.write("\r");
+		await flush();
+		await new Promise((r) => setTimeout(r, 50));
+		const frame = lastFrame() ?? "";
+		expect(frame).toContain("scope:");
+		expect(frame).toContain("Desired Outcomes");
+		expect(frame).toContain("Undesired Outcomes");
+		expect(frame).toContain("[esc] back");
 	});
 });

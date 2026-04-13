@@ -149,12 +149,18 @@ After the agent returns, present the completed spec to the user for review befor
 
 ### Stage 5: Build → `aide:build`
 
-**Your job (orchestrator):** Confirm the plan is approved, then delegate.
+**Your job (orchestrator):** Confirm the plan is approved, then read `plan.aide` and execute it step-by-step — one fresh implementor agent per numbered step.
 
-**Then delegate** to the `aide-implementor` agent (via Agent tool, `subagent_type: aide-implementor`). The agent will:
-- Read `plan.aide` and the `.aide` spec
-- Execute steps top-to-bottom, checking boxes as they complete
-- Write code and tests, run until green
+**How to iterate:**
+1. Read `plan.aide` to identify the next unchecked numbered step
+2. Delegate to a fresh `aide-implementor` agent (via Agent tool, `subagent_type: aide-implementor`) with a prompt that includes:
+   - The path to the `.aide` spec and `plan.aide`
+   - Which numbered step to execute (quote it from the plan)
+   - If the step has lettered sub-steps (2a, 2b, 2c), include ALL of them — the agent executes the entire numbered group in one session
+3. After the agent returns, verify the step's checkbox is checked
+4. Repeat from step 1 until all numbered steps are checked
+
+**Lettered sub-steps:** When a plan step has lettered sub-steps (e.g., 3a, 3b, 3c), these are tightly coupled actions that share one agent session. Delegate ALL sub-steps of that number to a single implementor. Do NOT split lettered sub-steps across agents.
 
 Do NOT write any code yourself. Do NOT run builds or tests yourself. The implementor handles all of this.
 

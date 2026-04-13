@@ -4,6 +4,7 @@ intent: >
   drill-in keyboard interaction, the deep/shallow toggle correctness, the
   cursor-filter desync, and the untested drill-in Enter path.
   (Round 2: one regression found in the fix for issue #4.)
+  (Round 3: hint text inconsistency during search + dir cursor, and missing test coverage for that path.)
 misalignment:
   - implementation-drift
   - test-gap
@@ -37,10 +38,20 @@ misalignment:
 
 ## Issues — Round 2 (regression from fix loop)
 
-- [ ] `src/cli/App/index.tsx:68-73` — The dir-node predicate in `visibleNodes` asks whether any file in the entire `flatNodes` array matches the search filter, not whether any child of this specific directory matches. During a search, if any single file in the project matches the filter, every directory node passes the predicate and is included in `visibleNodes`, even directories that contain no matching files. The fix for issue #4 correctly lifted `visibleNodes` to App and removed the dual-computation bug, but introduced a scoping defect in the dir predicate.
+- [x] `src/cli/App/index.tsx:68-73` — The dir-node predicate in `visibleNodes` asks whether any file in the entire `flatNodes` array matches the search filter, not whether any child of this specific directory matches. During a search, if any single file in the project matches the filter, every directory node passes the predicate and is included in `visibleNodes`, even directories that contain no matching files. The fix for issue #4 correctly lifted `visibleNodes` to App and removed the dual-computation bug, but introduced a scoping defect in the dir predicate.
   Concretely: given a tree with `src/tools/init/intent.aide` and `src/cli/.aide`, typing "init" should show only `src/tools/init/` and its children. Instead, `src/cli/` is also shown (dir predicate matches because `intent.aide` satisfies the global `flatNodes.some` check).
   Traces to: desired outcome — "search/filter by typing" — filtered tree must contain only directories with at least one matching descendant.
   Misalignment: implementation-drift
+
+## Issues — Round 3 (folder-first navigation implementation)
+
+- [x] `src/cli/TreePanel/index.tsx:107-108` — The `searchFilter` guard short-circuits hint selection before `cursorOnDir` is checked. When `searchFilter` is non-empty and the cursor is on a dir node, the hint reads `[enter] drill in` — but pressing Enter will expand or collapse the dir (App.tsx line 194-215 has no special case for `searchFilter`). The hint is false. Plan step 8 requires the footer hint to always reflect cursor context: `[enter] expand` on a collapsed dir, `[enter] collapse` on an expanded dir. The `searchFilter` condition must be subordinate to `cursorOnDir`, not the other way around.
+  Traces to: plan step 8 — "context-aware footer hints"; desired outcome — "keyboard navigation follows terminal conventions" (a hint that lies about what Enter does violates the convention)
+  Misalignment: implementation-drift
+
+- [x] `src/cli/App/index.test.tsx` — No test covers the footer hint during a search when the cursor is on a dir node. The hint-text inconsistency above passed all 38 tests because no test checks what the hint says while `searchFilter` is active and `cursorOnDir` is true. A test rendering with two dirs, typing a search string that surfaces a dir, and asserting the hint contains `expand` (not `drill in`) would pin this behavior.
+  Traces to: plan step 8 — "context-aware footer hints"; prior retro pattern ("a regression test pinned to the concrete behavior would have caught the defect immediately")
+  Misalignment: test-gap
 
 ## Retro
 
@@ -58,3 +69,6 @@ The dual computation of `visibleNodes` in two separate components is an architec
 
 **What would have caught the Round 2 regression (dir predicate scoping) earlier?**
 A test that renders a two-directory tree, types a search term that matches only one directory's files, and asserts the other directory is NOT in the rendered output. The fix loop added no search-filter correctness tests — it only verified that `visibleNodes` was computed once. A regression test pinned to the concrete behavior would have caught the scoping defect immediately.
+
+**What would have caught the Round 3 hint inconsistency earlier?**
+Plan step 8 explicitly lists the three hint states. A reviewer cross-referencing the TreePanel hint logic against those three states would have spotted that the `searchFilter` branch pre-empts the `cursorOnDir` branch rather than composing with it. A test that types a search string and asserts the hint text based on cursor type — not just that the app renders — would have caught it. Footer hints have been a persistent source of drift across all three rounds; the pattern is that hint logic is written once and never regression-tested as navigation modes compose.

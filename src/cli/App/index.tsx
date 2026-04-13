@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
 import { readFile } from "node:fs/promises";
 import type { AideFile, AideFrontmatter, BodySection, TreeNode } from "@/types/index.js";
@@ -11,6 +11,7 @@ import DrillInPanel from "@/cli/DrillInPanel/index.js";
 import parseFrontmatter from "@/util/parseFrontmatter/index.js";
 import parseBody from "@/util/parseBody/index.js";
 import scan from "@/util/scan/index.js";
+import findPrimaryIntent from "@/cli/findPrimaryIntent/index.js";
 
 type Mode = "tree" | "drill-in";
 
@@ -38,13 +39,18 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 	// --- Tree state ---
 	// Cache shallow results so toggling back from deep view restores them instantly.
 	const [shallowNodes] = useState<TreeNode[]>(initialNodes);
-	const [shallowFlatNodes] = useState<FlatNode[]>(() => flattenTree(initialNodes));
 	const [treeNodes, setTreeNodes] = useState<TreeNode[]>(initialNodes);
-	const [flatNodes, setFlatNodes] = useState<FlatNode[]>(() => flattenTree(initialNodes));
+	const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
 	const [cursorIndex, setCursorIndex] = useState(0);
 	const [searchFilter, setSearchFilter] = useState("");
 	const [isDeepView, setIsDeepView] = useState(false);
 	const [deepLoading, setDeepLoading] = useState(false);
+
+	// Derive flatNodes from treeNodes + expandedDirs — always in sync within the same render.
+	const flatNodes: FlatNode[] = useMemo(
+		() => flattenTree(treeNodes, expandedDirs),
+		[treeNodes, expandedDirs],
+	);
 
 	// --- View mode ---
 	const [mode, setMode] = useState<Mode>("tree");
@@ -61,18 +67,25 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 	const [selectedFrontmatter, setSelectedFrontmatter] = useState<AideFrontmatter | null>(null);
 	const [fmCache] = useState<Map<string, AideFrontmatter | null>>(new Map());
 
+	/** Returns true if any file descendant of node matches the search filter. */
+	function hasMatchingDescendant(node: TreeNode, filter: string): boolean {
+		if (node.kind === "file") {
+			const lower = filter.toLowerCase();
+			return (
+				node.file.relativePath.toLowerCase().includes(lower) ||
+				(node.file.summary ?? "").toLowerCase().includes(lower)
+			);
+		}
+		return node.children.some((child) => hasMatchingDescendant(child, filter));
+	}
+
 	// Compute visible flat nodes from a single source of truth in App.
-	// Dir nodes are included only when at least one of their file descendants matches.
+	// Dir nodes are included when at least one of their file descendants matches.
+	// File nodes inside expanded dirs are included when they individually match.
 	const visibleNodes: FlatNode[] = searchFilter
 		? flatNodes.filter((fn) => {
 			if (fn.node.kind === "dir") {
-				const dirPath = fn.node.path;
-				return flatNodes.some(
-					(child) =>
-						child.node.kind === "file" &&
-						child.node.file.relativePath.startsWith(dirPath) &&
-						child.node.file.relativePath.toLowerCase().includes(searchFilter.toLowerCase()),
-				);
+				return hasMatchingDescendant(fn.node, searchFilter);
 			}
 			return (
 				fn.node.file.relativePath.toLowerCase().includes(searchFilter.toLowerCase()) ||
@@ -84,9 +97,19 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 	// Clamp cursor within visible range.
 	const clampedCursor = Math.min(cursorIndex, Math.max(0, visibleNodes.length - 1));
 
-	// Current selected file (from cursor position in visibleNodes).
+	// Current cursor node.
 	const cursorNode = visibleNodes[clampedCursor];
-	const selectedFile = cursorNode?.node.kind === "file" ? cursorNode.node.file : null;
+
+	// Derive selectedFile: for dir nodes auto-load primary intent; for file nodes use directly.
+	const selectedFile: AideFile | null = cursorNode
+		? cursorNode.node.kind === "file"
+			? cursorNode.node.file
+			: findPrimaryIntent(cursorNode.node)
+		: null;
+
+	// Computed booleans for the cursor's current position.
+	const cursorOnDir = cursorNode?.node.kind === "dir";
+	const cursorDirExpanded = cursorOnDir && cursorNode.node.kind === "dir" && expandedDirs.has(cursorNode.node.path);
 
 	// Load frontmatter for the detail panel whenever selectedFile changes.
 	useEffect(() => {
@@ -139,7 +162,6 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 		if (isDeepView) {
 			// Restore cached shallow results — no re-scan needed.
 			setTreeNodes(shallowNodes);
-			setFlatNodes(shallowFlatNodes);
 			setIsDeepView(false);
 			return;
 		}
@@ -148,14 +170,13 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 			const result = await scan(root, undefined, false);
 			const nodes = buildTreeData(result.files);
 			setTreeNodes(nodes);
-			setFlatNodes(flattenTree(nodes));
 		} catch {
 			// Silently keep current state on scan failure.
 		} finally {
 			setDeepLoading(false);
 			setIsDeepView(true);
 		}
-	}, [isDeepView, root, shallowNodes, shallowFlatNodes]);
+	}, [isDeepView, root, shallowNodes]);
 
 	// --- Keyboard handling ---
 	useInput((input, key) => {
@@ -169,7 +190,28 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 				return;
 			}
 			if (key.return) {
-				if (selectedFile) drillIntoFile(selectedFile);
+				if (!cursorNode) return;
+				if (cursorNode.node.kind === "dir") {
+					const dirPath = cursorNode.node.path;
+					const isExpanded = expandedDirs.has(dirPath);
+					setExpandedDirs((prev) => {
+						const next = new Set(prev);
+						if (isExpanded) {
+							next.delete(dirPath);
+						} else {
+							next.add(dirPath);
+						}
+						return next;
+					});
+					// When expanding, advance cursor to first child.
+					if (!isExpanded) {
+						setCursorIndex((c) => c + 1);
+					}
+					// When collapsing, cursor stays on the dir node (clampedCursor handles bounds).
+				} else {
+					// File node: drill in.
+					drillIntoFile(cursorNode.node.file);
+				}
 				return;
 			}
 			if (key.tab) {
@@ -177,12 +219,33 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 				return;
 			}
 			if (key.escape) {
+				// Priority 1: if cursor is on a file node inside an expanded dir, collapse parent.
+				if (cursorNode && cursorNode.node.kind === "file") {
+					// Walk backward through visibleNodes to find the nearest preceding dir at shallower depth.
+					const cursorDepth = cursorNode.depth;
+					for (let i = clampedCursor - 1; i >= 0; i--) {
+						const candidate = visibleNodes[i];
+						if (candidate.node.kind === "dir" && candidate.depth < cursorDepth) {
+							// Collapse this parent dir.
+							const parentPath = candidate.node.path;
+							setExpandedDirs((prev) => {
+								const next = new Set(prev);
+								next.delete(parentPath);
+								return next;
+							});
+							setCursorIndex(i);
+							return;
+						}
+					}
+				}
+				// Priority 2: if search filter non-empty, clear it.
 				if (searchFilter) {
 					setSearchFilter("");
 					setCursorIndex(0);
-				} else {
-					exit();
+					return;
 				}
+				// Priority 3: exit.
+				exit();
 				return;
 			}
 			if (key.backspace || key.delete) {
@@ -263,6 +326,9 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 					cursorIndex={clampedCursor}
 					searchFilter={searchFilter}
 					isDeepView={isDeepView}
+					expandedDirs={expandedDirs}
+					cursorOnDir={cursorOnDir}
+					cursorDirExpanded={cursorDirExpanded}
 				/>
 			</Box>
 

@@ -24,20 +24,34 @@ interface TreePanelProps {
 	cursorIndex: number;
 	searchFilter: string;
 	isDeepView: boolean;
+	/** Set of dir paths that are currently expanded. */
+	expandedDirs: Set<string>;
+	/** True when the cursor is currently on a dir node. */
+	cursorOnDir: boolean;
+	/** True when the cursor is on a dir node that is currently expanded. */
+	cursorDirExpanded: boolean;
 }
 
 /** Render one flat node row in the tree. */
-function renderRow(flatNode: FlatNode, index: number, cursorIndex: number, isDeepView: boolean): React.ReactNode {
+function renderRow(
+	flatNode: FlatNode,
+	index: number,
+	cursorIndex: number,
+	isDeepView: boolean,
+	expandedDirs: Set<string>,
+): React.ReactNode {
 	const { node, depth } = flatNode;
 	const isCursor = index === cursorIndex;
 	const indent = "  ".repeat(depth);
 
 	if (node.kind === "dir") {
 		const label = node.path === "." ? ". /" : `${node.path}/`;
+		const expandIndicator = expandedDirs.has(node.path) ? "v " : "> ";
 		return (
 			<Box key={`dir-${node.path}-${index}`}>
 				<Text bold={isCursor} color={isCursor ? "white" : "gray"}>
 					{indent}
+					{expandIndicator}
 					{label}
 				</Text>
 			</Box>
@@ -78,21 +92,38 @@ function renderRow(flatNode: FlatNode, index: number, cursorIndex: number, isDee
 /**
  * Renders the left-panel tree of .aide files with cursor highlighting and optional summaries.
  * Receives pre-filtered visibleNodes from App — manages no state and performs no filtering.
+ * Shows expand/collapse indicators on dir nodes and context-aware footer hints.
  */
-export default function TreePanel({ visibleNodes, cursorIndex, searchFilter, isDeepView }: TreePanelProps): React.ReactElement {
+export default function TreePanel({
+	visibleNodes,
+	cursorIndex,
+	searchFilter,
+	isDeepView,
+	expandedDirs,
+	cursorOnDir,
+	cursorDirExpanded,
+}: TreePanelProps): React.ReactElement {
+	let hintText: string;
+	if (cursorOnDir) {
+		const escClear = searchFilter ? "  [esc] clear" : "";
+		hintText = cursorDirExpanded
+			? `${escClear}  [↑↓] navigate  [enter] collapse  [tab] deep view`
+			: `${escClear}  [↑↓] navigate  [enter] expand  [tab] deep view`;
+	} else if (searchFilter) {
+		hintText = "  [esc] clear  [↑↓] navigate  [enter] drill in";
+	} else {
+		hintText = "  [↑↓] navigate  [enter] drill in  [tab] deep view";
+	}
+
 	return (
 		<Box flexDirection="column" flexGrow={1}>
 			{visibleNodes.length === 0 ? (
 				<Text color="gray">  No results for "{searchFilter}"</Text>
 			) : (
-				visibleNodes.map((fn, i) => renderRow(fn, i, cursorIndex, isDeepView))
+				visibleNodes.map((fn, i) => renderRow(fn, i, cursorIndex, isDeepView, expandedDirs))
 			)}
 			<Box marginTop={1}>
-				<Text color="gray">
-					{searchFilter
-						? `  [esc] clear  [↑↓] navigate  [enter] drill in`
-						: `  [↑↓] navigate  [enter] drill in  [tab] deep view`}
-				</Text>
+				<Text color="gray">{hintText}</Text>
 			</Box>
 		</Box>
 	);
