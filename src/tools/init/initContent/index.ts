@@ -60,6 +60,7 @@ const DOC_PATHS = {
 	"agents/aide/aide-qa": ".claude/agents/aide/aide-qa.md",
 	"agents/aide/aide-auditor": ".claude/agents/aide/aide-auditor.md",
 	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
+	"skills/brain": ".claude/skills/brain/SKILL.md",
 } as const;
 
 export type CanonicalDocName = keyof typeof DOC_PATHS;
@@ -133,6 +134,7 @@ const AGENT_DOCS: readonly AgentDocEntry[] = [
  */
 const SKILL_DOCS: readonly SkillDocEntry[] = [
 	{ canonical: "skills/study-playbook", hostPath: "study-playbook/SKILL.md" },
+	{ canonical: "skills/brain", hostPath: "brain/SKILL.md" },
 ];
 
 /** Per-process cache. Populated from disk reads in this process only — never

@@ -26,10 +26,11 @@ The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fr
 
 ## Skills
 
-AIDE ships one canonical skill that `aide_init` installs to `.claude/skills/`:
+AIDE ships two canonical skills that `aide_init` installs to `.claude/skills/`:
 
 | Skill | Purpose |
 |---|---|
 | `study-playbook` | Navigate the coding playbook hub top-down to load conventions before writing or reviewing code |
+| `brain` | General-purpose vault access — read the vault CLAUDE.md, follow its navigation rules, fulfill the user's request |
 
 The `aide-architect` agent declares this skill in its frontmatter. Host projects build their own coding playbook in their Obsidian vault; the skill teaches the navigation pattern.

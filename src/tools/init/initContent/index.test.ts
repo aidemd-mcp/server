@@ -19,6 +19,11 @@ describe("readCanonicalDoc", () => {
 		expect(readCanonicalDoc("commands/aide/research")).toBe(onDisk);
 	});
 
+	it("returns disk bytes verbatim for skills/brain", () => {
+		const onDisk = readFileSync(join(REPO_ROOT, ".claude", "skills", "brain", "SKILL.md"), "utf-8");
+		expect(readCanonicalDoc("skills/brain")).toBe(onDisk);
+	});
+
 	/**
 	 * Regression guard for initContent/.aide outcomes.undesired #3 ("silent
 	 * fallback to hardcoded content"). If a future refactor introduces a
