@@ -1,0 +1,56 @@
+---
+intent: >
+  Terminal error output must match the spec's documented examples exactly —
+  short relative path in the message, and an "Error: " prefix on stderr —
+  so the developer sees what the spec promised when something goes wrong.
+misalignment:
+  - implementation-drift
+  - test-gap
+---
+
+## Issues
+
+- [x] `src/cli/init/writeMcpEntry/index.ts:39` — Error message uses the full
+  absolute path (`mcpPath`) rather than the short form `.mcp.json`. The spec's
+  good example shows `Error: .mcp.json exists but contains invalid JSON. Fix
+  the syntax error and re-run.` — the file reference is the short relative
+  name, not an absolute filesystem path.
+  Traces to: `outcomes.undesired[1]` — "Silently succeeding while writing
+  malformed JSON" (the error message is the user's only signal; if it is
+  harder to read than the spec documented, the guard is weaker than intended)
+  Misalignment: implementation-drift
+
+- [x] `src/cli/init/index.ts:41` — The IIFE catch block writes the raw error
+  message to stderr without an "Error: " prefix. The spec's good example shows
+  the output as `Error: .mcp.json exists but contains invalid JSON…` — the
+  `Error: ` label is part of the documented terminal contract.
+  Traces to: `outcomes.undesired[1]` — spec-documented terminal output for
+  the malformed-JSON failure case includes the prefix; the implementation omits
+  it.
+  Misalignment: implementation-drift
+
+- [x] `src/cli/init/writeMcpEntry/index.test.ts:104-108` — The malformed-JSON
+  test asserts only that the thrown error message contains `mcpPath` (the
+  absolute temp path). Once the implementation is fixed to use the short
+  relative form, this assertion must be updated to match — otherwise it will
+  pass against the broken form and fail against the correct one.
+  Traces to: `outcomes.undesired[1]` — test must guard the exact error
+  contract the spec documents, not the accidental absolute-path form.
+  Misalignment: test-gap
+
+## Retro
+
+Both issues share a root cause: the spec's good/bad examples section documents
+the exact terminal strings the CLI must produce, but those strings were not
+mechanically transferred into the test assertions. The malformed-JSON test
+checked that the error contains the file path — a structural check — rather
+than asserting the full message shape against the spec's example. A test that
+pins the complete error string (including the `Error: ` prefix and the short
+relative filename) would have caught both deviations at the time they were
+written.
+
+Strengthening the plan stage: the plan's step 5 (test list) named "throws an
+error mentioning the file path" as the criterion, which is weaker than "throws
+an error whose message matches the spec's documented example verbatim." When a
+spec provides exact output strings in its good/bad examples, the plan should
+quote them as the acceptance criterion, not paraphrase them.

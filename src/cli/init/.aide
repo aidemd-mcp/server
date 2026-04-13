@@ -1,0 +1,192 @@
+---
+scope: src/cli/init
+description: CLI bootstrapper that wires the AIDE MCP server and init command into a project so the full agent-driven init can run inside Claude Code
+intent: >
+  When a user runs `npx @aidemd-mcp/server init` in a project directory,
+  the CLI places exactly two artifacts on disk — the AIDE MCP server entry
+  in the project's MCP config and the init slash command file — so the user
+  can immediately open Claude Code and run the full interactive AIDE init
+  via the now-available MCP tools and slash command. The bootstrapper must
+  be safe to run repeatedly, must never destroy existing MCP config entries
+  or other slash commands, and must give the user clear terminal output
+  confirming what was created or what already existed.
+outcomes:
+  desired:
+    - Running the CLI in a project with no existing MCP config creates a
+      valid config file containing the aide server entry, and writes the
+      init slash command to the correct commands directory
+    - Running the CLI in a project whose MCP config already contains other
+      server entries preserves every existing entry and adds only the aide
+      entry
+    - Running the CLI when both artifacts already exist produces no file
+      changes and reports that everything is already configured
+    - After the CLI completes, a Claude Code session in the same project
+      can invoke the aide MCP tools and the init slash command without
+      further manual setup
+  undesired:
+    - Overwriting or removing existing MCP server entries that belong to
+      other tools when merging the aide entry into an existing config
+    - Silently succeeding while writing malformed JSON to the MCP config
+      file, leaving the project in a state where no MCP servers load
+    - Installing the full set of AIDE commands, agents, docs, or brain
+      config — this bootstrapper does only the two-artifact minimum; the
+      full init is the MCP tool's job
+    - Requiring user interaction, prompts, or flags to complete the
+      default happy path
+---
+
+## Context
+
+The AIDE MCP server bootstraps projects through a structured MCP tool (`aide_init`) that runs inside an active agent session. But the MCP server itself must be registered in the project's MCP config before any agent can call its tools — a chicken-and-egg problem. Today a developer must manually edit `.mcp.json` and create the init slash command file before they can run the interactive init wizard. This CLI bootstrapper eliminates that manual step: one `npx` command places the two artifacts that unlock the full agent-driven init flow.
+
+The bootstrapper is deliberately minimal. It does not install methodology docs, agent files, the full slash command set, brain config, or IDE associations. Those are the MCP tool's job, driven by the agent in an interactive category-by-category wizard. This CLI does only what cannot be done from inside the agent session: wiring the MCP server entry and the init command that triggers the wizard.
+
+The existing codebase already has helpers that construct MCP entries and resolve canonical command content, but those helpers are designed for the MCP tool's structured planning-and-apply pattern — they return `InitStep` objects for an agent to present in a wizard. The CLI needs a direct imperative path: read, merge, write, print.
+
+## Strategy
+
+**Use the `mcpEntry()` shape from `wireMcp` as the canonical MCP config entry.** The aide server entry is `{ "command": "npx", "args": ["@aidemd-mcp/server"] }` on Unix and `{ "command": "cmd", "args": ["/c", "npx", "@aidemd-mcp/server"] }` on Windows. The key is `"aide"`. This matches what `wireMcp/index.ts` constructs and what it checks when detecting an existing entry (`"aide" in servers || "aidemd-mcp" in servers`). The CLI must use the identical key and entry shape so that a subsequent `aide_init` MCP category step reports `exists` rather than creating a duplicate.
+
+**Read the init command content from the canonical source via `readCanonicalDoc`.** The `initContent` module resolves canonical names to file paths relative to the package's repo root. The canonical name for the init command is `"commands/aide/init"`, mapping to `.claude/commands/aide/init.md` within the package. Reading through `readCanonicalDoc` ensures the CLI always writes the same content the MCP tool's `scaffoldCommands` helper would write, eliminating version drift between the two bootstrapping paths.
+
+**Target `.claude/commands/aide/init.md` as the command file path.** The `scaffoldCommands` registry defines the init command's `hostPath` as `aide/init.md` relative to the framework's `commandDir`. For Claude Code, `commandDir` is `.claude/commands`. The CLI targets only Claude Code — it runs in a terminal before any agent session exists, so multi-framework detection is irrelevant. The CLI creates the parent directory tree (`mkdir -p` equivalent) if it does not exist.
+
+**Merge into existing `.mcp.json` using read-parse-merge-write.** Read the existing file (treat absence as `{}`). Parse JSON. Merge `{ "mcpServers": { "aide": <entry> } }` into the parsed object, preserving all existing keys under `mcpServers` and any other top-level keys. Serialize with 2-space indent and a trailing newline. Write atomically. If the file exists but contains malformed JSON, print a clear error naming the file and exit non-zero without writing — never silently overwrite a broken config. This directly guards against the "destroy existing entries" and "write malformed JSON" undesired outcomes.
+
+**Check for existing artifacts before writing (idempotency).** Before writing `.mcp.json`, check whether `mcpServers.aide` or `mcpServers["aidemd-mcp"]` already exists — matching `wireMcp`'s dual-key check. Before writing the command file, check whether the file exists on disk. Report each artifact as `[created]` or `[exists]`. If both already exist, print a summary and exit 0 with no file mutations.
+
+**Add a `"server"` bin entry to `package.json` pointing to the CLI entry point.** npm's `npx @scope/name` resolves the bin by the package name's last segment. For `@aidemd-mcp/server`, npx looks for a bin named `server`. The current `package.json` has `aidemd-mcp` and `aide-tree` but no `server`. A new entry `"server": "dist/cli/init/index.js"` is needed. This is a separate entry point from both the MCP server (`dist/index.js`) and the TUI (`dist/cli/index.js`).
+
+**Import `mcpEntry` and `readCanonicalDoc` but not the planning machinery.** The `mcpEntry()` function is a pure function returning the entry shape — safe to import. `readCanonicalDoc` handles repo-root-relative path resolution — also safe. But the `InitStep` planning types, status enums, `applySteps`, and category grouping are MCP-tool concerns. The CLI is a direct imperative script: it reads state, decides, writes, and prints. No planning objects, no structured JSON responses, no two-call patterns.
+
+**Keep terminal output terse and scannable.** Print one line per artifact with a status prefix: `[created]` or `[exists]`. On completion, print a next-step instruction: "Open Claude Code and run /aide:init to complete setup." On error (malformed JSON, write failure), print the error to stderr and exit 1. No colors, no spinners, no ASCII art, no interactive prompts. The developer runs this once and moves on.
+
+**No CLI framework, no argument parsing beyond `--help`.** The script imports `node:fs/promises`, `node:path`, `node:os`, and the two internal helpers. The entry point is a single async IIFE. The only recognized flag is `--help`, which prints a one-line usage hint. All other arguments are ignored. This avoids pulling in Commander, Yargs, or any dependency for a script that takes no meaningful input.
+
+## Good examples
+
+A developer runs the bootstrapper in a fresh project with no `.mcp.json`:
+
+```
+$ npx @aidemd-mcp/server init
+[created] .mcp.json — aide MCP server entry
+[created] .claude/commands/aide/init.md — /aide:init command
+Done. Open Claude Code and run /aide:init to complete setup.
+```
+
+The resulting `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "aide": {
+      "command": "npx",
+      "args": ["@aidemd-mcp/server"]
+    }
+  }
+}
+```
+
+A developer runs it in a project that already has other MCP servers configured:
+
+```
+$ npx @aidemd-mcp/server init
+[created] .mcp.json — aide MCP server entry (merged with 2 existing servers)
+[created] .claude/commands/aide/init.md — /aide:init command
+Done. Open Claude Code and run /aide:init to complete setup.
+```
+
+The existing servers (`obsidian`, `github`) remain untouched. Only the `aide` key was added.
+
+A developer runs it a second time after both artifacts already exist:
+
+```
+$ npx @aidemd-mcp/server init
+[exists] .mcp.json — aide server already configured
+[exists] .claude/commands/aide/init.md — /aide:init command already present
+Already set up. Run /aide:init in Claude Code to continue.
+```
+
+No files were modified. Exit code 0.
+
+A developer runs it against a project with a corrupted `.mcp.json`:
+
+```
+$ npx @aidemd-mcp/server init
+Error: .mcp.json exists but contains invalid JSON. Fix the syntax error and re-run.
+```
+
+Exit code 1. No files were written. The developer knows exactly what to fix.
+
+## Bad examples
+
+The CLI writes a fresh `.mcp.json` that replaces the existing one:
+
+```
+$ npx @aidemd-mcp/server init
+[created] .mcp.json
+```
+
+The developer's existing `obsidian` and `github` MCP server entries are gone. The file now contains only the aide entry. This is the primary failure mode the spec exists to prevent.
+
+The CLI installs the full set of AIDE commands, agents, and docs:
+
+```
+$ npx @aidemd-mcp/server init
+[created] .mcp.json
+[created] .claude/commands/aide/init.md
+[created] .claude/commands/aide/research.md
+[created] .claude/commands/aide/spec.md
+[created] .claude/commands/aide/plan.md
+[created] .claude/commands/aide/build.md
+[created] .claude/commands/aide/qa.md
+[created] .claude/agents/aide/aide-architect.md
+[created] .aide/docs/index.md
+...
+```
+
+This bypasses the interactive wizard entirely. The developer has no chance to skip categories, choose a brain vault, or confirm framework detection. The MCP tool's init wizard exists precisely because these decisions require user input.
+
+The CLI prompts for confirmation:
+
+```
+$ npx @aidemd-mcp/server init
+This will add the AIDE MCP server to your project. Continue? [y/N]
+```
+
+The spec requires zero interaction on the default happy path. A confirmation prompt adds friction to a command that is already opt-in (the developer explicitly ran `npx`).
+
+The CLI silently succeeds when writing malformed JSON:
+
+```
+$ npx @aidemd-mcp/server init
+[created] .mcp.json
+```
+
+But the file contains a trailing comma or missing brace. Claude Code fails to load any MCP servers on next launch, with an error message that does not point back to the bootstrapper. The developer blames Claude Code, not the init script.
+
+The CLI writes the MCP entry under a different key than what `wireMcp` checks:
+
+```json
+{
+  "mcpServers": {
+    "aidemd-mcp-server": {
+      "command": "npx",
+      "args": ["@aidemd-mcp/server"]
+    }
+  }
+}
+```
+
+When the developer later runs `/aide:init` inside Claude Code, the MCP category step does not find `"aide"` or `"aidemd-mcp"` in the config, so it reports `would-create` and offers to add a duplicate entry. The developer ends up with two aide server entries under different keys.
+
+## References
+
+- `src/tools/init/wireMcp/index.ts` -- `mcpEntry()` function (lines 15-20) defines the canonical server entry shape and platform branching; dual-key existence check (line 42) establishes the idempotency contract the CLI must match
+- `src/tools/init/scaffoldCommands/index.ts` -- `COMMANDS` registry (line 42) defines the init command's `hostPath` as `aide/init.md` and its canonical name as `commands/aide/init`; confirms the CLI targets only one file from this registry
+- `src/tools/init/initContent/index.ts` -- `readCanonicalDoc` (line 158) resolves canonical names to repo-root-relative paths using `import.meta.url` anchoring; `DOC_PATHS` map (line 51) confirms `commands/aide/init` maps to `.claude/commands/aide/init.md`
+- `package.json` -- current bin entries (`aidemd-mcp`, `aide-tree`) show no `server` entry exists yet; confirms a new bin entry is required for `npx @aidemd-mcp/server init` to resolve
+- `src/index.ts` -- MCP server entry point at `dist/index.js`; confirms the CLI bootstrapper needs a separate entry point, not a subcommand of the server
+- `src/tools/init/detectFramework/index.ts` -- framework detection logic and `FRAMEWORK_CONFIGS` map; confirms Claude Code's `mcpConfigPath` is `.mcp.json` and `commandDir` is `.claude/commands`
+- `.claude/commands/aide/init.md` -- the canonical init command content that the CLI must write verbatim; confirms the file is self-contained Markdown with no build-time transforms
+- `src/types/index.ts` (lines 125-181) -- `McpPrescription` and `InitStep` type definitions; confirms the planning machinery is designed for MCP tool responses and should not be reused in the CLI's imperative flow

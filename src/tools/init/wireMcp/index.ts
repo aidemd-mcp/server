@@ -12,7 +12,7 @@ async function safeReadFile(path: string): Promise<string> {
 }
 
 /** Build the MCP server entry, wrapping with cmd /c on Windows. */
-function mcpEntry(): McpPrescription["entry"] {
+export function mcpEntry(): McpPrescription["entry"] {
 	if (platform() === "win32") {
 		return { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] };
 	}

@@ -1,0 +1,86 @@
+---
+intent: >
+  Implement the CLI bootstrapper at src/cli/init/ that places the MCP server
+  entry in .mcp.json and the init slash command on disk when a user runs
+  npx @aidemd-mcp/server init, plus the package.json bin entry to make it
+  resolvable.
+---
+
+## Plan
+
+### 1. Add the `server` bin entry to `package.json`
+
+- [x] Add `"server": "dist/cli/init/index.js"` to the `bin` object in `package.json`, alongside the existing `aidemd-mcp` and `aide-tree` entries
+- [x] Verify the `files` array already covers `dist` (it does — no change needed there)
+
+### 2. Create the `writeMcpEntry` helper at `src/cli/init/writeMcpEntry/index.ts`
+
+This helper owns the read-parse-merge-write cycle for `.mcp.json`. It is the imperative counterpart to `wireMcp` (which is a planner that returns `InitStep` objects). This helper calls `mcpEntry()` for the canonical entry shape, then does the actual disk work.
+
+- [x] Create `src/cli/init/writeMcpEntry/index.ts` with `export default async function writeMcpEntry`
+- [x] Import `mcpEntry` from `@/tools/init/wireMcp/index.js` — but note that `mcpEntry` is currently not exported (it is a private function inside `wireMcp`). The implementor must first extract `mcpEntry` as a named export from `wireMcp/index.ts` so the CLI can reuse it. This is a named export addition, not a refactor — the default export and all existing behavior remain unchanged.
+- [x] Contract: accepts `projectRoot: string`, returns `{ status: "created" | "exists"; message: string }`. On malformed JSON, throws an `Error` with a clear message naming the file. On write failure, throws.
+- [x] Behavior: read `.mcp.json` from `projectRoot` (treat ENOENT as `{}`). Parse JSON. Check `mcpServers.aide` or `mcpServers["aidemd-mcp"]` (dual-key check matching `wireMcp` line 42). If present, return `exists`. Otherwise merge `{ mcpServers: { aide: mcpEntry() } }` into the parsed config preserving all existing keys. Serialize with 2-space indent + trailing newline. Write file. Return `created`.
+- [x] The message string for `created` includes the count of existing servers when merging (e.g., "merged with 2 existing servers") to match the spec's good examples.
+
+### 3. Create the `writeInitCommand` helper at `src/cli/init/writeInitCommand/index.ts`
+
+This helper writes the init slash command file to disk using `readCanonicalDoc` for the content.
+
+- [x] Create `src/cli/init/writeInitCommand/index.ts` with `export default async function writeInitCommand`
+- [x] Import `readCanonicalDoc` from `@/tools/init/initContent/index.js`
+- [x] Contract: accepts `projectRoot: string`, returns `{ status: "created" | "exists"; message: string }`
+- [x] Behavior: target path is `<projectRoot>/.claude/commands/aide/init.md`. If the file already exists on disk, return `exists`. Otherwise, create the parent directory tree (recursive mkdir), read content via `readCanonicalDoc("commands/aide/init")`, write the file, return `created`.
+
+### 4. Create the orchestrator at `src/cli/init/index.ts`
+
+The entry point that npm resolves via the `server` bin. This is a shebang-bearing async IIFE that coordinates the two helpers and prints terminal output.
+
+- [x] Create `src/cli/init/index.ts` with `#!/usr/bin/env node` shebang
+- [x] Handle `--help` flag: if `process.argv.includes("--help")`, print a one-line usage hint to stdout and exit 0. Ignore all other arguments.
+- [x] Import and call `writeMcpEntry(cwd)` and `writeInitCommand(cwd)` where `cwd = process.cwd()`
+- [x] Print one line per artifact with `[created]` or `[exists]` prefix, matching the spec's good examples exactly
+- [x] On both-exist, print "Already set up. Run /aide:init in Claude Code to continue." and exit 0
+- [x] On success with at least one creation, print "Done. Open Claude Code and run /aide:init to complete setup."
+- [x] Wrap the top-level call in try/catch — on any thrown error, write the error message to stderr and exit 1
+- [x] No CLI framework dependencies, no colors, no spinners, no interactive prompts. Only imports: `node:process` (implicit), the two helpers.
+
+### 5. Tests for `writeMcpEntry` at `src/cli/init/writeMcpEntry/index.test.ts`
+
+Use the same temp-directory pattern as `wireMcp/index.test.ts` — `mkdtemp` in `beforeEach`, `rm` in `afterEach`.
+
+- [x] Test: fresh project (no `.mcp.json`) creates valid JSON with `mcpServers.aide` entry matching the platform-specific shape from `mcpEntry()`
+- [x] Test: existing config with other servers preserves all existing entries and adds only `aide`
+- [x] Test: existing config with `aide` key returns `exists` and does not modify the file
+- [x] Test: existing config with `aidemd-mcp` key (legacy) returns `exists` (dual-key check)
+- [x] Test: malformed JSON in existing `.mcp.json` throws an error mentioning the file path
+- [x] Test: created message includes existing server count when merging
+
+### 6. Tests for `writeInitCommand` at `src/cli/init/writeInitCommand/index.test.ts`
+
+- [x] Test: writes the init command file when it does not exist, content matches `readCanonicalDoc("commands/aide/init")`
+- [x] Test: creates the full parent directory tree (`.claude/commands/aide/`) when it does not exist
+- [x] Test: returns `exists` without modifying the file when it already exists on disk
+
+### 7. Tests for the orchestrator at `src/cli/init/index.test.ts`
+
+These tests mock the two helpers to test the orchestrator's output formatting and exit behavior in isolation. The orchestrator is an IIFE entry point, so the test approach is to mock the helpers at module level and then dynamically import the orchestrator (or extract the core logic into a testable function that the IIFE calls).
+
+- [x] Test: both artifacts created prints two `[created]` lines and the "Done" closing message
+- [x] Test: both artifacts exist prints two `[exists]` lines and the "Already set up" closing message
+- [x] Test: mixed (one created, one exists) prints correct status per artifact
+- [x] Test: thrown error writes to stderr (verify via mock or captured output)
+
+## Decisions
+
+**Extract `mcpEntry` as a named export from `wireMcp` rather than duplicating it.** The spec explicitly says the CLI must use the identical key and entry shape so that a subsequent `aide_init` MCP category step reports `exists`. Importing the same function is the only way to guarantee byte-identical entries. Adding a named export is non-breaking — `wireMcp`'s default export and tests are unaffected.
+
+**Separate helpers (`writeMcpEntry`, `writeInitCommand`) rather than inline logic in the IIFE.** The orchestrator/helper pattern from progressive disclosure applies here: the orchestrator coordinates, helpers do focused work. This also makes each helper independently testable with real filesystem operations (temp dirs), while the orchestrator tests can mock helpers and focus on output formatting.
+
+**Direct imperative write, not reuse of `InitStep`/`applySteps` planning machinery.** The spec calls this out explicitly: the CLI is a direct script, not a two-call plan-then-apply pattern. The MCP tool's `applySteps` is designed for agent-mediated category walks. The CLI needs read-decide-write-print. Pulling in the planning types would couple the CLI to MCP-tool concerns it does not need.
+
+**`cwd = process.cwd()` as the project root.** The CLI runs via `npx` in the user's project directory. There is no `--root` flag — the spec says no argument parsing beyond `--help`. This matches `npx` convention: the command operates on the directory it was invoked from.
+
+**Malformed JSON throws instead of returning a status.** The spec's error example shows a clear error message and exit 1. Since the orchestrator's try/catch converts throws into stderr + exit 1, the cleanest contract is for the helper to throw. This avoids a third status variant and keeps the happy path simple.
+
+**Orchestrator testability via extracted core function.** The IIFE is the bin entry point with shebang, but the actual logic (call helpers, format output, decide exit) lives in a named function the IIFE calls. Tests import that function directly rather than spawning a child process, keeping tests fast and deterministic. The function accepts a `write` callback (defaulting to `process.stdout.write`) so tests can capture output without intercepting globals.

@@ -5,7 +5,8 @@
 	"type": "module",
 	"bin": {
 		"aidemd-mcp": "dist/index.js",
-		"aide-tree": "dist/cli/index.js"
+		"aide-tree": "dist/cli/index.js",
+		"server": "dist/cli/init/index.js"
 	},
 	"main": "dist/index.js",
 	"scripts": {
