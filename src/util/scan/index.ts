@@ -4,18 +4,39 @@ import type { AideFile, ScanResult } from "@/types/index.js";
 import { classifyFile } from "@/util/classify/index.js";
 import { SKIP_DIRS } from "@/types/index.js";
 
-/** Extract a summary from raw file content: first non-empty, non-heading line, truncated to ~80 chars. */
+/** Extract the intent field from YAML frontmatter as the summary, truncated to ~80 chars. */
 function extractSummary(content: string): string {
 	const lines = content.split("\n");
-	for (const line of lines) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-		if (trimmed.startsWith("#")) continue;
-		if (trimmed.startsWith("---")) continue;
-		if (trimmed.length <= 80) return trimmed;
-		return trimmed.slice(0, 77) + "...";
+
+	// Confirm frontmatter starts with ---
+	if (!lines[0] || lines[0].trim() !== "---") return "";
+
+	// Find the intent field (don't require closing --- to be in the slice)
+	let intent = "";
+	for (let i = 1; i < lines.length; i++) {
+		const line = lines[i];
+		if (line.trim() === "---") break; // end of frontmatter
+		if (/^intent:\s*/.test(line)) {
+			const inline = line.replace(/^intent:\s*/, "").trim();
+			// Block scalar (> or |) — value is on subsequent indented lines
+			if (inline === ">" || inline === "|" || inline === ">-" || inline === "|-") {
+				const parts: string[] = [];
+				for (let j = i + 1; j < lines.length; j++) {
+					if (lines[j].trim() === "---") break;
+					if (/^\s+/.test(lines[j])) parts.push(lines[j].trim());
+					else break; // hit a top-level key like outcomes:
+				}
+				intent = parts.join(" ");
+			} else {
+				intent = inline;
+			}
+			break;
+		}
 	}
-	return "";
+
+	if (!intent) return "";
+	if (intent.length <= 80) return intent;
+	return intent.slice(0, 77) + "...";
 }
 
 /** Normalize a Windows or mixed path to POSIX forward slashes. */
@@ -47,7 +68,7 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 		if (!shallow) {
 			try {
 				const buf = await readFile(fullPath, { encoding: "utf-8" });
-				summary = extractSummary(buf.slice(0, 500));
+				summary = extractSummary(buf.slice(0, 1000));
 			} catch {
 				// skip unreadable files
 			}
@@ -65,7 +86,7 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 /**
  * Recursively walk the filesystem from `root` and collect all .aide files.
  * Skips node_modules, .git, dist, build, .next, coverage, __pycache__.
- * Reads the first ~500 bytes of each file for summary extraction.
+ * Reads the first ~1000 bytes of each file to extract the intent field as summary.
  */
 export default async function scan(root: string, path?: string, shallow?: boolean): Promise<ScanResult> {
 	const scanRoot = path ? join(root, path) : root;

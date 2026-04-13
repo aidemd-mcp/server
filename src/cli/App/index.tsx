@@ -330,6 +330,7 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 					expandedDirs={expandedDirs}
 					cursorOnDir={cursorOnDir}
 					cursorDirExpanded={cursorDirExpanded}
+					width={treeWidth - 2}
 				/>
 			</Box>
 

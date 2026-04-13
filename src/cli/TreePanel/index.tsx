@@ -30,6 +30,8 @@ interface TreePanelProps {
 	cursorOnDir: boolean;
 	/** True when the cursor is on a dir node that is currently expanded. */
 	cursorDirExpanded: boolean;
+	/** Available width in columns for the tree panel content. */
+	width: number;
 }
 
 /** Render one flat node row in the tree. */
@@ -39,6 +41,7 @@ function renderRow(
 	cursorIndex: number,
 	isDeepView: boolean,
 	expandedDirs: Set<string>,
+	width: number,
 ): React.ReactNode {
 	const { node, depth } = flatNode;
 	const isCursor = index === cursorIndex;
@@ -58,33 +61,31 @@ function renderRow(
 		);
 	}
 
-	// File node
+	// File node — render as a single <Text> to prevent Ink from wrapping mid-element.
 	const { file } = node;
 	const filename = file.relativePath.split("/").pop() ?? file.relativePath;
 	const connector = "└── ";
 	const tag = TYPE_TAG[file.type] ?? file.type;
 	const tagColor = TYPE_COLOR[file.type] ?? "white";
+	const prefix = `${indent}${connector}${filename} `;
+	const tagStr = `[${tag}]`;
 
-	// Summaries are only shown in deep view, even if the file has one cached.
-	const summary = isDeepView && file.summary ? ` — ${file.summary}` : "";
+	// Truncate summary to fit within available panel width.
+	const fixedLen = prefix.length + tagStr.length;
+	const remaining = width - fixedLen;
+	let summary = "";
+	if (isDeepView && file.summary && remaining > 10) {
+		const full = ` — ${file.summary}`;
+		summary = full.length <= remaining ? full : `${full.slice(0, remaining - 3)}…`;
+	}
 
 	return (
 		<Box key={`file-${file.relativePath}-${index}`}>
-			<Text bold={isCursor} backgroundColor={isCursor ? "blue" : undefined}>
-				{indent}
-				{connector}
+			<Text bold={isCursor} backgroundColor={isCursor ? "blue" : undefined} wrap="truncate">
+				{prefix}
+				<Text color={tagColor}>{tagStr}</Text>
+				{summary ? <Text color="gray">{summary}</Text> : null}
 			</Text>
-			<Text bold={isCursor} backgroundColor={isCursor ? "blue" : undefined}>
-				{filename}{" "}
-			</Text>
-			<Text color={tagColor} backgroundColor={isCursor ? "blue" : undefined}>
-				[{tag}]
-			</Text>
-			{summary ? (
-				<Text color="gray" backgroundColor={isCursor ? "blue" : undefined}>
-					{summary}
-				</Text>
-			) : null}
 		</Box>
 	);
 }
@@ -102,6 +103,7 @@ export default function TreePanel({
 	expandedDirs,
 	cursorOnDir,
 	cursorDirExpanded,
+	width,
 }: TreePanelProps): React.ReactElement {
 	let hintText: string;
 	if (cursorOnDir) {
@@ -120,7 +122,7 @@ export default function TreePanel({
 			{visibleNodes.length === 0 ? (
 				<Text color="gray">  No results for "{searchFilter}"</Text>
 			) : (
-				visibleNodes.map((fn, i) => renderRow(fn, i, cursorIndex, isDeepView, expandedDirs))
+				visibleNodes.map((fn, i) => renderRow(fn, i, cursorIndex, isDeepView, expandedDirs, width))
 			)}
 			<Box marginTop={1}>
 				<Text color="gray">{hintText}</Text>
