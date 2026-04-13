@@ -1,0 +1,210 @@
+---
+intent: >
+  Expand provisionBrain from two planning steps (vault directories, MCP) to
+  four (vault directories, playbook hub template, vault CLAUDE.md, MCP),
+  with per-file idempotency and content templates as string literals, then
+  update applySteps to handle brain-category file steps alongside the
+  existing brain directory step.
+---
+
+## Plan
+
+### 1. Update applySteps to handle brain-category file steps
+
+The current `applySteps` handler assumes every `category: "brain"` step
+with content carries a JSON array of directory names. The new playbook hub
+and vault CLAUDE.md steps are also `category: "brain"` (for agent-facing
+grouping) but carry Markdown content destined for a specific file path.
+Without this change, applySteps would attempt `JSON.parse` on Markdown and
+crash.
+
+- [x] In `src/tools/init/applySteps/index.ts`, modify the brain-category
+  branch (currently lines 50-61) to distinguish directory steps from file
+  steps. The discriminant: if `filePath` has a file extension (use
+  `path.extname`), treat it as a regular file write (mkdir parent, write
+  content to filePath). If no extension, treat it as the existing directory
+  scaffolding logic (JSON.parse content as directory array). This keeps the
+  category as "brain" for both sub-types while routing them through
+  different write paths.
+- [x] Update the JSDoc on `applySteps` to document the new brain file step
+  path alongside the existing brain directory step path.
+- [x] Add tests in `src/tools/init/applySteps/index.test.ts` (create if it
+  does not exist) covering: (a) a brain step with a `.md` filePath writes
+  content as a file, (b) a brain step without an extension still creates
+  directories from JSON content, (c) a brain step with `"exists"` status
+  passes through unchanged.
+
+### 2. Add the playbook hub template to provisionBrain
+
+The spec requires a coding-playbook hub template as its own InitStep with
+independent idempotency. The template must contain the exact section
+structure the study-playbook skill expects but no fabricated content.
+
+- [x] 2a. In `src/tools/init/provisionBrain/index.ts`, add a
+  `PLAYBOOK_HUB_TEMPLATE` string constant containing the Markdown template.
+  The template must have these five sections in order: `## Task Routing`
+  (a Markdown table with the header row `| Task domain | Section |` and the
+  separator row, but zero data rows), `## How to Use This Index`
+  (navigation instructions explaining the hub-to-section-hub-to-child-note
+  flow — keep it generic, no project-specific references),
+  `## Always Read First` (two numbered placeholder lines for conventions
+  and folder structure notes, using `[[wikilink]]` syntax with empty
+  targets the user will fill in), `## Sections` (an empty numbered list
+  placeholder), and `## Contents` (an empty flat list placeholder). Use the
+  user's actual playbook hub at `coding-playbook/coding-playbook.md` (read
+  during step 6 of the instructions) as the structural reference — match
+  its heading order and section purpose, not its content.
+- [x] 2b. Add a `buildPlaybookHubStep` async function. It takes
+  `brainPath: string`, computes the target file path as
+  `join(brainPath, "coding-playbook", "coding-playbook.md")`, checks
+  existence with the existing `exists()` helper, and returns an InitStep
+  with `name: "Playbook hub"`, `category: "brain"`, `filePath` pointing to
+  the computed path, `status: "exists"` when the file is present or
+  `status: "would-create"` with `content` set to the template when absent.
+- [x] 2c. Wire `buildPlaybookHubStep` into the orchestrator function.
+  Insert its call between `buildVaultStep` and the MCP step. The returned
+  step goes into the array at position index 1 (after vault directories,
+  before vault CLAUDE.md).
+
+### 3. Add the vault CLAUDE.md template to provisionBrain
+
+The spec requires a vault-root CLAUDE.md as its own InitStep with
+independent idempotency. The template is scoped to vault navigation only.
+
+- [x] 3a. In `src/tools/init/provisionBrain/index.ts`, add a
+  `VAULT_CLAUDE_MD_TEMPLATE` string constant containing the Markdown
+  template. The template must cover four concerns: (1) **Wikilink crawling
+  protocol** — hub notes vs content notes, depth counting rules, never
+  re-read, stay in scope. (2) **Decision protocol** — coding conventions
+  route through the study-playbook skill, everything else through
+  search_notes. (3) **Where to find things** — a Markdown table mapping
+  information types to vault paths (coding conventions -> study-playbook
+  skill, project context -> projects/, session logs -> journal/log/,
+  research -> research/, tasks -> kanban/). (4) **Brain's role in AIDE** —
+  a brief paragraph explaining that the vault is the pipeline's durable
+  memory for research, retros, and conventions. Use the user's global
+  CLAUDE.md (the "Your Brain" and "Decision Protocol" sections) as the
+  structural reference for tone and scope. The template must NOT contain
+  project-specific instructions, user preferences, business context, RTK
+  instructions, or environment details.
+- [x] 3b. Add a `buildVaultClaudeMdStep` async function. It takes
+  `brainPath: string`, computes the target file path as
+  `join(brainPath, "CLAUDE.md")`, checks existence, and returns an
+  InitStep with `name: "Vault CLAUDE.md"`, `category: "brain"`, the
+  computed filePath, and the template as content when absent.
+- [x] 3c. Wire `buildVaultClaudeMdStep` into the orchestrator function.
+  Insert its call after the playbook hub step and before the MCP step. The
+  returned step goes into the array at position index 2 (after playbook
+  hub, before MCP).
+
+### 4. Update the orchestrator JSDoc and return contract
+
+- [x] Update the JSDoc on the default export `provisionBrain` to document
+  that it now returns up to four InitStep items (vault directories,
+  playbook hub, vault CLAUDE.md, Obsidian MCP) instead of two. Describe
+  the per-file idempotency contract: each content step checks its own
+  file path independently of the vault-level existence check.
+
+### 5. Update the init orchestrator's placeholder branch
+
+- [x] In `src/tools/init/index.ts`, update the fallback `brainSteps` array
+  (the branch when no brainPath is resolved, around lines 82-86) to
+  include four placeholder steps instead of two, matching the new return
+  shape. Add placeholders for "Playbook hub" and "Vault CLAUDE.md" with
+  `category: "brain"`, empty `filePath`, and `status: "would-create"`.
+
+### 6. Update provisionBrain tests
+
+- [x] 6a. Update the existing test "returns two steps: vault and obsidian
+  MCP" to expect four steps and verify the names and positions of all four:
+  "Brain vault" at index 0, "Playbook hub" at index 1, "Vault CLAUDE.md"
+  at index 2, "MCP config (obsidian)" at index 3.
+- [x] 6b. Add a test: new vault returns playbook hub as `would-create` with
+  non-empty Markdown content. Verify the content contains the five expected
+  headings (`## Task Routing`, `## How to Use This Index`,
+  `## Always Read First`, `## Sections`, `## Contents`).
+- [x] 6c. Add a test: new vault returns vault CLAUDE.md as `would-create`
+  with non-empty Markdown content. Verify the content contains the four
+  expected concerns (wikilink crawling, decision protocol, where to find
+  things table, brain's role).
+- [x] 6d. Add a test: existing vault with playbook hub file present returns
+  the playbook hub step as `"exists"` with no content. Set up by creating
+  the `coding-playbook/coding-playbook.md` file inside the temp brain
+  directory.
+- [x] 6e. Add a test: existing vault with CLAUDE.md file present returns
+  the vault CLAUDE.md step as `"exists"` with no content.
+- [x] 6f. Add a test: partial vault — directories exist and vault is
+  detected as existing, but playbook hub file is missing. Verify vault
+  step returns `"exists"`, playbook hub returns `"would-create"`, vault
+  CLAUDE.md returns `"would-create"`, MCP step is unaffected. This is the
+  per-file idempotency test from the spec's good examples.
+- [x] 6g. Update the existing idempotency test to cover all four steps
+  returning `"exists"` when the vault is fully provisioned (add the
+  playbook hub file and CLAUDE.md file to the setup).
+- [x] 6h. Verify the "never writes to disk" test still passes — it already
+  checks that provisionBrain does not create the brain dir or MCP config.
+  Add assertions that the playbook hub and vault CLAUDE.md files are also
+  not created by the function call.
+
+### 7. Update the init orchestrator integration tests
+
+- [x] In `src/tools/init/index.test.ts`, update any assertions that count
+  brain steps or check brain step names/positions to account for four
+  brain-category steps instead of two. Search for assertions referencing
+  "Brain vault", "MCP config (obsidian)", brain step counts, or array
+  length checks that include brain steps.
+
+## Decisions
+
+**Brain file steps reuse the "brain" category.** The spec says content
+template steps use `category: "brain"`. The alternative — adding a new
+category like "brain-content" — would require updating the InitCategory
+type union, the agent's category walk logic, and every test that enumerates
+categories. Instead, applySteps uses `path.extname` on the filePath to
+distinguish file steps (has extension) from directory steps (no extension).
+This is a minimal, correct discriminant because brain directory steps point
+to a directory path and brain file steps point to a `.md` file.
+
+**applySteps update is step 1 (before provisionBrain changes).** The new
+provisionBrain steps would be un-applyable without the applySteps update.
+Sequencing it first means the apply layer is ready before the planning
+layer produces new step shapes. This follows the dependency-order rule.
+
+**Per-file idempotency over per-vault idempotency.** The spec explicitly
+calls this out: each content file gets its own existence check. The
+alternative — gating all content steps on the vault-level check — would
+mean a vault that exists but lost its playbook hub cannot be repaired
+without deleting the entire vault. The per-file approach costs three
+`access()` calls but enables surgical re-provisioning.
+
+**Templates as string constants, not external files.** The spec mandates
+this. The templates are small (under 2KB each), change only when the AIDE
+methodology changes, and are consumed by exactly one caller. Externalizing
+them to template files would add an async read and a file-resolution step
+for no reduction in coupling.
+
+**Playbook hub structure matches the user's actual hub, content is empty.**
+The template reproduces the five-section heading structure of the user's
+`coding-playbook/coding-playbook.md` (Task Routing, How to Use This Index,
+Always Read First, Sections, Contents) because that is what the
+study-playbook skill's crawling protocol expects. But it fills zero data
+rows, zero section entries, and zero content links — fabricating those
+would teach agents wrong conventions on the first read.
+
+**Vault CLAUDE.md is a generic navigation guide, not a clone of the
+user's global CLAUDE.md.** The user's global CLAUDE.md contains business
+context, RTK instructions, environment details, and project-specific
+configuration. The vault CLAUDE.md extracts only the navigation primitives
+(crawling protocol, decision protocol, where-to-find-things table, brain
+role) so any agent reading the vault can navigate it without prior
+knowledge, regardless of which project or user owns the vault.
+
+**No helper subfolder extraction for build functions.** The four `build*`
+functions (`buildVaultStep`, `buildPlaybookHubStep`, `buildVaultClaudeMdStep`,
+`buildObsidianMcpStep`) are small (under 20 lines each), share the
+`exists()` utility, and are called by a single orchestrator. Extracting
+each into its own subfolder would add four folders for functions that are
+tightly coupled to the orchestrator's return contract. The single-helper
+exception in progressive disclosure allows this when helpers are small and
+the orchestrator has exactly one level of delegation. If any builder grows
+complex enough to need its own tests, extract it then.

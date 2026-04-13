@@ -18,38 +18,15 @@ Navigate the coding playbook hub and load only the sections relevant to the curr
 
 Read `coding-playbook/coding-playbook.md` via `mcp__obsidian__read_note`.
 
-This hub has sections, each with a one-line "Read when..." description. Do NOT read
-all sections — match the task's domain against the descriptions to identify which 1-3
-sections apply.
-
-Common mappings:
-
-| Task domain | Section |
-|-------------|---------|
-| Naming anything (functions, files, variables) | Foundations |
-| Code style, formatting, philosophy | Foundations |
-| Function ordering, default export placement | Foundations |
-| Comments, JSDoc, documenting orchestrator files | Foundations |
-| What to avoid (anti-patterns) | Foundations |
-| New project, tsconfig, tooling setup | Setup |
-| Where does this file go? File/folder structure | Architecture |
-| Function signatures, data flow conventions | Architecture |
-| Database, models, schema design | Data |
-| Business logic, service layer | Services |
-| Error handling, error propagation | Services |
-| API routes, request/response types | API |
-| Validation, auth middleware | API |
-| UI components, pages, client-side fetch | Client |
-| Feature build order, shipping checklist | Workflow |
-| Testing, mocking, test factories | Workflow |
-| Type definitions, derived types | Workflow |
-| LLM integration, RAG, chatbots | AI |
+The hub lists sections with descriptions. Match your current task domain against
+those descriptions to identify which sections apply. Do NOT read all sections —
+only the ones whose descriptions overlap with the work at hand.
 
 ---
 
 ## Step 2: Read the Relevant Section Hubs
 
-For each matching section, read its hub note (e.g. `coding-playbook/services/services.md`).
+For each matching section, read its hub note (e.g. `<section>/<section>.md`).
 
 Section hubs list their child notes with keywords. Scan the list and identify which
 specific child notes overlap with the task. Do NOT read every child — only the ones
@@ -59,7 +36,7 @@ whose keywords match the work.
 
 ## Step 3: Read the Specific Child Notes
 
-Read the child notes identified in Step 2 (e.g. `coding-playbook/services/error-handling.md`).
+Read the child notes identified in Step 2 (e.g. `<section>/<child-note>.md`).
 These contain the concrete patterns and code examples to follow.
 
 ---
@@ -69,16 +46,34 @@ These contain the concrete patterns and code examples to follow.
 - **Use the hub's link structure, not search.** Do NOT use `mcp__obsidian__search_notes`
   to find playbook content. Searching produces fragments without context; the hub
   structure gives you the full picture.
-- **Read top-down.** Hub -> section hub -> child note. Never skip levels.
-- **Follow wikilinks 1-2 levels deep from content notes.** Hub notes (tagged `hub` or
+- **Read top-down.** Hub → section hub → child note. Never skip levels.
+- **Follow wikilinks 1–2 levels deep from content notes.** Hub notes (tagged `hub` or
   acting as section indexes) are navigation — they don't count as depth. Depth starts
-  at the first content note you land on.
+  at the first content note you land on. Example:
+  - `coding-playbook.md` (root hub) → depth 0 (navigation)
+  - `foundations/foundations.md` (section hub) → depth 0 (navigation)
+  - `foundations/conventions.md` (content note) → depth 0 (first real content)
+  - wikilink from `conventions.md` → depth 1
+  - wikilink from *that* note → depth 2
+
+  When reading any content note, look for `[[wikilinks]]`. If a linked note looks
+  relevant to the task, read it — then check *that* note's links too. Go at least
+  1–2 levels deep from the first content note in any direction where the information
+  could apply. Playbook notes cross-reference each other (e.g. a services note may
+  link to error-handling patterns, which links to API response conventions). Following
+  these links is how you build the full picture, not just a fragment.
 - **Never re-read notes.** Before reading any note, check whether it already appears
-  in your conversation context from a prior tool call. Skip any link whose target you
-  have already read in this session.
-- **Invoke incrementally, not all at once.** Multi-step work crosses multiple domains.
-  Load what you need for the current step. When you move to the next step and realize
-  you need a new domain, invoke this skill again. The "never re-read" rule keeps
-  repeated invocations cheap.
-- **Stop when you have enough.** If the step only touches one domain, you only need
-  that one section's notes plus whatever they link to.
+  in your conversation context from a prior tool call. This skill may be invoked
+  multiple times in a single workflow — do NOT re-read the playbook hub, section hubs,
+  or child notes you have already loaded. The same applies when following wikilinks:
+  skip any link whose target you have already read in this session.
+- **Invoke incrementally, not all at once.** Multi-step work (e.g. planning an
+  end-to-end feature) crosses multiple domains — types, then services, then API, then
+  client. Do NOT try to load every section upfront. Load what you need for the current
+  step. When you move to the next step and realize you're in a new domain without the
+  relevant playbook context, invoke this skill again. The "never re-read" rule keeps
+  repeated invocations cheap — you'll skip the hub and any notes already loaded, and
+  only read the new sections you actually need.
+- **Stop when you have enough.** Within a single invocation, if the step only touches
+  one domain (e.g. just API routes), you only need that one section's notes plus
+  whatever they link to. Don't load unrelated sections "just in case."

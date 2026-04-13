@@ -157,6 +157,8 @@ After the agent returns, present the completed spec to the user for review befor
    - The path to the `.aide` spec and `plan.aide`
    - Which numbered step to execute (quote it from the plan)
    - If the step has lettered sub-steps (2a, 2b, 2c), include ALL of them — the agent executes the entire numbered group in one session
+
+   **Do NOT include** instructions to consult the coding playbook, use the `study-playbook` skill, or load conventions from the brain. The architect already consulted the playbook and encoded its conventions into the plan — the implementor's job is to execute the plan, not re-derive conventions. The implementor has no brain access by design (see Pipeline Agents table). Adding playbook instructions wastes tokens and risks the implementor second-guessing plan decisions.
 3. After the agent returns, verify the step's checkbox is checked
 4. Repeat from step 1 until all numbered steps are checked
 

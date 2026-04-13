@@ -40,6 +40,7 @@ export const COMMANDS: readonly {
 	{ canonical: "commands/aide/fix", hostPath: "aide/fix.md", displayName: "aide:fix" },
 	{ canonical: "commands/aide/upgrade", hostPath: "aide/upgrade.md", displayName: "aide:upgrade" },
 	{ canonical: "commands/aide/init", hostPath: "aide/init.md", displayName: "aide:init" },
+	{ canonical: "commands/aide/update-playbook", hostPath: "aide/update-playbook.md", displayName: "aide:update-playbook" },
 ];
 
 /** Check if a file exists. */

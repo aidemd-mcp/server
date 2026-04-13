@@ -98,12 +98,14 @@ describe("init — structured JSON result", () => {
 		}
 	});
 
-	it("fresh project: every step has a filePath (brain vault may be empty when no hints)", async () => {
+	it("fresh project: every step has a filePath (brain placeholder steps may be empty when no hints)", async () => {
 		const result = await init(tempDir);
 
+		// Brain placeholder steps have empty filePath when no hints — signals agent must ask user
+		const brainPlaceholders = new Set(["Brain vault", "Playbook hub", "Vault CLAUDE.md"]);
+
 		for (const step of result.steps) {
-			// Brain vault step has empty filePath when no hints — signals agent must ask user
-			if (step.name === "Brain vault" && result.brainHints.length === 0) {
+			if (brainPlaceholders.has(step.name) && result.brainHints.length === 0) {
 				expect(step.filePath).toBe("");
 			} else {
 				expect(step.filePath).toBeTruthy();

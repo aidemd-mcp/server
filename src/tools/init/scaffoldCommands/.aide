@@ -1,28 +1,34 @@
 ---
 scope: src/tools/init/scaffoldCommands
 intent: >
-  scaffoldCommands installs the seven AIDE pipeline slash commands
-  (research, spec, synthesize, plan, build, qa, fix) into an `aide/` subfolder
-  of the host framework's command directory. Each command file is a
-  faithful render of a canonical command template that lives under
-  docs/commands/aide/, read at runtime through initContent. These
-  seven scaffolded files are the entire runtime of the AIDE pipeline
-  in a host project — every pipeline phase the maintainer documents
-  only becomes executable in a host project because this helper put
-  the slash command there. The `aide/` subfolder is load-bearing:
-  host frameworks derive the slash command namespace from folder
-  nesting, so a file installed at `<command-dir>/aide/research.md`
-  becomes `/aide:research` in the host.
+  scaffoldCommands installs the AIDE pipeline slash commands and the
+  update-playbook maintenance command into an `aide/` subfolder of
+  the host framework's command directory. The pipeline commands
+  (research, spec, synthesize, plan, build, qa, fix) are faithful
+  renders of canonical command templates from docs/commands/aide/,
+  read at runtime through initContent. The update-playbook command
+  gives maintainers a way to evolve their coding playbook — adding
+  conventions, detecting drift between the task routing table and
+  actual playbook sections, and keeping the hub's intent mapping in
+  sync with structural changes. Together these scaffolded files are
+  the entire runtime of the AIDE pipeline plus its playbook
+  maintenance surface in a host project. The `aide/` subfolder is
+  load-bearing: host frameworks derive the slash command namespace
+  from folder nesting, so a file installed at
+  `<command-dir>/aide/research.md` becomes `/aide:research` in the
+  host.
 outcomes:
   desired:
     - One slash command file is scaffolded per pipeline phase under an
-      `aide/` subfolder: research, spec, synthesize, plan, build, qa, fix.
-      Each command covers a distinct phase with no overlap; the set is
-      defined by the canonical command templates under docs/commands/aide/,
-      not by a hardcoded count. The filenames are bare phase names
-      (`research.md`, not `aide-research.md`) because the enclosing
-      `aide/` folder already carries the namespace — double-naming would
-      produce `/aide:aide-research` on the host side.
+      `aide/` subfolder: research, spec, synthesize, plan, build, qa, fix,
+      plus the update-playbook maintenance command. Each pipeline command
+      covers a distinct phase with no overlap; update-playbook is not a
+      pipeline phase but a maintenance surface that lives alongside them.
+      The set is defined by the canonical command templates under
+      docs/commands/aide/, not by a hardcoded count. The filenames are
+      bare phase names (`research.md`, not `aide-research.md`) because the
+      enclosing `aide/` folder already carries the namespace —
+      double-naming would produce `/aide:aide-research` on the host side.
     - Each command file is a byte-faithful render of its canonical
       template read from docs/commands/aide/ at runtime. A diff
       between an installed command file and its template shows only
@@ -36,6 +42,19 @@ outcomes:
       independently in the final results, so the init summary can
       show exactly which commands were new on this run and which
       were already in place.
+    - The study-playbook skill contains only generic, reusable
+      crawling mechanics — what a hub note is, how to traverse
+      wikilinks top-down, the never-re-read rule. It contains zero
+      environment-specific content: no intent mapping tables, no
+      task-to-section routing, no references to specific playbook
+      section names. All task routing lives in the playbook hub note
+      itself, where the user maintains a task routing table that the
+      agent reads naturally when it opens the hub.
+    - The update-playbook command includes a housekeeping step that
+      instructs the agent to detect drift between the playbook hub's
+      task routing table and the actual playbook sections, and to
+      update the routing table whenever structural changes would
+      cause the map to fall out of sync.
   undesired:
     - Command template content hand-written in this helper's source
       as template literals. Same failure mode as the methodology
@@ -64,6 +83,18 @@ outcomes:
     - Scaffolding commands directly from disk reads of docs/. This
       helper must go through initContent; bypassing it breaks the
       single-reader invariant the init subtree depends on.
+    - A study-playbook skill that contains an intent mapping table,
+      task-to-section routing, or any reference to the user's
+      specific playbook structure. The skill is a generic crawling
+      protocol; the moment it names specific sections it becomes
+      environment-coupled and breaks for any user whose playbook
+      is organized differently.
+    - An update-playbook command that adds or modifies playbook
+      conventions but does not include the housekeeping step for
+      detecting and resolving drift between the task routing table
+      and the actual section structure. Without drift detection the
+      routing table rots silently and agents are sent to sections
+      that no longer exist or miss sections that were added.
 ---
 
 ## Context
@@ -84,6 +115,19 @@ them and the pipeline has a hole. The phase set is defined by the
 canonical docs, and no agent, command, or human can dilute it by
 adding an overlapping phase without updating the canonical templates
 and the parent spec to justify the addition.
+
+The study-playbook skill and the update-playbook command form a
+complementary pair around the coding playbook. The skill teaches
+agents how to navigate any playbook hub top-down — generic crawling
+mechanics that work regardless of what sections the user has. The
+update-playbook command gives humans a way to evolve the playbook's
+content and structure, with a built-in housekeeping step that keeps
+the hub's task routing table in sync with the actual sections. Task
+routing — the mapping from task domains to playbook sections — lives
+exclusively in the playbook hub note, not in the skill. This
+separation means the skill never needs updating when the user
+reorganizes their playbook; the routing table in the hub is the
+single source of truth for which section serves which task domain.
 
 ## Strategy
 
@@ -121,10 +165,32 @@ and extending the list here. All three changes land in the same PR or
 none of them do — this is the three-way lock the canonical command-hub
 spec declares mandatory. A helper that discovers its command list
 dynamically from the docs folder is a regression, because it lets a stray
-Markdown file in the wrong place silently expand the pipeline. Note: the
+Markdown file in the wrong place silently expand the pipeline. The
+update-playbook command is part of this fixed list — it is not a pipeline
+phase but a maintenance command that ships alongside them. Note: the
 orchestrator `/aide` is scaffolded as `aide.md` at the command directory
 root by a separate part of init — it is not a phase command and not in
 this helper's list.
+
+**The study-playbook skill is a generic crawling protocol.** It teaches
+agents the mechanics of navigating any playbook hub top-down: what a hub
+note is, how to traverse wikilinks, the fan-out depth rules, the
+never-re-read invariant. It does not contain an intent mapping table or
+any reference to specific playbook section names. Task routing — which
+section to read for which task domain — lives in the playbook hub note
+itself as a task routing table. When the skill tells the agent to read
+the hub, the agent sees the routing table at the top and knows where to
+go. This separation means the skill works for any user's playbook
+structure without modification.
+
+**The update-playbook command includes drift detection as a required
+step.** When a user adds, renames, or removes playbook sections, the
+task routing table in the hub can silently fall out of sync. The
+update-playbook command's housekeeping step instructs the agent to
+compare the routing table against the actual section structure and offer
+to reconcile any drift — adding new rows for new sections, flagging
+stale rows that point to removed sections, and suggesting
+reorganization when sections have shifted domains.
 
 **Per-command status, not a single aggregate.** Each install reports
 its own result. The init summary needs to show "research: created,
@@ -136,12 +202,13 @@ developer to inspect the directory manually.
 ## Good examples
 
 A host project runs `aide_init` for the first time. The scaffold
-helper reads seven templates from docs/commands/aide/ through
-initContent, writes seven files into `.claude/commands/aide/` (or
-the equivalent for the detected framework), and returns seven
-`created` statuses. The init summary lists each command by name
-with its status. The developer can immediately type `/aide:research`
-in their next session and the pipeline begins.
+helper reads templates from docs/commands/aide/ through initContent,
+writes files into `.claude/commands/aide/` (or the equivalent for
+the detected framework) — the seven pipeline phase commands plus the
+update-playbook maintenance command — and returns a `created` status
+for each. The init summary lists each command by name with its
+status. The developer can immediately type `/aide:research` in their
+next session and the pipeline begins.
 
 A developer has customized `.claude/commands/aide/build.md` to add
 project-specific build steps. They run `aide_init` again to pick up
@@ -159,6 +226,22 @@ install. A host project that was already initialized before the
 edit does not automatically pick up the change — its existing file
 is preserved — and a future explicit upgrade path is the correct
 mechanism for intentional re-sync.
+
+A developer runs `/aide:update-playbook` to add a new "error
+handling" section to their coding playbook. The agent adds the
+section, then runs the housekeeping step: it compares the playbook
+hub's task routing table against the actual sections and notices
+"error handling" has no routing entry. It offers to add a row
+mapping the relevant task domains to the new section. The routing
+table stays in sync without the developer having to remember it
+exists.
+
+A developer reads the study-playbook skill and sees only generic
+crawling instructions: read the hub, follow relevant wikilinks
+top-down, fan out 1-2 levels, never re-read. There is no mention
+of specific playbook sections like "naming conventions" or "test
+patterns" — those details live in the playbook hub's task routing
+table, which the agent discovers naturally when it reads the hub.
 
 ## Bad examples
 
@@ -198,3 +281,17 @@ commands could have been written successfully; instead the host
 project has a broken init and no pipeline at all, because one
 template was misplaced. Independent per-command reporting was the
 whole point.
+
+A study-playbook skill that contains a table like "naming → read
+conventions/naming.md, testing → read conventions/testing.md". This
+is environment-specific routing baked into a generic skill. A user
+whose playbook organizes conventions differently gets wrong
+directions from the skill. The routing belongs in the playbook hub
+note, where the user controls it.
+
+An update-playbook command that lets the user add and modify
+playbook sections but has no housekeeping step. The user adds three
+new sections over a month, the task routing table still points to
+the original structure, and agents using study-playbook navigate to
+stale or missing sections. The drift was preventable — the command
+should have detected it and offered to reconcile.

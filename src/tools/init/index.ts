@@ -81,6 +81,8 @@ export default async function init(
 		// agent knows brain provisioning is pending user input, not silently resolved.
 		brainSteps = [
 			{ name: "Brain vault", status: "would-create" as const, category: "brain" as const, filePath: "" },
+			{ name: "Playbook hub", status: "would-create" as const, category: "brain" as const, filePath: "" },
+			{ name: "Vault CLAUDE.md", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{ name: "MCP config (obsidian)", status: "would-create" as const, category: "mcp" as const, filePath: brainMcpPath },
 		];
 	}

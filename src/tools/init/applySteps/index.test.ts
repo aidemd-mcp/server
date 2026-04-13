@@ -311,6 +311,72 @@ describe("applySteps", () => {
 		}
 	});
 
+	it("brain file step: content is written to the file at filePath", async () => {
+		const filePath = join(tempDir, "vault", "coding-playbook", "coding-playbook.md");
+		const content = "# Coding Playbook\n\n## Task Routing\n";
+		const step: InitStep = {
+			name: "Playbook hub",
+			status: "would-create",
+			category: "brain",
+			filePath,
+			content,
+		};
+
+		await applySteps([step]);
+
+		const written = await readFile(filePath, "utf-8");
+		expect(written).toBe(content);
+	});
+
+	it("brain file step: returned step has status created and no content field", async () => {
+		const filePath = join(tempDir, "vault", "coding-playbook", "coding-playbook.md");
+		const step: InitStep = {
+			name: "Playbook hub",
+			status: "would-create",
+			category: "brain",
+			filePath,
+			content: "# Coding Playbook\n",
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result.status).toBe("created");
+		expect(result).not.toHaveProperty("content");
+	});
+
+	it("brain directory step with extension-free filePath: creates directories from JSON content", async () => {
+		const brainPath = join(tempDir, "vault");
+		const dirs = ["research", "coding-playbook"];
+		const step: InitStep = {
+			name: "Brain vault",
+			status: "would-create",
+			category: "brain",
+			filePath: brainPath,
+			content: JSON.stringify(dirs),
+		};
+
+		await applySteps([step]);
+
+		for (const dir of dirs) {
+			expect(await pathExists(join(brainPath, dir))).toBe(true);
+		}
+	});
+
+	it("brain step with exists status: passes through unchanged, nothing written", async () => {
+		const filePath = join(tempDir, "vault", "coding-playbook", "coding-playbook.md");
+		const step: InitStep = {
+			name: "Playbook hub",
+			status: "exists",
+			category: "brain",
+			filePath,
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result).toEqual(step);
+		expect(await pathExists(filePath)).toBe(false);
+	});
+
 	it("Zed config step (IDE, not VS Code): is written to disk", async () => {
 		const filePath = join(tempDir, ".zed", "settings.json");
 		const content = JSON.stringify({ file_types: { Markdown: ["*.aide"] } }, null, 2) + "\n";

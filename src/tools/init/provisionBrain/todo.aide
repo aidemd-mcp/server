@@ -1,0 +1,28 @@
+---
+intent: >
+  outcomes.undesired[1]: "A playbook hub template that invents section
+  content, routing entries, or note wikilinks for the user. The template
+  enforces structure (headings, table skeleton, placeholder prose) — never
+  fills in domain-specific content."
+misalignment:
+  - implementation-drift
+  - test-gap
+---
+
+## Issues
+
+- [x] `src/tools/init/provisionBrain/index.ts` lines 106–107 — `PLAYBOOK_HUB_TEMPLATE`'s `## Always Read First` section contains named wikilinks (`[[conventions]]` and `[[folder-structure]]`) with filled-in descriptions ("Naming, function ordering…", "Orchestrator/helper folder layout…"). These are fabricated entries: a new user's vault has no `conventions` or `folder-structure` notes, so an agent following these wikilinks finds nothing — or worse, treats the descriptions as real conventions. The plan spec (step 2a) required "placeholder wikilinks with empty targets the user will fill in." The implementor copied the structural pattern from the user's actual playbook hub and carried its content along with the structure.
+  - Traces to: `outcomes.undesired[1]` — "A playbook hub template that invents section content, routing entries, or note wikilinks for the user."
+  - Misalignment: `implementation-drift`
+
+- [x] `src/tools/init/provisionBrain/index.test.ts` — no test asserts that the `## Always Read First` section contains only placeholder (empty-target) wikilinks. The test at line 142 verifies the five section headings are present but does not assert the content is empty of fabricated note names. A negative assertion on `hubStep.content` — e.g., that it does not contain `[[conventions]]` or any resolved note path — would have caught this during the build phase.
+  - Traces to: `outcomes.undesired[1]` — same fabricated-content rule.
+  - Misalignment: `test-gap`
+
+## Retro
+
+The drift occurred at the structural/content boundary of `## Always Read First`. The implementor correctly reproduced the five headings and the table skeleton but treated named wikilinks as structure rather than content when porting from the user's actual hub. The plan spec said "empty targets the user will fill in" — the implementor used `[[conventions]]` and `[[folder-structure]]`, which are not empty targets.
+
+The test gap amplified the miss: plan spec step 6b required only positive heading assertions. A negative assertion — "content must NOT contain a named wikilink like `[[conventions]]`" — would have forced the implementor to evaluate whether named wikilinks cross the fabrication line.
+
+Stage to strengthen: **plan** — when a template step says "placeholder wikilinks with empty targets," the plan should name a corresponding negative test assertion: verify that wikilinks in the template use visibly-empty or clearly-marked placeholder syntax (e.g., `[[your-conventions-note]]`), not resolved note names.

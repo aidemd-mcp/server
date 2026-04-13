@@ -1,0 +1,214 @@
+---
+scope: src/tools/init/provisionBrain
+intent: >
+  provisionBrain scaffolds the brain vault layer that AIDE's pipeline
+  agents depend on for persistent memory. Given a resolved vault path,
+  it plans the creation of vault directories, content templates that
+  make the vault immediately useful to agents, and the Obsidian MCP
+  server wiring — returning InitStep items the calling agent applies.
+  A new vault must be structurally complete on first run: directory
+  scaffolding alone is not enough — the coding-playbook hub and a
+  vault-root CLAUDE.md must also be present so agents can navigate
+  the vault and discover conventions without the user having to
+  manually seed content first. Existing vaults are never overwritten.
+outcomes:
+  desired:
+    - The vault scaffolding step plans creation of all expected
+      directories (research, process/retro, coding-playbook) and
+      reports "exists" when the vault is already populated, preserving
+      idempotency.
+    - A coding-playbook hub template is planned as its own InitStep
+      when the vault is new. The template contains the exact section
+      structure (Task Routing table, How to Use This Index, Always
+      Read First, Sections, Contents) so the study-playbook skill's
+      crawling protocol works on day one. Sections are structurally
+      present but content-empty.
+    - A vault-root CLAUDE.md is planned as its own InitStep when the
+      vault is new. It contains wikilink crawling protocol, decision
+      protocol (coding conventions vs. search_notes), a "where to find
+      things" table, and the brain's role in AIDE — enough for any
+      agent reading the vault to know how to navigate it without prior
+      knowledge.
+    - The Obsidian MCP server prescription is planned with the correct
+      platform-aware command (cmd /c wrapper on Windows, direct npx
+      otherwise), and reports "exists" when the obsidian key is
+      already present in the MCP config.
+    - Every InitStep returned is a planning artifact only — no files
+      are written to disk by this helper. The calling agent or
+      applySteps orchestrator handles all writes.
+  undesired:
+    - A vault that has directories but no playbook hub template. Agents
+      invoking the study-playbook skill will find an empty
+      coding-playbook folder with no hub to crawl, causing the skill
+      to silently return nothing. The hub template is the minimum
+      viable content for the playbook to function.
+    - A playbook hub template that invents section content, routing
+      entries, or note wikilinks for the user. The template enforces
+      structure (headings, table skeleton, placeholder prose) — never
+      fills in domain-specific content. A hub with fabricated sections
+      teaches agents wrong conventions on the first read.
+    - A vault CLAUDE.md that duplicates the user's personal global
+      CLAUDE.md or a project's CLAUDE.md. The vault CLAUDE.md is
+      scoped to vault navigation only — how agents read and traverse
+      brain notes. It does not contain project instructions, coding
+      conventions, or user preferences.
+    - Content templates that overwrite existing files in an established
+      vault. If the playbook hub or vault CLAUDE.md already exists,
+      the step must report "exists" and plan no changes — same
+      idempotency contract as directory scaffolding.
+    - An InitStep that writes to disk directly. provisionBrain is a
+      planner; any step that touches the filesystem violates the
+      architectural contract between planning helpers and the
+      apply layer.
+---
+
+## Context
+
+The brain vault is the pipeline's durable memory — research agents write
+domain findings into it, QA agents promote retros, and the coding playbook
+captures engineering conventions that survive across projects. Without it,
+agents that declare Obsidian MCP access silently lose the ability to persist
+or retrieve knowledge, and the pipeline cannot learn across runs.
+
+The original provisionBrain created directories and wired the MCP server,
+but left the vault content-empty. This meant a new user's first
+study-playbook invocation found an empty coding-playbook folder with no hub
+note, returning nothing. Their agents had no vault CLAUDE.md to teach them
+how to navigate the brain. The user had to manually create these files —
+an invisible prerequisite that contradicted init's promise of "one command
+to a working AIDE project."
+
+The fix is to scaffold content alongside structure. Two templates make the
+vault immediately agent-navigable: a coding-playbook hub with the section
+structure the study-playbook skill expects, and a vault-root CLAUDE.md with
+the crawling and decision protocols agents need to interact with the brain.
+Both are structurally complete but content-empty — they establish the
+pattern without fabricating domain-specific knowledge the user hasn't
+created yet.
+
+The planner-only constraint is load-bearing. provisionBrain returns
+InitStep items describing what to create; the init orchestrator's apply
+layer handles actual writes. This separation means provisionBrain never
+touches the filesystem, the agent has full visibility into what will be
+created, and the user confirms before anything is written. Content
+templates are just InitStep items with a content field — they flow through
+the same planning and apply pipeline as directory scaffolding.
+
+## Strategy
+
+**Four planning steps, not two.** The current implementation returns two
+steps (vault directories, MCP prescription). The expanded version returns
+up to four: vault directories, playbook hub template, vault CLAUDE.md,
+and MCP prescription. Each is its own InitStep with independent
+idempotency — if the vault exists but the playbook hub is missing, only
+the hub step reports would-create.
+
+**Content steps use the same InitStep shape as directory steps.** The
+playbook hub and vault CLAUDE.md are InitStep items with category "brain",
+a filePath pointing to the target location inside the vault, and a content
+field containing the template text. The apply layer already knows how to
+write content from InitStep — no new machinery needed.
+
+**Playbook hub structure is enforced, content is empty.** The template
+contains five sections in a fixed order: Task Routing (a Markdown table
+with header row and no data rows), How to Use This Index (navigation
+instructions), Always Read First (placeholder wikilinks for conventions
+and folder structure), Sections (empty numbered list), and Contents (empty
+flat list). This structure is what the study-playbook skill's crawling
+protocol expects to find. The empty-but-structured pattern means the skill
+works on day one — it finds the hub, reads the sections, and correctly
+reports that no playbook notes exist yet.
+
+**Vault CLAUDE.md is scoped to navigation, not project instructions.** The
+template covers four concerns: wikilink crawling protocol (hub vs content
+notes, depth counting, never re-read), decision protocol (coding
+conventions route through study-playbook, everything else through
+search_notes), a "where to find things" table mapping information types
+to vault paths, and a brief statement of the brain's role in AIDE. It
+does not include project-specific instructions, user preferences, or
+anything that belongs in the user's global or project CLAUDE.md.
+
+**Idempotency checks are per-file, not per-vault.** The existing vault
+check (non-empty directory or .obsidian present) gates the directory
+scaffolding step. The playbook hub and vault CLAUDE.md each have their
+own existence check — if the file exists at the expected path, the step
+reports "exists" regardless of the vault-level status. This means running
+init on a vault that has directories but lost its playbook hub will
+correctly re-plan only the missing file.
+
+**Template text lives in the helper, not in external files.** The playbook
+hub and CLAUDE.md templates are string literals inside provisionBrain.
+They are small (under 2KB each), change only when the AIDE methodology
+changes, and are consumed by exactly one caller. Externalizing them to
+separate template files would add indirection without reducing coupling.
+
+## Good examples
+
+A new vault is being scaffolded. provisionBrain returns four InitStep
+items:
+
+Step 1 — Vault directories. Status: would-create. Category: brain.
+Content: JSON array of directory paths to create.
+
+Step 2 — Playbook hub. Status: would-create. Category: brain. FilePath
+points to coding-playbook/coding-playbook.md inside the vault. Content
+is a Markdown file with five headings: Task Routing (table with headers,
+no rows), How to Use This Index, Always Read First, Sections (empty),
+Contents (empty). Every heading is present; no domain content is filled.
+
+Step 3 — Vault CLAUDE.md. Status: would-create. Category: brain. FilePath
+points to CLAUDE.md at the vault root. Content covers crawling protocol,
+decision protocol, where-to-find-things table, and AIDE brain role. No
+project-specific instructions appear.
+
+Step 4 — Obsidian MCP. Status: would-create. Category: mcp. Prescription
+contains the server key and platform-aware command entry.
+
+Re-running on the same vault returns all four steps as "exists." No
+content is regenerated, no files are touched.
+
+Running on a vault that exists but is missing the playbook hub (perhaps
+the user deleted it) returns: directories as "exists," playbook hub as
+"would-create," CLAUDE.md as "exists," MCP as "exists." Only the missing
+piece is re-planned.
+
+## Bad examples
+
+A playbook hub template that contains fabricated section entries like
+"## Section 1: TypeScript Conventions" with wikilinks to notes that do
+not exist. The user has not created any playbook content yet — invented
+sections mislead agents into thinking conventions exist when they do not.
+
+A vault CLAUDE.md that includes the user's personal configuration, like
+"You are helping a data scientist" or "This project uses Prisma." The
+vault CLAUDE.md is a generic navigation guide, not a project or user
+profile. Mixing concerns means every project sharing the vault inherits
+instructions meant for one project.
+
+A provisionBrain that checks only "does the vault directory exist" and
+returns all content steps as "exists" even when the playbook hub file is
+missing. Per-vault idempotency is too coarse — each content file needs
+its own existence check, or the user cannot recover from a partially
+scaffolded vault without deleting everything and starting over.
+
+A provisionBrain that writes the playbook hub to disk directly instead of
+returning it as an InitStep. This bypasses the agent's confirmation flow,
+meaning the user never sees or approves the content before it lands in
+their vault. The planner-only contract exists precisely to prevent this.
+
+## References
+
+<!-- The synthesis agent populates this section during synthesis — do not fill
+  it manually after the fact. Rules for what goes here:
+  - Each entry is a bullet: the brain note path, then ` -- `, then a one-line
+    description of what was drawn from that note for the Strategy.
+  - Only notes that actually informed a strategy decision belong here. Notes
+    the agent opened but did not use are excluded — padding the list destroys
+    the signal between each reference and the decision it supports.
+  - Descriptions are breadcrumbs: name the source and the specific finding or
+    data point drawn from it for the Strategy. Do not restate the full finding;
+    do not duplicate the Strategy.
+  - Paths are hints, not contracts. Brain notes move; the description is the
+    fallback. No tooling should validate reference paths, and no agent should
+    treat a stale path as an error.
+  Delete this entire HTML comment once the real references are written. -->

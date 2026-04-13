@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, extname } from "node:path";
 import type { InitStep } from "@/types/index.js";
 
 /**
@@ -10,9 +10,14 @@ import type { InitStep } from "@/types/index.js";
  * - `"would-create"` file steps (no `prescription` field, not a brain vault step):
  *   creates parent directories and writes `content` to `filePath`. Returns the
  *   step with `status` changed to `"created"` and `content` removed.
- * - `"would-create"` brain vault steps (category `"brain"`): parses `content`
- *   as a JSON array of directory names, creates each under `filePath` with
- *   `recursive: true`. Returns with `status: "created"` and `content` removed.
+ * - `"would-create"` brain vault steps (category `"brain"`) — two sub-types:
+ *   - **Directory step** (`filePath` has no extension): parses `content` as a
+ *     JSON array of directory names, creates each under `filePath` with
+ *     `recursive: true`. Returns with `status: "created"` and `content` removed.
+ *   - **File step** (`filePath` has a file extension, e.g. `.md`): creates the
+ *     parent directory and writes `content` to `filePath`. Used for content
+ *     templates such as the playbook hub and vault CLAUDE.md. Returns with
+ *     `status: "created"` and `content` removed.
  * - `"would-create"` steps with a `prescription` field (MCP steps): passed
  *   through unchanged — the agent merges prescriptions itself. Never written
  *   by this helper.
@@ -46,16 +51,22 @@ async function applyStep(step: InitStep): Promise<InitStep> {
 		return { ...step, instructions: `code --install-extension ${step.filePath}` };
 	}
 
-	// Brain vault step — create directories listed in content JSON
+	// Brain step — two sub-types distinguished by whether filePath has an extension
 	if (step.category === "brain") {
-		if (step.content) {
+		if (!step.content) {
+			// No content means placeholder (filePath is empty string) — pass through
+			return step;
+		}
+		if (extname(step.filePath)) {
+			// File step — content is a template destined for a specific file path
+			await mkdir(dirname(step.filePath), { recursive: true });
+			await writeFile(step.filePath, step.content, "utf-8");
+		} else {
+			// Directory step — content is a JSON array of subdirectory names to create
 			const dirs: string[] = JSON.parse(step.content);
 			await Promise.all(
 				dirs.map((dir) => mkdir(`${step.filePath}/${dir}`, { recursive: true })),
 			);
-		} else {
-			// No content means placeholder (filePath is empty string) — pass through
-			return step;
 		}
 		const { content: _content, ...rest } = step;
 		return { ...rest, status: "created" };
