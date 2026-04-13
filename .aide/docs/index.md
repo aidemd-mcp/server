@@ -20,6 +20,7 @@ AIDE ships six canonical agents that `aide_init` installs to `.claude/agents/aid
 | `aide-architect` | opus | plan | read (playbook) |
 | `aide-implementor` | sonnet | build, fix | none |
 | `aide-qa` | sonnet | qa | none |
+| `aide-auditor` | opus | refactor | read (playbook) |
 
 The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation.
 

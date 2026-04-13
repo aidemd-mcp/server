@@ -20,12 +20,12 @@ afterEach(async () => {
 });
 
 describe("scaffoldCommands", () => {
-	it("returns would-create steps for all 11 commands on a cold run", async () => {
+	it("returns would-create steps for all 12 commands on a cold run", async () => {
 		const commandDir = join(tempDir, "commands");
 
 		const results = await scaffoldCommands(commandDir);
 
-		expect(results).toHaveLength(11);
+		expect(results).toHaveLength(12);
 		expect(results.every((r) => r.status === "would-create")).toBe(true);
 		expect(results.map((r) => r.name)).toEqual([
 			"aide",
@@ -39,6 +39,7 @@ describe("scaffoldCommands", () => {
 			"aide:upgrade",
 			"aide:init",
 			"aide:update-playbook",
+			"aide:refactor",
 		]);
 	});
 
@@ -120,7 +121,7 @@ describe("scaffoldCommands", () => {
 		const { default: scaffoldCommandsFresh } = await import("./index.js");
 		const results = await scaffoldCommandsFresh(commandDir);
 
-		expect(results).toHaveLength(11);
+		expect(results).toHaveLength(12);
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get("aide:build")).toBe("would-skip");
 		expect(byName.get("aide:research")).toBe("would-create");

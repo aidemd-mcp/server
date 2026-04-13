@@ -32,6 +32,7 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 - Stage 5 (Build): `aide-implementor`
 - Stage 6 (QA): `aide-qa`
 - Stage 7 (Fix): `aide-implementor` then `aide-qa`
+- Refactor: `aide-auditor` (one per `.aide` section, then `aide-implementor` + `aide-qa`)
 
 If you catch yourself about to write a file, edit code, or produce spec content — STOP. That is a subagent's job. Spawn the agent instead.
 
@@ -193,6 +194,32 @@ Repeat until `todo.aide` is clear. Do NOT fix anything yourself — always deleg
 When all issues are resolved:
 - Promote retro findings from `todo.aide` to the brain at `process/retro/`
 - Report completion to the user with a summary of what was built
+
+### Refactor → `aide:refactor`
+
+**This is NOT part of the feature pipeline.** Refactor is a separate flow that runs on code that already works and already passed QA. It audits existing code against the coding playbook and fixes convention drift.
+
+**Detecting refactor intent:** If the user mentions refactoring, convention drift, playbook conformance, code style alignment, or "cleaning up" existing code — this is a refactor task, not a feature pipeline. Do NOT start the spec→research→plan→build flow. Route to the refactor flow instead.
+
+**Refactor requires a path argument.** If the user doesn't provide one, ask for it. Never run a full-app refactor.
+
+**How the refactor flow works:**
+
+1. **Discover sections.** Run `aide_discover` with the user's path to find all `.aide` specs in the subtree.
+
+2. **Audit each section.** For each `.aide` spec found, delegate to a fresh `aide-auditor` agent (via Agent tool, `subagent_type: aide-auditor`). The prompt must include:
+   - The path to the `.aide` spec to audit
+   - That this is a refactor audit, not a new feature plan
+
+   Each auditor reads the implementation, consults the coding playbook, and produces `plan.aide` with refactoring steps. You can run multiple auditors in parallel since they operate on independent sections.
+
+3. **Pause for approval.** Present ALL plans to the user. Do not proceed to execution until the user approves. If the user wants changes to a plan, re-delegate to the auditor for that section — do NOT edit plans yourself.
+
+4. **Execute refactoring.** For each approved `plan.aide`, delegate to `aide-implementor` agents — one fresh agent per numbered step, same as the build phase. Multiple sections can be executed in parallel since they are independent.
+
+5. **Re-validate.** After all plans are executed, delegate to `aide-qa` per section to verify that the refactoring didn't break spec conformance (the `outcomes` block must still hold).
+
+6. **Report completion.** Summarize drift items found, fixed, and verified across all sections.
 
 ## Rules
 

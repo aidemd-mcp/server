@@ -51,12 +51,14 @@ const DOC_PATHS = {
 	"commands/aide/init": ".claude/commands/aide/init.md",
 	"commands/aide/update-playbook": ".claude/commands/aide/update-playbook.md",
 	"commands/aide/aide": ".claude/commands/aide.md",
+	"commands/aide/refactor": ".claude/commands/aide/refactor.md",
 	"agents/aide/aide-spec-writer": ".claude/agents/aide/aide-spec-writer.md",
 	"agents/aide/aide-researcher": ".claude/agents/aide/aide-researcher.md",
 	"agents/aide/aide-domain-expert": ".claude/agents/aide/aide-domain-expert.md",
 	"agents/aide/aide-architect": ".claude/agents/aide/aide-architect.md",
 	"agents/aide/aide-implementor": ".claude/agents/aide/aide-implementor.md",
 	"agents/aide/aide-qa": ".claude/agents/aide/aide-qa.md",
+	"agents/aide/aide-auditor": ".claude/agents/aide/aide-auditor.md",
 	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
 } as const;
 
@@ -122,6 +124,7 @@ const AGENT_DOCS: readonly AgentDocEntry[] = [
 	{ canonical: "agents/aide/aide-architect", hostFilename: "aide/aide-architect.md" },
 	{ canonical: "agents/aide/aide-implementor", hostFilename: "aide/aide-implementor.md" },
 	{ canonical: "agents/aide/aide-qa", hostFilename: "aide/aide-qa.md" },
+	{ canonical: "agents/aide/aide-auditor", hostFilename: "aide/aide-auditor.md" },
 ];
 
 /**

@@ -41,6 +41,7 @@ export const COMMANDS: readonly {
 	{ canonical: "commands/aide/upgrade", hostPath: "aide/upgrade.md", displayName: "aide:upgrade" },
 	{ canonical: "commands/aide/init", hostPath: "aide/init.md", displayName: "aide:init" },
 	{ canonical: "commands/aide/update-playbook", hostPath: "aide/update-playbook.md", displayName: "aide:update-playbook" },
+	{ canonical: "commands/aide/refactor", hostPath: "aide/refactor.md", displayName: "aide:refactor" },
 ];
 
 /** Check if a file exists. */
