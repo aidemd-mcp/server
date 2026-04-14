@@ -10,7 +10,8 @@
 	},
 	"main": "dist/index.js",
 	"scripts": {
-		"build": "tsc && tsc-alias",
+		"build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+		"prepublishOnly": "rm -rf dist && npm run build",
 		"dev": "tsc --watch",
 		"test": "vitest run",
 		"aide-tree": "node dist/cli/index.js",
