@@ -60,6 +60,7 @@ const DOC_PATHS = {
 	"agents/aide/aide-qa": ".claude/agents/aide/aide-qa.md",
 	"agents/aide/aide-auditor": ".claude/agents/aide/aide-auditor.md",
 	"agents/aide/aide-aligner": ".claude/agents/aide/aide-aligner.md",
+	"agents/aide/aide-explorer": ".claude/agents/aide/aide-explorer.md",
 	"commands/aide/align": ".claude/commands/aide/align.md",
 	"cascading-alignment": ".aide/docs/cascading-alignment.md",
 	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
@@ -132,6 +133,7 @@ const AGENT_DOCS: readonly AgentDocEntry[] = [
 	{ canonical: "agents/aide/aide-qa", hostFilename: "aide/aide-qa.md" },
 	{ canonical: "agents/aide/aide-auditor", hostFilename: "aide/aide-auditor.md" },
 	{ canonical: "agents/aide/aide-aligner", hostFilename: "aide/aide-aligner.md" },
+	{ canonical: "agents/aide/aide-explorer", hostFilename: "aide/aide-explorer.md" },
 ];
 
 /**

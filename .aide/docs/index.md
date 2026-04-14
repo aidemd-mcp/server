@@ -11,7 +11,7 @@
 
 ## Pipeline Agents
 
-AIDE ships eight canonical agents that `aide_init` installs to `.claude/agents/aide/`. Each agent maps to one pipeline role:
+AIDE ships nine canonical agents that `aide_init` installs to `.claude/agents/aide/`. Eight map to pipeline phases; one is a read-only investigator:
 
 | Agent | Model | Phase(s) | Brain Access |
 |---|---|---|---|
@@ -23,8 +23,9 @@ AIDE ships eight canonical agents that `aide_init` installs to `.claude/agents/a
 | `aide-qa` | sonnet | qa | none |
 | `aide-aligner` | opus | align | none |
 | `aide-auditor` | opus | refactor | read (playbook + brain) |
+| `aide-explorer` | sonnet | investigation (read-only) | read |
 
-The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation.
+The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation. The explorer is the exception: it is a non-pipeline agent used for bug tracing, codebase questions, and intent-tree navigation — it never writes files.
 
 ## Skills
 
