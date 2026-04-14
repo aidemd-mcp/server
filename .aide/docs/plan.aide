@@ -1,4 +1,6 @@
 ---
+description: >
+  Plan to add the References body section to the AIDE template, spec doc, and synthesis agent instructions.
 intent: >
   Add a References section to the AIDE methodology so the synthesis agent
   leaves a traceable breadcrumb trail of which brain notes informed each

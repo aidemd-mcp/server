@@ -1,5 +1,7 @@
 ---
 scope: .claude/skills/brain
+description: >
+  Spec for the /brain skill — a thin dispatcher that reads the vault CLAUDE.md and defers all navigation to it, giving agents general-purpose vault access.
 intent: >
   The /brain skill gives agents in host projects a general-purpose interface
   to the user's Obsidian vault. The skill prompt is deliberately minimal: it
@@ -26,11 +28,11 @@ outcomes:
       installSkills pipeline — registered in DOC_PATHS and SKILL_DOCS,
       installed to the host's skill directory, subject to the same
       idempotency and upgrade contracts as study-playbook.
-    - The skill prompt distinguishes itself from study-playbook by scope:
+    - "The skill prompt distinguishes itself from study-playbook by scope:
       study-playbook is limited to the coding playbook hub, while /brain
       is the general-purpose entry point for any vault query — research,
       project context, environment, identity, references, or any other
-      vault content the user has organized.
+      vault content the user has organized."
   undesired:
     - A skill prompt that hardcodes vault navigation rules, directory
       paths, hub locations, or routing tables. This creates two sources

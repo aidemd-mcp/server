@@ -1,4 +1,6 @@
 ---
+description: >
+  Implementation plan for restoring npx invocation of the init CLI via subcommand routing in the main entry point.
 intent: >
   Add subcommand routing to the main entry point so that
   `npx @aidemd-mcp/server init` runs the init CLI, while no-arg invocation

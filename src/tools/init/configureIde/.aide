@@ -1,5 +1,8 @@
 ---
 scope: src/tools/init/configureIde
+description: >
+  IDE integration helpers that make .aide files render as Markdown in Zed (via
+  settings patch) and VS Code and forks (via bundled .vsix extension install).
 intent: >
   configureIde is the execution site for AIDE's IDE-integration strategy:
   the helpers aide_init calls to make `.aide` files render as Markdown in

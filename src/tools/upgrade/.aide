@@ -1,5 +1,7 @@
 ---
 scope: src/tools/upgrade
+description: >
+  Agent-driven interactive upgrade tool that compares host project artifacts against canonical AIDE files and applies drifted categories on user confirmation.
 intent: >
   aide_upgrade is the explicit "bring this host project up to date with
   canonical" tool. It exists because aide_init is idempotent and never
@@ -40,10 +42,10 @@ outcomes:
     - Files outside the methodology surface are never touched. User
       code, user `.aide` specs, and any file not installed by
       aide_init are invisible to this tool.
-    - After applying, each file is reported with a final status:
+    - "After applying, each file is reported with a final status:
       updated (content differed and was replaced), unchanged (already
       matched canonical), or created (was missing). The agent
-      composes its own summary from the structured data.
+      composes its own summary from the structured data."
     - The default response (no category parameter) is small enough
       for an agent to comprehend in a single read — metadata and
       summary counts only, no canonicalContent.
@@ -59,10 +61,10 @@ outcomes:
     - The agent only uses the Write tool for MCP config (intelligent
       merge via prescriptions). For MCP results, the category call
       still returns the prescription data so the agent can merge.
-    - The pointer-stub category is a special case: the tool splices
+    - "The pointer-stub category is a special case: the tool splices
       the canonical stub within marker boundaries in the config
       file, preserving user content outside the markers. This is
-      handled by the tool directly during apply.
+      handled by the tool directly during apply."
     - IDE steps that require external tooling (VS Code CLI) return
       an `instructions` field for the agent to execute.
   undesired:

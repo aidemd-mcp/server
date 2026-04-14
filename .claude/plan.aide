@@ -1,4 +1,6 @@
 ---
+description: >
+  Plan to implement cascading alignment — aligner agent, /aide:align command, methodology doc, and cleanup of duplicated tree-walking instructions.
 intent: >
   Implement cascading alignment — a new aide-aligner agent, /aide:align command,
   cascading-alignment methodology doc, orchestrator and index updates, and cleanup

@@ -1,8 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import type { AideFile, ScanResult } from "@/types/index.js";
+import type { AideFile, AideFrontmatter, ScanResult } from "@/types/index.js";
 import { classifyFile } from "@/util/classify/index.js";
 import { SKIP_DIRS } from "@/types/index.js";
+import parseFrontmatter from "@/util/parseFrontmatter/index.js";
 
 /** Extract the first meaningful body line as the summary, truncated to ~80 chars. */
 function extractSummary(content: string): string {
@@ -38,6 +39,16 @@ function toPosix(p: string): string {
 	return p.split("\\").join("/");
 }
 
+/**
+ * Derive a description from frontmatter, falling back to the first sentence of
+ * `intent` when `description` is absent — matching the logic in buildAncestorChain.
+ */
+function deriveDescription(frontmatter: AideFrontmatter | null | undefined): string {
+	if (frontmatter?.description) return frontmatter.description;
+	if (frontmatter?.intent) return frontmatter.intent.split(/[.\n]/)[0] ?? "";
+	return "";
+}
+
 /** Recursively walk a directory and collect all .aide files. */
 async function walk(dir: string, root: string, files: AideFile[], shallow: boolean): Promise<void> {
 	let entries;
@@ -59,10 +70,28 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 		if (!entry.name.endsWith(".aide")) continue;
 
 		let summary = "";
+		let description = "";
+		let status: "aligned" | "misaligned" | undefined;
+
 		if (!shallow) {
 			try {
 				const buf = await readFile(fullPath, { encoding: "utf-8" });
 				summary = extractSummary(buf.slice(0, 1000));
+				const { frontmatter } = parseFrontmatter(buf);
+				description = deriveDescription(frontmatter);
+				if (frontmatter?.status) status = frontmatter.status;
+			} catch {
+				// skip unreadable files
+			}
+		} else {
+			// In shallow mode, read only the first ~500 bytes to capture frontmatter
+			// without loading the full body — keeps startup fast for large projects.
+			try {
+				const buf = await readFile(fullPath, { encoding: "utf-8" });
+				const head = buf.slice(0, 500);
+				const { frontmatter } = parseFrontmatter(head);
+				description = deriveDescription(frontmatter);
+				if (frontmatter?.status) status = frontmatter.status;
 			} catch {
 				// skip unreadable files
 			}
@@ -73,6 +102,8 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 			relativePath: toPosix(relative(root, fullPath)),
 			type: classifyFile(entry.name),
 			summary,
+			description,
+			status,
 		});
 	}
 }
@@ -80,7 +111,9 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 /**
  * Recursively walk the filesystem from `root` and collect all .aide files.
  * Skips node_modules, .git, dist, build, .next, coverage, __pycache__.
- * Reads the first ~1000 bytes of each file to extract the first meaningful body line as summary.
+ * In deep mode: reads full content to extract summary, description, and status.
+ * In shallow mode: reads only the first ~500 bytes per file to extract frontmatter
+ * description and status — summary stays empty but descriptions appear unconditionally.
  */
 export default async function scan(root: string, path?: string, shallow?: boolean): Promise<ScanResult> {
 	const scanRoot = path ? join(root, path) : root;

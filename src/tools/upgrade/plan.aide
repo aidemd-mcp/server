@@ -1,4 +1,6 @@
 ---
+description: >
+  Plan for adding apply mode to aide_upgrade so category calls write files to disk directly and return a manifest instead of returning canonicalContent.
 intent: >
   Add apply mode to aide_upgrade: when called with a `category` parameter,
   the tool writes all differs/missing files directly to disk and returns a

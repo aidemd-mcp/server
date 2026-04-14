@@ -1,5 +1,8 @@
 ---
 scope: src/tools/init/provisionBrain
+description: >
+  Plans vault directory scaffolding, playbook hub template, vault CLAUDE.md, and
+  Obsidian MCP wiring as InitStep items — writes nothing to disk directly.
 intent: >
   provisionBrain scaffolds the brain vault layer that AIDE's pipeline
   agents depend on for persistent memory. Given a resolved vault path,

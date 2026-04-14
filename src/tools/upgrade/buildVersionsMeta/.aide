@@ -1,5 +1,7 @@
 ---
 scope: src/tools/upgrade/buildVersionsMeta
+description: >
+  Extracts git commit metadata (publish date, source SHA, previous SHA) for each methodology doc from the MCP server's own repo and returns it as a slug-keyed JSON map.
 intent: >
   buildVersionsMeta extracts git commit metadata for each methodology doc
   from the MCP server's own repo history and returns it as a JSON object
@@ -32,9 +34,9 @@ outcomes:
     - Querying git history from the host project's repo. The host's git
       log tracks sync operations, not real document revisions. The source
       of truth is this repo's history.
-    - Crashing when git is unavailable or a doc has no commits. Graceful
+    - "Crashing when git is unavailable or a doc has no commits. Graceful
       degradation: return an empty object if git fails entirely, omit
-      individual slugs that have no history.
+      individual slugs that have no history."
     - A versions.json that contains entries for non-methodology files
       (commands, agents, skills). Only the docs in the .aide/docs/ hub
       get version metadata.

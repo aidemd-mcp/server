@@ -1,6 +1,9 @@
 ---
 scope: src/tools/init/installAgents
 status: aligned
+description: >
+  Installs the eight canonical AIDE pipeline agent files and the generic
+  study-playbook skill into the host project's .claude/agents/ directory.
 intent: >
   Install the canonical AIDE pipeline agent files into the host project's
   `.claude/agents/` directory. Each agent maps to one pipeline phase —
@@ -13,12 +16,12 @@ intent: >
   survive init.
 outcomes:
   desired:
-    - Eight agent files are installed to `.claude/agents/aide/`:
+    - "Eight agent files are installed to `.claude/agents/aide/`:
       aide-spec-writer, aide-domain-expert, aide-strategist,
       aide-architect, aide-implementor, aide-qa, aide-aligner,
       aide-auditor. Each has YAML frontmatter (name, description, tools,
       model, mcpServers, color) and a Markdown body that serves as the
-      agent's system prompt.
+      agent's system prompt."
     - Agent content is read through the initContent chokepoint — the same
       `readCanonicalDoc()` path used by methodology docs and commands. No
       agent content is hardcoded as template literals in this module.

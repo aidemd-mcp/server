@@ -86,11 +86,27 @@ describe("buildAncestorChain", () => {
 		expect(result).toContain(" — A meaningful description");
 	});
 
-	it("omits em-dash when description field is absent", async () => {
+	it("falls back to first sentence of intent when description is absent", async () => {
 		await mkdir(join(tempDir, ".aide"), { recursive: true });
 		await writeFile(
 			join(tempDir, ".aide", "intent.aide"),
 			"---\nscope: some-scope\nintent: Some intent\n---\n",
+		);
+
+		await mkdir(join(tempDir, "sub"), { recursive: true });
+		const target = join(tempDir, "sub");
+
+		const result = await buildAncestorChain(tempDir, target);
+
+		expect(result).toContain("Ancestor chain:");
+		expect(result).toContain(" — Some intent");
+	});
+
+	it("omits em-dash when both description and intent are absent", async () => {
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+		await writeFile(
+			join(tempDir, ".aide", "intent.aide"),
+			"---\nscope: some-scope\n---\n",
 		);
 
 		await mkdir(join(tempDir, "sub"), { recursive: true });

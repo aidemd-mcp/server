@@ -18,6 +18,7 @@ type Mode = "tree" | "drill-in";
 interface DrillData {
 	frontmatter: AideFrontmatter | null;
 	sections: BodySection[];
+	body: string;
 }
 
 interface AppProps {
@@ -62,9 +63,10 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 	// Single expanded section in drill-in mode; Tab cycles through sections.
 	const [expandedSection, setExpandedSection] = useState<number | null>(null);
 
-	// --- Detail panel frontmatter (for currently selected file) ---
+	// --- Detail panel frontmatter + body (for currently selected file) ---
 	const [selectedFrontmatter, setSelectedFrontmatter] = useState<AideFrontmatter | null>(null);
-	const [fmCache] = useState<Map<string, AideFrontmatter | null>>(new Map());
+	const [selectedBody, setSelectedBody] = useState<string>("");
+	const [fmCache] = useState<Map<string, { frontmatter: AideFrontmatter | null; body: string }>>(new Map());
 
 	/** Returns true if any file descendant of node matches the search filter. */
 	function hasMatchingDescendant(node: TreeNode, filter: string): boolean {
@@ -72,7 +74,8 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 			const lower = filter.toLowerCase();
 			return (
 				node.file.relativePath.toLowerCase().includes(lower) ||
-				(node.file.summary ?? "").toLowerCase().includes(lower)
+				(node.file.summary ?? "").toLowerCase().includes(lower) ||
+				(node.file.description ?? "").toLowerCase().includes(lower)
 			);
 		}
 		return node.children.some((child) => hasMatchingDescendant(child, filter));
@@ -86,9 +89,11 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 			if (fn.node.kind === "dir") {
 				return hasMatchingDescendant(fn.node, searchFilter);
 			}
+			const lower = searchFilter.toLowerCase();
 			return (
-				fn.node.file.relativePath.toLowerCase().includes(searchFilter.toLowerCase()) ||
-				(fn.node.file.summary ?? "").toLowerCase().includes(searchFilter.toLowerCase())
+				fn.node.file.relativePath.toLowerCase().includes(lower) ||
+				(fn.node.file.summary ?? "").toLowerCase().includes(lower) ||
+				(fn.node.file.description ?? "").toLowerCase().includes(lower)
 			);
 		  })
 		: flatNodes;
@@ -110,25 +115,30 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 	const cursorOnDir = cursorNode?.node.kind === "dir";
 	const cursorDirExpanded = cursorOnDir && cursorNode.node.kind === "dir" && expandedDirs.has(cursorNode.node.path);
 
-	// Load frontmatter for the detail panel whenever selectedFile changes.
+	// Load frontmatter + body for the detail panel whenever selectedFile changes.
 	useEffect(() => {
 		if (!selectedFile) {
 			setSelectedFrontmatter(null);
+			setSelectedBody("");
 			return;
 		}
 		if (fmCache.has(selectedFile.path)) {
-			setSelectedFrontmatter(fmCache.get(selectedFile.path) ?? null);
+			const cached = fmCache.get(selectedFile.path)!;
+			setSelectedFrontmatter(cached.frontmatter);
+			setSelectedBody(cached.body);
 			return;
 		}
 		readFile(selectedFile.path, "utf-8")
 			.then((content) => {
-				const { frontmatter } = parseFrontmatter(content);
-				fmCache.set(selectedFile.path, frontmatter);
+				const { frontmatter, body } = parseFrontmatter(content);
+				fmCache.set(selectedFile.path, { frontmatter, body });
 				setSelectedFrontmatter(frontmatter);
+				setSelectedBody(body);
 			})
 			.catch(() => {
-				fmCache.set(selectedFile.path, null);
+				fmCache.set(selectedFile.path, { frontmatter: null, body: "" });
 				setSelectedFrontmatter(null);
+				setSelectedBody("");
 			});
 	}, [selectedFile?.path]);
 
@@ -147,11 +157,11 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 			const content = await readFile(file.path, "utf-8");
 			const { frontmatter, body } = parseFrontmatter(content);
 			const sections = parseBody(body);
-			const data: DrillData = { frontmatter, sections };
+			const data: DrillData = { frontmatter, body, sections };
 			drillCache.set(file.path, data);
 			setDrillData(data);
 		} catch {
-			setDrillData({ frontmatter: null, sections: [] });
+			setDrillData({ frontmatter: null, body: "", sections: [] });
 		}
 	}, [drillCache]);
 
@@ -309,7 +319,7 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 	});
 
 	// --- Layout ---
-	const treeWidth = Math.floor(columns * 0.38);
+	const treeWidth = Math.floor(columns * 0.57);
 
 	return (
 		<Box flexDirection="row" width={columns}>
@@ -345,6 +355,7 @@ export default function App({ root, initialNodes }: AppProps): React.ReactElemen
 				<DetailPanel
 					file={selectedFile}
 					frontmatter={mode === "drill-in" ? (drillData?.frontmatter ?? null) : selectedFrontmatter}
+					body={mode === "drill-in" ? (drillData?.body ?? "") : selectedBody}
 					mode={mode === "drill-in" ? "drill-in" : "preview"}
 					sections={drillData?.sections ?? []}
 					expandedSection={expandedSection}

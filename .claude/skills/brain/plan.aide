@@ -1,4 +1,6 @@
 ---
+description: >
+  Plan to ship the /brain skill — create the SKILL.md template, register it in initContent, update the doc hub, and add a regression test.
 intent: >
   Ship the /brain skill — a thin-dispatcher SKILL.md template that tells
   agents to read the vault's root CLAUDE.md via the Obsidian MCP and follow

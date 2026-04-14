@@ -1,5 +1,8 @@
 ---
 scope: src/tools/init
+description: >
+  Bootstrap tool that turns a cold project into an AIDE-ready project via an
+  agent-driven wizard that confirms each category before writing anything to disk.
 intent: >
   aide_init is the bootstrap — the one command that turns a cold
   project into an AIDE-ready project. It is agent-driven and
@@ -43,29 +46,29 @@ outcomes:
     - Framework auto-detection picks the right framework from files
       on disk, and the agent confirms the detection with the user
       before proceeding. The user can override.
-    - The agent walks through categories ONE AT A TIME in a wizard
+    - "The agent walks through categories ONE AT A TIME in a wizard
       pattern using the AskUserQuestion tool with structured options
       (not conversational questions). It presents a single category
       (name + files), calls AskUserQuestion with Yes/Skip options,
       waits for the user's selection, applies it, then moves to the
       next. It never shows a summary table of all categories and
-      never offers "all" as an option. Each category is its own
+      never offers \"all\" as an option. Each category is its own
       interaction cycle: present → AskUserQuestion → wait → apply →
       next. The user always picks from defined choices — they never
-      have to type a conversational response.
+      have to type a conversational response."
     - For MCP config, the tool returns a prescription — the server
       key name and the entry object — instead of writing the file.
       The agent reads the existing config, merges the entry, and
       writes. If the config is malformed JSON, the agent tells the
       user and asks how to proceed rather than silently clobbering.
-    - The brain vault interview is agent-driven. The agent asks the
+    - "The brain vault interview is agent-driven. The agent asks the
       user where their vault is, offering three paths: discover an
       existing vault (from env var, known locations, or user input),
       create a new vault at a specified location, or connect to an
       existing vault at a user-provided path. The vault is always
-      provisioned — there is no "skip brain" option. Once the path
+      provisioned — there is no \"skip brain\" option. Once the path
       is resolved, the tool reports whether the vault needs
-      scaffolding and the agent applies it.
+      scaffolding and the agent applies it."
     - IDE configuration is presented as optional — the agent asks
       whether the user wants Zed and/or VS Code configuration, and
       only applies what they confirm.

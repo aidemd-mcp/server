@@ -23,13 +23,13 @@ outcomes:
       then the detailed subtree of that directory with summaries and anomaly
       warnings. The ancestor chain is not a separate mode or flag; it is
       always part of a path-scoped response.
-    - Each node in the ancestor chain shows: the spec path, the description
+    - "Each node in the ancestor chain shows: the spec path, the description
       field value, and the status field if set to aligned or misaligned.
       An agent reading the chain knows what every ancestor intends and
-      whether alignment has been verified, without opening any of them.
-    - Specs with status: misaligned are surfaced inline with a visible flag
+      whether alignment has been verified, without opening any of them."
+    - "Specs with status: misaligned are surfaced inline with a visible flag
       so any agent walking the tree notices drift immediately, without
-      needing to call a separate validation tool.
+      needing to call a separate validation tool."
     - The tool's description and output shape teach agents the cascading
       intent protocol by example — agents learn "walk ancestors, then drill
       subtree" from calling discover, not from paragraphs of instruction in

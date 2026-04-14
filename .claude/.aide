@@ -23,12 +23,12 @@ outcomes:
     - The aligner walks the tree top-down using the discover tool's ancestor
       chain, compares outcomes at each level, and produces a todo.aide at
       each misaligned node listing concrete realignment items.
-    - The aligner sets status: misaligned on specs where it finds drift and
+    - "The aligner sets status: misaligned on specs where it finds drift and
       status: aligned on specs it has verified. It is the only agent that
-      can confirm alignment through a deliberate full-tree walk.
-    - The QA agent can set status: misaligned incidentally while reviewing
+      can confirm alignment through a deliberate full-tree walk."
+    - "The QA agent can set status: misaligned incidentally while reviewing
       code-vs-spec, but cannot set aligned — only the aligner confirms
-      alignment.
+      alignment."
     - A /aide:align command exists that invokes the aligner agent, callable
       by the user or suggestable by the orchestrator when drift is suspected.
     - Agent definitions across the harness no longer contain verbose

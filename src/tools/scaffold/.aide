@@ -1,5 +1,7 @@
 ---
 scope: src/tools/scaffold
+description: >
+  Naming-enforcement tool that creates .aide files with correct filenames and applies the auto-rename rule when research enters a folder so agents cannot corrupt the spec layout.
 intent: >
   aide_scaffold is the pen — the tool an agent calls to create new .aide
   files. Its reason for existing is not "write a file"; it is "enforce
@@ -36,12 +38,12 @@ outcomes:
       back as a plain-English line the agent can read and paste into a
       commit message.
   undesired:
-    - A scaffold call that creates `.aide` next to an existing
+    - "A scaffold call that creates `.aide` next to an existing
       `research.aide`. This is the single worst outcome: the folder
       now contains both `.aide` and `research.aide`, which violates
       the never-coexist rule, and a future validate run will flag it
       as a naming conflict. The tool was built to prevent exactly
-      this, and must refuse to produce it.
+      this, and must refuse to produce it."
     - A scaffold call that overwrites an existing spec. The caller
       may have meant to create; they did not mean to destroy. An
       existing file is a skip, not a target.

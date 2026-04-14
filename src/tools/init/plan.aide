@@ -1,4 +1,7 @@
 ---
+description: >
+  Add apply mode to aide_init so category calls write would-create files to disk
+  and return a manifest, and fix the sentinel brain path collision.
 intent: >
   Add "apply mode" to aide_init: when called with a `category` parameter,
   the tool writes all would-create files to disk itself and returns a

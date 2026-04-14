@@ -1,4 +1,6 @@
 ---
+description: >
+  QA log tracking the spec-gap where src/.aide enumerates five tools but the server ships six (aide_upgrade missing from the tool-surface enumeration).
 intent: >
   src/.aide outcomes.desired[0] enumerates five MCP tools but the server
   ships six (aide_upgrade exists as a full tool with its own spec and

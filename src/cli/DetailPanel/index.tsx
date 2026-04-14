@@ -1,10 +1,14 @@
 import React from "react";
 import { Box, Text, useStdout } from "ink";
 import type { AideFile, AideFrontmatter, BodySection } from "@/types/index.js";
+import RenderPlanDetail from "./renderPlanDetail/index.js";
+import RenderTodoDetail from "./renderTodoDetail/index.js";
 
 interface DetailPanelProps {
 	file: AideFile | null;
 	frontmatter: AideFrontmatter | null;
+	/** Raw body content of the selected or drilled-in file. Used by plan/todo renderers. */
+	body: string;
 	/** Controls which rendering mode is active in the right panel. */
 	mode: "preview" | "drill-in";
 	/** Body sections from the drilled-in file. */
@@ -109,13 +113,16 @@ function OutcomesDisplay({
  * Right-panel component that handles both preview mode (tree navigation) and
  * drill-in mode (formatted frontmatter card with expandable body sections).
  *
- * In preview mode: scope, truncated intent, and outcome counts.
- * In drill-in mode: full frontmatter card (scope heading, full intent, side-by-side
- * outcomes) plus expandable body sections cycled with Tab.
+ * Delegates to RenderPlanDetail for plan files and RenderTodoDetail for todo files.
+ * Intent and research files use the intent-card layout (scope, intent, outcomes).
+ *
+ * In preview mode: scope, truncated intent, and outcome counts (or plan/todo summary).
+ * In drill-in mode: full frontmatter card or plan/todo detail view.
  */
 export default function DetailPanel({
 	file,
 	frontmatter,
+	body,
 	mode,
 	sections,
 	expandedSection,
@@ -136,6 +143,15 @@ export default function DetailPanel({
 					</Box>
 				</Box>
 			);
+		}
+
+		// Delegate to type-specific renderers for plan and todo files.
+		if (file.type === "plan") {
+			return <RenderPlanDetail file={file} frontmatter={frontmatter} mode="preview" body={body} drilledFilePath={null} />;
+		}
+		if (file.type === "todo") {
+			const description = frontmatter?.description ?? file.description ?? "";
+			return <RenderTodoDetail description={description} body={body} mode="preview" filePath={file.relativePath} />;
 		}
 
 		if (!frontmatter) {
@@ -174,6 +190,16 @@ export default function DetailPanel({
 	}
 
 	// --- Drill-in mode ---
+
+	// Delegate to type-specific renderers for plan and todo files.
+	if (file?.type === "plan") {
+		return <RenderPlanDetail file={file} frontmatter={frontmatter} mode="drill-in" body={body} drilledFilePath={drilledFilePath} />;
+	}
+	if (file?.type === "todo") {
+		const description = frontmatter?.description ?? file?.description ?? "";
+		return <RenderTodoDetail description={description} body={body} mode="drill-in" filePath={drilledFilePath ?? file?.relativePath ?? ""} />;
+	}
+
 	const title = drilledFilePath ?? "[unknown]";
 	const scope = frontmatter?.scope ?? "[FAILED TO PARSE]";
 	const intent = frontmatter?.intent ?? "[FAILED TO PARSE]";

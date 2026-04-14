@@ -1,4 +1,6 @@
 ---
+description: >
+  QA log tracking two test gaps in the init CLI — a platform-branching mcpEntry assertion on non-Windows CI and a missing unit test for installAideTree.
 intent: >
   Desired outcome D3 (idempotency — all three artifacts already exist) is
   partially undermined: the orchestrator integration test still uses a

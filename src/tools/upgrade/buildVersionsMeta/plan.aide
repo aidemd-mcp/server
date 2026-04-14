@@ -1,6 +1,8 @@
 ---
 scope: src/tools/upgrade/buildVersionsMeta
 type: plan
+description: >
+  Plan for building the buildVersionsMeta helper that queries git log for each methodology doc and integrates the resulting versions.json into the upgrade orchestrator.
 ---
 
 ## Implementation Plan

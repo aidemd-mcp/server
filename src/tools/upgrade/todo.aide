@@ -1,4 +1,6 @@
 ---
+description: >
+  QA issues found after apply-mode implementation: stale Zod schema description and "matches" vs "unchanged" terminal status name mismatch against spec.
 intent: >
   src/tools/upgrade apply-mode implementation QA — verifying against the
   outcomes.desired and outcomes.undesired contract in .aide

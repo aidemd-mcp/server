@@ -1,5 +1,7 @@
 ---
 scope: .
+description: >
+  Canonical home of the AIDE methodology and the MCP server that delivers it — single source of truth for every downstream host project.
 intent: >
   This repository is the canonical home of the AIDE methodology — Autonomous
   Intent-Driven Engineering, with a deliberate second reading as AI Domain

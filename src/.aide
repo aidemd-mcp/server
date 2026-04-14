@@ -1,6 +1,8 @@
 ---
 scope: src
 status: aligned
+description: >
+  MCP server implementing the two delivery channels — handshake teaching surface and aide_init bootstrap — that carry AIDE doctrine from canonical docs into host projects.
 intent: >
   src/ is the MCP server that implements aidemd-mcp's two delivery channels.
   Channel one is the handshake itself: the tool list is read verbatim by

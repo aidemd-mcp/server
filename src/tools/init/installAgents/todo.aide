@@ -1,4 +1,7 @@
 ---
+description: >
+  QA re-alignment tracking stale six-agent roster and inverted model assignments
+  in the installAgents spec relative to the canonical eight-agent pipeline table.
 intent: >
   installAgents spec names a stale six-agent roster with old role names
   (aide-researcher, old aide-domain-expert) and inverted model assignments,

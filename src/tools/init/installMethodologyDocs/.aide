@@ -1,6 +1,9 @@
 ---
 scope: src/tools/init/installMethodologyDocs
 status: aligned
+description: >
+  Installs the full AIDE methodology doc hub onto the host project's disk as
+  individually idempotent, verbatim copies of every canonical doc from docs/.
 intent: >
   installMethodologyDocs is the helper that lands the progressively-
   disclosed AIDE methodology hub onto the host project's disk. It reads
@@ -38,10 +41,10 @@ outcomes:
       reported as `exists`. A user who has customized one of the
       installed docs keeps their customization across re-runs. The hub
       index file obeys the same rule.
-    - Per-file status reporting. Each install returns its own
+    - "Per-file status reporting. Each install returns its own
       `created`/`exists` status so the init summary can show the mix
-      honestly — "aide-spec: created, automated-qa: exists" — without
-      collapsing the whole step into a single aggregate line.
+      honestly — \"aide-spec: created, automated-qa: exists\" — without
+      collapsing the whole step into a single aggregate line."
     - The helper is composable with failure. A missing or unreadable
       single canonical doc fails that install and surfaces the failure
       in the summary; it does not cascade into the other installs, and
@@ -91,10 +94,10 @@ outcomes:
       file under the hub — a maintainer edit to the source file must
       propagate into every host install without a code change on
       this side.
-    - Reaching for the network to fetch the canonical docs. The same
+    - "Reaching for the network to fetch the canonical docs. The same
       rule the parent locks in applies here: every asset this helper
       installs must already be present on disk from the repo it was
-      built out of, because init must succeed offline.
+      built out of, because init must succeed offline."
 ---
 
 ## Context

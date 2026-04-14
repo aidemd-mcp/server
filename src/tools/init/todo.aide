@@ -1,4 +1,7 @@
 ---
+description: >
+  QA re-alignment tracking missing instructions field on IDE VS Code steps and
+  the untested obsidian MCP placeholder passthrough in applySteps.
 intent: >
   Apply mode (category call): tool writes would-create files to disk and returns
   a manifest with no content. IDE VS Code steps return instructions for the agent

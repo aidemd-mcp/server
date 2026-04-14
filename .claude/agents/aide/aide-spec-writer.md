@@ -30,12 +30,14 @@ The orchestrator owns the user conversation. Your job is to take the context it 
    - Use `intent.aide` if `research.aide` exists (co-located research triggers the rename)
 3. Fill the frontmatter ONLY:
    - `scope` — the module path this spec governs
+   - `description` — one-line purpose statement, used by `aide_discover` ancestor chains so agents understand what this spec governs without opening it
    - `intent` — one paragraph, plain language, ten-second north star
    - `outcomes.desired` — concrete, falsifiable success criteria (2-5 bullets)
    - `outcomes.undesired` — failure modes, especially the almost-right-but-wrong kind
 4. Leave body sections (`## Context`, `## Strategy`, `## Good examples`, `## Bad examples`) as empty placeholders
 5. No code in the spec — no file paths, no type signatures, no function names
 6. Every `outcomes` entry must trace back to the `intent` paragraph
+7. **Quote outcomes that contain colons.** Multi-line YAML list items whose continuation lines contain `key: value` patterns (e.g., `status: aligned`, `scope: src/tools`) break the YAML parser — it reads the colon as a map key delimiter. Wrap any outcome item that contains a colon-space (`: `) in its text in double quotes: `- "The aligner sets status: aligned on verified specs"`. Single-line items without colons don't need quoting.
 
 ## Return Format
 

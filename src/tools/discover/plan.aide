@@ -1,4 +1,6 @@
 ---
+description: >
+  Implementation plan for the ancestor chain, description field, and status field enhancements to aide_discover deep-mode responses.
 intent: >
   Implement the ancestor chain, description field, and status field enhancements
   to the discover tool so that deep-mode calls return the full intent lineage

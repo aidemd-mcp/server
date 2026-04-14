@@ -42,6 +42,10 @@ export interface AideFile {
 	type: AideFileType;
 	/** First ~80 chars of the first paragraph, for tree summaries. */
 	summary: string;
+	/** Frontmatter description field — one-line human-readable summary. Empty string when absent. */
+	description?: string;
+	/** Alignment status from frontmatter — present only when explicitly set. */
+	status?: "aligned" | "misaligned";
 }
 
 /** Result of scanning a directory tree for .aide files. */

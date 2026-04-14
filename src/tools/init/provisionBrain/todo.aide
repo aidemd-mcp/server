@@ -1,4 +1,7 @@
 ---
+description: >
+  QA re-alignment tracking fabricated wikilinks in the playbook hub template's
+  Always Read First section and the missing negative assertion in tests.
 intent: >
   outcomes.undesired[1]: "A playbook hub template that invents section
   content, routing entries, or note wikilinks for the user. The template

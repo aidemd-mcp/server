@@ -1,4 +1,6 @@
 ---
+description: >
+  Plan to build the export-pdf script — file discovery, HTML generation, two-pass Puppeteer PDF rendering, and pdf-lib merge into a single copyright-registrable PDF.
 intent: >
   Deliver a re-runnable TypeScript script that consolidates every AIDE methodology
   artifact into a single copyright-registrable PDF with cover page, TOC, rendered

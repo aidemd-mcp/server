@@ -1,6 +1,9 @@
 ---
 scope: src/tools/init/initContent
 status: aligned
+description: >
+  Single chokepoint reader for the canonical docs folder — all init helpers
+  request content through here so docs/ has exactly one reader in the init tree.
 intent: >
   initContent is the source-of-truth reader for the init subtree. It
   is the only helper under init/ that touches the canonical docs
@@ -53,11 +56,11 @@ outcomes:
       renaming links. Transformation is consumer logic and belongs
       with the consumer, where the reasoning for each transform can
       live next to the code that applies it.
-    - A fallback path that returns hardcoded content when docs/ is
+    - "A fallback path that returns hardcoded content when docs/ is
       missing or unreadable. There is no graceful degradation here:
       shipping invented content under the guise of the canonical
       docs is the exact failure mode the architecture exists to
-      prevent.
+      prevent."
     - Doc content held as a literal inside this helper's source
       "as a performance optimization" or "in case docs/ moves".
       The single-source-of-truth invariant is absolute; optimizing

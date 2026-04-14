@@ -1,77 +1,95 @@
 ---
+description: >
+  Implementation plan for CLI TUI enhancements — description-first tree summaries, type-branched detail panel for plan/todo files, and aide_discover parity (status flags, descriptions, wider tree panel).
 intent: >
-  Eliminate the full-screen drill-in mode and render all detail content in the
-  right panel while the tree stays permanently visible. Add Tab-based body
-  section cycling and an [e] editor escape hatch.
+  Enhance the TUI so the tree panel shows frontmatter descriptions as node
+  summaries (unconditionally, not gated behind deep view), the detail panel
+  renders plan and todo files with their own layouts instead of the generic
+  intent-card, and the tree renders the same information agents receive from
+  aide_discover — descriptions, alignment status flags, and file types.
 ---
 
 ## Plan
 
-### 1. Remove full-screen drill-in rendering from App
+### 1. [x] Add `description` field to AideFile and populate it during scan
 
-- [x] In `src/cli/App/index.tsx`, remove the early-return block (currently lines 298-311) that renders `<DrillInPanel>` as a full-screen `<Box flexDirection="column">` when `mode === "drill-in" && drilledFile`. The two-panel `<Box flexDirection="row">` layout at line 313 must render unconditionally — the tree panel is always visible regardless of mode. Do NOT remove the DrillInPanel import yet (that happens in step 3). After this change, entering drill-in mode will show the tree + the existing DetailPanel (which only knows preview mode), so drill-in will temporarily render as a preview. This is intentional — step 2 adds the drill-in rendering to DetailPanel.
+Read: `coding-playbook/foundations/conventions.md`, `coding-playbook/architecture/folder-structure.md`
 
-### 2. Merge drill-in content into DetailPanel
+- Modify `src/types/index.ts`: add an optional `description?: string` field to the `AideFile` interface. This field holds the frontmatter `description` when present.
+- Modify `src/util/scan/index.ts`: after the existing `extractSummary` call (which reads body text), also parse frontmatter via `parseFrontmatter` from `@/util/parseFrontmatter/index.js` to extract `description` and `status`. Store both on the `AideFile` being pushed. The `description` field gets the frontmatter `description` value (or empty string if absent). This means every `AideFile` now carries both the body-derived `summary` and the frontmatter-derived `description`.
+- Also add an optional `status?: "aligned" | "misaligned"` field to `AideFile` in `src/types/index.ts` and populate it from frontmatter during scan. This supports the status flag rendering in step 4.
+- The `parseFrontmatter` import is already available in the codebase. In scan's `walk` function, read the file content (which already happens for the non-shallow case) and parse frontmatter from it. For the shallow case, the file is not read at all today — but descriptions should appear unconditionally (not gated behind deep view). Therefore, in the shallow case, read only the first ~500 bytes of each file (enough to capture frontmatter) and parse `description` and `status` from it. The `summary` field stays empty in shallow mode (existing behavior).
+- Write `src/util/scan/index.test.ts`: test that scan populates `description` from frontmatter when present, leaves it empty when frontmatter has no `description`, and populates `status` when present. Use a temp directory with fixture `.aide` files.
 
-- [x] 2a. In `src/cli/DetailPanel/index.tsx`, extend the props interface to accept: `mode: "preview" | "drill-in"`, `sections: BodySection[]`, `focusedSection: number`, `expandedSection: number | null` (single currently-expanded section index, or null when all collapsed), and `drilledFilePath: string | null` (shown as the panel title during drill-in). Import `BodySection` from `@/types/index.js`. When `mode === "preview"`, render the existing summary preview unchanged. When `mode === "drill-in"`, render the full frontmatter card: scope as a heading, full intent paragraph (not truncated), and side-by-side outcomes in bordered regions. Move the `OutcomeList` and `OutcomesDisplay` helper functions from `src/cli/DrillInPanel/index.tsx` into `DetailPanel/index.tsx` above the default export. These are purely presentational sub-renders — they stay in the same file per the single-helper exception.
-- [x] 2b. In DetailPanel's drill-in mode, render the body section list below the frontmatter card. Use the `expandedSection` prop (a single `number | null`) to control which section is expanded — only one section at a time, or none. The focused section (matching `focusedSection` index) is highlighted with bold cyan text. Each section heading shows a collapsed indicator (`"▸"`) or expanded indicator (`"▾"`). When expanded, the section content renders below its heading. When collapsed, the section shows an optional summary annotation (e.g., `"(2 paragraphs)"`).
-- [x] 2c. Add a drill-in footer with hint text: `[esc] back  [tab] next section  [e] open in editor`. The preview mode footer stays as-is (no `[tab]` or `[e]` hints).
+### 2. [x] Tree panel: show descriptions unconditionally and widen to 55-60%
 
-### 3. Delete DrillInPanel
+Read: `coding-playbook/foundations/conventions.md`, `coding-playbook/architecture/folder-structure.md`
 
-- [x] Delete `src/cli/DrillInPanel/index.tsx` (and the `DrillInPanel/` folder). Remove the `DrillInPanel` import from `src/cli/App/index.tsx`.
+- 2a. Modify `src/cli/TreePanel/index.tsx` — `renderRow` function (lines 64-91): Change the summary display logic. Currently summary shows only when `isDeepView && file.summary`. New behavior: if `file.description` is non-empty, show it unconditionally (regardless of `isDeepView`). If `file.description` is empty but `isDeepView` is true and `file.summary` exists, fall back to `file.summary`. The description text uses the same ` — {text}` format and gray color as existing summaries. Also, if `file.status` is set, render a status badge after the type tag: `[aligned]` in green or `[misaligned]` in red.
+- 2b. Modify `src/cli/App/index.tsx` — the layout section (line 312): Change the tree width calculation from `Math.floor(columns * 0.38)` to `Math.floor(columns * 0.57)`. This gives the tree panel ~57% of terminal width so descriptions are readable alongside node paths and type tags. The detail panel gets the remaining ~43% via `flexGrow={1}`.
+- 2c. Verify the `TreePanelProps` interface does not need changes — it already receives `isDeepView` and `width`. The `FlatNode` type wraps `TreeNode` which wraps `AideFile`, so the new `description` and `status` fields flow through automatically.
 
-### 4. Rewire App state and DetailPanel props
+### 3. [x] Detail panel: add plan layout renderer
 
-- [x] In `src/cli/App/index.tsx`, change the `drillExpanded` state from `useState<Set<number>>` to `useState<number | null>(null)` and rename it to `expandedSection` / `setExpandedSection`. Update the `drillIntoFile` callback to reset `setExpandedSection(null)` instead of `setDrillExpanded(new Set())`. Pass the following new props to `<DetailPanel>`: `mode` (derive from the existing `mode` state: `mode === "drill-in" ? "drill-in" : "preview"`), `sections` (from `drillData?.sections ?? []`), `focusedSection` (from `drillFocused`), `expandedSection` (the new state), and `drilledFilePath` (from `drilledFile?.relativePath ?? null`). The `<DetailPanel>` now always renders inside the right-panel `<Box>` — it shows preview when `mode === "tree"` and drill-in content when `mode === "drill-in"`.
+Read: `coding-playbook/foundations/conventions.md`, `coding-playbook/workflow/testing.md`
 
-### 5. Implement Tab section cycling in App
+Create a new helper component at `src/cli/DetailPanel/renderPlanDetail/index.tsx` that renders plan files in both preview and drill-in modes.
 
-- [x] In `src/cli/App/index.tsx`, modify the drill-in keyboard handler. When `mode === "drill-in"` and Tab is pressed: cycle `expandedSection` forward through the body sections. The cycle is: `null -> 0 -> 1 -> ... -> (sectionCount - 1) -> null -> 0 -> ...`. This means pressing Tab when no section is expanded opens the first section; pressing Tab when the last section is expanded collapses all; pressing Tab again reopens the first. Remove the existing Enter-to-toggle logic in drill-in mode (Enter should be a no-op in drill-in). Keep Up/Down for moving `drillFocused` between section headings. Tab in tree mode continues to toggle deep/shallow view (no change to that path).
+- **Preview mode**: Show the plan's `description` (from frontmatter), a progress bar or fraction showing checklist completion (e.g., "3/5 complete"), and the count of remaining items.
+- **Drill-in mode**: Show the full list of checklist items parsed from the plan body. Each item shows its checkbox state (`[x]` rendered as a green checkmark, `[ ]` as a gray empty box). Group items by their `### N.` step headings. Show a completion summary at the top (e.g., "Progress: 3/5 steps complete").
+- The plan body format is markdown with `### N. Step title` headings and `- [x]`/`- [ ]` checklist items. Parse these from the `sections` array (which `parseBody` already splits on `##` headings) or from the raw body content passed through props.
+- Create a `parsePlanItems` helper at `src/cli/DetailPanel/renderPlanDetail/parsePlanItems/index.ts` that takes the body string (or sections) and returns a structured array of `{ step: string; items: { text: string; done: boolean }[] }`. This is pure parsing logic, no React.
+- Write `src/cli/DetailPanel/renderPlanDetail/parsePlanItems/index.test.ts`: test parsing of plan body with mixed checked/unchecked items, step headings, and edge cases (no items, all complete, all incomplete).
 
-### 6. Implement [e] editor escape hatch in App
+### 4. [x] Detail panel: add todo layout renderer
 
-- [x] In `src/cli/App/index.tsx`, add `[e]` keypress handling in drill-in mode. When the user presses `e` and `drilledFile` is non-null: resolve the editor command from `process.env.VISUAL ?? process.env.EDITOR ?? "code"`. Call `spawnSync(editor, [drilledFile.path], { stdio: "inherit" })` to hand terminal control to the editor. Import `spawnSync` from `node:child_process` at the top of the file. After the editor process exits, the TUI resumes automatically since Ink redraws on the next render cycle.
+Read: `coding-playbook/foundations/conventions.md`, `coding-playbook/workflow/testing.md`
 
-### 7. Update existing drill-in integration tests
+Create a new helper component at `src/cli/DetailPanel/renderTodoDetail/index.tsx` that renders todo files in both preview and drill-in modes.
 
-- [x] In `src/cli/App/index.test.tsx`, update the following tests to assert the tree stays visible during drill-in:
-  - **"switches to drill-in mode on Enter"** — after drilling in, assert the frame contains BOTH `"Intent Tree"` (tree panel header) AND the drill-in content (`"scope:"`, `"Desired Outcomes"`, `"Undesired Outcomes"`). Also assert dir entries (`. /`) are still visible.
-  - **"Escape in drill-in mode returns to tree view"** — after pressing Escape, verify the right panel reverts to preview mode. Assert the frame contains outcome counts (`"desired ("` or `"undesired ("`) rather than full outcome text.
-  - **"Enter on file inside expanded dir triggers drill-in"** — same as above: assert tree + drill-in content coexist in the frame.
-  - **"drill-in mode: Up/Down moves section focus and Enter expands"** — this test currently uses Enter to expand sections. Rewrite it to use Tab instead: Tab expands sections one at a time. Assert that pressing Tab expands the first section, pressing Tab again collapses it and expands the second.
-  - **"drill-in mode: Up arrow moves section focus, Enter expands"** — rewrite similarly: focus movement with Up/Down is unchanged, but expansion is now via Tab, not Enter.
+- **Preview mode**: Show the todo's `description` (from frontmatter), the count of issues, and a count of misalignment annotations if any.
+- **Drill-in mode**: Show the full issue list. Each issue is a checklist item from the todo body. Items with misalignment annotations (text containing `[misaligned]` or similar markers) are highlighted in yellow/red. Items marked complete are shown with green checkmarks.
+- Create a `parseTodoItems` helper at `src/cli/DetailPanel/renderTodoDetail/parseTodoItems/index.ts` that takes the body string and returns a structured array of `{ text: string; done: boolean; misaligned: boolean }`.
+- Write `src/cli/DetailPanel/renderTodoDetail/parseTodoItems/index.test.ts`: test parsing of todo body with misalignment annotations, mixed states, and edge cases.
 
-### 8. Add new tests for Tab section cycling
+### 5. [x] Wire type-branched rendering into DetailPanel
 
-- [x] In `src/cli/App/index.test.tsx`, add:
-  - **"drill-in mode: Tab cycles through body sections one at a time"**: Drill into a file. Press Tab — first section expands (assert expanded indicator `"▾"` appears and section content is visible). Press Tab — first section collapses, second section expands. Press Tab — all sections collapse (both show collapsed indicator `"▸"`). Press Tab — first section expands again (wraps around).
-  - **"drill-in mode: only one section expanded at a time"**: Drill in, press Tab to expand section 0, assert section 0 has `"▾"` indicator. Press Tab again — assert section 0 now has `"▸"` AND section 1 has `"▾"`. At no point should two sections show `"▾"` simultaneously.
+Read: `coding-playbook/foundations/conventions.md`, `coding-playbook/architecture/folder-structure.md`
 
-### 9. Add test for [e] editor escape hatch
+- Modify `src/cli/DetailPanel/index.tsx`: Add a file-type branching check at the top of both preview and drill-in rendering paths. When `file.type` is `"plan"`, delegate to the `renderPlanDetail` component (from step 3). When `file.type` is `"todo"`, delegate to the `renderTodoDetail` component (from step 4). When `file.type` is `"intent"` or `"research"`, use the existing intent-card layout (scope, intent, outcomes).
+- Import the new renderer components from their subfolder paths.
+- Pass through the necessary props: `file`, `frontmatter`, `mode`, `sections`, `expandedSection`, `drilledFilePath`.
+- The existing `OutcomeList` and `OutcomesDisplay` helpers stay in DetailPanel — they are only used by the intent/research rendering path and are small enough to remain in the same file per the single-helper exception.
 
-- [x] In `src/cli/App/index.test.tsx`, add `vi.mock("node:child_process", ...)` at the top to mock `spawnSync`. Add a test: **"drill-in mode: [e] opens file in editor"**: drill into a file, press `e`, assert `spawnSync` was called once with an array containing the drilled file's absolute path (`"/mock/.aide"`) and `{ stdio: "inherit" }` in the options.
+### 6. [x] Tree panel: render status flags on dir nodes
 
-### 10. Add test for tree visibility during drill-in
+Read: `coding-playbook/foundations/conventions.md`
 
-- [x] In `src/cli/App/index.test.tsx`, add: **"tree panel remains visible during drill-in"**: drill into a file, assert the frame contains `"Intent Tree"`, `". /"`, `"src/tools/init/"`, and `"scope:"` all in the same frame. This explicitly pins the no-full-screen-takeover contract from the spec's undesired outcomes.
+- Modify `src/cli/TreePanel/index.tsx` — the dir-node branch of `renderRow` (lines 50-62): When a dir node's primary intent file has a status, show a status badge next to the dir label. This requires access to the file data within dir nodes. The `TreeNode` type for dir nodes already has `children: TreeNode[]` — find the first `"intent"` child and check its `status` field. Render `[aligned]` in green or `[misaligned]` in red after the dir path.
+- Also show the dir node's primary intent `description` when available (similar logic: find the first intent child, use its `description`). This gives dir nodes the same information density as aide_discover's ancestor chain, where each level shows its description.
+
+### 7. [x] Update search filter to include descriptions
+
+Read: `coding-playbook/foundations/conventions.md`
+
+- Modify `src/cli/App/index.tsx` — the `hasMatchingDescendant` function and the `visibleNodes` filter: Include `file.description` in the search match logic alongside `file.relativePath` and `file.summary`. This ensures that typing a search term that appears in a description still surfaces the correct nodes.
 
 ## Decisions
 
-**1. DetailPanel absorbs DrillInPanel rather than keeping two swappable components.**
-The spec says the right panel is "the only detail surface" — it transitions between preview and drill-in views within the same panel. Making DetailPanel handle both modes via a `mode` prop keeps the App orchestrator simple (one detail component to render, one set of props to wire) and mirrors the spec's mental model that there is one panel with two states, not two panels that swap. The `OutcomeList` and `OutcomesDisplay` sub-components move into DetailPanel as private helpers under the single-helper exception — they are purely presentational sub-renders with no independent reuse. Traced to: spec strategy ("the right panel is the only detail surface"), playbook (component architecture, orchestrator/helper pattern).
+### Description takes precedence over body-derived summary
+The spec explicitly states that frontmatter `description` should take precedence over body-derived summaries when present. Rather than replacing `summary` with `description` on the `AideFile` type, both fields are kept. `description` comes from frontmatter (always populated even in shallow scan), `summary` comes from body text (only in deep scan). The tree panel uses `description` first, falling back to `summary` in deep view. This preserves backward compatibility and avoids breaking the MCP discover tool's existing behavior.
 
-**2. `expandedSection: number | null` replaces `Set<number>` for one-at-a-time cycling.**
-The spec says "expanding one section at a time while collapsing the previous." A Set allows multiple sections expanded simultaneously, which contradicts the spec. A single nullable index enforces the one-at-a-time constraint by construction. Tab increments the index (with null as the "all collapsed" state between the last section and wrap-around to first), which is simpler than toggling Set membership. Traced to: spec strategy ("cycle-through model — expanding one section at a time while collapsing the previous").
+### Descriptions shown unconditionally (not gated behind deep view)
+The spec is explicit: "Descriptions appear unconditionally in the tree, not gated behind the deep-view toggle." This means the shallow scan must read enough of each file to extract frontmatter — but NOT the body. The implementation reads only the first ~500 bytes (enough for the YAML block) in shallow mode, keeping startup fast. `summary` remains empty in shallow mode (existing behavior). Per playbook convention `coding-playbook/foundations/conventions.md`: investigate first, never apply quick hacks — the shallow scan reads frontmatter rather than deferring description to deep mode.
 
-**3. Tab serves dual role: deep/shallow toggle in tree mode, section cycling in drill-in mode.**
-Tab is already bound to deep/shallow toggle in tree mode. The spec says "Tab cycles through body sections in the detail panel." These contexts are mutually exclusive (the `mode` state is either `"tree"` or `"drill-in"`), so Tab can serve both roles without conflict. The keyboard handler already dispatches on `mode`. Traced to: spec strategy ("keyboard navigation follows terminal conventions").
+### Tree width increased to 57% (from 38%)
+The spec calls for 55-60% tree width to make descriptions readable. 57% (0.57 multiplier) is chosen as the midpoint. The detail panel remains `flexGrow={1}` to use the remaining space. This matches the spec's strategy section: "The tree panel gets roughly 55-60% of terminal width."
 
-**4. Editor spawned synchronously with `spawnSync` + `stdio: "inherit"`.**
-The editor must take over the terminal (stdin/stdout). `spawnSync` with `stdio: "inherit"` is the standard Node.js pattern — it blocks the event loop while the editor runs, which is correct because the TUI should be frozen during editing. The fallback chain is `$VISUAL` -> `$EDITOR` -> `"code"`. We do not fall back to `vi` — `code` (VS Code) is a safer default for the target audience (developers using an MCP server are likely using VS Code). Traced to: spec strategy ("a keypress opens the raw file directly in the user's editor").
+### Plan and todo get their own renderers as subfolder helpers
+Per progressive disclosure (`progressive-disclosure.md`) and the orchestrator/helper pattern (`coding-playbook/architecture/folder-structure.md`), the plan and todo renderers are extracted into their own subfolders under `DetailPanel/` rather than inlined as conditionals in the main component. Each renderer owns its own parsing logic (also in a subfolder). This keeps `DetailPanel/index.tsx` as the orchestrator that delegates based on file type.
 
-**5. No changes to TreePanel, flattenTree, buildTreeData, findPrimaryIntent, or any tree data pipeline.**
-The refactor is entirely within App's rendering path (which panel renders what, when) and DetailPanel's content. The tree data pipeline, folder expansion, search filtering, and primary intent resolution are all unaffected — they already work correctly from the previous plan's implementation. This keeps the blast radius minimal and avoids regressions in tested, stable code. Traced to: playbook (horizontal isolation, no scope creep).
+### Status field added to AideFile
+The spec requires parity with aide_discover output, which shows alignment status flags from frontmatter. Adding `status` to `AideFile` (populated during scan) is the cleanest path — it flows through `TreeNode` and `FlatNode` without changes to those types. The alternative (reading frontmatter on-demand in the tree panel) would require async rendering in the tree component, which Ink does not support well.
 
-**6. Steps 1-4 are tightly sequenced; steps 7-10 (tests) depend on 1-6 but are independent of each other.**
-Steps 1-6 form a dependency chain: step 1 removes the full-screen path, step 2 adds drill-in capability to DetailPanel, step 3 cleans up the dead component, step 4 wires the new props, steps 5-6 add new keyboard behaviors. Test steps 7-10 can be executed in any order after the code changes land, but each is an independent step so a fresh agent gets clear scope. Traced to: plan.aide spec ("each numbered step is a unit of delegation").
+### Parser helpers are pure functions with their own tests
+`parsePlanItems` and `parseTodoItems` are pure data transformers (string in, structured array out) — no React, no I/O. They live in their own subfolders per the orchestrator/helper pattern and get their own co-located tests per `coding-playbook/workflow/testing.md`. This makes them independently verifiable without rendering Ink components.

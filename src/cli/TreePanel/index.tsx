@@ -50,12 +50,35 @@ function renderRow(
 	if (node.kind === "dir") {
 		const label = node.path === "." ? ". /" : `${node.path}/`;
 		const expandIndicator = expandedDirs.has(node.path) ? "v " : "> ";
+
+		// Find the first intent child to surface its status and description on the dir row.
+		const intentChild = node.children.find((c) => c.kind === "file" && c.file.type === "intent");
+		const intentFile = intentChild?.kind === "file" ? intentChild.file : null;
+		const dirStatusBadge =
+			intentFile?.status === "aligned"
+				? { text: " [aligned]", color: "green" as const }
+				: intentFile?.status === "misaligned"
+					? { text: " [misaligned]", color: "red" as const }
+					: null;
+		const dirDescription = intentFile?.description ?? "";
+
+		// Truncate description to fit within available panel width.
+		const dirFixedLen = indent.length + expandIndicator.length + label.length + (dirStatusBadge?.text.length ?? 0);
+		const dirRemaining = width - dirFixedLen;
+		let dirSummaryText = "";
+		if (dirDescription && dirRemaining > 10) {
+			const full = ` — ${dirDescription}`;
+			dirSummaryText = full.length <= dirRemaining ? full : `${full.slice(0, dirRemaining - 3)}…`;
+		}
+
 		return (
 			<Box key={`dir-${node.path}-${index}`}>
-				<Text bold={isCursor} color={isCursor ? "white" : "gray"}>
+				<Text bold={isCursor} color={isCursor ? "white" : "gray"} wrap="truncate">
 					{indent}
 					{expandIndicator}
 					{label}
+					{dirStatusBadge ? <Text color={dirStatusBadge.color}>{dirStatusBadge.text}</Text> : null}
+					{dirSummaryText ? <Text color="gray">{dirSummaryText}</Text> : null}
 				</Text>
 			</Box>
 		);
@@ -70,13 +93,24 @@ function renderRow(
 	const prefix = `${indent}${connector}${filename} `;
 	const tagStr = `[${tag}]`;
 
-	// Truncate summary to fit within available panel width.
-	const fixedLen = prefix.length + tagStr.length;
+	// Determine status badge text and color when a status flag is present.
+	const statusBadge = file.status
+		? file.status === "aligned"
+			? { text: " [aligned]", color: "green" as const }
+			: { text: " [misaligned]", color: "red" as const }
+		: null;
+
+	// Truncate summary/description to fit within available panel width.
+	const statusLen = statusBadge ? statusBadge.text.length : 0;
+	const fixedLen = prefix.length + tagStr.length + statusLen;
 	const remaining = width - fixedLen;
-	let summary = "";
-	if (isDeepView && file.summary && remaining > 10) {
+	let summaryText = "";
+	if (file.description && remaining > 10) {
+		const full = ` — ${file.description}`;
+		summaryText = full.length <= remaining ? full : `${full.slice(0, remaining - 3)}…`;
+	} else if (!file.description && isDeepView && file.summary && remaining > 10) {
 		const full = ` — ${file.summary}`;
-		summary = full.length <= remaining ? full : `${full.slice(0, remaining - 3)}…`;
+		summaryText = full.length <= remaining ? full : `${full.slice(0, remaining - 3)}…`;
 	}
 
 	return (
@@ -84,7 +118,8 @@ function renderRow(
 			<Text bold={isCursor} backgroundColor={isCursor ? "blue" : undefined} wrap="truncate">
 				{prefix}
 				<Text color={tagColor}>{tagStr}</Text>
-				{summary ? <Text color="gray">{summary}</Text> : null}
+				{statusBadge ? <Text color={statusBadge.color}>{statusBadge.text}</Text> : null}
+				{summaryText ? <Text color="gray">{summaryText}</Text> : null}
 			</Text>
 		</Box>
 	);

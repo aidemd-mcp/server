@@ -1,4 +1,7 @@
 ---
+description: >
+  QA re-alignment tracking stale command count and enumeration in the
+  scaffoldCommands spec relative to the actual 13-entry COMMANDS registry.
 intent: >
   scaffoldCommands spec enumerates seven phase commands plus update-playbook
   but the actual COMMANDS registry and canonical command set includes thirteen

@@ -1,4 +1,6 @@
 ---
+description: >
+  QA findings for cascading alignment — tracks tree-walking instructions that survived in command files and stale orchestrator references after agent cleanup.
 intent: >
   Desired outcome #6 is violated — tree-walking instructions were removed from agent
   definitions and the previously-failing command file (spec.md), but five other command

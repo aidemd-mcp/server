@@ -1,5 +1,7 @@
 ---
 scope: .aide/docs
+description: >
+  Spec for the canonical AIDE methodology docs — governs adding the References section so synthesis agents leave auditable breadcrumb trails.
 status: aligned
 intent: >
   Add a References section to the AIDE spec template and methodology so the

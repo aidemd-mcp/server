@@ -1,10 +1,17 @@
 ---
 scope: cli
+description: >
+  Terminal-native two-panel TUI for humans to browse and inspect the .aide intent tree of any project without opening individual files or running MCP tools.
 intent: >
   Give developers a terminal-native way to explore and inspect the .aide intent
   tree of any project — a single command that renders the full hierarchy as a
   navigable, searchable TUI so a human can understand the intent structure at a
-  glance without opening individual files or running MCP tools manually.
+  glance without opening individual files or running MCP tools manually. The CLI
+  tree view exists to show humans what agents see via aide_discover — it is a
+  debugging and inspection tool for verifying the intent tree as agents experience
+  it. The TUI should render the same information aide_discover returns
+  (descriptions, status flags, ancestor chains) so a developer can visually
+  confirm what any agent would see when it calls the tool.
 outcomes:
   desired:
     - A two-panel layout: navigable intent tree on the left, detail pane on the right showing contextual info for the selected node. The tree is always visible and navigable — it is never hidden or replaced.
@@ -12,12 +19,18 @@ outcomes:
     - Drilling into any .aide file renders a formatted inspection view in the right panel — frontmatter displayed as a styled card with scope at top, intent below it, and desired/undesired outcomes displayed side-by-side in their own bordered regions. The tree on the left remains visible and active throughout.
     - Body sections (Context, Strategy, Good examples, Bad examples) listed below the frontmatter card as expandable items the user can cycle through with a keypress. For content too long to fit the panel, the user can open the raw file directly in their editor.
     - Ships as a launcher script written into the user's project during `aide_init` — `.aide/bin/aide-tree.mjs` is created by the CLI bootstrapper and the `installAideTree` MCP helper, resolving the installed `@aidemd-mcp/server` package's TUI entry point at runtime via `createRequire`. Users run the TUI as `node .aide/bin/aide-tree.mjs` from their project root.
+    - The tree panel displays the frontmatter description field as the summary for each node — when a spec has a description in its frontmatter, that text takes precedence over body-derived summaries. Descriptions appear unconditionally in the tree, not gated behind the deep-view toggle. The tree panel is wide enough to show meaningful description text without truncating it to uselessness — at least 55-60% of terminal width so descriptions remain readable alongside the node path and type tag.
+    - The detail panel renders plan and todo file types with their own layout — plan files show checklist items with completion progress, todo files show the issue list with misalignment annotations. The intent-card layout (scope, intent, outcomes) is reserved for intent and research file types only.
+    - The tree renders the same information an agent receives from aide_discover — descriptions, alignment status flags, file types, and ancestor chain context — so a developer can visually verify what agents see without calling the MCP tool directly.
   undesired:
     - A static dump that requires re-running the command to see different parts of the tree — the whole point is persistent interactive navigation.
     - Frontmatter rendered as raw YAML — the nested outcomes structure must be visually parsed into labeled, bordered regions, not shown as indented key-value pairs.
     - Requiring the MCP server to be running — the TUI reads the filesystem directly, reusing the scan/classify logic but not the MCP transport.
     - A full CLI framework with subcommands, flags, and help text — this is one command, one view, zero arguments beyond an optional project root path.
     - A full-screen drill-in view that hides the tree panel when the user inspects a file. The dual-panel layout exists so the developer can see both the tree and the detail at the same time — a mode that takes over the screen defeats the entire purpose of the two-panel design.
+    - A tree node that shows a truncated snippet of body text when the spec's frontmatter already contains a one-line description — the description field exists precisely to provide a human-readable summary, and ignoring it forces the tree to display less meaningful text.
+    - Plan and todo files rendered through the same intent-card template as intent specs — checklist items displayed as unformatted markdown body text with no completion state, and frontmatter arrays like misalignment silently dropped because the renderer does not expect them.
+    - A tree view that diverges from what aide_discover returns — if the CLI shows different summaries, omits status flags, or structures the hierarchy differently than the tool output, it fails as a debugging surface.
 ---
 
 ## Context
@@ -30,7 +43,7 @@ This module ships inside the existing package rather than as a standalone instal
 
 ## Strategy
 
-**Two-panel split with the tree as the permanent navigation surface.** The left panel shows the intent tree — directories as collapsible groups, specs as leaf nodes tagged by type. The right panel shows contextual detail for whatever node is currently highlighted. This split lets the developer scan the full tree structure while previewing content without losing context. The tree panel gets roughly 35-40% of terminal width; the detail panel gets the rest. The tree stays visible at all times — there is no mode, state, or keypress that hides it.
+**Two-panel split with the tree as the permanent navigation surface.** The left panel shows the intent tree — directories as collapsible groups, specs as leaf nodes tagged by type. The right panel shows contextual detail for whatever node is currently highlighted. This split lets the developer scan the full tree structure while previewing content without losing context. The tree panel gets roughly 55-60% of terminal width to ensure descriptions are readable; the detail panel gets the rest. The tree stays visible at all times — there is no mode, state, or keypress that hides it.
 
 **The right panel is the only detail surface.** When the user highlights a tree node, the right panel shows a summary preview. When the user presses Enter to drill in, the right panel transitions to show the formatted frontmatter card — scope, intent, and outcomes rendered as styled bordered regions. Body sections appear below the card as collapsed items. The transition happens entirely within the right panel; the left panel (tree) is unaffected and remains navigable. Pressing Escape or Backspace returns the right panel to the summary preview for the current selection.
 

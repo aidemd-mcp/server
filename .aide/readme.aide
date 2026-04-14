@@ -36,9 +36,9 @@ outcomes:
       concrete first action to take inside their agent, closing the gap
       between install and first value.
   undesired:
-    - A config block that shows one client's format and expects users of
+    - "A config block that shows one client's format and expects users of
       other clients to translate — the #1 documented friction source in
-      MCP server READMEs (mcp-readme-conventions research).
+      MCP server READMEs (mcp-readme-conventions research)."
     - A tool list without parameter documentation, forcing the developer
       to install the server just to discover what inputs each tool accepts.
     - A README that teaches the full AIDE methodology instead of focusing
@@ -50,9 +50,9 @@ outcomes:
     - A config block using a bare package name without @latest, which
       silently serves a stale cached version to users who have previously
       installed any version.
-    - A PATH-troubleshooting gap: omitting the nvm/Homebrew PATH failure
+    - "A PATH-troubleshooting gap: omitting the nvm/Homebrew PATH failure
       mode for Claude Desktop, which is the single most common MCP install
-      failure and silently loses users who blame themselves and give up.
+      failure and silently loses users who blame themselves and give up."
 ---
 
 ## Context

@@ -1,4 +1,6 @@
 ---
+description: >
+  QA log tracking five rounds of TUI implementation drift — keyboard handling, deep/shallow toggle, cursor-filter desync, frozen tree cursor during drill-in, and plan parser format mismatch.
 intent: >
   Realign the TUI implementation with the .aide spec — specifically the
   drill-in keyboard interaction, the deep/shallow toggle correctness, the
@@ -6,9 +8,11 @@ intent: >
   (Round 2: one regression found in the fix for issue #4.)
   (Round 3: hint text inconsistency during search + dir cursor, and missing test coverage for that path.)
   (Round 4: tree cursor frozen during drill-in mode — spec says tree remains navigable throughout.)
+  (Round 5: plan parser format mismatch and aide_discover description parity gap.)
 misalignment:
   - implementation-drift
   - test-gap
+  - spec-gap
 ---
 
 ## Issues — Round 1 (all resolved in fix loop)
@@ -86,3 +90,23 @@ Plan step 8 explicitly lists the three hint states. A reviewer cross-referencing
 
 **What would have caught the Round 4 tree-navigation gap earlier?**
 The spec strategy paragraph contains the phrase "remains navigable" — a QA pass that reads every sentence of the Strategy section and maps it to a concrete keyboard handler would have flagged that no Up/Down handler in drill-in mode advances `cursorIndex`. The plan does not mention tree navigation during drill-in at all — the plan scope was narrowly focused on eliminating the full-screen mode and wiring the detail panel, and the "tree stays navigable" constraint was never translated into a plan step or a test. A plan that adds a drill-in mode should always include a step: "verify that all tree-mode keyboard actions that the spec says are active during drill-in remain wired." The absence of a test for "arrow key moves tree cursor while in drill-in mode" is the detection failure — a test that drills in, presses Down, and asserts `src/tools/init/` is highlighted would have exposed it immediately.
+
+## Issues — Round 5 (TUI enhancement QA)
+
+- [x] `src/cli/DetailPanel/renderPlanDetail/parsePlanItems/index.ts:28` — The heading regex `/^###\s+\d+\.\s+(.+)$/` matches `### N. Title` but not the two actual plan formats used in this project. Format 1 (`src/cli/plan.aide`): `### N. [x] Step title` — the checkbox is embedded in the heading, not in a separate `- [x]` line below. The parser matches the heading (capturing `[x] Step title` as the step name) but finds zero checklist items under it, producing `0/0 complete`. Format 2 (`src/tools/init/plan.aide`, `src/tools/upgrade/plan.aide`): `### Phase N — Title` — the `Phase` word and em-dash pattern do not match `\d+\.`, so the parser sees no headings at all, groups all `- [x]` items under an empty-string step, and includes bold markers (`**item text**`) verbatim in item text. All real plan files in this project produce either `0/0 complete` or ungrouped items with markdown noise in their text.
+  Traces to: desired outcome — "plan files show checklist items with completion progress"; undesired outcome — "Plan and todo files rendered through the same intent-card template... checklist items displayed as unformatted markdown body text with no completion state"
+  Misalignment: implementation-drift
+
+- [x] `src/cli/DetailPanel/renderPlanDetail/parsePlanItems/index.test.ts:1-148` — All tests use a synthetic plan format (`### 1. Title` headings with bare `- [x] text` items below) that matches neither actual plan format in this project. The tests pass because they test the parser's own assumed format rather than the formats real plan.aide files contain. No test exercises `### Phase N — Title` headings, embedded `[x]` in headings, or bold item text (`**text**`). The test suite provides false confidence that plan files in the project will render correctly.
+  Traces to: desired outcome — "plan files show checklist items with completion progress"; retro pattern — "tests that test the format the parser assumes rather than the format real files use"
+  Misalignment: test-gap
+
+- [x] `src/cli/TreePanel/index.tsx:108` and `src/util/scan/index.ts:63-88` — The TUI tree shows `file.description` only, falling back to `file.summary` (body-derived) in deep view. `aide_discover` uses `frontmatter?.description || (frontmatter?.intent ? frontmatter.intent.split(/[.\n]/)[0] : undefined)` — it derives a description from the first sentence of `intent` when `description` is absent. For the majority of specs in this project that have `intent` but no `description` field, `aide_discover` shows a summary but the TUI tree shows nothing. The spec outcome states: "The tree renders the same information an agent receives from aide_discover — descriptions, alignment status flags, file types, and ancestor chain context." The divergence breaks the debugging-surface purpose of the TUI.
+  Traces to: desired outcome — "The tree renders the same information an agent receives from aide_discover"; undesired outcome — "A tree view that diverges from what aide_discover returns"
+  Misalignment: implementation-drift
+
+**What would have caught the Round 5 plan parser mismatch earlier?**
+Plan step 3 says: "The plan body format is markdown with `### N. Step title` headings and `- [x]`/`- [ ]` checklist items." A researcher who read any actual plan.aide file in the project before writing this description would have seen that neither `src/cli/plan.aide` nor `src/tools/init/plan.aide` uses that format. The gap is a spec-gap: the plan step invented a canonical format instead of surveying the corpus. A QA check that runs `parsePlanItems` against at least two real plan files in the project and asserts `doneCount > 0` would have caught it immediately — the output would be `0/0` for `src/cli/plan.aide` and ungrouped bold text for the Phase-style files.
+
+**What would have caught the Round 5 aide_discover parity gap earlier?**
+Plan step 7 ("The tree renders the same information aide_discover returns") required reading `buildAncestorChain/index.ts` to understand what aide_discover actually returns. The plan did not include that read. The intent-fallback (`frontmatter.intent.split(/[.\n]/)[0]`) is a single line in `buildAncestorChain` that the implementor would have seen and replicated had they been directed to study the reference implementation before writing the tree panel logic. A plan step for parity should always cite the specific source to match.

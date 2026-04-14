@@ -120,4 +120,187 @@ describe("scan", () => {
 
 		expect(result.files).toHaveLength(0);
 	});
+
+	it("populates description from frontmatter in deep mode", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: tools/discover
+description: Map-making tool that returns spec locations and ancestor intent chains
+intent: Find .aide files.
+---
+
+## Context
+
+Body text here.
+`,
+		);
+
+		const result = await scan(tempDir);
+
+		expect(result.files[0].description).toBe(
+			"Map-making tool that returns spec locations and ancestor intent chains",
+		);
+	});
+
+	it("falls back to first sentence of intent when description is absent in deep mode", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: tools/discover
+intent: Walk the filesystem and collect specs. Return a tree.
+---
+
+## Context
+
+Body text here.
+`,
+		);
+
+		const result = await scan(tempDir);
+
+		expect(result.files[0].description).toBe("Walk the filesystem and collect specs");
+	});
+
+	it("leaves description empty when frontmatter has neither description nor intent", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: tools/discover
+---
+
+## Context
+
+Body text here.
+`,
+		);
+
+		const result = await scan(tempDir);
+
+		expect(result.files[0].description).toBe("");
+	});
+
+	it("populates status from frontmatter in deep mode", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: src
+description: MCP server root
+status: aligned
+---
+`,
+		);
+
+		const result = await scan(tempDir);
+
+		expect(result.files[0].status).toBe("aligned");
+	});
+
+	it("populates status: misaligned from frontmatter in deep mode", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: src/service
+description: Service modules
+status: misaligned
+---
+`,
+		);
+
+		const result = await scan(tempDir);
+
+		expect(result.files[0].status).toBe("misaligned");
+	});
+
+	it("leaves status undefined when frontmatter has no status field", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: src
+description: Some module
+---
+`,
+		);
+
+		const result = await scan(tempDir);
+
+		expect(result.files[0].status).toBeUndefined();
+	});
+
+	it("populates description from frontmatter in shallow mode", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: cli
+description: Terminal TUI for browsing the .aide intent tree
+intent: >
+  Give developers a terminal-native way to explore.
+---
+
+## Context
+
+Body text here.
+`,
+		);
+
+		const result = await scan(tempDir, undefined, true);
+
+		expect(result.files[0].summary).toBe("");
+		expect(result.files[0].description).toBe("Terminal TUI for browsing the .aide intent tree");
+	});
+
+	it("falls back to first sentence of intent when description is absent in shallow mode", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: cli
+intent: Give developers a terminal view. More detail here.
+---
+
+## Context
+
+Body text here.
+`,
+		);
+
+		const result = await scan(tempDir, undefined, true);
+
+		expect(result.files[0].summary).toBe("");
+		expect(result.files[0].description).toBe("Give developers a terminal view");
+	});
+
+	it("leaves description empty in shallow mode when frontmatter has neither description nor intent", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: cli
+---
+
+## Context
+
+Body text here.
+`,
+		);
+
+		const result = await scan(tempDir, undefined, true);
+
+		expect(result.files[0].summary).toBe("");
+		expect(result.files[0].description).toBe("");
+	});
+
+	it("populates status from frontmatter in shallow mode", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			`---
+scope: src
+description: MCP server root
+status: aligned
+---
+`,
+		);
+
+		const result = await scan(tempDir, undefined, true);
+
+		expect(result.files[0].status).toBe("aligned");
+	});
 });

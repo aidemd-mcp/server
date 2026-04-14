@@ -1,4 +1,7 @@
 ---
+description: >
+  Ship six canonical AIDE pipeline agent files, the study-playbook skill, and
+  the init/upgrade plumbing that installs and keeps them current in host projects.
 intent: >
   Ship the six canonical AIDE pipeline agent files, the generic study-playbook
   skill, and the plumbing that installs them into host projects via aide_init

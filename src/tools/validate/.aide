@@ -1,5 +1,7 @@
 ---
 scope: src/tools/validate
+description: >
+  Health-check tool that surfaces naming conflicts, orphaned research, missing specs, and broken relative links so agents can fix spec layout drift before it accumulates.
 intent: >
   aide_validate is the health check — the tool an agent calls to find
   out whether a project's spec layout is internally consistent. It

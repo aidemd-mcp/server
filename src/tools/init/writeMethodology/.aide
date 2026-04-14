@@ -1,5 +1,8 @@
 ---
 scope: src/tools/init/writeMethodology
+description: >
+  Installs a short marker-bounded pointer stub into the host framework's config
+  file that tells agents AIDE exists and where to find the doc hub on disk.
 intent: >
   writeMethodology installs the host-side pointer stub — the short, marker-
   bounded region inside the host framework's config file (CLAUDE.md,

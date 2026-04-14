@@ -1,4 +1,6 @@
 ---
+description: >
+  QA log tracking four issues in the ancestor chain enhancement — scan summary regression, status badge suppression, missing edge-case test, and stale aide_validate tool description.
 intent: >
   Verify the discover tool enhancement — ancestor chain, description field, and
   status field — against src/tools/discover/.aide. Four issues found; three are

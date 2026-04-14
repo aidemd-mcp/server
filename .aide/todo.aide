@@ -1,4 +1,6 @@
 ---
+description: >
+  QA findings for the README.md rewrite — tracks the missing @latest on the Quick Start npx command.
 intent: >
   README.md rewrite against readme.aide spec. One outcome violated: the Quick
   Start block omits @latest from the npx command, which can serve a stale

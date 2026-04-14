@@ -1,5 +1,7 @@
 ---
 scope: src/tools/read
+description: >
+  Drill-in tool that returns a spec's raw content alongside its type, sibling specs, and extracted links so agents know what to read next from a single call.
 intent: >
   aide_read is the drill-in tool — the one an agent calls after discover has
   pointed it at a specific spec. It returns the file's content with enough

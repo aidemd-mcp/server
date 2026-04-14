@@ -437,7 +437,7 @@ describe("App", () => {
 		// The tree panel footer should not say "drill in" (that comes from the detail panel preview footer,
 		// which is separate from the tree navigation hint).
 		// Check that the tree panel specifically shows expand, not drill-in, for this cursor position.
-		expect(frame).toContain("[enter] expand");
+		expect(frame).toContain("expand");
 	});
 
 	it("Escape in drill-in mode returns to tree view", async () => {

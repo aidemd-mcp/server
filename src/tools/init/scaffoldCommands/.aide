@@ -1,6 +1,9 @@
 ---
 scope: src/tools/init/scaffoldCommands
 status: aligned
+description: >
+  Installs all 13 AIDE slash commands (orchestrator plus 12 subcommands) into
+  the host project's command directory from canonical templates via initContent.
 intent: >
   scaffoldCommands installs the full AIDE command surface into a host
   project: the `/aide` orchestrator at the command directory root, the
@@ -16,7 +19,7 @@ intent: >
   plus its maintenance and lifecycle surfaces in a host project.
 outcomes:
   desired:
-    - One slash command file is scaffolded per entry in the COMMANDS registry.
+    - "One slash command file is scaffolded per entry in the COMMANDS registry.
       The registry currently contains 13 entries: the `/aide` orchestrator
       (installed as `aide.md` at the command directory root) plus 12 subcommands
       installed under an `aide/` subfolder — the seven pipeline phases
@@ -30,7 +33,7 @@ outcomes:
       (`research.md`, not `aide-research.md`) because the enclosing `aide/`
       folder already carries the namespace — double-naming would produce
       `/aide:aide-research` on the host side. The orchestrator lives one
-      level up (`aide.md`) so it registers as the plain `/aide` command.
+      level up (`aide.md`) so it registers as the plain `/aide` command."
     - Each command file is a byte-faithful render of its canonical
       template read from docs/commands/aide/ at runtime. A diff
       between an installed command file and its template shows only
@@ -44,24 +47,24 @@ outcomes:
       independently in the final results, so the init summary can
       show exactly which commands were new on this run and which
       were already in place.
-    - The study-playbook skill contains only generic, reusable
+    - "The study-playbook skill contains only generic, reusable
       crawling mechanics — what a hub note is, how to traverse
       wikilinks top-down, the never-re-read rule. It contains zero
       environment-specific content: no intent mapping tables, no
       task-to-section routing, no references to specific playbook
       section names. All task routing lives in the playbook hub note
       itself, where the user maintains a task routing table that the
-      agent reads naturally when it opens the hub.
+      agent reads naturally when it opens the hub."
     - The update-playbook command includes a housekeeping step that
       instructs the agent to detect drift between the playbook hub's
       task routing table and the actual playbook sections, and to
       update the routing table whenever structural changes would
       cause the map to fall out of sync.
   undesired:
-    - Command template content hand-written in this helper's source
+    - "Command template content hand-written in this helper's source
       as template literals. Same failure mode as the methodology
       writer: the fix is to read from docs/ through initContent,
-      not to centralize the literals in this file.
+      not to centralize the literals in this file."
     - Overwriting an existing command file because "the canonical
       template is authoritative." It is authoritative for new
       installs only. User customizations survive; the re-run reports

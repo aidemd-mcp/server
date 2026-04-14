@@ -1,4 +1,7 @@
 ---
+description: >
+  Expand provisionBrain from two planning steps to four by adding playbook hub
+  template and vault CLAUDE.md as independently idempotent InitStep items.
 intent: >
   Expand provisionBrain from two planning steps (vault directories, MCP) to
   four (vault directories, playbook hub template, vault CLAUDE.md, MCP),

@@ -1,4 +1,6 @@
 ---
+description: >
+  Plan to rewrite README.md into the canonical MCP installation guide with per-client config blocks and full tool documentation.
 intent: >
   Rewrite README.md to match the readme.aide spec — quick-install via
   npx @aidemd-mcp/server init as recommended primary path, per-client manual

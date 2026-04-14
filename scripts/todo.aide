@@ -1,4 +1,6 @@
 ---
+description: >
+  QA findings for the export-pdf script — cover page element order, index.md inclusion ambiguity, parallel browser launches, and marked return-type cast risk.
 intent:
   - "Every methodology doc, agent definition, command definition, and skill definition present in the source directories appears in the PDF — nothing is silently omitted"
   - "The generated PDF contains a cover page with exact title, author, copyright notice, and date of first publication"
