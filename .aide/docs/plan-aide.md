@@ -18,9 +18,13 @@ intent: >
 
 ### 1. Step title — self-contained unit
 
+Read: `coding-playbook/structure/modularization`, `coding-playbook/patterns/orchestrator-helper`
+
 - [ ] What to do, which files, what contracts
 
 ### 2. Coupled step title — requires shared context
+
+Read: `coding-playbook/testing/unit-tests`
 
 - [ ] 2a. First action in the coupled group
 - [ ] 2b. Second action that depends on 2a's in-memory state
@@ -44,11 +48,12 @@ without re-deriving it.
 - **Steps execute top-to-bottom.** Sequencing is the architect's job. The implementor does not reorder, skip, or add steps. If a step is ambiguous, escalate back to `/aide:plan`. Each numbered step is executed by a fresh implementor agent. Lettered sub-steps within a number share a single agent session.
 - **Each numbered step is a unit of delegation.** The orchestrator spawns one fresh implementor agent per numbered step. This means each step must be self-contained: a fresh agent should be able to execute it by reading the plan, the `.aide` spec, and the current code state — without knowing what a prior agent did in-memory. Write steps at a granularity where each one produces a complete, testable change.
 - **Lettered sub-steps for coupled work.** When multiple actions are tightly coupled and cannot be executed independently (e.g., creating a helper and immediately wiring it into the caller), group them as lettered sub-steps under a single number: `1a`, `1b`, `1c`. The orchestrator keeps one agent for all sub-steps of a given number. Use this sparingly — most steps should be independent. If you find yourself lettering more than you're numbering, the steps are too granular.
-- **No implementation code.** No function bodies, no business logic, no algorithms. Steps describe decisions — file names, contracts, sequencing, reuse. The implementor writes the code. **But DO include convention-specific details** the implementor needs to code to standard: naming patterns (e.g., `verbNoun` not `nounVerb`), type signatures for contracts between steps, expected file structure, import ordering, test scaffolding shape, error handling style. The implementor has no playbook access — if a convention matters for a step, spell it out in the plan. This is not "code" — it is the architect's encoding of playbook knowledge into actionable instruction.
+- **No implementation code.** No function bodies, no business logic, no algorithms. Steps describe decisions — file names, contracts, sequencing, reuse. The implementor writes the code. **But DO include convention-specific details** the implementor needs to code to standard: naming patterns (e.g., `verbNoun` not `nounVerb`), type signatures for contracts between steps, expected file structure, import ordering, test scaffolding shape, error handling style. If a convention matters for a step, either spell it out in the plan or include the governing playbook note in the step's Read list. This is not "code" — it is the architect's encoding of playbook knowledge into actionable instruction.
+- **Every step has a Read list.** Each numbered step must open with a `Read:` line listing 1-3 coding playbook notes from the brain that the implementor should read before coding that step. These are the **convention notes** — playbook rules that govern how the implementor writes the code for that step (decomposition, naming, file size, patterns, testing style). The architect already consulted the playbook during planning; the Read list tells the implementor exactly which notes to load so it applies the same conventions. The implementor has playbook access and will read these notes directly from the brain.
 - **Every step traces to intent.** Each step must be traceable back to a line in the `.aide` spec, a rule in the coding playbook, or the [progressive disclosure](./progressive-disclosure.md) conventions (orchestrator/helper pattern, modularization, cascading structure). If a step has no source, cut it or find the rule that justifies it.
 - **Tests are steps.** Every behavior the spec's `outcomes.desired` names gets a corresponding test step in the plan.
 - **Decisions section is not optional.** The architect records *why* each structural choice was made. This prevents the implementor from second-guessing decisions mid-build and prevents future architects from re-debating settled choices.
-- **Convention encoding is not optional.** The architect is the only agent in the build pipeline with playbook access. The implementor has none. Every playbook convention that affects the implementation — naming, structure, patterns, anti-patterns — must be spelled out in the plan steps or decisions section. If a convention is left implicit, the implementor will either guess wrong or waste tokens pattern-matching from surrounding code that may itself have drift.
+- **Convention encoding is not optional.** The architect consults the playbook during planning and encodes conventions two ways: as concrete details in the plan text (naming patterns, type signatures, file structure) and as a `Read:` list pointing the implementor to the specific playbook notes that govern each step. The implementor has playbook read access and will load those notes directly. If a convention matters for a step, either spell it out in the plan or include the playbook note in the Read list — never leave it implicit.
 
 ## Lifecycle
 

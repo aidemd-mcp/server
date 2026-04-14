@@ -1,8 +1,8 @@
 # Cascading Alignment
 
-The AIDE intent tree is a hierarchy of `.aide` specs: root intent at the top, module specs below, submodule specs below those. Intent flows downward — each child spec narrows the intent of its parent. But the pipeline has no mechanism to verify that a child spec actually honors its ancestors' outcomes. A child spec can contradict a parent's undesired outcomes and no one catches it until QA fails in a confusing way, or worse, the implementation faithfully serves a child intent that violates the root intent. This is the **cascading alignment problem**: specs multiply, drift between levels accumulates silently, and no agent owns detection.
+The AIDE intent tree is a hierarchy of `.aide` specs: root intent at the top, module specs below, submodule specs below those. Intent flows downward — each child spec narrows the intent of its parent. Without explicit verification, a child spec could contradict a parent's undesired outcomes and the drift would go unnoticed until QA fails in a confusing way — or worse, the implementation faithfully serves a child intent that violates the root intent. This is the **cascading alignment problem**: specs multiply and drift between levels can accumulate silently.
 
-Cascading alignment is the protocol for detecting and surfacing that drift. It separates **spec-vs-spec verification** from **code-vs-spec verification** (which is QA's job) and gives the spec-vs-spec job to a dedicated agent — the aligner.
+Cascading alignment is the protocol that detects and surfaces that drift. It separates **spec-vs-spec verification** from **code-vs-spec verification** (which is QA's job) and gives the spec-vs-spec job to a dedicated agent — the aligner.
 
 ## The Alignment Problem
 

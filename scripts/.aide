@@ -1,0 +1,93 @@
+---
+scope: scripts/export-pdf
+description: PDF export script that consolidates the full AIDE methodology into a single document for copyright registration
+intent: >
+  Produce a single, well-structured PDF that bundles every published artifact of
+  the AIDE methodology — docs, agent definitions, command definitions, and skill
+  definitions — so the author can submit it to the US Copyright Office eCO system
+  as a complete literary work. The script must be re-runnable at will so the PDF
+  can be regenerated whenever the source material changes.
+outcomes:
+  desired:
+    - The generated PDF contains a cover page with exact title ("The AIDEMD Methodology Specification v1.0"), author attribution (Jacob Carpenter / TetsuKodai Group LLC), copyright notice (© 2026 TetsuKodai Group LLC. All rights reserved.), and date of first publication (April 12, 2026)
+    - A table of contents lists every document included in the bundle, and every listed entry corresponds to actual content in the PDF
+    - Every methodology doc, agent definition, command definition, and skill definition present in the source directories appears in the PDF — nothing is silently omitted
+    - Every page after the cover carries a running footer with the copyright notice and a page number
+    - The script runs from the command line without manual intervention and overwrites the previous output file
+  undesired:
+    - Content directories are hardcoded such that new files added to a source directory are silently excluded from future builds
+    - The table of contents lists entries that do not match the actual content ordering or are missing from the body
+    - Markdown formatting artifacts (raw markup, broken links, unrendered fences) leak into the PDF as visible noise
+    - The PDF is generated but the cover page metadata differs from the author's specified values — title, name, entity, date, or copyright year
+---
+
+## Context
+
+The AIDE methodology is being submitted to the US Copyright Office as a literary work. Copyright registration requires a single depositable artifact — one file that represents the complete work. The methodology's source material is spread across four directories of markdown files (methodology docs, agent definitions, command definitions, skill definitions), totaling roughly 31 files. Without a consolidation step, the author would have to manually assemble and format the submission each time the source material changes, which it does frequently as the methodology evolves.
+
+The Copyright Office's eCO system accepts PDF uploads. The deposited PDF must carry specific metadata — exact title, author name, entity, copyright year, and publication date — because any mismatch between the deposit and the registration form creates complications. The PDF also needs to read as a coherent document, not a directory dump: a cover page, a table of contents, and cleanly rendered markdown content with consistent page numbering.
+
+This script is a utility, not a product feature. It runs once when needed, produces a file, and exits. It has no users other than the author, no runtime environment other than the local dev machine, and no reason to optimize for anything beyond correctness and re-runnability.
+
+## Strategy
+
+Use a markdown-to-HTML-to-PDF pipeline rather than a direct markdown-to-PDF library. Rendering markdown to HTML first gives full control over layout, typography, and page structure through CSS, while direct PDF libraries (like pdfkit or jsPDF) require manual positioning of every element and struggle with rich markdown features like code fences and tables. The HTML intermediate also makes the cover page and table of contents straightforward — they are just HTML sections prepended to the content.
+
+Use Puppeteer (headless Chromium) for the HTML-to-PDF conversion step. Puppeteer's `page.pdf()` produces print-quality PDF with native support for running headers/footers, page breaks, and page numbering via CSS `@page` rules. Lighter alternatives (like md-to-pdf) are wrappers around Puppeteer anyway, so using Puppeteer directly avoids an abstraction layer while retaining full control over print layout — which matters here because the copyright notice must appear in the footer of every page.
+
+Discover source files dynamically using glob patterns against the four known directory paths. The glob patterns target `*.md` within each directory. This satisfies the requirement that new files added to a source directory are automatically included in future builds without script changes. The directories themselves are fixed (they are structural to the project), but the files within them are not.
+
+Group content into four named sections matching the source directories: Methodology Docs, Agent Definitions, Command Definitions, and Skill Definitions. Within each section, sort files alphabetically by filename. This produces a stable, predictable ordering that does not shift when files are added or removed, and it matches how a reviewer would expect to find content in a reference document.
+
+For skills that contain subdirectories (brain/, study-playbook/), recurse into them and include their markdown files under the Skills section. Each skill subdirectory's files appear after the top-level skill files, grouped by subdirectory name.
+
+Generate the table of contents from the actual file list after glob discovery, not from a separate manifest. Each TOC entry is the section name plus the document's display name (derived from the filename or the first H1 in the file). This guarantees the TOC and body stay synchronized — a TOC entry cannot exist without corresponding content, and content cannot exist without a TOC entry.
+
+Render the cover page as a dedicated HTML section with explicit page-break-after. The cover carries exactly five elements: title ("The AIDEMD Methodology Specification v1.0"), author ("Jacob Carpenter"), entity ("TetsuKodai Group LLC"), copyright notice ("© 2026 TetsuKodai Group LLC. All rights reserved."), and date of first publication ("April 12, 2026"). These values are string constants in the script, not derived from any external source, because any discrepancy with the copyright registration is a legal problem.
+
+Use Puppeteer's built-in `headerTemplate` / `footerTemplate` options for the running footer rather than injecting footer HTML into each page's content. Puppeteer renders these templates on every page automatically, which eliminates the risk of a page missing its footer. The footer template includes the copyright notice and page number. Set `displayHeaderFooter: true` and configure margins to accommodate the footer height.
+
+Exclude the cover page from the running footer's page numbering. The cover is page 1 in the PDF but should not display a page number. Handle this by generating the cover as a separate PDF (cover only, no footer) and the body as a second PDF (with footer and page numbers starting at 1), then merging the two with a lightweight PDF merge utility (pdf-lib). This two-pass approach is simpler than trying to conditionally suppress the footer on the first page, which Puppeteer does not natively support.
+
+Use a well-known markdown parser (marked or markdown-it) to convert markdown to HTML before handing it to Puppeteer. Do not rely on Puppeteer or a browser extension to parse markdown — the parsing needs to handle code fences, tables, and nested lists correctly, and a dedicated parser is the only reliable path. Apply a minimal CSS stylesheet for typography: monospace for code blocks, reasonable line height, page-break-inside avoidance for code fences and tables.
+
+Output the PDF to a fixed path relative to the project root (e.g., `dist/aide-methodology.pdf` or a similar conventional output location). Overwrite on each run. Print the output path to stdout on success so the caller knows where the file landed.
+
+## Good examples
+
+A well-produced PDF opens with a cover page centered vertically, reading:
+
+    The AIDEMD Methodology Specification v1.0
+
+    Jacob Carpenter
+    TetsuKodai Group LLC
+
+    © 2026 TetsuKodai Group LLC. All rights reserved.
+
+    Date of First Publication: April 12, 2026
+
+The second page is a Table of Contents with four section headings (Methodology Docs, Agent Definitions, Command Definitions, Skill Definitions), each followed by indented document names. Every name in the TOC corresponds to a section in the body. Page numbers in the TOC match actual page positions.
+
+The body pages render markdown cleanly: headings are visually distinct, code fences appear in monospace with background shading, tables have borders, and inline formatting (bold, italic, code) renders as expected. No raw markdown syntax is visible anywhere.
+
+Every page after the cover carries a footer reading "© 2026 TetsuKodai Group LLC. All rights reserved." on the left and a page number on the right. The cover page has no footer or page number.
+
+Running the script a second time after adding a new file to `.aide/docs/` produces a PDF that includes the new file in both the TOC and body without any script modification.
+
+## Bad examples
+
+The cover page reads "AIDE Methodology" instead of the exact registered title "The AIDEMD Methodology Specification v1.0". The Copyright Office registration form says one thing; the deposit says another. This is the single most damaging error because it creates a discrepancy in the official record.
+
+The table of contents lists 31 entries but the body only contains 29 sections. Two files were discovered by glob but silently failed to parse, and the error was swallowed. The TOC promises content that does not exist.
+
+Code fences in the PDF show raw triple-backtick markers and language tags as visible text instead of rendered syntax blocks. The markdown parser was skipped or misconfigured, and the raw markup leaked through.
+
+The footer appears on the cover page, showing "© 2026 TetsuKodai Group LLC. All rights reserved. — Page 1". The cover should be clean — no footer, no page number.
+
+A new agent definition file is added to `.claude/agents/aide/` but the next PDF build does not include it because the file list was hardcoded during initial development and never converted to dynamic discovery.
+
+The PDF body shows documents in a random or unstable order that changes between runs. Glob results were not sorted, so file system ordering (which varies by OS and timing) leaked into the output.
+
+## References
+
+No external brain notes were consulted for this spec. Strategy decisions were derived from the frontmatter requirements and standard Node.js ecosystem knowledge of PDF generation tooling (Puppeteer, marked/markdown-it, pdf-lib). The source directory structure was observed directly from the project file tree.

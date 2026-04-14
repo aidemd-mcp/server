@@ -19,7 +19,7 @@ AIDE ships eight canonical agents that `aide_init` installs to `.claude/agents/a
 | `aide-domain-expert` | sonnet | research | write |
 | `aide-strategist` | opus | synthesize | read |
 | `aide-architect` | opus | plan | read (playbook + brain) |
-| `aide-implementor` | sonnet | build, fix | none |
+| `aide-implementor` | sonnet | build, fix | read (playbook) |
 | `aide-qa` | sonnet | qa | none |
 | `aide-aligner` | opus | align | none |
 | `aide-auditor` | opus | refactor | read (playbook + brain) |

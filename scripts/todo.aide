@@ -1,0 +1,39 @@
+---
+intent:
+  - "Every methodology doc, agent definition, command definition, and skill definition present in the source directories appears in the PDF — nothing is silently omitted"
+  - "The generated PDF contains a cover page with exact title, author, copyright notice, and date of first publication"
+  - "Every page after the cover carries a running footer with the copyright notice and a page number"
+misalignment:
+  - implementation-drift
+  - plan-gap
+---
+
+# QA Re-alignment Document
+
+## Issues
+
+- [x] `scripts/export-pdf.ts` — `readSkillsSection` only calls `readFlatSection` on subdirectories and collects the two `SKILL.md` files from `brain/` and `study-playbook/`, but the `.claude/skills/` top level has **zero** `.md` files, and both subdirectory skill files are named `SKILL.md` (uppercase). This is not a bug in the code — the code is correct given what exists on disk. The real issue is that the `.aide/docs/index.md` file **will be included** in the Methodology Docs section even though it is a navigation hub, not a content document. The script discovers all `.md` files in `.aide/docs/` alphabetically, which yields 9 files including `index.md`. The spec says "every methodology doc … present in the source directories appears in the PDF" without excluding `index.md`, but the spec's context and good-example section describe the PDF as content docs only — no navigation artifacts. Whether `index.md` should appear is unresolved, but its inclusion as a content page with a TOC entry is a mismatch between the spec's described content ("the methodology's source material spread across four directories") and what the script will actually render.
+  - Traces to: Desired outcome #3 — "every methodology doc … present in the source directories appears in the PDF — nothing is silently omitted" (inverse risk: something that should be silently omitted is included)
+  - Misalignment: spec-gap (spec does not name index.md as either included or excluded)
+
+- [x] `scripts/export-pdf.ts` line 159–163 — The cover page constant order in the HTML (`buildCoverHtml`, line 182–189) renders date **before** copyright. The spec's good-example layout shows copyright before the date field does not exist as a named element — the spec good example is: title, author, entity, copyright notice, then "Date of First Publication: April 12, 2026". The implementation renders: title, author, entity, **date**, then copyright. The order is inverted for the last two elements, and the date label "Date of First Publication:" is absent — the implementation emits the bare date string `April 12, 2026` without the label prefix.
+  - Traces to: Desired outcome #1 — "cover page with exact title, author, copyright notice, publication date" / Undesired outcome #4 — "cover page metadata differs from the author's specified values"
+  - Misalignment: implementation-drift
+
+- [x] `scripts/export-pdf.ts` line 473 — `generateCoverPdf` and `generateBodyPdf` are called via `Promise.all`, meaning **two Puppeteer browser instances** are launched in parallel. The plan (step 4) says to close the browser in a `finally` block — the code does do this — but launching both concurrently creates two full Chromium processes simultaneously. This is not a correctness failure but it is a resource concern and deviates from the plan's described serial flow ("Pass 1 — Cover PDF … Pass 2 — Body PDF"). On constrained CI environments this can cause one pass to fail. Not a blocking issue on a local dev machine, but the plan prescribed sequential passes.
+  - Traces to: Desired outcome #5 — "script runs from the command line without manual intervention"
+  - Misalignment: implementation-drift
+
+- [x] `scripts/export-pdf.ts` — The `marked()` call at line 173 is cast with `as string`. In marked v18 (the installed version), `marked()` with a plain string argument returns `string` synchronously — the cast is safe today. However, if marked is upgraded to a version that returns `Promise<string>` by default, the cast will silently produce a Promise object in the HTML output rather than a string, causing raw `[object Promise]` text to appear in the PDF. This is a latent risk that the plan did not address.
+  - Traces to: Undesired outcome #3 — "markdown formatting artifacts … leak into the PDF as visible noise"
+  - Misalignment: plan-gap
+
+## Retro
+
+**Issue 1 (index.md inclusion)** would have been caught in the spec stage. The spec should have named whether navigation/hub files in the source directories are included or excluded. The phrase "every methodology doc present in the source directories" is ambiguous — it can mean every `.md` file (which includes `index.md`) or every content doc (which excludes it). The spec writer should have enumerated the expected document count or named exclusion rules.
+
+**Issue 2 (cover page element order and missing label)** would have been caught if the plan's step 3 had been more explicit about layout order and required the "Date of First Publication:" label prefix to match the good-example verbatim. The implementor followed the constant names (`COVER_DATE`, `COVER_COPYRIGHT`) in declaration order rather than the spec's good-example layout order. A plan that included a literal HTML snippet would have prevented this.
+
+**Issue 3 (parallel browser launches)** is minor and would have been caught by a code review against the plan. The plan says "Pass 1 … Pass 2" — sequential language — but the code uses `Promise.all`. A QA check that compares plan step language to the async structure of the implementation would catch this class of drift.
+
+**Issue 4 (marked cast risk)** is a latent type-safety gap. The plan noted `marked` as the chosen parser but did not address the `string | Promise<string>` return type ambiguity. This would have been caught at the plan stage if the implementor had been directed to handle both return types or assert the synchronous path explicitly.
