@@ -32,6 +32,7 @@
 		"README.md",
 		".aide",
 		".aide/bin",
+		".claude/commands/aide.md",
 		".claude/commands/aide",
 		".claude/agents/aide",
 		".claude/skills"
