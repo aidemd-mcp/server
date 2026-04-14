@@ -45,7 +45,7 @@ intent: >
 ### 3. Build the HTML document — cover page, TOC, and rendered body
 
 - [x] Define the five cover page constants as string literals (these are legal metadata and must not be derived):
-  - Title: `"The AIDEMD Methodology Specification v1.0"`
+  - Title: `"The AIDE Methodology Specification v1.0"`
   - Author: `"Jacob Carpenter"`
   - Entity: `"TetsuKodai Group LLC"`
   - Copyright: `"\u00a9 2026 TetsuKodai Group LLC. All rights reserved."`

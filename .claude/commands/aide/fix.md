@@ -1,4 +1,4 @@
-# /aide-fix — Fix Phase
+# /aide:fix — Fix Phase
 
 > **Agent:** This command is executed by the `aide-implementor` agent.
 

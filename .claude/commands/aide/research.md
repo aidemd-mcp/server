@@ -1,4 +1,4 @@
-# /aide-research — Research Phase (Optional)
+# /aide:research — Research Phase (Optional)
 
 > **Agent:** This command is executed by the `aide-domain-expert` agent.
 

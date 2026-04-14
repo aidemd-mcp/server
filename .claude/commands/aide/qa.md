@@ -1,4 +1,4 @@
-# /aide-qa — QA Phase
+# /aide:qa — QA Phase
 
 > **Agent:** This command is executed by the `aide-qa` agent.
 

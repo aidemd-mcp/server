@@ -1,4 +1,4 @@
-# /aide-build — Build Phase
+# /aide:build — Build Phase
 
 > **Agent:** This command is executed by the `aide-implementor` agent.
 

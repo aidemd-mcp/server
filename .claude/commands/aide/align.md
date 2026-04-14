@@ -1,4 +1,4 @@
-# /aide-align — Alignment Phase
+# /aide:align — Alignment Phase
 
 > **Agent:** This command is executed by the `aide-aligner` agent.
 

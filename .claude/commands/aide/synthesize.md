@@ -1,4 +1,4 @@
-# /aide-synthesize — Synthesize Phase
+# /aide:synthesize — Synthesize Phase
 
 > **Agent:** This command is executed by the `aide-strategist` agent.
 

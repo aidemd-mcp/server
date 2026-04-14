@@ -1,4 +1,4 @@
-# /aide-spec — Spec Phase
+# /aide:spec — Spec Phase
 
 > **Agent:** This command is executed by the `aide-spec-writer` agent.
 

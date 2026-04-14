@@ -98,11 +98,55 @@ function readDocument(filePath: string): Document {
 }
 
 /**
- * Discovers and reads all markdown documents in a flat directory. The result
- * is an array of Documents sorted alphabetically by filename, so the TOC and
- * body order are both stable.
+ * Parses an index.md file and returns the ordered list of linked filenames.
+ * Links are expected in markdown list format: `- [name](./file.md)`.
+ * Returns null if no index.md exists in the directory.
+ */
+function parseIndexOrder(dir: string): string[] | null {
+	const indexPath = join(dir, "index.md");
+	let content: string;
+	try {
+		content = readFileSync(indexPath, "utf-8");
+	} catch {
+		return null;
+	}
+
+	const linkedFiles: string[] = [];
+	const regex = /\[.*?\]\(\.\/([^)]+\.md)\)/g;
+	let match: RegExpExecArray | null;
+	while ((match = regex.exec(content)) !== null) {
+		linkedFiles.push(match[1]);
+	}
+	return linkedFiles.length > 0 ? linkedFiles : null;
+}
+
+/**
+ * Discovers and reads all markdown documents in a flat directory. If an
+ * index.md exists, documents are ordered to match the index's link order
+ * (with any unlisted files appended alphabetically). Otherwise falls back
+ * to alphabetical order by filename.
  */
 function readFlatSection(dir: string): Document[] {
+	const indexOrder = parseIndexOrder(dir);
+
+	if (indexOrder) {
+		const allFiles = new Set(listMarkdownFiles(dir));
+		const ordered: string[] = [];
+
+		for (const filename of indexOrder) {
+			if (allFiles.has(filename)) {
+				ordered.push(filename);
+				allFiles.delete(filename);
+			}
+		}
+		// Append any files not listed in the index
+		Array.from(allFiles).sort().forEach((filename) => {
+			ordered.push(filename);
+		});
+
+		return ordered.map((filename) => readDocument(join(dir, filename)));
+	}
+
 	const filenames = listMarkdownFiles(dir);
 	return filenames.map((filename) => readDocument(join(dir, filename)));
 }
@@ -130,7 +174,8 @@ function readSkillsSection(dir: string): Document[] {
 /**
  * Builds the complete in-memory representation of all AIDE source content.
  * The four sections correspond exactly to the four source directories defined
- * in the spec. Each section's documents are in a stable, alphabetical order.
+ * in the spec. Each section's documents follow index.md order where available,
+ * falling back to alphabetical order.
  * Steps 3–5 consume this structure to produce HTML and then PDF output.
  */
 function discoverContent(): Section[] {
@@ -156,7 +201,7 @@ function discoverContent(): Section[] {
 
 // ── Cover page constants ────────────────────────────────────────────────────
 
-const COVER_TITLE = "The AIDEMD Methodology Specification v1.0";
+const COVER_TITLE = "The AIDE Methodology Specification v1.0";
 const COVER_AUTHOR = "Jacob Carpenter";
 const COVER_ENTITY = "TetsuKodai Group LLC";
 const COVER_COPYRIGHT = "© 2026 TetsuKodai Group LLC. All rights reserved.";

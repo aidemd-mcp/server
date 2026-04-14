@@ -1,4 +1,4 @@
-# /aide-refactor — Refactor Phase
+# /aide:refactor — Refactor Phase
 
 > **Agent:** This command is orchestrated by the `/aide` orchestrator, which delegates to the `aide-auditor` agent (one per `.aide` section) and then to `aide-implementor` agents for execution.
 

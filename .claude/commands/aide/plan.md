@@ -1,4 +1,4 @@
-# /aide-plan — Plan Phase
+# /aide:plan — Plan Phase
 
 > **Agent:** This command is executed by the `aide-architect` agent.
 

@@ -9,7 +9,7 @@ intent: >
   can be regenerated whenever the source material changes.
 outcomes:
   desired:
-    - The generated PDF contains a cover page with exact title ("The AIDEMD Methodology Specification v1.0"), author attribution (Jacob Carpenter / TetsuKodai Group LLC), copyright notice (© 2026 TetsuKodai Group LLC. All rights reserved.), and date of first publication (April 12, 2026)
+    - The generated PDF contains a cover page with exact title ("The AIDE Methodology Specification v1.0"), author attribution (Jacob Carpenter / TetsuKodai Group LLC), copyright notice (© 2026 TetsuKodai Group LLC. All rights reserved.), and date of first publication (April 12, 2026)
     - A table of contents lists every document included in the bundle, and every listed entry corresponds to actual content in the PDF
     - Every methodology doc, agent definition, command definition, and skill definition present in the source directories appears in the PDF — nothing is silently omitted
     - Every page after the cover carries a running footer with the copyright notice and a page number
@@ -43,7 +43,7 @@ For skills that contain subdirectories (brain/, study-playbook/), recurse into t
 
 Generate the table of contents from the actual file list after glob discovery, not from a separate manifest. Each TOC entry is the section name plus the document's display name (derived from the filename or the first H1 in the file). This guarantees the TOC and body stay synchronized — a TOC entry cannot exist without corresponding content, and content cannot exist without a TOC entry.
 
-Render the cover page as a dedicated HTML section with explicit page-break-after. The cover carries exactly five elements: title ("The AIDEMD Methodology Specification v1.0"), author ("Jacob Carpenter"), entity ("TetsuKodai Group LLC"), copyright notice ("© 2026 TetsuKodai Group LLC. All rights reserved."), and date of first publication ("April 12, 2026"). These values are string constants in the script, not derived from any external source, because any discrepancy with the copyright registration is a legal problem.
+Render the cover page as a dedicated HTML section with explicit page-break-after. The cover carries exactly five elements: title ("The AIDE Methodology Specification v1.0"), author ("Jacob Carpenter"), entity ("TetsuKodai Group LLC"), copyright notice ("© 2026 TetsuKodai Group LLC. All rights reserved."), and date of first publication ("April 12, 2026"). These values are string constants in the script, not derived from any external source, because any discrepancy with the copyright registration is a legal problem.
 
 Use Puppeteer's built-in `headerTemplate` / `footerTemplate` options for the running footer rather than injecting footer HTML into each page's content. Puppeteer renders these templates on every page automatically, which eliminates the risk of a page missing its footer. The footer template includes the copyright notice and page number. Set `displayHeaderFooter: true` and configure margins to accommodate the footer height.
 
@@ -57,7 +57,7 @@ Output the PDF to a fixed path relative to the project root (e.g., `dist/aide-me
 
 A well-produced PDF opens with a cover page centered vertically, reading:
 
-    The AIDEMD Methodology Specification v1.0
+    The AIDE Methodology Specification v1.0
 
     Jacob Carpenter
     TetsuKodai Group LLC
@@ -76,7 +76,7 @@ Running the script a second time after adding a new file to `.aide/docs/` produc
 
 ## Bad examples
 
-The cover page reads "AIDE Methodology" instead of the exact registered title "The AIDEMD Methodology Specification v1.0". The Copyright Office registration form says one thing; the deposit says another. This is the single most damaging error because it creates a discrepancy in the official record.
+The cover page reads "AIDE Methodology" instead of the exact registered title "The AIDE Methodology Specification v1.0". The Copyright Office registration form says one thing; the deposit says another. This is the single most damaging error because it creates a discrepancy in the official record.
 
 The table of contents lists 31 entries but the body only contains 29 sections. Two files were discovered by glob but silently failed to parse, and the error was swallowed. The TOC promises content that does not exist.
 
