@@ -5,33 +5,21 @@ import { classifyFile } from "@/util/classify/index.js";
 import { SKIP_DIRS } from "@/types/index.js";
 import parseFrontmatter from "@/util/parseFrontmatter/index.js";
 
-/** Extract the first meaningful body line as the summary, truncated to ~80 chars. */
-function extractSummary(content: string): string {
+/** Count checked and total checkbox items in content. */
+function countCheckboxes(content: string): { done: number; total: number } {
 	const lines = content.split("\n");
-
-	let bodyStart = 0;
-
-	// Skip YAML frontmatter if present
-	if (lines[0] && lines[0].trim() === "---") {
-		let closingIdx = -1;
-		for (let i = 1; i < lines.length; i++) {
-			if (lines[i].trim() === "---") {
-				closingIdx = i;
-				break;
-			}
+	let done = 0;
+	let total = 0;
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (trimmed.startsWith("- [x]") || trimmed.startsWith("- [X]")) {
+			done++;
+			total++;
+		} else if (trimmed.startsWith("- [ ]")) {
+			total++;
 		}
-		bodyStart = closingIdx !== -1 ? closingIdx + 1 : lines.length;
 	}
-
-	// Find the first non-empty, non-heading line after frontmatter
-	for (let i = bodyStart; i < lines.length; i++) {
-		const line = lines[i].trim();
-		if (!line || line.startsWith("#")) continue;
-		if (line.length <= 80) return line;
-		return line.slice(0, 77) + "...";
-	}
-
-	return "";
+	return { done, total };
 }
 
 /** Normalize a Windows or mixed path to POSIX forward slashes. */
@@ -73,13 +61,19 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 		let description = "";
 		let status: "aligned" | "misaligned" | undefined;
 
+		const type = classifyFile(entry.name);
+
 		if (!shallow) {
 			try {
 				const buf = await readFile(fullPath, { encoding: "utf-8" });
-				summary = extractSummary(buf.slice(0, 1000));
 				const { frontmatter } = parseFrontmatter(buf);
 				description = deriveDescription(frontmatter);
 				if (frontmatter?.status) status = frontmatter.status;
+
+				if (type === "plan" || type === "todo") {
+					const { done, total } = countCheckboxes(buf);
+					summary = total > 0 ? `${done}/${total} done` : "";
+				}
 			} catch {
 				// skip unreadable files
 			}
@@ -100,7 +94,7 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 		files.push({
 			path: fullPath,
 			relativePath: toPosix(relative(root, fullPath)),
-			type: classifyFile(entry.name),
+			type,
 			summary,
 			description,
 			status,

@@ -55,7 +55,11 @@ export default function buildTree(files: AideFile[], root: string): string {
 			const connector = isLastFile ? "└──" : "├──";
 			const name = basename(file.relativePath);
 			const tag = `[${file.type}]`;
-			const summary = file.summary ? ` — ${file.summary}` : "";
+			const label =
+				file.type === "intent" || file.type === "research"
+					? file.description || ""
+					: file.summary || "";
+			const summary = label ? ` — ${label}` : "";
 			lines.push(`  ${connector} ${name} ${tag}${summary}`);
 		}
 

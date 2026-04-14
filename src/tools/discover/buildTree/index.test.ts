@@ -2,13 +2,18 @@ import { describe, it, expect } from "vitest";
 import buildTree from "./index.js";
 import type { AideFile } from "@/types/index.js";
 
-function makeAideFile(relativePath: string, type: AideFile["type"], summary = ""): AideFile {
-	return { path: `/project/${relativePath}`, relativePath, type, summary };
+function makeAideFile(
+	relativePath: string,
+	type: AideFile["type"],
+	summary = "",
+	description = "",
+): AideFile {
+	return { path: `/project/${relativePath}`, relativePath, type, summary, description };
 }
 
 describe("buildTree", () => {
 	it("renders a single file at root", () => {
-		const files = [makeAideFile(".aide", "intent", "Root spec for the project")];
+		const files = [makeAideFile(".aide", "intent", "", "Root spec for the project")];
 		const tree = buildTree(files, "/project");
 
 		expect(tree).toContain("./");
@@ -60,8 +65,8 @@ describe("buildTree", () => {
 		expect(buildTree([], "/project")).toBe("");
 	});
 
-	it("includes summary after dash separator", () => {
-		const files = [makeAideFile("src/.aide", "intent", "Strategy and contracts")];
+	it("includes description after dash separator for intent files", () => {
+		const files = [makeAideFile("src/.aide", "intent", "", "Strategy and contracts")];
 		const tree = buildTree(files, "/project");
 
 		expect(tree).toContain("— Strategy and contracts");

@@ -48,14 +48,15 @@ describe("discover", () => {
 		expect(result).not.toContain("⚠ Warnings:");
 	});
 
-	it("deep scan (with path) includes summaries and warnings", async () => {
-		await writeFile(join(tempDir, ".aide"), "# Title\n\nIntent summary");
-		await writeFile(join(tempDir, "intent.aide"), "Also intent");
+	it("deep scan (with path) includes checkbox summaries and warnings", async () => {
+		await writeFile(join(tempDir, ".aide"), "---\ndescription: Root intent\n---\n");
+		await writeFile(join(tempDir, "intent.aide"), "---\ndescription: Also intent\n---\n");
+		await writeFile(join(tempDir, "todo.aide"), "- [x] Done\n- [ ] Not done");
 		await writeFile(join(tempDir, "index.ts"), "export default function() {}");
 
 		const result = await discover(tempDir, ".");
 
-		expect(result).toContain("Intent summary");
+		expect(result).toContain("1/2 done");
 		expect(result).toContain("⚠ Warnings:");
 		expect(result).toContain("Both .aide and intent.aide");
 	});

@@ -56,25 +56,38 @@ describe("scan", () => {
 		expect(result.files[0].relativePath).toBe(".aide");
 	});
 
-	it("extracts summary from first non-heading line", async () => {
+	it("extracts checkbox summary for plan files", async () => {
 		await writeFile(
-			join(tempDir, ".aide"),
-			"# Title\n\nThis is the first real content line of the spec.",
+			join(tempDir, "plan.aide"),
+			"- [x] Step one\n- [x] Step two\n- [ ] Step three",
 		);
 
 		const result = await scan(tempDir);
 
-		expect(result.files[0].summary).toBe("This is the first real content line of the spec.");
+		expect(result.files[0].summary).toBe("2/3 done");
 	});
 
-	it("truncates long summaries to ~80 chars", async () => {
-		const longLine = "A".repeat(120);
-		await writeFile(join(tempDir, ".aide"), longLine);
+	it("extracts checkbox summary for todo files", async () => {
+		await writeFile(
+			join(tempDir, "todo.aide"),
+			"- [x] Fix A\n- [ ] Fix B",
+		);
 
 		const result = await scan(tempDir);
 
-		expect(result.files[0].summary.length).toBeLessThanOrEqual(80);
-		expect(result.files[0].summary).toMatch(/\.\.\.$/);
+		expect(result.files[0].summary).toBe("1/2 done");
+	});
+
+	it("leaves summary empty for intent files", async () => {
+		await writeFile(
+			join(tempDir, ".aide"),
+			"---\ndescription: Test spec\n---\n# Title\n\nBody text here.",
+		);
+
+		const result = await scan(tempDir);
+
+		expect(result.files[0].summary).toBe("");
+		expect(result.files[0].description).toBe("Test spec");
 	});
 
 	it("scopes to subdirectory when path is provided", async () => {
