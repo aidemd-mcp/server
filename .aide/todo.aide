@@ -1,47 +1,36 @@
 ---
 intent: >
-  Canonical docs updated in c32e887 (orchestrator, synthesize phase, plan.aide
-  spec, todo.aide spec, expanded file-type table, seven-doc hub) but downstream
-  .aide intent specs still reference the pre-commit state: four file types
-  instead of five, six pipeline commands instead of seven-plus, five canonical
-  docs instead of seven, and todo.aide described as a "QA queue" instead of a
-  re-alignment document. The specs no longer faithfully reflect the methodology
-  they are supposed to deliver.
+  README.md rewrite against readme.aide spec. One outcome violated: the Quick
+  Start block omits @latest from the npx command, which can serve a stale
+  cached version of the CLI init subcommand to users who have previously
+  installed any version of the package.
 misalignment:
-  - implementation-drift
+  - plan-gap
 ---
 
 ## Issues
 
-- [x] **src/.aide:21** — Teaches "the four file types" in tool descriptions; canonical `aide-spec.md` now defines five file types (`.aide`, `intent.aide`, `research.aide`, `plan.aide`, `todo.aide`).
-      Traces to: `outcomes.desired[2]` | Misalignment: `implementation-drift`
-
-- [x] **src/.aide:149-152** — Good example describes `todo.aide` as "a QA queue". Canonical docs redefine it as a "QA re-alignment document" with misalignment tags and a `## Retro` section.
-      Traces to: `outcomes.desired[2]` | Misalignment: `implementation-drift`
-
-- [x] **src/tools/init/.aide:33-34** — References "six pipeline slash commands (research, spec, plan, build, qa, fix)". Canonical pipeline now includes a synthesize phase (`/aide:synthesize`) and an orchestrator entry point (`/aide`).
-      Traces to: `outcomes.desired[3]` | Misalignment: `implementation-drift`
-
-- [x] **src/tools/init/.aide:194-209** — Good examples list exactly six scaffolded commands and six "already present" lines. Missing synthesize phase; summary shape no longer matches what init actually produces after the doc update.
-      Traces to: `outcomes.desired[2]` | Misalignment: `implementation-drift`
-
-- [x] **src/tools/init/scaffoldCommands/.aide:1-4** — Intent says "six AIDE pipeline slash commands (research, spec, plan, build, qa, fix)" and enforces a six-cap throughout. The canonical pipeline now has seven phase commands (adding synthesize). The "six-cap" language on lines 20, 81, 114, 116 is all stale.
-      Traces to: `outcomes.desired[3]` | Misalignment: `implementation-drift`
-
-- [x] **src/tools/init/installMethodologyDocs/.aide:101** — Context says "five canonical files under `docs/`". The hub index now lists seven docs (added `plan-aide.md` and `todo-aide.md`). The number "five" also appears in the bad-examples section (line 255) and good-examples section (line 198).
-      Traces to: `outcomes.desired[1]` | Misalignment: `implementation-drift`
-
-- [x] **src/tools/discover/.aide:23** — Type tags listed as `[intent]`, `[research]`, `[todo]`. Missing `[plan]` tag for the new `plan.aide` file type.
-      Traces to: `outcomes.desired[2]` | Misalignment: `implementation-drift`
-
-- [x] **src/tools/scaffold/.aide:1-28** — Supports types: intent, research, both, todo. Does not support `type=plan` for creating `plan.aide` files. The canonical `aide-spec.md` file-type table now includes `plan.aide` as a first-class file type that scaffold should know how to create.
-      Traces to: `outcomes.desired[1]` | Misalignment: `implementation-drift`
+- [ ] **README.md:25** — Quick Start block uses `npx @aidemd-mcp/server init` without `@latest`. The spec requires `@latest` on all npx invocations ("use `npx -y @aidemd-mcp/server@latest` rather than a bare package name. The bare name uses a locally cached version if one exists"). The plan carried this omission forward (plan.aide line 34 shows `npx @aidemd-mcp/server init` without `@latest`), meaning the gap originated at planning, not implementation.
+      Traces to: `outcomes.undesired[4]` ("A config block using a bare package name without @latest, which silently serves a stale cached version to users who have previously installed any version") | Misalignment: `plan-gap`
 
 ## Retro
 
-Every issue traces to a single cause: the canonical docs were updated in one commit but the downstream `.aide` specs that encode the same facts were not updated in the same commit. The commit changed the source of truth; the renderers of that truth were left behind.
+The spec's `@latest` requirement was written with config blocks in mind and the
+strategy section explicitly mentions "config blocks" as the scope ("all config
+blocks"). The plan correctly applied `@latest` to every JSON config block under
+Manual Configuration, but silently dropped it from the Quick Start CLI command,
+treating the CLI invocation as exempt from the rule.
+
+The gap is plan-level: the planner read the `@latest` requirement as scoped
+only to JSON config blocks and did not apply it to the `npx @aidemd-mcp/server
+init` CLI command. The spec's good examples show `npx -y
+@aidemd-mcp/server@latest` consistently, including for CLI invocations, but
+the spec's strategy text says "config blocks" — the ambiguity created a
+loophole that the plan exploited.
 
 What would have caught this earlier:
-- A pre-commit check (or a QA pass scoped to `.aide` files) that runs `aide_validate` and flags specs whose file-type counts, command counts, or doc counts disagree with the canonical docs.
-- A convention that any commit touching `.aide/docs/` also touches every downstream `.aide` that references the changed facts — enforced by review checklist, not tooling, until tooling can do it.
-- The orchestrator `/aide` could have been used to drive the doc change itself, which would have surfaced the propagation gap at the plan stage before code was written.
+- The plan step for the Quick Start block should have explicitly cross-checked
+  the `@latest` and `-y` conventions from the spec's strategy section and
+  applied them to the CLI command, not just to the JSON blocks.
+- A QA checklist item "verify every `npx` invocation in the README (not just
+  JSON blocks) uses `@latest`" would have caught this mechanically.

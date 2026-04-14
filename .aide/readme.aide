@@ -1,0 +1,338 @@
+---
+scope: README.md
+description: >
+  Spec for the @aidemd-mcp/server README — the primary conversion surface
+  on GitHub and npm that must turn visitors into installed users.
+intent: >
+  The README is the single document that serves both GitHub repository
+  visitors and npm package page visitors. Its job is to convert a developer
+  who has heard of AIDE or stumbled on the package into an active user who
+  has the MCP server running in their IDE within five minutes. It must
+  communicate what the server does, how to install it in every supported
+  client, and what tools it provides — in that order, with no friction
+  that sends the visitor elsewhere for answers. The README is not a
+  methodology tutorial or a marketing page; it is a self-contained
+  installation guide with enough context to justify the install.
+outcomes:
+  desired:
+    - A developer on any supported MCP client (Claude Code, Claude Desktop,
+      Cursor, VS Code / Copilot, Windsurf) finds a copy-pasteable config
+      block for their specific client, with the correct JSON root key, the
+      correct config file path, and @latest version pinning — no translation
+      from another client's example required.
+    - The tools section documents every tool with full parameter lists in
+      the canonical MCP README format (H3 per tool, imperative description,
+      bulleted Inputs with name/type/optional markers), so a developer
+      evaluating the server knows exactly what capabilities they get before
+      installing.
+    - A developer who has never heard of AIDE understands what the server
+      does and why it matters within the first two sentences — the title
+      line and description paragraph carry the pitch, not a separate
+      "What is AIDE?" explainer section.
+    - The README renders correctly on both GitHub and the npm package page,
+      avoiding constructs that break on npm (details/summary for critical
+      content, relative links, hover-only interactions).
+    - A post-install "what happens next" block gives the developer a
+      concrete first action to take inside their agent, closing the gap
+      between install and first value.
+  undesired:
+    - A config block that shows one client's format and expects users of
+      other clients to translate — the #1 documented friction source in
+      MCP server READMEs (mcp-readme-conventions research).
+    - A tool list without parameter documentation, forcing the developer
+      to install the server just to discover what inputs each tool accepts.
+    - A README that teaches the full AIDE methodology instead of focusing
+      on what the MCP server does and how to install it. The methodology
+      docs are delivered by aide_init; the README's job is to get the user
+      to that point, not to replace it.
+    - Content hidden inside details/summary tags that renders on GitHub
+      but is invisible or broken on the npm package page.
+    - A config block using a bare package name without @latest, which
+      silently serves a stale cached version to users who have previously
+      installed any version.
+    - A PATH-troubleshooting gap: omitting the nvm/Homebrew PATH failure
+      mode for Claude Desktop, which is the single most common MCP install
+      failure and silently loses users who blame themselves and give up.
+---
+
+## Context
+
+The README serves two overlapping audiences arriving from two surfaces.
+GitHub visitors are evaluating whether to adopt the tool — they scan the
+repo, read the README top-to-bottom, and decide. npm visitors land on the
+package page after finding `@aidemd-mcp/server` in search results or a
+link — they see the README rendered by npm's markdown engine, which
+supports less than GitHub (no collapsible details for critical content, no
+relative links, degraded callout styling). Both audiences need the same
+core information: what the server does, how to install it in their specific
+client, and what tools it provides. Neither audience wants a methodology
+tutorial — that is what `aide_init` delivers after the install.
+
+The MCP ecosystem has a specific install friction profile. Each client
+stores its config in a different file at a different path, and VS Code
+uses a different JSON root key (`"servers"`) than every other client
+(`"mcpServers"`). Users who copy a config block for the wrong client get
+a silent failure. Claude Desktop has an additional failure mode: it does
+not inherit the terminal's PATH, so users with nvm or Homebrew Node
+installations get "command not found" errors that are never explained in
+most MCP server READMEs. These are the documented friction points the
+README must address head-on.
+
+The server currently ships six tools (`aide_discover`, `aide_read`,
+`aide_scaffold`, `aide_validate`, `aide_init`, `aide_upgrade`) plus a
+`plan.aide` file type. With six tools, full parameter documentation is
+feasible and preferred over a summary list — the tool count is small
+enough that every parameter can be documented without the README becoming
+unwieldy. This is the recommendation from the tool documentation research
+for servers with ten or fewer tools.
+
+## Strategy
+
+**Lead with a one-line description that names the value, not the
+mechanism.** The H1 title is the package name; the line immediately below
+it says what the server does for the developer, not how it works
+internally. The current README opens with "MCP server that teaches any
+agent the AIDE methodology" — this is close but should be tightened to
+name the outcome (intent-driven specs next to code) rather than the
+mechanism (teaching). The description must work as the npm package
+subtitle, which is the only text a developer sees in search results
+before clicking through (npm badge research).
+
+**Badges signal legitimacy and version currency.** Place npm version and
+MIT license badges immediately below the H1, before the description. Add
+npm weekly downloads once the package has meaningful traction. Skip CI/build
+badges — no MCP server README in the research corpus uses them, and the
+audience does not expect them. A Smithery registry badge is worth adding
+once the package is listed there, as it is a recognized quality signal in
+the MCP ecosystem (mcp-readme-npm-badges research).
+
+**Use a brief features bullet list, not a "What is AIDE?" section.** The
+current README has a "What is AIDE?" section with a file-type table that
+front-loads methodology detail before the install instructions. This
+violates the canonical MCP README section order, which puts features
+(brief) before installation (detailed). Replace the explainer with a
+three-to-five-bullet feature list that names capabilities from the user's
+perspective: project-wide spec discovery, one-command bootstrap, naming
+convention enforcement, health-check validation, upgrade drift detection.
+The file-type table belongs in the methodology docs that `aide_init`
+installs, not in the README (mcp-readme-conventions research, section
+order finding).
+
+**Show a separate config block per client, not one block with a
+footnote.** Use Pattern A from the conventions research: one H3 per
+client under the Installation H2, each with its own copy-pasteable JSON
+block showing the correct root key, the correct config file path, and
+`@latest` version pinning. The clients to cover are Claude Code (CLI
+command and .mcp.json), Claude Desktop (Mac and Windows paths), Cursor,
+VS Code / Copilot (noting the `"servers"` root key difference), and
+Windsurf. This is the largest section of the README and the most visited
+— every character must be copy-pasteable without modification
+(mcp-readme-config-blocks research, multi-client presentation finding).
+
+**Pin to `@latest` in all config blocks.** Use `npx -y
+@aidemd-mcp/server@latest` rather than a bare package name. The bare name
+uses a locally cached version if one exists; `@latest` forces a fresh
+resolution. This is the convention in community MCP servers and
+communicates intent explicitly. Users who want reproducibility can pin in
+their own config (mcp-readme-config-blocks research, version pinning
+finding).
+
+**Include the `-y` flag in npx args.** All official MCP server READMEs
+use `npx -y` to auto-confirm the package install prompt. Omitting `-y`
+causes npx to hang waiting for confirmation in non-interactive contexts
+like Claude Desktop's process spawner, which is a silent install failure
+(mcp-readme-conventions research).
+
+**Add a PATH troubleshooting callout in the Claude Desktop section.**
+Claude Desktop does not inherit the terminal PATH — users with
+nvm/Homebrew Node hit "command not found: npx" and silently churn. A
+blockquote callout (which degrades to a plain blockquote on npm — acceptable)
+naming the problem and the fix (use `which npx` to find the absolute path)
+addresses the single most common MCP install failure
+(mcp-readme-config-blocks research, PATH problem finding; install-cta-mechanics
+research, friction map finding).
+
+**Note the Claude Desktop restart requirement.** Claude Desktop requires
+a full quit-and-reopen for config changes to take effect. This is the #2
+documented failure mode. A one-line note in the Claude Desktop section
+prevents it (mcp-readme-config-blocks research, reload requirement finding).
+
+**Document every tool with full parameters in the canonical format.** Use
+H3 per tool inside a Tools H2. Each tool gets an imperative one-sentence
+description and an Inputs bullet list with backtick name, (type, optional)
+markers, and a description. Six tools is well within the feasibility
+threshold for full documentation. Group by lifecycle phase if it helps
+scanning: discover and read (navigation), scaffold and validate
+(authoring), init and upgrade (project setup). Include the `plan.aide`
+file type in the tool documentation for `aide_scaffold` since it was added
+after the current README was written (mcp-readme-tool-documentation
+research, canonical format finding).
+
+**Add a post-install "try it" block.** After the Tools section, include a
+short block that tells the developer what to do after installing: "Run
+`aide_init` in your agent to bootstrap the AIDE methodology into your
+project, then try `/aide` to start the pipeline." This closes the
+install-to-value gap that silently loses users in dev-tool landings
+(install-cta-mechanics research, post-install hand-off finding).
+
+**Keep the Development section minimal.** Three commands (install, build,
+test) in a code block. No contributing guide, no changelog — those belong
+in separate files if needed. The README is for users, not contributors
+(mcp-readme-conventions research, building section finding).
+
+**Use absolute URLs for any cross-repo links.** Relative links work on
+GitHub but break on the npm package page. Any link to files within the
+repo (LICENSE, methodology docs) must use the full GitHub URL
+(mcp-readme-npm-badges research, npm rendering finding).
+
+**Avoid details/summary tags for any content a visitor needs to see.**
+They are broken on npm. Use flat sections instead. The `> [!NOTE]`
+callout syntax is acceptable — it renders as a styled callout on GitHub
+and degrades to a readable blockquote on npm (mcp-readme-npm-badges
+research, npm rendering finding).
+
+## Good examples
+
+A strong opening that names the value:
+
+> # @aidemd-mcp/server
+>
+> [![npm version](https://img.shields.io/npm/v/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
+> [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+>
+> MCP server that brings intent-driven development to any AI-powered IDE.
+> Manage `.aide` spec files that live next to your code — the domain context
+> that architects plan from, implementors build from, and QA validates against.
+
+A per-client config block that eliminates translation friction:
+
+> ### Claude Code
+>
+> ```bash
+> claude mcp add aide npx -- -y @aidemd-mcp/server@latest
+> ```
+>
+> Or add to your project's `.mcp.json`:
+>
+> ```json
+> {
+>   "mcpServers": {
+>     "aide": {
+>       "command": "npx",
+>       "args": ["-y", "@aidemd-mcp/server@latest"]
+>     }
+>   }
+> }
+> ```
+>
+> ### VS Code / Copilot
+>
+> Add to `.vscode/mcp.json`:
+>
+> ```json
+> {
+>   "servers": {
+>     "aide": {
+>       "command": "npx",
+>       "args": ["-y", "@aidemd-mcp/server@latest"]
+>     }
+>   }
+> }
+> ```
+
+A tool documented in the canonical format:
+
+> ### aide_discover
+>
+> Scan the project for `.aide` spec files and return a progressive disclosure
+> tree map showing each spec's type, location, and summary.
+>
+> **Inputs:**
+> - `path` (string, optional): Subdirectory to drill into. When provided,
+>   opens with the ancestor chain — the cascading intent lineage from root
+>   to target — followed by the detailed subtree. When omitted, returns a
+>   project-wide map.
+
+A post-install block that bridges install to first value:
+
+> ## Getting Started
+>
+> After adding the server to your MCP client, ask your agent to run
+> `aide_init` to bootstrap the AIDE methodology into your project. This
+> installs the methodology docs, scaffolds pipeline commands, and wires
+> everything up.
+>
+> Then try: "Scaffold an intent spec for my authentication module" — the
+> agent will use `aide_discover` to map your project and `aide_scaffold`
+> to create the spec in the right place with the right naming conventions.
+
+## Bad examples
+
+A README that opens with a methodology explainer before the install block:
+
+> ## What is AIDE?
+>
+> AIDE (Autonomous Intent-Driven Engineering) is a methodology that puts
+> intent at the center of everything. It uses a three-layer model...
+> [300 words of methodology detail]
+>
+> ## Installation
+> ...
+
+The visitor wanted to install, not to study. The methodology detail
+belongs in the docs that `aide_init` delivers, not in the README that
+must convince the visitor to install. By the time they reach the config
+block, they have either scrolled past or left.
+
+A single config block labeled "Add to your MCP client config" with the
+`mcpServers` root key and no per-client guidance:
+
+> ```json
+> {
+>   "mcpServers": {
+>     "aide": {
+>       "command": "npx",
+>       "args": ["@aidemd-mcp/server"]
+>     }
+>   }
+> }
+> ```
+
+A VS Code user pastes this into `.vscode/mcp.json`, where the root key
+should be `"servers"`, not `"mcpServers"`. The server silently fails to
+load. The user assumes the package is broken and moves on. Meanwhile, the
+`-y` flag is missing, so Claude Desktop users get a hung npx prompt they
+never see. Two silent failures from one config block.
+
+A tool list without parameters:
+
+> - **aide_discover** — Scans for .aide files
+> - **aide_scaffold** — Creates new .aide files
+> - **aide_validate** — Validates .aide files
+
+The developer evaluating this server cannot tell what inputs each tool
+accepts, whether paths are required or optional, or what the `type`
+enum values are for scaffold. They must install the server and call the
+tools to find out. A developer comparing this against another MCP server
+that documents its parameters fully will choose the documented one.
+
+A README that uses `<details>` tags to collapse the per-client config
+blocks:
+
+> <details>
+> <summary>Claude Desktop</summary>
+> [config block]
+> </details>
+
+On the npm package page, the details/summary tags are broken — the
+content is either always expanded or invisible depending on npm's
+renderer version. The most-visited section of the README is now
+inaccessible on one of the two primary surfaces the README serves.
+
+## References
+
+- `research/mcp-readme/mcp-readme-conventions` -- Canonical section order (title, badges, features, install, tools, dev, license) and the Pattern A multi-client presentation finding that drives the per-client config block strategy.
+- `research/mcp-readme/mcp-readme-config-blocks` -- The `mcpServers` vs `"servers"` root key difference, `@latest` version pinning recommendation, PATH troubleshooting requirement for Claude Desktop, and the restart-after-config-change requirement.
+- `research/mcp-readme/mcp-readme-tool-documentation` -- The canonical tool documentation format (H3 per tool, imperative description, bulleted Inputs), the full-documentation recommendation for servers with fewer than 10 tools, and the tool annotations pattern.
+- `research/mcp-readme/mcp-readme-npm-badges` -- Badge placement convention (below H1, before description), recommended badge stack (version + license minimum), npm rendering constraints (no details/summary, absolute URLs required, callout degradation acceptable).
+- `research/aidemd-dev/install-cta-mechanics` -- The MCP install friction map (config location confusion, reload requirement, PATH inheritance failure, cross-client ambiguity), the post-install "try it" block pattern from Stripe/shadcn precedent, and the v1 scope note confirming Claude Code as primary target.

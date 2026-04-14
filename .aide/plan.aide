@@ -1,169 +1,98 @@
 ---
 intent: >
-  Bring the aidemd-mcp codebase into alignment with the canonical docs updated
-  in c32e887: five file types (adding plan), seven phase commands (adding
-  synthesize) plus the /aide orchestrator, seven canonical docs plus index
-  (adding plan-aide.md and todo-aide.md), todo.aide redefined as a QA
-  re-alignment document, and discover tags including [plan].
+  Rewrite README.md to match the readme.aide spec — quick-install via
+  npx @aidemd-mcp/server init as recommended primary path, per-client manual
+  config blocks as fallback, full tool parameter documentation, badges,
+  features list, post-install block, and npm-safe rendering throughout.
 ---
 
 ## Plan
 
-- [x] **Step 1 — src/types/index.ts line 2: expand AideFileType union.**
-      Change `"intent" | "research" | "todo"` to `"intent" | "research" | "todo" | "plan"`.
-      Update the JSDoc comment on line 1 from "The three spec types plus QA checklist"
-      to "The four spec types plus QA re-alignment document" (or equivalent wording
-      that reflects five file types total with plan included). No other changes in
-      this file.
+### 1. Write the complete README.md
 
-- [x] **Step 2 — src/util/classify/index.ts line 12-17: add plan.aide classification branch.**
-      Add a branch `if (base === "plan.aide") return "plan";` before the final
-      `return "intent"` fallback. Update the JSDoc on the function (lines 7-11) to
-      list all five patterns: `.aide` or `intent.aide` -> "intent", `research.aide` ->
-      "research", `todo.aide` -> "todo", `plan.aide` -> "plan". Order the branches
-      so the specific named files are checked before the catch-all intent return:
-      research, todo, plan, then fallback to intent.
+Read: `coding-playbook/foundations/conventions`
 
-- [x] **Step 3 — src/tools/discover/buildTree/index.ts line 5: add plan to TYPE_ORDER.**
-      Change `{ intent: 0, research: 1, todo: 2 }` to
-      `{ intent: 0, research: 1, plan: 2, todo: 3 }`. Plan sorts after research
-      (it is the architect's artifact derived from the intent) and before todo
-      (which is the QA artifact). Update the JSDoc on line 4 to read:
-      "Sort priority for file types: intent first, then research, plan, then todo."
-      Also update the tree-rendering JSDoc on buildTree (line 34) to include `[plan]`
-      in the tag list: `[intent]`, `[research]`, `[plan]`, `[todo]`.
+This is a single-file documentation rewrite. The entire README is one cohesive
+document where every section references and flows into the next. It cannot be
+split across agents — section order, cross-references, and consistent voice
+require a single pass. The implementor writes the full file using the structure
+below, sourced entirely from the spec and the tool definitions in source.
 
-- [x] **Step 4 — src/tools/scaffold/index.ts: add plan type and template.**
-      4a. Line 8: change the Zod enum from `["intent", "research", "both", "todo"]` to
-      `["intent", "research", "both", "todo", "plan"]`. Update the `.describe()` text
-      to mention plan.
-      4b. Add a `PLAN_TEMPLATE` constant after the existing `TODO_TEMPLATE` (after
-      line 43). Content should match the plan.aide spec format from
-      `.aide/docs/plan-aide.md` — a minimal scaffold with frontmatter `intent` field
-      and `## Plan` / `## Decisions` body sections:
-      ```
-      ---
-      intent: >
+**Read before writing:**
+- The full spec at `.aide/readme.aide` (strategy, good/bad examples, all conventions)
+- The tool definitions in `src/index.ts` lines 46-167 (exact parameter names, types, required/optional, enum values, descriptions)
+- The current `README.md` (to understand what exists and what must change)
 
-      ---
+**Section order** (canonical MCP README order per spec):
 
-      ## Plan
+- [x] 1a. **H1 + badges + description.** H1 is `# @aidemd-mcp/server`. Badges on the next line: npm version badge linking to npmjs.com/package/@aidemd-mcp/server, MIT license badge linking to opensource.org/licenses/MIT. Use shields.io badge URLs from the spec's good example. Description paragraph below badges — names the value (intent-driven specs next to code), not the mechanism (teaching). Must work as npm subtitle.
 
-      - [ ]
+- [x] 1b. **Features bullet list.** H2 `## Features`. Three to five bullets naming capabilities from the user's perspective. No "What is AIDE?" explainer, no file-type table. Capabilities to highlight: project-wide spec discovery with progressive disclosure tree, one-command project bootstrap (`aide_init`), automatic naming convention enforcement, health-check validation for spec hygiene, upgrade drift detection for methodology artifacts. Keep each bullet to one line.
 
-      ## Decisions
+- [x] 1c. **Installation section with quick-install primary path and per-client manual fallback.** H2 `## Installation`.
 
-      ```
-      4c. Line 67: change the `type` parameter signature from
-      `"intent" | "research" | "both" | "todo"` to
-      `"intent" | "research" | "both" | "todo" | "plan"`.
-      4d. Add a `plan` branch in the `if/else` chain (after the `todo` branch,
-      before `intent`). It should mirror the todo branch exactly in structure:
-      create `plan.aide` in the target directory using `PLAN_TEMPLATE`, push
-      action "Created plan.aide". Plan is orthogonal to intent/research naming
-      — no rename logic needed.
-      4e. Update the function-level JSDoc (lines 56-63) to document the new
-      `type=plan` branch: "type=plan -> creates plan.aide".
+  **Quick Start (recommended) — lead the section with this.** Open with an H3 `### Quick Start (Claude Code)`. One sentence explaining this is the fastest path: a single npx command that wires everything up. Show the command in a bash code block:
 
-- [x] **Step 5 — src/tools/init/initContent/index.ts: add plan-aide, todo-aide docs
-      and synthesize + aide orchestrator command entries.**
-      5a. DOC_PATHS (lines 34-47): add two methodology doc entries:
-      `"plan-aide": ".aide/docs/plan-aide.md"` and
-      `"todo-aide": ".aide/docs/todo-aide.md"`.
-      Add two command entries:
-      `"commands/aide/synthesize": ".claude/commands/aide/synthesize.md"` and
-      `"commands/aide/aide": ".claude/commands/aide.md"` (the orchestrator lives
-      at the commands root as `aide.md`, not inside the `aide/` subfolder — check
-      that the path `.claude/commands/aide.md` resolves correctly relative to
-      REPO_ROOT).
-      Note: the orchestrator canonical template is at `.claude/commands/aide.md`
-      which is a peer of the `aide/` folder, not inside it.
-      5b. METHODOLOGY_DOCS (lines 71-78): append two entries to the array:
-      `{ canonical: "plan-aide", hostFilename: "plan-aide.md" }` and
-      `{ canonical: "todo-aide", hostFilename: "todo-aide.md" }`.
-      These go after the existing `automated-qa` entry and before the closing
-      bracket. Keep insertion order matching the hub index reading order.
+  ```
+  npx @aidemd-mcp/server init
+  ```
 
-- [x] **Step 6 — src/tools/init/scaffoldCommands/index.ts: add synthesize command
-      and /aide orchestrator.**
-      6a. COMMANDS array (lines 30-37): add the synthesize phase command entry:
-      `{ canonical: "commands/aide/synthesize", hostPath: "aide/synthesize.md", displayName: "aide:synthesize" }`.
-      Insert it between the `spec` entry and the `plan` entry to match pipeline
-      order: research, spec, synthesize, plan, build, qa, fix.
-      6b. Add the `/aide` orchestrator command entry:
-      `{ canonical: "commands/aide/aide", hostPath: "aide.md", displayName: "aide" }`.
-      **Important**: the orchestrator's `hostPath` is `"aide.md"` (at the command
-      directory root), NOT `"aide/aide.md"` (inside the subfolder). It is a peer
-      of the `aide/` subfolder. Place it as the first entry in the COMMANDS array
-      so it is installed and reported before the seven phase commands.
-      6c. Update the JSDoc comment on lines 9-25: change "six AIDE pipeline slash
-      commands" to "seven AIDE pipeline phase commands plus the /aide orchestrator
-      entry point". Explain that the orchestrator is installed as `aide.md` at
-      the command directory root (a peer of `aide/`), while phase commands go
-      inside `aide/`. Update any references to "six" or "six-phase cap" to
-      reflect the new count.
+  Below the code block, add a brief explanation of what the command does (three bullet points):
+  - Merges the AIDE MCP server entry into `.mcp.json` (creates or skips if already present)
+  - Writes the `/aide:init` slash command to `.claude/commands/aide/init.md` (skips if exists)
+  - Writes the `aide-tree` launcher to `.aide/bin/aide-tree.mjs` (skips if exists)
 
-- [x] **Step 7 — src/index.ts: update stale tool description strings.**
-      7a. `aide_discover` description (lines 34-35): where it lists file types,
-      add the plan.aide type. The current text lists four types (.aide, intent.aide,
-      research.aide, todo.aide). Add between research.aide and todo.aide:
-      `- plan.aide -- Architect's implementation plan. Checkboxed steps for the implementor.`
-      Also update the count text from "File types:" (which implies four) to
-      explicitly name all five. Update the description of todo.aide from
-      "QA checklist. Issues found by audit agents." to
-      "QA re-alignment document. Captures where implementation drifted from intent."
-      7b. `aide_read` description (line 50): change the parenthetical
-      `(intent/research/todo)` to `(intent/research/plan/todo)`.
-      7c. `aide_scaffold` description (lines 64-65): add `plan` to the Types list.
-      Add a line: `- plan -- Architect's implementation plan (no naming interaction
-      with intent/research)`. Also update the todo description from
-      "QA checklist for audit agents" to
-      "QA re-alignment document for QA agents".
-      Update the Zod enum in the inputSchema (line 75) from
-      `["intent", "research", "both", "todo"]` to
-      `["intent", "research", "both", "todo", "plan"]`.
-      7d. `aide_init` description (lines 98-99): update the text that says
-      "scaffolds slash commands for every pipeline phase (research, spec, plan,
-      build, QA, fix)" to include synthesize:
-      "scaffolds slash commands for every pipeline phase (research, spec,
-      synthesize, plan, build, QA, fix) plus the /aide orchestrator entry point".
-      Also ensure the methodology doc hub description mentions "seven canonical
-      methodology docs" (not five or six). Update "six pipeline slash commands"
-      references to "seven pipeline phase commands plus the /aide orchestrator".
+  End with a one-liner: "All operations are idempotent — safe to re-run at any time." Then a transition sentence: "After running, open Claude Code and run `/aide:init` to complete setup."
+
+  **Manual Configuration (other clients or manual setup) — follows the quick-start.** Add an H3 `### Manual Configuration`. Open with a one-sentence intro: "If you use a client other than Claude Code, or prefer to configure manually, add the server entry to your client's MCP config file." Then one H4 per client, each with a copy-pasteable config block. Every block uses `npx -y @aidemd-mcp/server@latest`. Clients to cover in this order:
+
+  - **Claude Code** (H4) — CLI command (`claude mcp add aide npx -- -y @aidemd-mcp/server@latest`) plus `.mcp.json` JSON block with `"mcpServers"` root key. Note that the Quick Start command above handles this automatically.
+  - **Claude Desktop** (H4) — JSON block with `"mcpServers"` root key. Show both macOS (`~/Library/Application Support/Claude/claude_desktop_config.json`) and Windows (`%APPDATA%\Claude\claude_desktop_config.json`) config file paths above the block. Add a `> [!NOTE]` callout about PATH: Claude Desktop does not inherit the terminal PATH, so nvm/Homebrew users must use `which npx` to find the absolute path and replace `"npx"` with it. Add a one-line note that Claude Desktop requires a full quit-and-reopen after config changes.
+  - **Cursor** (H4) — JSON block with `"mcpServers"` root key. Note config file path (`~/.cursor/mcp.json`).
+  - **VS Code / Copilot** (H4) — JSON block with `"servers"` root key (NOT `"mcpServers"`). Note config file path (`.vscode/mcp.json`).
+  - **Windsurf** (H4) — JSON block with `"mcpServers"` root key. Note config file path (`~/.windsurf/mcp.json`).
+
+  All JSON blocks show the same server entry structure: `"command": "npx"`, `"args": ["-y", "@aidemd-mcp/server@latest"]`.
+
+- [x] 1d. **Tools section with full parameter documentation.** H2 `## Tools`. One H3 per tool in lifecycle order: `aide_discover`, `aide_read`, `aide_scaffold`, `aide_validate`, `aide_init`, `aide_upgrade`. Each tool gets:
+  - Imperative one-sentence description (condensed from the tool `description` in `src/index.ts`)
+  - `**Inputs:**` bulleted list with backtick param name, (type), optional/required marker, and description
+  - Source all parameter details exactly from `inputSchema` in `src/index.ts` — do not invent parameters or omit any
+
+  Tool parameters to document (extracted from `src/index.ts`):
+  - `aide_discover`: `path` (string, optional) — subdirectory to drill into
+  - `aide_read`: `path` (string, required) — path to the .aide file
+  - `aide_scaffold`: `directory` (string, required), `type` (string, required — enum: intent, research, both, todo, plan)
+  - `aide_validate`: `path` (string, optional) — subdirectory to validate
+  - `aide_init`: `framework` (string, optional — enum: claude, cursor, windsurf, copilot), `path` (string, optional), `category` (string, optional — enum: framework, methodology, commands, agents, skills, mcp, brain, ide), `brainPath` (string, optional)
+  - `aide_upgrade`: `framework` (string, optional — enum: claude, cursor, windsurf, copilot), `path` (string, optional), `category` (string, optional — enum: pointer-stub, methodology-docs, version-metadata, commands, agents, skills, mcp, ide)
+
+- [x] 1e. **Getting Started (post-install) block.** H2 `## Getting Started`. Short block telling the developer to run `aide_init` after adding the server, then try a concrete action. Use the spec's good example as the baseline.
+
+- [x] 1f. **Development section.** H2 `## Development`. Three commands in a single code block: `npm install`, `npm run build`, `npm test`. Nothing else.
+
+- [x] 1g. **License line.** H2 `## License`. One line: `MIT` — linked to the LICENSE file using an absolute GitHub URL (`https://github.com/aidemd-mcp/server/blob/main/LICENSE`).
+
+**Rendering rules** (apply throughout all sections):
+- No `<details>`/`<summary>` tags anywhere
+- All cross-repo links use absolute GitHub URLs (base: `https://github.com/aidemd-mcp/server`)
+- `> [!NOTE]` callouts are acceptable (degrade to blockquotes on npm)
+- No relative links to files within the repo
 
 ## Decisions
 
-**plan sorts between research and todo in TYPE_ORDER.** Plan is the architect's
-artifact that follows research synthesis and precedes implementation + QA. This
-matches the pipeline ordering: research -> synthesize -> plan -> build -> qa.
-Todo is the QA output that comes last in the lifecycle.
+1. **Single step with lettered sub-steps.** The README is one file where every section depends on the overall structure, voice, and cross-references. Splitting into multiple agents would create inconsistency in tone, duplicate header work, or miss section flow. Lettered sub-steps let one agent write top-to-bottom while the plan still specifies each section's requirements independently.
 
-**The orchestrator /aide is a COMMANDS entry, not a separate mechanism.** The
-scaffoldCommands helper already handles idempotent command installation. The
-orchestrator is just another command file with a different hostPath (command
-directory root instead of aide/ subfolder). Adding it to the same COMMANDS array
-avoids a second installation path and keeps reporting consistent.
+2. **No deep playbook dive for documentation.** The coding playbook governs code conventions, not prose documentation. The `foundations/conventions` note is included in the Read list for general naming/style awareness, but the spec itself (`readme.aide`) is the authoritative source for every README decision — section order, badge selection, config block format, tool documentation format, rendering constraints. The spec's strategy section is unusually detailed and research-backed; the plan defers to it entirely.
 
-**The orchestrator entry goes first in the COMMANDS array.** Pipeline reporting
-order should show the entry point before the phases it routes to. This matches
-the init spec's good-example output where `aide:` appears before `aide/research:`.
+3. **Parameters sourced from `src/index.ts`, not current README.** The current README has incomplete and outdated parameter lists (missing `plan` type in scaffold enum, missing `aide_upgrade` tool entirely, missing `category`/`brainPath` params on `aide_init`). The plan instructs the implementor to source all parameters from the `inputSchema` definitions in `src/index.ts` lines 46-167, which are the canonical source of truth.
 
-**PLAN_TEMPLATE follows the plan.aide spec format, not the intent template format.**
-The plan.aide canonical spec defines frontmatter with `intent` only, plus
-`## Plan` and `## Decisions` body sections. The scaffold template mirrors this
-structure with empty placeholders, same as the TODO_TEMPLATE mirrors the todo
-format.
+4. **VS Code uses `"servers"` root key.** Per the spec's research, VS Code/Copilot uses `"servers"` not `"mcpServers"`. This is the number one silent failure mode for cross-client config blocks. The plan calls this out explicitly.
 
-**No changes to aide_validate or aide_read.** Both tools work off the
-AideFileType union and classifyFile, which are being updated in steps 1-2.
-They will automatically handle plan.aide files once the type system includes
-"plan". No tool-specific changes needed.
+5. **`@latest` pinning in all config blocks.** Bare package names serve stale cached versions. Every config block uses `@aidemd-mcp/server@latest` with the `-y` flag to prevent npx from hanging in non-interactive contexts like Claude Desktop's process spawner.
 
-**The "commands/aide/aide" canonical name uses `aide` as both namespace and
-basename.** This looks redundant but is mechanically correct: the canonical
-name prefix `commands/aide/` means "lives under .claude/commands/aide/" in
-the repo, and `aide` is the bare filename. The hostPath `aide.md` (without
-the `aide/` prefix) is what places it at the command directory root on the
-host side. The asymmetry between canonical path and host path is intentional
-— the canonical source lives inside the aide/ folder in the repo, but the
-host install places it as a peer of that folder.
+6. **PATH callout as `> [!NOTE]`, not `<details>`.** The spec requires the PATH troubleshooting to be visible on both GitHub and npm. GitHub `> [!NOTE]` renders as a styled callout and degrades to a plain blockquote on npm — both are readable. `<details>` would hide it on npm.
+
+7. **Quick-install command leads the Installation section.** `npx @aidemd-mcp/server init` is the recommended primary path because it eliminates three manual steps (MCP config, slash command, aide-tree) with a single idempotent command. It is scoped to Claude Code users — the primary audience per the spec's v1 scope note. The per-client manual config blocks move under a "Manual Configuration" H3 as the fallback for non-Claude-Code clients or users who prefer manual setup. This preserves all existing installation guidance while reducing time-to-value for the majority audience.
+
+8. **H3/H4 nesting for Installation.** Quick Start and Manual Configuration are H3s under the Installation H2. Individual clients under Manual Configuration are H4s. This keeps the Installation section scannable — a user on Claude Code sees the quick-start immediately and never needs to scroll past five client blocks. A user on Cursor jumps to Manual Configuration and finds their H4.
