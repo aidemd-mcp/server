@@ -15,6 +15,19 @@ import applySteps from "@/tools/init/applySteps/index.js";
 import upgrade, { UpgradeInput } from "@/tools/upgrade/index.js";
 import applyFiles from "@/tools/upgrade/applyFiles/index.js";
 
+/**
+ * Check process.argv for a known subcommand and dispatch it via dynamic
+ * import. Returns true if a subcommand was handled (caller must not start
+ * the MCP server). Returns false when no subcommand matched.
+ */
+export async function routeSubcommand(): Promise<boolean> {
+	if (process.argv[2] === "init") {
+		await import("./cli/init/index.js");
+		return true;
+	}
+	return false;
+}
+
 /** Parse --root flag from CLI args, default to cwd. */
 function parseRoot(): string {
 	const args = process.argv.slice(2);
@@ -247,7 +260,11 @@ async function main() {
 	await server.connect(transport);
 }
 
-main().catch((error) => {
-	console.error("Fatal:", error);
-	process.exit(1);
-});
+// Route subcommands before starting the MCP server to avoid stdio conflicts.
+// If routeSubcommand() returns true, the init IIFE handles process lifecycle.
+if (!(await routeSubcommand())) {
+	main().catch((error) => {
+		console.error("Fatal:", error);
+		process.exit(1);
+	});
+}

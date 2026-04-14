@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
-import wireMcp from "./index.js";
+import { tmpdir, platform } from "node:os";
+import wireMcp, { mcpEntry } from "./index.js";
 
-const expectedEntry = { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] };
+const expectedEntry =
+	platform() === "win32"
+		? { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }
+		: { command: "npx", args: ["@aidemd-mcp/server"] };
 
 let tempDir: string;
 

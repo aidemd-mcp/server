@@ -35,7 +35,7 @@ export async function runInit(
 (async () => {
 	if (process.argv.includes("--help")) {
 		process.stdout.write(
-			"Usage: node dist/cli/init/index.js\n" +
+			"Usage: npx @aidemd-mcp/server init\n" +
 				"Wires the AIDE MCP server, init command, and aide-tree into the current project.\n",
 		);
 		process.exit(0);

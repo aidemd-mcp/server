@@ -28,16 +28,13 @@ describe("writeMcpEntry", () => {
 		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
 	});
 
-	it("uses the cmd /c npx entry shape", async () => {
+	it("uses the platform-appropriate npx entry shape", async () => {
 		await writeMcpEntry(tempDir);
 
 		const written = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		const parsed = JSON.parse(written);
 
-		expect(parsed.mcpServers.aide).toEqual({
-			command: "cmd",
-			args: ["/c", "npx", "@aidemd-mcp/server"],
-		});
+		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
 	});
 
 	it("preserves existing server entries and adds only aide when merging", async () => {

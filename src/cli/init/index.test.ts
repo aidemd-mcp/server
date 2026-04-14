@@ -1,10 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Intercept process.exit before the module loads so the IIFE's process.exit
+// calls are no-ops. vi.hoisted runs before vi.mock hoisting and before any
+// module imports resolve, ensuring the spy is in place when the IIFE executes.
+const { mockExit } = vi.hoisted(() => {
+	const mockExit = vi.fn();
+	process.exit = mockExit as unknown as typeof process.exit;
+	return { mockExit };
+});
+
+vi.mock("./writeMcpEntry/index.js", () => ({
+	default: vi.fn().mockResolvedValue({ status: "created", message: "aide MCP server entry" }),
+}));
+vi.mock("./writeInitCommand/index.js", () => ({
+	default: vi.fn().mockResolvedValue({ status: "created", message: "/aide:init command" }),
+}));
+vi.mock("./writeAideTree/index.js", () => ({
+	default: vi.fn().mockResolvedValue({ status: "created", message: "aide-tree launcher" }),
+}));
+
 import { runInit } from "./index.js";
-
-vi.mock("./writeMcpEntry/index.js");
-vi.mock("./writeInitCommand/index.js");
-vi.mock("./writeAideTree/index.js");
-
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import writeInitCommand from "./writeInitCommand/index.js";
 import writeAideTree from "./writeAideTree/index.js";
@@ -15,6 +30,10 @@ const mockWriteAideTree = vi.mocked(writeAideTree);
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	// Re-apply default resolved values after clearAllMocks resets implementations.
+	mockWriteMcpEntry.mockResolvedValue({ status: "created", message: "aide MCP server entry" });
+	mockWriteInitCommand.mockResolvedValue({ status: "created", message: "/aide:init command" });
+	mockWriteAideTree.mockResolvedValue({ status: "created", message: "aide-tree launcher" });
 });
 
 describe("runInit", () => {

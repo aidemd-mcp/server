@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { platform } from "node:os";
 import type { InitStep, McpPrescription } from "@/types/index.js";
 
 /** Read a file, returning empty string if it doesn't exist. */
@@ -10,9 +11,17 @@ async function safeReadFile(path: string): Promise<string> {
 	}
 }
 
-/** Build the MCP server entry using the cmd /c npx form. */
+/**
+ * Build the MCP server entry for the current platform.
+ *
+ * On Windows, `npx` must be invoked through `cmd /c` so that the shell can
+ * resolve the `.cmd` shim. On macOS and Linux, `npx` can be invoked directly.
+ */
 export function mcpEntry(): McpPrescription["entry"] {
-	return { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] };
+	if (platform() === "win32") {
+		return { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] };
+	}
+	return { command: "npx", args: ["@aidemd-mcp/server"] };
 }
 
 /**
