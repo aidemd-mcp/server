@@ -64,6 +64,7 @@ const DOC_PATHS = {
 	"cascading-alignment": ".aide/docs/cascading-alignment.md",
 	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
 	"skills/brain": ".claude/skills/brain/SKILL.md",
+	"bin/aide-tree": ".aide/bin/aide-tree.mjs",
 } as const;
 
 export type CanonicalDocName = keyof typeof DOC_PATHS;

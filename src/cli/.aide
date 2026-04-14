@@ -11,7 +11,7 @@ outcomes:
     - Tree supports keyboard navigation (arrow keys, enter to drill in, escape/backspace to go back), search/filter by typing, and a toggle between shallow (locations + types only) and deep (with summaries) views.
     - Drilling into any .aide file renders a formatted inspection view in the right panel — frontmatter displayed as a styled card with scope at top, intent below it, and desired/undesired outcomes displayed side-by-side in their own bordered regions. The tree on the left remains visible and active throughout.
     - Body sections (Context, Strategy, Good examples, Bad examples) listed below the frontmatter card as expandable items the user can cycle through with a keypress. For content too long to fit the panel, the user can open the raw file directly in their editor.
-    - Ships as a bin entry in the aidemd-mcp package so users get the command automatically when the MCP is installed — no separate install step.
+    - Ships as a launcher script written into the user's project during `aide_init` — `.aide/bin/aide-tree.mjs` is created by the CLI bootstrapper and the `installAideTree` MCP helper, resolving the installed `@aidemd-mcp/server` package's TUI entry point at runtime via `createRequire`. Users run the TUI as `node .aide/bin/aide-tree.mjs` from their project root.
   undesired:
     - A static dump that requires re-running the command to see different parts of the tree — the whole point is persistent interactive navigation.
     - Frontmatter rendered as raw YAML — the nested outcomes structure must be visually parsed into labeled, bordered regions, not shown as indented key-value pairs.

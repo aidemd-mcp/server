@@ -3,19 +3,22 @@ import { runInit } from "./index.js";
 
 vi.mock("./writeMcpEntry/index.js");
 vi.mock("./writeInitCommand/index.js");
+vi.mock("./writeAideTree/index.js");
 
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import writeInitCommand from "./writeInitCommand/index.js";
+import writeAideTree from "./writeAideTree/index.js";
 
 const mockWriteMcpEntry = vi.mocked(writeMcpEntry);
 const mockWriteInitCommand = vi.mocked(writeInitCommand);
+const mockWriteAideTree = vi.mocked(writeAideTree);
 
 beforeEach(() => {
 	vi.clearAllMocks();
 });
 
 describe("runInit", () => {
-	it("prints two [created] lines and the Done closing message when both artifacts are created", async () => {
+	it("prints three [created] lines and the Done closing message when all artifacts are created", async () => {
 		mockWriteMcpEntry.mockResolvedValue({
 			status: "created",
 			message: "aide MCP server entry",
@@ -23,6 +26,10 @@ describe("runInit", () => {
 		mockWriteInitCommand.mockResolvedValue({
 			status: "created",
 			message: "/aide:init command",
+		});
+		mockWriteAideTree.mockResolvedValue({
+			status: "created",
+			message: "aide-tree launcher",
 		});
 
 		const lines: string[] = [];
@@ -33,12 +40,15 @@ describe("runInit", () => {
 			"[created] .claude/commands/aide/init.md — /aide:init command",
 		);
 		expect(lines[2]).toBe(
+			"[created] .aide/bin/aide-tree.mjs — aide-tree launcher",
+		);
+		expect(lines[3]).toBe(
 			"Done. Open Claude Code and run /aide:init to complete setup.",
 		);
 		expect(exitCode).toBe(0);
 	});
 
-	it("prints two [exists] lines and the Already set up closing message when both artifacts exist", async () => {
+	it("prints three [exists] lines and the Already set up closing message when all artifacts exist", async () => {
 		mockWriteMcpEntry.mockResolvedValue({
 			status: "exists",
 			message: "aide server already configured",
@@ -46,6 +56,10 @@ describe("runInit", () => {
 		mockWriteInitCommand.mockResolvedValue({
 			status: "exists",
 			message: "/aide:init command already present",
+		});
+		mockWriteAideTree.mockResolvedValue({
+			status: "exists",
+			message: "aide-tree launcher already present",
 		});
 
 		const lines: string[] = [];
@@ -58,6 +72,9 @@ describe("runInit", () => {
 			"[exists] .claude/commands/aide/init.md — /aide:init command already present",
 		);
 		expect(lines[2]).toBe(
+			"[exists] .aide/bin/aide-tree.mjs — aide-tree launcher already present",
+		);
+		expect(lines[3]).toBe(
 			"Already set up. Run /aide:init in Claude Code to continue.",
 		);
 		expect(exitCode).toBe(0);
@@ -72,6 +89,10 @@ describe("runInit", () => {
 			status: "exists",
 			message: "/aide:init command already present",
 		});
+		mockWriteAideTree.mockResolvedValue({
+			status: "created",
+			message: "aide-tree launcher",
+		});
 
 		const lines: string[] = [];
 		const exitCode = await runInit("/fake/cwd", (line) => lines.push(line));
@@ -81,6 +102,9 @@ describe("runInit", () => {
 			"[exists] .claude/commands/aide/init.md — /aide:init command already present",
 		);
 		expect(lines[2]).toBe(
+			"[created] .aide/bin/aide-tree.mjs — aide-tree launcher",
+		);
+		expect(lines[3]).toBe(
 			"Done. Open Claude Code and run /aide:init to complete setup.",
 		);
 		expect(exitCode).toBe(0);
@@ -95,6 +119,10 @@ describe("runInit", () => {
 			status: "created",
 			message: "/aide:init command",
 		});
+		mockWriteAideTree.mockResolvedValue({
+			status: "exists",
+			message: "aide-tree launcher already present",
+		});
 
 		const lines: string[] = [];
 		const exitCode = await runInit("/fake/cwd", (line) => lines.push(line));
@@ -106,6 +134,32 @@ describe("runInit", () => {
 			"[created] .claude/commands/aide/init.md — /aide:init command",
 		);
 		expect(lines[2]).toBe(
+			"[exists] .aide/bin/aide-tree.mjs — aide-tree launcher already present",
+		);
+		expect(lines[3]).toBe(
+			"Done. Open Claude Code and run /aide:init to complete setup.",
+		);
+		expect(exitCode).toBe(0);
+	});
+
+	it("prints Done (not Already set up) when only two of three artifacts exist", async () => {
+		mockWriteMcpEntry.mockResolvedValue({
+			status: "exists",
+			message: "aide server already configured",
+		});
+		mockWriteInitCommand.mockResolvedValue({
+			status: "exists",
+			message: "/aide:init command already present",
+		});
+		mockWriteAideTree.mockResolvedValue({
+			status: "created",
+			message: "aide-tree launcher",
+		});
+
+		const lines: string[] = [];
+		const exitCode = await runInit("/fake/cwd", (line) => lines.push(line));
+
+		expect(lines[3]).toBe(
 			"Done. Open Claude Code and run /aide:init to complete setup.",
 		);
 		expect(exitCode).toBe(0);
@@ -120,6 +174,10 @@ describe("runInit", () => {
 		mockWriteInitCommand.mockResolvedValue({
 			status: "created",
 			message: "/aide:init command",
+		});
+		mockWriteAideTree.mockResolvedValue({
+			status: "created",
+			message: "aide-tree launcher",
 		});
 
 		const lines: string[] = [];
@@ -138,6 +196,10 @@ describe("runInit", () => {
 		mockWriteInitCommand.mockRejectedValue(
 			new Error("Failed to write init command file."),
 		);
+		mockWriteAideTree.mockResolvedValue({
+			status: "created",
+			message: "aide-tree launcher",
+		});
 
 		const lines: string[] = [];
 		await expect(

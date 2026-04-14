@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import writeInitCommand from "./writeInitCommand/index.js";
+import writeAideTree from "./writeAideTree/index.js";
 
 const MCP_LABEL = ".mcp.json";
 const CMD_LABEL = ".claude/commands/aide/init.md";
+const TREE_LABEL = ".aide/bin/aide-tree.mjs";
 
 export async function runInit(
 	cwd: string,
@@ -11,11 +13,17 @@ export async function runInit(
 ): Promise<number> {
 	const mcpResult = await writeMcpEntry(cwd);
 	const cmdResult = await writeInitCommand(cwd);
+	const treeResult = await writeAideTree(cwd);
 
 	write(`[${mcpResult.status}] ${MCP_LABEL} — ${mcpResult.message}`);
 	write(`[${cmdResult.status}] ${CMD_LABEL} — ${cmdResult.message}`);
+	write(`[${treeResult.status}] ${TREE_LABEL} — ${treeResult.message}`);
 
-	if (mcpResult.status === "exists" && cmdResult.status === "exists") {
+	if (
+		mcpResult.status === "exists" &&
+		cmdResult.status === "exists" &&
+		treeResult.status === "exists"
+	) {
 		write("Already set up. Run /aide:init in Claude Code to continue.");
 		return 0;
 	}
@@ -27,8 +35,8 @@ export async function runInit(
 (async () => {
 	if (process.argv.includes("--help")) {
 		process.stdout.write(
-			"Usage: npx @aidemd-mcp/server init\n" +
-				"Wires the AIDE MCP server and init command into the current project.\n",
+			"Usage: node dist/cli/init/index.js\n" +
+				"Wires the AIDE MCP server, init command, and aide-tree into the current project.\n",
 		);
 		process.exit(0);
 	}

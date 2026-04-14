@@ -1,56 +1,28 @@
 ---
 intent: >
-  Terminal error output must match the spec's documented examples exactly —
-  short relative path in the message, and an "Error: " prefix on stderr —
-  so the developer sees what the spec promised when something goes wrong.
+  Desired outcome D3 (idempotency — all three artifacts already exist) is
+  partially undermined: the orchestrator integration test still uses a
+  platform-branching mcpEntry expectation that disagrees with the simplified
+  mcpEntry() on non-Windows systems. Desired outcome D4 (after the CLI
+  completes, a Claude Code session can invoke the aide MCP tools) is supported
+  by the simplified entry shape — but the test that guards the entry shape in
+  the orchestrator path would produce a false-passing result on Linux/macOS.
+  Additionally, installAideTree has no unit test file, leaving it as the only
+  helper in the installX family without isolated coverage.
 misalignment:
-  - implementation-drift
   - test-gap
 ---
 
 ## Issues
 
-- [x] `src/cli/init/writeMcpEntry/index.ts:39` — Error message uses the full
-  absolute path (`mcpPath`) rather than the short form `.mcp.json`. The spec's
-  good example shows `Error: .mcp.json exists but contains invalid JSON. Fix
-  the syntax error and re-run.` — the file reference is the short relative
-  name, not an absolute filesystem path.
-  Traces to: `outcomes.undesired[1]` — "Silently succeeding while writing
-  malformed JSON" (the error message is the user's only signal; if it is
-  harder to read than the spec documented, the guard is weaker than intended)
-  Misalignment: implementation-drift
+- [x] `src/tools/init/index.test.ts` lines 22-24 — `expectedAideMcpEntry` still branches on `platform()`, computing `{ command: "npx", args: ["@aidemd-mcp/server"] }` on non-Windows. `mcpEntry()` now always returns the `cmd /c` form. On Linux/macOS the assertion on line 167 (`expect(mcpStep?.prescription?.entry).toEqual(expectedAideMcpEntry)`) passes by matching the wrong shape — the test silently validates a value that no longer exists. The line 220 fixture also seeds a `cmd /c`-less entry, which could cause the "already exists" detection to behave unexpectedly during test runs on non-Windows CI.
+  Traces to: desired outcome D4 — after the CLI completes, a Claude Code session can invoke the aide MCP tools. The guard that ensures the always-cmd/c entry shape reaches the MCP planner is wrong on non-Windows.
+  Misalignment: test-gap
 
-- [x] `src/cli/init/index.ts:41` — The IIFE catch block writes the raw error
-  message to stderr without an "Error: " prefix. The spec's good example shows
-  the output as `Error: .mcp.json exists but contains invalid JSON…` — the
-  `Error: ` label is part of the documented terminal contract.
-  Traces to: `outcomes.undesired[1]` — spec-documented terminal output for
-  the malformed-JSON failure case includes the prefix; the implementation omits
-  it.
-  Misalignment: implementation-drift
-
-- [x] `src/cli/init/writeMcpEntry/index.test.ts:104-108` — The malformed-JSON
-  test asserts only that the thrown error message contains `mcpPath` (the
-  absolute temp path). Once the implementation is fixed to use the short
-  relative form, this assertion must be updated to match — otherwise it will
-  pass against the broken form and fail against the correct one.
-  Traces to: `outcomes.undesired[1]` — test must guard the exact error
-  contract the spec documents, not the accidental absolute-path form.
+- [x] `src/tools/init/installAideTree/index.test.ts` — file does not exist. `installAideTree` is the only helper in the `installX` family (`scaffoldCommands`, `installAgents`, `installSkills`) without a unit test file. Plan step 7 enumerated 7a–7e but did not include a test for this helper. The behavior — `exists` return when file present, `would-create` with canonical content when absent, `would-skip` when `readCanonicalDoc` throws — is untested at the unit level.
+  Traces to: desired outcome D1 — running the CLI in a project with no existing config creates all three artifacts. The MCP-layer planner for the aide-tree artifact has no isolated coverage.
   Misalignment: test-gap
 
 ## Retro
 
-Both issues share a root cause: the spec's good/bad examples section documents
-the exact terminal strings the CLI must produce, but those strings were not
-mechanically transferred into the test assertions. The malformed-JSON test
-checked that the error contains the file path — a structural check — rather
-than asserting the full message shape against the spec's example. A test that
-pins the complete error string (including the `Error: ` prefix and the short
-relative filename) would have caught both deviations at the time they were
-written.
-
-Strengthening the plan stage: the plan's step 5 (test list) named "throws an
-error mentioning the file path" as the criterion, which is weaker than "throws
-an error whose message matches the spec's documented example verbatim." When a
-spec provides exact output strings in its good/bad examples, the plan should
-quote them as the acceptance criterion, not paraphrase them.
+Both issues are test-gaps that would have been caught earlier at the plan stage if the plan's step 7 had been written as a test checklist per file rather than per scenario. Step 7b said "remove the `platform` import from `wireMcp/index.test.ts`" — it named only that one test file. The parallel platform-branch in `src/tools/init/index.test.ts` was not named and was not updated. A plan step that names the specific assertion to change (not just the file) would have surfaced the omission. The `installAideTree` test gap arose because step 7 listed test files for the CLI-layer helpers (7a–7d) but skipped the MCP-layer counterpart — a consistent pattern would be one test-update item per new or modified helper, regardless of layer.

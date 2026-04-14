@@ -1,86 +1,160 @@
 ---
 intent: >
-  Implement the CLI bootstrapper at src/cli/init/ that places the MCP server
-  entry in .mcp.json and the init slash command on disk when a user runs
-  npx @aidemd-mcp/server init, plus the package.json bin entry to make it
-  resolvable.
+  Remove all extra bin entries from package.json (aide-tree, server), simplify
+  the .mcp.json generation to always use cmd /c form, add aide-tree as a
+  local project script written during aide_init (following the same
+  canonical-content-via-initContent pattern used for commands/skills), bump
+  the patch version, and update all affected specs, tests, and docs.
 ---
 
 ## Plan
 
-### 1. Add the `server` bin entry to `package.json`
+### 1. [x] Clean up `package.json`: remove extra bins, drop `aide-tree` npm script, bump version
 
-- [x] Add `"server": "dist/cli/init/index.js"` to the `bin` object in `package.json`, alongside the existing `aidemd-mcp` and `aide-tree` entries
-- [x] Verify the `files` array already covers `dist` (it does — no change needed there)
+Read: `coding-playbook/foundations/conventions.md`
 
-### 2. Create the `writeMcpEntry` helper at `src/cli/init/writeMcpEntry/index.ts`
+- In `package.json`, remove `aide-tree` and `server` from the `bin` field, leaving only `"aidemd-mcp": "dist/index.js"`.
+- Remove the `"aide-tree"` npm script from `scripts` — aide-tree will be distributed via init instead.
+- Bump `version` from `"0.2.0"` to `"0.2.1"`.
+- Run `npm install` to regenerate `package-lock.json`.
 
-This helper owns the read-parse-merge-write cycle for `.mcp.json`. It is the imperative counterpart to `wireMcp` (which is a planner that returns `InitStep` objects). This helper calls `mcpEntry()` for the canonical entry shape, then does the actual disk work.
+### 2. [x] Simplify `mcpEntry()` to always use `cmd /c` form
 
-- [x] Create `src/cli/init/writeMcpEntry/index.ts` with `export default async function writeMcpEntry`
-- [x] Import `mcpEntry` from `@/tools/init/wireMcp/index.js` — but note that `mcpEntry` is currently not exported (it is a private function inside `wireMcp`). The implementor must first extract `mcpEntry` as a named export from `wireMcp/index.ts` so the CLI can reuse it. This is a named export addition, not a refactor — the default export and all existing behavior remain unchanged.
-- [x] Contract: accepts `projectRoot: string`, returns `{ status: "created" | "exists"; message: string }`. On malformed JSON, throws an `Error` with a clear message naming the file. On write failure, throws.
-- [x] Behavior: read `.mcp.json` from `projectRoot` (treat ENOENT as `{}`). Parse JSON. Check `mcpServers.aide` or `mcpServers["aidemd-mcp"]` (dual-key check matching `wireMcp` line 42). If present, return `exists`. Otherwise merge `{ mcpServers: { aide: mcpEntry() } }` into the parsed config preserving all existing keys. Serialize with 2-space indent + trailing newline. Write file. Return `created`.
-- [x] The message string for `created` includes the count of existing servers when merging (e.g., "merged with 2 existing servers") to match the spec's good examples.
+Read: `coding-playbook/foundations/conventions.md`
 
-### 3. Create the `writeInitCommand` helper at `src/cli/init/writeInitCommand/index.ts`
+- In `src/tools/init/wireMcp/index.ts`, replace the `mcpEntry()` function body so it always returns `{ command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }` with no platform branching.
+- Remove the `import { platform } from "node:os"` since it is no longer used (verify no other code in the file references `platform` first).
+- Update the JSDoc on `mcpEntry()` to remove the "wrapping with cmd /c on Windows" phrasing — it now always uses `cmd /c`.
 
-This helper writes the init slash command file to disk using `readCanonicalDoc` for the content.
+### 3. [x] Create the aide-tree launcher script as canonical content
 
-- [x] Create `src/cli/init/writeInitCommand/index.ts` with `export default async function writeInitCommand`
-- [x] Import `readCanonicalDoc` from `@/tools/init/initContent/index.js`
-- [x] Contract: accepts `projectRoot: string`, returns `{ status: "created" | "exists"; message: string }`
-- [x] Behavior: target path is `<projectRoot>/.claude/commands/aide/init.md`. If the file already exists on disk, return `exists`. Otherwise, create the parent directory tree (recursive mkdir), read content via `readCanonicalDoc("commands/aide/init")`, write the file, return `created`.
+Read: `coding-playbook/foundations/conventions.md`, `coding-playbook/architecture/folder-structure.md`
 
-### 4. Create the orchestrator at `src/cli/init/index.ts`
+The aide-tree TUI is a full React/Ink application with dependencies on the package's internal modules (`scan`, `buildTreeData`, `App`). It cannot be copied as source. Instead, write a thin launcher script that invokes the installed package's aide-tree entry point.
 
-The entry point that npm resolves via the `server` bin. This is a shebang-bearing async IIFE that coordinates the two helpers and prints terminal output.
+- Create `scripts/aide-tree.sh` at the repo root. This is the canonical content file that `initContent` will serve. Its contents: a bash script that runs `npx @aidemd-mcp/server` with the `--aide-tree` flag or, simpler, invokes `node node_modules/@aidemd-mcp/server/dist/cli/index.js` with `"$@"` forwarded. Use the `npx` approach for portability: `#!/usr/bin/env bash` then `npx --yes --package @aidemd-mcp/server aide-tree "$@"`. Actually — since we removed the `aide-tree` bin, `npx` cannot resolve it by name. The script should instead use: `node "$(dirname "$0")/node_modules/@aidemd-mcp/server/dist/cli/index.js" "$@"` — but that assumes the script lives at the project root. A cleaner approach: the script uses `npx --yes @aidemd-mcp/server --aide-tree` but that requires the MCP server entry point to handle a `--aide-tree` flag. The simplest correct approach is a Node script (not bash) written to `.aide/bin/aide-tree.mjs` in the user's project that does `import("@aidemd-mcp/server/cli")` or uses `createRequire` to resolve the package. But the package doesn't export a CLI subpath.
 
-- [x] Create `src/cli/init/index.ts` with `#!/usr/bin/env node` shebang
-- [x] Handle `--help` flag: if `process.argv.includes("--help")`, print a one-line usage hint to stdout and exit 0. Ignore all other arguments.
-- [x] Import and call `writeMcpEntry(cwd)` and `writeInitCommand(cwd)` where `cwd = process.cwd()`
-- [x] Print one line per artifact with `[created]` or `[exists]` prefix, matching the spec's good examples exactly
-- [x] On both-exist, print "Already set up. Run /aide:init in Claude Code to continue." and exit 0
-- [x] On success with at least one creation, print "Done. Open Claude Code and run /aide:init to complete setup."
-- [x] Wrap the top-level call in try/catch — on any thrown error, write the error message to stderr and exit 1
-- [x] No CLI framework dependencies, no colors, no spinners, no interactive prompts. Only imports: `node:process` (implicit), the two helpers.
+  **Revised approach:** Write `.aide/bin/aide-tree.mjs` as a self-contained Node launcher script. Contents:
 
-### 5. Tests for `writeMcpEntry` at `src/cli/init/writeMcpEntry/index.test.ts`
+  ```
+  #!/usr/bin/env node
+  import { execFileSync } from "node:child_process";
+  import { createRequire } from "node:module";
+  import { join, dirname } from "node:path";
 
-Use the same temp-directory pattern as `wireMcp/index.test.ts` — `mkdtemp` in `beforeEach`, `rm` in `afterEach`.
+  const require = createRequire(import.meta.url);
+  const cliPath = join(dirname(require.resolve("@aidemd-mcp/server")), "cli", "index.js");
+  execFileSync("node", [cliPath, ...process.argv.slice(2)], { stdio: "inherit" });
+  ```
 
-- [x] Test: fresh project (no `.mcp.json`) creates valid JSON with `mcpServers.aide` entry matching the platform-specific shape from `mcpEntry()`
-- [x] Test: existing config with other servers preserves all existing entries and adds only `aide`
-- [x] Test: existing config with `aide` key returns `exists` and does not modify the file
-- [x] Test: existing config with `aidemd-mcp` key (legacy) returns `exists` (dual-key check)
-- [x] Test: malformed JSON in existing `.mcp.json` throws an error mentioning the file path
-- [x] Test: created message includes existing server count when merging
+  This resolves the installed package's `dist/cli/index.js` relative to its main export and forwards all arguments.
 
-### 6. Tests for `writeInitCommand` at `src/cli/init/writeInitCommand/index.test.ts`
+- Add this script's content to `DOC_PATHS` in `src/tools/init/initContent/index.ts` under the canonical name `"bin/aide-tree"`, pointing to the source file. The source file for this canonical content should live at `.aide/bin/aide-tree.mjs` in this repo (following the pattern where canonical content lives under `.aide/` or `.claude/`). Create that file.
+- Add a `files` entry to `package.json` for `.aide/bin` so it ships in the published package.
 
-- [x] Test: writes the init command file when it does not exist, content matches `readCanonicalDoc("commands/aide/init")`
-- [x] Test: creates the full parent directory tree (`.claude/commands/aide/`) when it does not exist
-- [x] Test: returns `exists` without modifying the file when it already exists on disk
+### 4. [x] Register aide-tree in `initContent` and create an `installAideTree` helper
 
-### 7. Tests for the orchestrator at `src/cli/init/index.test.ts`
+Read: `coding-playbook/foundations/conventions.md`, `coding-playbook/architecture/folder-structure.md`
 
-These tests mock the two helpers to test the orchestrator's output formatting and exit behavior in isolation. The orchestrator is an IIFE entry point, so the test approach is to mock the helpers at module level and then dynamically import the orchestrator (or extract the core logic into a testable function that the IIFE calls).
+4a. In `src/tools/init/initContent/index.ts`:
+- Add `"bin/aide-tree": ".aide/bin/aide-tree.mjs"` to the `DOC_PATHS` map.
 
-- [x] Test: both artifacts created prints two `[created]` lines and the "Done" closing message
-- [x] Test: both artifacts exist prints two `[exists]` lines and the "Already set up" closing message
-- [x] Test: mixed (one created, one exists) prints correct status per artifact
-- [x] Test: thrown error writes to stderr (verify via mock or captured output)
+4b. Create `src/tools/init/installAideTree/index.ts` — a new helper following the exact pattern of `installSkills` and `scaffoldCommands`. It:
+- Exports a default async function `installAideTree(projectRoot: string): Promise<InitStep[]>`.
+- Checks whether `.aide/bin/aide-tree.mjs` already exists under `projectRoot`.
+- If it exists, returns a single step with `status: "exists"`.
+- If it does not exist, reads the canonical content via `readCanonicalDoc("bin/aide-tree")` and returns a single step with `status: "would-create"`, `category: "commands"` (or a new `"tools"` category — use `"commands"` to keep it simple since `applySteps` handles it generically), `filePath` pointing to the target, and `content` containing the script.
+- The JSDoc explains this helper plans the aide-tree launcher script installation.
+
+### 5. [x] Wire `installAideTree` into the `aide_init` orchestrator
+
+Read: `coding-playbook/foundations/conventions.md`
+
+- In `src/tools/init/index.ts`, import `installAideTree` from the new helper.
+- Call it with `projectRoot` (not joined to any config path — the helper handles the relative path internally).
+- Spread its returned steps into the `steps` array alongside the existing command/agent/skill steps.
+
+### 6. [x] Create `writeAideTree` helper for the CLI init and wire it into the orchestrator
+
+Read: `coding-playbook/foundations/conventions.md`, `coding-playbook/workflow/testing.md`
+
+6a. Create `src/cli/init/writeAideTree/index.ts` — following the exact pattern of `writeInitCommand/index.ts`:
+- Exports a default async function `writeAideTree(projectRoot: string): Promise<WriteAideTreeResult>`.
+- `WriteAideTreeResult` has `status: "created" | "exists"` and `message: string`.
+- Target path is `<projectRoot>/.aide/bin/aide-tree.mjs`.
+- If the file exists, return `{ status: "exists", message: "aide-tree launcher already present" }`.
+- If not, create the parent directory tree, read the canonical content via `readCanonicalDoc("bin/aide-tree")`, write the file, and return `{ status: "created", message: "aide-tree launcher" }`.
+
+6b. Wire `writeAideTree` into `src/cli/init/index.ts`:
+- Import `writeAideTree`.
+- Call it after `writeInitCommand`, collect the result.
+- Add a third status output line: `[${treeResult.status}] .aide/bin/aide-tree.mjs — ${treeResult.message}`.
+- Add `treeResult` to the "all exists" check for the closing message.
+- Update the `TREE_LABEL` constant to `".aide/bin/aide-tree.mjs"`.
+
+### 7. [x] Update tests for the platform-agnostic `mcpEntry()` and new aide-tree artifact
+
+Read: `coding-playbook/workflow/testing.md`
+
+7a. In `src/cli/init/writeMcpEntry/index.test.ts`:
+- Remove the `platform` import from `node:os`.
+- Update the test "uses platform-specific entry shape" (lines 31-43): replace it with a test named "uses the cmd /c npx entry shape" that asserts the entry is always `{ command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }` with no platform branching.
+
+7b. In `src/tools/init/wireMcp/index.test.ts`:
+- Remove the `platform` import from `node:os`.
+- Replace the `expectedEntry` variable (lines 7-9) with a constant that is always `{ command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }`.
+
+7c. Create `src/cli/init/writeAideTree/index.test.ts` following the `writeInitCommand/index.test.ts` pattern:
+- Test that the launcher file is created at `.aide/bin/aide-tree.mjs` when it does not exist, and its content matches `readCanonicalDoc("bin/aide-tree")`.
+- Test that it creates the full parent directory tree.
+- Test that it returns `exists` without modifying the file when it already exists.
+
+7d. Update `src/cli/init/index.test.ts`:
+- Add a mock for `./writeAideTree/index.js`.
+- Update all existing tests to include the new third artifact line in their assertions.
+- Add a test that verifies the "Already set up" message requires all three artifacts to be `exists`.
+
+7e. Run `npm test` to verify all tests pass.
+
+### 8. [x] Update the `--help` text in `src/cli/init/index.ts`
+
+Read: `coding-playbook/foundations/conventions.md`
+
+- The `--help` output on line 30 currently says `"Usage: npx @aidemd-mcp/server init\n"`. The `server` bin is removed, so this invocation no longer works. The CLI init entry point is now reachable via `node dist/cli/init/index.js` (for development) or not at all via npx (the init is primarily accessed through the `/aide:init` slash command in Claude Code). Update the usage text to: `"Usage: npx @aidemd-mcp/server init\n"` — wait, the `aidemd-mcp` bin still exists pointing to `dist/index.js`, and the `server` bin was the one routing to `dist/cli/init/index.js`. Since the init CLI is no longer a bin, update the help text to reflect that the CLI is an internal dev tool: `"Usage: node dist/cli/init/index.js\nWires the AIDE MCP server, init command, and aide-tree into the current project.\n"`.
+
+### 9. [x] Update the `.aide` spec at `src/cli/init/.aide`
+
+Read: `coding-playbook/foundations/conventions.md`
+
+- The Strategy section (line 58) contains a paragraph titled "Add a `server` bin entry to `package.json`..." — remove or replace it. The init CLI is no longer a bin entry; it is an internal script.
+- Update the References section (line 188) which mentions "current bin entries (`aidemd-mcp`, `aide-tree`) show no `server` entry exists yet" — this is stale. Replace with a note that only `aidemd-mcp` remains as a bin.
+- Update any examples that show `$ npx @aidemd-mcp/server init` to reflect the new invocation path.
+- Add a reference to the new `installAideTree` helper and the `.aide/bin/aide-tree.mjs` pattern.
+
+### 10. [x] Update `src/cli/.aide` to remove the bin-entry delivery model
+
+Read: `coding-playbook/foundations/conventions.md`
+
+- In `src/cli/.aide`, the desired outcomes include "Ships as a bin entry in the aidemd-mcp package so users get the command automatically when the MCP is installed — no separate install step." Update this to reflect the new delivery model: aide-tree ships as a launcher script written into the user's project during `aide_init`, resolving the installed package's TUI entry point at runtime.
+
+### 11. [x] Delete stale `todo.aide` from `src/cli/init/`
+
+Read: `coding-playbook/foundations/conventions.md`
+
+- Delete `src/cli/init/todo.aide` — it belongs to the completed prior cycle.
 
 ## Decisions
 
-**Extract `mcpEntry` as a named export from `wireMcp` rather than duplicating it.** The spec explicitly says the CLI must use the identical key and entry shape so that a subsequent `aide_init` MCP category step reports `exists`. Importing the same function is the only way to guarantee byte-identical entries. Adding a named export is non-breaking — `wireMcp`'s default export and tests are unaffected.
+**Remove all extra bins, keep only `aidemd-mcp`.** The `server` bin collides with other packages that also register a `server` binary, causing `npx @aidemd-mcp/server` to resolve the wrong one. The `aide-tree` bin was a development tool. Keeping a single bin (`aidemd-mcp` -> `dist/index.js`) eliminates the collision and simplifies the package's public surface.
 
-**Separate helpers (`writeMcpEntry`, `writeInitCommand`) rather than inline logic in the IIFE.** The orchestrator/helper pattern from progressive disclosure applies here: the orchestrator coordinates, helpers do focused work. This also makes each helper independently testable with real filesystem operations (temp dirs), while the orchestrator tests can mock helpers and focus on output formatting.
+**Distribute aide-tree as a launcher script written during `aide_init`, not as a bin or npm script.** The aide-tree TUI is a full React/Ink application with internal dependencies — it cannot be "copied" as source into the user's project. Instead, a thin `.aide/bin/aide-tree.mjs` Node launcher script is written into the user's project during init. This script uses `createRequire` to resolve the installed `@aidemd-mcp/server` package's `dist/cli/index.js` and executes it as a child process. Users can then run `node .aide/bin/aide-tree.mjs` locally. This follows the same canonical-content-via-`initContent` pattern used for commands, agents, and skills — the content lives in `DOC_PATHS`, is read by `readCanonicalDoc`, and is written by the `applySteps` machinery.
 
-**Direct imperative write, not reuse of `InitStep`/`applySteps` planning machinery.** The spec calls this out explicitly: the CLI is a direct script, not a two-call plan-then-apply pattern. The MCP tool's `applySteps` is designed for agent-mediated category walks. The CLI needs read-decide-write-print. Pulling in the planning types would couple the CLI to MCP-tool concerns it does not need.
+**Always emit `cmd /c` in `mcpEntry()`, dropping platform branching.** Claude Code handles the `cmd /c npx` form on all platforms. The platform branching added complexity for a distinction that doesn't matter in practice. The simple form avoids cross-platform `.mcp.json` sharing issues.
 
-**`cwd = process.cwd()` as the project root.** The CLI runs via `npx` in the user's project directory. There is no `--root` flag — the spec says no argument parsing beyond `--help`. This matches `npx` convention: the command operates on the directory it was invoked from.
+**Place aide-tree launcher at `.aide/bin/aide-tree.mjs`.** The `.aide/` directory is AIDE's territory in the user's project. Placing the launcher under `.aide/bin/` keeps tooling artifacts namespaced away from user code and signals that this file is managed by AIDE init, not authored by the user. The `.mjs` extension ensures ESM resolution works without requiring the host project to be `"type": "module"`.
 
-**Malformed JSON throws instead of returning a status.** The spec's error example shows a clear error message and exit 1. Since the orchestrator's try/catch converts throws into stderr + exit 1, the cleanest contract is for the helper to throw. This avoids a third status variant and keeps the happy path simple.
+**New `installAideTree` helper follows existing helper pattern exactly.** `scaffoldCommands`, `installSkills`, `installAgents` all follow the same plan-only pattern: check existence, read canonical content, return `InitStep` with `would-create` or `exists`. The new helper does the same, keeping the architecture consistent and letting `applySteps` handle the actual disk write.
 
-**Orchestrator testability via extracted core function.** The IIFE is the bin entry point with shebang, but the actual logic (call helpers, format output, decide exit) lives in a named function the IIFE calls. Tests import that function directly rather than spawning a child process, keeping tests fast and deterministic. The function accepts a `write` callback (defaulting to `process.stdout.write`) so tests can capture output without intercepting globals.
+**`writeAideTree` CLI helper follows `writeInitCommand` pattern exactly.** The CLI init's imperative write helpers (`writeMcpEntry`, `writeInitCommand`) handle the direct read-check-write flow. The new `writeAideTree` follows the same interface (`status: "created" | "exists"`, `message: string`) so the orchestrator treats all three artifacts uniformly.
+
+**Update `.aide` specs to reflect reality, not aspirations.** The parent intent spec says "aspirational docs are worse than missing docs because missing docs don't lie." The `src/cli/init/.aide` Strategy paragraph about adding a `server` bin is now stale and must be updated. The `src/cli/.aide` desired outcome about shipping as a bin entry must reflect the new launcher-script delivery model.

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir, platform } from "node:os";
+import { tmpdir } from "node:os";
 import init from "./index.js";
 import applySteps from "./applySteps/index.js";
 import type { InitResult, InitStep } from "@/types/index.js";
@@ -19,9 +19,7 @@ async function pathExists(p: string): Promise<boolean> {
 // Clean up AIDE_BRAIN_PATH after each test to avoid cross-test pollution
 const originalBrainPath = process.env.AIDE_BRAIN_PATH;
 
-const expectedAideMcpEntry = platform() === "win32"
-	? { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }
-	: { command: "npx", args: ["@aidemd-mcp/server"] };
+const expectedAideMcpEntry = { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] };
 
 let tempDir: string;
 

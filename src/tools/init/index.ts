@@ -10,6 +10,7 @@ import installMethodologyDocs from "./installMethodologyDocs/index.js";
 import scaffoldCommands from "./scaffoldCommands/index.js";
 import installAgents from "./installAgents/index.js";
 import installSkills from "./installSkills/index.js";
+import installAideTree from "./installAideTree/index.js";
 import wireMcp from "./wireMcp/index.js";
 import provisionBrain from "./provisionBrain/index.js";
 
@@ -64,6 +65,7 @@ export default async function init(
 	const commandSteps = await scaffoldCommands(join(projectRoot, config.commandDir));
 	const agentSteps = await installAgents(join(projectRoot, config.agentDir));
 	const skillSteps = await installSkills(join(projectRoot, config.skillDir));
+	const aideTreeSteps = await installAideTree(projectRoot);
 	const mcpStep = await wireMcp(join(projectRoot, config.mcpConfigPath));
 
 	// Brain steps require a confirmed vault path. When brainPath is explicitly
@@ -97,6 +99,7 @@ export default async function init(
 		...commandSteps,
 		...agentSteps,
 		...skillSteps,
+		...aideTreeSteps,
 		mcpStep,
 		...brainSteps,
 		zedStep,

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir, platform } from "node:os";
+import { tmpdir } from "node:os";
 import writeMcpEntry from "./index.js";
 import { mcpEntry } from "@/tools/init/wireMcp/index.js";
 
@@ -28,18 +28,16 @@ describe("writeMcpEntry", () => {
 		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
 	});
 
-	it("uses platform-specific entry shape", async () => {
+	it("uses the cmd /c npx entry shape", async () => {
 		await writeMcpEntry(tempDir);
 
 		const written = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		const parsed = JSON.parse(written);
 
-		const expectedEntry =
-			platform() === "win32"
-				? { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }
-				: { command: "npx", args: ["@aidemd-mcp/server"] };
-
-		expect(parsed.mcpServers.aide).toEqual(expectedEntry);
+		expect(parsed.mcpServers.aide).toEqual({
+			command: "cmd",
+			args: ["/c", "npx", "@aidemd-mcp/server"],
+		});
 	});
 
 	it("preserves existing server entries and adds only aide when merging", async () => {
