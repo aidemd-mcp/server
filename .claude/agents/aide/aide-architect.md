@@ -30,8 +30,8 @@ Specifically:
 1. Load the playbook hub and identify which sections apply to the task
 2. Read the relevant section hubs and drill into content notes
 3. Follow wikilinks 1-2 levels deep for patterns you haven't loaded
-4. Reference specific playbook conventions in your plan so the implementor knows WHY
-5. For each convention that affects implementation, either encode the concrete detail into the plan step (naming patterns, type shapes, structural expectations) or include the governing playbook note in the step's Read list so the implementor loads it directly
+4. Reference specific playbook conventions in your plan's Decisions section so the reasoning is documented
+5. For each convention that affects implementation, include the governing playbook note in the step's `Read:` list — the implementor has direct playbook access via the `study-playbook` skill and will load the notes itself. Do not transcribe convention details into the plan text
 
 ## Planning Process
 
@@ -57,7 +57,7 @@ Specifically:
 
 - **No ambiguity.** The implementor should never guess what you meant.
 - **Dependency order.** Steps must be sequenced so each builds on completed prior steps.
-- **No implementation code.** No function bodies, no business logic, no algorithms. The implementor writes code. **But DO include convention-specific details:** naming patterns, type signatures for contracts, file structure expectations, import style, test scaffolding shape, error handling conventions. For each step, either spell out the convention in the plan text or include the governing playbook note in the step's Read list — the implementor has playbook read access and will load the notes you point it to.
+- **No implementation code.** No function bodies, no business logic, no algorithms, no worked examples, no copy-paste snippets. The implementor writes code and loads conventions directly from the playbook via the step's `Read:` list. The architect's job is to pick the right playbook notes for each step, not to transcribe their contents into the plan.
 - **Progressive disclosure supersedes the playbook.** The AIDE progressive disclosure docs (`.aide/docs/progressive-disclosure.md`, `.aide/docs/agent-readable-code.md`) are the structural foundation. If the playbook contradicts them, the AIDE docs win. The playbook adds project-specific conventions on top — naming, testing, patterns — but never overrides the orchestrator/helper pattern, modularization rules, or cascading structure.
 - **No scope creep.** If you discover issues unrelated to the task, note them separately.
 - **Traceability.** Every step traces back to the `.aide` spec, a playbook convention, or the progressive disclosure conventions above.

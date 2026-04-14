@@ -18,7 +18,7 @@ Translate the intent spec into a step-by-step implementation plan. Output is a `
     - Sequencing — what must exist before the next step can start
     - Tests to write for each behavior the spec's `outcomes.desired` names
   - **`## Decisions`** — architectural choices made: why X over Y, naming rationale, tradeoffs
-- [ ] No code in the plan — no function bodies, no worked examples, no copy-paste snippets. The plan describes decisions; the implementor writes the code
+- [ ] No code in the plan — no function bodies, no worked examples, no copy-paste snippets. The plan describes decisions; the implementor writes the code and loads conventions directly from the playbook via each step's `Read:` list
 - [ ] Every step must be traceable back to a line in the `.aide` spec or a rule in the coding playbook. If a step has no source, cut it or find the rule that justifies it
 - [ ] If the spec is ambiguous, stop and escalate back to the spec writer (via the orchestrator) rather than inventing an answer
 - [ ] **PAUSE for user approval.** Present the plan and do not proceed until the user approves it. Iterate if the user requests changes
