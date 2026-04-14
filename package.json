@@ -32,7 +32,9 @@
 		"README.md",
 		".aide",
 		".aide/bin",
-		".claude/commands/aide"
+		".claude/commands/aide",
+		".claude/agents/aide",
+		".claude/skills"
 	],
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.12.1",
