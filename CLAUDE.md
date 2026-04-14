@@ -19,3 +19,12 @@ the authoritative source, and any decision that disagrees with them is
 wrong by definition.
 
 <!-- aide-methodology -->
+
+## Fixes Go in Canonical Docs, Not Memory
+
+This project ships agent definitions (`.claude/agents/`), command prompts (`.claude/commands/`), and methodology docs (`.aide/docs/`) that get installed into other projects. When you discover a behavioral fix, pattern, or constraint that should apply to all agents or all projects using AIDE:
+
+- **Write it into the canonical source** — the agent definition, command prompt, or methodology doc that governs the behavior.
+- **Do NOT save it as a feedback memory.** Memory is private to this machine. Canonical docs ship with the package and apply everywhere.
+
+The test: "Will other projects benefit from this fix?" If yes → canonical doc. If it's purely about how *this user* wants to interact → memory.

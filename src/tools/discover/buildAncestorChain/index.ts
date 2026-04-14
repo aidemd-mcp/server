@@ -83,7 +83,7 @@ export default async function buildAncestorChain(root: string, targetPath: strin
 		if (!spec) continue;
 
 		const { frontmatter } = parseFrontmatter(spec.content);
-		const description = frontmatter?.description;
+		const description = frontmatter?.description || (frontmatter?.intent ? frontmatter.intent.split(/[.\n]/)[0] : undefined);
 		const status = frontmatter?.status;
 
 		// Compute a display path relative to the project root
