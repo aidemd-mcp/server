@@ -37,7 +37,7 @@ The orchestrator owns the user conversation. Your job is to take the context it 
 4. Leave body sections (`## Context`, `## Strategy`, `## Good examples`, `## Bad examples`) as empty placeholders
 5. No code in the spec — no file paths, no type signatures, no function names
 6. Every `outcomes` entry must trace back to the `intent` paragraph
-7. **Quote outcomes that contain colons.** Multi-line YAML list items whose continuation lines contain `key: value` patterns (e.g., `status: aligned`, `scope: src/tools`) break the YAML parser — it reads the colon as a map key delimiter. Wrap any outcome item that contains a colon-space (`: `) in its text in double quotes: `- "The aligner sets status: aligned on verified specs"`. Single-line items without colons don't need quoting.
+7. **Quote any YAML list item containing `: ` (colon-space).** The YAML parser treats `: ` as a mapping key delimiter even inside what looks like plain text — backtick code spans like `` `scope: path` `` or prose like `sets status: aligned` will break parsing. Wrap the entire item in double quotes whenever its text contains `: ` anywhere: `- "Render scope: path inline in the ancestor chain"`. This applies to all `outcomes.desired` and `outcomes.undesired` entries. When in doubt, quote.
 
 ## Return Format
 

@@ -26,7 +26,7 @@ intent: >
   and prior builds are invalidated.
 outcomes:
   desired:
-    - <One concrete, observable success criterion. Describe what the module's output must achieve for the intent to be satisfied. Keep it specific — every extra entry dilutes the intent, so aim for the minimum set that fully expresses success. 2-5 bullets is usually right.>
+    - <One concrete, observable success criterion. Describe what the module's output must achieve for the intent to be satisfied. Keep it specific — every extra entry dilutes the intent, so aim for the minimum set that fully expresses success. 2-5 bullets is usually right. YAML rule: if any item's text contains a colon followed by a space (`: `), wrap the entire item in double quotes to prevent YAML parse errors.>
     - <Success criteria are what the QA agent compares actual output against. Write them so they are falsifiable: a reviewer should be able to look at a real output and say yes or no without hedging.>
     - <If a criterion has a measurable threshold (a rate, a count, a length), state it. If it's qualitative, state the quality in terms concrete enough to judge.>
   undesired:

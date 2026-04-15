@@ -107,6 +107,8 @@ The canonical template lives at [AIDE Template](./aide-template.md). Agents shou
 
 `intent` states the purpose; `outcomes` is the intent-engineering contract that operationalizes it — desired is the target, undesired is the tripwire. Both outcome lists are two sides of the same declaration, and both must serve the intent above them.
 
+**YAML safety rule for outcomes:** Any `outcomes.desired` or `outcomes.undesired` list item whose text contains a colon followed by a space (`: `) must be wrapped in double quotes. YAML treats `: ` as a mapping key delimiter even inside plain scalars — backtick code spans like `` `scope: path` `` or prose like `sets status: aligned` will silently break frontmatter parsing, causing all fields to appear missing to tooling. When in doubt, quote the item.
+
 ### Cascading intent tree
 
 The **cascading intent tree** (or **intent tree**) is the hierarchy of `.aide` specs from `.aide/intent.aide` at the project root down to the deepest module-level spec. Intent flows downward: each child spec inherits everything above it and narrows it to the slice of the problem it owns. An agent navigating the intent tree reads from root to leaf — the full chain gives the complete context for any module.
