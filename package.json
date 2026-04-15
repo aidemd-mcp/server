@@ -12,7 +12,8 @@
 		"prepublishOnly": "rm -rf dist && npm run build",
 		"dev": "tsc --watch",
 		"test": "vitest run",
-		"export-pdf": "tsx scripts/export-pdf.ts"
+		"export-pdf": "tsx scripts/export-pdf.ts",
+		"tree": "tsx src/cli/index.tsx"
 	},
 	"keywords": [
 		"mcp",
