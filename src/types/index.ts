@@ -46,6 +46,8 @@ export interface AideFile {
 	description?: string;
 	/** Alignment status from frontmatter — present only when explicitly set. */
 	status?: "aligned" | "misaligned";
+	/** YAML parse error message — present only when frontmatter failed to parse. */
+	parseError?: string;
 }
 
 /** Result of scanning a directory tree for .aide files. */
@@ -65,7 +67,8 @@ export interface ValidationWarning {
 		| "naming-conflict"
 		| "broken-link"
 		| "orphaned-research"
-		| "missing-description";
+		| "missing-description"
+		| "parse-error";
 	/** Path relative to project root where the issue was found. */
 	path: string;
 	/** Human-readable description of the issue. */

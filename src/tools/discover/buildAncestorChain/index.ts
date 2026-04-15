@@ -82,7 +82,7 @@ export default async function buildAncestorChain(root: string, targetPath: strin
 		const spec = await resolveSpec(dir);
 		if (!spec) continue;
 
-		const { frontmatter } = parseFrontmatter(spec.content);
+		const { frontmatter, parseError } = parseFrontmatter(spec.content);
 		const description = frontmatter?.description || (frontmatter?.intent ? frontmatter.intent.split(/[.\n]/)[0] : undefined);
 		const status = frontmatter?.status;
 
@@ -97,6 +97,9 @@ export default async function buildAncestorChain(root: string, targetPath: strin
 		// Status badge renders whenever set, regardless of whether description is present
 		if (status === "aligned" || status === "misaligned") {
 			line += ` [${status}]`;
+		}
+		if (parseError) {
+			line += ` ⚠ YAML parse error: ${parseError}`;
 		}
 		// If no description and no status, show path alone (no em-dash, no fabrication)
 

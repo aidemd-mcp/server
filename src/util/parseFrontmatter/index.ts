@@ -5,6 +5,8 @@ import type { AideFrontmatter } from "@/types/index.js";
 export interface ParseFrontmatterResult {
 	frontmatter: AideFrontmatter | null;
 	body: string;
+	/** When YAML parsing fails, contains the parser error message. */
+	parseError?: string;
 }
 
 /** Extract the YAML block between the first pair of `---` delimiters. Returns null when no block is found. */
@@ -61,8 +63,12 @@ export default function parseFrontmatter(raw: string): ParseFrontmatterResult {
 	let parsed: unknown;
 	try {
 		parsed = parse(block.yaml);
-	} catch {
-		return { frontmatter: null, body: raw };
+	} catch (err) {
+		return {
+			frontmatter: null,
+			body: raw,
+			parseError: err instanceof Error ? err.message : String(err),
+		};
 	}
 
 	return {

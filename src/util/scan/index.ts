@@ -94,15 +94,17 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 		let summary = "";
 		let description = "";
 		let status: "aligned" | "misaligned" | undefined;
+		let parseError: string | undefined;
 
 		const type = classifyFile(entry.name);
 
 		if (!shallow) {
 			try {
 				const buf = await readFile(fullPath, { encoding: "utf-8" });
-				const { frontmatter } = parseFrontmatter(buf);
-				description = deriveDescription(frontmatter);
-				if (frontmatter?.status) status = frontmatter.status;
+				const result = parseFrontmatter(buf);
+				description = deriveDescription(result.frontmatter);
+				if (result.frontmatter?.status) status = result.frontmatter.status;
+				if (result.parseError) parseError = result.parseError;
 
 				if (type === "plan" || type === "todo") {
 					const { done, total } = countCheckboxes(buf);
@@ -140,6 +142,7 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 			summary,
 			description,
 			status,
+			parseError,
 		});
 	}
 }

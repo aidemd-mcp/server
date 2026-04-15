@@ -60,8 +60,14 @@ export default async function validate(root: string, path?: string): Promise<Val
 			const linkWarnings = await checkBrokenLinks(file.path, content, file.relativePath);
 			warnings.push(...linkWarnings);
 
-			const { frontmatter } = parseFrontmatter(content);
-			if (!frontmatter?.description) {
+			const { frontmatter, parseError } = parseFrontmatter(content);
+			if (parseError) {
+				warnings.push({
+					kind: "parse-error",
+					path: file.relativePath,
+					message: `YAML frontmatter parse error: ${parseError}`,
+				});
+			} else if (!frontmatter?.description) {
 				warnings.push({
 					kind: "missing-description",
 					path: file.relativePath,

@@ -60,7 +60,8 @@ export default function buildTree(files: AideFile[], root: string): string {
 					? file.description || ""
 					: file.summary || "";
 			const summary = label ? ` — ${label}` : "";
-			lines.push(`  ${connector} ${name} ${tag}${summary}`);
+			const parseWarn = file.parseError ? ` ⚠ YAML parse error: ${file.parseError}` : "";
+			lines.push(`  ${connector} ${name} ${tag}${summary}${parseWarn}`);
 		}
 
 		if (d < sortedDirs.length - 1) lines.push("");
