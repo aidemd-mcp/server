@@ -1,0 +1,27 @@
+---
+description: >
+  Two issues found during QA of the shallow-scan description fix: the extractShallowFields fallback path has zero test coverage, and the shallow-mode readFile loads the full file before slicing.
+intent: >
+  Realign the scan implementation and tests so that the extractShallowFields
+  regression path is covered by at least one test that forces parseFrontmatter
+  to return null, and so the doc comment accurately describes what the code does.
+misalignment:
+  - test-gap
+  - implementation-drift
+---
+
+## Issues
+
+- [x] `src/util/scan/index.ts:121-133` — `readFile` loads the entire file before `buf.slice(0, 500)`. The doc comment claims "reads only the first ~500 bytes to keep startup fast", but every file is fully read into memory then truncated. For large projects with large intent specs, this negates the performance claim entirely.
+  Traces to: no named outcome in the spec (utility module, no spec), but the doc comment is the contract and it is false.
+  Misalignment: implementation-drift
+
+- [x] `src/util/scan/index.test.ts` — `extractShallowFields` is never invoked by any test. All shallow-mode tests supply frontmatter short enough for `parseFrontmatter` to succeed (closing `---` appears well within 500 bytes). The fix was written to handle the case where parseFrontmatter returns null, but that branch has zero test coverage. A regression that deletes `extractShallowFields` entirely would leave all 426 tests green.
+  Traces to: the fix description ("When parseFrontmatter returns null, fall back to regex extraction") — the scenario being fixed is not exercised.
+  Misalignment: test-gap
+
+## Retro
+
+Both issues would have been caught at the plan stage if a test plan had been written alongside the implementation plan. The test gap in particular is a structural failure: the fix description explicitly names the fallback path as the fix, yet no test was planned that forces parseFrontmatter to return null. Adding a checklist item "write a test where frontmatter YAML block does not close within 500 bytes" to plan.aide would have caught this before implementation landed.
+
+The performance issue would have been caught by a code-review checklist item: "does the implementation match every claim in the doc comment?". The readFile call and the "reads only ~500 bytes" comment are one line apart and contradict each other — a reviewer asking "is this actually lazy?" would have seen it immediately.

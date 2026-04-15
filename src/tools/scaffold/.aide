@@ -1,5 +1,6 @@
 ---
 scope: src/tools/scaffold
+status: aligned
 description: >
   Naming-enforcement tool that creates .aide files with correct filenames and applies the auto-rename rule when research enters a folder so agents cannot corrupt the spec layout.
 intent: >

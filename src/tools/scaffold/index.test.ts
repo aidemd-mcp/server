@@ -72,6 +72,26 @@ describe("scaffold", () => {
 
 		const content = await readFile(join(tempDir, "todo.aide"), "utf-8");
 		expect(content).toContain("QA Re-alignment Document");
+		expect(content).toContain("description:");
+	});
+
+	it("intent template includes frontmatter with description and scope", async () => {
+		await scaffold(tempDir, ".", "intent");
+
+		const content = await readFile(join(tempDir, ".aide"), "utf-8");
+		expect(content).toContain("---");
+		expect(content).toContain("scope:");
+		expect(content).toContain("description:");
+		expect(content).toContain("intent:");
+		expect(content).toContain("outcomes:");
+	});
+
+	it("plan template includes frontmatter with description", async () => {
+		await scaffold(tempDir, ".", "plan");
+
+		const content = await readFile(join(tempDir, "plan.aide"), "utf-8");
+		expect(content).toContain("---");
+		expect(content).toContain("description:");
 	});
 
 	it("creates directory if it does not exist", async () => {

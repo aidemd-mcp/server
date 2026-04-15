@@ -112,8 +112,7 @@ async function walk(dir: string, root: string, files: AideFile[], shallow: boole
 				// skip unreadable files
 			}
 		} else {
-			// In shallow mode, read only the first ~500 bytes to capture frontmatter
-			// without loading the full body — keeps startup fast for large projects.
+			// In shallow mode, read the full file but parse only the first 500 bytes.
 			// Intent specs often have frontmatter >3 KB (scope, description, intent,
 			// outcomes), so the 500-byte head may not contain the closing `---`.
 			// When parseFrontmatter returns null, fall back to regex extraction.

@@ -9,17 +9,35 @@ export const ScaffoldInput = z.object({
 		.describe("Type of .aide file to create (intent, research, both, todo, or plan)"),
 });
 
-const INTENT_TEMPLATE = `# Intent Spec
+const INTENT_TEMPLATE = `---
+scope: <module path>
+description: <one-line purpose statement>
+intent: >
+  <what this module does and the conditions of success>
+outcomes:
+  desired:
+    - <observable success criterion>
+  undesired:
+    - <failure mode that looks correct but violates the intent>
+---
+
+## Context
+
+
 
 ## Strategy
 
 
 
-## Implementation Contract
+## Good examples
 
 
 
-## Anti-Patterns
+## Bad examples
+
+
+
+## References
 
 `;
 
@@ -37,14 +55,21 @@ const RESEARCH_TEMPLATE = `# Research
 
 `;
 
-const TODO_TEMPLATE = `# QA Re-alignment Document
+const TODO_TEMPLATE = `---
+description: >
+  <one-line summary of what QA found>
+---
+
+# QA Re-alignment Document
 
 - [ ]
 `;
 
 const PLAN_TEMPLATE = `---
+description: >
+  <one-line summary of what this plan implements>
 intent: >
-
+  <what this plan achieves and why>
 ---
 
 ## Plan

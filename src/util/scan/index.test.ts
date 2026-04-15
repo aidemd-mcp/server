@@ -316,4 +316,26 @@ status: aligned
 
 		expect(result.files[0].status).toBe("aligned");
 	});
+
+	it("extracts description via regex fallback when frontmatter closing --- is beyond 500 bytes", async () => {
+		// Build a frontmatter block where the closing `---` does not appear within
+		// the first 500 bytes. parseFrontmatter will return null for the sliced head,
+		// forcing the extractShallowFields regex path to run.
+		const padding = "x".repeat(450);
+		const content = `---
+description: Fallback description via regex
+scope: ${padding}
+---
+
+## Body
+
+This is the body text.
+`;
+
+		await writeFile(join(tempDir, ".aide"), content);
+
+		const result = await scan(tempDir, undefined, true);
+
+		expect(result.files[0].description).toBe("Fallback description via regex");
+	});
 });
