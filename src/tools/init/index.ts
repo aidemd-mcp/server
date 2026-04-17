@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { existsSync } from "node:fs";
 import { join, isAbsolute, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { FrameworkType, InitResult } from "@/types/index.js";
+import type { FrameworkType, InitResult, InitStep } from "@/types/index.js";
+import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import detectFramework from "@/tools/init/detectFramework/index.js";
 import resolveBrainHints from "@/tools/init/resolveBrainHints/index.js";
 import { configureZed, configureVscode } from "@/tools/init/configureIde/index.js";
@@ -89,6 +91,20 @@ export default async function init(
 		];
 	}
 
+	// ── versions.json ────────────────────────────────────────────────────────
+	// Deliver the static versions manifest alongside the methodology docs so
+	// both aide_init and aide_upgrade give the host the same artifact.
+	const versionsHostPath = join(projectRoot, dirname(config.docHubDir), "versions.json");
+	const versionsManifest = readVersionsManifest();
+	const versionsJson = JSON.stringify(versionsManifest, null, 2) + "\n";
+	const versionsStep: InitStep = {
+		name: "versions.json",
+		status: existsSync(versionsHostPath) ? "exists" : "would-create",
+		category: "methodology",
+		filePath: versionsHostPath,
+		...(existsSync(versionsHostPath) ? {} : { content: versionsJson }),
+	};
+
 	const extensionsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "extensions", "vscode");
 	const zedStep = await configureZed(projectRoot);
 	const vscodeStep = await configureVscode(extensionsDir);
@@ -96,6 +112,7 @@ export default async function init(
 	const steps = [
 		methodologyStep,
 		...docSteps,
+		versionsStep,
 		...commandSteps,
 		...agentSteps,
 		...skillSteps,

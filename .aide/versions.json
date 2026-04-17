@@ -1,0 +1,167 @@
+{
+  "docs/index": {
+    "publishedAt": "2026-04-14T13:57:05-07:00",
+    "sourceCommit": "164d27e",
+    "previousCommit": "027f166"
+  },
+  "docs/aide-spec": {
+    "publishedAt": "2026-04-15T14:30:49-07:00",
+    "sourceCommit": "86ec0dc",
+    "previousCommit": "b859854"
+  },
+  "docs/aide-template": {
+    "publishedAt": "2026-04-15T14:30:49-07:00",
+    "sourceCommit": "86ec0dc",
+    "previousCommit": "d89d3cd"
+  },
+  "docs/progressive-disclosure": {
+    "publishedAt": "2026-04-12T00:13:27-07:00",
+    "sourceCommit": "ccba506",
+    "previousCommit": "2d6ecdd"
+  },
+  "docs/agent-readable-code": {
+    "publishedAt": "2026-04-12T00:13:27-07:00",
+    "sourceCommit": "ccba506",
+    "previousCommit": "2d6ecdd"
+  },
+  "docs/automated-qa": {
+    "publishedAt": "2026-04-11T20:06:53-07:00",
+    "sourceCommit": "c32e887",
+    "previousCommit": "2d6ecdd"
+  },
+  "docs/plan-aide": {
+    "publishedAt": "2026-04-13T17:55:11-07:00",
+    "sourceCommit": "c450780",
+    "previousCommit": "027f166"
+  },
+  "docs/todo-aide": {
+    "publishedAt": "2026-04-13T13:47:06-07:00",
+    "sourceCommit": "b859854",
+    "previousCommit": "c32e887"
+  },
+  "docs/cascading-alignment": {
+    "publishedAt": "2026-04-13T17:15:54-07:00",
+    "sourceCommit": "027f166",
+    "previousCommit": "d89d3cd"
+  },
+  "commands/aide/aide": {
+    "publishedAt": "2026-04-14T13:28:42-07:00",
+    "sourceCommit": "1a5d2e8",
+    "previousCommit": "027f166"
+  },
+  "commands/aide/research": {
+    "publishedAt": "2026-04-13T17:49:55-07:00",
+    "sourceCommit": "ba5179e",
+    "previousCommit": "b859854"
+  },
+  "commands/aide/spec": {
+    "publishedAt": "2026-04-13T17:49:55-07:00",
+    "sourceCommit": "ba5179e",
+    "previousCommit": "b859854"
+  },
+  "commands/aide/synthesize": {
+    "publishedAt": "2026-04-13T17:49:55-07:00",
+    "sourceCommit": "ba5179e",
+    "previousCommit": "b859854"
+  },
+  "commands/aide/plan": {
+    "publishedAt": "2026-04-13T17:55:11-07:00",
+    "sourceCommit": "c450780",
+    "previousCommit": "ba5179e"
+  },
+  "commands/aide/build": {
+    "publishedAt": "2026-04-13T17:49:55-07:00",
+    "sourceCommit": "ba5179e",
+    "previousCommit": "d89d3cd"
+  },
+  "commands/aide/qa": {
+    "publishedAt": "2026-04-13T17:49:55-07:00",
+    "sourceCommit": "ba5179e",
+    "previousCommit": "d89d3cd"
+  },
+  "commands/aide/fix": {
+    "publishedAt": "2026-04-13T17:49:55-07:00",
+    "sourceCommit": "ba5179e",
+    "previousCommit": "d89d3cd"
+  },
+  "commands/aide/upgrade": {
+    "publishedAt": "2026-04-12T15:40:55-07:00",
+    "sourceCommit": "d6a3b78",
+    "previousCommit": "cc881ec"
+  },
+  "commands/aide/init": {
+    "publishedAt": "2026-04-12T15:15:14-07:00",
+    "sourceCommit": "a9e55a4",
+    "previousCommit": "cc881ec"
+  },
+  "commands/aide/update-playbook": {
+    "publishedAt": "2026-04-12T20:45:51-07:00",
+    "sourceCommit": "0c4ce96"
+  },
+  "commands/aide/refactor": {
+    "publishedAt": "2026-04-13T17:49:55-07:00",
+    "sourceCommit": "ba5179e",
+    "previousCommit": "1be5576"
+  },
+  "commands/aide/align": {
+    "publishedAt": "2026-04-13T17:49:55-07:00",
+    "sourceCommit": "ba5179e",
+    "previousCommit": "d89d3cd"
+  },
+  "agents/aide/aide-spec-writer": {
+    "publishedAt": "2026-04-15T14:30:49-07:00",
+    "sourceCommit": "86ec0dc",
+    "previousCommit": "9e81e3a"
+  },
+  "agents/aide/aide-domain-expert": {
+    "publishedAt": "2026-04-13T13:47:06-07:00",
+    "sourceCommit": "b859854",
+    "previousCommit": "d89d3cd"
+  },
+  "agents/aide/aide-strategist": {
+    "publishedAt": "2026-04-13T13:47:06-07:00",
+    "sourceCommit": "b859854",
+    "previousCommit": "d89d3cd"
+  },
+  "agents/aide/aide-architect": {
+    "publishedAt": "2026-04-13T17:55:11-07:00",
+    "sourceCommit": "c450780",
+    "previousCommit": "027f166"
+  },
+  "agents/aide/aide-implementor": {
+    "publishedAt": "2026-04-13T17:15:54-07:00",
+    "sourceCommit": "027f166",
+    "previousCommit": "d89d3cd"
+  },
+  "agents/aide/aide-qa": {
+    "publishedAt": "2026-04-13T09:52:38-07:00",
+    "sourceCommit": "d89d3cd",
+    "previousCommit": "ccba506"
+  },
+  "agents/aide/aide-auditor": {
+    "publishedAt": "2026-04-13T09:52:38-07:00",
+    "sourceCommit": "d89d3cd",
+    "previousCommit": "658958c"
+  },
+  "agents/aide/aide-aligner": {
+    "publishedAt": "2026-04-13T09:52:38-07:00",
+    "sourceCommit": "d89d3cd"
+  },
+  "agents/aide/aide-explorer": {
+    "publishedAt": "2026-04-14T13:28:42-07:00",
+    "sourceCommit": "1a5d2e8"
+  },
+  "skills/study-playbook": {
+    "publishedAt": "2026-04-12T20:45:51-07:00",
+    "sourceCommit": "0c4ce96",
+    "previousCommit": "ccba506"
+  },
+  "skills/brain": {
+    "publishedAt": "2026-04-13T07:50:33-07:00",
+    "sourceCommit": "0682bfb"
+  },
+  "bin/aide-tree": {
+    "publishedAt": "2026-04-13T21:28:10-07:00",
+    "sourceCommit": "2cb8528"
+  }
+}

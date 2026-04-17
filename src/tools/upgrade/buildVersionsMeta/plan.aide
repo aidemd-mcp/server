@@ -1,63 +1,191 @@
 ---
 scope: src/tools/upgrade/buildVersionsMeta
 type: plan
-description: >
-  Plan for building the buildVersionsMeta helper that queries git log for each methodology doc and integrates the resulting versions.json into the upgrade orchestrator.
+intent: >
+  Rewrite buildVersionsMeta from a runtime git-log helper (docs-only) into a
+  build-time script that generates a static versions.json manifest covering
+  every deliverable artifact category, shipped inside the published npm package.
 ---
 
-## Implementation Plan
+## Plan
 
-### Step 1: Create the buildVersionsMeta helper
+### Step 1: Create the build script enumerateArtifacts helper
 
-File: `src/tools/upgrade/buildVersionsMeta/index.ts`
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
 
-- [x] Define `VersionMeta` interface: `{ publishedAt: string; sourceCommit: string; previousCommit?: string }`
-- [x] Define `VersionsMap` type: `Record<string, VersionMeta>`
-- [x] Export default async function `buildVersionsMeta()` that:
-  1. Resolves `REPO_ROOT` from `import.meta.url` (same 4-hop pattern as `initContent`)
-  2. Iterates `listMethodologyDocs()` from initContent
-  3. For each doc, derives the slug from `hostFilename` (strip `.md`)
-  4. Runs `git log --follow --format="%H %aI" -n 2 -- .aide/docs/<hostFilename>` with `cwd: REPO_ROOT`
-  5. Parses stdout lines: line 0 = latest commit (SHA + timestamp), line 1 = previous commit if exists
-  6. Builds `VersionMeta` entry: `publishedAt` from timestamp, `sourceCommit` as first 7 chars of SHA, `previousCommit` as first 7 chars of prior SHA (omit field if no prior)
-  7. Skips slugs where git log returns empty (uncommitted file)
-  8. Returns the assembled `VersionsMap`
-- [x] Wrap the git exec in try/catch — if git is unavailable, return `{}`
-- [x] Use `execFile` (not `exec`) via `promisify` for safety — same pattern as upgrade/index.ts
+Create `src/tools/upgrade/buildVersionsMeta/enumerateArtifacts/index.ts`.
 
-### Step 2: Integrate into upgrade orchestrator
+This helper returns a flat array of `{ slug: string; repoPath: string }` entries
+covering every deliverable artifact across all categories. The slug is the
+namespaced key that will appear in versions.json. The repoPath is the
+repo-relative path used in the `git log` command.
 
-File: `src/tools/upgrade/index.ts`
+Source registries to enumerate (all imported from existing modules):
+- `listMethodologyDocs()` from `@/tools/init/initContent/index.js` — slug pattern: `docs/<hostFilename without .md>`, repoPath: `.aide/docs/<hostFilename>`
+- `COMMANDS` from `@/tools/init/scaffoldCommands/index.js` — slug pattern: `commands/<canonical>`, repoPath: use `DOC_PATHS[canonical]` (must be exported or re-derived). Since `DOC_PATHS` is private to initContent, the repoPath must be derived: the canonical name in COMMANDS already maps to a repo path via `readCanonicalDoc` internals, but we need the path not the content. Add a new export `getCanonicalPath(name: CanonicalDocName): string` to initContent that returns the repo-relative path from `DOC_PATHS`. This avoids duplicating the path registry.
+- `listAgents()` from `@/tools/init/initContent/index.js` — slug pattern: `agents/<canonical>`, repoPath via `getCanonicalPath()`
+- `listSkills()` from `@/tools/init/initContent/index.js` — slug pattern: `skills/<canonical>`, repoPath via `getCanonicalPath()`
+- `bin/aide-tree` — slug: `bin/aide-tree`, repoPath: `.aide/bin/aide-tree.mjs`
+- Extensions (vscode vsix) — slug: `extensions/vscode/aide-markdown`, repoPath: `extensions/vscode/aide-markdown-0.0.1.vsix`. Note: this is a binary file but git log still tracks it.
 
-- [x] Import `buildVersionsMeta` from `./buildVersionsMeta/index.js`
-- [x] After phase B (methodology docs loop), add phase B2:
-  1. Call `await buildVersionsMeta()`
-  2. Serialize result as `JSON.stringify(versionsMap, null, 2) + "\n"`
-  3. Write to `join(docHubAbsolute, "versions.json")` via `compareFile(hostPath, content, confirm)`
-  4. Push result to `results` array with name `${config.docHubDir}/versions.json`
-- [x] Add "versions.json" to the methodology docs category in the dry-run warning logic (it's a methodology artifact, so it should be grouped with docs)
+Interface to export:
+```
+export interface ArtifactEntry { slug: string; repoPath: string; }
+```
 
-### Step 3: Write tests for buildVersionsMeta
+Default export: `enumerateArtifacts(): ArtifactEntry[]` (synchronous, no I/O).
 
-File: `src/tools/upgrade/buildVersionsMeta/index.test.ts`
+Sub-step 1a: Add `getCanonicalPath` export to `src/tools/init/initContent/index.ts`. This is a one-line function that indexes into `DOC_PATHS` and returns the value. It must be added in this same step because `enumerateArtifacts` depends on it.
 
-- [x] Test: returns correct VersionMeta when git log returns two commits
-- [x] Test: omits previousCommit when git log returns only one commit
-- [x] Test: omits slug when git log returns empty output (uncommitted file)
-- [x] Test: returns empty object when git command fails (git not available)
+Sub-step 1b: Create the `enumerateArtifacts` helper as described above.
 
-### Step 4: Update upgrade orchestrator tests
+### Step 2: Rewrite buildVersionsMeta as a build-time script
 
-File: `src/tools/upgrade/index.test.ts`
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/workflow/testing`
 
-- [x] Add mock for `buildVersionsMeta` module
-- [x] Verify versions.json appears in dry-run output with correct status
-- [x] Verify versions.json appears in confirm output
-- [x] Verify versions.json is counted in the "methodology docs" warning category
+Rewrite `src/tools/upgrade/buildVersionsMeta/index.ts` to be a build-time
+script (invoked by `tsx` from a package.json script), not an importable
+runtime helper.
 
-### Decisions
+The rewritten module:
+- Imports `enumerateArtifacts` from `./enumerateArtifacts/index.js`
+- Resolves `REPO_ROOT` the same way as before (4-hop walk from `import.meta.url`)
+- For each artifact entry, runs `git log --follow --format="%H %aI" -n 2 -- <repoPath>` with `cwd: REPO_ROOT`
+- Parses stdout into `VersionMeta` (same shape: `publishedAt`, `sourceCommit`, `previousCommit?`)
+- Assembles a `VersionsMap` keyed by the namespaced slug
+- Writes the result to a well-known static location: `src/versions.json` (under REPO_ROOT). This file will be compiled into `dist/versions.json` by the TypeScript build step since `src/` is the source root. Actually, JSON files are not compiled by tsc — instead write directly to `dist/versions.json` so it ships with the build output. The `prepublishOnly` script already runs `rm -rf dist && npm run build` first, so the build script runs after tsc.
+- On any fatal error (git unavailable, etc.), exits with a non-zero code so the publish pipeline halts — silent failure is an undesired outcome per the spec.
 
-- **versions.json grouped with methodology docs in warnings**: It's a methodology artifact derived from the docs, so it belongs in the "methodology docs" category rather than being its own category. This keeps the warning concise.
-- **Slug derived from hostFilename**: Using `hostFilename.replace(/\.md$/, "")` rather than the `canonical` key, because the consuming project sees hostFilenames, not canonical names.
-- **REPO_ROOT resolved independently**: The helper resolves its own repo root rather than accepting it as a parameter, because the repo root is an intrinsic property of where the MCP server code lives — same pattern as initContent. The helper is 3 levels deep from repo root (src/tools/upgrade/buildVersionsMeta), so it needs a 4-hop walk just like initContent (src/tools/init/initContent).
-- **git log with --follow**: Tracks file renames so history survives doc reorganizations.
+The module should also export the types (`VersionMeta`, `VersionsMap`) and a
+`readVersionsManifest()` function that reads the static `dist/versions.json`
+(or the co-located `versions.json` resolved via `import.meta.url`) at runtime.
+This is the function that `aide_init` and `aide_upgrade` will call instead of
+the old `buildVersionsMeta()`.
+
+Restructure the file so:
+- Types and `readVersionsManifest()` are named exports (used at runtime by upgrade/init)
+- The build-time script logic is in an `async function main()` called only when the module is executed directly (use a top-level `main()` call guarded by detecting direct execution, or simply always run it since this file is only invoked via `tsx scripts/...`)
+
+Actually, cleaner approach: split into two files.
+- Keep `src/tools/upgrade/buildVersionsMeta/index.ts` as the runtime interface: exports types (`VersionMeta`, `VersionsMap`) and `readVersionsManifest()` which reads the static JSON file.
+- Create `scripts/build-versions.ts` as the build-time entry point: imports `enumerateArtifacts`, runs git log for each, writes `dist/versions.json`.
+
+This separation is cleaner because the build script has different concerns (writes files, exits on error) than the runtime reader (reads a static file).
+
+### Step 3: Create the build script at scripts/build-versions.ts
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
+
+Create `scripts/build-versions.ts` — the build-time entry point that
+generates `dist/versions.json`.
+
+This script:
+- Imports `enumerateArtifacts` from `@/tools/upgrade/buildVersionsMeta/enumerateArtifacts/index.js` (use the path alias — tsx respects tsconfig paths)
+- Resolves `REPO_ROOT` as `process.cwd()` (the script is always run from the repo root via package.json)
+- Iterates all artifact entries from `enumerateArtifacts()`
+- For each, runs `git log --follow --format="%H %aI" -n 2 -- <repoPath>` via `execFile`
+- Parses into `VersionMeta` entries (same logic as old buildVersionsMeta)
+- Skips entries with no git history (uncommitted files)
+- Writes `JSON.stringify(result, null, 2) + "\n"` to `dist/versions.json`
+- Logs a summary: `"versions.json: <N> artifacts"` to stderr
+- Exits non-zero if: git is completely unavailable, or zero artifacts were resolved (empty manifest is a spec-undesired outcome)
+
+Import `VersionMeta` and `VersionsMap` types from `@/tools/upgrade/buildVersionsMeta/index.js`.
+
+### Step 4: Rewrite buildVersionsMeta/index.ts as the runtime reader
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
+
+Rewrite `src/tools/upgrade/buildVersionsMeta/index.ts` to be a runtime reader
+of the static manifest, not a git-log executor.
+
+The rewritten module:
+- Exports `VersionMeta` interface (same shape as before)
+- Exports `VersionsMap` type (same as before)
+- Default export: `readVersionsManifest(): VersionsMap` — synchronous function that reads `versions.json` from the package's dist directory. Resolve the path relative to `import.meta.url` (the same 4-hop pattern gets to repo root, then `dist/versions.json`; or more directly, since in dist this file lives at `dist/tools/upgrade/buildVersionsMeta/index.js`, walk up 4 levels to reach `dist/`, then read `versions.json` from there).
+- Uses `readFileSync` + `JSON.parse`. Wraps in try/catch — if the file is missing (dev environment, not built yet), returns `{}` with a console.warn.
+- No dependency on `node:child_process` or git whatsoever.
+
+### Step 5: Wire the static manifest into upgrade and init
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
+
+Update consumers to use the static manifest reader.
+
+5a: In `src/tools/upgrade/index.ts` — the import already exists (`import buildVersionsMeta from "./buildVersionsMeta/index.js"`). The function name changes from async `buildVersionsMeta()` to sync `readVersionsManifest()`. Update the import to `import readVersionsManifest from "./buildVersionsMeta/index.js"` and change the call from `await buildVersionsMeta()` to `readVersionsManifest()` (no await needed since it's sync). The rest of phase c (version metadata) stays the same — it serializes the map and compares against the host file.
+
+5b: In `src/tools/init/index.ts` — init currently does NOT write versions.json. Add a new step after `installMethodologyDocs` that reads the manifest via `readVersionsManifest` (imported from `@/tools/upgrade/buildVersionsMeta/index.js`) and includes a planning step to write `versions.json` into the host's doc hub directory. Create an `InitStep` with category `"methodology"`, name `"versions.json"`, status `"would-create"` or `"exists"` depending on whether the file already exists at the target path, and content `JSON.stringify(manifest, null, 2) + "\n"`.
+
+### Step 6: Update package.json build pipeline
+
+Read: `coding-playbook/architecture/folder-structure`
+
+Add a `build:versions` script and wire it into both the regular `build` script and `prepublishOnly`.
+
+- Add `"build:versions": "tsx scripts/build-versions.ts"` to `scripts`
+- Change `"build"` to include `build:versions` after tsc: `"build": "tsc && npm run build:versions"` — so every `npm run build` (local dev included) generates `dist/versions.json`. This ensures the local dev server always has a valid manifest without needing the publish pipeline.
+- `prepublishOnly` stays as `"rm -rf dist && npm run build"` — since `build` now includes `build:versions`, the publish pipeline gets it automatically.
+
+### Step 7: Update the versions.json file in package.json files array
+
+Read: `coding-playbook/architecture/folder-structure`
+
+Verify that `dist/versions.json` is included in the published package.
+The `"files"` array already includes `"dist"` which covers all files under
+`dist/`, so `dist/versions.json` is automatically included. No change needed.
+This step is a verification-only step — if the `"files"` array does NOT include
+`"dist"`, add it. The implementor should read `package.json` and confirm.
+
+### Step 8: Rewrite tests for buildVersionsMeta
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+Rewrite `src/tools/upgrade/buildVersionsMeta/index.test.ts` to test the new
+runtime reader behavior instead of the old git-log behavior.
+
+Tests for `readVersionsManifest()` (the default export):
+- Mock `node:fs` `readFileSync` to return a valid JSON string with sample entries. Verify the function returns the parsed `VersionsMap`.
+- Mock `readFileSync` to throw (file not found). Verify the function returns `{}`.
+- Verify the returned object shape matches `VersionsMap` (entries have `publishedAt`, `sourceCommit`, optional `previousCommit`).
+
+### Step 9: Write tests for enumerateArtifacts
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+Create `src/tools/upgrade/buildVersionsMeta/enumerateArtifacts/index.test.ts`.
+
+Tests:
+- Verify the returned array contains entries from all categories: at least one `docs/*` slug, one `commands/*` slug, one `agents/*` slug, one `skills/*` slug, one `bin/*` slug, one `extensions/*` slug.
+- Verify every entry has both `slug` and `repoPath` fields as non-empty strings.
+- Verify slugs are unique (no collisions between categories).
+- Verify slug format matches the namespacing convention: each slug starts with its category prefix (`docs/`, `commands/`, `agents/`, `skills/`, `bin/`, `extensions/`).
+
+These tests do NOT need to mock anything — `enumerateArtifacts` is pure and
+synchronous, reading only from the in-memory registries.
+
+### Step 10: Delete stale upgrade orchestrator test expectations
+
+Read: `coding-playbook/workflow/testing`
+
+Update `src/tools/upgrade/index.test.ts` if it has any mocks or assertions
+related to the old async `buildVersionsMeta()` behavior. The mock should now
+target the sync `readVersionsManifest` default export. The test expectations
+for the version-metadata category should still work since the upgrade
+orchestrator still produces the same `UpgradeCategoryResult` shape — but the
+mock setup changes from an async mock to a sync mock returning a `VersionsMap`.
+
+## Decisions
+
+- **Build-time script in `scripts/` + runtime reader in `buildVersionsMeta/index.ts`.** The spec requires the manifest is generated at build time and never computed at runtime on the client. Separating the writer (scripts/build-versions.ts, runs during publish) from the reader (buildVersionsMeta/index.ts, imported at runtime) gives each file a single responsibility and avoids shipping build-only dependencies to consumers. This follows the playbook's orchestrator/helper pattern — the build script is a standalone orchestrator, the runtime reader is a focused helper.
+
+- **`enumerateArtifacts` as a separate helper subfolder.** The artifact enumeration logic (collecting slugs and paths from all category registries) is independently testable and reusable. Extracting it follows the playbook's aggressive modularization convention. Both the build script and potentially future tools can import it.
+
+- **`getCanonicalPath()` added to initContent.** The `DOC_PATHS` registry is private to initContent by design — it maps canonical names to repo-relative paths. Rather than duplicating this mapping, we add a thin accessor that exposes only the path (not the full registry). This follows the playbook's "single source of truth" principle: the path registry stays in one place, and `enumerateArtifacts` consumes it through the public interface.
+
+- **Namespaced slugs (`docs/aide-spec`, `commands/aide/spec`, etc.).** The spec requires slug keys namespaced by category to avoid collisions. Using the category prefix followed by the canonical name (or derived name) produces readable, unique keys. For docs the slug uses hostFilename (since that's what the host sees); for commands/agents/skills the slug uses the canonical name (which already includes the category path).
+
+- **`dist/versions.json` as the output location.** Writing to `dist/` (after tsc runs) keeps the source tree clean and ensures the file ships alongside compiled code. The existing `"files": ["dist"]` in package.json already covers it. The `prepublishOnly` pipeline runs `build` then `build:versions` in sequence.
+
+- **Non-zero exit on empty manifest.** The spec lists "empty or partial versions.json reaching published packages" as undesired. The build script failing loudly on zero resolved artifacts prevents silent publication of a broken manifest.
+
+- **Sync `readVersionsManifest()` over async.** The manifest is a small static JSON file read from disk once. Using `readFileSync` keeps the call site simple (no await) and matches the existing pattern of `readCanonicalDoc` in initContent. A per-process cache could be added later but is unnecessary for a single small file.

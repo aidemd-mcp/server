@@ -24,7 +24,7 @@ import detectFramework from "@/tools/init/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
-import buildVersionsMeta from "./buildVersionsMeta/index.js";
+import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
 import upgrade from "./index.js";
@@ -75,7 +75,7 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 	vi.mocked(listAgents).mockReturnValue([]);
 	vi.mocked(listSkills).mockReturnValue([]);
 	vi.mocked(readCanonicalDoc).mockReturnValue("canonical content");
-	vi.mocked(buildVersionsMeta).mockResolvedValue({
+	vi.mocked(readVersionsManifest).mockReturnValue({
 		"aide-spec": { publishedAt: "2026-04-11T14:30:00+00:00", sourceCommit: "abc1234", previousCommit: "def5678" },
 		"aide-template": { publishedAt: "2026-03-15T09:00:00+00:00", sourceCommit: "b2c3d4e" },
 	});

@@ -182,6 +182,16 @@ export function getMethodologyMarker(): string {
 }
 
 /**
+ * Return the repo-relative path for a canonical doc name. Exposes the
+ * private DOC_PATHS registry through a thin accessor so downstream
+ * consumers (e.g. enumerateArtifacts) can resolve paths without
+ * duplicating the registry.
+ */
+export function getCanonicalPath(name: CanonicalDocName): string {
+	return DOC_PATHS[name];
+}
+
+/**
  * Return the canonical enumeration of methodology docs that belong in the
  * host-side doc hub. Consumers iterate the returned list rather than
  * maintaining their own local copy — hardcoding the membership of "the

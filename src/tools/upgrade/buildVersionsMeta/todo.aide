@@ -1,0 +1,28 @@
+---
+description: >
+  extensions category is silently absent from dist/versions.json because the vsix has no git history — spec requires all five categories present.
+intent:
+  - "versions.json contains an entry for every deliverable artifact across all categories: methodology docs, commands, agents, skills, and extensions. No category is silently omitted."
+  - "An empty or partial versions.json reaching published packages because the build script failed silently or was skipped in the publish pipeline."
+misalignment:
+  - implementation-drift
+  - plan-gap
+---
+
+# QA Re-alignment Document
+
+## Issues
+
+- [ ] `scripts/build-versions.ts` lines 69–79: `extensions/vscode/aide-markdown` is enumerated but silently dropped from `dist/versions.json` because the vsix binary has no commit history at `extensions/vscode/aide-markdown-0.0.1.vsix`. The build script's skip-on-no-history logic (`if (meta === undefined) continue`) is correct for files that may not yet be committed, but when it causes an entire spec-required category to be absent from the manifest, that is an undetected partial manifest — exactly the undesired outcome the spec names. The published `dist/versions.json` currently contains 34 entries across docs, commands, agents, skills, and bin — but zero extensions entries.
+  Traces to: desired outcome 1 ("No category is silently omitted"); undesired outcome 2 ("Coverage limited to methodology docs only… extensions must be included").
+  Misalignment: implementation-drift — the build script correctly skips individual files with no history, but the plan (Step 3) did not define what to do when this causes a category to be entirely absent. The guard for zero total artifacts fires at the whole-manifest level, not the per-category level.
+
+- [ ] `src/tools/upgrade/buildVersionsMeta/enumerateArtifacts/index.test.ts` line 15: The test asserts `expect(slugs.some((s) => s.startsWith("extensions/"))).toBe(true)` — which verifies enumeration, not manifest inclusion. The test passes even though `extensions/vscode/aide-markdown` never appears in `dist/versions.json`. There is no test that verifies all five categories are represented in the final manifest (post git-log filtering), only in the pre-filtering enumeration.
+  Traces to: desired outcome 1 (no category silently omitted); undesired outcome 2 (extensions must be included).
+  Misalignment: plan-gap — Step 9 specified tests for `enumerateArtifacts` only. No test was planned for the build script's output coverage, leaving the gap between "enumerated" and "resolved into manifest" invisible.
+
+## Retro
+
+Both issues would have been caught at the plan stage if Step 3 had specified a per-category presence check: after the git-log loop, verify that at least one slug per enumerated category prefix exists in `result` and exit non-zero (or warn loudly) when a category is entirely missing. The current zero-total guard is necessary but not sufficient.
+
+The test gap in Step 9 follows from the same oversight: the plan's test specification for `enumerateArtifacts` was correct but it covered the wrong layer. A build-script integration test (or a separate coverage assertion) that loads the generated `dist/versions.json` and checks for all category prefixes would have caught this before QA.

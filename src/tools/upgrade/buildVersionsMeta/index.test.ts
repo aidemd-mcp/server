@@ -1,98 +1,95 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/tools/init/initContent/index.js");
+vi.mock("node:fs");
 
-// Mock child_process before importing the module under test.
-vi.mock("node:child_process", () => ({
-	execFile: vi.fn(),
-}));
+import { readFileSync } from "node:fs";
+import readVersionsManifest, { type VersionMeta, type VersionsMap } from "./index.js";
 
-import { listMethodologyDocs } from "@/tools/init/initContent/index.js";
-import { execFile } from "node:child_process";
-import buildVersionsMeta from "./index.js";
+const mockReadFileSync = readFileSync as ReturnType<typeof vi.fn>;
 
-/** Helper to make the execFile mock resolve with given stdout. */
-function mockGitLog(stdoutByCall: (string | Error)[]) {
-	const mock = execFile as unknown as ReturnType<typeof vi.fn>;
-	for (const entry of stdoutByCall) {
-		if (entry instanceof Error) {
-			mock.mockImplementationOnce(
-				(_cmd: string, _args: string[], _opts: unknown, cb: (err: Error) => void) => {
-					cb(entry);
-				},
-			);
-		} else {
-			mock.mockImplementationOnce(
-				(_cmd: string, _args: string[], _opts: unknown, cb: (err: null, result: { stdout: string }) => void) => {
-					cb(null, { stdout: entry });
-				},
-			);
-		}
-	}
-}
+const sampleMeta: VersionMeta = {
+	publishedAt: "2026-04-11T14:30:00+00:00",
+	sourceCommit: "abc1234",
+	previousCommit: "def5678",
+};
+
+const sampleMap: VersionsMap = {
+	"docs/aide-spec": sampleMeta,
+	"commands/aide/spec": {
+		publishedAt: "2026-03-10T08:00:00+00:00",
+		sourceCommit: "b2c3d4e",
+	},
+};
 
 beforeEach(() => {
 	vi.resetAllMocks();
-
-	vi.mocked(listMethodologyDocs).mockReturnValue([
-		{ canonical: "aide-spec" as const, hostFilename: "aide-spec.md" },
-		{ canonical: "index" as const, hostFilename: "index.md" },
-	]);
 });
 
-describe("buildVersionsMeta", () => {
-	it("returns correct metadata when git log returns two commits", async () => {
-		mockGitLog([
-			"abc1234567890abcdef1234567890abcdef123456 2026-04-11T14:30:00+00:00\ndef5678901234567890abcdef1234567890abcdef 2026-03-15T09:00:00+00:00\n",
-			"b2c3d4e567890abcdef1234567890abcdef123456 2026-03-10T08:00:00+00:00\n",
-		]);
+describe("readVersionsManifest", () => {
+	it("returns parsed VersionsMap when versions.json exists", () => {
+		mockReadFileSync.mockReturnValue(JSON.stringify(sampleMap));
 
-		const result = await buildVersionsMeta();
+		const result = readVersionsManifest();
 
-		expect(result["aide-spec"]).toEqual({
-			publishedAt: "2026-04-11T14:30:00+00:00",
-			sourceCommit: "abc1234",
-			previousCommit: "def5678",
+		expect(result).toEqual(sampleMap);
+	});
+
+	it("returns empty object when readFileSync throws", () => {
+		mockReadFileSync.mockImplementation(() => {
+			throw new Error("ENOENT: no such file or directory");
 		});
 
-		expect(result["index"]).toEqual({
-			publishedAt: "2026-03-10T08:00:00+00:00",
-			sourceCommit: "b2c3d4e",
-		});
-	});
-
-	it("omits previousCommit when git log returns only one commit", async () => {
-		mockGitLog([
-			"abc1234567890abcdef1234567890abcdef123456 2026-04-11T14:30:00+00:00\n",
-			"b2c3d4e567890abcdef1234567890abcdef123456 2026-03-10T08:00:00+00:00\n",
-		]);
-
-		const result = await buildVersionsMeta();
-
-		expect(result["aide-spec"].previousCommit).toBeUndefined();
-		expect(result["index"].previousCommit).toBeUndefined();
-	});
-
-	it("omits slug when git log returns empty output", async () => {
-		mockGitLog([
-			"abc1234567890abcdef1234567890abcdef123456 2026-04-11T14:30:00+00:00\n",
-			"", // index.md has no commits
-		]);
-
-		const result = await buildVersionsMeta();
-
-		expect(result["aide-spec"]).toBeDefined();
-		expect(result["index"]).toBeUndefined();
-	});
-
-	it("returns empty object when git command fails", async () => {
-		mockGitLog([
-			new Error("git not found"),
-			new Error("git not found"),
-		]);
-
-		const result = await buildVersionsMeta();
+		const result = readVersionsManifest();
 
 		expect(result).toEqual({});
+	});
+
+	it("returns entry with all VersionMeta fields when present", () => {
+		mockReadFileSync.mockReturnValue(
+			JSON.stringify({
+				"docs/aide-spec": {
+					publishedAt: "2026-04-11T14:30:00+00:00",
+					sourceCommit: "abc1234",
+					previousCommit: "def5678",
+				},
+			}),
+		);
+
+		const result = readVersionsManifest();
+		const entry = result["docs/aide-spec"];
+
+		expect(entry).toBeDefined();
+		expect(entry.publishedAt).toBe("2026-04-11T14:30:00+00:00");
+		expect(entry.sourceCommit).toBe("abc1234");
+		expect(entry.previousCommit).toBe("def5678");
+	});
+
+	it("returns entry without previousCommit when it is absent", () => {
+		mockReadFileSync.mockReturnValue(
+			JSON.stringify({
+				"commands/aide/spec": {
+					publishedAt: "2026-03-10T08:00:00+00:00",
+					sourceCommit: "b2c3d4e",
+				},
+			}),
+		);
+
+		const result = readVersionsManifest();
+		const entry = result["commands/aide/spec"];
+
+		expect(entry).toBeDefined();
+		expect(entry.publishedAt).toBe("2026-03-10T08:00:00+00:00");
+		expect(entry.sourceCommit).toBe("b2c3d4e");
+		expect(entry.previousCommit).toBeUndefined();
+	});
+
+	it("returns all entries from a multi-artifact manifest", () => {
+		mockReadFileSync.mockReturnValue(JSON.stringify(sampleMap));
+
+		const result = readVersionsManifest();
+
+		expect(Object.keys(result)).toHaveLength(2);
+		expect(result["docs/aide-spec"]).toEqual(sampleMeta);
+		expect(result["commands/aide/spec"]).toEqual(sampleMap["commands/aide/spec"]);
 	});
 });

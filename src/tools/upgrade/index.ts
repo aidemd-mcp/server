@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { join, isAbsolute } from "node:path";
+import { join, dirname, isAbsolute } from "node:path";
 import type {
 	FrameworkType,
 	UpgradeCategory,
@@ -12,7 +12,7 @@ import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@
 import { COMMANDS } from "@/tools/init/scaffoldCommands/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
-import buildVersionsMeta from "./buildVersionsMeta/index.js";
+import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
 
@@ -88,13 +88,14 @@ export default async function upgrade(
 	}
 
 	// ── c. Version metadata ──────────────────────────────────────────────────
-	const versionsMap = await buildVersionsMeta();
+	const versionsMap = readVersionsManifest();
 	const versionsJson = JSON.stringify(versionsMap, null, 2) + "\n";
-	const versionsHostPath = join(docHubAbsolute, "versions.json");
+	const aideRoot = join(docHubAbsolute, "..");
+	const versionsHostPath = join(aideRoot, "versions.json");
 	const versionsStatus = await compareFile(versionsHostPath, versionsJson);
 	const versionResults: UpgradeFileResult[] = [
 		{
-			name: `${config.docHubDir}/versions.json`,
+			name: `${dirname(config.docHubDir)}/versions.json`,
 			filePath: versionsHostPath,
 			status: versionsStatus,
 			category: "version-metadata",
