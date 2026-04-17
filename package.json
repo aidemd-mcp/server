@@ -1,6 +1,6 @@
 {
 	"name": "@aidemd-mcp/server",
-	"version": "0.3.9",
+	"version": "0.3.10",
 	"description": "MCP server that teaches any agent the AIDE methodology through tool descriptions and progressive disclosure tooling",
 	"type": "module",
 	"bin": {
