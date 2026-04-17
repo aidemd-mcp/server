@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join, dirname, basename, relative } from "node:path";
+import { join, dirname, basename, relative, normalize } from "node:path";
 import type { AideFile, AideFileType, ValidationWarning } from "@/types/index.js";
 import { SKIP_DIRS } from "@/types/index.js";
 
@@ -42,6 +42,32 @@ async function findOrchestrator(dir: string): Promise<string | null> {
 	return null;
 }
 
+/** Walk the entire project from root and collect all directories containing .aide files. */
+async function collectSpecDirs(dir: string, result: Set<string>): Promise<void> {
+	let entries;
+	try {
+		entries = await readdir(dir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+
+	const skipSet = new Set<string>(SKIP_DIRS);
+	let hasSpec = false;
+
+	for (const entry of entries) {
+		if (entry.isDirectory()) {
+			if (skipSet.has(entry.name)) continue;
+			await collectSpecDirs(join(dir, entry.name), result);
+		} else if (entry.name.endsWith(".aide")) {
+			hasSpec = true;
+		}
+	}
+
+	if (hasSpec) {
+		result.add(normalize(dir));
+	}
+}
+
 /**
  * Detect anomalies across a set of .aide files:
  * - .aide + intent.aide in the same folder (naming conflict)
@@ -64,8 +90,10 @@ export async function detectAnomalies(
 		byDir.set(dir, group);
 	}
 
-	// Collect all directories that have .aide files (for missing-spec scan)
-	const dirsWithSpecs = new Set(byDir.keys());
+	// Walk the entire project to collect ALL directories with .aide files,
+	// independent of the (potentially scoped) files array.
+	const dirsWithSpecs = new Set<string>();
+	await collectSpecDirs(root, dirsWithSpecs);
 
 	for (const [dir, dirFiles] of byDir) {
 		const names = dirFiles.map((f) => basename(f.path));
@@ -129,7 +157,7 @@ async function scanForMissingSpecs(
 		if (!entry.isDirectory()) continue;
 		if (skipSet.has(entry.name)) continue;
 
-		const subdir = join(dir, entry.name);
+		const subdir = normalize(join(dir, entry.name));
 
 		// Only check dirs that don't already have specs
 		if (!dirsWithSpecs.has(subdir)) {
