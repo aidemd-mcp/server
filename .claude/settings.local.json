@@ -8,7 +8,9 @@
       "Bash(npx vitest:*)",
       "mcp__aide__aide_validate",
       "mcp__aide__aide_read",
-      "mcp__aide__aide_scaffold"
+      "mcp__aide__aide_scaffold",
+      "Bash(node debug_test.mjs)",
+      "mcp__aide__aide_upgrade"
     ]
   }
 }

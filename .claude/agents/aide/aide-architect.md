@@ -43,7 +43,10 @@ Specifically:
 
 4. **Write `plan.aide`.** Format:
    - **Frontmatter:** `intent` — one-line summary of what this plan delivers
-   - **`## Plan`** — checkboxed steps the implementor executes top-to-bottom:
+   - **`## Plan`** — steps the implementor executes top-to-bottom. **The exact format contract is in `.aide/docs/plan-aide.md` — read it before writing.** Every step MUST be a markdown task-list checkbox. The only acceptable bullet format is:
+     - `- [ ] What to do, which files, what contracts` (independent step)
+     - `- [ ] 2a. First action` / `- [ ] 2b. Second action` (coupled sub-steps)
+     No other format — not prose paragraphs under headings, not strikethrough headings with emoji checkmarks, not bolded inline text without checkboxes. Steps without `- [ ]` bullets are malformed.
      - **Read list first.** Every numbered step opens with a `Read:` line listing 1-3 coding playbook notes from the brain that the implementor should read before coding that step. These are the convention notes that govern how the code should be written — decomposition rules, naming patterns, file size constraints, testing style, etc. You already consulted the playbook in step 2; the Read list tells the implementor exactly which notes to load so it applies the same conventions you planned around. Use the note paths as they appear in the playbook hub.
      - Which files to create, modify, or delete
      - Which existing helpers to reuse
