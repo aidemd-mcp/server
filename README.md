@@ -1,7 +1,8 @@
-# @aidemd-mcp/server
-
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
 [![npm version](https://img.shields.io/npm/v/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+# @aidemd-mcp/server
 
 MCP server that brings intent-driven development to any AI-powered IDE.
 Manage `.aide` spec files that live next to your code — the domain context
