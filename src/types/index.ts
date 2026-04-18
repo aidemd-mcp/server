@@ -148,7 +148,8 @@ export type InitCategory =
 	| "skills"
 	| "mcp"
 	| "brain"
-	| "ide";
+	| "ide"
+	| "badge";
 
 /**
  * Status of a single init step.
@@ -225,7 +226,8 @@ export type UpgradeCategory =
 	| "agents"
 	| "skills"
 	| "mcp"
-	| "ide";
+	| "ide"
+	| "badge";
 
 /**
  * Comparison status for a single file in an upgrade run.

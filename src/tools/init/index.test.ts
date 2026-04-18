@@ -108,6 +108,9 @@ describe("init — structured JSON result", () => {
 		for (const step of result.steps) {
 			if (brainPlaceholders.has(step.name) && result.brainHints.length === 0) {
 				expect(step.filePath).toBe("");
+			} else if (step.category === "badge" && step.status === "would-skip") {
+				// Badge step has empty filePath when no README exists — legitimately nothing to write
+				expect(step.filePath).toBe("");
 			} else {
 				expect(step.filePath).toBeTruthy();
 			}
@@ -117,7 +120,7 @@ describe("init — structured JSON result", () => {
 	it("fresh project: every step has a category", async () => {
 		const result = await init(tempDir);
 
-		const validCategories = new Set(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide"]);
+		const validCategories = new Set(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "badge"]);
 		for (const step of result.steps) {
 			expect(validCategories.has(step.category)).toBe(true);
 		}

@@ -1,0 +1,275 @@
+---
+scope: src/tools/init/injectBadge
+description: >
+  Init category that injects a "Built with AIDE" shield badge into the host
+  project's README.md, skipping silently when no README exists or the badge
+  is already present.
+intent: >
+  injectBadge gives AIDE-initialized projects a visible signal of adoption.
+  When a host project has a README.md, this init category inserts a shields.io
+  "AIDE — intent-driven" badge at the top of the file, placed after any
+  existing badge row so it blends into an established badge strip rather than
+  displacing it. The category is idempotent — it detects the badge by its
+  shields.io URL and skips when already present — and non-destructive — it
+  never creates a README that does not exist. In the metadata summary returned
+  by the default init call (no category), it reports its status so the calling
+  agent can present "badge: would-add", "badge: already-present", or
+  "badge: no-readme" without a follow-up call.
+outcomes:
+  desired:
+    - "The badge is inserted at the correct vertical position: after the last
+      consecutive line that starts with `[![` at the top of the file (the
+      existing badge row), or at line 1 if no badge row exists. It never
+      lands in the middle of a heading, paragraph, or frontmatter block."
+    - "Idempotency is determined by checking whether the README already
+      contains the shields.io badge URL substring. When present, the
+      category reports `already-present` and leaves the file untouched —
+      no duplicate badges, no content changes."
+    - "When no README.md exists in the project root, the category reports
+      `no-readme` and writes nothing. It never creates a README."
+    - "The default init call (no category) includes this category in its
+      metadata summary with one of three statuses: `would-add`,
+      `already-present`, or `no-readme`. The calling agent can present
+      this to the user without issuing a category-specific follow-up."
+    - "When called with the category parameter, the tool writes the badge
+      line directly into the README and returns a manifest entry with the
+      file path and a `created` or `exists` status — same contract as
+      every other init category. No file content is returned in the
+      response payload."
+  undesired:
+    - "A badge injected inside YAML frontmatter (between `---` fences) or
+      before it. The insertion logic must skip any leading frontmatter
+      block before looking for the badge row or line 1 insertion point."
+    - A README created from scratch just to hold the badge. The category
+      exists to annotate an existing README, not to generate one. A
+      project without a README has made a deliberate choice and the badge
+      category must respect it.
+    - A duplicate badge appended on re-run because the detection check
+      compared the full Markdown link instead of the stable URL substring.
+      URL parameters or link text may vary across versions; the shields.io
+      domain-and-path fragment is the durable identifier.
+    - "A badge inserted at an arbitrary position — after the first heading,
+      at the end of the file, or between paragraphs — instead of at the
+      top of the file in the badge row. Placement that ignores the
+      existing badge strip looks like a rendering bug to the project
+      maintainer."
+    - A category that silently succeeds when the README is not writable or
+      the working directory is ambiguous. Errors must surface as a status
+      the agent can report, not as swallowed exceptions.
+---
+
+## Context
+
+The init pipeline bootstraps every aspect of AIDE into a host project, but
+the result is invisible to anyone visiting the project on GitHub or reading
+the README locally. A developer scanning a repo's badge strip sees CI status,
+coverage, license — signals that communicate tooling choices at a glance. AIDE
+adoption is one of those choices, and the badge gives it the same visibility.
+
+This module is a peer category inside the init orchestrator, sitting alongside
+writeMethodology, installAgents, scaffoldCommands, and the other helpers that
+each own one slice of the bootstrap. It follows the same contract: return an
+InitStep with a planning status when the orchestrator calls without a category
+parameter, and write to disk when called with the category parameter. The key
+difference is that this category modifies an existing file (README.md) rather
+than creating a new one, and it legitimately does nothing — returns a skip-
+equivalent status — when the file does not exist, rather than treating absence
+as an error.
+
+The badge line is a Markdown image-link pointing at shields.io, styled to match
+the teal-green AIDE brand color. The detection substring is the shields.io
+domain-and-path fragment, which is stable across parameter changes, link-text
+edits, and style variations. The badge itself is not canonical AIDE doctrine —
+it is a branding artifact, so its content lives inlined in this helper's source
+the same way the methodology pointer stub lives inlined in writeMethodology.
+
+## Strategy
+
+**Detection uses the URL substring, not the full Markdown link.** The stable
+fragment `img.shields.io/badge/AIDE` survives changes to style parameters,
+logo options, link text, and URL encoding. Comparing the full `[![AIDE](...)]`
+pattern would break on any cosmetic edit and produce duplicates on re-run. The
+substring check is a single `includes()` call against the file content — no
+regex, no parsing. This directly guards against the undesired outcome of
+duplicate badges from brittle detection.
+
+**Insertion position is determined by a two-phase scan: skip frontmatter, then
+find the badge row.** Phase one: if the file starts with a `---` line, advance
+past the closing `---` and any blank line that follows. Phase two: starting
+from the post-frontmatter position, count consecutive lines that begin with
+`[![` — this is the existing badge strip. The AIDE badge is inserted
+immediately after the last badge-strip line, or at the post-frontmatter
+position if no strip exists. This places the badge at line 1 of the visible
+content when there is no frontmatter and no existing badges, appends to an
+existing badge row when one exists, and never lands inside frontmatter. The
+two-phase approach satisfies the desired outcome for correct vertical position
+and guards against the frontmatter-injection failure mode.
+
+**Three reporting statuses map to three states the agent needs to distinguish.**
+`would-add` (or `would-create` in manifest terms) means the README exists and
+the badge is absent — the category will insert it on a category call.
+`already-present` (mapped to `exists`) means the README contains the detection
+substring — nothing to do. `no-readme` (mapped to `would-skip`) means no
+README.md was found at the project root — the category respects the project's
+choice not to have one. The three-way status lets the calling agent present a
+meaningful one-liner in the wizard without needing to inspect the README
+itself.
+
+**The module never creates a README.** If the file does not exist, the helper
+returns `would-skip` immediately. This is a deliberate asymmetry with most
+other init categories, which create their target files when absent. A README
+is a project-level authoring decision; fabricating one to carry a badge would
+be presumptuous and would conflict with the undesired outcome that explicitly
+prohibits it.
+
+**The manifest entry follows the same InitStep shape as every other category.**
+The step uses `name`, `status`, `category`, and `filePath`. When the status is
+`would-create`, the `content` field carries the full modified README text so
+that applySteps can write it during a category call. When `exists` or
+`would-skip`, no content is returned. The category field must be registered in
+the InitCategory union type and in the orchestrator's category enum — the
+architect will need to wire this into both.
+
+**The badge line is a constant inlined in the helper, not read through
+initContent.** The badge is a one-line Markdown image-link, not a canonical
+doc. Running it through the initContent chokepoint would add indirection for
+no content-drift benefit — there is no second consumer of this string, and
+there is no multi-line template that could diverge from a canonical source.
+The line lives next to the insertion logic that uses it, same as the
+methodology stub template lives next to writeMethodology.
+
+## Good examples
+
+A project with an existing badge strip in its README:
+
+Before:
+```
+[![CI](https://github.com/foo/bar/actions/workflows/ci.yml/badge.svg)](...)
+[![Coverage](https://codecov.io/gh/foo/bar/badge.svg)](...)
+
+# My Project
+
+Some description here.
+```
+
+After injectBadge runs:
+```
+[![CI](https://github.com/foo/bar/actions/workflows/ci.yml/badge.svg)](...)
+[![Coverage](https://codecov.io/gh/foo/bar/badge.svg)](...)
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+# My Project
+
+Some description here.
+```
+
+The AIDE badge sits at the end of the existing badge row, before the blank line
+that separates badges from the heading. The strip reads as a single visual
+block.
+
+A project with no existing badges:
+
+Before:
+```
+# My Project
+
+Some description here.
+```
+
+After:
+```
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+# My Project
+
+Some description here.
+```
+
+The badge is the first line, followed by a blank line before the heading.
+
+The default init call (no category) includes the badge in its metadata summary.
+The calling agent sees a step like:
+
+```
+{ name: "README badge", status: "would-create", category: "badge", filePath: "/path/to/README.md" }
+```
+
+and presents it in the wizard as:
+
+> **Badge** — this will add an AIDE badge to your README.md. Want me to add it?
+
+On a project that already has the badge, the agent sees `status: "exists"` and
+reports:
+
+> Badge: already present in README.md — nothing to change.
+
+On a project with no README, the agent sees `status: "would-skip"` and reports:
+
+> Badge: no README.md found — skipping.
+
+## Bad examples
+
+A badge inserted before or inside YAML frontmatter:
+
+```
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+---
+title: My Project
+---
+
+# My Project
+```
+
+The badge landed at line 1 without checking for frontmatter. YAML parsers will
+choke, and the frontmatter block is broken.
+
+A duplicate badge after re-running because detection compared the full Markdown
+link text and the user had changed the link target:
+
+```
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+# My Project
+```
+
+The detection should have matched on `img.shields.io/badge/AIDE` and returned
+`exists`. Instead it compared the full link and missed the match because the
+user had changed the trailing URL.
+
+A badge inserted after the first heading instead of at the top:
+
+```
+# My Project
+
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+Some description here.
+```
+
+The badge is visually orphaned — it looks like a broken inline image rather
+than a status indicator in the badge strip. Badge strips live above the first
+heading, not below it.
+
+A README.md created from scratch just to hold the badge:
+
+```
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+```
+
+The project deliberately had no README. The tool created a one-line file that
+serves no purpose beyond the badge. The project maintainer now has a README
+they did not author that shows up on their GitHub landing page.
+
+A category that returns `would-create` with no `filePath` when the README is
+missing, causing the agent to think there is work to do and attempt to write
+to an empty path. The correct behavior is `would-skip` — the agent reports
+the absence and moves on.
+
+## References
+
+- `src/tools/init/.aide` -- Parent spec defining the category contract: each helper returns an InitStep with planning status, the orchestrator collects them, and the agent walks through categories one at a time in a wizard pattern.
+- `src/tools/init/writeMethodology/.aide` -- Sibling spec demonstrating the pattern of inlining a template string in the helper source (the pointer stub) rather than reading it through initContent, and the marker-based idempotency approach.
+- `src/tools/init/installAgents/.aide` -- Sibling spec showing the created/exists reporting pattern and the principle that existing files are never overwritten.
+- `src/tools/init/index.ts` -- Init orchestrator showing how category helpers are called, how their InitStep results are collected into the steps array, and how the metadata summary is composed.
+- `src/types/index.ts` (lines 140-188) -- InitStep interface, InitStepStatus union, and InitCategory union defining the manifest entry shape every category must conform to.

@@ -123,7 +123,7 @@ describe("upgrade", () => {
 		const result = await upgrade(tempDir);
 
 		expect(result.framework).toBe("claude");
-		expect(result.categories).toHaveLength(8);
+		expect(result.categories).toHaveLength(9);
 
 		for (const cat of result.categories) {
 			expect(cat.summary.differs).toBe(0);

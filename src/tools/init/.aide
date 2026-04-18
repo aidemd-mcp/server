@@ -148,6 +148,12 @@ outcomes:
       whole run on a single step failure, overwrites existing slash
       commands, hardcodes vault paths, or reaches for the network.
       All prior undesired outcomes from the original spec still apply.
+    - "A new init category added without a corresponding upgrade
+      category. The upgrade surface must mirror the init surface —
+      every category init installs must have an upgrade path. The two
+      category lists (InitCategory and UpgradeCategory) are currently
+      independent; adding to one without the other creates silent
+      drift."
 ---
 
 ## Context

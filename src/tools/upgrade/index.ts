@@ -10,6 +10,7 @@ import type {
 import detectFramework from "@/tools/init/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
 import { COMMANDS } from "@/tools/init/scaffoldCommands/index.js";
+import injectBadge from "@/tools/init/injectBadge/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
@@ -26,7 +27,7 @@ export const UpgradeInput = z.object({
 		.optional()
 		.describe("Custom project root path (defaults to server working directory)"),
 	category: z
-		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide"])
+		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "badge"])
 		.optional()
 		.describe("When provided, write all differs/missing files for this category to disk and return a manifest (no canonicalContent). When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
 });
@@ -155,6 +156,28 @@ export default async function upgrade(
 	const zedResult = await checkZedConfig(projectRoot);
 	const vscodeResult = await checkVscodeExtension();
 
+	// ── i. Badge ─────────────────────────────────────────────────────────────
+	const badgeInitStep = await injectBadge(projectRoot);
+	// Map InitStep statuses to UpgradeFileResult:
+	// - would-skip → skip entirely (no README): treat as "matches" so the
+	//   category registers as current with no drift.
+	// - exists → badge already present: "matches".
+	// - would-create → badge missing, needs adding: "missing" with content.
+	const badgeFileResult: UpgradeFileResult = badgeInitStep.status === "would-create"
+		? {
+				name: "README badge",
+				filePath: badgeInitStep.filePath,
+				status: "missing",
+				category: "badge",
+				canonicalContent: badgeInitStep.content,
+			}
+		: {
+				name: "README badge",
+				filePath: badgeInitStep.filePath || join(projectRoot, "README.md"),
+				status: "matches",
+				category: "badge",
+			};
+
 	// ── Assemble categories ──────────────────────────────────────────────────
 	const categories: UpgradeCategoryResult[] = [
 		buildCategoryResult("pointer-stub", [stubResult]),
@@ -165,6 +188,7 @@ export default async function upgrade(
 		buildCategoryResult("skills", skillResults),
 		buildCategoryResult("mcp", [mcpResult]),
 		buildCategoryResult("ide", [zedResult, vscodeResult]),
+		buildCategoryResult("badge", [badgeFileResult]),
 	];
 
 	return { framework: config.framework, categories };

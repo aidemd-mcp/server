@@ -1,0 +1,92 @@
+---
+intent: >
+  Implement the injectBadge init category — a helper that inspects the host
+  project's README.md and returns an InitStep reporting whether the AIDE
+  shields.io badge should be added, is already present, or cannot be added
+  because no README exists. When called via the category parameter, it injects
+  the badge line at the correct vertical position and returns a manifest entry.
+---
+
+## Plan
+
+### 1. Register the "badge" category in types and orchestrator input schema
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/workflow/type-system`
+
+- [x] In `src/types/index.ts`, add `"badge"` to the `InitCategory` union type (after `"ide"`).
+- [x] In `src/tools/init/index.ts`, add `"badge"` to the `z.enum` array in the `category` field of `InitInput`.
+
+### 2. Implement the injectBadge helper
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
+
+- [x] Create `src/tools/init/injectBadge/index.ts` with a default export `injectBadge(projectRoot: string): Promise<InitStep>`.
+- [x] The function receives the absolute project root path. It derives the README path as `join(projectRoot, "README.md")`.
+- [x] Define the badge line as a constant string (the full `[![AIDE](...)](...)` Markdown image-link provided in the task).
+- [x] Define the detection substring as the constant `img.shields.io/badge/AIDE` — used for the `includes()` idempotency check against file content.
+- [x] Early return: if README.md does not exist, return an InitStep with `name: "README badge"`, `status: "would-skip"`, `category: "badge"`, `filePath: ""`. No content.
+- [x] Read the README content. If it already contains the detection substring, return an InitStep with `status: "exists"`, `category: "badge"`, `filePath` set to the README path. No content.
+- [x] Otherwise, compute the insertion position using the two-phase scan described in the spec: (a) skip YAML frontmatter if present (`---` opener through closing `---` plus any trailing blank line), (b) count consecutive lines starting with `[![` from the post-frontmatter position — this is the badge strip. Insert the badge line immediately after the last badge-strip line, or at the post-frontmatter position if no strip exists. Ensure a blank line separates the badge (or badge strip) from the content below.
+- [x] Return an InitStep with `status: "would-create"`, `category: "badge"`, `filePath` set to the README path, and `content` set to the full modified README text. The `content` field carries the complete file so `applySteps` can write it directly.
+- [x] JSDoc on the default export explaining the three-status contract (`would-skip` / `exists` / `would-create`) and the two-phase insertion logic.
+
+### 3. Wire injectBadge into the init orchestrator
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
+
+- [x] In `src/tools/init/index.ts`, import `injectBadge` from `./injectBadge/index.js`.
+- [x] Call `injectBadge(projectRoot)` alongside the other category helpers and capture the returned step.
+- [x] Add the badge step to the `steps` array. Place it after `vscodeStep` (end of the existing list) so the badge category appears last in the wizard — it is the least critical bootstrap step.
+
+### 4. Write tests for injectBadge
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [x] Create `src/tools/init/injectBadge/index.test.ts` with co-located unit tests using Vitest.
+- [x] Mock `node:fs/promises` (`readFile`, `access` or equivalent) so no real filesystem access occurs.
+- [x] Test: README does not exist — returns `status: "would-skip"`, empty `filePath`, no `content` field.
+- [x] Test: README exists and already contains the detection substring — returns `status: "exists"`, correct `filePath`, no `content` field.
+- [x] Test: README exists with no badges and no frontmatter — returns `status: "would-create"` with badge inserted at line 1, followed by a blank line before existing content.
+- [x] Test: README exists with an existing badge strip (multiple consecutive `[![` lines) and no frontmatter — badge is appended after the last badge line, blank line preserved before heading.
+- [x] Test: README exists with YAML frontmatter (`---` fences) and no badges — badge is inserted after frontmatter (after closing `---` and any blank line), not inside or before it.
+- [x] Test: README exists with YAML frontmatter AND an existing badge strip — badge is appended after the badge strip, frontmatter untouched.
+- [x] Use factory functions for building README content variations. Each test should build its input via a helper that accepts the README body string, keeping tests readable.
+
+## Decisions
+
+**"badge" as a new InitCategory value.** The spec explicitly requires the category
+field to be registered in the InitCategory union and the orchestrator's z.enum.
+A new category (rather than piggy-backing on "methodology" or "ide") gives the
+agent a distinct discriminant to present badge status independently in the wizard.
+This follows the existing pattern where each bootstrap concern gets its own
+category value.
+
+**Single-file helper, no subfolders.** The injectBadge logic is a single function
+with no subhelpers worth extracting — the frontmatter skip and badge-strip scan
+are a tight coupled sequence, not independent pipeline stages. This matches the
+single-helper exception in progressive disclosure: when an orchestrator has
+exactly one concern, the logic stays in one file. If the insertion logic later
+grows (e.g., supporting multiple badge formats), it can be extracted then.
+
+**Detection by URL substring, not full Markdown link.** The spec's strategy section
+is explicit: `img.shields.io/badge/AIDE` is the durable identifier. This survives
+style parameter changes, link text edits, and URL encoding variations. The
+alternative — regex matching the full `[![AIDE](...)]` pattern — is brittle and
+produces the duplicate-badge failure mode the spec calls out as undesired.
+
+**Badge step placed last in the steps array.** The badge is a branding artifact,
+not a structural bootstrap step. Placing it after IDE configuration means the
+agent presents it last in the wizard, after all functional categories. This
+follows the principle that the wizard walks categories in dependency order —
+badge depends on nothing and nothing depends on badge.
+
+**content field carries the full modified README.** This matches how applySteps
+works for regular file steps — it writes `content` to `filePath`. The alternative
+(returning just the badge line and having applySteps do the insertion) would
+require applySteps to understand badge-specific insertion logic, breaking its
+role as a generic file writer.
+
+**filePath is empty string on would-skip.** When no README exists, there is no
+target path. Using empty string (not undefined) matches the brain placeholder
+pattern in the orchestrator where `filePath: ""` signals "no target" while
+keeping the InitStep shape consistent.
