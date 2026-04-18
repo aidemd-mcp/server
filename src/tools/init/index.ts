@@ -15,7 +15,7 @@ import installSkills from "./installSkills/index.js";
 import installAideTree from "./installAideTree/index.js";
 import wireMcp from "./wireMcp/index.js";
 import provisionBrain from "./provisionBrain/index.js";
-import injectBadge from "./injectBadge/index.js";
+import scaffoldReadme from "./scaffoldReadme/index.js";
 
 /**
  * Input schema for aide_init.
@@ -29,7 +29,7 @@ import injectBadge from "./injectBadge/index.js";
 export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
 	path: z.string().optional().describe("Custom project root path (defaults to server working directory)"),
-	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "badge"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
+	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
 	brainPath: z.string().optional().describe("Resolved brain vault path for the brain category. The agent provides this after interviewing the user."),
 });
 
@@ -109,7 +109,7 @@ export default async function init(
 	const extensionsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "extensions", "vscode");
 	const zedStep = await configureZed(projectRoot);
 	const vscodeStep = await configureVscode(extensionsDir);
-	const badgeStep = await injectBadge(projectRoot);
+	const readmeStep = await scaffoldReadme(projectRoot);
 
 	const steps = [
 		methodologyStep,
@@ -123,7 +123,7 @@ export default async function init(
 		...brainSteps,
 		zedStep,
 		vscodeStep,
-		badgeStep,
+		readmeStep,
 	];
 
 	return {

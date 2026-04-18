@@ -10,7 +10,7 @@ import type {
 import detectFramework from "@/tools/init/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
 import { COMMANDS } from "@/tools/init/scaffoldCommands/index.js";
-import injectBadge from "@/tools/init/injectBadge/index.js";
+import scaffoldReadme from "@/tools/init/scaffoldReadme/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
@@ -27,7 +27,7 @@ export const UpgradeInput = z.object({
 		.optional()
 		.describe("Custom project root path (defaults to server working directory)"),
 	category: z
-		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "badge"])
+		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "readme"])
 		.optional()
 		.describe("When provided, write all differs/missing files for this category to disk and return a manifest (no canonicalContent). When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
 });
@@ -156,26 +156,24 @@ export default async function upgrade(
 	const zedResult = await checkZedConfig(projectRoot);
 	const vscodeResult = await checkVscodeExtension();
 
-	// ── i. Badge ─────────────────────────────────────────────────────────────
-	const badgeInitStep = await injectBadge(projectRoot);
+	// ── i. README ────────────────────────────────────────────────────────────
+	const readmeInitStep = await scaffoldReadme(projectRoot);
 	// Map InitStep statuses to UpgradeFileResult:
-	// - would-skip → skip entirely (no README): treat as "matches" so the
-	//   category registers as current with no drift.
-	// - exists → badge already present: "matches".
-	// - would-create → badge missing, needs adding: "missing" with content.
-	const badgeFileResult: UpgradeFileResult = badgeInitStep.status === "would-create"
+	// - would-create → README absent or badge absent: "missing" with content.
+	// - exists → README and badge both present: "matches".
+	const readmeFileResult: UpgradeFileResult = readmeInitStep.status === "would-create"
 		? {
-				name: "README badge",
-				filePath: badgeInitStep.filePath,
+				name: "README",
+				filePath: readmeInitStep.filePath,
 				status: "missing",
-				category: "badge",
-				canonicalContent: badgeInitStep.content,
+				category: "readme",
+				canonicalContent: readmeInitStep.content,
 			}
 		: {
-				name: "README badge",
-				filePath: badgeInitStep.filePath || join(projectRoot, "README.md"),
+				name: "README",
+				filePath: readmeInitStep.filePath,
 				status: "matches",
-				category: "badge",
+				category: "readme",
 			};
 
 	// ── Assemble categories ──────────────────────────────────────────────────
@@ -188,7 +186,7 @@ export default async function upgrade(
 		buildCategoryResult("skills", skillResults),
 		buildCategoryResult("mcp", [mcpResult]),
 		buildCategoryResult("ide", [zedResult, vscodeResult]),
-		buildCategoryResult("badge", [badgeFileResult]),
+		buildCategoryResult("readme", [readmeFileResult]),
 	];
 
 	return { framework: config.framework, categories };

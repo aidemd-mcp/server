@@ -108,9 +108,10 @@ describe("init — structured JSON result", () => {
 		for (const step of result.steps) {
 			if (brainPlaceholders.has(step.name) && result.brainHints.length === 0) {
 				expect(step.filePath).toBe("");
-			} else if (step.category === "badge" && step.status === "would-skip") {
-				// Badge step has empty filePath when no README exists — legitimately nothing to write
-				expect(step.filePath).toBe("");
+			} else if (step.category === "readme" && step.status === "would-create" && step.filePath !== "") {
+				// README step on a fresh project: would-create with a real filePath (creates README.md)
+				expect(step.filePath).toBeTruthy();
+				expect(step.content).toBeTruthy();
 			} else {
 				expect(step.filePath).toBeTruthy();
 			}
@@ -120,7 +121,7 @@ describe("init — structured JSON result", () => {
 	it("fresh project: every step has a category", async () => {
 		const result = await init(tempDir);
 
-		const validCategories = new Set(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "badge"]);
+		const validCategories = new Set(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme"]);
 		for (const step of result.steps) {
 			expect(validCategories.has(step.category)).toBe(true);
 		}

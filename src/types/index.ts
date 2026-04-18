@@ -149,7 +149,7 @@ export type InitCategory =
 	| "mcp"
 	| "brain"
 	| "ide"
-	| "badge";
+	| "readme";
 
 /**
  * Status of a single init step.
@@ -227,7 +227,7 @@ export type UpgradeCategory =
 	| "skills"
 	| "mcp"
 	| "ide"
-	| "badge";
+	| "readme";
 
 /**
  * Comparison status for a single file in an upgrade run.

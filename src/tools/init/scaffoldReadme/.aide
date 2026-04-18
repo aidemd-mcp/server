@@ -1,0 +1,208 @@
+---
+scope: src/tools/init/scaffoldReadme
+description: >
+  Init category that ensures the host project has a README.md with the AIDE
+  badge at the top — creating a minimal README when none exists, or injecting
+  the badge into an existing one.
+intent: >
+  scaffoldReadme is the single init category responsible for README.md
+  presence and AIDE badge placement. It handles two code paths that
+  converge on the same result: when a project has no README, it creates
+  a minimal but authored-feeling file (project name derived from
+  package.json or folder name, placeholder description) with the badge
+  already at the top; when a README already exists, it weaves the badge
+  into the top of the file using the same marker-bounded injection
+  pattern as other init categories. The category is idempotent — if the
+  badge is already present it skips injection, and if a README already
+  exists it never recreates it. It works identically in both the init
+  and upgrade paths, absorbing the responsibilities of the former
+  injectBadge category while adding README creation.
+outcomes:
+  desired:
+    - "The badge ends up at the very top of the README in all cases —
+      after any YAML frontmatter but before any heading, paragraph, or
+      existing content. When an existing badge strip is present, the
+      AIDE badge appends to the strip rather than displacing it."
+    - "When no README.md exists, the category creates one that feels
+      authored rather than templated — a project name derived from
+      package.json or the folder name, a placeholder description line,
+      and the AIDE badge at the top. The result is a usable starting
+      point, not a bare skeleton."
+    - "Idempotency covers both dimensions independently: badge
+      detection uses the stable shields.io URL substring so re-runs
+      never produce duplicate badges, and README existence detection
+      ensures an existing README is never overwritten or recreated."
+    - "The category works in both init and upgrade paths, following
+      the same InitStep contract as every other category — returning
+      planning statuses in the default call and writing to disk when
+      called with the category parameter."
+    - "When the badge is already present and the README already exists,
+      the category reports a skip status and touches nothing on disk."
+  undesired:
+    - "A badge injected inside or before YAML frontmatter. The
+      insertion logic must skip any leading frontmatter block before
+      determining the badge insertion point."
+    - "A generated README that looks machine-produced — generic
+      boilerplate like 'This is a project' or bare headings with no
+      content signal. The README should feel like a human wrote a
+      first draft, not like a scaffolding tool emitted a placeholder."
+    - "A duplicate badge on re-run because detection compared the full
+      Markdown image-link instead of the stable URL substring. The
+      shields.io domain-and-path fragment is the durable identifier."
+    - "An existing README overwritten or truncated during the creation
+      path. The two code paths (create vs inject) must be mutually
+      exclusive — if the file exists, only badge injection runs."
+    - "A category that works during init but silently does nothing
+      during upgrade, or vice versa. Both paths must produce identical
+      behavior for the same project state."
+---
+
+## Context
+
+Projects bootstrapped with AIDE get methodology docs, slash commands, agent definitions, and brain wiring — but none of that is visible to someone visiting the repo on GitHub or reading the project root locally. A README badge strip is the universal signal for tooling adoption: CI, coverage, license, framework. AIDE adoption belongs in that strip. Without it, the only evidence that a project uses AIDE is buried inside config files and dot-directories that casual visitors never open.
+
+This category merges two concerns that were previously separate: ensuring the project has a README at all, and ensuring the AIDE badge is placed at the top of it. The former injectBadge category handled badge injection but deliberately refused to create a README when none existed — it treated absence as a signal the project maintainer had made a conscious choice. scaffoldReadme reverses that judgment: a project in the middle of cold-start bootstrap has not made a deliberate no-README decision; it simply has not gotten to it yet. Creating a minimal, authored-feeling README during init removes a gap that made the badge category silently skip on the projects most likely to benefit from it.
+
+The two code paths — create and inject — converge on the same end state (a README with the AIDE badge at the top) but must be mutually exclusive at runtime. If a README exists, only badge injection runs; creation never fires. This mutual exclusion is the category's primary safety invariant: a single conditional gates the entire flow, and the create path can never reach a project that already has authored content.
+
+## Strategy
+
+**The category absorbs injectBadge and retires it as a separate category.** The former badge category was a peer in the init orchestrator alongside methodology, commands, agents, and brain. scaffoldReadme replaces it, covering both README creation and badge injection under a single category name. This means the InitCategory union gains "readme" (or equivalent) and loses "badge." The upgrade surface must mirror this — the UpgradeCategory list needs the same rename. The parent init spec's requirement that every init category have an upgrade path applies here.
+
+**README creation derives the project name from package.json first, folder name second.** A generated README that says "# Project" or "# Untitled" looks machine-produced and violates the undesired outcome about templated-feeling output. Reading the `name` field from package.json (or the equivalent manifest in other ecosystems) produces a human-recognizable heading. When no manifest exists, the working directory's folder name — title-cased and hyphen-split — is the next best signal. The description line is a placeholder that invites editing ("A brief description of what this project does") rather than claiming to know what the project is.
+
+**Badge detection uses the URL substring, not the full Markdown link.** The stable fragment `img.shields.io/badge/AIDE` survives changes to style parameters, logo options, link text, and URL encoding. Comparing the full `[![AIDE](...)]` pattern would break on any cosmetic edit and produce duplicates on re-run. This is a single string-inclusion check against the file content — no regex, no Markdown parsing.
+
+**Badge insertion uses a two-phase scan: skip frontmatter, then find the badge row.** Phase one: if the file starts with a `---` line, advance past the closing `---` and any trailing blank line. Phase two: starting from the post-frontmatter position, count consecutive lines beginning with `[![` — this is the existing badge strip. The AIDE badge inserts immediately after the last badge-strip line, or at the post-frontmatter position if no strip exists. This places the badge at line 1 of visible content when there is no frontmatter and no existing badges, appends to an existing strip when one exists, and never lands inside frontmatter. The same scan works on a freshly created README because the creation path places the badge before the heading, so a re-run's inject path finds it already present.
+
+**The two code paths are gated by a single existence check, never by state accumulated across steps.** If the README file exists on disk, the inject path runs (detect badge, insert or skip). If it does not exist, the create path runs (generate README with badge already in place). The paths are mutually exclusive by construction — there is no state variable that could put the category into both paths, and no fallthrough from create into inject.
+
+**Idempotency covers both dimensions independently.** Badge presence is detected by the URL substring check. README existence is detected by filesystem presence. A project with both already in place gets a skip status on both dimensions. A project with a README but no badge gets an inject. A project with neither gets a create. The two checks are independent — neither gates the other — so partial states resolve correctly without special-case logic.
+
+**The InitStep contract matches the parent spec exactly.** The category returns a planning step with name, status, category, and filePath in the default call (no category parameter). When called with the category parameter, the tool writes to disk and returns a manifest entry with status `created` or `exists` and no content field. The three planning statuses map to: `would-create` (README absent or badge absent — work to do), `exists` (both present — nothing to do).
+
+**The badge line is a constant inlined in the helper, not read through initContent.** The badge is a one-line Markdown image-link, not canonical doctrine. Running it through the initContent pipeline would add indirection with no content-drift benefit — there is no second consumer of this string. The line lives next to the insertion logic.
+
+## Good examples
+
+A project with no README.md runs scaffoldReadme during init. The category creates:
+
+```
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+# my-cool-project
+
+A brief description of what this project does.
+```
+
+The project name came from the `name` field in package.json. The badge sits at the very top, followed by a blank line, then the heading and a placeholder description. The file feels like a first draft a developer would write, not like scaffolding output.
+
+A project with an existing README and a badge strip runs scaffoldReadme. Before:
+
+```
+[![CI](https://github.com/foo/bar/actions/workflows/ci.yml/badge.svg)](...)
+[![Coverage](https://codecov.io/gh/foo/bar/badge.svg)](...)
+
+# My Project
+
+Some description here.
+```
+
+After:
+
+```
+[![CI](https://github.com/foo/bar/actions/workflows/ci.yml/badge.svg)](...)
+[![Coverage](https://codecov.io/gh/foo/bar/badge.svg)](...)
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+# My Project
+
+Some description here.
+```
+
+The AIDE badge appended to the end of the existing badge strip, before the blank line that separates badges from the heading.
+
+A project with a README that already has the AIDE badge runs scaffoldReadme. The category detects `img.shields.io/badge/AIDE` in the file content, returns status `exists`, and writes nothing.
+
+A project with YAML frontmatter and no badges runs scaffoldReadme. Before:
+
+```
+---
+title: My Project
+---
+
+# My Project
+```
+
+After:
+
+```
+---
+title: My Project
+---
+
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+# My Project
+```
+
+The badge lands after the closing frontmatter fence, not before or inside it.
+
+## Bad examples
+
+A generated README that looks machine-produced:
+
+```
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+# Project
+
+This is a project.
+```
+
+The heading is generic ("Project" instead of the actual project name), and the description is a tautology. A developer seeing this would immediately know a tool wrote it and delete the file.
+
+A badge inserted before YAML frontmatter:
+
+```
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+---
+title: My Project
+---
+
+# My Project
+```
+
+The frontmatter is broken. YAML parsers will choke, and tools that read frontmatter will fail.
+
+A duplicate badge after re-running because detection compared the full Markdown image-link and the user had changed the link target:
+
+```
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://custom-link.com)
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+```
+
+Detection should have matched on `img.shields.io/badge/AIDE` regardless of surrounding Markdown.
+
+An existing README overwritten during the creation path because the existence check was bypassed:
+
+The create and inject paths were not mutually exclusive. The create path fired on a project that already had a README, destroying authored content.
+
+A badge inserted after the first heading instead of at the top:
+
+```
+# My Project
+
+[![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
+
+Some description here.
+```
+
+The badge looks like a broken inline image rather than a status indicator. Badge strips live above the first heading, not below it.
+
+## References
+
+- `src/tools/init/injectBadge/.aide` -- URL substring detection rationale (`img.shields.io/badge/AIDE` as stable identifier) and two-phase frontmatter-then-badge-row scan strategy.
+- `src/tools/init/.aide` -- InitStep contract (planning status in default call, manifest-only response in category call), wizard pattern, and the requirement that every init category has a corresponding upgrade category.
+- `src/tools/init/writeMethodology/.aide` -- Precedent for inlining template content in the helper source as framework plumbing rather than routing through initContent or canonical docs.
+- `src/tools/init/provisionBrain/.aide` -- InitStep planning pattern with per-file idempotency checks (each content artifact has its own existence check independent of the parent container).

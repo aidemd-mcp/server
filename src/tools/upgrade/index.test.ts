@@ -19,6 +19,7 @@ vi.mock("./spliceStub/index.js");
 vi.mock("./buildVersionsMeta/index.js");
 vi.mock("./checkMcpConfig/index.js");
 vi.mock("./checkIdeConfig/index.js");
+vi.mock("@/tools/init/scaffoldReadme/index.js");
 
 import detectFramework from "@/tools/init/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
@@ -27,6 +28,7 @@ import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
+import scaffoldReadme from "@/tools/init/scaffoldReadme/index.js";
 import upgrade from "./index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -105,6 +107,12 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 		filePath: "/path/to/aide-markdown-0.0.1.vsix",
 		status: "matches",
 		category: "ide",
+	});
+	vi.mocked(scaffoldReadme).mockResolvedValue({
+		name: "README badge",
+		filePath: join(tempDir, "README.md"),
+		status: "exists",
+		category: "readme",
 	});
 }
 
