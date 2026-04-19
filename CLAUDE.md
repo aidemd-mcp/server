@@ -28,10 +28,10 @@ A GitHub Actions workflow (`.github/workflows/publish.yml`) handles both automat
 **To publish a new version:**
 
 ```bash
-node scripts/publish.mjs <patch|minor|major>
+node scripts/publish.mjs <patch|minor|major> [message]
 ```
 
-This bumps `package.json`, syncs `server.json`, commits, tags, and pushes — the CI does the rest.
+This bumps `package.json`, syncs `server.json`, commits (e.g. `0.3.16: fix scoring tool`), tags `v0.3.16`, and pushes — the CI does the rest (npm publish + MCP Registry publish).
 
 ## Fixes Go in Canonical Docs, Not Memory
 

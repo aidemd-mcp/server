@@ -3,7 +3,7 @@
  * Bump version, sync server.json, commit, tag, and push.
  * CI handles npm publish + MCP Registry publish.
  *
- * Usage: node scripts/publish.mjs <patch|minor|major>
+ * Usage: node scripts/publish.mjs <patch|minor|major> [message]
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -13,8 +13,10 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const bump = process.argv[2];
 
+const message = process.argv.slice(3).join(" ");
+
 if (!["patch", "minor", "major"].includes(bump)) {
-	console.error("Usage: node scripts/publish.mjs <patch|minor|major>");
+	console.error("Usage: node scripts/publish.mjs <patch|minor|major> [message]");
 	process.exit(1);
 }
 
@@ -35,7 +37,8 @@ writeFileSync(serverJsonPath, JSON.stringify(serverJson, null, 2) + "\n");
 
 // Commit, tag, push
 execSync(`git add package.json server.json`, { cwd: root, stdio: "inherit" });
-execSync(`git commit -m "${version}"`, { cwd: root, stdio: "inherit" });
+const commitMsg = message ? `${version}: ${message}` : version;
+execSync(`git commit -m "${commitMsg}"`, { cwd: root, stdio: "inherit" });
 execSync(`git tag v${version}`, { cwd: root, stdio: "inherit" });
 execSync(`git push && git push origin v${version}`, { cwd: root, stdio: "inherit" });
 
