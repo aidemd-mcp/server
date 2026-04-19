@@ -2,9 +2,7 @@
 [![npm version](https://img.shields.io/npm/v/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-<a href="https://glama.ai/mcp/servers/aidemd-mcp/server">
-  <img src="https://glama.ai/mcp/servers/aidemd-mcp/server/badges/card.svg" alt="server MCP server" />
-</a>
+[![server MCP server](https://glama.ai/mcp/servers/aidemd-mcp/server/badges/score.svg)](https://glama.ai/mcp/servers/aidemd-mcp/server)
 
 # @aidemd-mcp/server
 
