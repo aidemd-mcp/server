@@ -326,6 +326,36 @@ export interface InfoResult {
 	outdated: string[];
 }
 
+/** A single symbol match returned by aide_inspect. */
+export interface InspectHit {
+	/** Symbol name as declared in source. */
+	name: string;
+	/** Symbol kind — one of "function", "method", "arrow", "class", "interface", "type-alias". */
+	kind: string;
+	/** Path relative to project root, POSIX-normalized. */
+	file: string;
+	/** 1-based line number where the symbol is declared. */
+	line: number;
+	/**
+	 * Full declaration text truncated before the body — no curly braces from
+	 * function/class bodies. Type aliases include the full text up to the `=`
+	 * assignment.
+	 */
+	signature: string;
+	/** Parsed JSDoc block, or null when no JSDoc is present. */
+	jsdoc: {
+		/** Text before any `@` tag. */
+		description: string;
+		/** Each `@tag text` pair extracted from the JSDoc block. */
+		tags: Array<{ tag: string; text: string }>;
+	} | null;
+}
+
+/** Result returned by aide_inspect — an array because a name may match in multiple files. */
+export type InspectResult = {
+	hits: InspectHit[];
+};
+
 /** Directories to skip during filesystem walks. */
 export const SKIP_DIRS = [
 	"node_modules",

@@ -1,0 +1,97 @@
+---
+intent: >
+  Implement aide_inspect — a code introspection tool that returns JSDoc,
+  signature, and kind for named symbols without opening full files, giving
+  agents Tier 2 progressive disclosure for code.
+---
+
+## Plan
+
+### 1. Move TypeScript from devDependencies to dependencies
+
+Read: `coding-playbook/workflow/config-environment`
+
+- [x] Move `typescript` from `devDependencies` to `dependencies` in `package.json`. The inspect tool uses `ts.createSourceFile` at runtime to parse source files. Since this MCP server ships as an npm package (`@aidemd-mcp/server`), TypeScript must be a production dependency so it is available when agents call `aide_inspect`. Run `npm install` after the move to update the lockfile.
+
+### 2. Define the InspectResult type in `src/types/index.ts`
+
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
+
+- [x] Add an `InspectHit` interface to `src/types/index.ts` with fields: `name: string` (symbol name), `kind: string` (one of "function", "method", "arrow", "class", "interface", "type-alias"), `file: string` (path relative to root, POSIX-normalized), `line: number` (1-based line number), `signature: string` (full declaration text truncated before the body — no curly braces from function/class bodies), `jsdoc: { description: string; tags: Array<{ tag: string; text: string }> } | null` (parsed JSDoc or null when absent).
+- [x] Add an `InspectResult` type: `{ hits: InspectHit[] }`. This is what the orchestrator returns — an array because a name may match in multiple files.
+
+### 3. Create the `walk` helper at `src/tools/inspect/walk/index.ts`
+
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/foundations/conventions`
+
+- [x] Create `src/tools/inspect/walk/index.ts` with a default export `walk` — an async generator that yields absolute file paths for TS/JS source files (extensions: `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`). It takes `dir: string` and recurses into subdirectories. It must skip directories listed in `SKIP_DIRS` from `@/types/index.js`. When an optional `file` parameter is provided, it yields only that single resolved path (no directory walk). JSDoc must explain the generator's role: narrowing the search space for symbol lookup.
+- [x] Use `node:fs/promises` (`readdir` with `withFileTypes`) and `node:path` for all I/O — async, matching project conventions.
+
+### 4. Create the `parseSymbols` helper at `src/tools/inspect/parseSymbols/index.ts`
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
+
+- [x] Create `src/tools/inspect/parseSymbols/index.ts` with a default export `parseSymbols(source: string, filePath: string): ParsedSymbol[]` that uses `ts.createSourceFile` (no full program, `ts.ScriptTarget.Latest`, script kind inferred from extension) to parse a single file and extract symbols.
+- [x] `ParsedSymbol` is a local type (not exported to `src/types/`) with fields matching `InspectHit` but using absolute `filePath` instead of relative. The orchestrator converts to relative paths.
+- [x] The function walks the AST to find: `FunctionDeclaration`, `MethodDeclaration`, `ClassDeclaration`, `InterfaceDeclaration`, `TypeAliasDeclaration`, and arrow/function expressions assigned to top-level `const` (`VariableStatement` with `ArrowFunction` or `FunctionExpression` initializer). Map each to the appropriate `kind` string.
+- [x] For each matched node, extract: the node's name, the kind, the 1-based line number (via `ts.getLineAndCharacterOfPosition`), the full signature text (the declaration text up to but NOT including the function/method body — truncate at the opening `{` for functions/methods/classes, or the `=` assignment for type aliases gets the full text), and parsed JSDoc (`ts.getJSDocCommentsAndTags` or manual `/** */` extraction from leading trivia).
+- [x] JSDoc parsing: extract the description (text before any `@` tag) and tags (each `@tag text` pair). Return `null` when no JSDoc block is present.
+
+### 5. Create the orchestrator at `src/tools/inspect/index.ts`
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
+
+- [x] Create `src/tools/inspect/index.ts` with a Zod input schema `InspectInput = z.object({ name: z.string().describe("Symbol name to look up"), file: z.string().optional().describe("Optional file path to narrow search to a single file") })`.
+- [x] Default export `inspect(root: string, name: string, file?: string): Promise<InspectResult>`. The orchestrator: (1) walks files using `walk`, (2) reads each file, (3) calls `parseSymbols` to extract all symbols, (4) filters to symbols matching `name` (exact match on the `name` field), (5) converts absolute paths to POSIX-relative paths using `node:path.relative`, (6) returns `{ hits }`. When no matches found, return `{ hits: [] }` — the MCP layer formats the not-found message.
+- [x] Import `InspectResult` and `InspectHit` from `@/types/index.js`. Import `walk` and `parseSymbols` from their subfolders. Use `node:fs/promises.readFile` to read file contents.
+- [x] JSDoc on the orchestrator summarizes the flow: walk files, parse symbols, filter by name, return hits.
+
+### 6. Register `aide_inspect` in `src/index.ts`
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] Import `inspect` and `InspectInput` from `@/tools/inspect/index.js`.
+- [x] Add a tool entry in the `ListToolsRequestSchema` handler array. Name: `aide_inspect`. Description should explain: returns JSDoc, signature, and kind for a named symbol without opening files — Tier 2 progressive disclosure for code. Input schema mirrors `InspectInput` with `name` (required) and `file` (optional).
+- [x] Add a case in the `CallToolRequestSchema` switch: parse args with `InspectInput`, call `inspect(root, parsed.name, parsed.file)`, format the result. When `hits.length === 0`, return a text response: `No symbol "${name}" found.` with a suggestion to check the name or specify a file path. When hits exist, return `JSON.stringify(result, null, 2)` as text content.
+
+### 7. Write tests at `src/tools/inspect/index.test.ts`
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [x] Create `src/tools/inspect/index.test.ts` using the same temp-directory pattern as `src/tools/read/index.test.ts` — `mkdtemp` in `beforeEach`, `rm` in `afterEach`. Write TypeScript fixture files into the temp directory and call `inspect(tempDir, symbolName)` directly.
+- [x] Test cases covering each desired outcome from the spec:
+  - Function declaration: write a file with `export default function greet(name: string): string { ... }` with JSDoc. Assert hit has `kind: "function"`, correct `signature` (no body), parsed `jsdoc.description` and `jsdoc.tags`, correct `line` and `file`.
+  - Arrow function assigned to const: `const add = (a: number, b: number): number => a + b`. Assert `kind: "arrow"`.
+  - Class declaration: `class MyService { ... }`. Assert `kind: "class"`.
+  - Interface declaration: `interface Config { ... }`. Assert `kind: "interface"`.
+  - Type alias: `type Status = "active" | "inactive"`. Assert `kind: "type-alias"`.
+  - Method declaration: class with a method. Assert `kind: "method"` and correct method name.
+  - Not found: call with a name that doesn't exist. Assert `hits` is empty array.
+  - File scoping: write the same symbol name in two files. Call with `file` param pointing to one. Assert only one hit from that file.
+  - Multiple files: same symbol name in two files, no `file` param. Assert two hits.
+  - Signature truncation: assert the signature does NOT contain the function body (no `{ return ... }` in the signature string).
+  - JSDoc absent: symbol with no JSDoc. Assert `jsdoc` is `null`.
+  - Extensions: write a `.js` file with a function. Assert it is found.
+
+### 8. Verify the full build and test suite pass
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] Run `npm run build` and confirm no TypeScript errors from the new files.
+- [x] Run `npm test` and confirm all tests pass, including the new inspect tests.
+
+## Decisions
+
+**TypeScript as production dependency.** TypeScript is currently a devDependency, but `aide_inspect` uses `ts.createSourceFile` at runtime to parse source files. Since this is an npm-published MCP server, TypeScript must be in `dependencies` so it ships with the package. The alternative — bundling only the parser — adds complexity for no benefit since TypeScript is already present.
+
+**No full TypeScript program.** The spec explicitly calls for `createSourceFile` (syntax-only parsing) rather than `createProgram` (full type checking). This is the correct choice: inspect needs syntax structure (declarations, JSDoc, signatures) not type resolution. It keeps the tool fast and avoids needing a `tsconfig.json` from the host project.
+
+**Flat result array, not grouped by file.** `InspectResult.hits` is a flat array of `InspectHit` objects. Each hit carries its own `file` path. Grouping by file adds structure the agent doesn't need — it will typically get 1-2 hits. If the agent needs file grouping, it can do that itself.
+
+**Orchestrator/helper split.** The tool splits into two helpers: `walk` (file enumeration) and `parseSymbols` (AST parsing and symbol extraction). The orchestrator coordinates: walk, read, parse, filter, format. This follows the progressive disclosure pattern — the folder tree tells you what the tool does before opening any file. The `read` tool keeps helpers inline (single-helper exception), but inspect has two distinct concerns warranting subfolders.
+
+**Sync vs async file reads.** The provided implementation uses `readFileSync`. This plan uses async `readFile` to match the project convention (every other tool uses `node:fs/promises`). The performance difference is negligible for this use case, and consistency matters more.
+
+**POSIX-normalized relative paths in results.** Hit paths are relative to root and POSIX-normalized (forward slashes), matching the convention used by `AideFile.relativePath` in the existing codebase. This ensures consistency across tools.
+
+**Not-found as empty hits, not an error.** The spec says "clear not-found result rather than an error." Returning `{ hits: [] }` is the structured not-found. The MCP registration layer adds a human-readable message ("No symbol found") when formatting the response. This keeps the tool function pure and the presentation in the server layer.

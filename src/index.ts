@@ -15,6 +15,7 @@ import applySteps from "@/tools/init/applySteps/index.js";
 import upgrade, { UpgradeInput } from "@/tools/upgrade/index.js";
 import applyFiles from "@/tools/upgrade/applyFiles/index.js";
 import info, { InfoInput } from "@/tools/info/index.js";
+import inspect, { InspectInput } from "@/tools/inspect/index.js";
 
 /**
  * Check process.argv for a known subcommand and dispatch it via dynamic
@@ -174,6 +175,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 				},
 			},
 		},
+		{
+			name: "aide_inspect",
+			description:
+				"Return JSDoc, signature, and kind for a named symbol without opening the full file — Tier 2 progressive disclosure for code. When an agent knows a function name from an import list or orchestrator file, call inspect to learn what the symbol does, what it accepts, and what it returns, based on its contract alone. Searches across TypeScript and JavaScript source files (ts, tsx, js, jsx, mjs, cjs). Use the optional `file` parameter to narrow the search to a single file when the location is already known.",
+			inputSchema: {
+				type: "object" as const,
+				properties: {
+					name: {
+						type: "string",
+						description: "Symbol name to look up",
+					},
+					file: {
+						type: "string",
+						description: "Optional file path to narrow search to a single file",
+					},
+				},
+				required: ["name"],
+			},
+		},
 	],
 }));
 
@@ -263,6 +283,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		case "aide_info": {
 			InfoInput.parse(args);
 			const result = await info(root);
+			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+		}
+		case "aide_inspect": {
+			const parsed = InspectInput.parse(args);
+			const result = await inspect(root, parsed.name, parsed.file);
+			if (result.hits.length === 0) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `No symbol "${parsed.name}" found. Check the name or specify a file path to narrow the search.`,
+						},
+					],
+				};
+			}
 			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		default:

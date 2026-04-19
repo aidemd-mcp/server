@@ -17,6 +17,7 @@ that architects plan from, implementors build from, and QA validates against.
 - **One-command project bootstrap** via `aide_init` — wires methodology docs, pipeline commands, and this MCP server into your project in a single guided flow
 - **Automatic naming convention enforcement** — `aide_scaffold` handles the `.aide` / `intent.aide` rename rules so you never create conflicting specs
 - **Health-check validation** via `aide_validate` — detects orphaned specs, missing descriptions, broken links, and naming conflicts before they cause drift
+- **Code introspection** via `aide_inspect` — returns JSDoc, signatures, and kind for named symbols without opening files, giving agents Tier 2 progressive disclosure for code
 - **Upgrade drift detection** via `aide_upgrade` — compares your project's AIDE methodology artifacts against canonical versions and writes updates per-category
 
 ## Installation
@@ -157,6 +158,14 @@ Create new `.aide` spec files with automatic naming convention enforcement. Hand
 **Inputs:**
 - `directory` (string, required): Directory where the `.aide` file(s) will be created.
 - `type` (string, required): Type of `.aide` file to create. One of: `intent`, `research`, `both`, `todo`, `plan`.
+
+### aide_inspect
+
+Return the JSDoc block, signature, and kind for a named function, method, class, interface, or type alias in the workspace — Tier 2 progressive disclosure for code. Agents can understand a symbol's contract without opening the file.
+
+**Inputs:**
+- `name` (string, required): Symbol name to look up.
+- `file` (string, optional): Restrict search to a single file (relative to project root).
 
 ### aide_validate
 

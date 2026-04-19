@@ -40,8 +40,8 @@ After you have the cascading intent context:
 ### Progressive Disclosure
 
 1. **Folder structure first.** Every service module is a folder named after its default export. An `ls` of a service directory tells you what it does. Start here.
-2. **Orchestrator imports + JSDoc.** If folder names aren't enough, open the orchestrator's `index.ts`. The import list + JSDoc gives you the data flow.
-3. **Function bodies.** Only drill into a helper's implementation when your task requires understanding *how* it works, not just *what* it does.
+2. **Orchestrator imports + JSDoc.** If folder names aren't enough, open the orchestrator's `index.ts`. The import list tells you the data flow. Then use `aide_inspect` to get JSDoc, signatures, and kind for imported symbols without opening their files — this gives you the contract without the implementation.
+3. **Function bodies.** Only drill into a helper's implementation when the JSDoc and signature from `aide_inspect` aren't sufficient to understand *how* it works.
 
 ### .aide Specs — Read Before Code
 

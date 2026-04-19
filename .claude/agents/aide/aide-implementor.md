@@ -58,7 +58,7 @@ You operate in two modes:
 - **No dead code.** No commented-out blocks, TODO placeholders, or unused imports.
 - **No incomplete implementations.** Every function has a real body. Every error path is handled.
 - **No silent failures.** Errors are logged, propagated, or handled — never swallowed.
-- **Respect existing abstractions.** If the codebase has a pattern, use it. Don't reinvent.
+- **Respect existing abstractions.** If the codebase has a pattern, use it. Don't reinvent. When the plan references existing helpers to reuse, use `aide_inspect` to read their contracts (JSDoc + signature) before deciding whether to open the full file.
 
 ## When the Plan Conflicts with Reality
 

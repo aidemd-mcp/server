@@ -1,0 +1,24 @@
+---
+scope: src/tools/inspect
+description: Code introspection tool that returns JSDoc, signature, and kind for named symbols without opening full files
+intent: >
+  aide_inspect gives agents Tier 2 progressive disclosure for code — the ability
+  to read a symbol's JSDoc documentation, signature, and kind without opening the
+  file or seeing the function body. When an agent knows a function name from an
+  import list or orchestrator file, it calls inspect to learn what that function
+  does, what it accepts, and what it returns, all from structured metadata rather
+  than raw source. This lets agents make informed decisions about which helpers to
+  drill into (Tier 3) and which they can use based on the contract alone.
+outcomes:
+  desired:
+    - "Given a symbol name, the tool returns: the symbol's kind (function, method, arrow, class, interface, type alias), file path, line number, the full signature truncated before the body, and parsed JSDoc with description and tags."
+    - The tool searches the host project's workspace source files, not the AIDE server's own source.
+    - An agent that calls inspect and gets a result back has enough information to decide whether to read the full file or to use the symbol based on its contract alone.
+    - The tool handles TypeScript and JavaScript source files across common extensions including ts, tsx, js, jsx, mjs, and cjs.
+    - When the named symbol is not found, the tool returns a clear not-found result rather than an error or empty response that leaves the agent guessing.
+  undesired:
+    - Returning the function body along with the signature. The entire point is Tier 2 — contract without implementation. Including the body defeats progressive disclosure and burns context the agent did not ask for.
+    - Silently returning a partial match or a different symbol when the exact name is not found. A wrong match is worse than no match — the agent will act on a contract that does not belong to the symbol it asked about.
+    - Requiring the agent to specify a file path to use the tool. The tool should search across workspace files so agents can inspect symbols they know by name but have not yet located.
+    - Failing on valid TypeScript constructs like arrow functions assigned to const, exported type aliases, or class methods. These are common patterns in real codebases and a tool that only handles function declarations misses most of them.
+---

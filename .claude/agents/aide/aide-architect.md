@@ -39,7 +39,7 @@ Specifically:
 
 2. **Consult the playbook.** Load conventions for the relevant domains — naming, file structure, patterns, anti-patterns.
 
-3. **Scan the codebase.** Read the target module and its neighbors. Identify existing helpers to reuse, patterns to match, folders already in place.
+3. **Scan the codebase.** Read the target module and its neighbors. Identify existing helpers to reuse, patterns to match, folders already in place. Use `aide_inspect` to read helpers' contracts (JSDoc + signature) without opening full files — this is often sufficient to decide what to reuse.
 
 4. **Write `plan.aide`.** Format:
    - **Frontmatter:** `intent` — one-line summary of what this plan delivers
