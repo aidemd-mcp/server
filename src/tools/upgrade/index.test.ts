@@ -256,9 +256,9 @@ describe("upgrade", () => {
 		const cmdsCat = findCategory(result, "commands");
 		expect(cmdsCat!.files).toHaveLength(2);
 
-		// ide should have 2 entries (zed + vscode)
+		// ide should have 1 entry (zed only — vscode extension not yet built)
 		const ideCat = findCategory(result, "ide");
-		expect(ideCat!.files).toHaveLength(2);
+		expect(ideCat!.files).toHaveLength(1);
 	});
 
 	// ── Test 7: Framework override forwarded to detectFramework ─────────────

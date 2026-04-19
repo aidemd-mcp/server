@@ -1,0 +1,36 @@
+---
+scope: src/tools/info
+description: >
+  Lightweight boot-time tool that reads the host project's local AIDE versions from disk, compares against the shipped canonical manifest, and returns a structured staleness report.
+intent: >
+  aide_info is the passive staleness-detection surface the orchestrator calls
+  during its boot sequence. It reads the host project's .aide/versions.json
+  from disk, compares each artifact's sourceCommit against the canonical
+  manifest shipped inside the npm package, and returns a structured report
+  listing which artifacts are outdated plus the server's npm version. The
+  orchestrator makes one tool call at boot and checks the result — no file
+  reading, no diffing, no extra steps. If the host has no local versions
+  file (old install predating version tracking), the tool returns an empty
+  outdated list silently. The name is aide_info rather than aide_versions
+  to leave room for additional server metadata in the future without renaming.
+outcomes:
+  desired:
+    - "Reads the host project's .aide/versions.json from disk and compares each artifact's sourceCommit against the shipped canonical manifest. Returns `{ serverVersion, outdated }` where outdated is an array of artifact keys whose sourceCommit differs (including artifacts present in canonical but missing locally)."
+    - The response is small enough to add negligible cost to every orchestrator boot sequence. Only the list of outdated artifact keys, the server version, and nothing else.
+    - "The tool returns structured JSON, not a pre-formatted message. The orchestrator composes its own user-facing notification from the data."
+    - "When the local .aide/versions.json is missing or unreadable, the tool returns `outdated: []` silently — it does not error or warn. Old installs that predate version tracking are handled gracefully."
+  undesired:
+    - A tool that requires the agent to read the local versions file and pass it in. The tool has the project root and reads the file itself.
+    - A tool that triggers or recommends an upgrade. This is a passive notification surface; the orchestrator decides what to say.
+    - A response that includes the full versions manifest. Only the outdated keys and server version are needed.
+---
+
+## Context
+
+## Strategy
+
+## Good examples
+
+## Bad examples
+
+## References

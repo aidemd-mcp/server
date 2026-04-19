@@ -14,6 +14,7 @@ import init, { InitInput } from "@/tools/init/index.js";
 import applySteps from "@/tools/init/applySteps/index.js";
 import upgrade, { UpgradeInput } from "@/tools/upgrade/index.js";
 import applyFiles from "@/tools/upgrade/applyFiles/index.js";
+import info, { InfoInput } from "@/tools/info/index.js";
 
 /**
  * Check process.argv for a known subcommand and dispatch it via dynamic
@@ -136,6 +137,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 			},
 		},
 		{
+			name: "aide_info",
+			description:
+				"Check whether the host project's AIDE artifacts are up to date. Reads the local .aide/versions.json, compares against the canonical manifest shipped with the server, and returns which artifacts are outdated plus the server version. No parameters needed — uses the server's working directory. Called by the orchestrator at boot.",
+			inputSchema: {
+				type: "object" as const,
+				properties: {},
+			},
+		},
+		{
 			name: "aide_init",
 			description:
 				"Bootstrap the AIDE development environment into a project. Returns structured JSON for agent consumption — not prose.\n\nThe tool uses a two-call pattern for progressive disclosure:\n\n**First call (no `category` param):** Returns a lightweight summary — every step with `name`, `status` (would-create/would-skip/exists), `category`, and `filePath`, but NO `content` fields. Also returns `brainHints` (vault candidates) and detected `framework`. Use this to understand what needs to be done.\n\n**Second call (with `category` param):** The tool writes all `would-create` files directly to disk itself and returns a manifest — steps with `filePath`, `status` (`created` or `exists`), and `name`, but NO `content`. The agent never sees file content and never uses the Write tool for new files.\n\n**Exception — MCP steps:** For MCP steps, the manifest includes `prescription` data (key name and entry object) so the agent can read the existing config, merge, and write. The tool never touches MCP config directly.\n\n**Exception — brain category:** When calling with `category=brain`, also pass `brainPath` with the user-confirmed vault path. The tool creates the vault scaffold directories directly.\n\n**Exception — IDE VS Code steps:** IDE steps that need external tooling (VS Code CLI) return instructions for the agent to execute, since those aren't simple file writes.\n\n**IMPORTANT — one-at-a-time wizard pattern using AskUserQuestion:**\nDo NOT present a summary table of all categories. Do NOT offer \"all\" as an option. Do NOT ask conversational questions — use the `AskUserQuestion` tool with structured options at every pause point. Walk the user through ONE category at a time:\n\n1. Call without `category` first to get the metadata\n2. Present ONLY the detected framework — use AskUserQuestion with Yes/{alternatives} options. STOP.\n3. Present ONLY the first category with would-create steps — use AskUserQuestion with Yes/Skip options. STOP.\n4. If confirmed, call again with `category=X` (and `brainPath` when category is brain). The tool writes files and returns a manifest. Report what was created, then present the NEXT category with AskUserQuestion. STOP.\n5. Repeat step 4 for each remaining category in order: methodology, commands, agents, skills, mcp, brain, ide, readme\n6. For brain: use AskUserQuestion with brainHints as labeled options (user can pick Other for custom path). STOP.\n7. For MCP: use AskUserQuestion with Merge/Skip options. Merge the `prescription` entry into the existing config yourself (read → merge → write). STOP.\n8. For IDE: use AskUserQuestion with multiSelect for Zed/VS Code/Neither. STOP.\n\nEach step is ONE AskUserQuestion → wait for selection → then proceed. Never show multiple categories at once. Never ask open-ended conversational questions.\n\nDo NOT auto-apply steps without user confirmation.",
@@ -248,6 +258,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 					files: cat.files.map(({ canonicalContent: _content, ...rest }) => rest),
 				}));
 			}
+			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+		}
+		case "aide_info": {
+			InfoInput.parse(args);
+			const result = await info(root);
 			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		default:

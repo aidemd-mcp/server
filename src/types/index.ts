@@ -318,6 +318,14 @@ export type TreeNode =
 	| { kind: "dir"; path: string; children: TreeNode[] }
 	| { kind: "file"; file: AideFile };
 
+/** Result returned by aide_info — the passive staleness-detection surface. */
+export interface InfoResult {
+	/** The npm package version of the installed aide MCP server. */
+	serverVersion: string;
+	/** Artifact keys whose sourceCommit differs between local and canonical. */
+	outdated: string[];
+}
+
 /** Directories to skip during filesystem walks. */
 export const SKIP_DIRS = [
 	"node_modules",

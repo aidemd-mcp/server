@@ -10,17 +10,20 @@ Conversational entry point for the full AIDE pipeline. Gathers context from the 
 
 This boot sequence fires on EVERY `/aide` invocation — no exceptions, no matter what the user said. It applies whether the user wants to run the pipeline, report a bug, ask a question, do a refactor, or anything else. You cannot know the correct response until you have booted.
 
-Your first tool calls MUST be these 5 calls and NOTHING else. No Bash, no Glob, no Grep, no Explore, no Agent — only these:
+Your first tool calls MUST be these 6 calls and NOTHING else. No Bash, no Glob, no Grep, no Explore, no Agent — only these:
 
 1. `Read` → `.aide/docs/index.md`
 2. `Read` → `.aide/docs/aide-spec.md`
 3. `Read` → `.aide/docs/plan-aide.md`
 4. `Read` → `.aide/docs/todo-aide.md`
 5. `aide_discover` (MCP tool) → to get the full intent tree
+6. `aide_info` (MCP tool) → no parameters needed
 
-Calls 1–4 can run in parallel. Call 5 can run in parallel with them or after.
+All 6 calls run in parallel — there are no dependencies between any of them.
 
-**Only after all 5 calls return** may you read the user's request, consult the sections below, and decide what to do.
+**Only after all 6 calls return** may you read the user's request, consult the sections below, and decide what to do.
+
+Check the `outdated` array from `aide_info`. If it is non-empty, notify the user (e.g., "N AIDE artifacts are outdated — run `/aide:upgrade` when you'd like to update.") and continue with whatever they asked. This is a passive notification, not a blocking gate.
 
 **Why this is unconditional:** You are an orchestrator for a methodology you don't inherently know. Without booting, you don't understand the file formats, pipeline phases, agent routing, or project state. Even "simple" requests require this context — a bug report about `aide_init` requires knowing what `aide_init` should produce, which the docs and discover output tell you. Skipping boot means guessing, and guessing produces wrong answers.
 

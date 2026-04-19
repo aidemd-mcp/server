@@ -1,12 +1,11 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { join, isAbsolute, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { FrameworkType, InitResult, InitStep } from "@/types/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import detectFramework from "@/tools/init/detectFramework/index.js";
 import resolveBrainHints from "@/tools/init/resolveBrainHints/index.js";
-import { configureZed, configureVscode } from "@/tools/init/configureIde/index.js";
+import { configureZed } from "@/tools/init/configureIde/index.js";
 import writeMethodology from "./writeMethodology/index.js";
 import installMethodologyDocs from "./installMethodologyDocs/index.js";
 import scaffoldCommands from "./scaffoldCommands/index.js";
@@ -106,9 +105,7 @@ export default async function init(
 		...(existsSync(versionsHostPath) ? {} : { content: versionsJson }),
 	};
 
-	const extensionsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "extensions", "vscode");
 	const zedStep = await configureZed(projectRoot);
-	const vscodeStep = await configureVscode(extensionsDir);
 	const readmeStep = await scaffoldReadme(projectRoot);
 
 	const steps = [
@@ -122,7 +119,6 @@ export default async function init(
 		mcpStep,
 		...brainSteps,
 		zedStep,
-		vscodeStep,
 		readmeStep,
 	];
 

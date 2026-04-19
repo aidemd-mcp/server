@@ -1,0 +1,64 @@
+---
+intent: >
+  Implement the aide_info MCP tool and wire the orchestrator boot sequence to
+  detect stale host-side AIDE artifacts by comparing local versions against
+  the canonical baseline.
+---
+
+## Plan
+
+### 1. Create the aide_info tool module
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
+
+- [x] Create `src/tools/info/index.ts` with the tool's default export and Zod input schema
+- [x] The module exports `InfoInput` (an empty Zod object — no parameters) as a named export, matching the pattern in `src/tools/discover/index.ts` and `src/tools/read/index.ts`
+- [x] The default export is `async function info(): Promise<InfoResult>` — it takes no arguments (no `root`, no input params) since it only reads bundled package data, never host files
+- [x] Import `readVersionsManifest` from `@/tools/upgrade/buildVersionsMeta/index.js` — reuse, do not duplicate
+- [x] Read the server's own `package.json` version. Use `createRequire(import.meta.url)` to load the package.json from the installed package root (3 dirs up from `dist/tools/info/`), consistent with how `readVersionsManifest` resolves its path relative to the module location. Alternatively, use a `readFileSync` + `JSON.parse` approach mirroring `readVersionsManifest`. Do NOT use a dynamic `import()` for JSON — it requires import assertions that vary across Node versions
+- [x] Return shape — define `InfoResult` interface in `src/types/index.ts`: `{ serverVersion: string; versions: VersionsMap }`. Import `VersionsMap` from its existing location in `@/tools/upgrade/buildVersionsMeta/index.js`
+- [x] JSDoc on the default export explaining this is the passive staleness-detection surface called during orchestrator boot
+
+### 2. Register aide_info in the MCP server
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
+
+- [x] In `src/index.ts`, add an import for the info tool: `import info, { InfoInput } from "@/tools/info/index.js";`
+- [x] Add an `aide_info` entry to the `ListToolsRequestSchema` handler's tools array. Description: "Return the canonical AIDE versions manifest shipped with the server package and the server's npm version. Read-only, no parameters. The orchestrator calls this at boot to compare against the host project's local .aide/versions.json." Input schema: empty object (`type: "object", properties: {}`)
+- [x] Add an `aide_info` case to the `CallToolRequestSchema` switch. Parse args with `InfoInput.parse(args)`, call `const result = await info()`, return `JSON.stringify(result, null, 2)` wrapped in the standard text content array — matching the aide_init/aide_upgrade JSON return pattern
+
+### 3. Write tests for the info tool
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [x] Create `src/tools/info/index.test.ts` co-located with the source
+- [x] Mock `@/tools/upgrade/buildVersionsMeta/index.js` to return a known `VersionsMap` fixture
+- [x] Mock the package.json read (whichever mechanism step 1 used) to return a known version string
+- [x] Test: calling `info()` returns an object with `serverVersion` as a string and `versions` as the mocked VersionsMap
+- [x] Test: when `readVersionsManifest` returns an empty object (build not run), `versions` is `{}` and the call still succeeds
+- [x] Test: `InfoInput.parse({})` succeeds (no params required) and `InfoInput.parse({ unexpected: "field" })` still parses (Zod strips unknown keys by default)
+
+### 4. Update the orchestrator command with version-check boot calls
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] In `.claude/commands/aide.md`, update the mandatory boot sequence section
+- [x] Change "5 calls" to "7 calls" in the introductory text
+- [x] Add call 6: `Read` -> `.aide/versions.json` (the host project's local versions file)
+- [x] Add call 7: `aide_info` (MCP tool — returns the canonical/shipped versions manifest and server version)
+- [x] Calls 1-5 can run in parallel. Calls 6-7 can run in parallel with each other and with 1-5
+- [x] After "Only after all 7 calls return", add a paragraph: after boot completes, compare the local `.aide/versions.json` contents against the `versions` field from `aide_info`. For each artifact key, compare `sourceCommit` values — if they differ, the host artifact is outdated. If any artifacts are outdated, notify the user with a brief message (e.g., "Your AIDE artifacts are outdated — run `/aide:upgrade` when you'd like to update.") and continue with whatever the user asked. This is a passive notification, NOT a blocking gate. If the local `.aide/versions.json` read failed (file missing — old install predating version tracking), skip the comparison silently
+
+## Decisions
+
+**InfoResult lives in src/types/index.ts.** All shared types in this project are centralized in `src/types/`. The new `InfoResult` interface follows this pattern. `VersionsMap` is re-exported from its existing location rather than duplicated.
+
+**No parameters on the tool.** The spec explicitly states the tool is read-only and returns only bundled package data. An empty Zod schema is used for consistency with the parse pattern other tools use, but no input properties are defined.
+
+**info() takes no arguments (no root).** Unlike discover, read, validate, init, and upgrade — which all operate on the host project and need a root path — info only reads files bundled inside the npm package itself. Passing root would be misleading and unused.
+
+**Package version via createRequire or readFileSync, not dynamic import.** Dynamic `import("../../../package.json")` requires import assertions (`assert { type: "json" }` or `with { type: "json" }`) that differ across Node versions. A synchronous read mirrors the existing `readVersionsManifest` pattern and avoids this fragility.
+
+**Comparison logic in the command template, not in the tool.** The spec's undesired outcomes explicitly state the tool must not perform comparisons, decide how staleness is communicated, or trigger upgrades. The orchestrator command template owns the comparison logic — it reads local versions via the Read tool, calls aide_info for canonical versions, and composes the notification itself.
+
+**Boot calls 6-7 are parallel with existing calls.** All 7 boot calls are independent reads — no ordering dependency. The orchestrator fires them all, waits for all to return, then proceeds. This keeps boot latency unchanged (limited by the slowest call, not the sum).

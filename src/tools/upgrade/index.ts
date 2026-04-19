@@ -15,7 +15,7 @@ import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
-import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
+import { checkZedConfig } from "./checkIdeConfig/index.js";
 
 export const UpgradeInput = z.object({
 	framework: z
@@ -154,8 +154,6 @@ export default async function upgrade(
 
 	// ── h. IDE config ────────────────────────────────────────────────────────
 	const zedResult = await checkZedConfig(projectRoot);
-	const vscodeResult = await checkVscodeExtension();
-
 	// ── i. README ────────────────────────────────────────────────────────────
 	const readmeInitStep = await scaffoldReadme(projectRoot);
 	// Map InitStep statuses to UpgradeFileResult:
@@ -185,7 +183,7 @@ export default async function upgrade(
 		buildCategoryResult("agents", agentResults),
 		buildCategoryResult("skills", skillResults),
 		buildCategoryResult("mcp", [mcpResult]),
-		buildCategoryResult("ide", [zedResult, vscodeResult]),
+		buildCategoryResult("ide", [zedResult]),
 		buildCategoryResult("readme", [readmeFileResult]),
 	];
 
