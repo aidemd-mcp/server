@@ -20,6 +20,19 @@ wrong by definition.
 
 <!-- aide-methodology -->
 
+## Publishing
+
+This package publishes to **npm** and the **MCP Registry** (registry.modelcontextprotocol.io).
+A GitHub Actions workflow (`.github/workflows/publish.yml`) handles both automatically on `v*` tags.
+
+**To publish a new version:**
+
+```bash
+node scripts/publish.mjs <patch|minor|major>
+```
+
+This bumps `package.json`, syncs `server.json`, commits, tags, and pushes — the CI does the rest.
+
 ## Fixes Go in Canonical Docs, Not Memory
 
 This project ships agent definitions (`.claude/agents/`), command prompts (`.claude/commands/`), and methodology docs (`.aide/docs/`) that get installed into other projects. When you discover a behavioral fix, pattern, or constraint that should apply to all agents or all projects using AIDE:

@@ -15,7 +15,8 @@
 		"dev": "tsc --watch",
 		"test": "vitest run",
 		"export-pdf": "tsx scripts/export-pdf.ts",
-		"tree": "tsx src/cli/index.tsx"
+		"tree": "tsx src/cli/index.tsx",
+		"publish:all": "node scripts/publish.mjs"
 	},
 	"keywords": [
 		"mcp",
