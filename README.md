@@ -1,8 +1,9 @@
 [![AIDE](https://img.shields.io/badge/AIDE-intent--driven-0D9488?style=flat&logo=markdown&logoColor=white)](https://github.com/aidemd-mcp/server)
 [![npm version](https://img.shields.io/npm/v/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 [![server MCP server](https://glama.ai/mcp/servers/aidemd-mcp/server/badges/score.svg)](https://glama.ai/mcp/servers/aidemd-mcp/server)
+[![npm downloads](https://img.shields.io/npm/dm/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
+[![TypeScript](https://img.shields.io/badge/TypeScript-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 # @aidemd-mcp/server
 
