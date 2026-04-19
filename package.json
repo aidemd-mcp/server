@@ -1,6 +1,6 @@
 {
 	"name": "@aidemd-mcp/server",
-	"version": "0.3.15",
+	"version": "0.4.0",
 	"mcpName": "io.github.aidemd-mcp/server",
 	"description": "MCP server that teaches any agent the AIDE methodology through tool descriptions and progressive disclosure tooling",
 	"type": "module",
@@ -45,6 +45,7 @@
 		"@modelcontextprotocol/sdk": "^1.12.1",
 		"ink": "^7.0.0",
 		"react": "^19.2.5",
+		"typescript": "^5.8.3",
 		"yaml": "^2.8.3",
 		"zod": "^3.24.4"
 	},
@@ -58,7 +59,6 @@
 		"puppeteer": "^24.40.0",
 		"tsc-alias": "^1.8.16",
 		"tsx": "^4.21.0",
-		"typescript": "^5.8.3",
 		"vitest": "^3.1.2"
 	}
 }
