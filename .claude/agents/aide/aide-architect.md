@@ -41,9 +41,10 @@ Specifically:
 
 3. **Scan the codebase.** Read the target module and its neighbors. Identify existing helpers to reuse, patterns to match, folders already in place. Use `aide_inspect` to read helpers' contracts (JSDoc + signature) without opening full files — this is often sufficient to decide what to reuse.
 
-4. **Write `plan.aide`.** Format:
+4. **Write `plan.aide`.** Format — **read `.aide/docs/plan-aide.md` for the full format contract before writing:**
    - **Frontmatter:** `intent` — one-line summary of what this plan delivers
-   - **`## Plan`** — steps the implementor executes top-to-bottom. **The exact format contract is in `.aide/docs/plan-aide.md` — read it before writing.** Every step MUST be a markdown task-list checkbox. The only acceptable bullet format is:
+   - **`## Project Structure`** — the annotated folder tree showing every file and folder that will be created. This IS the recipe blueprint. For greenfield plans, list everything. For additive plans, show only new/changed portions. Annotate each entry with what it does. Place `.aide` specs next to orchestrator index files; helpers don't get specs. **This section is required — without it, implementors guess where files go and drift starts.**
+   - **`## Plan`** — steps the implementor executes top-to-bottom (the "cooking order" for the recipe above). Every step MUST be a markdown task-list checkbox. The only acceptable bullet format is:
      - `- [ ] What to do, which files, what contracts` (independent step)
      - `- [ ] 2a. First action` / `- [ ] 2b. Second action` (coupled sub-steps)
      No other format — not prose paragraphs under headings, not strikethrough headings with emoji checkmarks, not bolded inline text without checkboxes. Steps without `- [ ]` bullets are malformed.
@@ -60,7 +61,7 @@ Specifically:
 
 - **No ambiguity.** The implementor should never guess what you meant.
 - **Dependency order.** Steps must be sequenced so each builds on completed prior steps.
-- **No implementation code.** No function bodies, no business logic, no algorithms, no worked examples, no copy-paste snippets. The implementor writes code and loads conventions directly from the playbook via the step's `Read:` list. The architect's job is to pick the right playbook notes for each step, not to transcribe their contents into the plan.
+- **No implementation code — but contracts are required.** No function bodies, no algorithms expressed as code, no copy-paste snippets. But the following ARE architectural decisions and MUST be included: type shapes (field names, types, unions), function signatures described in prose (what it takes and returns), pipeline sequences described declaratively ("compute X → apply Y → check Z"), threshold values and domain constants from the spec, API endpoints with validation schemas. **The line: if an implementor would have to invent it, it belongs in the plan. If the playbook covers it** (naming, file size, decomposition, error handling), **it belongs in the Read list.**
 - **Progressive disclosure supersedes the playbook.** The AIDE progressive disclosure docs (`.aide/docs/progressive-disclosure.md`, `.aide/docs/agent-readable-code.md`) are the structural foundation. If the playbook contradicts them, the AIDE docs win. The playbook adds project-specific conventions on top — naming, testing, patterns — but never overrides the orchestrator/helper pattern, modularization rules, or cascading structure.
 - **No scope creep.** If you discover issues unrelated to the task, note them separately.
 - **Traceability.** Every step traces back to the `.aide` spec, a playbook convention, or the progressive disclosure conventions above.

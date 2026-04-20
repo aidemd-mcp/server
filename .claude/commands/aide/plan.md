@@ -11,14 +11,15 @@ Translate the intent spec into a step-by-step implementation plan. Output is a `
 - [ ] Scan the target module and its neighbors to understand what already exists — existing helpers to reuse, existing patterns to match, folders already in place
 - [ ] Write `plan.aide` next to the `.aide` spec with:
   - **Frontmatter:** `intent` — one-line summary of what this plan delivers
-  - **`## Plan`** — checkboxed steps the implementor executes top-to-bottom:
-    - Which files to create and where they live
+  - **`## Project Structure`** — the annotated folder tree showing every file/folder that will be created. This IS the recipe blueprint — without it, implementors guess where files go. For greenfield: list everything. For additive: show only new/changed. Annotate each entry with what it does. `.aide` specs go next to orchestrators, not helpers.
+  - **`## Plan`** — checkboxed steps (the "cooking order" for the recipe above):
+    - Each step references files from the Project Structure tree
+    - Type shapes, function signatures (in prose), declarative pipeline sequences, thresholds — these are contracts, include them
     - Which existing helpers to reuse instead of writing new ones
-    - Function boundaries and the contract between each step
     - Sequencing — what must exist before the next step can start
     - Tests to write for each behavior the spec's `outcomes.desired` names
   - **`## Decisions`** — architectural choices made: why X over Y, naming rationale, tradeoffs
-- [ ] No code in the plan — no function bodies, no worked examples, no copy-paste snippets. The plan describes decisions; the implementor writes the code and loads conventions directly from the playbook via each step's `Read:` list
+- [ ] No implementation code — no function bodies, no algorithms as code, no copy-paste snippets. But contracts ARE required: type shapes, function signatures in prose, declarative pipeline sequences, thresholds from the spec, API schemas. **If an implementor would have to invent it, put it in the plan. If the playbook covers it, put it in the Read list.**
 - [ ] Every step must be traceable back to a line in the `.aide` spec or a rule in the coding playbook. If a step has no source, cut it or find the rule that justifies it
 - [ ] If the spec is ambiguous, stop and escalate back to the spec writer (via the orchestrator) rather than inventing an answer
 - [ ] **PAUSE for user approval.** Present the plan and do not proceed until the user approves it. Iterate if the user requests changes

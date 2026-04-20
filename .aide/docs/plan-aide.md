@@ -14,6 +14,32 @@ intent: >
 ```
 
 ```markdown
+## Project Structure
+
+The folder tree is the recipe blueprint. Every file and folder that will be
+created appears here, annotated to show what it does. The numbered steps below
+are the cooking order — which parts of the recipe to build first and which
+playbook conventions apply. The tree is the "what"; the steps are the "when."
+
+For greenfield plans (new modules or features), list every file that will be
+created. For plans that modify existing code, show only the new or changed
+portions, with annotations marking what is new vs. what already exists.
+
+.aide specs go next to orchestrator index files, not next to helpers.
+Helper folders are self-explanatory by name and do not get specs.
+
+```
+src/service/<feature>/
+├── .aide                          ← intent spec for this orchestrator
+├── index.ts                       ← orchestrator: composes the helpers below
+├── helperOne/
+│   └── index.ts                   ← does X
+├── helperTwo/
+│   └── index.ts                   ← does Y
+└── helperThree/
+    └── index.ts                   ← does Z
+```
+
 ## Plan
 
 ### 1. Step title — self-contained unit
@@ -44,11 +70,12 @@ without re-deriving it.
 ## Rules
 
 - **Frontmatter is minimal.** `intent` only. No `status`, no `spec` pointer — the plan lives next to the spec it implements, and progressive disclosure makes the relationship obvious.
+- **`## Project Structure` is required.** Every plan must include a `## Project Structure` section (after frontmatter, before `## Plan`) containing the annotated folder tree for all files that will be created or changed. Without the tree, implementors guess where files go — that is how drift starts. For greenfield plans, list every file. For additive plans, show only the new or changed portions with annotations indicating what is new vs. existing. `.aide` specs appear next to orchestrator `index` files; helper folders do not get specs.
 - **Every step gets a checkbox.** The implementor checks each box as it completes during `/aide:build`. Unchecked boxes are pending work; checked boxes are done.
 - **Steps execute top-to-bottom.** Sequencing is the architect's job. The implementor does not reorder, skip, or add steps. If a step is ambiguous, escalate back to `/aide:plan`. Each numbered step is executed by a fresh implementor agent. Lettered sub-steps within a number share a single agent session.
 - **Each numbered step is a unit of delegation.** The orchestrator spawns one fresh implementor agent per numbered step. This means each step must be self-contained: a fresh agent should be able to execute it by reading the plan, the `.aide` spec, and the current code state — without knowing what a prior agent did in-memory. Write steps at a granularity where each one produces a complete, testable change.
 - **Lettered sub-steps for coupled work.** When multiple actions are tightly coupled and cannot be executed independently (e.g., creating a helper and immediately wiring it into the caller), group them as lettered sub-steps under a single number: `1a`, `1b`, `1c`. The orchestrator keeps one agent for all sub-steps of a given number. Use this sparingly — most steps should be independent. If you find yourself lettering more than you're numbering, the steps are too granular.
-- **No implementation code.** No function bodies, no business logic, no algorithms, no worked examples, no copy-paste snippets. Steps describe decisions — file names, contracts, sequencing, reuse. The implementor writes the code and loads conventions directly from the playbook via the step's `Read:` list.
+- **No implementation code.** No function bodies, no algorithms expressed as code, no copy-paste snippets. But the following ARE allowed because they are architectural decisions, not implementations: type shapes (field names, types, unions), function signatures (what it takes and returns), pipeline sequences described declaratively ("compute X → apply Y → check Z → if triggered, override"), threshold values and domain constants from the spec, and API endpoints with their validation schemas. The line is: **if an implementor would have to invent it, it belongs in the plan. If the playbook already covers it** (naming, file size, decomposition, error handling patterns), **it belongs in the Read list.**
 - **Every step has a Read list.** Each numbered step must open with a `Read:` line listing 1-3 coding playbook notes from the brain that the implementor should read before coding that step. These are the **convention notes** — playbook rules that govern how the implementor writes the code for that step (decomposition, naming, file size, patterns, testing style). The architect already consulted the playbook during planning; the Read list tells the implementor exactly which notes to load so it applies the same conventions. The implementor has direct playbook access via the `study-playbook` skill and will read these notes itself — the architect does not need to encode convention details into the plan text.
 - **Every step traces to intent.** Each step must be traceable back to a line in the `.aide` spec, a rule in the coding playbook, or the [progressive disclosure](./progressive-disclosure.md) conventions (orchestrator/helper pattern, modularization, cascading structure). If a step has no source, cut it or find the rule that justifies it.
 - **Tests are steps.** Every behavior the spec's `outcomes.desired` names gets a corresponding test step in the plan.
