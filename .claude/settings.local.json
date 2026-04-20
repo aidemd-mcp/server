@@ -10,7 +10,8 @@
       "mcp__aide__aide_read",
       "mcp__aide__aide_scaffold",
       "Bash(node debug_test.mjs)",
-      "mcp__aide__aide_upgrade"
+      "mcp__aide__aide_upgrade",
+      "mcp__aide__aide_info"
     ]
   }
 }

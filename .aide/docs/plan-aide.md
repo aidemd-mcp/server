@@ -46,6 +46,20 @@ steps are the "when."
     └── index.ts                   ← (scored: ScoredData) => ProcessedResult
 ```
 
+## Prerequisites
+
+Modules that must be built before this plan can execute. The architect
+produces plan.aide files for prerequisite modules first; the orchestrator
+executes them in dependency order before reaching this plan.
+
+Each entry declares the module, what it must export (the interface contract
+this plan expects), and that it must exist before this plan's steps run.
+Never prescribe the internal structure of a prerequisite — only the contract
+this plan consumes.
+
+- `@/lib/redis` must export `{ redis: Redis | null, isRedisAvailable: () => Promise<boolean> }`
+- `@/lib/email` must export `sendEmail: (to: string, subject: string, body: string) => Promise<void>`
+
 ## Plan
 
 ### 1. Step title — self-contained unit
@@ -75,6 +89,8 @@ without re-deriving it.
 
 ## Rules
 
+- **Single-module scoping.** A plan.aide only describes what gets built inside the module it lives in. The Project Structure tree shows the proposed state of THAT scope directory after implementation — nothing outside it.
+- **Multi-plan splitting.** When a feature requires work across multiple modules, the architect produces multiple plan.aide files — one per module that needs new code. Prerequisite modules get their plan.aide first; dependent modules declare them in `## Prerequisites`. Each plan is scoped to its own directory and follows the same rules independently. The orchestrator (`/aide:build`) executes them in dependency order — prerequisites before dependents.
 - **Frontmatter is minimal.** `intent` only. No `status`, no `spec` pointer — the plan lives next to the spec it implements, and progressive disclosure makes the relationship obvious.
 - **`## Project Structure` is required — always, unconditionally.** Every plan must include a `## Project Structure` section (after frontmatter, before `## Plan`) containing the complete annotated folder tree of the module, rooted at the scope directory. This applies to every plan — greenfield, additive, refactor, any kind. The implementor must never have to figure out the module's structure; that is the architect's job. Every file that will exist after execution appears in the tree, annotated with what it does and its function signature (parameters and return type). For additive plans, annotate which files are new vs. already existing. `.aide` specs appear next to orchestrator `index` files; helper folders do not get specs.
 - **Every step gets a checkbox.** The implementor checks each box as it completes during `/aide:build`. Unchecked boxes are pending work; checked boxes are done.

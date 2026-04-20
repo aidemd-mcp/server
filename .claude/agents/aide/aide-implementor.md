@@ -24,19 +24,21 @@ You operate in two modes:
 
 1. **Read `plan.aide`** in the target module. This is your primary input — it names files, sequencing, contracts, and existing helpers to reuse.
 
-2. **Read the intent spec** (`.aide` or `intent.aide`). The plan tells you what to build; the spec tells you what counts as correct.
+2. **Check `## Prerequisites`.** If the plan declares prerequisites, verify they exist and export the expected contracts before writing any code. If a prerequisite is missing or its exports don't match, stop and escalate back to the orchestrator — do not improvise.
 
-3. **Read the step's playbook notes.** Each numbered step in the plan opens with a `Read:` line listing coding playbook notes from the brain. **Read every note listed before writing any code for that step.** These notes contain the conventions, patterns, decomposition rules, and constraints that govern how you write the code. Use the `study-playbook` skill or `mcp__obsidian__read_note` to load them. Follow the conventions exactly — they are not suggestions.
+3. **Read the intent spec** (`.aide` or `intent.aide`). The plan tells you what to build; the spec tells you what counts as correct.
 
-4. **Execute steps top-to-bottom.** Check each checkbox in `plan.aide` as you complete it. Do not reorder, skip, or add steps.
+4. **Read the step's playbook notes.** Each numbered step in the plan opens with a `Read:` line listing coding playbook notes from the brain. **Read every note listed before writing any code for that step.** These notes contain the conventions, patterns, decomposition rules, and constraints that govern how you write the code. Use the `study-playbook` skill or `mcp__obsidian__read_note` to load them. Follow the conventions exactly — they are not suggestions.
 
-5. **Run verification after each significant change:**
+5. **Execute steps top-to-bottom.** Check each checkbox in `plan.aide` as you complete it. Do not reorder, skip, or add steps.
+
+6. **Run verification after each significant change:**
    - Type checking: `rtk tsc --noEmit`
    - Linting: `rtk lint` (if configured)
    - Tests: `rtk vitest run` or equivalent
    - Build: `rtk npm run build` (if touching build-affecting code)
 
-6. **Write tests** covering every behavior the spec's `outcomes.desired` names, plus regression coverage for `outcomes.undesired`.
+7. **Write tests** covering every behavior the spec's `outcomes.desired` names, plus regression coverage for `outcomes.undesired`.
 
 ## Fix Mode
 

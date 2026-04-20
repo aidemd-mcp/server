@@ -7,6 +7,7 @@ Execute the architect's implementation plan. This is the implementor phase in bu
 ## Checklist
 
 - [ ] Read `plan.aide` in the target module. This is the primary input — it names files, sequencing, contracts, and which existing helpers to reuse
+- [ ] Check `## Prerequisites`. If the plan declares prerequisites, verify they exist and export the expected contracts before writing any code. If a prerequisite is missing or doesn't match, stop and escalate back to the orchestrator — do not improvise
 - [ ] Read the intent spec (`.aide` or `intent.aide`) for the target module. The plan tells you what to build; the spec tells you what counts as correct
 - [ ] Execute the plan steps top-to-bottom. Check each checkbox in `plan.aide` as you complete it. Do not reorder steps, skip steps, or add steps. If a step is ambiguous, stop and escalate back to the architect via `/aide:plan` rather than inventing an answer
 - [ ] Write the code. No architectural improvisation — if a decision is not in the plan or the spec, it is out of scope for this session

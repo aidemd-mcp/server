@@ -36,7 +36,7 @@ for (const p of serverJson.packages ?? []) {
 writeFileSync(serverJsonPath, JSON.stringify(serverJson, null, 2) + "\n");
 
 // Commit, tag, push
-execSync(`git add package.json server.json`, { cwd: root, stdio: "inherit" });
+execSync(`git add package.json package-lock.json server.json`, { cwd: root, stdio: "inherit" });
 const commitMsg = message ? `${version}: ${message}` : version;
 execSync(`git commit -m "${commitMsg}"`, { cwd: root, stdio: "inherit" });
 execSync(`git tag v${version}`, { cwd: root, stdio: "inherit" });
