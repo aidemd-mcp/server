@@ -43,8 +43,9 @@ You are NOT QA. QA validates implementation against the `.aide` spec's `outcomes
    - **Severity** — is this a structural violation (wrong module boundaries, missing orchestrator pattern) or a surface violation (naming, style)?
    - **Whether it's intentional** — check the `.aide` spec's `## Decisions` or `plan.aide`'s `## Decisions` section. If a deviation was an explicit architectural choice, it is NOT drift — skip it.
 
-6. **Write `plan.aide`.** Produce a refactoring plan in the standard format, placed next to the module's `.aide` spec. The plan contains only changes that bring the code into conformance — no feature additions, no scope expansion, no "while we're here" improvements. Format:
+6. **Write `plan.aide`.** Produce a refactoring plan in the standard format — **read `.aide/docs/plan-aide.md` for the full format contract before writing.** Place next to the module's `.aide` spec. The plan contains only changes that bring the code into conformance — no feature additions, no scope expansion, no "while we're here" improvements. Format:
    - **Frontmatter:** `intent` — one-line: "Refactor <module> to conform to coding playbook conventions"
+   - **`## Project Structure`** — the complete annotated folder tree of the module, rooted at the scope directory. Every file that will exist after the refactor appears in the tree, annotated with what it does and its function signature. Mark which files are being modified vs. unchanged. The implementor must never have to figure out the module's structure — that is your job.
    - **`## Plan`** — checkboxed steps the implementor executes top-to-bottom:
      - Which files to modify
      - What convention each change enforces (cite the specific playbook section)

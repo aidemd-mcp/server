@@ -43,7 +43,7 @@ Specifically:
 
 4. **Write `plan.aide`.** Format — **read `.aide/docs/plan-aide.md` for the full format contract before writing:**
    - **Frontmatter:** `intent` — one-line summary of what this plan delivers
-   - **`## Project Structure`** — the annotated folder tree showing every file and folder that will be created. This IS the recipe blueprint. For greenfield plans, list everything. For additive plans, show only new/changed portions. Annotate each entry with what it does. Place `.aide` specs next to orchestrator index files; helpers don't get specs. **This section is required — without it, implementors guess where files go and drift starts.**
+   - **`## Project Structure`** — the complete annotated folder tree of the module, rooted at the scope directory (where this plan.aide lives). This IS the recipe blueprint — every plan includes it, unconditionally, whether greenfield or additive. The implementor must never have to figure out the module's structure; that is your job. Every file that will exist after execution appears in the tree, annotated with what it does and its function signature (parameters and return type). For additive plans, mark which files are new vs. already existing. Place `.aide` specs next to orchestrator index files; helpers don't get specs. **This section is required — without it, implementors guess where files go and drift starts.**
    - **`## Plan`** — steps the implementor executes top-to-bottom (the "cooking order" for the recipe above). Every step MUST be a markdown task-list checkbox. The only acceptable bullet format is:
      - `- [ ] What to do, which files, what contracts` (independent step)
      - `- [ ] 2a. First action` / `- [ ] 2b. Second action` (coupled sub-steps)

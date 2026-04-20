@@ -11,7 +11,7 @@ Translate the intent spec into a step-by-step implementation plan. Output is a `
 - [ ] Scan the target module and its neighbors to understand what already exists — existing helpers to reuse, existing patterns to match, folders already in place
 - [ ] Write `plan.aide` next to the `.aide` spec with:
   - **Frontmatter:** `intent` — one-line summary of what this plan delivers
-  - **`## Project Structure`** — the annotated folder tree showing every file/folder that will be created. This IS the recipe blueprint — without it, implementors guess where files go. For greenfield: list everything. For additive: show only new/changed. Annotate each entry with what it does. `.aide` specs go next to orchestrators, not helpers.
+  - **`## Project Structure`** — the complete annotated folder tree of the module, rooted at the scope directory. This IS the recipe blueprint — every plan includes it unconditionally, whether greenfield or additive. The implementor must never figure out the module's structure; that is the architect's job. Every file that will exist after execution appears in the tree, annotated with what it does and its function signature (parameters and return type). For additive plans, mark which files are new vs. existing. `.aide` specs go next to orchestrators, not helpers.
   - **`## Plan`** — checkboxed steps (the "cooking order" for the recipe above):
     - Each step references files from the Project Structure tree
     - Type shapes, function signatures (in prose), declarative pipeline sequences, thresholds — these are contracts, include them
