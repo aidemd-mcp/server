@@ -4,6 +4,7 @@
 [![server MCP server](https://glama.ai/mcp/servers/aidemd-mcp/server/badges/score.svg)](https://glama.ai/mcp/servers/aidemd-mcp/server)
 [![npm downloads](https://img.shields.io/npm/dm/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
 [![TypeScript](https://img.shields.io/badge/TypeScript-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Discord](https://img.shields.io/discord/1496212051377262692?label=Discord&logo=discord)](https://discord.gg/N4NqMXuvTR)
 
 # @aidemd-mcp/server
 
@@ -31,6 +32,7 @@ npx @aidemd-mcp/server@latest init
 ```
 
 This command:
+
 - Merges the AIDE MCP server entry into `.mcp.json` (creates the file or skips the entry if already present)
 - Writes the `/aide:init` slash command to `.claude/commands/aide/init.md` (skips if exists)
 - Writes the `aide-tree` launcher to `.aide/bin/aide-tree.mjs` (skips if exists)
@@ -68,6 +70,7 @@ Or add to your project's `.mcp.json`:
 #### Claude Desktop
 
 Config file locations:
+
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
@@ -142,6 +145,7 @@ Add to `~/.windsurf/mcp.json`:
 Scan the project for `.aide` spec files and return a progressive disclosure tree map showing each spec's type, location, and summary.
 
 **Inputs:**
+
 - `path` (string, optional): Subdirectory to drill into. When provided, the response opens with the ancestor chain — the cascading intent lineage from root to target, each ancestor showing its description and alignment status — followed by the detailed subtree with summaries and warnings. When omitted, returns a shallow project-wide map (locations and types only).
 
 ### aide_read
@@ -149,6 +153,7 @@ Scan the project for `.aide` spec files and return a progressive disclosure tree
 Read an `.aide` spec file with full context, returning the file content, its classified type (intent/research/plan/todo), related specs in the same directory, and links found in the content.
 
 **Inputs:**
+
 - `path` (string, required): Path to the `.aide` file to read.
 
 ### aide_scaffold
@@ -156,6 +161,7 @@ Read an `.aide` spec file with full context, returning the file content, its cla
 Create new `.aide` spec files with automatic naming convention enforcement. Handles the rename rules: intent specs are `.aide` by default but become `intent.aide` when `research.aide` exists in the same folder; creating a `research.aide` auto-renames any existing `.aide` to `intent.aide`.
 
 **Inputs:**
+
 - `directory` (string, required): Directory where the `.aide` file(s) will be created.
 - `type` (string, required): Type of `.aide` file to create. One of: `intent`, `research`, `both`, `todo`, `plan`.
 
@@ -164,6 +170,7 @@ Create new `.aide` spec files with automatic naming convention enforcement. Hand
 Return the JSDoc block, signature, and kind for a named function, method, class, interface, or type alias in the workspace — Tier 2 progressive disclosure for code. Agents can understand a symbol's contract without opening the file.
 
 **Inputs:**
+
 - `name` (string, required): Symbol name to look up.
 - `file` (string, optional): Restrict search to a single file (relative to project root).
 
@@ -172,6 +179,7 @@ Return the JSDoc block, signature, and kind for a named function, method, class,
 Run a health check on `.aide` spec files in the project. Detects orphaned specs, missing specs, naming conflicts (`.aide` and `intent.aide` in the same folder), broken links, orphaned research files, and missing frontmatter descriptions.
 
 **Inputs:**
+
 - `path` (string, optional): Subdirectory to validate. Defaults to the entire project when omitted.
 
 ### aide_init
@@ -179,6 +187,7 @@ Run a health check on `.aide` spec files in the project. Detects orphaned specs,
 Bootstrap the AIDE development environment into a project using a guided one-at-a-time wizard. On the first call (no `category`), returns a summary of every step with status and detected framework. On subsequent calls (with `category`), writes all pending files for that category to disk and returns a manifest.
 
 **Inputs:**
+
 - `framework` (string, optional): Force a specific framework instead of auto-detecting. One of: `claude`, `cursor`, `windsurf`, `copilot`.
 - `path` (string, optional): Custom project root path. Defaults to the server working directory.
 - `category` (string, optional): Write all `would-create` files for this category and return a manifest. One of: `framework`, `methodology`, `commands`, `agents`, `skills`, `mcp`, `brain`, `ide`. Omit on the first call to get a metadata-only summary.
@@ -189,6 +198,7 @@ Bootstrap the AIDE development environment into a project using a guided one-at-
 Compare the AIDE methodology artifacts in this project against canonical versions and return a structured diff grouped by category. On the first call (no `category`), returns a lightweight summary of every category with drift status. On subsequent calls (with `category`), writes all diffed or missing files for that category to disk and returns a manifest.
 
 **Inputs:**
+
 - `framework` (string, optional): Force a specific framework instead of auto-detecting. One of: `claude`, `cursor`, `windsurf`, `copilot`.
 - `path` (string, optional): Custom project root path. Defaults to the server working directory.
 - `category` (string, optional): Write all drifted or missing files for this category and return a manifest. One of: `pointer-stub`, `methodology-docs`, `version-metadata`, `commands`, `agents`, `skills`, `mcp`, `ide`. Omit on the first call to get a metadata-only summary.
