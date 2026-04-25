@@ -11,21 +11,27 @@ export interface WriteMcpEntryResult {
 /**
  * Read-parse-merge-write for `.mcp.json` in the given project root.
  *
- * Writes BOTH the `aide` and `obsidian` MCP server entries additively.
- * The aide entry is pure canonical. The obsidian entry is written with
+ * Writes the `aide` and `brain` MCP server entries additively.
+ * The aide entry is pure canonical. The brain entry is written with
  * `vaultPath` when provided, or an empty string placeholder when not —
  * an empty path is intentional: `aide_info` reports it as `invalid-path`,
  * which the orchestrator's inline-recovery flow (open Claude Code and run
  * `/aide`) detects and prompts the user to fill in the real vault path.
  *
- * Never overwrites existing entries. If `aide` (or legacy `aidemd-mcp`)
- * is present, it is preserved. If `obsidian` is present — even with a
- * different vault path, or with no path at all — it is preserved. A
- * second CLI run with `--vault-path` on top of an empty-path entry does
- * NOT update the path; the user fixes it via `/aide` (the orchestrator's
- * inline-recovery flow prompts for it) or by hand.
+ * Brain entry migration semantics (mirrors `buildBrainMcpStep` in provisionBrain):
  *
- * Returns `exists` only when BOTH aide and obsidian are already present.
+ * - Cold install (no `obsidian` key, no `brain` key) → write under `brain`.
+ * - Legacy (`obsidian` exists, `brain` does not) → write under `brain`.
+ *   The `obsidian` orphan key is preserved; cleanup is deferred to a
+ *   separate follow-up step.
+ * - Transitional (both `obsidian` and `brain` exist) → leave alone, no
+ *   brain write needed. The brain key is already present.
+ * - Already-current (`brain` exists, no `obsidian`) → leave alone.
+ *
+ * The `aide` entry follows the original never-overwrite semantics: if
+ * `aide` (or legacy `aidemd-mcp`) is present, it is preserved.
+ *
+ * Returns `exists` only when BOTH aide and brain are already present.
  * Otherwise returns `created` and the message names which entries were
  * added.
  *
@@ -63,24 +69,42 @@ export default async function writeMcpEntry(
 	const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
 
 	const aidePresent = "aide" in servers || "aidemd-mcp" in servers;
+	const brainPresent = "brain" in servers;
 	const obsidianPresent = "obsidian" in servers;
 
-	if (aidePresent && obsidianPresent) {
+	// Transitional or already-current: brain key is already present.
+	// Aide key check is still independent — aide may still need to be written.
+	if (brainPresent && aidePresent) {
 		return {
 			status: "exists",
-			message: "aide and obsidian MCP server entries already configured",
+			message: "aide and brain MCP server entries already configured",
 		};
 	}
 
 	const nextServers: Record<string, unknown> = { ...servers };
 	const added: string[] = [];
+
 	if (!aidePresent) {
 		nextServers.aide = mcpEntry();
 		added.push("aide");
 	}
-	if (!obsidianPresent) {
-		nextServers.obsidian = obsidianMcpEntry(vaultPath ?? "");
-		added.push("obsidian");
+
+	// Write brain when not already present (covers cold-install and legacy-obsidian branches).
+	// When both obsidian and brain are already present (transitional), brainPresent is true
+	// and we already returned `exists` above (when aide is also present) or fall through
+	// to only add aide. When brain is absent but obsidian exists (legacy), we write brain.
+	if (!brainPresent) {
+		nextServers.brain = obsidianMcpEntry(vaultPath ?? "");
+		added.push("brain");
+	}
+
+	if (added.length === 0) {
+		// aide is present, brain is present — both covered. Should not reach here
+		// because brainPresent && aidePresent returns early above, but guard for safety.
+		return {
+			status: "exists",
+			message: "aide and brain MCP server entries already configured",
+		};
 	}
 
 	const merged: Record<string, unknown> = {
@@ -90,8 +114,9 @@ export default async function writeMcpEntry(
 
 	await writeFile(mcpPath, JSON.stringify(merged, null, 2) + "\n", "utf-8");
 
-	const preservedCount =
-		Object.keys(servers).length - (aidePresent ? 1 : 0) - (obsidianPresent ? 1 : 0);
+	// Count preserved servers: all servers except the managed keys (aide, aidemd-mcp, brain, obsidian).
+	const managedKeys = new Set(["aide", "aidemd-mcp", "brain", "obsidian"]);
+	const preservedCount = Object.keys(servers).filter((k) => !managedKeys.has(k)).length;
 	const addedText = added.join(" and ");
 	const base = `${addedText} MCP server ${added.length === 1 ? "entry" : "entries"}`;
 
@@ -101,8 +126,8 @@ export default async function writeMcpEntry(
 	} else {
 		message = base;
 	}
-	if (!obsidianPresent && !vaultPath) {
-		message += " — obsidian vault path is a placeholder; open Claude Code and run /aide to set it";
+	if (!brainPresent && !vaultPath) {
+		message += " — brain vault path is a placeholder; open Claude Code and run /aide to set it";
 	}
 
 	return { status: "created", message };

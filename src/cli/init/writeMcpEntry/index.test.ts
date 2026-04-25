@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import writeMcpEntry from "./index.js";
 import { mcpEntry } from "@/service/install/wireMcp/index.js";
+import { obsidianMcpEntry } from "@/service/install/provisionBrain/index.js";
 
 let tempDir: string;
 
@@ -16,6 +17,8 @@ afterEach(async () => {
 });
 
 describe("writeMcpEntry", () => {
+	// --- cold install (no obsidian key, no brain key) ---
+
 	it("creates valid JSON with mcpServers.aide entry when no .mcp.json exists", async () => {
 		const result = await writeMcpEntry(tempDir);
 
@@ -28,7 +31,17 @@ describe("writeMcpEntry", () => {
 		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
 	});
 
-	it("uses the platform-appropriate npx entry shape", async () => {
+	it("cold install: writes brain key (not obsidian) when no .mcp.json exists", async () => {
+		await writeMcpEntry(tempDir, "/my/vault");
+
+		const written = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+		const parsed = JSON.parse(written);
+
+		expect(parsed.mcpServers.brain).toEqual(obsidianMcpEntry("/my/vault"));
+		expect(parsed.mcpServers.obsidian).toBeUndefined();
+	});
+
+	it("uses the platform-appropriate npx entry shape for aide", async () => {
 		await writeMcpEntry(tempDir);
 
 		const written = await readFile(join(tempDir, ".mcp.json"), "utf-8");
@@ -37,11 +50,62 @@ describe("writeMcpEntry", () => {
 		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
 	});
 
-	it("preserves existing server entries and adds only aide when merging", async () => {
+	// --- legacy obsidian-only install ---
+
+	it("legacy: writes brain key when only obsidian key is present", async () => {
 		const existing = {
 			mcpServers: {
-				obsidian: { command: "npx", args: ["@modelcontextprotocol/obsidian"] },
-				github: { command: "npx", args: ["@modelcontextprotocol/github"] },
+				obsidian: { command: "npx", args: ["@bitbonsai/mcpvault", "/old/vault"] },
+			},
+		};
+		await writeFile(
+			join(tempDir, ".mcp.json"),
+			JSON.stringify(existing, null, 2),
+			"utf-8",
+		);
+
+		const result = await writeMcpEntry(tempDir, "/my/vault");
+
+		expect(result.status).toBe("created");
+
+		const written = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+		const parsed = JSON.parse(written);
+
+		expect(parsed.mcpServers.brain).toEqual(obsidianMcpEntry("/my/vault"));
+		// Obsidian orphan key is preserved — cleanup is deferred to a separate step.
+		expect(parsed.mcpServers.obsidian).toEqual(existing.mcpServers.obsidian);
+		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
+	});
+
+	it("legacy: preserves obsidian orphan key (no delete)", async () => {
+		const obsidianEntry = { command: "npx", args: ["@bitbonsai/mcpvault", "/old/vault"] };
+		const existing = {
+			mcpServers: {
+				obsidian: obsidianEntry,
+			},
+		};
+		await writeFile(
+			join(tempDir, ".mcp.json"),
+			JSON.stringify(existing, null, 2),
+			"utf-8",
+		);
+
+		await writeMcpEntry(tempDir);
+
+		const written = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+		const parsed = JSON.parse(written);
+
+		expect(parsed.mcpServers.obsidian).toEqual(obsidianEntry);
+	});
+
+	// --- transitional (both obsidian and brain exist) ---
+
+	it("transitional: leaves brain alone when both obsidian and brain keys are present, adds aide", async () => {
+		const existingBrainEntry = obsidianMcpEntry("/my/vault");
+		const existing = {
+			mcpServers: {
+				obsidian: { command: "npx", args: ["@bitbonsai/mcpvault", "/old/vault"] },
+				brain: existingBrainEntry,
 			},
 		};
 		await writeFile(
@@ -57,16 +121,18 @@ describe("writeMcpEntry", () => {
 		const written = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		const parsed = JSON.parse(written);
 
-		expect(parsed.mcpServers.obsidian).toEqual(existing.mcpServers.obsidian);
-		expect(parsed.mcpServers.github).toEqual(existing.mcpServers.github);
+		// Brain key untouched.
+		expect(parsed.mcpServers.brain).toEqual(existingBrainEntry);
+		// Aide added.
 		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
 	});
 
-	it("returns exists and does not modify the file when both aide and obsidian keys are present", async () => {
+	it("transitional: returns exists when aide, obsidian, and brain are all present", async () => {
 		const existing = {
 			mcpServers: {
-				aide: { command: "npx", args: ["@aidemd-mcp/server"] },
-				obsidian: { command: "npx", args: ["@modelcontextprotocol/obsidian"] },
+				aide: mcpEntry(),
+				obsidian: { command: "npx", args: ["@bitbonsai/mcpvault", "/old/vault"] },
+				brain: obsidianMcpEntry("/my/vault"),
 			},
 		};
 		const originalJson = JSON.stringify(existing, null, 2);
@@ -80,11 +146,31 @@ describe("writeMcpEntry", () => {
 		expect(after).toBe(originalJson);
 	});
 
-	it("returns exists when legacy aidemd-mcp key and obsidian are both present (dual-key check)", async () => {
+	// --- already-current (brain exists, no obsidian) ---
+
+	it("already-current: returns exists and does not modify the file when both aide and brain keys are present", async () => {
+		const existing = {
+			mcpServers: {
+				aide: mcpEntry(),
+				brain: obsidianMcpEntry("/my/vault"),
+			},
+		};
+		const originalJson = JSON.stringify(existing, null, 2);
+		await writeFile(join(tempDir, ".mcp.json"), originalJson, "utf-8");
+
+		const result = await writeMcpEntry(tempDir);
+
+		expect(result.status).toBe("exists");
+
+		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+		expect(after).toBe(originalJson);
+	});
+
+	it("already-current: returns exists when legacy aidemd-mcp key and brain are both present", async () => {
 		const existing = {
 			mcpServers: {
 				"aidemd-mcp": { command: "npx", args: ["@aidemd-mcp/server"] },
-				obsidian: { command: "npx", args: ["@modelcontextprotocol/obsidian"] },
+				brain: obsidianMcpEntry("/my/vault"),
 			},
 		};
 		const originalJson = JSON.stringify(existing, null, 2);
@@ -97,6 +183,8 @@ describe("writeMcpEntry", () => {
 		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(after).toBe(originalJson);
 	});
+
+	// --- error handling ---
 
 	it("throws an error with the spec-documented message when .mcp.json contains malformed JSON", async () => {
 		await writeFile(join(tempDir, ".mcp.json"), "{ not valid json {{{{", "utf-8");
@@ -106,10 +194,11 @@ describe("writeMcpEntry", () => {
 		);
 	});
 
-	it("created message includes existing server count when merging", async () => {
+	// --- preservation ---
+
+	it("preserves existing server entries and adds aide and brain when merging", async () => {
 		const existing = {
 			mcpServers: {
-				obsidian: { command: "npx", args: ["@modelcontextprotocol/obsidian"] },
 				github: { command: "npx", args: ["@modelcontextprotocol/github"] },
 			},
 		};
@@ -122,13 +211,37 @@ describe("writeMcpEntry", () => {
 		const result = await writeMcpEntry(tempDir);
 
 		expect(result.status).toBe("created");
-		expect(result.message).toContain("1 existing server");
+
+		const written = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+		const parsed = JSON.parse(written);
+
+		expect(parsed.mcpServers.github).toEqual(existing.mcpServers.github);
+		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
+		expect(parsed.mcpServers.brain).toBeDefined();
+	});
+
+	it("created message includes existing non-managed server count when merging", async () => {
+		const existing = {
+			mcpServers: {
+				github: { command: "npx", args: ["@modelcontextprotocol/github"] },
+				slack: { command: "npx", args: ["@modelcontextprotocol/slack"] },
+			},
+		};
+		await writeFile(
+			join(tempDir, ".mcp.json"),
+			JSON.stringify(existing, null, 2),
+			"utf-8",
+		);
+
+		const result = await writeMcpEntry(tempDir);
+
+		expect(result.status).toBe("created");
+		expect(result.message).toContain("2 existing servers");
 	});
 
 	it("created message uses singular when merging with one non-managed existing server", async () => {
 		const existing = {
 			mcpServers: {
-				obsidian: { command: "npx", args: ["@modelcontextprotocol/obsidian"] },
 				github: { command: "npx", args: ["@modelcontextprotocol/github"] },
 			},
 		};
@@ -174,5 +287,17 @@ describe("writeMcpEntry", () => {
 		const parsed = JSON.parse(written);
 
 		expect(parsed.someOtherKey).toBe("preserve-me");
+	});
+
+	it("cold install: message includes vault placeholder warning when no vaultPath provided", async () => {
+		const result = await writeMcpEntry(tempDir);
+
+		expect(result.message).toContain("brain vault path is a placeholder");
+	});
+
+	it("cold install: message does not include vault placeholder warning when vaultPath provided", async () => {
+		const result = await writeMcpEntry(tempDir, "/my/vault");
+
+		expect(result.message).not.toContain("placeholder");
 	});
 });
