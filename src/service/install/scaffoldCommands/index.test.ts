@@ -65,6 +65,7 @@ describe("scaffoldCommands", () => {
 			"aide:update-playbook",
 			"aide:refactor",
 			"aide:align",
+			"aide:brain",
 		]);
 	});
 
