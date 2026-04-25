@@ -130,7 +130,7 @@ export interface FrameworkConfig {
  * The calling agent reads the existing config, merges this entry, and writes.
  */
 export interface McpPrescription {
-	/** The mcpServers key name (e.g. "aide", "obsidian"). */
+	/** The mcpServers key name (e.g. "aide", "brain"). */
 	key: string;
 	/** The server entry to merge into mcpServers. */
 	entry: { command: string; args: string[] };
@@ -342,17 +342,43 @@ export type TreeNode =
 	| { kind: "file"; file: AideFile };
 
 /**
- * Precondition state of the host's obsidian brain vault, returned as a tagged
+ * The shape of a single MCP server entry under `mcpServers[<key>]` in `.mcp.json`.
+ * This is the argument shape the `brainBackends` registry consumes when matching
+ * a wired backend to its driver.
+ */
+export type McpServerEntry = {
+	command: string;
+	args: string[];
+};
+
+/**
+ * A backend driver registered in the `brainBackends` registry.
+ *
+ * - `id` is the structured backend identifier surfaced in `aide_brain`'s response
+ *   (e.g. `"obsidian"`). It is the value stored on `BrainState.backend` when the
+ *   backend is successfully matched.
+ * - `renderInstructions` is the per-backend prose template the registry returns
+ *   for the `ok` branch. It receives the resolved vault state and returns
+ *   ready-to-execute prose telling the agent which MCP tools to use to reach
+ *   the wired backend's seeded entry-point file.
+ */
+export type BackendDriver = {
+	id: string;
+	renderInstructions: (state: { vaultPath: string }) => string;
+};
+
+/**
+ * Precondition state of the host's brain vault, returned as a tagged
  * union so the orchestrator can branch on each case independently.
  *
- * - `ok`: an obsidian MCP entry is configured and its vault directory resolves
+ * - `ok`: a brain MCP entry is configured and its vault directory resolves
  *   on disk. `vaultPath` is the resolved directory path.
- * - `no-mcp-entry`: no obsidian entry is present in the host's MCP config, the
+ * - `no-mcp-entry`: no brain entry is present in the host's MCP config, the
  *   config file is missing, or the config is malformed. `vaultPath` is `null` —
  *   no path was ever configured. Remediation: open Claude Code and run `/aide`;
  *   the orchestrator's inline-recovery flow detects the missing state and prompts
  *   for the vault path.
- * - `invalid-path`: an obsidian entry is configured but its vault directory does
+ * - `invalid-path`: a brain MCP entry is configured but its vault directory does
  *   not exist on disk. `vaultPath` is the configured (but unresolvable) path so
  *   the orchestrator can surface the exact failing path to the user.
  */
@@ -372,6 +398,39 @@ export type BrainState = {
 	 * array is valid when no candidates were found on disk.
 	 */
 	hints: BrainHint[];
+	/**
+	 * The resolved backend driver identifier. Non-null only when `status` is `"ok"` —
+	 * carries the id of the matched driver (e.g. `"obsidian"`). Null for
+	 * `"no-mcp-entry"` and `"invalid-path"` because no driver was successfully
+	 * matched on those branches. The existing `status` field is the primary
+	 * discriminant; this field is a structured carry-forward of the registry
+	 * match result so downstream formatters (e.g. `composeInstructions`) do not
+	 * need to re-run the registry lookup.
+	 */
+	backend: string | null;
+};
+
+/**
+ * The structured JSON result returned by `aide_brain` — the runtime brain
+ * entry-point tool.
+ *
+ * - `status` mirrors `aide_info.brain.status` exactly (`"ok"`, `"no-mcp-entry"`,
+ *   `"invalid-path"`), so an agent that already saw boot-time brain state does
+ *   not learn new terms from this tool.
+ * - `backend` is the structured signal of which branch fired: non-null (the
+ *   driver id, e.g. `"obsidian"`) only on `"ok"`; `null` on all other branches.
+ *   Programmatic consumers can branch on `backend === null` without parsing prose.
+ * - `instructions` is always non-empty — ready-to-execute prose composed by the
+ *   server. On `"ok"`, it tells the agent which MCP tools to call and how to
+ *   reach the wired backend's seeded entry-point file. On non-ok branches, it
+ *   carries remediation prose directing the agent to surface a wiring prompt to
+ *   the user. A response with `status: "ok"` and empty `instructions` is a
+ *   forbidden state.
+ */
+export type BrainToolResult = {
+	status: BrainState["status"];
+	backend: string | null;
+	instructions: string;
 };
 
 /**
@@ -381,7 +440,7 @@ export type BrainState = {
  * - `serverVersion` + `outdated`: staleness of installed AIDE artifacts against
  *   the canonical manifest shipped with this npm package. Soft notification —
  *   the pipeline can run even when artifacts are stale.
- * - `brain`: precondition state of the host's obsidian MCP brain vault. Hard
+ * - `brain`: precondition state of the host's brain MCP vault. Hard
  *   gate — the orchestrator halts and directs the user to run `/aide` when
  *   `status` is anything other than `"ok"`; the inline-recovery flow detects
  *   the broken state and prompts the user to resolve it.
@@ -394,7 +453,7 @@ export interface InfoResult {
 	serverVersion: string;
 	/** Artifact keys whose sourceCommit differs between local and canonical. */
 	outdated: string[];
-	/** Precondition state of the host's obsidian brain vault. */
+	/** Precondition state of the host's brain vault. */
 	brain: BrainState;
 }
 
