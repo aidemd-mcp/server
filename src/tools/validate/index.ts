@@ -67,12 +67,16 @@ export default async function validate(root: string, path?: string): Promise<Val
 					path: file.relativePath,
 					message: `YAML frontmatter parse error: ${parseError}`,
 				});
-			} else if (!frontmatter?.description) {
-				warnings.push({
-					kind: "missing-description",
-					path: file.relativePath,
-					message: "Missing or empty description field in frontmatter",
-				});
+			} else if (file.type === "intent" || file.type === "research") {
+				// plan.aide and todo.aide use `intent` frontmatter (not `description`) per
+				// the plan-aide canonical doc — only intent and research specs require description.
+				if (!frontmatter?.description) {
+					warnings.push({
+						kind: "missing-description",
+						path: file.relativePath,
+						message: "Missing or empty description field in frontmatter",
+					});
+				}
 			}
 		} catch {
 			// skip unreadable files
