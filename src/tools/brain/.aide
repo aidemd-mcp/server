@@ -1,0 +1,392 @@
+---
+scope: src/tools/brain
+description: >
+  Runtime brain entry-point tool — when an agent reaches for the brain mid-task,
+  returns ready-to-execute usage prose telling the agent which MCP tools to use
+  and how to use them to reach the entry-point file of whatever backend is wired,
+  without the agent or its prompts knowing which backend it is.
+intent: >
+  aide_brain is the runtime brain entry-point. When an agent reaches for the
+  brain mid-task, it calls this tool and gets back enough information to
+  navigate any wired backend without the agent or its prompts knowing which
+  backend it is. The server owns backend knowledge; the agent receives
+  pre-formatted usage prose that names the MCP tools to use and explains how
+  to use them to reach the brain's own root navigation file. Once the agent
+  reads that entry-point file, the brain itself takes over — folder structure,
+  search semantics, and write rules live in the brain's seeded CLAUDE.md, not
+  here. If no backend is wired, the tool says so loudly enough that the agent
+  surfaces a wiring prompt rather than stumbling forward. This tool is
+  on-demand only — invoked when an agent needs the brain, not on every /aide
+  boot.
+outcomes:
+  desired:
+    - "A single response of shape `{ status, backend, instructions }` is enough
+       for the agent to navigate the brain without any further server calls —
+       `instructions` names the MCP tools to use and explains how to use them
+       to reach the entry-point file; the brain owns everything beyond that."
+    - "Status vocabulary mirrors aide_info's `brain.status` exactly — `ok`,
+       `no-mcp-entry`, `invalid-path` — so an agent that already saw brain state
+       at boot does not learn new terms here."
+    - "Adding a new backend is a single driver-registry entry naming its MCP key
+       and entry-point reach prose; no consumer changes anywhere downstream —
+       `/aide:brain` shim, agents, prompts, and tool descriptions all stay
+       untouched."
+    - "When no backend is wired, `instructions` contains remediation prose
+       telling the agent how to wire the brain (never empty, never silent), so
+       the agent surfaces a wiring prompt to the user instead of failing
+       quietly or proceeding without the brain."
+    - "When a backend is wired, `backend` carries its identifier (e.g.
+       `obsidian`); when not wired, `backend` is null — the field is a
+       structured signal of which branch fired, not a parallel English statement
+       of the same thing."
+  undesired:
+    - Returning Obsidian-specific instructions when a non-Obsidian backend is
+      wired.
+    - Returning structured fields the agent has to assemble — `instructions`
+      must be ready-to-execute prose composed by the server.
+    - Encoding brain operations (search, read, write, or any CRUD verb) in the
+      driver registry. The registry only carries entry-point reach instructions.
+    - The tool returns usage prose for native backend tools, not a wrapping or
+      translation layer that intermediates calls — aide_brain is not a CRUD
+      proxy.
+    - "Returning a bare reference (backend name, file path) without telling the
+       agent which MCP tools to use or how to use them to reach the entry-point
+       — `instructions` must be ready-to-execute usage prose, not a thin pointer
+       the agent has to interpret."
+    - Being called from aide_info or fired on every /aide boot.
+    - "Silently succeeding when no backend is wired — for example, returning
+       `status: 'ok'` with empty `instructions`."
+    - Returning instructions that duplicate or contradict what the brain's own
+      root CLAUDE.md owns — folder structure, search semantics, write rules.
+    - "Pinning a specific backend count, enumerating the full backend roster, or
+       hardcoding `obsidian` as a special case."
+---
+
+## Context
+
+Before this tool, an agent that needed to reach the brain mid-task had to
+already know which backend was wired and which MCP tools to call against
+it. That knowledge was scattered across the `/aide:brain` command prose,
+agent definitions, and skill descriptions, every one of them naming
+`mcp__obsidian__*` tools as if Obsidian were the only possible backend.
+Adding a second backend (Notion, GitHub Wiki, hosted PKB, anything else)
+would have meant editing every one of those surfaces in lockstep — a
+fan-out the surface was never built to carry, and a guarantee that some
+surface would lag and tell agents to call tools that don't exist.
+
+The settled architectural insight from `.aide/handoff.aide` is that the
+abstraction layer already exists, just one step deeper than the agent
+sees. `provisionBrain` seeds a `CLAUDE.md` at the brain's root that owns
+folder structure, search semantics, and write rules. Once an agent reads
+that file, the brain takes over — no further server help needed. So the
+only piece of backend knowledge that has to live on the server side is
+**how to reach that entry-point**: which MCP key identifies the wired
+backend, which read tool the agent should call, and what path inside the
+backend the seeded `CLAUDE.md` lives at. Everything past the entry-point
+is the brain's job; everything up to it is `aide_brain`'s.
+
+The boundary that makes this clean is "until the agent is reading the
+seeded `CLAUDE.md`, the server owns navigation; from that file forward,
+the brain owns it." The registry of backends only carries entry-point
+reach prose. It does not encode search, read, write, or any other
+operation per backend — those grow inside the brain's own seeded file,
+without ever touching this server's surface. Adding a backend is one
+registry entry.
+
+This work does not bolt onto `aide_info` because the two tools serve
+different cadences. `aide_info` is the boot probe: it fires on every
+`/aide` invocation as a precondition gate, and its `brain.status`
+tagged union is the same shape this tool reuses. Runtime brain reach,
+by contrast, is needed only when an agent actually reaches for the
+brain mid-task — which is the minority of invocations. Bundling
+runtime instructions into the boot probe would bloat every `/aide`
+boot with prose that gets thrown away. Splitting them into a separate
+on-demand tool keeps the boot lean and lets the runtime tool grow its
+own response without coupling to boot semantics.
+
+## Strategy
+
+**Backend detection mirrors `buildBrainState` exactly — same MCP-key
+scan, same tagged-union vocabulary.** The tool reads the host's
+framework-specific MCP config the same way `aide_info` does (via
+`detectFramework` to resolve the config path), then probes a single
+known key per backend (today `"obsidian"`). The status field carries
+`ok | no-mcp-entry | invalid-path` — identical to `aide_info.brain.status`.
+Reusing the existing detection pattern means the tool inherits all the
+edge cases `buildBrainState` already handles (missing config, malformed
+JSON, missing entry, empty path, broken path) without re-deriving them.
+Reusing the vocabulary means an agent that already saw `brain.status`
+at boot does not have to translate between two boundary surfaces. This
+traces directly to the desired outcome that status vocabulary mirrors
+`aide_info` exactly.
+
+**`instructions` is server-assembled, ready-to-execute prose — never
+structured fields.** When a backend is wired, the server composes a
+multi-sentence prose block per backend that names the specific MCP read
+tool the agent should call, the path to the brain's seeded entry-point
+file, and a closing sentence telling the agent the brain takes over from
+there. The agent receives prose it can act on directly; it never has to
+read a structured contract and assemble its own usage instructions. This
+is the load-bearing decision the handoff settled: server owns backend
+knowledge, agent stays simple, adding a backend is one prose template
+in the registry rather than a contract change every consumer has to
+absorb. This traces to the desired outcome that the agent gets enough
+in one response to navigate without further server calls, and to the
+undesired outcome that forbids structured fields the agent has to
+assemble.
+
+**The scope of `instructions` stops at the entry-point — full stop.**
+The prose tells the agent how to reach the brain's seeded `CLAUDE.md`
+at the vault root. It does not enumerate folder structure, search
+semantics, write rules, or any operation past that file — those live
+inside the seeded `CLAUDE.md` itself, which the agent is one read away
+from. This is the load-bearing decision from the handoff: the registry
+stays narrow because the brain's own navigation rules grow inside the
+brain, never inside this server. Encoding "how to search" or "how to
+write" per backend in the registry would explode the per-backend
+surface, drift against the seeded file the moment the user customized
+their vault, and replicate work the brain's `CLAUDE.md` already does.
+This traces to the undesired outcome that forbids encoding brain
+operations in the driver registry and the undesired outcome that
+forbids duplicating what the seeded `CLAUDE.md` owns.
+
+**The backend driver registry lives in its own module, not inside this
+tool.** The handoff names a likely location at `src/service/brainBackends/`.
+This tool consumes the registry — it dispatches on the detected MCP key
+and asks the registry for the matching backend's reach prose. The
+registry owns the per-backend data; the tool owns the dispatch. This
+separation is what makes "adding a backend = one registry entry" true:
+the tool's logic does not need to learn about the new backend, only the
+registry does.
+
+**When no backend is wired, `instructions` carries remediation prose,
+never empty.** A `no-mcp-entry` response tells the agent how to wire
+the brain — concretely, "run `/aide:brain config` to wire the brain"
+— so the agent surfaces a wiring prompt to the user instead of
+silently proceeding without the brain. An `ok` response with empty
+`instructions` is a forbidden state: it tells the agent the brain is
+reachable but gives it no way to reach it, which is the silent-failure
+mode the spec explicitly bans. This traces to the desired outcome that
+remediation prose is never empty and the undesired outcome that forbids
+silent success.
+
+**`backend` carries the wired identifier when status is `ok`, and is
+`null` otherwise.** The field is a structured signal of which branch
+fired — programmatic consumers like the `/aide:brain` Mode 2 shim can
+branch on `backend === null` without parsing prose. This is the
+parallel-but-not-redundant relationship the spec calls for: the
+structured signal answers "which branch?", the prose answers "what
+should the agent do?". Conflating the two by encoding the backend
+identifier inside the prose only would force every consumer to parse
+strings; conflating them by repeating the same English statement in
+both fields would be redundant. Keeping them parallel — one structured,
+one executable — is what lets the shim reduce to "call `aide_brain`,
+follow the `instructions` field." This traces to the desired outcome
+that pins this exact field semantics.
+
+**The tool integrates as a peer to `aide_info` in the MCP server's
+tool registration, not as a child of it.** It is invoked on demand by
+agents reaching for the brain mid-task, never fired by the orchestrator
+on `/aide` boot. `aide_info` keeps its precondition-gate role; this
+tool keeps its runtime-reach role; the two never call each other. This
+traces to the undesired outcome that forbids being called from
+`aide_info` or fired on every boot.
+
+**The tool never proxies, wraps, or translates calls to the backend's
+native MCP tools.** Its sole output is prose telling the agent what
+those native tools are and how to use them. The agent then calls those
+native tools directly. Putting a CRUD-style proxy layer here would
+defeat the entire architectural point: backends bring their own MCP
+tools, and the seeded `CLAUDE.md` already orchestrates them. A proxy
+would add a translation surface that has to be maintained per backend
+on top of the seeded file that already governs the same operations.
+This traces to the undesired outcome that forbids wrapping or
+translating native backend calls.
+
+## Good examples
+
+A project with the obsidian backend wired and the vault resolving on
+disk:
+
+```json
+{
+  "status": "ok",
+  "backend": "obsidian",
+  "instructions": "Use mcp__obsidian__read_note to read CLAUDE.md at the vault root. That file is the brain's navigation contract — folder structure, search protocol, decision protocol, and where-to-find-things. Once you have read it, follow the rules it defines for the rest of your task; the brain takes over from there and this server has no further role in your navigation."
+}
+```
+
+The agent acts on the prose directly: it calls `mcp__obsidian__read_note`
+on `CLAUDE.md`, reads the seeded navigation contract, and proceeds.
+The shim that called `aide_brain` reduces to "follow the `instructions`
+field" — no Obsidian-specific prose anywhere in the shim, and no
+backend awareness leaked into the agent definitions.
+
+A project that has never run `/aide:brain config` — no obsidian entry
+in the MCP config:
+
+```json
+{
+  "status": "no-mcp-entry",
+  "backend": null,
+  "instructions": "No brain backend is wired in this project. Surface this to the user and recommend running /aide:brain config to wire the brain. Do not proceed with this task as if the brain were available — the user must wire it before brain-dependent work continues."
+}
+```
+
+The agent surfaces a wiring prompt to the user and stops. `backend` is
+`null` so the shim can branch programmatically without parsing prose.
+`instructions` is non-empty and carries the remediation directly.
+
+A project where the obsidian entry exists but the configured vault path
+no longer resolves on disk:
+
+```json
+{
+  "status": "invalid-path",
+  "backend": null,
+  "instructions": "An obsidian backend is configured but its vault path does not resolve on disk. Surface this to the user and recommend running /aide:brain config to repoint the vault at its current location. Do not proceed with this task as if the brain were available — the path must be corrected before brain-dependent work continues."
+}
+```
+
+`backend` is `null` because the brain is not currently reachable —
+status is the structured signal the agent acts on, and the prose names
+the precise remediation. The status distinction between `no-mcp-entry`
+and `invalid-path` lets the prose match the user's actual state instead
+of a generic "brain missing" message.
+
+## Bad examples
+
+A response that names obsidian-specific tools when a hypothetical
+non-obsidian backend is wired:
+
+```json
+{
+  "status": "ok",
+  "backend": "notion",
+  "instructions": "Use mcp__obsidian__read_note to read CLAUDE.md at the vault root..."
+}
+```
+
+Violates the desired outcome that the agent gets ready-to-execute
+prose for whatever backend is wired. The agent will call a tool that
+either doesn't exist in this project or operates on the wrong backend,
+and fails immediately. The registry's per-backend prose template is
+the single mechanism that prevents this — a hardcoded obsidian path
+through the dispatcher would silently produce this output for every
+non-obsidian backend.
+
+A bare-reference response that gives the agent a pointer instead of
+usage prose:
+
+```json
+{
+  "status": "ok",
+  "backend": "obsidian",
+  "instructions": "obsidian, vault root CLAUDE.md"
+}
+```
+
+Violates the undesired outcome that bans bare references. The agent has
+to interpret what to do with "obsidian, vault root CLAUDE.md" — call
+which tool? Read which way? The point of `instructions` is to be
+ready-to-execute prose composed by the server, not a thin pointer the
+agent has to assemble into a tool call.
+
+A silent-success response with `ok` status but empty `instructions`:
+
+```json
+{
+  "status": "ok",
+  "backend": null,
+  "instructions": ""
+}
+```
+
+Violates the undesired outcome that forbids silent success. The agent
+sees `status: "ok"`, assumes the brain is reachable, and proceeds with
+no idea how to reach it — either failing later when it tries to read
+something, or just skipping the brain entirely without telling the user.
+`instructions` must always be non-empty; an `ok` status with no prose
+is structurally inconsistent.
+
+A response whose `instructions` duplicates what the seeded `CLAUDE.md`
+already owns:
+
+```json
+{
+  "status": "ok",
+  "backend": "obsidian",
+  "instructions": "Use mcp__obsidian__read_note to read CLAUDE.md at the vault root. Then follow the wikilink crawling protocol: hub notes are navigation, content notes are depth 0, never re-read, stay in scope. Coding conventions go through the study-playbook skill; everything else uses mcp__obsidian__search_notes scoped to the right directory. Research lives under research/, retros under process/retro/, the playbook under coding-playbook/..."
+}
+```
+
+Violates the undesired outcome that forbids duplicating what the
+seeded `CLAUDE.md` owns. Folder structure, crawling protocol, and
+where-to-find-things are the brain's own navigation rules, written
+into the seeded `CLAUDE.md` at provision time. Re-stating them in
+`instructions` creates two sources of truth that drift the moment the
+user customizes their vault, and bloats every brain reach with
+information the agent is one read away from anyway.
+
+A CRUD-style response that wraps the backend's native MCP tools:
+
+```json
+{
+  "status": "ok",
+  "backend": "obsidian",
+  "operations": {
+    "read": "aide_brain_read",
+    "search": "aide_brain_search",
+    "write": "aide_brain_write"
+  }
+}
+```
+
+Violates the undesired outcome that forbids wrapping or translating
+native backend calls. The agent now has to learn a translation layer
+maintained per backend on top of the seeded `CLAUDE.md` that already
+orchestrates the same operations. Every backend has to implement
+matching wrappers for every operation the brain might use, and the
+seeded file's rules and the wrapper's rules drift the moment they
+disagree. The tool's contract is "tell the agent how to use the
+backend's native tools," not "intermediate every call."
+
+## References
+
+- `.aide/handoff.aide` -- settled architectural decisions: the brain
+  owns navigation past the entry-point, `instructions` is pre-formatted
+  prose not structured fields, backend detection mirrors
+  `buildBrainState`, `aide_info` stays a fast boot probe while runtime
+  reach lives in this new tool. Drove every Strategy decision in this
+  spec.
+- `src/tools/info/.aide` -- closest sibling spec; provided the tagged-
+  union vocabulary (`ok | no-mcp-entry | invalid-path`) this tool
+  reuses verbatim and the structured-state-not-prose contract that
+  shapes the `backend === null` parallel-not-redundant decision.
+- `src/tools/info/buildBrainState/index.ts` -- canonical detection
+  implementation; established the single-key MCP probe (`"obsidian"`),
+  the `detectFramework`-then-read-MCP-config flow, and every edge case
+  (missing config, malformed JSON, broken args, empty vault path)
+  this tool inherits by reusing the same detection helper.
+- `src/service/install/provisionBrain/index.ts` -- defines what gets
+  seeded into the brain at install time; confirms the entry-point
+  file is `CLAUDE.md` at the vault root, that the seeded file owns
+  folder structure / search protocol / decision protocol, and that
+  `mcp__obsidian__read_note` and `mcp__obsidian__search_notes` are
+  the obsidian-side tools the entry-point reach prose names.
+- `src/tools/discover/.aide` -- sibling tool spec; reference for the
+  shape and depth of "decision-form" Strategy paragraphs and the
+  pattern of citing parent specs inline.
+- `src/tools/upgrade/.aide` -- sibling tool spec; reference for an
+  agent-driven structured-response tool whose contract terminates at
+  "agent acts on the structured field directly," same posture this
+  tool takes with `instructions`.
+- `src/.aide` -- parent intent and submodule strategy; established
+  the no-doctrine-as-string-literals invariant (the brain's seeded
+  `CLAUDE.md` is the single source of truth for navigation, not
+  duplicated in this tool's prose) and the one-tool-per-phase rule
+  that justifies splitting runtime brain reach out of `aide_info`.
+- `.claude/commands/aide/brain.md` -- current Mode 2 command; the
+  Obsidian-specific prose this tool's `instructions` field replaces,
+  and the shim that will collapse to "call `aide_brain`, follow
+  `instructions`" once this tool ships.

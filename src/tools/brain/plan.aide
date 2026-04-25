@@ -1,0 +1,655 @@
+---
+intent: >
+  Ship aide_brain — the runtime brain entry-point MCP tool — composing the
+  lifted buildBrainState helper (fixed brain MCP key, command/args-shape
+  backend matching) with the new brainBackends registry to return
+  { status, backend, instructions } where instructions is server-assembled,
+  ready-to-execute prose telling the agent which mcp__brain__* tools to
+  use to reach the wired backend's seeded entry-point file, with non-empty
+  remediation prose on every non-ok branch.
+---
+
+## Project Structure
+
+After this plan executes, `src/tools/brain/` contains a thin orchestrator
+that composes the (prerequisite) lifted `buildBrainState` helper with the
+(prerequisite) `brainBackends` registry, plus a single in-module helper
+that turns a resolved `BrainState` into the server-assembled prose. The
+tool is wired into `src/index.ts` as a peer of `aide_info`.
+
+The tree below is module-scoped to `src/tools/brain/`. Files outside
+this directory that this plan touches (`src/index.ts`, `src/types/index.ts`,
+`src/service/install/provisionBrain/index.ts`) are declared as explicit
+cross-cutting edits in the steps below; they are not part of this module's
+folder tree.
+
+```
+src/tools/brain/
+├── .aide                              ← [existing] intent spec for this orchestrator
+├── plan.aide                          ← [this file] implementation plan
+├── index.ts                           ← [new] orchestrator: brain(root: string) => Promise<BrainToolResult>
+├── index.test.ts                      ← [new] co-located tests covering the three status branches and the registry-dispatch path
+└── composeInstructions/               ← [new] helper: turn a resolved BrainState into the agent-facing prose
+    ├── index.ts                       ← [new] composeInstructions(state: BrainState) => { backend: string | null, instructions: string }
+    └── index.test.ts                  ← [new] co-located unit tests for the three prose branches (ok, no-mcp-entry, invalid-path)
+```
+
+The orchestrator's only job is: call `buildBrainState(root)` (prerequisite —
+returns `BrainState` with the registry-resolved `backend`), pass the
+resulting state to `composeInstructions`, and return
+`{ status, backend, instructions }`. No backend detection logic lives
+inside this module — that belongs to the lifted `buildBrainState` and
+the `brainBackends` registry, both declared as prerequisites.
+
+## Prerequisites
+
+Two upstream modules must be built before this plan can execute. Each
+has its own plan.aide produced separately by the architect. This plan
+declares only the contracts it consumes.
+
+### 1. `src/service/brainBackends/` — backend driver registry
+
+The canonical-code module that owns per-backend identity inference and
+entry-point reach prose. Maps an MCP entry's `command/args` shape to a
+backend driver (today only `obsidian`; tomorrow `notion`, `github-wiki`,
+etc.).
+
+Must export at minimum:
+
+- A default export `resolveBackend(entry: McpServerEntry): BackendDriver | null`
+  where `McpServerEntry` is the shape under `mcpServers[<key>]` in
+  `.mcp.json` (`{ command: string; args: string[] }`), and `BackendDriver`
+  is `{ id: string; renderInstructions(state: { vaultPath: string }): string }`.
+  Returns `null` when no matcher fires (unknown backend wired under the
+  `brain` key).
+- `BackendDriver` and `McpServerEntry` re-exported as types from
+  `src/types/index.ts` so consumers (this plan, `buildBrainState`) reference
+  them without reaching into the service module's internals.
+
+The registry's matcher table, the obsidian matcher's command/args
+predicate, and the obsidian instruction template all live inside this
+prerequisite module. **This plan does NOT prescribe the registry's
+internal structure** — only that the resolver-by-entry contract above is
+honored.
+
+The `renderInstructions(state)` contract: receives the resolved
+`vaultPath` (and any other backend-relevant state the registry chooses
+to require — but not the mode of failure; failure prose is the brain
+tool's job, not the registry's). Returns the multi-sentence
+ready-to-execute prose block per the spec's "ok" branch — names
+`mcp__brain__read_note`, the path to the seeded entry-point, and the
+closing "the brain takes over from here" sentence. The prose **must not**
+duplicate folder structure, search semantics, or write rules — those
+live in the seeded `CLAUDE.md`.
+
+### 2. `src/service/buildBrainState/` — lifted brain-state detector
+
+The existing `src/tools/info/buildBrainState/` lifted to a service
+location with the new fixed-key + registry-matcher contract. The lift
+is required because horizontal isolation forbids `src/tools/brain/`
+from importing `src/tools/info/buildBrainState/` (sibling tool).
+
+Must export `default async function buildBrainState(root: string): Promise<BrainState>`
+where `BrainState` (extended in `src/types/index.ts` per step 2 below)
+is the tagged union `{ status, vaultPath, hints, backend }`:
+
+- Reads the host's framework-specific MCP config path via `detectFramework(root)`.
+- Looks up the **fixed** `"brain"` key in `mcpServers` (no per-backend key
+  scan).
+- When the `brain` entry is present, hands the entry shape to the
+  `brainBackends` registry's `resolveBackend(entry)`. When the registry
+  returns a driver, populates `backend: <driver.id>`. When the registry
+  returns `null` (unknown backend wired), populates `backend: null` and
+  status falls through to `no-mcp-entry` (the user wired something the
+  server doesn't recognize — same remediation as "not wired at all":
+  re-run `/aide:brain config`).
+- All existing edge cases (missing config, malformed JSON, missing key,
+  malformed args, broken vault path, empty-string vault path) collapse
+  to the same `BrainState` outcomes the original helper produced —
+  with the addition of the new `backend` discriminant.
+- All non-`ok` outcomes carry `backend: null` (no resolved driver for a
+  branch that did not reach `ok`).
+- `ok` carries `backend: <driver.id>` (the registry-resolved identifier).
+- The `obsidian` key is **not** consulted as a fallback in this plan
+  (per the migration decision below); the install service migrates
+  existing `obsidian` keys to `brain` at upgrade time.
+
+This module's plan.aide is a separate deliverable — the architect
+produces it before this plan runs. The lift preserves all existing
+test coverage of the five edge-case branches; the new contract adds
+one additional branch (`brain` key present but registry returns
+`null`) which gets its own test in the prerequisite's plan, not this one.
+
+## Plan
+
+### 1. Add the brain backend driver types and extend BrainState in `src/types/index.ts`
+
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
+
+- [x] 1a. Add a new exported type `McpServerEntry` matching the shape
+      under `mcpServers[<key>]` in `.mcp.json`:
+      `{ command: string; args: string[] }`. JSDoc explains it is the
+      argument shape the `brainBackends` registry consumes.
+- [x] 1b. Add a new exported type `BackendDriver`:
+      `{ id: string; renderInstructions: (state: { vaultPath: string }) => string }`.
+      JSDoc explains: `id` is the structured backend identifier surfaced
+      in `aide_brain`'s response (e.g. `"obsidian"`); `renderInstructions`
+      is the per-backend prose template the registry returns for the
+      `ok` branch.
+- [x] 1c. Extend the existing `BrainState` type with a new required
+      field `backend: string | null`. Discriminant rules — encoded as
+      JSDoc on the field, not enforced as a discriminated union (the
+      existing `status` is already the discriminant):
+        - `status: "ok"` → `backend` is the resolved driver id (non-null
+          string).
+        - `status: "no-mcp-entry" | "invalid-path"` → `backend` is `null`.
+      Existing fields (`status`, `vaultPath`, `hints`) and their
+      semantics remain unchanged.
+- [x] 1d. Add a new exported type `BrainToolResult`:
+      `{ status: BrainState["status"]; backend: string | null; instructions: string }`.
+      JSDoc spells out the spec's contract: `status` mirrors
+      `aide_info.brain.status` exactly; `backend` is the structured
+      signal of which branch fired (non-null only on `ok`);
+      `instructions` is **always non-empty** and is ready-to-execute
+      prose composed by the server.
+
+### 2. Build the `brainBackends` registry prerequisite
+
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/foundations/conventions`
+
+- [ ] 2. Hand off this step to the architect that produces
+      `src/service/brainBackends/plan.aide`. **This plan's step is a
+      placeholder** — the registry's spec round and plan must complete
+      before the implementor returns to step 3 of this plan. The
+      contract this plan consumes is fully declared in
+      `## Prerequisites` above; nothing further is prescribed here.
+
+### 3. Build the lifted `buildBrainState` prerequisite
+
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/foundations/conventions`
+
+- [ ] 3. Hand off this step to the architect that produces
+      `src/service/buildBrainState/plan.aide`. **This plan's step is a
+      placeholder** — the lifted helper's plan must complete before
+      the implementor returns to step 4 of this plan. The contract
+      this plan consumes is fully declared in `## Prerequisites` above.
+
+### 4. Migrate the install service's MCP key from `obsidian` to `brain`
+
+Read: `coding-playbook/services/error-handling`, `coding-playbook/foundations/conventions`
+
+- [x] 4a. In `src/service/install/provisionBrain/index.ts`, change every
+      reference to the MCP key string `"obsidian"` to `"brain"`. Affected
+      surfaces (audit each one and change in place): the `McpPrescription.key`
+      field on the constructed prescription, the `if ("obsidian" in servers)`
+      existence check, the `servers.obsidian` accessor, the step `name`
+      strings (`"MCP config (obsidian)"` → `"MCP config (brain)"`), and
+      every JSDoc/comment that names the key. The vault-content seed
+      templates (`VAULT_CLAUDE_MD_TEMPLATE`, `PLAYBOOK_HUB_TEMPLATE`) are
+      unrelated — do not touch them.
+- [x] 4b. Add the migration branch inside `buildObsidianMcpStep` (rename
+      the function to `buildBrainMcpStep` while you're there — function
+      name follows the key it now writes). New behaviour: if the existing
+      MCP config has neither a `brain` key nor an `obsidian` key, emit a
+      `would-create` step exactly as today. If the config has only an
+      `obsidian` key (legacy install), emit a `would-overwrite` step
+      whose `prescription.key` is `"brain"` and whose `entry` is the
+      same shape as today — `applySteps` already handles
+      `would-overwrite` writes after agent confirmation, so no further
+      wiring is needed. If the config already has a `brain` key whose
+      vault path matches `brainPath`, return `exists`. If both keys are
+      present (transitional state from a half-migrated install), emit
+      `would-overwrite` with the new `brain`-keyed prescription —
+      `applySteps` will overwrite the `brain` entry; a separate
+      follow-up handles cleaning the orphan `obsidian` key.
+- [x] 4c. Update `provisionBrain`'s test file
+      (`src/service/install/provisionBrain/index.test.ts`) to assert the
+      new prescription `key: "brain"`, the new `name: "MCP config (brain)"`,
+      and to add three new test cases: (1) legacy `obsidian`-only config
+      yields `would-overwrite` with `key: "brain"`, (2) cold install
+      yields `would-create` with `key: "brain"`, (3) both-keys
+      transitional config yields `would-overwrite` with `key: "brain"`.
+- [x] 4d. Run `rtk vitest run src/service/install/provisionBrain` and
+      confirm green. Do **not** touch the `wireMcp/` helper — that wires
+      the aide entry under a different key and is unrelated to the
+      brain migration.
+
+### 5. Write the `composeInstructions` helper
+
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/foundations/conventions`, `coding-playbook/services/error-handling`
+
+- [x] 5a. Create `src/tools/brain/composeInstructions/index.ts` with a
+      default export
+      `function composeInstructions(state: BrainState): { backend: string | null; instructions: string }`.
+      Imports the `brainBackends` registry's default export
+      (`resolveBackend`) and the `BackendDriver` and `McpServerEntry`
+      types from `@/types/index.js`. Single-argument signature (matches
+      `buildBrainState(root)` — the "single input object" rule is
+      about two-or-more arguments).
+- [x] 5b. Branch the implementation declaratively on `state.status`,
+      using early returns per the conventions note's "Early Returns
+      Over Nesting" rule:
+        1. `status === "no-mcp-entry"` → return
+           `{ backend: null, instructions: <NO_MCP_ENTRY_PROSE> }`.
+           The prose must tell the agent (a) no brain backend is wired,
+           (b) surface this to the user, (c) recommend running
+           `/aide:brain config` to wire the brain, (d) instruct the
+           agent not to proceed with the task as if the brain were
+           available. Mirrors the spec's "no-mcp-entry" Good example
+           verbatim in intent.
+        2. `status === "invalid-path"` → return
+           `{ backend: null, instructions: <INVALID_PATH_PROSE> }`.
+           The prose must (a) name that a brain backend is configured
+           but its vault path does not resolve on disk, (b) surface
+           this to the user, (c) recommend running `/aide:brain config`
+           to repoint the vault, (d) instruct the agent not to proceed
+           with the task as if the brain were available. Mirrors the
+           spec's "invalid-path" Good example verbatim in intent.
+        3. `status === "ok"` → ask the registry to resolve the wired
+           driver. Since `buildBrainState` already populated
+           `state.backend` with the resolved driver id (per the
+           prerequisite's contract), and `vaultPath` is non-null on
+           `ok`, the helper passes `state.vaultPath` to the registry's
+           `renderInstructions({ vaultPath })`. Return
+           `{ backend: state.backend, instructions: <rendered prose> }`.
+- [x] 5c. The `NO_MCP_ENTRY_PROSE` and `INVALID_PATH_PROSE` strings are
+      module-level `const` declarations at the top of the file (per
+      conventions' "Declare variables closest to where they are
+      assigned" — module-level constants are allowed when the value is
+      a fixed template referenced from multiple branches). Each is a
+      single multi-sentence string literal mirroring the spec's Good
+      examples for "no-mcp-entry" and "invalid-path" respectively. They
+      remain backend-agnostic — neither prose mentions `obsidian`,
+      `notion`, or any specific backend; both name `/aide:brain config`
+      as the single remediation entry-point.
+- [x] 5d. Defensive contract: if `status === "ok"` but
+      `state.vaultPath` is `null` or `state.backend` is `null` (a state
+      `buildBrainState` should never return — its contract is
+      `ok ⇒ vaultPath: string` and `ok ⇒ backend: string`), the
+      helper must still return a non-empty `instructions` string. Per
+      the conventions' "Don't Guard Against Impossible States" rule
+      this is a contract violation upstream, but per the spec's
+      "Silent success forbidden" undesired outcome the response must
+      never be silent. Resolution: treat the impossible state as
+      `invalid-path` (return the `INVALID_PATH_PROSE` with
+      `backend: null`) and add an inline comment explaining that this
+      branch defends the spec's hard "non-empty instructions"
+      invariant rather than the upstream contract.
+- [x] 5e. Multi-line JSDoc on the default export explaining the three
+      branches and naming the load-bearing rule that `instructions` is
+      never empty regardless of which branch fires. Each inline branch
+      gets a short `// …` comment naming which spec outcome it
+      satisfies.
+
+### 6. Write tests for `composeInstructions`
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [x] 6a. Create `src/tools/brain/composeInstructions/index.test.ts`
+      co-located with the source.
+- [x] 6b. Mock `@/service/brainBackends/index.js` at module level via
+      `vi.mock()` per the testing playbook's "Module-level mocks"
+      pattern. The mock's default export is a `vi.fn()` that returns
+      a fixed `BackendDriver` with `id: "obsidian"` and a
+      `renderInstructions` mock that returns a deterministic prose
+      string (e.g. `"<RENDERED_OBSIDIAN_PROSE>"`).
+- [x] 6c. Use factory functions to build `BrainState` fixtures:
+      `makeOkState(vaultPath: string)` returns
+      `{ status: "ok", vaultPath, hints: [], backend: "obsidian" }`;
+      `makeNoMcpEntryState()` returns
+      `{ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null }`;
+      `makeInvalidPathState(path: string)` returns
+      `{ status: "invalid-path", vaultPath: path, hints: [], backend: null }`.
+      Factories live in the test file per testing playbook's "Factory
+      Functions" section.
+- [x] 6d. Test cases (one assertion-cluster per `it` block):
+        1. `ok` branch: stub `resolveBackend` to return a driver whose
+           `renderInstructions` returns a fixed string. Assert
+           `composeInstructions(makeOkState("/v")).backend === "obsidian"`
+           and `instructions` equals that fixed string. Also assert
+           `renderInstructions` was called with `{ vaultPath: "/v" }`.
+        2. `no-mcp-entry` branch: assert `backend === null` and
+           `instructions` is non-empty, contains `/aide:brain config`,
+           and contains the agent-instruction phrase that maps to the
+           spec's Good example (e.g. matches a regex like
+           `/Surface this to the user/i` and `/aide:brain config/i`).
+           Use string-contains assertions (`expect(...).toContain(...)`)
+           rather than verbatim-equality so prose tweaks during review
+           don't break tests.
+        3. `invalid-path` branch: assert `backend === null` and
+           `instructions` is non-empty, contains `/aide:brain config`,
+           and contains language matching "vault path does not resolve"
+           (string-contains, same pattern as 6d.2). Confirm
+           `instructions` does **not** contain the no-mcp-entry-specific
+           prose (the two branches must produce distinct messages).
+        4. Defensive contract: pass an `ok` state whose `vaultPath`
+           is `null` (the impossible upstream state). Assert the
+           helper returns the same shape as the `invalid-path` branch
+           (`backend === null`, non-empty `instructions` containing
+           `/aide:brain config`). Document inline that this test pins
+           step 5d's defensive behaviour.
+        5. Forbidden states: assert that `instructions` is
+           **non-empty** in every test case (one
+           `expect(result.instructions.length).toBeGreaterThan(0)`
+           assertion at the end of each branch test). This pins the
+           spec's "Silent success forbidden" undesired outcome at the
+           helper boundary.
+- [x] 6e. `beforeEach(() => vi.resetAllMocks())` at the top of the
+      describe block; re-apply the default `resolveBackend` mock in
+      `beforeEach` to avoid leakage between tests.
+
+### 7. Write the `aide_brain` orchestrator
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`, `coding-playbook/architecture/data-flow`
+
+- [x] 7a. Create `src/tools/brain/index.ts`. Imports:
+        - `z` from `"zod"` (input schema declaration matches every
+          other tool in `src/tools/`).
+        - `buildBrainState` (default) from
+          `@/service/buildBrainState/index.js`.
+        - `composeInstructions` (default) from
+          `./composeInstructions/index.js` (sibling-to-self stays
+          relative; `@/` is reserved for cross-directory imports per
+          folder-structure).
+        - Types `BrainToolResult` from `@/types/index.js`.
+- [x] 7b. Export a `BrainInput` Zod schema: `z.object({})` (the tool
+      takes no parameters — it always uses the server's working
+      directory, mirroring `aide_info`'s pattern).
+- [x] 7c. Default export an async orchestrator
+      `brain(root: string): Promise<BrainToolResult>` that runs the
+      pipeline declaratively (each step inline-narrated with `// …`
+      comments per conventions' "JSDoc on every helper in orchestrator
+      files"):
+        1. Resolve `state` via `await buildBrainState(root)`.
+        2. Compose `{ backend, instructions }` via
+           `composeInstructions(state)`.
+        3. Return `{ status: state.status, backend, instructions }`.
+- [x] 7d. Multi-line JSDoc on the default export explaining: the tool
+      is on-demand (never called from `aide_info` or fired on `/aide`
+      boot — calls out the spec's undesired outcome by name);
+      `status` mirrors `aide_info.brain.status` exactly so consumers
+      who already saw boot-time brain state do not learn new terms;
+      `instructions` is server-assembled prose (never structured
+      fields); the orchestrator does not itself encode any backend
+      knowledge — every per-backend decision is delegated to the
+      registry via `composeInstructions`.
+
+### 8. Write tests for the `aide_brain` orchestrator
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 8a. Create `src/tools/brain/index.test.ts` co-located with the
+      source.
+- [x] 8b. Mock `@/service/buildBrainState/index.js` and
+      `./composeInstructions/index.js` at module level. The
+      `composeInstructions` mock's default export is a `vi.fn()`
+      whose return value is reset per test.
+- [x] 8c. Test cases (each test stubs `buildBrainState` to a fixed
+      `BrainState` and `composeInstructions` to a fixed
+      `{ backend, instructions }`):
+        1. Forwards an `ok` state verbatim: stub `buildBrainState` to
+           return `{ status: "ok", vaultPath: "/v", hints: [], backend: "obsidian" }`,
+           stub `composeInstructions` to return
+           `{ backend: "obsidian", instructions: "PROSE" }`. Assert
+           the orchestrator returns
+           `{ status: "ok", backend: "obsidian", instructions: "PROSE" }`.
+        2. Forwards `no-mcp-entry` verbatim: stub `buildBrainState`
+           to return `no-mcp-entry`, stub `composeInstructions` to
+           return `{ backend: null, instructions: "REMEDIATION" }`.
+           Assert the orchestrator returns
+           `{ status: "no-mcp-entry", backend: null, instructions: "REMEDIATION" }`.
+        3. Forwards `invalid-path` verbatim: same pattern, stub
+           `buildBrainState` to return `invalid-path`. Assert the
+           orchestrator returns the matching forwarded shape.
+        4. Calls `composeInstructions` with the exact `BrainState`
+           returned by `buildBrainState` (no reshaping inside the
+           orchestrator). Use
+           `expect(composeInstructionsMock).toHaveBeenCalledWith(<exact state>)`.
+        5. Calls `buildBrainState` with the `root` it received. Use
+           `expect(buildBrainStateMock).toHaveBeenCalledWith("/some/root")`.
+        6. `BrainInput.parse({})` returns `{}` (empty object) and
+           does not throw. `BrainInput.parse({ unexpected: "value" })`
+           strips the unexpected key (matches `aide_info`'s test
+           pattern).
+- [x] 8d. `beforeEach(() => vi.resetAllMocks())` at the top of the
+      describe block; no shared default return values — each test
+      stubs the mocks it depends on.
+
+### 9. Register `aide_brain` in the MCP server
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/agentic/agentic`
+
+- [x] 9a. In `src/index.ts`, add an import next to the existing
+      `info`/`InfoInput` import:
+      `import brain, { BrainInput } from "@/tools/brain/index.js";`.
+- [x] 9b. In the `setRequestHandler(ListToolsRequestSchema, ...)`
+      tools array, add a new tool entry as a peer of `aide_info` (not
+      a child). Place it immediately after `aide_info` in the list
+      so consumers reading the tool list see the brain pair together.
+      Tool name: `aide_brain`. `inputSchema` is the empty-object
+      shape matching `aide_info`'s shape:
+      `{ type: "object" as const, properties: {} }`. The
+      **description** is the handshake-teaching surface — it must
+      teach the agent (a) the tool is on-demand (call it when reaching
+      for the brain mid-task; do not call it on every `/aide` boot —
+      `aide_info` covers boot-time brain.status), (b) the response
+      shape is `{ status, backend, instructions }`, (c) `status`
+      vocabulary is identical to `aide_info.brain.status` (`ok`,
+      `no-mcp-entry`, `invalid-path`) so an agent that saw boot-time
+      state does not learn new terms, (d) `backend` is the structured
+      identifier on `ok` and `null` otherwise, (e) `instructions` is
+      ready-to-execute prose composed by the server — the agent acts
+      on it directly without parsing structured fields. No "see docs"
+      references — the description is self-contained per the parent
+      `src/.aide` invariant.
+- [x] 9c. In the `setRequestHandler(CallToolRequestSchema, ...)`
+      switch, add a `case "aide_brain":` after the `aide_info` case
+      (matching the order in the tools array). Inside the case:
+      `BrainInput.parse(args)` (validates input even though the
+      schema is empty), `const result = await brain(root);`, return
+      `{ content: [{ type: "text", text: JSON.stringify(result, null, 2) }] }`
+      — same JSON-stringify pattern as `aide_info` and `aide_init`.
+- [x] 9d. Do **not** touch the `aide_info` description. Boot-time
+      `brain.status` semantics there are unchanged by this plan; the
+      runtime tool is additive, not a replacement. The
+      `/aide:brain` Mode 2 shim refactor is out of scope for this
+      plan (declared as a follow-up below).
+
+### 10. Update `scaffoldCommands` baseline if relevant + sanity-validate the install service
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 10a. Run `rtk vitest run src/service/install/scaffoldCommands` to
+      confirm the recent `aide:brain` config command list addition
+      (commit `e9413b2` in git log) still passes after step 4's key
+      migration. `scaffoldCommands` does not reference the obsidian
+      MCP key directly — this is a regression check, not a
+      modification step.
+- [x] 10b. Run `rtk vitest run` (full unit suite) to confirm steps
+      4–9 leave no other tests red. Investigate any failures to
+      root cause before declaring the plan complete; do not patch
+      around test failures.
+
+### 11. Run `aide_validate` on the new brain tool's directory
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] 11. Call `aide_validate` with `path: "src/tools/brain"` and
+      confirm no warnings on the new `index.ts`,
+      `composeInstructions/index.ts`, or their tests. Resolve any
+      warnings before declaring the plan complete (e.g. add a
+      `description` field to any new spec the helper generates if
+      `aide_validate` flags missing-description). The helper folder
+      `composeInstructions/` does not get its own `.aide` per the
+      progressive-disclosure rule that helpers' folder names are
+      self-explanatory.
+
+## Decisions
+
+**Migration path: rename `obsidian` to `brain` at install time
+(option 1 from the prompt).** Rejected: tolerate both keys in
+`buildBrainState` for a transition period (option 2). Why option 1
+wins: keeping the runtime detection logic single-fixed-key keeps the
+`buildBrainState` lift simple — no fallback branch, no transitional
+state to test, no doc burden explaining "we look here first then
+there." The cost lands on the install service exactly once (during
+upgrade), and `applySteps`'s existing `would-overwrite` flow already
+handles the agent-confirmation pattern this needs. Why not option 3
+(defer migration entirely): existing installs would silently lose
+their brain wiring on first run after this plan ships, which violates
+the spec's "never silent" invariant. Migrating at install time means
+existing users see a `would-overwrite` prompt during their next
+`/aide:upgrade` or `/aide:init`, with the change surfaced explicitly.
+
+**`backend` field on `BrainState` (not just on the tool result).**
+Rejected: leave `BrainState` unchanged and have the brain tool re-call
+the registry. Why the field belongs on `BrainState`: the registry
+match happens once during detection (in `buildBrainState`) — re-doing
+the match in the tool would either require the tool to import
+`brainBackends` and the entry-shape extraction logic, or require a
+second registry call after `buildBrainState` already had the entry in
+hand. Carrying the resolved `backend` forward on `BrainState` makes
+the tool's job pure formatting. The cost is one extra field on a
+shared type — small relative to the boundary cleanliness. The field
+is documented as "non-null on `ok`, `null` otherwise" via JSDoc on
+the field rather than as a discriminated union variant — the existing
+`status` discriminant is already load-bearing, and stacking a second
+discriminant would force every consumer to narrow twice.
+
+**`composeInstructions` is a helper subfolder, not inline in the
+orchestrator.** Rejected: define `composeInstructions` as a private
+function above the orchestrator's default export. Why subfolder:
+progressive disclosure's aggressive-modularization rule — every
+helper gets its own folder so it is independently importable and
+testable. The helper's three-branch logic + defensive `vaultPath:
+null` clause (step 5d) is enough behaviour to deserve isolated tests.
+The orchestrator stays at a size where its inline pipeline narration
+is the full story; the helper grows independently if more branches
+arrive (e.g. a future `unsupported-backend` status).
+
+**`composeInstructions` calls `resolveBackend` (the registry) instead
+of receiving a pre-resolved driver via parameter.** Rejected: thread
+the driver from `buildBrainState` through `BrainState.backend` as the
+literal driver object (not just `id`). Why call the registry inside
+the helper: serializing a driver function across the
+`buildBrainState` → orchestrator → helper boundary couples the
+detection layer's return shape to a runtime-only value (functions
+don't serialize). Storing only the `id` on `BrainState` keeps the
+state plain-data — the `composeInstructions` helper re-resolves the
+driver from the `id` via the registry's `getDriverById(id)` accessor
+or by re-running `resolveBackend(entry)`. The prerequisite plan for
+`brainBackends` decides which accessor to expose; this plan consumes
+either via a single registry call. **Note:** if the registry's plan
+chooses to expose only `resolveBackend(entry)` (no by-id lookup),
+this helper must reach for the entry shape itself, which means
+`buildBrainState` must also surface the matched `entry` on
+`BrainState`. That is a contract refinement to negotiate during the
+registry's spec round — surfaced in `## Follow-ups`.
+
+**`status` vocabulary stays identical to `aide_info.brain.status`.**
+Rejected: introduce a new status like `unsupported-backend` for the
+new "wired-but-no-matcher" branch. Why reuse: the spec's desired
+outcome explicitly pins this — "an agent that already saw brain state
+at boot does not learn new terms here." A wired-but-unmatched
+backend collapses to `no-mcp-entry` (same remediation as
+"never wired" — re-run `/aide:brain config` to re-wire to a
+recognized backend). The `BackendDriver` registry's failure mode is
+identical to "no entry" from the agent's perspective.
+
+**Error handling: leaf tool layer never throws.** Rejected: let
+errors propagate up to the MCP `CallToolRequestSchema` handler. Why
+catch at the tool layer (via `buildBrainState`'s structured-state
+contract): the spec's undesired outcomes forbid silent failure and
+require non-empty `instructions` on every branch. A thrown error
+from `buildBrainState` would surface as an MCP protocol error with
+no structured `instructions`, defeating the spec. By design,
+`buildBrainState` never throws (per the prerequisite's contract);
+`composeInstructions` is pure and defends the impossible-state
+branch (step 5d); the orchestrator therefore inherits "never throws"
+by composition.
+
+**No `.aide` spec next to `composeInstructions/`.** Per the
+progressive-disclosure rule that `.aide` files live next to
+orchestrator `index.ts` files only — helper folder names are
+self-explanatory. The orchestrator's `.aide` (already written) is
+the single source of truth for this module's intent.
+
+**Orchestrator pipeline: detection → composition → return (linear,
+not parallel).** Rejected: parallelize `buildBrainState` and any
+other I/O. Why linear: there is no other I/O. The single async hop
+is `buildBrainState`, which already runs detection and registry
+lookup in sequence internally (per the prerequisite's contract).
+The composition step is pure. Adding `Promise.all` here would be
+ceremonial.
+
+**`backend` field on the tool response, not stripped to status-only.**
+Rejected: omit `backend` from the response and let agents parse the
+prose for the identifier. Why keep `backend`: the spec's desired
+outcome pins `backend` as a structured signal of which branch fired
+— `null` vs. non-null lets the `/aide:brain` Mode 2 shim branch
+programmatically without parsing prose. Stripping it would force
+every consumer to regex the prose, which is exactly the
+consumer-side parsing the spec's "structured fields forbidden"
+undesired outcome was meant to prevent on the *input* side; the
+*output* side wants the opposite — one structured discriminant
+plus pre-formatted prose, in parallel.
+
+## Follow-ups
+
+The orchestrator running this plan must schedule these as separate
+plans/tasks after this plan completes. They are dependents (consumers
+of this plan's contract), not prerequisites, so they do not block
+this plan from being built.
+
+- **`src/service/brainBackends/` spec round.** This plan declares the
+  registry's external contract in `## Prerequisites`, but the
+  registry's internal structure (matcher table format, how `obsidian`'s
+  matcher inspects `command/args`, where instruction templates live —
+  inline strings vs. separate files, how new backends are registered)
+  is its own architectural surface. Run `/aide:spec` on
+  `src/service/brainBackends/` before its `plan.aide` is produced.
+  Resolve during the spec round: whether the registry exposes only
+  `resolveBackend(entry)` or also `getDriverById(id)` — see the
+  Decisions note on `composeInstructions` for the negotiation point.
+
+- **`src/service/buildBrainState/` plan round.** The lift from
+  `src/tools/info/buildBrainState/` plus the new fixed-key + registry
+  matcher contract is its own architect deliverable. Existing tests
+  must move with the source; one new test branch is added (`brain`
+  key present but registry returns `null` → `no-mcp-entry`,
+  `backend: null`).
+
+- **`/aide:brain` Mode 2 shim refactor (`.claude/commands/aide/brain.md`).**
+  Today the shim duplicates Obsidian-specific prose from the prior
+  command. Once `aide_brain` ships, the shim collapses to "call
+  `aide_brain`, branch on `backend === null`, follow `instructions`."
+  Mode 1 (`config`) is unchanged in spirit but the call from inside
+  it (currently `aide_init({ category: "mcp", brainPath: <p> })`) now
+  writes under the `brain` key automatically (per step 4) — no shim
+  edits needed for that. The shim refactor lives in a different
+  module from this plan and is not in scope here.
+
+- **Agent frontmatter sweep — `mcpServers: [brain]`.** With the fixed
+  `brain` key, every agent definition under `.claude/agents/` and
+  `.claude/skills/` that today references `mcp__obsidian__*` tools or
+  declares `mcpServers: [obsidian]` becomes a uniform
+  `mcpServers: [brain]` rewrite. This is a one-time bulk edit that
+  must follow the `aide_brain` ship — agents must keep working
+  during the transition, so the rewrite happens after the runtime
+  tool is live and tested. Track as a separate task.
+
+- **Migrate the `obsidian` orphan key cleanup.** Step 4b emits
+  `would-overwrite` when both `brain` and `obsidian` keys are present,
+  but does not delete the `obsidian` orphan. A follow-up cleanup
+  plan removes the `obsidian` key from `mcpServers` after the
+  `brain` write succeeds. Holding this for a separate plan keeps
+  the migration step's scope tight (one write, one prescription)
+  and avoids interleaving delete-on-overwrite logic into
+  `applySteps`.
+
+- **Update `aide_info` description to point at `aide_brain` for
+  runtime usage prose.** Today `aide_info`'s description says nothing
+  about the runtime brain tool. A one-line addition ("for runtime
+  brain reach prose, call `aide_brain` on demand") helps agents that
+  read only the tool list at handshake time. Not a blocker for this
+  plan — the agent learns about `aide_brain` from its own description.

@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("node:fs");
 vi.mock("@/tools/upgrade/buildVersionsMeta/index.js");
-vi.mock("./buildBrainState/index.js");
+vi.mock("@/service/buildBrainState/index.js");
 
 import { readFileSync } from "node:fs";
 import readVersionsManifest, { type VersionsMap } from "@/tools/upgrade/buildVersionsMeta/index.js";
-import buildBrainState from "./buildBrainState/index.js";
+import buildBrainState from "@/service/buildBrainState/index.js";
 import info, { InfoInput } from "./index.js";
 
 const mockReadFileSync = readFileSync as ReturnType<typeof vi.fn>;
@@ -42,7 +42,7 @@ beforeEach(() => {
 		return JSON.stringify({ version: "1.2.3" });
 	});
 	// Default brain state: healthy vault so staleness tests are not affected by brain
-	mockBuildBrainState.mockResolvedValue({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+	mockBuildBrainState.mockResolvedValue({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 });
 
 describe("info", () => {
@@ -51,7 +51,7 @@ describe("info", () => {
 
 		expect(result.serverVersion).toBe("1.2.3");
 		expect(result.outdated).toEqual([]);
-		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 	});
 
 	it("includes stale key in outdated when local sourceCommit differs from canonical", async () => {
@@ -68,7 +68,7 @@ describe("info", () => {
 		const result = await info("/project/root");
 
 		expect(result.outdated).toEqual(["docs/aide-spec"]);
-		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 	});
 
 	it("includes missing key in outdated when canonical has a key not present locally", async () => {
@@ -85,7 +85,7 @@ describe("info", () => {
 		const result = await info("/project/root");
 
 		expect(result.outdated).toEqual(["commands/aide/spec"]);
-		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 	});
 
 	it("returns outdated: [] silently when local versions.json does not exist", async () => {
@@ -100,7 +100,7 @@ describe("info", () => {
 
 		expect(result.serverVersion).toBe("1.2.3");
 		expect(result.outdated).toEqual([]);
-		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 	});
 
 	it("includes all stale and missing keys in outdated", async () => {
@@ -119,7 +119,7 @@ describe("info", () => {
 		expect(result.outdated).toContain("docs/aide-spec");
 		expect(result.outdated).toContain("commands/aide/spec");
 		expect(result.outdated).toHaveLength(2);
-		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 	});
 
 	it("returns 'unknown' for serverVersion when package.json readFileSync throws", async () => {
@@ -144,41 +144,41 @@ describe("info", () => {
 
 		expect(result.serverVersion).toBe("unknown");
 		expect(result.outdated).toEqual([]);
-		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+		expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 	});
 
 	describe("brain pass-through", () => {
 		it("forwards BrainState ok verbatim when buildBrainState returns ok", async () => {
-			mockBuildBrainState.mockResolvedValue({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+			mockBuildBrainState.mockResolvedValue({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 
 			const result = await info("/project/root");
 
-			expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", hints: [] });
+			expect(result.brain).toEqual({ status: "ok", vaultPath: "/home/user/vault", backend: "obsidian", hints: [] });
 		});
 
 		it("forwards BrainState no-mcp-entry verbatim when buildBrainState returns no-mcp-entry", async () => {
-			mockBuildBrainState.mockResolvedValue({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+			mockBuildBrainState.mockResolvedValue({ status: "no-mcp-entry", vaultPath: null, backend: null, hints: [] });
 
 			const result = await info("/project/root");
 
-			expect(result.brain).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+			expect(result.brain).toEqual({ status: "no-mcp-entry", vaultPath: null, backend: null, hints: [] });
 		});
 
 		it("forwards BrainState invalid-path verbatim when buildBrainState returns invalid-path", async () => {
-			mockBuildBrainState.mockResolvedValue({ status: "invalid-path", vaultPath: "/old/moved/path", hints: [] });
+			mockBuildBrainState.mockResolvedValue({ status: "invalid-path", vaultPath: "/old/moved/path", backend: null, hints: [] });
 
 			const result = await info("/project/root");
 
-			expect(result.brain).toEqual({ status: "invalid-path", vaultPath: "/old/moved/path", hints: [] });
+			expect(result.brain).toEqual({ status: "invalid-path", vaultPath: "/old/moved/path", backend: null, hints: [] });
 		});
 
 		it("forwards hints in BrainState verbatim when buildBrainState returns hints", async () => {
 			const hints = [{ source: "env" as const, path: "/mocked/brain" }];
-			mockBuildBrainState.mockResolvedValue({ status: "no-mcp-entry", vaultPath: null, hints });
+			mockBuildBrainState.mockResolvedValue({ status: "no-mcp-entry", vaultPath: null, backend: null, hints });
 
 			const result = await info("/project/root");
 
-			expect(result.brain).toEqual({ status: "no-mcp-entry", vaultPath: null, hints });
+			expect(result.brain).toEqual({ status: "no-mcp-entry", vaultPath: null, backend: null, hints });
 		});
 	});
 
@@ -194,13 +194,13 @@ describe("info", () => {
 			return JSON.stringify({ version: "1.2.3" });
 		});
 		// Brain path: no obsidian entry configured
-		mockBuildBrainState.mockResolvedValue({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		mockBuildBrainState.mockResolvedValue({ status: "no-mcp-entry", vaultPath: null, backend: null, hints: [] });
 
 		const result = await info("/project/root");
 
 		// Both fields are populated from their independent sources
 		expect(result.outdated).toEqual(["commands/aide/spec"]);
-		expect(result.brain).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		expect(result.brain).toEqual({ status: "no-mcp-entry", vaultPath: null, backend: null, hints: [] });
 	});
 });
 

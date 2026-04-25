@@ -15,6 +15,7 @@ import applySteps from "@/service/install/applySteps/index.js";
 import upgrade, { UpgradeInput } from "@/tools/upgrade/index.js";
 import applyFiles from "@/tools/upgrade/applyFiles/index.js";
 import info, { InfoInput } from "@/tools/info/index.js";
+import brain, { BrainInput } from "@/tools/brain/index.js";
 import inspect, { InspectInput } from "@/tools/inspect/index.js";
 
 /**
@@ -140,7 +141,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_info",
 			description:
-				"Boot-time reporter called by the orchestrator at startup. Returns two independent top-level fields that the orchestrator must branch on separately:\n\n**`outdated` (array of stale artifact keys) — soft notification.**\nCompares the host's `.aide/versions.json` against the canonical manifest shipped with this npm package. Each element names an artifact key that is behind. An empty array means everything is current. A missing `.aide/versions.json` (old install predating version tracking) silently collapses to `[]`. Staleness is informational — the orchestrator continues with a heads-up to the user.\n\n**`brain` (precondition state) — hard gate.**\nReports whether the host's Obsidian brain vault is ready. Shape: `{ status: 'ok' | 'no-mcp-entry' | 'invalid-path', vaultPath: string | null }`. The orchestrator must halt and direct the user to resolve the issue before continuing if `status` is not `'ok'`.\n\nThe three `brain.status` values:\n- `ok` — the host's MCP config contains an `obsidian` entry and its configured vault directory exists on disk. `vaultPath` is the resolved path string. The pipeline may proceed.\n- `no-mcp-entry` — the MCP config is missing, malformed, or contains no `obsidian` entry. `vaultPath` is `null`. Remediation: run `/aide`; the orchestrator's inline-recovery flow detects the missing state and prompts the user to configure the brain.\n- `invalid-path` — an `obsidian` entry exists but its configured `vaultPath` does not resolve to a directory on disk. `vaultPath` is the path string that failed. Remediation: fix the path in the existing MCP config entry or restore the missing directory.\n\nNo parameters needed — uses the server's working directory.",
+				"Boot-time reporter called by the orchestrator at startup. Returns two independent top-level fields that the orchestrator must branch on separately:\n\n**`outdated` (array of stale artifact keys) — soft notification.**\nCompares the host's `.aide/versions.json` against the canonical manifest shipped with this npm package. Each element names an artifact key that is behind. An empty array means everything is current. A missing `.aide/versions.json` (old install predating version tracking) silently collapses to `[]`. Staleness is informational — the orchestrator continues with a heads-up to the user.\n\n**`brain` (precondition state) — hard gate.**\nReports whether the host's Obsidian brain vault is ready. Shape: `{ status: 'ok' | 'no-mcp-entry' | 'invalid-path', vaultPath: string | null }`. The orchestrator must halt and direct the user to resolve the issue before continuing if `status` is not `'ok'`.\n\nThe three `brain.status` values:\n- `ok` — the host's MCP config contains a `brain` entry and its configured vault directory exists on disk. `vaultPath` is the resolved path string. The pipeline may proceed.\n- `no-mcp-entry` — the MCP config is missing, malformed, or contains no `brain` entry. `vaultPath` is `null`. Remediation: run `/aide`; the orchestrator's inline-recovery flow detects the missing state and prompts the user to configure the brain.\n- `invalid-path` — a `brain` entry exists but its configured `vaultPath` does not resolve to a directory on disk. `vaultPath` is the path string that failed. Remediation: fix the path in the existing MCP config entry or restore the missing directory.\n\nNo parameters needed — uses the server's working directory.",
+			inputSchema: {
+				type: "object" as const,
+				properties: {},
+			},
+		},
+		{
+			name: "aide_brain",
+			description:
+				"On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every /aide boot. Boot-time brain precondition state is already reported by aide_info.brain.status; firing aide_brain at boot duplicates that work unnecessarily.\n\nNo parameters — uses the server's working directory.\n\n**Response shape: `{ status, backend, instructions }`**\n\n`status` — identical vocabulary to aide_info.brain.status: `ok`, `no-mcp-entry`, or `invalid-path`. An agent that already saw boot-time brain state does not learn new terms here.\n\n`backend` — the structured identifier of the wired backend (e.g. `\"obsidian\"`) when `status` is `ok`; `null` on all other branches. Use this field to branch programmatically without parsing prose.\n\n`instructions` — always non-empty, ready-to-execute prose composed by the server. Act on this field directly:\n- On `ok`: names the specific MCP tools to call and how to reach the brain's entry-point file. Once you read that file the brain takes over — do not ask the server for further navigation.\n- On `no-mcp-entry`: no brain backend is wired. Surface this to the user and recommend running /aide:brain config. Do not proceed as if the brain were available.\n- On `invalid-path`: a brain backend is configured but its vault path does not resolve on disk. Surface this to the user and recommend running /aide:brain config to repoint the vault. Do not proceed as if the brain were available.\n\nThe server assembles all prose — you never need to construct MCP tool calls or vault paths from structured fields.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {},
@@ -283,6 +293,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		case "aide_info": {
 			InfoInput.parse(args);
 			const result = await info(root);
+			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+		}
+		case "aide_brain": {
+			BrainInput.parse(args);
+			const result = await brain(root);
 			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		case "aide_inspect": {

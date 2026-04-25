@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
-import buildBrainState from "./buildBrainState/index.js";
+import buildBrainState from "@/service/buildBrainState/index.js";
 import type { InfoResult } from "@/types/index.js";
 
 export const InfoInput = z.object({});
@@ -37,7 +37,7 @@ function readServerVersion(): string {
  *   stale. Missing `.aide/versions.json` (pre-version-tracking install)
  *   collapses silently to an empty `outdated` array.
  *
- * - `brain`: precondition state of the host's obsidian brain vault.
+ * - `brain`: precondition state of the host's brain vault.
  *   Hard gate — the orchestrator must halt and direct the user to run `/aide`
  *   when `brain.status` is anything other than `"ok"`; the inline-recovery
  *   flow detects the broken state and prompts the user to resolve it.
