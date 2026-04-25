@@ -160,13 +160,17 @@ describe("provisionBrain", () => {
 		expect(hubStep.content).not.toContain("[[folder-structure]]");
 	});
 
-	it("existing playbook hub file returns playbook hub step as exists with no content", async () => {
+	it("existing playbook hub file byte-identical to template returns playbook hub step as exists with no content", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
+		// Get canonical content from the first call
+		const firstResults = await provisionBrain(brainPath, mcpPath);
+		const canonicalHub = firstResults[1].content!;
+
 		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
 		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), "# Hub", "utf-8");
+		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
 
 		const results = await provisionBrain(brainPath, mcpPath);
 		const hubStep = results[1];
@@ -214,12 +218,16 @@ describe("provisionBrain", () => {
 		expect(claudeStep.content).toContain("Brain");
 	});
 
-	it("existing vault CLAUDE.md returns vault CLAUDE.md step as exists with no content", async () => {
+	it("existing vault CLAUDE.md byte-identical to template returns vault CLAUDE.md step as exists with no content", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
+		// Get canonical content from the first call
+		const firstResults = await provisionBrain(brainPath, mcpPath);
+		const canonicalClaudeMd = firstResults[2].content!;
+
 		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
-		await writeFile(join(brainPath, "CLAUDE.md"), "# Navigation", "utf-8");
+		await writeFile(join(brainPath, "CLAUDE.md"), canonicalClaudeMd, "utf-8");
 
 		const results = await provisionBrain(brainPath, mcpPath);
 		const claudeStep = results[2];
@@ -233,9 +241,13 @@ describe("provisionBrain", () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
+		// Get canonical hub content to write byte-identical file
+		const firstResults = await provisionBrain(brainPath, mcpPath);
+		const canonicalHub = firstResults[1].content!;
+
 		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
 		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), "# Hub", "utf-8");
+		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
 
 		const results = await provisionBrain(brainPath, mcpPath);
 
@@ -246,15 +258,220 @@ describe("provisionBrain", () => {
 		expect(results[3].name).toBe("MCP config (obsidian)");
 	});
 
+	// -------------------------------------------------------------------------
+	// Drift cases: playbook hub byte-compare
+	// -------------------------------------------------------------------------
+
+	it("playbook hub byte-identical to template returns exists", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// First call to get the canonical content
+		const firstResults = await provisionBrain(brainPath, mcpPath);
+		const canonicalContent = firstResults[1].content!;
+
+		// Write the byte-identical template to disk
+		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
+		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalContent, "utf-8");
+
+		const results = await provisionBrain(brainPath, mcpPath);
+		const hubStep = results[1];
+
+		expect(hubStep.status).toBe("exists");
+		expect(hubStep.content).toBeUndefined();
+	});
+
+	it("playbook hub drifted from template still returns exists — user owns the bytes post-scaffold", async () => {
+		// Spec trace:
+		//   outcomes.desired — "When either file exists on disk at its expected path, the corresponding
+		//     InitStep is returned with status: 'exists' regardless of byte drift from the bundled template."
+		//   outcomes.undesired — "The coding-playbook hub or vault-root CLAUDE.md being returned with
+		//     status: 'would-overwrite' under any circumstance — even when on-disk bytes have drifted
+		//     from the bundled template."
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// Get canonical content then modify it
+		const firstResults = await provisionBrain(brainPath, mcpPath);
+		const driftedContent = firstResults[1].content! + "\n## Extra Section\n\nUnexpected drift.\n";
+
+		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
+		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), driftedContent, "utf-8");
+
+		const results = await provisionBrain(brainPath, mcpPath);
+		const hubStep = results[1];
+
+		expect(hubStep.status).toBe("exists");
+		expect(hubStep.content).toBeUndefined();
+	});
+
+	it("playbook hub missing returns would-create with content", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// Vault exists but playbook hub is absent
+		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
+
+		const results = await provisionBrain(brainPath, mcpPath);
+		const hubStep = results[1];
+
+		expect(hubStep.status).toBe("would-create");
+		expect(hubStep.content).toBeTruthy();
+	});
+
+	// -------------------------------------------------------------------------
+	// Drift cases: vault CLAUDE.md byte-compare
+	// -------------------------------------------------------------------------
+
+	it("vault CLAUDE.md byte-identical to template returns exists", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// First call to get the canonical content
+		const firstResults = await provisionBrain(brainPath, mcpPath);
+		const canonicalContent = firstResults[2].content!;
+
+		// Write the byte-identical template to disk
+		await mkdir(brainPath, { recursive: true });
+		await writeFile(join(brainPath, "CLAUDE.md"), canonicalContent, "utf-8");
+
+		const results = await provisionBrain(brainPath, mcpPath);
+		const claudeStep = results[2];
+
+		expect(claudeStep.status).toBe("exists");
+		expect(claudeStep.content).toBeUndefined();
+	});
+
+	it("vault CLAUDE.md drifted from template still returns exists — user owns the bytes post-scaffold", async () => {
+		// Spec trace:
+		//   outcomes.desired — "When either file exists on disk at its expected path, the corresponding
+		//     InitStep is returned with status: 'exists' regardless of byte drift from the bundled template."
+		//   outcomes.undesired — "The coding-playbook hub or vault-root CLAUDE.md being returned with
+		//     status: 'would-overwrite' under any circumstance — even when on-disk bytes have drifted
+		//     from the bundled template."
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// Get canonical content then modify it
+		const firstResults = await provisionBrain(brainPath, mcpPath);
+		const driftedContent = firstResults[2].content! + "\n## Extra\n\nDrifted content.\n";
+
+		await mkdir(brainPath, { recursive: true });
+		await writeFile(join(brainPath, "CLAUDE.md"), driftedContent, "utf-8");
+
+		const results = await provisionBrain(brainPath, mcpPath);
+		const claudeStep = results[2];
+
+		expect(claudeStep.status).toBe("exists");
+		expect(claudeStep.content).toBeUndefined();
+	});
+
+	it("vault CLAUDE.md missing returns would-create with content", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// Vault exists but CLAUDE.md is absent
+		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
+
+		const results = await provisionBrain(brainPath, mcpPath);
+		const claudeStep = results[2];
+
+		expect(claudeStep.status).toBe("would-create");
+		expect(claudeStep.content).toBeTruthy();
+	});
+
+	// -------------------------------------------------------------------------
+	// Negative assertion: no brain seed step ever returns would-overwrite
+	// -------------------------------------------------------------------------
+	// Spec trace:
+	//   outcomes.undesired — "The coding-playbook hub or vault-root CLAUDE.md being returned with
+	//     status: 'would-overwrite' under any circumstance — even when on-disk bytes have drifted
+	//     from the bundled template."
+
+	describe.each([
+		{
+			scenario: "file absent",
+			setup: async (_brainPath: string) => {
+				// nothing — neither file is written
+			},
+		},
+		{
+			scenario: "byte-identical to template",
+			setup: async (brainPath: string) => {
+				const firstResults = await provisionBrain(brainPath, makeMcpPath());
+				const canonicalHub = firstResults[1].content!;
+				const canonicalClaudeMd = firstResults[2].content!;
+				await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
+				await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
+				await writeFile(join(brainPath, "CLAUDE.md"), canonicalClaudeMd, "utf-8");
+			},
+		},
+		{
+			scenario: "drifted from template",
+			setup: async (brainPath: string) => {
+				const firstResults = await provisionBrain(brainPath, makeMcpPath());
+				const driftedHub = firstResults[1].content! + "\n## Extra Section\n\nUnexpected drift.\n";
+				const driftedClaudeMd = firstResults[2].content! + "\n## Extra\n\nDrifted content.\n";
+				await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
+				await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), driftedHub, "utf-8");
+				await writeFile(join(brainPath, "CLAUDE.md"), driftedClaudeMd, "utf-8");
+			},
+		},
+		{
+			scenario: "completely replaced with unrelated content",
+			setup: async (brainPath: string) => {
+				await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
+				await writeFile(
+					join(brainPath, "coding-playbook", "coding-playbook.md"),
+					"# My curated notes\n\nTotally different content.\n",
+					"utf-8",
+				);
+				await writeFile(join(brainPath, "CLAUDE.md"), "# My curated notes\n\nTotally different content.\n", "utf-8");
+			},
+		},
+	])(
+		"provisionBrain never returns would-overwrite for playbook hub or vault CLAUDE.md under any on-disk state [$scenario]",
+		({ setup }) => {
+			it("playbook hub (results[1]) status is exists or would-create, never would-overwrite", async () => {
+				const brainPath = makeBrainPath();
+				const mcpPath = makeMcpPath();
+				await setup(brainPath);
+
+				const results = await provisionBrain(brainPath, mcpPath);
+				const hubStep = results[1];
+
+				expect(["exists", "would-create"]).toContain(hubStep.status);
+				expect(hubStep.status).not.toBe("would-overwrite");
+			});
+
+			it("vault CLAUDE.md (results[2]) status is exists or would-create, never would-overwrite", async () => {
+				const brainPath = makeBrainPath();
+				const mcpPath = makeMcpPath();
+				await setup(brainPath);
+
+				const results = await provisionBrain(brainPath, mcpPath);
+				const claudeStep = results[2];
+
+				expect(["exists", "would-create"]).toContain(claudeStep.status);
+				expect(claudeStep.status).not.toBe("would-overwrite");
+			});
+		},
+	);
+
 	it("is idempotent — second call with fully provisioned vault returns all exists", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		// Simulate fully provisioned state
+		// First pass: get canonical template content for the file steps
+		const firstResults = await provisionBrain(brainPath, mcpPath);
+		const canonicalHub = firstResults[1].content!;
+		const canonicalClaudeMd = firstResults[2].content!;
+
+		// Simulate fully provisioned state using canonical template bytes
 		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
 		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), "# Hub", "utf-8");
-		await writeFile(join(brainPath, "CLAUDE.md"), "# Navigation", "utf-8");
+		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
+		await writeFile(join(brainPath, "CLAUDE.md"), canonicalClaudeMd, "utf-8");
 		const existing = { mcpServers: { obsidian: expectedObsidianEntry(brainPath) } };
 		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");
 

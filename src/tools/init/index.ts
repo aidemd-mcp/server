@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { existsSync } from "node:fs";
 import { join, isAbsolute, dirname } from "node:path";
 import type { FrameworkType, InitResult, InitStep } from "@/types/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
@@ -15,6 +14,7 @@ import installAideTree from "./installAideTree/index.js";
 import wireMcp from "./wireMcp/index.js";
 import provisionBrain from "./provisionBrain/index.js";
 import scaffoldReadme from "./scaffoldReadme/index.js";
+import compareBytes from "./shared/compareBytes/index.js";
 
 /**
  * Input schema for aide_init.
@@ -97,12 +97,13 @@ export default async function init(
 	const versionsHostPath = join(projectRoot, dirname(config.docHubDir), "versions.json");
 	const versionsManifest = readVersionsManifest();
 	const versionsJson = JSON.stringify(versionsManifest, null, 2) + "\n";
+	const versionsBytesResult = await compareBytes(versionsHostPath, versionsJson);
 	const versionsStep: InitStep = {
 		name: "versions.json",
-		status: existsSync(versionsHostPath) ? "exists" : "would-create",
+		status: versionsBytesResult === "would-skip" ? "exists" : versionsBytesResult,
 		category: "methodology",
 		filePath: versionsHostPath,
-		...(existsSync(versionsHostPath) ? {} : { content: versionsJson }),
+		...(versionsBytesResult !== "would-skip" ? { content: versionsJson } : {}),
 	};
 
 	const zedStep = await configureZed(projectRoot);

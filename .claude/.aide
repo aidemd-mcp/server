@@ -40,6 +40,29 @@ outcomes:
     - A cascading-alignment.md methodology doc exists under .aide/docs/
       documenting the protocol, the status field semantics, the aligner's
       role, and how misalignment flows through the pipeline.
+    - "When `aide_info` reports `brain.status: invalid-path` with an empty
+      `vaultPath`, the `/aide` orchestrator recovers inline by issuing two
+      `aide_init` calls in sequence against the user-supplied vault path.
+      Call one uses `category: \"mcp\"` and applies the returned obsidian
+      prescription to `.mcp.json` (the MCP prescription is always agent-
+      applied, never written directly by the tool, because `.mcp.json`
+      merges with the user's other MCP entries). Call two uses
+      `category: \"brain\"` and seeds any missing vault scaffolding
+      silently — brain steps are seed-semantic, so they only ever report
+      `exists` or `would-create`, never `would-overwrite`. After both
+      calls succeed, the orchestrator emits a user-facing message naming
+      the wired `<brainPath>`, stating that `.mcp.json` was patched and
+      the vault was scaffolded, and instructing the user to restart
+      Claude Code so the obsidian MCP server loads the new config. The
+      orchestrator then STOPS — it does not re-call `aide_info` in the
+      same session (the running obsidian MCP was never launched, so a
+      same-session check would report success against disk state while
+      the live server remains unwired) and does not continue the user's
+      original request. Continuation happens on the next `/aide`
+      invocation after restart, via the normal boot sequence. The
+      empty-`vaultPath` case is the single canonical inline-recovery
+      case; other brain precondition failures stay out of scope for
+      this outcome."
   undesired:
     - The aligner conflated with the QA agent. QA validates code against
       spec outcomes; the aligner validates spec outcomes against ancestor
@@ -60,6 +83,52 @@ outcomes:
       tooling does not actually support. The doc must describe what the
       discover tool, validate tool, and aligner agent actually do, not
       what they might do someday.
+    - "The `/aide` orchestrator tells the user to re-run `npx aidemd-mcp
+      init` or any other out-of-band bootstrap step when the brain
+      precondition failure is a single-input fix the orchestrator can
+      capture with one `AskUserQuestion` call and apply via an
+      already-available tool. Round-tripping the user through a second
+      command for a one-field recovery is gratuitous friction — the
+      orchestrator owns the interview and should close the loop inline."
+    - "Inline-recovery logic that silently overwrites a non-empty but
+      broken `vaultPath`, or that fabricates an obsidian MCP entry when
+      `brain.status` is `no-mcp-entry`. The inline-recovery contract
+      covers only the empty-`vaultPath` case where user intent is
+      unambiguous; other failure modes route to `npx aidemd-mcp init`
+      (cold-start) or `/aide:upgrade` (drift) until they are deliberately
+      brought into scope."
+    - "Inline recovery that issues a single `aide_init` call and
+      declares success. Calling `aide_init({ category: \"brain\",
+      brainPath })` alone applies the three brain-category steps
+      (vault dirs, playbook hub, vault CLAUDE.md) but filters out the
+      mcp-category step that prescribes the obsidian entry for
+      `.mcp.json` — so `brain.status` stays `invalid-path` even though
+      the orchestrator reports the vault as wired up. The sequence
+      must issue both the mcp call and the brain call; one call is
+      not the recovery."
+    - "Treating `aide_init`'s `category` parameter as a routing hint
+      that changes which helpers run. `category` is strictly an apply
+      filter: every invocation runs the full planning pass, and
+      `category` only controls which `would-create` steps get written
+      to disk. Assuming `category: \"brain\"` will incidentally patch
+      `.mcp.json` (because `provisionBrain` emitted an mcp-category
+      step) is the specific misconception that produced the bug —
+      mcp-category steps require a `category: \"mcp\"` call to be
+      applied."
+    - "Continuing the user's original request in the same session
+      after the two-call inline recovery (mcp + brain), before the
+      user has restarted Claude Code. `.mcp.json` is read at Claude
+      Code startup; patching it mid-session updates disk state but
+      leaves the already-running obsidian MCP server launched with
+      the empty `vaultPath` it booted with. Downstream pipeline
+      agents that need a live obsidian MCP will fail — silently or
+      loudly — because the server is still unwired even though the
+      config file is correct. Equally wrong is re-calling `aide_info`
+      in the same session and treating `brain.status === \"ok\"` as
+      permission to continue: that check reports disk state, not
+      live-server state, and yields false confidence. The recovery's
+      terminal state is a user-facing restart instruction plus a
+      hard STOP, not a verification-and-continue loop."
 ---
 
 ## Context

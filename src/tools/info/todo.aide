@@ -1,0 +1,45 @@
+---
+intent: >
+  buildBrainState returns invalid-path (with vaultPath: "") for obsidian entries
+  whose args field is absent, non-array, or empty — the spec mandates no-mcp-entry
+  with vaultPath: null for these cases. Three tests fail, confirming the divergence.
+misalignment:
+  - implementation-drift
+---
+
+## Issues
+
+- [x] `src/tools/info/buildBrainState/index.ts:106-113` — When `args` is missing,
+  not an array, or empty, the implementation returns `{ status: 'invalid-path',
+  vaultPath: '' }`. The spec (Strategy section, lines 182-187) mandates
+  `{ status: 'no-mcp-entry', vaultPath: null }` for all three cases: "If the
+  entry is missing, malformed, or the path element is absent, the tool treats the
+  entry as `no-mcp-entry` rather than `invalid-path` — the latter status is reserved
+  for a configured-but-unresolvable path, not a configured-but-unparseable entry."
+  The implementation's JSDoc comment at lines 33-38 acknowledges this case but
+  argues the opposite design and was not reflected back against the spec.
+  Three tests in `buildBrainState/index.test.ts` (lines 92-132) fail at runtime,
+  confirming the mismatch: empty args array, no args field, and non-array args each
+  return `invalid-path` when the tests and spec both expect `no-mcp-entry`.
+  `Traces to:` desired outcome — "Missing MCP config file, malformed MCP config, and
+  a missing obsidian entry all resolve to `status: 'no-mcp-entry'` with `vaultPath:
+  null`"; undesired outcome — "A tool that conflates 'no obsidian entry configured'
+  with 'obsidian entry configured but vault path missing'. The orchestrator needs to
+  distinguish these to pick the right remediation."
+  `Misalignment:` implementation-drift
+
+## Retro
+
+The spec is explicit that `invalid-path` is reserved for a correctly-shaped entry
+whose stored path does not resolve on disk, and that unparseable or absent args fall
+into `no-mcp-entry`. The implementation's JSDoc rationalised a different design
+decision in place — effectively the implementation re-litigated a spec decision
+without updating the spec. The tests were written from the spec and caught it; the
+run confirmed 3 failures.
+
+What would have caught this earlier: the implementor's JSDoc comment at
+`buildBrainState/index.ts:33-38` explicitly describes the divergent behaviour. A
+plan-step that required the implementor to quote the spec's exact language for each
+branch decision (not just paraphrase it) would have surfaced the conflict before code
+was written. Add a "spec-quote" expectation to plan steps that define branch
+semantics — require the exact outcome line, not a restatement.

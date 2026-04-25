@@ -36,10 +36,11 @@ describe("installAideTree", () => {
 		expect(results[0]?.content).toBe(canonical);
 	});
 
-	it("returns exists when the file is already present on disk", async () => {
+	it("returns exists when the file on disk is byte-identical to canonical", async () => {
 		const binDir = join(tempDir, ".aide", "bin");
 		await mkdir(binDir, { recursive: true });
-		await writeFile(join(binDir, "aide-tree.mjs"), "// custom\n", "utf-8");
+		const canonical = readFileSync(CANONICAL_PATH, "utf-8");
+		await writeFile(join(binDir, "aide-tree.mjs"), canonical, "utf-8");
 
 		const results = await installAideTree(tempDir);
 
@@ -52,11 +53,38 @@ describe("installAideTree", () => {
 	it("exists step has no content field", async () => {
 		const binDir = join(tempDir, ".aide", "bin");
 		await mkdir(binDir, { recursive: true });
-		await writeFile(join(binDir, "aide-tree.mjs"), "// custom\n", "utf-8");
+		const canonical = readFileSync(CANONICAL_PATH, "utf-8");
+		await writeFile(join(binDir, "aide-tree.mjs"), canonical, "utf-8");
 
 		const results = await installAideTree(tempDir);
 
+		expect(results[0]?.status).toBe("exists");
 		expect(results[0]?.content).toBeUndefined();
+	});
+
+	it("returns would-overwrite when the file on disk has drifted from canonical", async () => {
+		const binDir = join(tempDir, ".aide", "bin");
+		await mkdir(binDir, { recursive: true });
+		await writeFile(join(binDir, "aide-tree.mjs"), "// custom modified script\n", "utf-8");
+
+		const results = await installAideTree(tempDir);
+
+		expect(results).toHaveLength(1);
+		expect(results[0]?.status).toBe("would-overwrite");
+		expect(results[0]?.name).toBe(".aide/bin/aide-tree.mjs");
+		expect(results[0]?.category).toBe("commands");
+	});
+
+	it("would-overwrite step carries canonical content", async () => {
+		const binDir = join(tempDir, ".aide", "bin");
+		await mkdir(binDir, { recursive: true });
+		await writeFile(join(binDir, "aide-tree.mjs"), "// stale script\n", "utf-8");
+
+		const results = await installAideTree(tempDir);
+
+		const canonical = readFileSync(CANONICAL_PATH, "utf-8");
+		expect(results[0]?.status).toBe("would-overwrite");
+		expect(results[0]?.content).toBe(canonical);
 	});
 
 	it("never writes to disk", async () => {

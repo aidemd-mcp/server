@@ -34,8 +34,17 @@ async function safeReadFile(path: string): Promise<string> {
 	}
 }
 
-/** Build the Obsidian MCP server entry, wrapping with cmd /c on Windows. */
-function obsidianMcpEntry(brainPath: string): McpPrescription["entry"] {
+/**
+ * Build the Obsidian MCP server entry, wrapping with cmd /c on Windows.
+ * Exported so the CLI's writeMcpEntry can compose this entry alongside
+ * the aide entry — a shared leaf primitive, identical to how wireMcp
+ * exports `mcpEntry()`. A blank `brainPath` is a valid input: it writes
+ * the entry shell with an empty vault path, which `buildBrainState`
+ * reports as `invalid-path` so the orchestrator hard-stops and routes
+ * the orchestrator's inline-recovery flow (run `/aide`) detects this state
+ * and prompts the user to supply the real vault path.
+ */
+export function obsidianMcpEntry(brainPath: string): McpPrescription["entry"] {
 	if (platform() === "win32") {
 		return { command: "cmd", args: ["/c", "npx", "@bitbonsai/mcpvault", brainPath] };
 	}
@@ -121,16 +130,22 @@ These notes are **required reading** for every task, regardless of which section
  *
  * 1. Vault scaffolding (category `"brain"`): `exists` if vault is already
  *    populated, `would-create` with the directories list as JSON content.
- * 2. Playbook hub (category `"brain"`): `exists` if `coding-playbook/coding-playbook.md`
- *    is present, `would-create` with the five-section Markdown template when absent.
- *    Idempotency is per-file — checked independently of the vault-level step.
- * 3. Vault CLAUDE.md (category `"brain"`): `exists` if `CLAUDE.md` is present at the
- *    vault root, `would-create` with the navigation guide template when absent.
- *    Idempotency is per-file — checked independently of the vault-level step.
+ * 2. Playbook hub (category `"brain"`): `exists` when the file is present at its
+ *    expected path; `would-create` with `content` when absent. Never `would-overwrite`
+ *    — these files are user-owned seeds, not canonical templates. Idempotency is
+ *    per-file — checked independently of the vault-level step.
+ * 3. Vault CLAUDE.md (category `"brain"`): `exists` when the file is present at its
+ *    expected path; `would-create` with `content` when absent. Never `would-overwrite`
+ *    — these files are user-owned seeds, not canonical templates. Idempotency is
+ *    per-file — checked independently of the vault-level step.
  * 4. Obsidian MCP entry (category `"mcp"`): `exists` if the obsidian key is
  *    already in the config, `would-create` with a `McpPrescription`.
  *    If the config file is malformed JSON, returns `would-create` with
  *    `configMalformed: true`.
+ *
+ * Two idempotency modes coexist: seed-semantic (presence-only) for user-owned
+ * content (steps 2, 3); canonical-template (byte-identity) for tool-owned config
+ * (step 4).
  *
  * No step writes to disk — this helper is a planner only.
  */
@@ -166,17 +181,20 @@ async function buildVaultStep(brainPath: string): Promise<InitStep> {
 	};
 }
 
-/** Build the playbook hub template planning step, with per-file idempotency. */
+/**
+ * Build the playbook hub template planning step.
+ *
+ * Presence-only check — if the file exists at its expected path, the step is
+ * `exists` regardless of on-disk content. Once the user has the file, the bytes
+ * belong to the user. See the spec's Strategy section ("Two different idempotency
+ * semantics coexist in this module") for the rationale behind seed-semantic
+ * idempotency vs. the canonical-template check used by `buildObsidianMcpStep`.
+ */
 async function buildPlaybookHubStep(brainPath: string): Promise<InitStep> {
 	const filePath = join(brainPath, "coding-playbook", "coding-playbook.md");
 
 	if (await exists(filePath)) {
-		return {
-			name: "Playbook hub",
-			status: "exists",
-			category: "brain",
-			filePath,
-		};
+		return { name: "Playbook hub", status: "exists", category: "brain", filePath };
 	}
 
 	return {
@@ -188,17 +206,20 @@ async function buildPlaybookHubStep(brainPath: string): Promise<InitStep> {
 	};
 }
 
-/** Build the vault-root CLAUDE.md planning step, with per-file idempotency. */
+/**
+ * Build the vault-root CLAUDE.md planning step.
+ *
+ * Presence-only check — if the file exists at its expected path, the step is
+ * `exists` regardless of on-disk content. Once the user has the file, the bytes
+ * belong to the user. See the spec's Strategy section ("Two different idempotency
+ * semantics coexist in this module") for the rationale behind seed-semantic
+ * idempotency vs. the canonical-template check used by `buildObsidianMcpStep`.
+ */
 async function buildVaultClaudeMdStep(brainPath: string): Promise<InitStep> {
 	const filePath = join(brainPath, "CLAUDE.md");
 
 	if (await exists(filePath)) {
-		return {
-			name: "Vault CLAUDE.md",
-			status: "exists",
-			category: "brain",
-			filePath,
-		};
+		return { name: "Vault CLAUDE.md", status: "exists", category: "brain", filePath };
 	}
 
 	return {
@@ -210,7 +231,20 @@ async function buildVaultClaudeMdStep(brainPath: string): Promise<InitStep> {
 	};
 }
 
-/** Build the Obsidian MCP wiring planning step. */
+/**
+ * Build the Obsidian MCP wiring planning step.
+ *
+ * Three on-disk states for an existing `obsidian` entry:
+ *   - Absent entirely → `would-create` with the full prescription.
+ *   - Present with a vault path that matches the caller-supplied `brainPath` →
+ *     `exists` (idempotent — the entry is already correct).
+ *   - Present but the vault path is empty or differs from `brainPath` →
+ *     `would-overwrite` with the updated prescription. The CLI writes the
+ *     obsidian shell with an empty path during cold start, and the wizard
+ *     later passes this step through `applySteps` (after user confirmation)
+ *     to fill in the real path. Without this branch, `aide_init` would
+ *     report the entry as `exists` even when the path needs updating.
+ */
 async function buildObsidianMcpStep(brainPath: string, mcpConfigPath: string): Promise<InitStep> {
 	const prescription: McpPrescription = {
 		key: "obsidian",
@@ -224,11 +258,26 @@ async function buildObsidianMcpStep(brainPath: string, mcpConfigPath: string): P
 			const config = JSON.parse(existing);
 			const servers = config.mcpServers || {};
 			if ("obsidian" in servers) {
+				// Extract the existing vault path (last positional arg) and
+				// compare against the target. Same extraction rules as
+				// buildBrainState.
+				const entry = servers.obsidian as { args?: unknown } | null;
+				const args = entry && Array.isArray(entry.args) ? entry.args : [];
+				const existingPath = args.length > 0 ? args[args.length - 1] : undefined;
+				if (typeof existingPath === "string" && existingPath === brainPath) {
+					return {
+						name: "MCP config (obsidian)",
+						status: "exists",
+						category: "mcp",
+						filePath: mcpConfigPath,
+					};
+				}
 				return {
 					name: "MCP config (obsidian)",
-					status: "exists",
+					status: "would-overwrite",
 					category: "mcp",
 					filePath: mcpConfigPath,
+					prescription,
 				};
 			}
 			return {

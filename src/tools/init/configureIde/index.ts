@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { InitStep } from "@/types/index.js";
+import compareBytes from "@/tools/init/shared/compareBytes/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -18,9 +19,13 @@ async function safeReadFile(path: string): Promise<string> {
 /**
  * Inspect Zed settings and return a planning step for .aide file association.
  *
- * Returns `exists` when the `*.aide` entry is already in `.zed/settings.json`.
- * Returns `would-create` with the full patched settings JSON as `content`
- * when the entry is absent.
+ * Computes the canonical patched content first, then byte-compares against disk:
+ * - `exists` — file on disk already matches the patched output byte-for-byte
+ *   (includes the case where `*.aide` was already present and no change is needed).
+ * - `would-create` — file does not exist; the patched content will be written fresh.
+ * - `would-overwrite` — file exists but its bytes differ from the patched output
+ *   (e.g. `*.aide` was absent and was added, or surrounding content has drifted).
+ * - `would-skip` — settings JSON could not be parsed; the file is left untouched.
  *
  * This function never writes to disk — it is a planner only.
  */
@@ -29,32 +34,14 @@ export async function configureZed(projectRoot: string): Promise<InitStep> {
 	const filePath = settingsPath;
 	const existing = await safeReadFile(settingsPath);
 
+	// Compute canonical patched settings object.
+	let patched: string;
+
 	if (existing) {
+		let settings: Record<string, unknown>;
+
 		try {
-			const settings = JSON.parse(existing);
-			const fileTypes = settings.file_types || {};
-			const mdTypes: string[] = fileTypes.Markdown || [];
-
-			if (mdTypes.includes("*.aide")) {
-				return {
-					name: "Zed config",
-					status: "exists",
-					category: "ide",
-					filePath,
-				};
-			}
-
-			mdTypes.push("*.aide");
-			fileTypes.Markdown = mdTypes;
-			settings.file_types = fileTypes;
-
-			return {
-				name: "Zed config",
-				status: "would-create",
-				category: "ide",
-				filePath,
-				content: JSON.stringify(settings, null, 2) + "\n",
-			};
+			settings = JSON.parse(existing);
 		} catch {
 			return {
 				name: "Zed config",
@@ -63,15 +50,39 @@ export async function configureZed(projectRoot: string): Promise<InitStep> {
 				filePath,
 			};
 		}
+
+		const fileTypes = (settings.file_types as Record<string, string[]>) || {};
+		const mdTypes: string[] = fileTypes.Markdown || [];
+
+		if (!mdTypes.includes("*.aide")) {
+			mdTypes.push("*.aide");
+			fileTypes.Markdown = mdTypes;
+			settings.file_types = fileTypes;
+		}
+
+		patched = JSON.stringify(settings, null, 2) + "\n";
+	} else {
+		const settings = { file_types: { Markdown: ["*.aide"] } };
+		patched = JSON.stringify(settings, null, 2) + "\n";
 	}
 
-	const settings = { file_types: { Markdown: ["*.aide"] } };
+	const comparison = await compareBytes(settingsPath, patched);
+
+	if (comparison === "would-skip") {
+		return {
+			name: "Zed config",
+			status: "exists",
+			category: "ide",
+			filePath,
+		};
+	}
+
 	return {
 		name: "Zed config",
-		status: "would-create",
+		status: comparison,
 		category: "ide",
 		filePath,
-		content: JSON.stringify(settings, null, 2) + "\n",
+		content: patched,
 	};
 }
 

@@ -1,28 +1,22 @@
-import { access } from "node:fs/promises";
 import { join } from "node:path";
 import type { InitStep } from "@/types/index.js";
 import {
 	readCanonicalDoc,
 	listAgents,
 } from "@/tools/init/initContent/index.js";
-
-/** Check if a file exists on disk. */
-async function fileExists(path: string): Promise<boolean> {
-	try {
-		await access(path);
-		return true;
-	} catch {
-		return false;
-	}
-}
+import compareBytes from "@/tools/init/shared/compareBytes/index.js";
 
 /**
  * Return planning steps for each canonical AIDE pipeline agent file.
  *
- * For each agent named by `listAgents()`, checks whether the host file
- * already exists. Returns `exists` for present files, `would-create` with
- * the canonical content for absent files. A failing canonical read returns
- * `would-skip` for that entry only.
+ * For each agent named by `listAgents()`, compares the host file bytes against
+ * the canonical content:
+ * - `would-create`: file does not exist on disk.
+ * - `exists`: file exists and its bytes are identical to canonical.
+ * - `would-overwrite`: file exists but its bytes differ from canonical.
+ *
+ * A failing canonical read returns `would-skip` for that entry only and
+ * does not affect the other steps.
  *
  * This helper never writes to disk — it is a planner only.
  */
@@ -35,16 +29,6 @@ export default async function installAgents(
 	for (const entry of listAgents()) {
 		const targetPath = join(agentDir, entry.hostFilename);
 		const displayName = `${displayPrefix}/${entry.hostFilename}`;
-
-		if (await fileExists(targetPath)) {
-			steps.push({
-				name: displayName,
-				status: "exists",
-				category: "agents",
-				filePath: targetPath,
-			});
-			continue;
-		}
 
 		let content: string;
 		try {
@@ -59,9 +43,21 @@ export default async function installAgents(
 			continue;
 		}
 
+		const status = await compareBytes(targetPath, content);
+
+		if (status === "would-skip") {
+			steps.push({
+				name: displayName,
+				status: "exists",
+				category: "agents",
+				filePath: targetPath,
+			});
+			continue;
+		}
+
 		steps.push({
 			name: displayName,
-			status: "would-create",
+			status,
 			category: "agents",
 			filePath: targetPath,
 			content,

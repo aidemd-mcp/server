@@ -1,0 +1,510 @@
+---
+intent: >
+  Remove the `commands/aide/init` entry from the `COMMANDS` registry in
+  `scaffoldCommands/index.ts` (and the matching entry from the upstream
+  `initContent` `DOC_PATHS` registry it depends on), refresh the
+  `scaffoldCommands/.aide` body sections so the count and enumerations
+  match the post-deletion registry without pinning a specific size, and
+  update the test file to assert against the new roster while honoring
+  the spec's "no-count-pinning" undesired outcome.
+---
+
+## Project Structure
+
+This plan governs only the `src/tools/init/scaffoldCommands/` module.
+After execution, the `COMMANDS` array in `index.ts` has twelve entries
+(orchestrator + eleven subcommands), the `.aide` body sections describe
+the new roster without enumerating it inline as a fixed list, and the
+test file asserts against the twelve-entry roster while removing
+literal-count assertions where the spec's `outcomes.undesired` line
+"a spec, test, description, or assertion that pins a specific count of
+slash commands or enumerates the canonical command roster as part of
+the contract" makes them anti-patterns.
+
+```
+src/tools/init/scaffoldCommands/
+├── .aide                    ← (MODIFY) intent spec — frontmatter is already updated;
+│                              this plan refreshes the body sections (## Context,
+│                              ## Strategy, ## Good examples, ## Bad examples) so
+│                              they no longer enumerate "13 entries" / "12 subcommands"
+│                              / lifecycle-commands lists that include `init`
+├── plan.aide                ← THIS plan (new)
+├── todo.aide                ← prior QA artifact (already present; do not touch)
+├── index.ts                 ← (MODIFY) export default async function scaffoldCommands(
+│                              commandDir: string): Promise<InitStep[]>. The COMMANDS
+│                              registry shrinks from thirteen to twelve entries —
+│                              the `{ canonical: "commands/aide/init", hostPath:
+│                              "aide/init.md", displayName: "aide:init" }` entry is
+│                              removed. Function signature, JSDoc, and the
+│                              for-loop body are unchanged.
+└── index.test.ts            ← (MODIFY) Vitest suite. Updates the roster assertion
+                                in the cold-run test to twelve entries (still using
+                                an array equality so the canonical order stays
+                                pinned) and removes the literal length assertion
+                                `expect(results).toHaveLength(13)` from places
+                                where it pins a count for its own sake. The
+                                roster-equality assertion in the cold-run test
+                                continues to enforce both membership AND order.
+```
+
+The `.aide` body sections that change are listed for the implementor's
+benefit:
+
+- **`## Context`** — currently mentions "the canonical docs" without an
+  inline count; verify it stays count-free after re-read. No edit
+  expected unless the body has drifted.
+- **`## Strategy`** — contains the literal "iterates over a fixed
+  COMMANDS registry of 13 entries: the orchestrator (`aide.md` at the
+  command directory root) plus 12 subcommands under `aide/` — the seven
+  pipeline phases (research, spec, synthesize, plan, build, qa, fix),
+  three lifecycle commands (upgrade, init, align), and two maintenance
+  commands (update-playbook, refactor)". This is the largest rewrite —
+  the prose must describe the registry's SHAPE without enumerating its
+  membership. It also includes "for example 'aide: created, research:
+  created, spec: exists, synthesize: created, plan: created, build:
+  created, qa: created, fix: exists, upgrade: created, init: created,
+  update-playbook: created, refactor: created, align: created'" — the
+  example status line that lists `init: created` in the middle.
+- **`## Good examples`** — contains "writes `aide.md` at the command
+  directory root (the orchestrator) and 12 subcommand files into
+  `.claude/commands/aide/` (or the equivalent for the detected
+  framework) — all 13 entries in the COMMANDS registry — and returns
+  a `created` status for each", and another sentence "The other 12
+  commands also report `exists`." Both must be re-cast as
+  count-free descriptions.
+- **`## Bad examples`** — verify this section does NOT pin a count
+  after re-read; the existing bad examples mostly describe failure
+  shapes, not membership. No edit expected unless the body has drifted.
+
+## Prerequisites
+
+This plan modifies the upstream `initContent` `DOC_PATHS` registry as
+part of step 1, because the `commands/aide/init` canonical name in
+`DOC_PATHS` is what `scaffoldCommands.COMMANDS` looked up. Both
+registries must change in the same logical unit of work — leaving one
+without the other produces either:
+
+- A `COMMANDS` entry referencing a `canonical` name no longer in
+  `DOC_PATHS` (TypeScript compile error: the `CanonicalDocName` type
+  union loses the `"commands/aide/init"` literal, and the `COMMANDS`
+  entry's `canonical` field becomes invalid), or
+- A `DOC_PATHS` entry pointing at a deleted file (runtime throw on
+  `readCanonicalDoc("commands/aide/init")` if anything still calls
+  it).
+
+Both edits land in the same step (step 1) so the plan is internally
+self-contained. There are no external prerequisite modules.
+
+## Plan
+
+### 1. Remove the `commands/aide/init` entry from the COMMANDS and DOC_PATHS registries
+
+Read:
+- `coding-playbook/foundations/conventions` — naming consistency, JSDoc preservation, "no commented-out code" on the removed registry entries
+- `coding-playbook/architecture/data-flow` — single-source-of-truth invariant for registries, why both registries must move together
+
+- [x] 1a. Open `src/tools/init/initContent/index.ts`. Locate the
+  `DOC_PATHS` object literal and remove the line
+  `"commands/aide/init": ".claude/commands/aide/init.md",`. Do not
+  comment it out, do not leave a placeholder. The TypeScript
+  `CanonicalDocName` type union (derived as `keyof typeof DOC_PATHS`)
+  will automatically lose the `"commands/aide/init"` literal — that is
+  the desired propagation. Save the file. Run `tsc --noEmit` (or the
+  project equivalent) and confirm zero new type errors. The only
+  consumer of `"commands/aide/init"` is the `COMMANDS` entry being
+  removed in step 1b — if any other consumer surfaces, STOP and
+  escalate back to `/aide:plan`.
+
+- [x] 1b. Open `src/tools/init/scaffoldCommands/index.ts`. Locate the
+  `COMMANDS` array literal and remove the entry
+  `{ canonical: "commands/aide/init", hostPath: "aide/init.md", displayName: "aide:init" },`.
+  Do not comment it out. Preserve the surrounding JSDoc and the
+  trailing comma rules already used elsewhere in the array. The
+  `CanonicalDocName` type imported from `initContent` will reflect the
+  step-1a change automatically; no type annotations on `COMMANDS`
+  itself need to change. The function body (`for (const cmd of COMMANDS) { ... }`)
+  is untouched — it iterates whatever `COMMANDS` declares.
+
+- [x] 1c. Run the project's TypeScript check (`tsc --noEmit` or the
+  npm script equivalent) to confirm both files compile cleanly with
+  the registries shrunk. Run the test suite for the
+  `scaffoldCommands` module — most assertions will fail at this
+  point, and that's expected. Step 3 updates the tests; this run is
+  only to confirm the failure mode is "wrong roster" (e.g. expected
+  13 got 12, expected `aide:init` in the array but missing) and not
+  "import failure" or "type error in production code".
+
+### 2. Refresh the `.aide` body sections to drop the count and enumerations
+
+Read:
+- `coding-playbook/foundations/conventions` — prose clarity, naming, no count-pinning where the spec's own `outcomes.undesired` forbids it
+- `coding-playbook/agentic/command-modules/multi-agent-pipelines` — the canonical command-hub convention that the registry IS the membership source of truth; the spec describes shape, not list
+
+- [x] 2a. Open `src/tools/init/scaffoldCommands/.aide`. Re-read the
+  frontmatter (already updated this session) and confirm the
+  outcomes.desired and outcomes.undesired lines are consistent with
+  the post-deletion registry. The undesired outcome that says "a
+  spec, test, description, or assertion that pins a specific count
+  of slash commands or enumerates the canonical command roster as
+  part of the contract" is the governing rule for the body
+  rewrites — every body sentence the implementor edits must honor
+  it.
+
+- [x] 2b. Rewrite the `## Strategy` section's "Commands are
+  enumerated from a fixed registry, not discovered dynamically"
+  paragraph. The current text reads: "The helper iterates over a
+  fixed COMMANDS registry of 13 entries: the orchestrator (`aide.md`
+  at the command directory root) plus 12 subcommands under `aide/`
+  — the seven pipeline phases (research, spec, synthesize, plan,
+  build, qa, fix), three lifecycle commands (upgrade, init, align),
+  and two maintenance commands (update-playbook, refactor)." The
+  rewrite must:
+  - Drop every literal count ("13 entries", "12 subcommands",
+    "seven pipeline phases", "three lifecycle", "two maintenance").
+  - Drop the inline list of phase names (research, spec, synthesize,
+    plan, build, qa, fix).
+  - Drop the inline list of lifecycle commands (especially the
+    `init` mention) and the maintenance-command list.
+  - Replace with a count-free description: the helper iterates a
+    fixed registry; the orchestrator installs at the command-dir
+    root; subcommands install under `aide/`; the registry membership
+    spans pipeline phases, lifecycle commands, and maintenance
+    commands; the canonical command-hub spec is the source of truth
+    for what's in the set.
+  - Preserve the surrounding sentences about the three-way lock
+    (canonical template + parent spec + registry must all change in
+    the same PR), the warning about dynamic discovery, and the
+    paragraph's role in the strategy.
+
+- [x] 2c. Rewrite the `## Strategy` section's "Per-command status,
+  not a single aggregate" paragraph. The current text contains: "The
+  init summary needs to show a status for each of the 13 commands —
+  for example 'aide: created, research: created, spec: exists,
+  synthesize: created, plan: created, build: created, qa: created,
+  fix: exists, upgrade: created, init: created, update-playbook:
+  created, refactor: created, align: created'". The rewrite must:
+  - Drop the literal "13 commands" count.
+  - Drop the example status line (it pins both count and
+    enumeration, including `init: created`).
+  - Replace with a count-free statement: the init summary shows a
+    status per scaffolded command (one line per `COMMANDS` entry);
+    a sample line like `<displayName>: <status>` is sufficient as
+    illustration if any example shape is needed.
+  - Preserve the rest of the paragraph's reasoning about why
+    aggregate statuses are insufficient.
+
+- [x] 2d. Rewrite the first `## Good examples` paragraph. The
+  current text reads: "writes `aide.md` at the command directory
+  root (the orchestrator) and 12 subcommand files into
+  `.claude/commands/aide/` (or the equivalent for the detected
+  framework) — all 13 entries in the COMMANDS registry — and
+  returns a `created` status for each." The rewrite must:
+  - Drop "12 subcommand files".
+  - Drop "all 13 entries".
+  - Replace with a count-free description: writes the orchestrator
+    at the command-dir root and the subcommand files under
+    `aide/`, one per entry in the COMMANDS registry, returning a
+    `created` status for each.
+  - Preserve the surrounding scenario (host project's first
+    `aide_init`, framework detection, the developer being able to
+    type `/aide:research`).
+  - Drop the example slash command `/aide:research` only if needed
+    to honor the no-enumeration rule? No — `/aide:research` is an
+    example of a single command, not an enumeration. Keep it.
+
+- [x] 2e. Rewrite the second `## Good examples` paragraph (the
+  customization scenario). The current text reads: "The other 12
+  commands also report `exists`." The rewrite must:
+  - Drop "12".
+  - Replace with a count-free statement: the other commands in the
+    registry also report `exists`.
+
+- [x] 2f. Re-read `## Context` and `## Bad examples` end-to-end.
+  These sections should not contain any count or enumeration after
+  the body rewrite — but verify. If a count or enumeration has
+  drifted into either section, apply the same count-free rewrite
+  pattern. If both sections are clean, no edit is needed.
+
+- [x] 2g. After all body edits, search the spec for the literal
+  numbers `13`, `12`, `seven`, `three`, `two` (in word and digit
+  form) — confirm none of them appear as registry-membership
+  counts. Stray numbers in unrelated contexts (e.g. a coding
+  playbook convention reference) are fine; numbers describing the
+  COMMANDS registry's size are forbidden by the undesired outcome.
+  Also search for the literal token `init` in slash-command
+  context (e.g. `/aide:init`, `init.md`, `init`) — confirm zero
+  remaining references in the spec body. (The frontmatter does
+  reference `init` in the deprecation context; that is expected and
+  out of scope for this step.)
+
+### 3. Update `index.test.ts` to match the new roster
+
+Read:
+- `coding-playbook/workflow/testing` — Vitest assertion patterns, factory functions, parameterized tests, when array-equality vs length-pinning is appropriate
+- `coding-playbook/foundations/conventions` — code hygiene, no dead test cases
+
+- [x] 3a. Open `src/tools/init/scaffoldCommands/index.test.ts`.
+  Locate every literal `13` in the file and apply one of two
+  treatments depending on context:
+
+  - **Cold-run roster equality test** (`it("returns would-create
+    steps for all 13 commands on a cold run", ...)`): rename the
+    test to drop the count from the title (e.g. "returns
+    would-create steps for every command in the registry on a cold
+    run"). Replace `expect(results).toHaveLength(13)` with an
+    assertion that ties the length to the registry's actual size at
+    test time — import `COMMANDS` from `./index.js` and assert
+    `expect(results).toHaveLength(COMMANDS.length)`. This is the
+    correct shape because it remains valid through future registry
+    growth or shrinkage without re-pinning the count. Update the
+    `expect(results.map((r) => r.name)).toEqual([...])` array to
+    drop `"aide:init"` and otherwise match the new canonical order
+    from `COMMANDS`. The array-equality assertion stays — the
+    canonical order is part of the contract this test protects, even
+    though the count is not.
+
+  - **Partial-overwrite scenario test** (`it("partial-overwrite
+    scenario: one drifted command among many absent ones → that
+    step is would-overwrite, others are would-create", ...)`):
+    `expect(results).toHaveLength(13)` is currently followed by
+    twelve `byName.get(...)` assertions, including
+    `expect(byName.get("aide:init")).toBe("would-create")`.
+    Replace the length assertion with the same
+    `expect(results).toHaveLength(COMMANDS.length)` pattern from
+    above, drop the `aide:init` byName assertion entirely, and
+    leave the remaining byName assertions intact.
+
+  - **Cascade-isolation test** (`it("does not cascade when one
+    canonical template read fails — returns would-skip for that
+    entry", ...)`): `expect(results).toHaveLength(13)` again. Same
+    treatment — replace with `COMMANDS.length`, drop the
+    `aide:init` byName assertion if present (it currently has six
+    byName assertions, none of which are `aide:init`, so just the
+    length-pin needs replacing).
+
+- [x] 3b. Locate every literal `"aide:init"` and `aide/init.md` in
+  the test file and remove the surrounding assertion (or, if the
+  literal is part of a larger array, remove the array element).
+  Both the cold-run roster array and the partial-overwrite byName
+  block contain `aide:init`. The parameterized `it.each` blocks at
+  the bottom of the file do not include `aide:init` in their input
+  arrays — confirm by re-reading and skip if true.
+
+- [x] 3c. Run the test suite for `scaffoldCommands` and confirm
+  every test passes. If a test fails for a reason unrelated to the
+  registry change (e.g. a flaky filesystem race, a path resolution
+  bug), STOP and escalate — do not fix unrelated failures inside
+  this plan. The bounding box is the registry shrink and its
+  immediate test consequences.
+
+- [x] 3d. After the suite passes, re-read the entire test file once
+  more and confirm:
+  - No remaining literal `13` referring to the COMMANDS roster.
+  - No remaining literal `"aide:init"` or `aide/init.md`.
+  - The `COMMANDS.length` import is added at the top of the file
+    if it wasn't already imported.
+  - Every parameterized `it.each` block's input arrays remain valid
+    (none reference `aide:init`).
+
+### 4. Verify the module end-to-end
+
+Read:
+- `coding-playbook/workflow/testing` — re-read for confirmation that the test suite remains coherent
+- `coding-playbook/agentic/command-modules/multi-agent-pipelines` — the registry-as-source-of-truth invariant the spec governs
+
+- [x] Run the full project TypeScript check (`tsc --noEmit` or
+  equivalent). Confirm zero type errors. The expected propagation:
+  removing `"commands/aide/init"` from `DOC_PATHS` shrinks the
+  `CanonicalDocName` type union by one literal; the only place that
+  literal was used was the `COMMANDS` entry that step 1b removed.
+
+- [x] Run the full Vitest suite (not just the scaffoldCommands
+  tests). Confirm zero failures. Watch specifically for:
+  - Tests in `src/tools/init/index.test.ts` that may inspect the
+    `commands` category step count (likely they assert on shape,
+    not count, but verify).
+  - Tests in `src/tools/upgrade/` that may iterate the `COMMANDS`
+    registry to drive their own assertions. The `index.ts` JSDoc
+    note "The COMMANDS export stays unchanged — upgrade's logic
+    still uses it" implies upgrade does consume the registry; a
+    shrunk registry should propagate transparently, but verify by
+    test, not by reading.
+  - Tests in `src/tools/info/` that touch artifact manifests or
+    canonical-doc enumeration.
+  NOTE: scaffoldCommands tests — 17/17 pass. Full suite — 9
+  failures found in src/cli/init/index.test.ts, all in deferred
+  category string assertions ("Brain vault path" / "Obsidian MCP
+  server entry" vs. the new strings in src/cli/init/index.ts).
+  These failures are unrelated to the registry shrink (they stem
+  from a deferred-category rename in src/cli/init/index.ts made
+  in an earlier session step). Escalating per item 4.
+
+- [x] Walk the registry-shrink scenario as a prose-reading dry-run:
+  - Cold host project runs `npx aidemd-mcp init`. The cli calls
+    `scaffoldCommands` (via the planning helpers). The result is
+    twelve `would-create` steps (one orchestrator + eleven
+    subcommands). The cli applies all twelve, no `init.md` is
+    written. The host project's `.claude/commands/aide/` ends up
+    with eleven files instead of twelve. The orchestrator
+    (`/aide`) at `.claude/commands/aide.md` is unchanged. Expected
+    behavior: the host project has the same slash command surface
+    minus `/aide:init`. CONFIRMED.
+  - Existing host project (with `init.md` already on disk) runs
+    `aide_init` after pulling the new server version. The
+    `scaffoldCommands` planning pass returns twelve steps; none of
+    them name `init.md` (because the registry no longer lists it).
+    The orphan `init.md` on disk is invisible to this helper —
+    `scaffoldCommands` only reports on registry entries, not on
+    files in `.claude/commands/aide/` that aren't in the
+    registry. The orphan is a follow-up cleanup for `/aide:upgrade`,
+    NOT for this plan. CONFIRMED — expected behavior; flagged in
+    summary.
+  - Cascade-isolation test scenario: a single canonical doc read
+    fails (e.g. the `commands/aide/build` template is missing).
+    `scaffoldCommands` returns twelve steps total — eleven
+    `would-create`, one `would-skip` for the missing template. No
+    cascade failure. CONFIRMED by cascade-isolation test passing.
+
+- [x] If any TypeScript error, test failure, or scenario walkthrough
+  surfaces an issue, escalate back to `/aide:plan` rather than
+  patching the helper or the test in-flight. The bounding box is
+  strict. ESCALATING: 9 failures in src/cli/init/index.test.ts
+  due to deferred-category string mismatch pre-dating this plan.
+  Root cause and fix are out of scope for scaffoldCommands plan.
+
+## Decisions
+
+- **The registry shrink is the contract change; the helper code is
+  untouched.** The `for (const cmd of COMMANDS) { ... }` body in
+  `scaffoldCommands` iterates whatever `COMMANDS` declares. Removing
+  one entry from the array propagates through every consumer
+  (planning, applying, upgrade-drift detection, info reporting)
+  with zero algorithmic change. This matches the existing JSDoc
+  contract: "Owning this list here — rather than discovering it
+  from .claude/commands/ at runtime — is the mechanical guarantee
+  that a stray Markdown file committed under .claude/commands/aide/
+  cannot silently expand the pipeline."
+
+- **Both registries (COMMANDS and DOC_PATHS) move together.**
+  `scaffoldCommands.COMMANDS` references canonical names that must
+  exist as keys in `initContent.DOC_PATHS`. Removing the canonical
+  name from `DOC_PATHS` first lets TypeScript's
+  `CanonicalDocName = keyof typeof DOC_PATHS` propagate the type
+  shrink, which immediately surfaces any stale `COMMANDS` entry as
+  a type error. That's the desired enforcement mechanism. The
+  alternative (removing from `COMMANDS` first) leaves a valid type
+  union that still includes a literal pointing at a deleted file —
+  the lookup throws at runtime, not at compile time.
+
+- **Tests assert against `COMMANDS.length`, not against a literal
+  count.** The spec's `outcomes.undesired` line "a spec, test,
+  description, or assertion that pins a specific count of slash
+  commands or enumerates the canonical command roster as part of
+  the contract" forbids `expect(results).toHaveLength(12)` for the
+  same reason it forbids `13` today. Importing `COMMANDS` from
+  `./index.js` and asserting `expect(results).toHaveLength(COMMANDS.length)`
+  delegates the count to the source of truth — a future addition
+  or removal updates the assertion automatically. The
+  array-equality assertion (the `expect(results.map(...)).toEqual([...])`
+  list) remains because the canonical ORDER is part of the
+  contract this test protects (the displayed status report reads
+  in COMMANDS-order and the user-facing tooling depends on it).
+  Order is not a "count or enumeration" in the spec's sense — it
+  is a structural invariant.
+
+- **The `.aide` body rewrite is the implementor's responsibility,
+  not the strategist's.** The user's brief explicitly delegated the
+  body-section count-removal to the implementor as a "routine prose
+  update, not a strategy change." The plan provides the rewrite
+  rules (drop counts, drop enumerations, preserve reasoning); the
+  implementor applies them. If any rewrite surfaces a true
+  strategy question (e.g. should the `## Strategy` section name a
+  specific lifecycle command at all?), escalate back to
+  `/aide:spec`, not `/aide:plan` — that is a spec-rewrite question
+  for `aide-spec-writer`, not an architecture decision.
+
+- **The orphan `init.md` in existing host projects is NOT this
+  plan's concern.** `scaffoldCommands` is a planner: it reports on
+  registry entries, not on files in the host's command directory
+  that aren't in the registry. After the registry shrinks, an
+  existing host project's orphan `init.md` is invisible to
+  planning — the file still works as a Claude Code slash command
+  until the user runs `/aide:upgrade` or deletes it manually. The
+  upgrade tool's deletion-handling is a separate scope; flagged in
+  the sibling plan's Risks section.
+
+- **Helper location preserved per user's deferred-refactor
+  decision.** The `scaffoldCommands` module currently lives under
+  `src/tools/init/`. The user has explicitly deferred a
+  services-layer refactor that would lift this and its sibling
+  helpers into a shared services package consumed by both the MCP
+  tool and the cli. This plan does NOT preemptively touch that
+  structure — the deletion-and-shrink stays minimal and contained
+  inside the existing module location.
+
+- **No new categories added to `aide_init`.** Per the user's
+  brief, this is purely deletion + reference cleanup. The
+  `commands` category (which `scaffoldCommands` produces steps
+  for) shrinks by one entry; no new category is added. If during
+  implementation a hidden coupling surfaces that suggests a new
+  category is needed, STOP and surface it — do not add it
+  unilaterally.
+
+## Risks
+
+- **The `aide_info` outdated-artifacts check may surface
+  `commands/aide/init` as an "outdated" artifact for host projects
+  that still have the file on disk.** `aide_info` compares the
+  host's installed-artifact manifest (`.aide/versions.json`)
+  against the canonical manifest shipped with the npm package.
+  After this plan lands, the canonical manifest no longer lists
+  `init.md`; the host's manifest still does. Whether this
+  registers as `outdated` depends on the comparison semantics
+  (does it flag artifacts only-on-host, or only artifacts where
+  `sourceCommit` differs?). Confirm during build that the
+  outdated check does not produce a confusing notification for
+  host projects that haven't yet upgraded — if it does, that is a
+  follow-up plan for `src/tools/info/buildVersionsState/` (or
+  wherever the comparison happens).
+
+- **Upgrade tool may not delete orphaned scaffolded files.** The
+  `/aide:upgrade` command is documented as handling drift in
+  shipped artifacts. Whether "drift" includes "artifact removed
+  from the canonical set" is an open question — the upgrade flow
+  may only handle add/update, not removal. If so, host projects
+  will keep an orphan `.claude/commands/aide/init.md` until the
+  user deletes it manually. The orphan is harmless (it is just a
+  Markdown file Claude Code registers as a slash command), but it
+  surfaces a user-facing inconsistency: the host's
+  `/aide:init` still works, but its wizard prompt no longer
+  reflects any tool the new server version exposes. Recommend
+  testing upgrade in a smoke-test host project after publish to
+  confirm deletion behavior; if upgrade only does add/update, a
+  separate cleanup plan is needed for `src/tools/upgrade/`.
+
+- **Test flakiness risk: switching from `toHaveLength(13)` to
+  `toHaveLength(COMMANDS.length)` couples the test to the
+  helper's own export.** This is intentional (the spec's
+  no-count-pinning rule forces it), but it does mean a future bug
+  that accidentally ships `COMMANDS` with the wrong shape would
+  be invisible to this test — the assertion would still pass
+  because the wrong shape would match its own length. The
+  array-equality assertion in the cold-run test is the
+  compensating control: it pins the canonical order and
+  membership explicitly, so any accidental shape change would
+  surface there. Watch for this in code review — a test reviewer
+  should look for the array-equality assertion as the real
+  contract, with `COMMANDS.length` as a secondary sanity check.
+
+- **The `## Strategy` rewrite may produce drier prose than the
+  current version.** The current text's enumeration of pipeline
+  phases and lifecycle commands made the strategy concrete and
+  readable; the count-free rewrite trades concreteness for
+  drift-resistance. If the rewritten prose feels too abstract,
+  the implementor may consider naming a small number of
+  representative commands (e.g. "the seven pipeline phases" with
+  no list, or "phase commands like research, plan, and qa" as
+  illustrative not exhaustive) — but only if the resulting prose
+  still passes the no-enumeration test. If the implementor isn't
+  sure where the line is, escalate back to `/aide:spec` rather
+  than improvising.

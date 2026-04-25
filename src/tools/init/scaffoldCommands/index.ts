@@ -1,10 +1,10 @@
-import { access } from "node:fs/promises";
 import { join } from "node:path";
 import type { InitStep } from "@/types/index.js";
 import {
 	readCanonicalDoc,
 	type CanonicalDocName,
 } from "@/tools/init/initContent/index.js";
+import compareBytes from "@/tools/init/shared/compareBytes/index.js";
 
 /**
  * Fixed registry of the /aide orchestrator entry point plus the AIDE pipeline
@@ -39,29 +39,22 @@ export const COMMANDS: readonly {
 	{ canonical: "commands/aide/qa", hostPath: "aide/qa.md", displayName: "aide:qa" },
 	{ canonical: "commands/aide/fix", hostPath: "aide/fix.md", displayName: "aide:fix" },
 	{ canonical: "commands/aide/upgrade", hostPath: "aide/upgrade.md", displayName: "aide:upgrade" },
-	{ canonical: "commands/aide/init", hostPath: "aide/init.md", displayName: "aide:init" },
 	{ canonical: "commands/aide/update-playbook", hostPath: "aide/update-playbook.md", displayName: "aide:update-playbook" },
 	{ canonical: "commands/aide/refactor", hostPath: "aide/refactor.md", displayName: "aide:refactor" },
 	{ canonical: "commands/aide/align", hostPath: "aide/align.md", displayName: "aide:align" },
 ];
 
-/** Check if a file exists. */
-async function fileExists(path: string): Promise<boolean> {
-	try {
-		await access(path);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 /**
  * Return planning steps for the /aide orchestrator and pipeline phase commands.
  *
- * For each command in COMMANDS, checks whether the host file already exists.
- * Returns `exists` for present files, `would-create` with the canonical content
- * for absent files. A failed canonical read returns `would-skip` for that
- * command only.
+ * For each command in COMMANDS, compares the host file bytes against the
+ * canonical content:
+ * - `would-create`: file does not exist on disk.
+ * - `exists`: file exists and its bytes are identical to canonical.
+ * - `would-overwrite`: file exists but its bytes differ from canonical.
+ *
+ * A failed canonical read returns `would-skip` for that command only and
+ * does not affect the other steps.
  *
  * The COMMANDS export stays unchanged — upgrade's logic still uses it.
  * This helper never writes to disk — it is a planner only.
@@ -71,16 +64,6 @@ export default async function scaffoldCommands(commandDir: string): Promise<Init
 
 	for (const cmd of COMMANDS) {
 		const filePath = join(commandDir, cmd.hostPath);
-
-		if (await fileExists(filePath)) {
-			steps.push({
-				name: cmd.displayName,
-				status: "exists",
-				category: "commands",
-				filePath,
-			});
-			continue;
-		}
 
 		let content: string;
 		try {
@@ -95,9 +78,21 @@ export default async function scaffoldCommands(commandDir: string): Promise<Init
 			continue;
 		}
 
+		const status = await compareBytes(filePath, content);
+
+		if (status === "would-skip") {
+			steps.push({
+				name: cmd.displayName,
+				status: "exists",
+				category: "commands",
+				filePath,
+			});
+			continue;
+		}
+
 		steps.push({
 			name: cmd.displayName,
-			status: "would-create",
+			status,
 			category: "commands",
 			filePath,
 			content,

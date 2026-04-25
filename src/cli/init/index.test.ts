@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import path from "node:path";
 
 // Intercept process.exit before the module loads so the IIFE's process.exit
 // calls are no-ops. vi.hoisted runs before vi.mock hoisting and before any
@@ -9,220 +10,689 @@ const { mockExit } = vi.hoisted(() => {
 	return { mockExit };
 });
 
+// ─── Mock targets ───────────────────────────────────────────────────────────
+// Every module the orchestrator imports that the test wants to control.
+// The six CLI-local duplicate writers (writeMethodologyStub, writeMethodologyHub,
+// writeCommands, writeAgents, writeSkills, writeAideTree, writeInitCommand) were
+// deleted in Step 1 — no mocks for them here by design.
+// ────────────────────────────────────────────────────────────────────────────
 vi.mock("./writeMcpEntry/index.js", () => ({
-	default: vi.fn().mockResolvedValue({ status: "created", message: "aide MCP server entry" }),
+	default: vi.fn(),
 }));
-vi.mock("./writeInitCommand/index.js", () => ({
-	default: vi.fn().mockResolvedValue({ status: "created", message: "/aide:init command" }),
+vi.mock("./renderWarning/index.js", () => ({
+	default: vi.fn(),
 }));
-vi.mock("./writeAideTree/index.js", () => ({
-	default: vi.fn().mockResolvedValue({ status: "created", message: "aide-tree launcher" }),
+vi.mock("@/tools/init/detectFramework/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/writeMethodology/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/installMethodologyDocs/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/scaffoldCommands/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/installAgents/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/installSkills/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/installAideTree/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/scaffoldReadme/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/applySteps/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/upgrade/buildVersionsMeta/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/init/shared/compareBytes/index.js", () => ({
+	default: vi.fn(),
 }));
 
 import { runInit } from "./index.js";
 import writeMcpEntry from "./writeMcpEntry/index.js";
-import writeInitCommand from "./writeInitCommand/index.js";
-import writeAideTree from "./writeAideTree/index.js";
+import renderWarning from "./renderWarning/index.js";
+import detectFramework from "@/tools/init/detectFramework/index.js";
+import writeMethodology from "@/tools/init/writeMethodology/index.js";
+import installMethodologyDocs from "@/tools/init/installMethodologyDocs/index.js";
+import scaffoldCommands from "@/tools/init/scaffoldCommands/index.js";
+import installAgents from "@/tools/init/installAgents/index.js";
+import installSkills from "@/tools/init/installSkills/index.js";
+import installAideTree from "@/tools/init/installAideTree/index.js";
+import scaffoldReadme from "@/tools/init/scaffoldReadme/index.js";
+import applySteps from "@/tools/init/applySteps/index.js";
+import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
+import compareBytes from "@/tools/init/shared/compareBytes/index.js";
+import type { InitStep } from "@/types/index.js";
 
 const mockWriteMcpEntry = vi.mocked(writeMcpEntry);
-const mockWriteInitCommand = vi.mocked(writeInitCommand);
-const mockWriteAideTree = vi.mocked(writeAideTree);
+const mockRenderWarning = vi.mocked(renderWarning);
+const mockDetectFramework = vi.mocked(detectFramework);
+const mockWriteMethodology = vi.mocked(writeMethodology);
+const mockInstallMethodologyDocs = vi.mocked(installMethodologyDocs);
+const mockScaffoldCommands = vi.mocked(scaffoldCommands);
+const mockInstallAgents = vi.mocked(installAgents);
+const mockInstallSkills = vi.mocked(installSkills);
+const mockInstallAideTree = vi.mocked(installAideTree);
+const mockScaffoldReadme = vi.mocked(scaffoldReadme);
+const mockApplySteps = vi.mocked(applySteps);
+const mockReadVersionsManifest = vi.mocked(readVersionsManifest);
+const mockCompareBytes = vi.mocked(compareBytes);
+
+// Canonical three deferred categories the orchestrator always passes.
+const DEFERRED_CATEGORIES = [
+	"Vault path — the obsidian MCP entry shell is written but the vault path is empty; open Claude Code and run /aide — the orchestrator will prompt for it",
+	"Brain vault scaffolding (directories, playbook hub, vault CLAUDE.md) — follows the vault path above (same /aide run)",
+	"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
+];
+
+// Framework config returned by detectFramework when called with "claude".
+const CLAUDE_CONFIG = {
+	framework: "claude" as const,
+	configPath: "CLAUDE.md",
+	commandDir: ".claude/commands",
+	mcpConfigPath: ".mcp.json",
+	docHubDir: ".aide/docs",
+	agentDir: ".claude/agents",
+	skillDir: ".claude/skills",
+};
+
+const CWD = "/fake/cwd";
+
+/** Build an InitStep with sensible defaults — override per test. */
+function makeStep(
+	overrides: Partial<InitStep> & { filePath: string; name: string },
+): InitStep {
+	return {
+		status: "would-create",
+		category: "methodology",
+		content: "canonical content",
+		...overrides,
+	};
+}
+
+/**
+ * Flip a step's status from would-create to created (simulating applySteps).
+ * applySteps strips content when writing; here we keep the shape simple.
+ */
+function applyStep(step: InitStep): InitStep {
+	return { ...step, status: "created", content: undefined };
+}
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	// Re-apply default resolved values after clearAllMocks resets implementations.
-	mockWriteMcpEntry.mockResolvedValue({ status: "created", message: "aide MCP server entry" });
-	mockWriteInitCommand.mockResolvedValue({ status: "created", message: "/aide:init command" });
-	mockWriteAideTree.mockResolvedValue({ status: "created", message: "aide-tree launcher" });
+
+	// Default mock return values — per-test overrides build on these.
+	mockWriteMcpEntry.mockResolvedValue({ status: "created", message: "aide server entry" });
+	mockDetectFramework.mockResolvedValue(CLAUDE_CONFIG);
+	mockWriteMethodology.mockResolvedValue(
+		makeStep({ filePath: `${CWD}/CLAUDE.md`, name: "Methodology pointer" }),
+	);
+	mockInstallMethodologyDocs.mockResolvedValue([]);
+	mockScaffoldCommands.mockResolvedValue([]);
+	mockInstallAgents.mockResolvedValue([]);
+	mockInstallSkills.mockResolvedValue([]);
+	mockInstallAideTree.mockResolvedValue([]);
+	mockScaffoldReadme.mockResolvedValue(
+		makeStep({ filePath: `${CWD}/README.md`, name: "README.md", category: "readme" }),
+	);
+	mockReadVersionsManifest.mockReturnValue({});
+	mockCompareBytes.mockResolvedValue("would-create");
+	// applySteps flips would-create → created on the input array.
+	mockApplySteps.mockImplementation(async (steps) => steps.map(applyStep));
+	mockRenderWarning.mockReturnValue("WARNING BLOCK");
 });
 
-describe("runInit", () => {
-	it("prints three [created] lines and the Done closing message when all artifacts are created", async () => {
-		mockWriteMcpEntry.mockResolvedValue({
-			status: "created",
-			message: "aide MCP server entry",
-		});
-		mockWriteInitCommand.mockResolvedValue({
-			status: "created",
-			message: "/aide:init command",
-		});
-		mockWriteAideTree.mockResolvedValue({
-			status: "created",
-			message: "aide-tree launcher",
-		});
+// ---------------------------------------------------------------------------
+// Cold-start happy path — everything created
+// ---------------------------------------------------------------------------
+describe("cold-start happy path — every step is would-create", () => {
+	const methodologyStep = makeStep({ filePath: `${CWD}/CLAUDE.md`, name: "Methodology pointer" });
+	const docStep = makeStep({ filePath: `${CWD}/.aide/docs/index.md`, name: "index.md", category: "methodology" });
+	const commandStep = makeStep({ filePath: `${CWD}/.claude/commands/aide/research.md`, name: "aide:research", category: "commands" });
+	const agentStep = makeStep({ filePath: `${CWD}/.claude/agents/aide/aide-architect.md`, name: "aide-architect.md", category: "agents" });
+	const skillStep = makeStep({ filePath: `${CWD}/.claude/skills/study-playbook/SKILL.md`, name: "study-playbook/SKILL.md", category: "skills" });
+	const aideTreeStep = makeStep({ filePath: `${CWD}/.aide/bin/aide-tree.mjs`, name: "aide-tree.mjs", category: "methodology" });
+	const readmeStep = makeStep({ filePath: `${CWD}/README.md`, name: "README.md", category: "readme" });
 
-		const lines: string[] = [];
-		const exitCode = await runInit("/fake/cwd", (line) => lines.push(line));
-
-		expect(lines[0]).toBe("[created] .mcp.json — aide MCP server entry");
-		expect(lines[1]).toBe(
-			"[created] .claude/commands/aide/init.md — /aide:init command",
-		);
-		expect(lines[2]).toBe(
-			"[created] .aide/bin/aide-tree.mjs — aide-tree launcher",
-		);
-		expect(lines[3]).toBe(
-			"Done. Open Claude Code and run /aide:init to complete setup.",
-		);
-		expect(exitCode).toBe(0);
+	beforeEach(() => {
+		mockWriteMethodology.mockResolvedValue(methodologyStep);
+		mockInstallMethodologyDocs.mockResolvedValue([docStep]);
+		mockScaffoldCommands.mockResolvedValue([commandStep]);
+		mockInstallAgents.mockResolvedValue([agentStep]);
+		mockInstallSkills.mockResolvedValue([skillStep]);
+		mockInstallAideTree.mockResolvedValue([aideTreeStep]);
+		mockScaffoldReadme.mockResolvedValue(readmeStep);
+		mockCompareBytes.mockResolvedValue("would-create");
 	});
 
-	it("prints three [exists] lines and the Already set up closing message when all artifacts exist", async () => {
-		mockWriteMcpEntry.mockResolvedValue({
-			status: "exists",
-			message: "aide server already configured",
-		});
-		mockWriteInitCommand.mockResolvedValue({
-			status: "exists",
-			message: "/aide:init command already present",
-		});
-		mockWriteAideTree.mockResolvedValue({
-			status: "exists",
-			message: "aide-tree launcher already present",
-		});
-
+	it("per-file log shows [created] for every artifact", async () => {
 		const lines: string[] = [];
-		const exitCode = await runInit("/fake/cwd", (line) => lines.push(line));
+		await runInit(CWD, (l) => lines.push(l));
 
-		expect(lines[0]).toBe(
-			"[exists] .mcp.json — aide server already configured",
-		);
-		expect(lines[1]).toBe(
-			"[exists] .claude/commands/aide/init.md — /aide:init command already present",
-		);
-		expect(lines[2]).toBe(
-			"[exists] .aide/bin/aide-tree.mjs — aide-tree launcher already present",
-		);
-		expect(lines[3]).toBe(
-			"Already set up. Run /aide:init in Claude Code to continue.",
-		);
-		expect(exitCode).toBe(0);
+		// MCP entry is always first
+		expect(lines[0]).toBe("[created] .mcp.json — aide server entry");
+		// All planning-step results show [created]
+		const createdLines = lines.filter((l) => l.startsWith("[created]"));
+		expect(createdLines.length).toBeGreaterThan(0);
+		// No skipped or failed lines on the happy path
+		expect(lines.some((l) => l.startsWith("[skipped"))).toBe(false);
+		expect(lines.some((l) => l.startsWith("[failed]"))).toBe(false);
 	});
 
-	it("prints correct status per artifact when mcp is created and command exists", async () => {
-		mockWriteMcpEntry.mockResolvedValue({
-			status: "created",
-			message: "aide MCP server entry",
-		});
-		mockWriteInitCommand.mockResolvedValue({
-			status: "exists",
-			message: "/aide:init command already present",
-		});
-		mockWriteAideTree.mockResolvedValue({
-			status: "created",
-			message: "aide-tree launcher",
-		});
+	it("applySteps receives the full would-create set (including all categories)", async () => {
+		await runInit(CWD, () => {});
 
-		const lines: string[] = [];
-		const exitCode = await runInit("/fake/cwd", (line) => lines.push(line));
-
-		expect(lines[0]).toBe("[created] .mcp.json — aide MCP server entry");
-		expect(lines[1]).toBe(
-			"[exists] .claude/commands/aide/init.md — /aide:init command already present",
-		);
-		expect(lines[2]).toBe(
-			"[created] .aide/bin/aide-tree.mjs — aide-tree launcher",
-		);
-		expect(lines[3]).toBe(
-			"Done. Open Claude Code and run /aide:init to complete setup.",
-		);
-		expect(exitCode).toBe(0);
+		const [calledWith] = mockApplySteps.mock.calls[0];
+		// All planning steps are would-create, so all should reach applySteps
+		expect(calledWith.length).toBeGreaterThanOrEqual(5);
+		expect(calledWith.every((s: InitStep) => s.status === "would-create")).toBe(true);
 	});
 
-	it("prints correct status per artifact when mcp exists and command is created", async () => {
-		mockWriteMcpEntry.mockResolvedValue({
-			status: "exists",
-			message: "aide server already configured",
-		});
-		mockWriteInitCommand.mockResolvedValue({
-			status: "created",
-			message: "/aide:init command",
-		});
-		mockWriteAideTree.mockResolvedValue({
-			status: "exists",
-			message: "aide-tree launcher already present",
-		});
+	it("renderWarning receives skipped:[], failed:[], and the three deferred categories", async () => {
+		await runInit(CWD, () => {});
 
-		const lines: string[] = [];
-		const exitCode = await runInit("/fake/cwd", (line) => lines.push(line));
-
-		expect(lines[0]).toBe(
-			"[exists] .mcp.json — aide server already configured",
-		);
-		expect(lines[1]).toBe(
-			"[created] .claude/commands/aide/init.md — /aide:init command",
-		);
-		expect(lines[2]).toBe(
-			"[exists] .aide/bin/aide-tree.mjs — aide-tree launcher already present",
-		);
-		expect(lines[3]).toBe(
-			"Done. Open Claude Code and run /aide:init to complete setup.",
-		);
-		expect(exitCode).toBe(0);
+		expect(mockRenderWarning).toHaveBeenCalledWith({
+			skipped: [],
+			failed: [],
+			deferredCategories: DEFERRED_CATEGORIES,
+		});
 	});
 
-	it("prints Done (not Already set up) when only two of three artifacts exist", async () => {
-		mockWriteMcpEntry.mockResolvedValue({
-			status: "exists",
-			message: "aide server already configured",
-		});
-		mockWriteInitCommand.mockResolvedValue({
-			status: "exists",
-			message: "/aide:init command already present",
-		});
-		mockWriteAideTree.mockResolvedValue({
-			status: "created",
-			message: "aide-tree launcher",
-		});
-
+	it("the returned warning block string is written line by line", async () => {
+		mockRenderWarning.mockReturnValue("line1\nline2\nline3");
 		const lines: string[] = [];
-		const exitCode = await runInit("/fake/cwd", (line) => lines.push(line));
+		await runInit(CWD, (l) => lines.push(l));
 
-		expect(lines[3]).toBe(
-			"Done. Open Claude Code and run /aide:init to complete setup.",
-		);
-		expect(exitCode).toBe(0);
+		expect(lines).toContain("line1");
+		expect(lines).toContain("line2");
+		expect(lines).toContain("line3");
 	});
 
-	it("throws when writeMcpEntry throws, allowing the caller to write to stderr", async () => {
-		mockWriteMcpEntry.mockRejectedValue(
-			new Error(
-				".mcp.json exists but contains invalid JSON. Fix the syntax error and re-run.",
+	it("returns exit code 0", async () => {
+		const code = await runInit(CWD, () => {});
+		expect(code).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Idempotent re-run — all artifacts exist
+// ---------------------------------------------------------------------------
+describe("idempotent re-run — every step is exists", () => {
+	const existsStep = (filePath: string, name: string, category: InitStep["category"] = "methodology"): InitStep =>
+		({ status: "exists", category, filePath, name });
+
+	beforeEach(() => {
+		mockWriteMcpEntry.mockResolvedValue({ status: "exists", message: "aide server already configured" });
+		mockWriteMethodology.mockResolvedValue(existsStep(`${CWD}/CLAUDE.md`, "Methodology pointer"));
+		mockInstallMethodologyDocs.mockResolvedValue([
+			existsStep(`${CWD}/.aide/docs/index.md`, "index.md"),
+		]);
+		mockScaffoldCommands.mockResolvedValue([
+			existsStep(`${CWD}/.claude/commands/aide/research.md`, "aide:research", "commands"),
+		]);
+		mockInstallAgents.mockResolvedValue([
+			existsStep(`${CWD}/.claude/agents/aide/aide-architect.md`, "aide-architect.md", "agents"),
+		]);
+		mockInstallSkills.mockResolvedValue([
+			existsStep(`${CWD}/.claude/skills/study-playbook/SKILL.md`, "study-playbook/SKILL.md", "skills"),
+		]);
+		mockInstallAideTree.mockResolvedValue([
+			existsStep(`${CWD}/.aide/bin/aide-tree.mjs`, "aide-tree.mjs"),
+		]);
+		mockScaffoldReadme.mockResolvedValue(existsStep(`${CWD}/README.md`, "README.md", "readme"));
+		mockCompareBytes.mockResolvedValue("would-skip"); // versions.json bytes match → exists
+	});
+
+	it("applySteps is called with an empty array (no would-create steps)", async () => {
+		await runInit(CWD, () => {});
+
+		const [calledWith] = mockApplySteps.mock.calls[0];
+		expect(calledWith).toHaveLength(0);
+	});
+
+	it("per-file log shows [exists] for every artifact", async () => {
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(lines.some((l) => l.startsWith("[exists]"))).toBe(true);
+		expect(lines.some((l) => l.startsWith("[created]"))).toBe(false);
+		expect(lines.some((l) => l.startsWith("[skipped"))).toBe(false);
+	});
+
+	it("renderWarning is still called with skipped:[], failed:[], and the three deferred categories", async () => {
+		await runInit(CWD, () => {});
+
+		expect(mockRenderWarning).toHaveBeenCalledWith({
+			skipped: [],
+			failed: [],
+			deferredCategories: DEFERRED_CATEGORIES,
+		});
+	});
+
+	it("when renderWarning returns a non-empty string, that block is written", async () => {
+		mockRenderWarning.mockReturnValue("DEFERRED BLOCK");
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(lines).toContain("DEFERRED BLOCK");
+	});
+
+	it("when renderWarning returns empty string, the completion line is written instead", async () => {
+		mockRenderWarning.mockReturnValue("");
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(lines).toContain("Already set up.");
+		expect(lines.some((l) => l.includes("WARNING"))).toBe(false);
+	});
+
+	it("returns exit code 0", async () => {
+		const code = await runInit(CWD, () => {});
+		expect(code).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Mixed — some created, some exists, some drifted (would-overwrite)
+// ---------------------------------------------------------------------------
+describe("mixed run — would-create, exists, and would-overwrite steps", () => {
+	const wouldCreate = makeStep({ filePath: `${CWD}/.aide/docs/index.md`, name: "index.md" });
+	const exists = { status: "exists" as const, category: "methodology" as const, filePath: `${CWD}/CLAUDE.md`, name: "Methodology pointer" };
+	const wouldOverwrite = makeStep({
+		filePath: `${CWD}/.claude/commands/aide/research.md`,
+		name: "aide:research",
+		category: "commands",
+		status: "would-overwrite",
+	});
+
+	beforeEach(() => {
+		mockWriteMethodology.mockResolvedValue(exists);
+		mockInstallMethodologyDocs.mockResolvedValue([wouldCreate]);
+		mockScaffoldCommands.mockResolvedValue([wouldOverwrite]);
+		mockInstallAgents.mockResolvedValue([]);
+		mockInstallSkills.mockResolvedValue([]);
+		mockInstallAideTree.mockResolvedValue([]);
+		mockScaffoldReadme.mockResolvedValue({
+			status: "exists",
+			category: "readme",
+			filePath: `${CWD}/README.md`,
+			name: "README.md",
+		});
+		mockCompareBytes.mockResolvedValue("would-create");
+	});
+
+	it("applySteps receives only the would-create subset (not exists or would-overwrite)", async () => {
+		await runInit(CWD, () => {});
+
+		const [calledWith] = mockApplySteps.mock.calls[0];
+		expect(calledWith.every((s: InitStep) => s.status === "would-create")).toBe(true);
+		// would-overwrite step must NOT be in the apply set
+		const overwritePaths = calledWith.map((s: InitStep) => s.filePath);
+		expect(overwritePaths).not.toContain(wouldOverwrite.filePath);
+	});
+
+	it("per-file log shows [created] for would-create, [exists] for exists, [skipped-drift] for would-overwrite", async () => {
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		const createdDocLine = lines.find((l) => l.includes(".aide/docs/index.md"));
+		expect(createdDocLine).toMatch(/^\[created\]/);
+
+		const existsLine = lines.find((l) => l.includes("CLAUDE.md"));
+		expect(existsLine).toMatch(/^\[exists\]/);
+
+		const driftedLine = lines.find((l) => l.includes("aide:research") || l.includes("research.md"));
+		expect(driftedLine).toMatch(/^\[skipped-drift\]/);
+	});
+
+	it("renderWarning receives the would-overwrite entry in skipped (not the exists entry)", async () => {
+		await runInit(CWD, () => {});
+
+		const call = mockRenderWarning.mock.calls[0][0];
+		// The drifted command should be in skipped
+		expect(
+			call.skipped.some((r: { displayPath: string }) =>
+				r.displayPath.includes("research.md"),
 			),
-		);
-		mockWriteInitCommand.mockResolvedValue({
-			status: "created",
-			message: "/aide:init command",
-		});
-		mockWriteAideTree.mockResolvedValue({
-			status: "created",
-			message: "aide-tree launcher",
-		});
+		).toBe(true);
+		// The exists entry must NOT be in skipped
+		expect(
+			call.skipped.some((r: { displayPath: string }) => r.displayPath === "CLAUDE.md"),
+		).toBe(false);
+	});
 
+	it("returns exit code 0", async () => {
+		const code = await runInit(CWD, () => {});
+		expect(code).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Missing canonical content — would-skip from a planner
+// ---------------------------------------------------------------------------
+describe("missing canonical content — would-skip step from a planner", () => {
+	const wouldSkipStep: InitStep = {
+		status: "would-skip",
+		category: "commands",
+		filePath: `${CWD}/.claude/commands/aide/broken.md`,
+		name: "aide:broken",
+	};
+
+	beforeEach(() => {
+		mockScaffoldCommands.mockResolvedValue([wouldSkipStep]);
+	});
+
+	it("the would-skip step does NOT reach applySteps", async () => {
+		await runInit(CWD, () => {});
+
+		const [calledWith] = mockApplySteps.mock.calls[0];
+		const paths = calledWith.map((s: InitStep) => s.filePath);
+		expect(paths).not.toContain(wouldSkipStep.filePath);
+	});
+
+	it("per-file log shows [skipped-missing-canonical] for the step", async () => {
 		const lines: string[] = [];
-		await expect(
-			runInit("/fake/cwd", (line) => lines.push(line)),
-		).rejects.toThrow(
+		await runInit(CWD, (l) => lines.push(l));
+
+		const skippedLine = lines.find((l) => l.includes("broken.md"));
+		expect(skippedLine).toMatch(/^\[skipped-missing-canonical\]/);
+	});
+
+	it("renderWarning receives the step in skipped", async () => {
+		await runInit(CWD, () => {});
+
+		const call = mockRenderWarning.mock.calls[0][0];
+		expect(
+			call.skipped.some((r: { displayPath: string }) => r.displayPath.includes("broken.md")),
+		).toBe(true);
+	});
+
+	it("returns exit code 0", async () => {
+		const code = await runInit(CWD, () => {});
+		expect(code).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Abort path — writeMcpEntry throws (malformed .mcp.json)
+// ---------------------------------------------------------------------------
+describe("abort path — writeMcpEntry throws", () => {
+	it("runInit rejects with the thrown error", async () => {
+		mockWriteMcpEntry.mockRejectedValue(
+			new Error(".mcp.json exists but contains invalid JSON. Fix the syntax error and re-run."),
+		);
+
+		await expect(runInit(CWD, () => {})).rejects.toThrow(
 			".mcp.json exists but contains invalid JSON. Fix the syntax error and re-run.",
 		);
 	});
 
-	it("throws when writeInitCommand throws, allowing the caller to write to stderr", async () => {
-		mockWriteMcpEntry.mockResolvedValue({
-			status: "created",
-			message: "aide MCP server entry",
+	it("no other helper is invoked after the throw", async () => {
+		mockWriteMcpEntry.mockRejectedValue(new Error("malformed"));
+
+		await expect(runInit(CWD, () => {})).rejects.toThrow();
+
+		expect(mockDetectFramework).not.toHaveBeenCalled();
+		expect(mockWriteMethodology).not.toHaveBeenCalled();
+		expect(mockInstallMethodologyDocs).not.toHaveBeenCalled();
+		expect(mockScaffoldCommands).not.toHaveBeenCalled();
+		expect(mockInstallAgents).not.toHaveBeenCalled();
+		expect(mockInstallSkills).not.toHaveBeenCalled();
+		expect(mockInstallAideTree).not.toHaveBeenCalled();
+		expect(mockScaffoldReadme).not.toHaveBeenCalled();
+		expect(mockApplySteps).not.toHaveBeenCalled();
+		expect(mockRenderWarning).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Invocation ordering — writeMcpEntry runs before every other helper
+// ---------------------------------------------------------------------------
+describe("invocation ordering", () => {
+	it("writeMcpEntry is called before detectFramework, all planners, applySteps, and renderWarning", async () => {
+		const order: string[] = [];
+
+		mockWriteMcpEntry.mockImplementation(async () => {
+			order.push("writeMcpEntry");
+			return { status: "created" as const, message: "aide server entry" };
 		});
-		mockWriteInitCommand.mockRejectedValue(
-			new Error("Failed to write init command file."),
-		);
-		mockWriteAideTree.mockResolvedValue({
-			status: "created",
-			message: "aide-tree launcher",
+		mockDetectFramework.mockImplementation(async () => {
+			order.push("detectFramework");
+			return CLAUDE_CONFIG;
+		});
+		mockWriteMethodology.mockImplementation(async () => {
+			order.push("writeMethodology");
+			return makeStep({ filePath: `${CWD}/CLAUDE.md`, name: "Methodology pointer" });
+		});
+		mockInstallMethodologyDocs.mockImplementation(async () => {
+			order.push("installMethodologyDocs");
+			return [];
+		});
+		mockScaffoldCommands.mockImplementation(async () => {
+			order.push("scaffoldCommands");
+			return [];
+		});
+		mockInstallAgents.mockImplementation(async () => {
+			order.push("installAgents");
+			return [];
+		});
+		mockInstallSkills.mockImplementation(async () => {
+			order.push("installSkills");
+			return [];
+		});
+		mockInstallAideTree.mockImplementation(async () => {
+			order.push("installAideTree");
+			return [];
+		});
+		mockScaffoldReadme.mockImplementation(async () => {
+			order.push("scaffoldReadme");
+			return makeStep({ filePath: `${CWD}/README.md`, name: "README.md", category: "readme" });
+		});
+		mockApplySteps.mockImplementation(async (steps) => {
+			order.push("applySteps");
+			return steps.map(applyStep);
+		});
+		mockRenderWarning.mockImplementation(() => {
+			order.push("renderWarning");
+			return "WARNING BLOCK";
 		});
 
+		await runInit(CWD, () => {});
+
+		const mcpIdx = order.indexOf("writeMcpEntry");
+		expect(mcpIdx).toBe(0); // writeMcpEntry is strictly first
+
+		for (const name of [
+			"detectFramework",
+			"writeMethodology",
+			"installMethodologyDocs",
+			"scaffoldCommands",
+			"installAgents",
+			"installSkills",
+			"installAideTree",
+			"scaffoldReadme",
+			"applySteps",
+			"renderWarning",
+		]) {
+			expect(mcpIdx, `${name} must run after writeMcpEntry`).toBeLessThan(
+				order.indexOf(name),
+			);
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Deferred categories — always passed to renderWarning in every non-abort test
+// ---------------------------------------------------------------------------
+describe("deferred categories — always passed to renderWarning", () => {
+	it("cold-start: passes exactly the three canonical deferred categories", async () => {
+		await runInit(CWD, () => {});
+
+		expect(mockRenderWarning).toHaveBeenCalledWith(
+			expect.objectContaining({ deferredCategories: DEFERRED_CATEGORIES }),
+		);
+	});
+
+	it("all-exists run: still passes the three deferred categories", async () => {
+		mockWriteMcpEntry.mockResolvedValue({ status: "exists", message: "already configured" });
+		mockWriteMethodology.mockResolvedValue({
+			status: "exists",
+			category: "methodology",
+			filePath: `${CWD}/CLAUDE.md`,
+			name: "Methodology pointer",
+		});
+
+		await runInit(CWD, () => {});
+
+		expect(mockRenderWarning).toHaveBeenCalledWith(
+			expect.objectContaining({ deferredCategories: DEFERRED_CATEGORIES }),
+		);
+	});
+
+	it("mixed-status run: still passes the three deferred categories", async () => {
+		mockInstallAgents.mockResolvedValue([
+			makeStep({
+				filePath: `${CWD}/.claude/agents/aide/aide-architect.md`,
+				name: "aide-architect.md",
+				category: "agents",
+				status: "would-overwrite",
+			}),
+		]);
+
+		await runInit(CWD, () => {});
+
+		expect(mockRenderWarning).toHaveBeenCalledWith(
+			expect.objectContaining({ deferredCategories: DEFERRED_CATEGORIES }),
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Display-path consistency — log path matches renderWarning skipped displayPath
+// ---------------------------------------------------------------------------
+describe("display-path consistency", () => {
+	it("[exists] per-file log path matches the filePath derivation (relative, forward-slash)", async () => {
+		const absolutePath = path.join(CWD, ".aide/docs/index.md");
+		mockInstallMethodologyDocs.mockResolvedValue([
+			{ status: "exists", category: "methodology", filePath: absolutePath, name: "index.md" },
+		]);
+
 		const lines: string[] = [];
-		await expect(
-			runInit("/fake/cwd", (line) => lines.push(line)),
-		).rejects.toThrow("Failed to write init command file.");
+		await runInit(CWD, (l) => lines.push(l));
+
+		const logLine = lines.find((l) => l.includes("index.md") && l.startsWith("[exists]"));
+		expect(logLine).toBeDefined();
+		const displayPath = logLine!.split(" — ")[0].replace("[exists] ", "");
+		// Must be forward-slash, relative to CWD
+		expect(displayPath).toBe(".aide/docs/index.md");
+		expect(displayPath).not.toContain("\\");
+	});
+
+	it("[skipped-drift] per-file log path matches what renderWarning receives in skipped", async () => {
+		const driftedStep = makeStep({
+			filePath: `${CWD}/.claude/commands/aide/research.md`,
+			name: "aide:research",
+			category: "commands",
+			status: "would-overwrite",
+		});
+		mockScaffoldCommands.mockResolvedValue([driftedStep]);
+
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		const logLine = lines.find((l) => l.startsWith("[skipped-drift]") && l.includes("research.md"));
+		expect(logLine).toBeDefined();
+		const logDisplayPath = logLine!.split(" — ")[0].replace("[skipped-drift] ", "");
+
+		const call = mockRenderWarning.mock.calls[0][0];
+		const warningEntry = call.skipped.find(
+			(r: { displayPath: string }) => r.displayPath.includes("research.md"),
+		);
+		expect(warningEntry).toBeDefined();
+		expect(logDisplayPath).toBe(warningEntry!.displayPath);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Coverage gap closures — versions.json and README are steps
+// ---------------------------------------------------------------------------
+describe("coverage gap closure — regression guards for Problem 1", () => {
+	it("versions.json is a step: applySteps input includes a step whose filePath ends with versions.json", async () => {
+		// compareBytes returns would-create so versions.json goes into toApply
+		mockCompareBytes.mockResolvedValue("would-create");
+
+		await runInit(CWD, () => {});
+
+		const [calledWith] = mockApplySteps.mock.calls[0];
+		const hasVersionsStep = calledWith.some((s: InitStep) =>
+			s.filePath.endsWith("versions.json"),
+		);
+		expect(hasVersionsStep).toBe(true);
+	});
+
+	it("versions.json step shows in the per-file log", async () => {
+		mockCompareBytes.mockResolvedValue("would-create");
+
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		const versionsLine = lines.find((l) => l.includes("versions.json"));
+		expect(versionsLine).toBeDefined();
+	});
+
+	it("README is a step: applySteps input includes a step whose filePath ends with README.md", async () => {
+		const readmeStep = makeStep({
+			filePath: `${CWD}/README.md`,
+			name: "README.md",
+			category: "readme",
+			status: "would-create",
+		});
+		mockScaffoldReadme.mockResolvedValue(readmeStep);
+
+		await runInit(CWD, () => {});
+
+		const [calledWith] = mockApplySteps.mock.calls[0];
+		const hasReadmeStep = calledWith.some((s: InitStep) =>
+			s.filePath.endsWith("README.md"),
+		);
+		expect(hasReadmeStep).toBe(true);
+	});
+
+	it("README step shows in the per-file log", async () => {
+		const readmeStep = makeStep({
+			filePath: `${CWD}/README.md`,
+			name: "README.md",
+			category: "readme",
+			status: "would-create",
+		});
+		mockScaffoldReadme.mockResolvedValue(readmeStep);
+
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		const readmeLine = lines.find((l) => l.includes("README.md"));
+		expect(readmeLine).toBeDefined();
+	});
+
+	it("versions.json exists (would-skip from compareBytes) → shows [exists] in log and does NOT go to applySteps", async () => {
+		mockCompareBytes.mockResolvedValue("would-skip");
+
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		const versionsLine = lines.find((l) => l.includes("versions.json"));
+		expect(versionsLine).toMatch(/^\[exists\]/);
+
+		const [calledWith] = mockApplySteps.mock.calls[0];
+		const inApply = calledWith.some((s: InitStep) => s.filePath.endsWith("versions.json"));
+		expect(inApply).toBe(false);
 	});
 });

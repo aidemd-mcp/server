@@ -65,13 +65,38 @@ export function composeStub(docHubDir: string): string {
 }
 
 /**
+ * Extract the bytes between the first and last occurrence of the marker in
+ * `fileContent` (inclusive of both markers). Returns null when the marker
+ * appears fewer than twice (i.e. the marker pair is absent or malformed).
+ */
+function extractMarkerBlock(fileContent: string, marker: string): string | null {
+	const start = fileContent.indexOf(marker);
+	if (start === -1) return null;
+	const end = fileContent.indexOf(marker, start + marker.length);
+	if (end === -1) return null;
+	return fileContent.slice(start, end + marker.length);
+}
+
+/**
+ * Replace the marker-bounded block inside `fileContent` with `replacement`,
+ * preserving all content outside the block. Returns the full updated string.
+ */
+function replaceMarkerBlock(fileContent: string, marker: string, replacement: string): string {
+	const start = fileContent.indexOf(marker);
+	const end = fileContent.indexOf(marker, start + marker.length) + marker.length;
+	return fileContent.slice(0, start) + replacement + fileContent.slice(end);
+}
+
+/**
  * Inspect the host's agent config file and return a planning step for the
  * AIDE methodology pointer stub.
  *
- * Returns `exists` if the marker is already present. Returns `would-create`
- * with the composed stub as `content` — the caller writes the stub
- * appended to the existing content (or as the full content when the file is
- * absent).
+ * - Marker absent: returns `would-create` with the composed stub appended to
+ *   any existing content.
+ * - Marker present, stub body identical to canonical: returns `exists`.
+ * - Marker present, stub body drifted from canonical: returns `would-overwrite`
+ *   with `content` set to the full file with the drifted block replaced
+ *   in-place, so `applySteps` can write the whole file.
  *
  * This helper never writes to disk — it is a planner only. `composeStub`
  * remains a named export so upgrade's `spliceStub` can continue to use it.
@@ -82,8 +107,21 @@ export default async function writeMethodology(
 ): Promise<InitStep> {
 	const existing = await safeReadFile(configPath);
 	const marker = getMethodologyMarker();
+	const stub = composeStub(docHubDir);
 
-	if (existing.includes(marker)) {
+	const block = extractMarkerBlock(existing, marker);
+	if (block === null) {
+		const content = existing ? `${existing}\n\n${stub}\n` : `${stub}\n`;
+		return {
+			name: "Methodology pointer",
+			status: "would-create",
+			category: "methodology",
+			filePath: configPath,
+			content,
+		};
+	}
+
+	if (block === stub) {
 		return {
 			name: "Methodology pointer",
 			status: "exists",
@@ -92,14 +130,11 @@ export default async function writeMethodology(
 		};
 	}
 
-	const stub = composeStub(docHubDir);
-	const content = existing ? `${existing}\n\n${stub}\n` : `${stub}\n`;
-
 	return {
 		name: "Methodology pointer",
-		status: "would-create",
+		status: "would-overwrite",
 		category: "methodology",
 		filePath: configPath,
-		content,
+		content: replaceMarkerBlock(existing, marker, stub),
 	};
 }

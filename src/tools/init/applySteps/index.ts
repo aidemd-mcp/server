@@ -7,25 +7,30 @@ import type { InitStep } from "@/types/index.js";
  * the agent reports to the user.
  *
  * For each step:
- * - `"would-create"` file steps (no `prescription` field, not a brain vault step):
- *   creates parent directories and writes `content` to `filePath`. Returns the
- *   step with `status` changed to `"created"` and `content` removed.
- * - `"would-create"` brain vault steps (category `"brain"`) — two sub-types:
+ * - `"would-create"` / `"would-overwrite"` file steps (no `prescription` field,
+ *   not a brain vault step): creates parent directories and writes `content` to
+ *   `filePath`. Returns the step with `status` changed to `"created"` (for
+ *   `"would-create"`) or `"overwritten"` (for `"would-overwrite"`) and `content`
+ *   removed.
+ * - `"would-create"` / `"would-overwrite"` brain vault steps (category `"brain"`)
+ *   — two sub-types:
  *   - **Directory step** (`filePath` has no extension): parses `content` as a
  *     JSON array of directory names, creates each under `filePath` with
- *     `recursive: true`. Returns with `status: "created"` and `content` removed.
+ *     `recursive: true`. Returns with `status: "created"` or `"overwritten"` and
+ *     `content` removed.
  *   - **File step** (`filePath` has a file extension, e.g. `.md`): creates the
  *     parent directory and writes `content` to `filePath`. Used for content
  *     templates such as the playbook hub and vault CLAUDE.md. Returns with
- *     `status: "created"` and `content` removed.
- * - `"would-create"` steps with a `prescription` field (MCP steps): passed
- *   through unchanged — the agent merges prescriptions itself. Never written
- *   by this helper.
- * - `"would-create"` IDE VS Code steps (name contains "VS Code"): passed
- *   through unchanged — requires the external `code` CLI. The agent executes
- *   the extension install command.
+ *     `status: "created"` or `"overwritten"` and `content` removed.
+ * - `"would-create"` / `"would-overwrite"` steps with a `prescription` field
+ *   (MCP steps): passed through unchanged — the agent merges prescriptions
+ *   itself. Never written by this helper.
+ * - `"would-create"` / `"would-overwrite"` IDE VS Code steps (name contains
+ *   "VS Code"): passed through unchanged — requires the external `code` CLI.
+ *   The agent executes the extension install command.
  * - `"exists"`, `"would-skip"` steps: passed through unchanged.
- * - `"created"` steps (already applied): passed through unchanged (idempotent).
+ * - `"created"`, `"overwritten"` steps (already applied): passed through
+ *   unchanged (idempotent).
  *
  * The `prescription` field is never stripped — MCP steps keep their
  * prescription so the agent can perform the merge.
@@ -35,10 +40,13 @@ export default async function applySteps(steps: InitStep[]): Promise<InitStep[]>
 }
 
 async function applyStep(step: InitStep): Promise<InitStep> {
-	// Only act on would-create steps that haven't been applied yet
-	if (step.status !== "would-create") {
+	// Only act on steps that need a write; all other statuses pass through unchanged
+	if (step.status !== "would-create" && step.status !== "would-overwrite") {
 		return step;
 	}
+
+	// Determine the execution status that corresponds to this planning status
+	const writtenStatus = step.status === "would-overwrite" ? "overwritten" : "created";
 
 	// MCP steps carry a prescription — the agent merges them; never written here
 	if (step.prescription !== undefined) {
@@ -69,7 +77,7 @@ async function applyStep(step: InitStep): Promise<InitStep> {
 			);
 		}
 		const { content: _content, ...rest } = step;
-		return { ...rest, status: "created" };
+		return { ...rest, status: writtenStatus };
 	}
 
 	// Regular file step — write content to filePath
@@ -77,7 +85,7 @@ async function applyStep(step: InitStep): Promise<InitStep> {
 		await mkdir(dirname(step.filePath), { recursive: true });
 		await writeFile(step.filePath, step.content, "utf-8");
 		const { content: _content, ...rest } = step;
-		return { ...rest, status: "created" };
+		return { ...rest, status: writtenStatus };
 	}
 
 	// No content and not a special case — pass through unchanged

@@ -1,97 +1,751 @@
 ---
-description: >
-  Implementation plan for restoring npx invocation of the init CLI via subcommand routing in the main entry point.
 intent: >
-  Add subcommand routing to the main entry point so that
-  `npx @aidemd-mcp/server init` runs the init CLI, while no-arg invocation
-  continues to start the MCP server. Update the init CLI help text to
-  reflect the restored invocation path.
+  Sweep every `/aide:init` reference out of `src/cli/init/` (orchestrator,
+  renderer, MCP-entry writer, spec body, tests, types) and replace each
+  occurrence with the per-category follow-up surface the updated spec
+  ratifies — `/aide` for vault path (orchestrator inline-recovery),
+  `npx aidemd-mcp init --ide <choice>` for IDE, `/aide:upgrade` for drift in
+  shipped artifacts. Then sweep the same string out of the five sibling
+  files outside this module that no other plan owns (README + four JSDoc
+  blocks). After this plan executes, zero references to the deprecated
+  slash command remain anywhere in the repo.
 ---
+
+## Project Structure
+
+This plan is reference-cleanup, not structural change. Every file already
+exists; nothing is created, nothing is deleted, no helpers are extracted.
+The scope tree is identical to the prior plan's post-state — every file is
+modified in place to remove `/aide:init` strings and re-aim the user at the
+right per-category follow-up surface.
+
+```
+src/cli/init/
+├── .aide                              ← intent spec (already rewritten by spec-writer; body sweep
+│                                         in step 6 — Context, Strategy, Good/Bad examples still
+│                                         carry `/aide:init`)
+├── plan.aide                          ← THIS plan (replaces the prior 23/23 plan)
+├── todo.aide                          ← prior-cycle QA log (do not touch)
+│
+├── index.ts                           ← MODIFY (orchestrator):
+│                                         runInit(cwd: string, write?: (line: string) => void, options?: { vaultPath?: string }): Promise<number>
+│                                         Edits: deferredCategories() return strings (lines 36–42),
+│                                         JSDoc lines 24, 27, the all-clean completion line at 225,
+│                                         the --help text at 263–270. Top-level IIFE shape unchanged.
+├── index.test.ts                      ← MODIFY: update the all-clean completion-line assertion at
+│                                         line 293 to match the new wording chosen in step 1; verify
+│                                         every other assertion still passes after the deferred-
+│                                         categories array shape changes (the constant DEFERRED_CATEGORIES
+│                                         at lines 90–94 needs the new strings the orchestrator will
+│                                         pass to renderWarning).
+│
+├── types/                             ← (unchanged)
+│   └── index.ts                       ← Shared types — no `/aide:init` references; do not touch.
+│
+├── writeMcpEntry/                     ← MODIFY (in-scope user-facing text):
+│   ├── index.ts                       ← Edit the JSDoc at lines 19 and 25 and the runtime message
+│   │                                    appended at line 105 ("obsidian vault path is a placeholder;
+│   │                                    run /aide:init to set it"). New runtime message must name
+│   │                                    the orchestrator's inline-recovery surface (`/aide`) per the
+│   │                                    spec's per-category mapping. Signature unchanged:
+│   │                                    writeMcpEntry(projectRoot: string, vaultPath?: string)
+│   │                                      → Promise<{ status: "created" | "exists", message: string }>
+│   └── index.test.ts                  ← MODIFY ONLY IF a test currently asserts the substring
+│                                        "/aide:init" inside the returned message; otherwise leave
+│                                        untouched. Step 2 verifies first, edits second.
+│
+└── renderWarning/                     ← MODIFY (heavy lift — wording is the user's primary signal):
+    ├── index.ts                       ← Edit the deferred-categories heading at line 62
+    │                                    ("Deferred categories (require /aide:init in Claude Code):")
+    │                                    and the closing instruction at line 70 ("Open Claude Code
+    │                                    in this project and run /aide:init to finish setup."). New
+    │                                    text must reflect the spec's per-category mapping — the
+    │                                    heading no longer names a single follow-up command (because
+    │                                    the categories now route to different surfaces), and the
+    │                                    closing instruction is replaced by per-category guidance
+    │                                    rendered next to each entry. Signature unchanged:
+    │                                    renderWarning(input: {
+    │                                      skipped: readonly InstallResult[],
+    │                                      failed: readonly InstallResult[],
+    │                                      deferredCategories: readonly string[],
+    │                                    }): string
+    └── index.test.ts                  ← MODIFY: every literal-string assertion that names
+                                         `/aide:init` (lines 31, 37, 60, 83, 109, 114) updates to
+                                         the new wording. Suppression rule, border characters,
+                                         section ordering, numbering — all preserved.
+```
+
+Note on the deferred-categories shape: the spec calls for **per-category
+follow-up text**, not a single trailing "Next step" line that names one
+command. The implementor must change the renderer's contract for
+`deferredCategories` from "an array of category names" to "an array of
+self-contained category descriptions that include the follow-up surface
+inline." The orchestrator's `deferredCategories()` helper becomes the
+single source of truth for the wording.
+
+## Prerequisites
+
+This plan has no hard ordering dependency on the other two plans in the
+deprecation epic — every edit here is a text-replacement against existing
+strings, and nothing in this scope imports from
+`.claude/commands/aide/init.md` or from the `COMMANDS` registry entry the
+sibling plans delete. It can run in parallel with `.claude/plan.aide`.
+
+That said, the deprecation only becomes coherent when all three plans have
+landed. Stating the soft dependency here for completeness so the
+orchestrator's plan-execution log preserves the chain:
+
+- **`src/tools/init/scaffoldCommands/plan.aide` (sibling, MUST run first
+  for the epic to be coherent)** — removes the `commands/aide/init` entry
+  from the `COMMANDS` registry and the matching `"commands/aide/init"`
+  entry from `DOC_PATHS`. Without this, future `aide_init` calls would
+  throw on `readCanonicalDoc("commands/aide/init")` and the cli's MCP
+  tool would still scaffold an orphan command file. This plan does not
+  consume any export from that module — the relationship is product
+  coherence, not type/import coupling.
+
+- **`.claude/plan.aide` (sibling, parallel-able with this plan after
+  `scaffoldCommands` lands)** — deletes `.claude/commands/aide/init.md`
+  and rewrites the three `/aide:init` references in
+  `.claude/commands/aide.md`. Independent edits in a different folder
+  scope; no contract crosses between this plan and that one.
+
+The cross-module sweep in step 7 of this plan touches files outside
+`src/cli/init/` (README + four JSDoc blocks) — those touches are
+text-only, do not depend on either sibling plan's code changes, and only
+make sense as part of the same epic. See Decisions for the
+single-module-scoping deviation rationale.
 
 ## Plan
 
-### [x] 1. Add subcommand routing to `src/index.ts`
+### 1. Update `deferredCategories()` in `src/cli/init/index.ts` to embed per-category follow-up surfaces
 
-Read: `coding-playbook/foundations/conventions.md`
+Read:
+- `coding-playbook/foundations/conventions` — naming, prose clarity, no commented-out code
 
-- In `src/index.ts`, before the existing `const root = parseRoot();` line, add an
-  early-exit check: if `process.argv[2]` is `"init"`, dynamically import
-  `./cli/init/index.js` and exit (the init module's IIFE handles execution and
-  `process.exit`). This keeps the init path fully lazy-loaded -- zero cost to the
-  MCP server startup path.
-- The dynamic import target is the existing `src/cli/init/index.ts` which already
-  has an IIFE that parses `process.argv` for `--help`, runs `runInit`, and calls
-  `process.exit`. No changes to the init module's execution model are needed for
-  this routing -- the dynamic import triggers the IIFE.
-- The routing check must come before any MCP server setup (before `parseRoot()`,
-  before `new Server(...)`, before `main()`).
-- Do not add a CLI framework, argument parser, or any new dependencies. This is a
-  single `if` statement with a dynamic `import()`.
+The orchestrator currently returns category labels in
+`deferredCategories(vaultPath)` (lines 34–43) that read like topic names
+("Vault path — obsidian MCP entry shell is written but the vault path
+is empty; /aide:init will prompt for it"). The spec's per-category
+mapping requires each entry to **name the follow-up surface inline**, so
+the renderer can drop its single-command "Next step" line and surface
+per-category guidance next to the category itself.
 
-### [x] 2. Update `--help` text in `src/cli/init/index.ts`
+The new wording per category, traced to the spec frontmatter (desired
+outcomes #1, #5, #8 and undesired #17):
 
-Read: `coding-playbook/foundations/conventions.md`
+- **Vault path category (only present when `vaultPath` is absent):**
+  the follow-up is opening Claude Code and running `/aide` (the
+  orchestrator's inline-recovery flow detects the missing path via
+  `aide_info` and prompts for it). The category description must name
+  `/aide` literally, must not name `/aide:init`, and must include the
+  word "orchestrator" so the user understands they're being routed to
+  an in-Claude conversation, not a separate slash command.
 
-- In `src/cli/init/index.ts`, change the `--help` output (line 38) from
-  `"Usage: node dist/cli/init/index.js\n"` to
-  `"Usage: npx @aidemd-mcp/server init\n"`.
-- Keep the second line of the help text unchanged:
-  `"Wires the AIDE MCP server, init command, and aide-tree into the current project.\n"`.
+- **Brain vault scaffolding category (only present when `vaultPath` is
+  absent):** the follow-up is the same `/aide` flow — the inline-recovery
+  flow seeds the vault directories and playbook hub after the path
+  resolves. Prefer wording that makes this clear (e.g. "follows the
+  vault path above — same `/aide` run").
 
-### [x] 3. Add a test for the subcommand routing in `src/index.ts`
+- **IDE configuration category (always present unless future `--ide`
+  support lands):** the follow-up is re-running the cli with `--ide
+  <choice>`. The category description must name `npx aidemd-mcp init
+  --ide <choice>` literally so a reader copying the line into their
+  shell gets a runnable command.
 
-Read: `coding-playbook/workflow/testing.md`
+- [x] 1a. Rewrite the two-branch return inside `deferredCategories()` so
+  every string is self-contained guidance. The branch shape is unchanged
+  (one entry when `vaultPath` is supplied, three entries when it is
+  absent), but the strings themselves shift from labels to instructions.
 
-- Create `src/index.test.ts` co-located with the entry point.
-- The test must verify two behaviors:
-  1. When `process.argv` contains `"init"` as the first positional arg (index 2),
-     the module dynamically imports `./cli/init/index.js`.
-  2. When `process.argv` does not contain `"init"`, the MCP server starts normally
-     (the dynamic import is not called).
-- Mock `./cli/init/index.js` with `vi.mock()` to prevent the IIFE from executing
-  during tests. Mock `@modelcontextprotocol/sdk/server/index.js`,
-  `@modelcontextprotocol/sdk/server/stdio.js`, and
-  `@modelcontextprotocol/sdk/types.js` to prevent real server instantiation.
-- Use `vi.stubGlobal` or direct assignment to control `process.argv` per test,
-  restoring the original in `afterEach`.
-- Since `src/index.ts` executes side effects at module level (the IIFE at the
-  bottom calls `main()`), the test may need to use `vi.dynamicImportSettled` or
-  structure the import carefully. If the side-effectful module top-level is hard to
-  test in isolation, the implementor may extract the routing check into a small
-  exported function `routeSubcommand()` that returns `true` if it handled a
-  subcommand (and the IIFE calls it before `main()`). This keeps the test focused
-  on the routing logic without needing to mock the entire MCP server stack. Use
-  judgment on which approach is simpler.
+- [x] 1b. Update the function-level JSDoc on `deferredCategories()` (the
+  block at lines 20–33) to remove the literal `/aide:init` references at
+  lines 24 and 27. Replace with the spec's per-category routing
+  vocabulary: vault-path defers to `/aide` (orchestrator inline
+  recovery), IDE defers to re-running the cli with `--ide`. Keep the
+  "Single source of truth" sentence — the helper still IS the single
+  source of truth for the deferred-categories wording, that part is
+  unchanged.
 
-### [x] 4. Update the `.aide` spec at `src/cli/init/.aide`
+- [x] 1c. Update the runtime "all-clean" completion line at line 225
+  from `"Already set up. Run /aide:init in Claude Code to continue."`
+  to a string that does not name a removed command. Two acceptable
+  shapes the implementor may pick from based on prose flow:
+  - `"Already set up."` (terse — no follow-up named because nothing is
+    pending; this is the suppression branch's whole point)
+  - `"Already set up. Open Claude Code and run /aide to start the
+    pipeline."` (longer — names the orchestrator entry but only as a
+    "what's next once you're ready to work" pointer, not as a setup
+    step). Pick the terse form unless the spec body's "Already set up"
+    examples (lines 269–279, 276) were rewritten by the spec writer to
+    expect the longer form. Verify by re-reading the spec's good
+    examples in step 6 and choosing the form that matches.
 
-Read: `coding-playbook/foundations/conventions.md`
+- [x] 1d. Update the `--help` text in the IIFE at lines 254–270. The
+  `/aide:init` references at lines 264, 267, and 270 all rewrite to the
+  per-category surfaces from 1a. Specifically:
+  - Line 264 ("/aide:init will prompt for it in Claude Code") → name
+    the orchestrator's inline-recovery surface (`/aide`).
+  - Line 267 ("deferred to /aide:init") → name the per-category surfaces
+    (vault path / brain → `/aide`; IDE → re-run cli with `--ide`).
+  - Line 270 ("run /aide:init to finish setup") → describe what the
+    warning block now does (lists each pending category with its own
+    follow-up surface).
 
-- In `src/cli/init/.aide`, the Strategy section (paragraph starting "The CLI is an
-  internal script, not a bin entry") states the init CLI is no longer reachable via
-  `npx` and is invoked via `node dist/cli/init/index.js`. Update this paragraph to
-  reflect that the init CLI is now reachable again via
-  `npx @aidemd-mcp/server init` thanks to subcommand routing in the main entry
-  point.
-- Update the help text example in the Strategy section if present.
-- Update any Good/Bad examples that show the invocation path.
+- [x] 1e. Verify post-edit that `src/cli/init/index.ts` contains zero
+  occurrences of the literal string `/aide:init`. Run a search across
+  the file. Seven occurrences must drop to zero.
 
-### [x] 5. Run tests and verify the build
+### 2. Rewrite the runtime message and JSDoc in `src/cli/init/writeMcpEntry/index.ts`
 
-Read: `coding-playbook/workflow/testing.md`
+Read:
+- `coding-playbook/foundations/conventions` — JSDoc rules, no commented-out content
 
-- Run `npm test` to verify all existing tests still pass alongside the new test.
-- Run `npm run build` to verify TypeScript compilation succeeds.
-- If any tests fail, fix them before marking complete.
+The mcp-entry writer's runtime message at line 105 ships verbatim as the
+first line of the per-file log (it becomes `mcpResult.message`, which the
+orchestrator prints as `[created] .mcp.json — <message>`). That's
+user-facing CLI output and falls under the spec's undesired #17
+("CLI-emitted text directs the user to a removed slash command"). The
+JSDoc at lines 19 and 25 is internal documentation but still drift if
+left referencing a deleted surface — and the spec body sweep in step 6
+needs the JSDoc to match the new vocabulary so future architects don't
+re-derive an outdated mental model.
+
+- [x] 2a. Rewrite the runtime message append at line 105. Current:
+  `" — obsidian vault path is a placeholder; run /aide:init to set it"`.
+  New text must (a) name the orchestrator's inline-recovery surface
+  (`/aide`) instead of `/aide:init`, (b) make clear this is a recoverable
+  state (the entry shell IS written), and (c) fit on the same line as
+  the rest of the `[created] .mcp.json — ...` log row without wrapping
+  awkwardly. Suggested phrasing (verbatim acceptable):
+  `" — obsidian vault path is a placeholder; open Claude Code and run /aide to set it"`.
+  The implementor may tighten or rephrase as long as the three
+  constraints above hold and `/aide:init` does not appear.
+
+- [x] 2b. Rewrite the JSDoc at lines 19 and 25 to match the new
+  vocabulary. Line 19's current sentence about the orchestrator
+  treating empty path as a hard gate "directing the user to `/aide:init`
+  to fill in the real vault path" rewrites to name `/aide` (the
+  orchestrator's inline-recovery flow). Line 25's parenthetical "the
+  user fixes it via `/aide:init`" rewrites the same way. Keep the
+  surrounding JSDoc structure (the explanation of the dual-key check,
+  the never-overwrite invariant, the abort-on-malformed-JSON contract)
+  intact — only the surface names change.
+
+- [x] 2c. Verify `src/cli/init/writeMcpEntry/index.ts` contains zero
+  occurrences of the literal `/aide:init`. Three occurrences must drop
+  to zero.
+
+- [x] 2d. Read `src/cli/init/writeMcpEntry/index.test.ts`. If any
+  assertion checks for the substring `/aide:init` in the message
+  field, update it to the new wording chosen in 2a. If no assertion
+  checks for that substring (the test may only assert `.status` and
+  rough message shape), leave the test file untouched. Do NOT edit
+  speculatively — the read confirms whether an edit is needed.
+
+### 3. Rewrite `src/cli/init/renderWarning/index.ts` so each deferred category carries its own follow-up surface
+
+Read:
+- `coding-playbook/foundations/conventions` — JSDoc, naming, no commented-out content
+- `coding-playbook/agentic/agentic` — agent-readable code; user-facing CLI text is part of the agent surface when the cli is invoked from agent loops
+
+The current renderer assumes all deferred categories share a single
+follow-up command (`/aide:init`), surfaced via the closing "Next step"
+line at line 70. The spec's per-category mapping breaks that assumption —
+vault path, brain scaffolding, and IDE each route to a different surface.
+The right shape is to drop the "Next step" line and let each category
+entry carry its own follow-up inline (the wording is supplied by the
+orchestrator in step 1).
+
+- [x] 3a. Edit the deferred-categories heading at line 62. Current:
+  `"  Deferred categories (require /aide:init in Claude Code):"`.
+  New text must (a) not name a single follow-up command, (b) make clear
+  that each entry below names its own follow-up. Suggested phrasing:
+  `"  Deferred (each item names how to finish it):"`. The implementor
+  may rephrase as long as the parenthetical does not name `/aide:init`
+  and the heading reads as a list-introducer, not a command directive.
+
+- [x] 3b. Delete the closing "Next step:" / "Open Claude Code in this
+  project and run /aide:init to finish setup." pair (lines 69–70) and
+  the blank line above them (line 68). The closing border (line 72) and
+  the blank line before it (line 71) are preserved — the block still
+  ends with a heavy `=` border. Visually the warning becomes:
+
+  ```
+  ============================================================
+    SETUP INCOMPLETE — ACTION REQUIRED
+  ============================================================
+
+    Skipped files (already on disk or write failed — not overwritten):
+      1. <path> — <message>
+      ...
+
+    Deferred (each item names how to finish it):
+      1. Vault path — open Claude Code and run /aide; the orchestrator will prompt for the path
+      2. Brain vault scaffolding — follows the vault path above (same /aide run)
+      3. IDE configuration — re-run npx aidemd-mcp init --ide <choice>
+
+  ============================================================
+  ```
+
+  The exact category strings come from the orchestrator (step 1); the
+  renderer just numbers them. The closing border stays because it
+  bookends the block and matches the heading's visual weight.
+
+- [x] 3c. Update the JSDoc block at lines 5–31 to reflect the new
+  shape. Specifically: (a) the suppression rule (line 12) is unchanged —
+  same condition (`skipped + failed + deferred === 0`); (b) the
+  skipped-files subsection rules (lines 18–22) are unchanged; (c) the
+  deferred-categories subsection rule (lines 24–25) is unchanged in
+  trigger but now ALSO documents that each entry contains its own
+  follow-up surface, and that the renderer no longer prints a single
+  "Next step" footer; (d) the heavy-borders paragraph (lines 27–30) is
+  unchanged.
+
+- [x] 3d. Verify `src/cli/init/renderWarning/index.ts` contains zero
+  occurrences of the literal `/aide:init`. Two occurrences must drop
+  to zero.
+
+### 4. Update `src/cli/init/renderWarning/index.test.ts` assertions
+
+Read:
+- `coding-playbook/workflow/testing` — test factories, parameterized tests, literal-string assertions
+- `coding-playbook/foundations/conventions` — no commented-out test cases
+
+The renderer's tests assert exact-string output (line-by-line `.join("\n")`
+expected blocks). Six lines across five `it` blocks reference
+`/aide:init`. Update each assertion to the new shape from step 3.
+
+- [x] 4a. Update line 31 (the deferred-only test's expected heading)
+  to the new "Deferred (each item names how to finish it):" wording
+  from 3a.
+
+- [x] 4b. Delete lines 35–37 from the deferred-only test's expected
+  array — the "Next step:" / "Open Claude Code in this project and run
+  /aide:init to finish setup." block is gone in the renderer, so the
+  test's expected output must drop the same lines. The blank line after
+  the deferred list (line 35 in expected output) and the closing border
+  on line 39 stay; the "Next step:" pair and its preceding blank line
+  go.
+
+- [x] 4c. Apply the same surgery to the skipped-only test (lines 50–67):
+  delete the "Next step:" / "Open Claude Code in this project and run
+  /aide:init to finish setup." pair from the expected output.
+
+- [x] 4d. Apply the same surgery to the failed-only test (lines 73–90):
+  delete the "Next step:" pair from the expected output.
+
+- [x] 4e. Apply the same surgery to the full-block test (lines 92–122):
+  delete the "Next step:" pair AND update the deferred-categories
+  heading on line 109 to the new wording from 3a.
+
+- [x] 4f. Verify `src/cli/init/renderWarning/index.test.ts` contains
+  zero occurrences of the literal `/aide:init`. Six occurrences must
+  drop to zero. Then run `npm test -- renderWarning` and confirm every
+  case still passes.
+
+### 5. Update `src/cli/init/index.test.ts` assertions
+
+Read:
+- `coding-playbook/workflow/testing` — module-level mocks, factory functions, literal-string assertions
+
+The orchestrator test's `DEFERRED_CATEGORIES` constant at lines 90–94
+defines what the test expects the orchestrator to pass to `renderWarning`.
+After step 1, the orchestrator's `deferredCategories()` returns
+different strings — the test constant must mirror the new strings exactly
+or the equality assertions on lines 202–207, 273–278, 540, 556, 572 will
+fail.
+
+- [x] 5a. Update the `DEFERRED_CATEGORIES` constant at lines 90–94 to
+  match the cold-start branch of `deferredCategories(undefined)` from
+  step 1a. The array is the three-entry "no vault path" set the
+  orchestrator passes when `options.vaultPath` is undefined (which is
+  the default in every existing test). The strings must be exact
+  character-for-character matches — copy them from the orchestrator
+  source after step 1 lands, do not re-derive.
+
+- [x] 5b. Update the all-clean completion-line assertion at line 293
+  (`expect(lines).toContain("Already set up. Run /aide:init in Claude
+  Code to continue.")`) to match the new completion line from step 1c.
+  If step 1c picked `"Already set up."`, the assertion becomes
+  `expect(lines).toContain("Already set up.")`. If step 1c picked the
+  longer form, mirror it verbatim.
+
+- [x] 5c. Verify `src/cli/init/index.test.ts` contains zero occurrences
+  of the literal `/aide:init`. One occurrence must drop to zero.
+
+- [x] 5d. Run `npm test -- src/cli/init/index.test.ts` and confirm
+  every case still passes. The mock contracts are unchanged; only the
+  string values flowing through them are.
+
+### 6. Sweep the spec body in `src/cli/init/.aide`
+
+Read:
+- `coding-playbook/foundations/conventions` — prose hygiene, no stale references
+- (the spec frontmatter for `src/cli/init/.aide` was already rewritten by
+  the spec writer; the body sweep finishes the job)
+
+The frontmatter (lines 1–109) is fresh; the body sections still carry
+nineteen `/aide:init` references across `## Context` (line 113, 115, 117),
+`## Strategy` (lines 121, 131, 133), `## Good examples` (lines 166, 192,
+198, 228, 252, 258, 276, 279, 297, 299, 329, 343), and `## Bad examples`
+(line 343 — same line as the strategy list). These are documentation, not
+runtime, but they remain the source of truth future architects will
+re-read; leaving them stale is exactly the "drift starts when canonical
+content disagrees with code" failure mode the AIDE methodology exists to
+prevent.
+
+- [x] 6a. Sweep `## Context` (lines 111–117). The references at lines
+  113, 115, 117 describe the historical chicken-and-egg of `/aide:init`.
+  Two of these are HISTORICAL claims — line 113 ("the `/aide:init` slash
+  command exists to launch the interview") and line 115 ("the
+  `aide` MCP entry, the `/aide:init` command, and the `aide-tree`
+  launcher" as the prior three-artifact minimum). Those are about the
+  prior shape of the system; rewrite them to past-tense narration that
+  no longer name a currently-shipping surface. Line 117's "deferred to
+  `/aide:init`" must rewrite to the spec's per-category routing
+  (vault path → orchestrator inline-recovery via `/aide`; IDE → re-run
+  cli with `--ide`; drift → `/aide:upgrade`).
+
+- [x] 6b. Sweep `## Strategy` (lines 119–139). The references at lines
+  121 ("`/aide:init` slash command", "Deferred to `/aide:init`"), 131
+  (the warning-block strategy paragraph that says
+  `"Run /aide:init in Claude Code to finish setup."`), and 133 (the
+  warning-suppression paragraph that quotes the current
+  `"Already set up. Run /aide:init in Claude Code to continue."` line)
+  all need to be re-aimed. Rewrite each to reflect the post-deprecation
+  per-category mapping. Specifically:
+  - Line 121's strategy decision splits canonical artifacts (CLI
+    installs them) from inherent decisions (deferred to per-category
+    surfaces). Replace the bullet "the `/aide:init` slash command" in
+    the CLI-installable list — that command is no longer shipped; the
+    CLI installs the eleven remaining pipeline commands (research,
+    spec, synthesize, plan, build, qa, fix, upgrade, update-playbook,
+    refactor, align). The "Deferred to `/aide:init`" section header
+    and its enumeration of deferred categories rewrite to "Deferred to
+    per-category follow-up surfaces" with the per-category mapping
+    inline.
+  - Line 131's warning-block layout paragraph quotes the closing
+    instruction. After step 3b that closing line is gone, so the
+    strategy paragraph rewrites to describe the new layout: per-category
+    follow-up surfaces inline with each entry, no single command in a
+    closing footer.
+  - Line 133's suppression paragraph quotes the current completion line.
+    Update to whichever form step 1c picked.
+
+- [x] 6c. Sweep `## Good examples` (lines 141–289). Multiple shell-output
+  examples include lines like
+  `"  Deferred categories (require /aide:init in Claude Code):"` (lines
+  192, 252) and
+  `"    Open Claude Code in this project and run /aide:init."` (lines
+  198, 258). The example at line 166 also shows `[created]
+  .claude/commands/aide/init.md — /aide:init` in the per-file log, which
+  must be removed entirely (the command no longer exists, so the cli
+  no longer creates it). Line 228 has the same per-file-log entry in the
+  partially-existing-project example — also remove. Lines 276 and 279
+  show the all-clean completion line — update to the new wording from
+  step 1c. Line 297's `[created] .claude/commands/aide/init.md —
+  /aide:init command` must also be removed from that example.
+
+  Rewrite each example so the rendered output mirrors what the cli will
+  actually print after steps 1, 2, 3 land. Each example must compile in
+  the reader's head: if the cli now writes eleven slash commands instead
+  of twelve, the per-file log shows eleven; if the warning block ends
+  with a heavy border instead of a "Next step" footer, the example does
+  too.
+
+- [x] 6d. Sweep `## Bad examples` (lines 290–365). Line 299's
+  "Done. Open Claude Code and run /aide:init to complete setup." (in
+  the silently-replaces-mcp-json bad example) and line 329's
+  "Done. Open Claude Code and run /aide:init." (in the inline-warnings
+  bad example) describe what a BAD cli would output. They are still
+  valid bad-example illustrations IF the bad-example narration is updated
+  to clarify "this is the OLD wording from before the deprecation; a
+  current cli that emits this string is broken because `/aide:init` was
+  removed." The cleaner option is to rewrite the bad-example output
+  itself to a CURRENT bad-example pattern (e.g., a cli that names a
+  removed command in the warning block). Use the cleaner option — bad
+  examples are illustrations the implementor reads as anti-patterns to
+  avoid, and naming a deleted surface in an anti-pattern undermines the
+  pedagogical clarity. Line 343 in the abort-on-EACCES bad example
+  ("chase down the permission issue and re-run before they can even get
+  to `/aide:init`") rewrites to name the orchestrator entry (`/aide`).
+
+- [x] 6e. Verify `src/cli/init/.aide` contains zero occurrences of the
+  literal `/aide:init` (excluding the frontmatter undesired #17 line at
+  line 108, which intentionally NAMES `/aide:init` as the example of a
+  removed surface to forbid — that occurrence stays). One occurrence
+  remains in the body sweep budget; nineteen drop to one.
+
+### 7. Cross-module reference sweep — README + four JSDoc blocks
+
+Read:
+- `coding-playbook/foundations/conventions` — JSDoc rules, prose hygiene
+- (no other notes; this step is mechanical text replacement)
+
+This step intentionally crosses out of `src/cli/init/`. Five files
+outside this module's scope still carry `/aide:init` references and
+none are owned by the other two plans in the deprecation epic. The user's
+brief explicitly bundled them into this plan via Option A. See Decisions
+for the single-module-scoping deviation rationale.
+
+The five files and their reference counts:
+
+- `README.md` (2 occurrences) — Quick Start section. Line 37 lists what
+  `npx` installs; line 42 tells the reader to run `/aide:init` to
+  complete setup.
+- `src/types/index.ts` (2 occurrences) — JSDoc on `BrainState` (line
+  352) and `InfoResult.brain` (line 376). Both name `/aide:init` as the
+  remediation when `brain.status` is not `"ok"`.
+- `src/tools/info/index.ts` (1 occurrence) — JSDoc on the `info` default
+  export (line 42). Same remediation reference as the type docs.
+- `src/tools/info/buildBrainState/index.ts` (2 occurrences) — JSDoc on
+  the helper (lines 21 and 34). Both name `/aide:init` as the
+  remediation when the obsidian entry is missing or malformed.
+- `src/tools/init/provisionBrain/index.ts` (1 occurrence) — JSDoc on
+  `obsidianMcpEntry` (line 44). Names `/aide:init` as the surface the
+  orchestrator routes the user to when the brain path is empty.
+
+Replacement rule per file (the per-category mapping from the spec
+applies — JSDoc wording follows the same rule as runtime text):
+
+- README.md line 37 (`Writes the /aide:init slash command...`): the cli
+  no longer installs `/aide:init`. Remove the bullet entirely; the cli
+  now installs the full canonical-artifact set, which the surrounding
+  paragraphs (line 36 covers MCP, line 38 covers the launcher) already
+  imply. If the paragraph reads thin without the bullet, replace with
+  one that names what the cli DOES install (e.g., "Writes every pipeline
+  slash command to `.claude/commands/aide/`").
+- README.md line 42 (`After running, open Claude Code and run /aide:init
+  to complete setup.`): rewrite to name the orchestrator entry. Suggested
+  phrasing: `After running, open Claude Code and run /aide — the
+  orchestrator will prompt for any setup the cli could not finish (vault
+  path, IDE choice).`
+- All four JSDoc files (types/info/buildBrainState/provisionBrain): the
+  remediation is the orchestrator's inline-recovery flow (`/aide`), not
+  `/aide:init`. Replace each "run `/aide:init`" or "/aide:init"
+  occurrence with text that names `/aide` as the remediation surface and
+  briefly clarifies that the orchestrator's inline-recovery flow detects
+  the missing/broken state and prompts the user. Preserve the
+  surrounding sentence structure and tone — only the surface name and
+  one or two surrounding clauses change.
+
+- [x] 7a. Apply the README rewrites at lines 37 and 42 per the rule
+  above. After the edit, re-read the Quick Start section end-to-end and
+  confirm the prose flows. Quick Start is a high-stakes onboarding
+  surface; if a sentence feels stilted after the edit, rephrase the
+  surrounding context too — minimum diff is not the priority for the
+  README, prose quality is.
+
+- [x] 7b. Apply the JSDoc rewrites in `src/types/index.ts` (lines 352
+  and 376), `src/tools/info/index.ts` (line 42),
+  `src/tools/info/buildBrainState/index.ts` (lines 21 and 34), and
+  `src/tools/init/provisionBrain/index.ts` (line 44) per the rule
+  above. Preserve the JSDoc block structure; do not reorder or rename
+  parameters or types; do not edit anything other than the
+  remediation-surface naming.
+
+- [x] 7c. Final cross-repo verification: search the entire repo for the
+  literal string `/aide:init` and confirm the ONLY remaining
+  occurrences are in:
+  - `src/cli/init/.aide` line 108 (the undesired-outcome bullet that
+    names `/aide:init` as the example of a removed surface to forbid —
+    this is intentional and stays);
+  - the three sibling plan.aide files
+    (`src/cli/init/plan.aide` itself, `.claude/plan.aide`,
+    `src/tools/init/scaffoldCommands/plan.aide`,
+    `src/cli/init/todo.aide`, `src/tools/init/todo.aide`,
+    `src/tools/info/todo.aide`) — these are planning artifacts and
+    deletion logs that intentionally name the deprecated surface; they
+    are out of scope for this sweep.
+  - `.aide/review.md` if present — explicitly out of scope per the
+    user's brief.
+  - any historical references inside `src/tools/info/.aide` or
+    `src/tools/init/.aide` (the sister specs) — those are owned by
+    their own future spec rewrites, not by this plan.
+
+  Exclude `.git/`, `node_modules/`, `dist/`, and the generated
+  `package-lock.json` from the search. Any production-code, test, or
+  README occurrence outside the allowlist above is a missed reference
+  and the implementor must close it before declaring step 7 done.
+
+### 8. Verification — full test suite, type check, and final grep
+
+Read:
+- `coding-playbook/workflow/testing` — `tsc --noEmit` workflow, vitest scripts
+- `coding-playbook/foundations/conventions` — code hygiene
+
+This step is the gate before declaring the plan done. All three checks
+must pass; any failure escalates back to `/aide:plan` rather than being
+patched in-flight.
+
+- [ ] 8a. Run `npm test` (project's vitest invocation). Every test in
+  `src/cli/init/`, `src/tools/`, and `src/lib/` must pass. Pay
+  particular attention to:
+  - `src/cli/init/index.test.ts` — `DEFERRED_CATEGORIES` constant is
+    the most likely failure source; if it diverges from the
+    orchestrator by even one character every equality assertion that
+    uses it will fail.
+  - `src/cli/init/renderWarning/index.test.ts` — the line-by-line
+    `.join("\n")` expected blocks are sensitive to leading whitespace,
+    blank lines, and border placement.
+  - `src/cli/init/writeMcpEntry/index.test.ts` — only relevant if step
+    2d updated an assertion.
+
+- [x] 8b. Run `tsc --noEmit` (or the project's equivalent type-check
+  script). No new type errors should appear; this plan changes string
+  values and JSDoc text only, so the type surface is unchanged.
+
+- [x] 8c. Run a final cross-repo grep for the literal `/aide:init` and
+  re-validate the allowlist from step 7c. The acceptance criterion is
+  zero matches outside the allowlist. If the implementor finds an
+  occurrence the plan didn't anticipate, STOP and escalate to
+  `/aide:plan` — the sweep was incomplete and the spec writer needs to
+  decide whether the missed reference should be removed (the typical
+  case) or preserved (rare, only for historical artifacts).
+
+- [x] 8d. Confirm by re-reading `src/cli/init/.aide`'s undesired #17
+  bullet (line 108) that the runtime cli output (warning block,
+  per-file log, --help, completion line) no longer names `/aide:init`.
+  This is the spec's explicit testable assertion, not just a cleanup
+  goal.
 
 ## Decisions
 
-**Dynamic import for lazy loading.** The init CLI path uses `await import("./cli/init/index.js")` rather than a static import. This keeps the MCP server entry point fast -- init dependencies (filesystem writes, canonical content reading) are never loaded unless the user explicitly passes `init`. The init module's existing IIFE handles everything after import.
+- **The renderer's contract for `deferredCategories` shifts from "labels"
+  to "self-contained instructions."** The spec's per-category mapping
+  forces this — vault path routes to `/aide`, IDE routes to a cli re-run
+  with `--ide`, drift routes to `/aide:upgrade`. There is no longer one
+  command that handles all three. The cleanest place to encode the
+  per-category surfaces is the `deferredCategories()` helper in the
+  orchestrator, which already exists as the single source of truth (per
+  its own JSDoc). Pushing the wording into that helper means the
+  renderer becomes a dumb numbered-list printer for whatever strings it
+  receives, which preserves its purity (no I/O, no surface-specific
+  knowledge) and lets the orchestrator carry the spec-specific
+  vocabulary. This is why step 1 owns the heavy wording lift and step 3
+  is mostly subtraction.
 
-**No CLI framework.** A single `if (process.argv[2] === "init")` check is sufficient. Adding Commander, Yargs, or even a hand-rolled arg parser would be scope creep for one subcommand. If more subcommands are needed later, that is the time to introduce routing infrastructure.
+- **The renderer's "Next step" closing line is deleted, not rewritten.**
+  Once each category carries its own follow-up inline, a single trailing
+  line that names ONE command would either contradict the category-level
+  guidance (which surface should it name?) or repeat what's already
+  visible (which is noise). Deletion is the correct answer; the closing
+  border bookends the block visually without needing prose.
 
-**Routing before any MCP setup.** The subcommand check must execute before `parseRoot()`, `new Server(...)`, or any MCP SDK imports take effect. This prevents the init path from instantiating an MCP server it will never use and avoids potential stdio conflicts (the MCP server claims stdin/stdout for JSON-RPC transport, which would conflict with the init CLI's terminal output).
+- **The cross-module sweep in step 7 deviates from `plan-aide.md`'s
+  single-module-scoping rule.** The rule states that a plan governs only
+  the module it lives in, and a feature spanning multiple modules
+  produces multiple plans. The five files in step 7 sit outside
+  `src/cli/init/` and would, by strict interpretation, require five
+  separate plans. The user explicitly bundled them into this plan via
+  Option A in their brief, with three justifications all met here:
+  (a) the cleanup is mechanical text-replacement with no behavioural or
+  type changes; (b) the alternative is four-plus micro-plans for one-line
+  edits each, which is process overhead with negative pedagogical value
+  (each plan would be 90% boilerplate); (c) every file in step 7 is
+  legitimately downstream of the deprecation — these references only
+  exist because `/aide:init` existed, and removing them is part of the
+  same coherent change. The deviation is recorded here so a future
+  architect reading this plan understands why the rule was bent and is
+  not licensed to bend it elsewhere.
 
-**IIFE in init module handles process lifecycle.** The existing init module has an IIFE that calls `process.exit()`. The dynamic import triggers this IIFE, so the main entry point does not need to handle the exit code or call `process.exit` itself. This avoids duplicating process lifecycle management.
+- **`writeMcpEntry/index.ts` is in the primary scope, not the
+  cross-module sweep.** Even though the user's brief listed it as a
+  primary-scope concern via reference to lines 62 and 70 of
+  `renderWarning/index.ts`, the writer also has three `/aide:init`
+  references (JSDoc lines 19, 25 and a runtime message at line 105). All
+  three are inside `src/cli/init/` (the writer is a sibling of the
+  orchestrator, not a cross-module concern). Step 2 owns them
+  explicitly so the implementor doesn't miss them by reading the brief
+  literally and stopping at the renderer.
 
-**Spec update to reflect restored npx path.** The `.aide` spec currently documents the init CLI as unreachable via npx. This was accurate before this change but becomes a lie after. Updating the spec maintains the "aspirational docs are worse than missing docs" principle from the parent spec.
+- **The architecture of the cli is unchanged.** No helper extraction, no
+  folder restructuring, no orchestrator/helper boundary changes. The
+  user's brief explicitly defers the services-layer refactor that would
+  move helpers out of `src/tools/init/` into a shared services package;
+  this plan honors that deferral. Future readers seeing the bent
+  single-module-scoping rule must not interpret it as license for
+  broader restructuring — every step here is a string change or a
+  closing-line deletion.
+
+- **No new tests.** The spec's behavioral contract (warning block layout,
+  suppression rule, idempotency, MCP merge invariants) is unchanged;
+  only the strings it emits change. Adding new test cases would be
+  test-pollution against an unchanged contract. Existing tests that
+  assert string content get updated assertions (steps 4 and 5); existing
+  tests that assert structure stay untouched.
+
+- **The completion-line wording in step 1c is the only judgment call
+  the implementor must make in-flight.** Two acceptable forms are
+  enumerated; the choice is constrained by what the spec body's good
+  examples (lines 269–279) actually show after the spec writer's
+  rewrite. If the spec body unambiguously expects one form, pick that
+  one; if it's still ambiguous after step 6's body rewrite drafts the
+  examples, pick the terse `"Already set up."` form because it most
+  cleanly satisfies the suppression-rule contract (the whole point of
+  suppressing the warning is "nothing pending — nothing to say").
+
+- **Read lists in this plan are short by design.** Most steps are
+  text replacement against existing strings; the playbook conventions
+  that govern this work are concentrated in two notes
+  (`coding-playbook/foundations/conventions` and
+  `coding-playbook/workflow/testing`). Reading more would burn context
+  on conventions that don't apply to this kind of mechanical sweep.
+
+## Risks
+
+- **The implementor picks a completion-line wording in step 1c that
+  diverges from the spec body's example wording in step 6c.** Both steps
+  pick wording independently; if 1c picks the terse form and 6c writes
+  the longer form into the example, the example claims the cli prints
+  something the cli does not actually print. Mitigation: do step 6
+  AFTER step 1, and copy the chosen line verbatim from the orchestrator
+  source into the example. The plan's step ordering enforces this, but
+  a careless implementor could draft step 6's examples against memory of
+  what step 1 said rather than re-reading the source.
+
+- **The cross-module sweep in step 7 misses a reference.** The
+  acceptance grep in step 7c is the gate; the plan lists explicit
+  allowlist files for the grep to ignore. If a NEW reference has crept
+  into the codebase between this plan being written and being executed
+  (a recent commit added a JSDoc that names `/aide:init`), the grep
+  catches it and step 8c forces an escalation rather than a silent miss.
+  This is the intended behavior — better an escalation than a missed
+  reference.
+
+- **The renderer's structural change (deleting the "Next step" line)
+  is more than a text edit.** It alters the exact line count and
+  ordering of the rendered block. Any test that asserts the full block
+  via `.join("\n")` will break unless updated, and step 4 lists every
+  such assertion explicitly. If a NEW test has been added since this
+  plan was written that asserts block content, the implementor must
+  update it too — `npm test` in step 8a will surface the failure, but
+  the failure mode might be misread as "my edit broke something" rather
+  than "the test predates this plan and needs the same surgery as the
+  others." Mitigation: step 8a's instructions name the renderer test as
+  the most likely failure source; the implementor sees the failure in
+  context.
+
+- **Future host projects already have `init.md` on disk and the
+  warning block won't tell them.** This plan does not own the cleanup
+  of orphan `init.md` files in host projects — that is the job of
+  `/aide:upgrade`'s deletion-handling logic, which is out of scope here.
+  The cli's warning block, after this plan, will not flag a host
+  project's existing `init.md` as drift because the cli's
+  canonical-artifact set no longer includes it. A user on an existing
+  install gets no signal from the cli that they have a stale file. The
+  `.claude/plan.aide` Risks section already flags this; it is recorded
+  here too because the user-facing surface most affected (the warning
+  block) lives in the scope of this plan.
+
+- **The intentional `/aide:init` reference in undesired #17 (line 108
+  of the spec) is a load-bearing exception to the sweep.** That bullet
+  exists precisely to forbid CLI output that names removed slash
+  commands and uses `/aide:init` as the canonical example. Step 7c's
+  allowlist preserves it. If a future architect reads this plan and
+  decides to "complete the sweep" by removing that reference too, the
+  spec's testability contract for undesired #17 weakens — the bullet
+  becomes self-referential ("don't name removed commands; for example,
+  don't name <empty>"). Leave it.

@@ -395,4 +395,168 @@ describe("applySteps", () => {
 		const written = await readFile(filePath, "utf-8");
 		expect(written).toBe(content);
 	});
+
+	it("would-overwrite file step: file is written to disk", async () => {
+		const filePath = join(tempDir, "CLAUDE.md");
+		const step: InitStep = {
+			name: "Methodology pointer",
+			status: "would-overwrite",
+			category: "methodology",
+			filePath,
+			content: "# AIDE\n\nupdated content\n",
+		};
+
+		await applySteps([step]);
+
+		const written = await readFile(filePath, "utf-8");
+		expect(written).toBe("# AIDE\n\nupdated content\n");
+	});
+
+	it("would-overwrite file step: returned step has status overwritten and no content field", async () => {
+		const filePath = join(tempDir, "CLAUDE.md");
+		const step: InitStep = {
+			name: "Methodology pointer",
+			status: "would-overwrite",
+			category: "methodology",
+			filePath,
+			content: "# AIDE\n\nupdated content\n",
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result.status).toBe("overwritten");
+		expect(result).not.toHaveProperty("content");
+	});
+
+	it("would-overwrite brain file step: content is written to the file at filePath", async () => {
+		const filePath = join(tempDir, "vault", "coding-playbook", "coding-playbook.md");
+		const content = "# Coding Playbook\n\n## Updated Section\n";
+		const step: InitStep = {
+			name: "Playbook hub",
+			status: "would-overwrite",
+			category: "brain",
+			filePath,
+			content,
+		};
+
+		await applySteps([step]);
+
+		const written = await readFile(filePath, "utf-8");
+		expect(written).toBe(content);
+	});
+
+	it("would-overwrite brain file step: returned step has status overwritten and no content field", async () => {
+		const filePath = join(tempDir, "vault", "coding-playbook", "coding-playbook.md");
+		const step: InitStep = {
+			name: "Playbook hub",
+			status: "would-overwrite",
+			category: "brain",
+			filePath,
+			content: "# Coding Playbook\n\nupdated\n",
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result.status).toBe("overwritten");
+		expect(result).not.toHaveProperty("content");
+	});
+
+	it("would-overwrite MCP prescription step: passes through unchanged, nothing written", async () => {
+		const filePath = join(tempDir, ".mcp.json");
+		const prescription = {
+			key: "aide",
+			entry: { command: "npx", args: ["@aidemd-mcp/server"] },
+		};
+		const step: InitStep = {
+			name: "MCP config (aide)",
+			status: "would-overwrite",
+			category: "mcp",
+			filePath,
+			prescription,
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result).toEqual(step);
+		expect(result.prescription).toEqual(prescription);
+		expect(await pathExists(filePath)).toBe(false);
+	});
+
+	it("would-overwrite VS Code IDE step: passes through without writing to disk", async () => {
+		const filePath = join(tempDir, "aide-markdown.vsix");
+		const step: InitStep = {
+			name: "VS Code extension",
+			status: "would-overwrite",
+			category: "ide",
+			filePath,
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result.status).toBe("would-overwrite");
+		expect(result.category).toBe("ide");
+		expect(result.filePath).toBe(filePath);
+		expect(await pathExists(filePath)).toBe(false);
+	});
+
+	it("would-overwrite VS Code IDE step: instructions field is set to the code --install-extension command", async () => {
+		const filePath = join(tempDir, "aide-markdown.vsix");
+		const step: InitStep = {
+			name: "VS Code extension",
+			status: "would-overwrite",
+			category: "ide",
+			filePath,
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result.instructions).toBe(`code --install-extension ${filePath}`);
+	});
+
+	it("mixed would-create and would-overwrite batch: returns matching created and overwritten statuses", async () => {
+		const createFile = join(tempDir, "new-file.md");
+		const overwriteFile = join(tempDir, "existing-file.md");
+
+		const steps: InitStep[] = [
+			{
+				name: "New file",
+				status: "would-create",
+				category: "commands",
+				filePath: createFile,
+				content: "# new\n",
+			},
+			{
+				name: "Existing file",
+				status: "would-overwrite",
+				category: "commands",
+				filePath: overwriteFile,
+				content: "# updated\n",
+			},
+		];
+
+		const results = await applySteps(steps);
+
+		expect(results[0].status).toBe("created");
+		expect(results[0]).not.toHaveProperty("content");
+		expect(await pathExists(createFile)).toBe(true);
+
+		expect(results[1].status).toBe("overwritten");
+		expect(results[1]).not.toHaveProperty("content");
+		expect(await pathExists(overwriteFile)).toBe(true);
+	});
+
+	it("idempotency: overwritten step passes through unchanged when replayed", async () => {
+		const filePath = join(tempDir, "CLAUDE.md");
+		const step: InitStep = {
+			name: "Methodology pointer",
+			status: "overwritten",
+			category: "methodology",
+			filePath,
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result).toEqual(step);
+		expect(await pathExists(filePath)).toBe(false);
+	});
 });

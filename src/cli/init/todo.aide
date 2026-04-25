@@ -1,30 +1,38 @@
 ---
-description: >
-  QA log tracking two test gaps in the init CLI — a platform-branching mcpEntry assertion on non-Windows CI and a missing unit test for installAideTree.
 intent: >
-  Desired outcome D3 (idempotency — all three artifacts already exist) is
-  partially undermined: the orchestrator integration test still uses a
-  platform-branching mcpEntry expectation that disagrees with the simplified
-  mcpEntry() on non-Windows systems. Desired outcome D4 (after the CLI
-  completes, a Claude Code session can invoke the aide MCP tools) is supported
-  by the simplified entry shape — but the test that guards the entry shape in
-  the orchestrator path would produce a false-passing result on Linux/macOS.
-  Additionally, installAideTree has no unit test file, leaving it as the only
-  helper in the installX family without isolated coverage.
+  Four misalignments against outcomes.desired and outcomes.undesired:
+  (1) --vault-path flag introduced without spec sanction — spec's undesired
+  outcome forbids flags beyond --help; (2) deferredCategories() varies by
+  vaultPath — spec's desired outcome requires the three categories are
+  always deferred; (3) exists (byte-identical) entries excluded from the
+  warning — spec's good examples include them in the Skipped files section;
+  (4) 9 test failures caused by deferred-category string mismatch between
+  the test constant and the implementation.
 misalignment:
+  - spec-gap
+  - strategy-gap
+  - implementation-drift
   - test-gap
 ---
 
 ## Issues
 
-- [x] `src/tools/init/index.test.ts` lines 22-24 — `expectedAideMcpEntry` still branches on `platform()`, computing `{ command: "npx", args: ["@aidemd-mcp/server"] }` on non-Windows. `mcpEntry()` now always returns the `cmd /c` form. On Linux/macOS the assertion on line 167 (`expect(mcpStep?.prescription?.entry).toEqual(expectedAideMcpEntry)`) passes by matching the wrong shape — the test silently validates a value that no longer exists. The line 220 fixture also seeds a `cmd /c`-less entry, which could cause the "already exists" detection to behave unexpectedly during test runs on non-Windows CI.
-  Traces to: desired outcome D4 — after the CLI completes, a Claude Code session can invoke the aide MCP tools. The guard that ensures the always-cmd/c entry shape reaches the MCP planner is wrong on non-Windows.
-  Misalignment: test-gap
+- [ ] **src/cli/init/index.ts:237-249 (parseVaultPath) and :276** — `--vault-path` is introduced as a recognized flag but the spec's undesired outcome explicitly states "The only recognized flag is `--help`." No desired outcome in the spec sanctions this flag or the behavior it enables.
+      Traces to: `outcomes.undesired[12]` ("Prompting the user interactively on the happy path — `y/N` gates, conversational questions, or any flag beyond `--help`") | Misalignment: `strategy-gap`
 
-- [x] `src/tools/init/installAideTree/index.test.ts` — file does not exist. `installAideTree` is the only helper in the `installX` family (`scaffoldCommands`, `installAgents`, `installSkills`) without a unit test file. Plan step 7 enumerated 7a–7e but did not include a test for this helper. The behavior — `exists` return when file present, `would-create` with canonical content when absent, `would-skip` when `readCanonicalDoc` throws — is untested at the unit level.
-  Traces to: desired outcome D1 — running the CLI in a project with no existing config creates all three artifacts. The MCP-layer planner for the aide-tree artifact has no isolated coverage.
-  Misalignment: test-gap
+- [ ] **src/cli/init/index.ts:34-43 (deferredCategories)** — When `--vault-path` is supplied, the function returns only 1 deferred category (IDE) rather than the spec's always-3. The spec desired outcome #5 states "Categories that require an inherent user decision — the brain vault path, the `obsidian` MCP server entry that depends on that vault path, and IDE configuration choices — are **always** deferred to the interactive `/aide:init` run inside Claude Code." The spec's strategy paragraph reinforces "regardless of disk state." Reducing the deferred list when a vault path is provided contradicts this invariant.
+      Traces to: `outcomes.desired[5]` | Misalignment: `implementation-drift`
+
+- [ ] **src/cli/init/index.ts:208-210 (warningSkipped filter)** — `exists` (byte-identical) results are excluded from the warning. The spec's good example (second example run) shows every `[exists]` file explicitly listed under `Skipped files (already on disk — not overwritten)` in the warning block: "The five pre-existing files are explicitly named in the warning so the user can investigate whether their on-disk versions are current." The implementation only routes `skipped-drift` and `skipped-missing-canonical` to the warning, silently dropping all `exists` entries from the user-visible summary.
+      Traces to: `outcomes.desired[6]` ("names every file it skipped"), `outcomes.undesired[2]` ("The CLI finishes with files skipped or categories deferred but prints no warning") | Misalignment: `implementation-drift`
+
+- [ ] **src/cli/init/index.test.ts:90-93 (DEFERRED_CATEGORIES constant) — 9 failing tests** — The test constant uses `"Brain vault path"` and `"Obsidian MCP server entry (depends on the vault path above)"` but `deferredCategories()` in the implementation produces `"Vault path — obsidian MCP entry shell is written but the vault path is empty; /aide:init will prompt for it"` and `"Brain vault scaffolding (directories, playbook hub, vault CLAUDE.md) — follows the vault path"`. String mismatch causes 9 assertion failures. Fixing issue #2 above (restoring the always-3 contract) will also require aligning the test constant with whichever wording the implementation settles on.
+      Traces to: `outcomes.desired[9]` (idempotent re-run behavior) | Misalignment: `test-gap`
 
 ## Retro
 
-Both issues are test-gaps that would have been caught earlier at the plan stage if the plan's step 7 had been written as a test checklist per file rather than per scenario. Step 7b said "remove the `platform` import from `wireMcp/index.test.ts`" — it named only that one test file. The parallel platform-branch in `src/tools/init/index.test.ts` was not named and was not updated. A plan step that names the specific assertion to change (not just the file) would have surfaced the omission. The `installAideTree` test gap arose because step 7 listed test files for the CLI-layer helpers (7a–7d) but skipped the MCP-layer counterpart — a consistent pattern would be one test-update item per new or modified helper, regardless of layer.
+Issues 1 and 2 share a single root: the `--vault-path` flag and its downstream effects (the variable deferred list, the new obsidian-entry-with-empty-path behavior) were designed in at the strategy/plan layer without checking whether they were permitted by the spec. The spec's "only `--help`" and "always defer three categories" invariants are explicit and hard — they should have been cross-checked before the flag was introduced. The plan's "Decisions" section documents the planner-reuse rationale in detail but does not mention the flag or justify the deferred-categories reduction against the spec's always-defer contract. A plan-time check against the spec's undesired outcomes would have caught both.
+
+Issue 3 (exists entries excluded from the warning) is a direct plan-level misread: the plan's step 3.8 correctly quotes the spec's good example but then explicitly decides `exists` does NOT go in the warning ("bytes already match canonical so no action is needed"). The spec's good example says the opposite — file list in the warning is for user inspection of which existing files were not updated, not only for files with errors. The plan overrode the spec's example without flagging it as a deliberate departure.
+
+Issue 4 (test string mismatch) is a downstream symptom of issue 2 — fixing issue 2 should resolve it. It would have been caught by any test run before shipping.

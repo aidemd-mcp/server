@@ -62,10 +62,11 @@ describe("writeMcpEntry", () => {
 		expect(parsed.mcpServers.aide).toEqual(mcpEntry());
 	});
 
-	it("returns exists and does not modify the file when aide key is already present", async () => {
+	it("returns exists and does not modify the file when both aide and obsidian keys are present", async () => {
 		const existing = {
 			mcpServers: {
 				aide: { command: "npx", args: ["@aidemd-mcp/server"] },
+				obsidian: { command: "npx", args: ["@modelcontextprotocol/obsidian"] },
 			},
 		};
 		const originalJson = JSON.stringify(existing, null, 2);
@@ -79,10 +80,11 @@ describe("writeMcpEntry", () => {
 		expect(after).toBe(originalJson);
 	});
 
-	it("returns exists when legacy aidemd-mcp key is present (dual-key check)", async () => {
+	it("returns exists when legacy aidemd-mcp key and obsidian are both present (dual-key check)", async () => {
 		const existing = {
 			mcpServers: {
 				"aidemd-mcp": { command: "npx", args: ["@aidemd-mcp/server"] },
+				obsidian: { command: "npx", args: ["@modelcontextprotocol/obsidian"] },
 			},
 		};
 		const originalJson = JSON.stringify(existing, null, 2);
@@ -120,13 +122,14 @@ describe("writeMcpEntry", () => {
 		const result = await writeMcpEntry(tempDir);
 
 		expect(result.status).toBe("created");
-		expect(result.message).toContain("2 existing servers");
+		expect(result.message).toContain("1 existing server");
 	});
 
-	it("created message uses singular when merging with one existing server", async () => {
+	it("created message uses singular when merging with one non-managed existing server", async () => {
 		const existing = {
 			mcpServers: {
 				obsidian: { command: "npx", args: ["@modelcontextprotocol/obsidian"] },
+				github: { command: "npx", args: ["@modelcontextprotocol/github"] },
 			},
 		};
 		await writeFile(

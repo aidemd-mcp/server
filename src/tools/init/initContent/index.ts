@@ -48,7 +48,6 @@ const DOC_PATHS = {
 	"todo-aide": ".aide/docs/todo-aide.md",
 	"commands/aide/synthesize": ".claude/commands/aide/synthesize.md",
 	"commands/aide/upgrade": ".claude/commands/aide/upgrade.md",
-	"commands/aide/init": ".claude/commands/aide/init.md",
 	"commands/aide/update-playbook": ".claude/commands/aide/update-playbook.md",
 	"commands/aide/aide": ".claude/commands/aide.md",
 	"commands/aide/refactor": ".claude/commands/aide/refactor.md",

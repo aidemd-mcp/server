@@ -33,13 +33,20 @@ npx @aidemd-mcp/server@latest init
 
 This command:
 
-- Merges the AIDE MCP server entry into `.mcp.json` (creates the file or skips the entry if already present)
-- Writes the `/aide:init` slash command to `.claude/commands/aide/init.md` (skips if exists)
-- Writes the `aide-tree` launcher to `.aide/bin/aide-tree.mjs` (skips if exists)
+- Merges the AIDE MCP server entry into `.mcp.json`
+- Merges a placeholder Obsidian MCP entry into `.mcp.json` (vault path filled in by `/aide:init`)
+- Writes every pipeline slash command to `.claude/commands/aide/`
+- Installs 9 canonical pipeline agents to `.claude/agents/aide/`
+- Installs skills (`study-playbook`, `brain`) to `.claude/skills/`
+- Installs the methodology docs hub to `.aide/docs/`
+- Writes the `aide-tree` launcher to `.aide/bin/aide-tree.mjs`
+- Adds an AIDE badge to `README.md` (appends if not present)
 
-All operations are idempotent — safe to re-run at any time.
+All operations are additive — files that already exist are never overwritten. Safe to re-run at any time.
 
-After running, open Claude Code and run `/aide:init` to complete setup.
+Pass `--vault-path <path>` to record your Obsidian vault location at install time, skipping the vault-path prompt when `/aide` first runs.
+
+After running, open Claude Code and run `/aide` — the orchestrator will prompt for any setup the cli could not finish (IDE choice, vault path if not supplied).
 
 ### Manual Configuration
 

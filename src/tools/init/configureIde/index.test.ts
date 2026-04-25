@@ -31,7 +31,7 @@ describe("configureZed", () => {
 		expect(settings.file_types.Markdown).toContain("*.aide");
 	});
 
-	it("would-create content preserves existing settings", async () => {
+	it("would-overwrite content preserves existing settings when *.aide is absent", async () => {
 		const existing = {
 			theme: "One Dark",
 			font_size: 14,
@@ -42,7 +42,7 @@ describe("configureZed", () => {
 
 		const result = await configureZed(tempDir);
 
-		expect(result.status).toBe("would-create");
+		expect(result.status).toBe("would-overwrite");
 		const settings = JSON.parse(result.content!);
 		expect(settings.theme).toBe("One Dark");
 		expect(settings.font_size).toBe(14);
@@ -50,7 +50,7 @@ describe("configureZed", () => {
 		expect(settings.file_types.Markdown).toContain("*.aide");
 	});
 
-	it("would-create content preserves existing Markdown file_types", async () => {
+	it("would-overwrite content preserves existing Markdown file_types when *.aide is absent", async () => {
 		const existing = {
 			file_types: { Markdown: ["*.mdx", "*.mdoc"] },
 		};
@@ -59,21 +59,38 @@ describe("configureZed", () => {
 
 		const result = await configureZed(tempDir);
 
+		expect(result.status).toBe("would-overwrite");
 		const settings = JSON.parse(result.content!);
 		expect(settings.file_types.Markdown).toEqual(["*.mdx", "*.mdoc", "*.aide"]);
 	});
 
-	it("returns exists when *.aide is already in Markdown file_types", async () => {
-		const existing = {
-			file_types: { Markdown: ["*.aide"] },
-		};
+	it("returns exists when *.aide is already in Markdown file_types and file bytes match patched output", async () => {
+		// Write the file at exactly the canonical patched bytes so compareBytes returns "would-skip" → "exists".
+		const settings = { file_types: { Markdown: ["*.aide"] } };
+		const canonical = JSON.stringify(settings, null, 2) + "\n";
 		await mkdir(join(tempDir, ".zed"), { recursive: true });
-		await writeFile(join(tempDir, ".zed", "settings.json"), JSON.stringify(existing), "utf-8");
+		await writeFile(join(tempDir, ".zed", "settings.json"), canonical, "utf-8");
 
 		const result = await configureZed(tempDir);
 
 		expect(result.status).toBe("exists");
 		expect(result.content).toBeUndefined();
+	});
+
+	it("returns would-overwrite when *.aide is already present but file bytes differ from patched output", async () => {
+		// Drift: file is compact JSON (no indentation), but configureZed always produces
+		// pretty-printed output (JSON.stringify with 2-space indent + trailing newline).
+		// The content is logically identical but the bytes differ → would-overwrite.
+		const stale = { file_types: { Markdown: ["*.aide"] } };
+		await mkdir(join(tempDir, ".zed"), { recursive: true });
+		await writeFile(join(tempDir, ".zed", "settings.json"), JSON.stringify(stale), "utf-8");
+
+		const result = await configureZed(tempDir);
+
+		expect(result.status).toBe("would-overwrite");
+		expect(result.content).toBeTruthy();
+		const settings = JSON.parse(result.content!);
+		expect(settings.file_types.Markdown).toContain("*.aide");
 	});
 
 	it("returns would-skip when settings.json contains invalid JSON", async () => {

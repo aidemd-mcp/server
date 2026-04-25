@@ -1,21 +1,28 @@
 ---
 description: >
-  QA log tracking the spec-gap where src/.aide enumerates five tools but the server ships six (aide_upgrade missing from the tool-surface enumeration).
+  QA log for src/index.ts and src/types/index.ts against src/.aide — two unregistered tools (aide_info, aide_inspect) absent from the spec's tool-surface enumeration, same spec-gap class as the prior closed issue.
 intent: >
-  src/.aide outcomes.desired[0] enumerates five MCP tools but the server
-  ships six (aide_upgrade exists as a full tool with its own spec and
-  implementation). The tool-surface description contradicts reality.
+  src/.aide outcomes.desired[0] enumerates six lifecycle tools (discover, read,
+  scaffold, validate, init, upgrade). The server registers eight: the six plus
+  aide_info and aide_inspect. Neither of the additional tools is named in the spec,
+  and no outcome justifies their presence or shows the responsibility could not be
+  absorbed by an existing tool. The spec also warns explicitly against adding tools
+  whose responsibility "didn't quite fit" an existing tool.
 misalignment:
   - spec-gap
 ---
 
 ## Issues
 
-- [x] `src/.aide` outcomes.desired[0]: "The tool surface covers the full AIDE lifecycle -- discover (map), read (drill in), scaffold (create with naming enforcement), validate (health check), init (one-command bootstrap). Each tool covers a distinct lifecycle phase with no overlap between them."
-  The server ships six tools, not five. aide_upgrade exists at src/tools/upgrade/ with its own .aide spec, plan.aide, and full implementation. The five-tool enumeration omits upgrade entirely. This is not a case of a redundant tool -- the root spec (.aide/intent.aide) acknowledges two delivery channels and aide_upgrade serves a distinct lifecycle phase (bring stale host projects up to date) that no other tool covers.
-  Traces to: .aide/intent.aide -> outcomes.desired[1] (two delivery channels, each with one clear job -- upgrade is part of the init channel's lifecycle)
+- [x] `src/.aide` outcomes.desired[0]: prior issue — spec enumerated five tools, server shipped six (aide_upgrade missing).
+  Resolved: src/.aide was updated to enumerate upgrade as the sixth lifecycle phase.
+  Traces to: outcomes.desired[0]
+  Misalignment: spec-gap
+
+- [ ] `src/index.ts` lines 17–18, 148–196: `aide_info` and `aide_inspect` are registered and fully described in the handshake but are absent from `src/.aide` outcomes.desired[0]'s tool-surface enumeration. The spec states: "Each tool covers a distinct lifecycle phase with no overlap between them" and the undesired block explicitly warns against tools added because a responsibility "didn't quite fit" an existing tool. Neither aide_info nor aide_inspect is named in the spec, and no outcome text justifies why they cannot be absorbed or explains what distinct lifecycle phase each covers. The spec's tool-surface enumeration has drifted behind the implementation a second time.
+  Traces to: outcomes.desired[0] (tool surface must cover full AIDE lifecycle with no overlap), outcomes.undesired[6] (tool added because responsibility didn't fit, when it could be absorbed — or in this case, when no spec rationale exists at all)
   Misalignment: spec-gap
 
 ## Retro
 
-The aide_upgrade tool was added after src/.aide was written, and the spec's tool enumeration was not updated. Any commit that adds a new tool directory under src/tools/ should trigger an update to src/.aide's tool-surface outcome. The spec-writer should have run aide_discover to check whether the parent spec's enumeration still matched reality after the upgrade tool was introduced.
+The same drift pattern recurred: a tool was added to the registered surface without updating `src/.aide`'s tool-surface outcome. The prior issue introduced a fix for aide_upgrade but did not introduce a process gate to prevent the same gap for future tools. Any commit that adds a new `case` to the `CallToolRequestSchema` handler in `src/index.ts` should trigger a review of `src/.aide` outcomes.desired[0] to confirm the enumeration still matches. The spec-writer should run `aide_discover` on the tools/ subtree after any tool addition and verify the parent outcome still covers what's shipped.

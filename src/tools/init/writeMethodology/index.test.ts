@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import writeMethodology from "./index.js";
+import writeMethodology, { composeStub } from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const METHODOLOGY_ROOT = join(REPO_ROOT, ".aide", "docs");
@@ -61,14 +61,52 @@ describe("writeMethodology", () => {
 		expect(result.content).toContain("<!-- aide-methodology -->");
 	});
 
-	it("returns exists when marker is already present", async () => {
+	it("returns exists when marker is already present with identical stub body", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
-		await writeFile(configPath, "<!-- aide-methodology -->\nfoo\n<!-- aide-methodology -->\n");
+		const canonical = composeStub(HUB_DIR);
+		await writeFile(configPath, `# Preamble\n\n${canonical}\n`, "utf-8");
 
 		const result = await writeMethodology(configPath, HUB_DIR);
 
 		expect(result.status).toBe("exists");
 		expect(result.content).toBeUndefined();
+	});
+
+	it("returns would-overwrite when marker is present but stub body has drifted", async () => {
+		const configPath = join(tempDir, "CLAUDE.md");
+		const canonical = composeStub(HUB_DIR);
+		const drifted = canonical.replace("AIDE — Autonomous Intent-Driven Engineering", "AIDE — Old Name");
+		const preamble = "# My Project\n\nSome content.\n\n";
+		await writeFile(configPath, `${preamble}${drifted}\n`, "utf-8");
+
+		const result = await writeMethodology(configPath, HUB_DIR);
+
+		expect(result.status).toBe("would-overwrite");
+		expect(result.content).toBeDefined();
+		// The drifted heading must be gone
+		expect(result.content).not.toContain("AIDE — Old Name");
+		// The canonical heading must be present
+		expect(result.content).toContain("AIDE — Autonomous Intent-Driven Engineering");
+		// Preamble must be preserved
+		expect(result.content).toContain("Some content.");
+	});
+
+	it("would-overwrite content has the drifted block replaced in-place", async () => {
+		const configPath = join(tempDir, "CLAUDE.md");
+		const canonical = composeStub(HUB_DIR);
+		const drifted = canonical.replace("aide_upgrade", "aide_update_STALE");
+		const trailer = "\n\n# Trailer section\n";
+		await writeFile(configPath, `${drifted}${trailer}`, "utf-8");
+
+		const result = await writeMethodology(configPath, HUB_DIR);
+
+		expect(result.status).toBe("would-overwrite");
+		// Trailer must be preserved after the stub
+		expect(result.content).toContain("# Trailer section");
+		// Stale text must be gone
+		expect(result.content).not.toContain("aide_update_STALE");
+		// Canonical stub must be there
+		expect(result.content).toContain(canonical);
 	});
 
 	it("does not ship the full canonical methodology body in content", async () => {

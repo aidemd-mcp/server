@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm, access } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir, platform } from "node:os";
 import init from "./index.js";
 import applySteps from "./applySteps/index.js";
+import { composeStub } from "./writeMethodology/index.js";
 import type { InitResult, InitStep } from "@/types/index.js";
 
 /** Check if a path exists on disk. */
@@ -218,13 +219,15 @@ describe("init — structured JSON result", () => {
 	});
 
 	it("idempotency — re-running on initialized content returns exists steps", async () => {
-		// Write some files that detectFramework and helper checks look at
+		// Write the canonical methodology stub (byte-identical to what writeMethodology produces)
+		// so the pointer step reports 'exists' rather than 'would-overwrite'.
+		const canonicalStub = composeStub(".aide/docs");
 		await mkdir(join(tempDir, ".claude"));
 		await mkdir(join(tempDir, ".claude", "commands", "aide"), { recursive: true });
-		await writeFile(join(tempDir, "CLAUDE.md"), "<!-- aide-methodology -->\n\nfoo\n\n<!-- aide-methodology -->\n");
+		await writeFile(join(tempDir, "CLAUDE.md"), `${canonicalStub}\n`);
 		await writeFile(join(tempDir, ".mcp.json"), JSON.stringify({ mcpServers: { aide: expectedAideMcpEntry } }));
 
-		// After writing the methodology marker, pointer should be exists
+		// After writing the canonical stub, pointer should be exists
 		const result = await init(tempDir);
 
 		const pointer = findStep(result, "Methodology pointer");
@@ -446,6 +449,141 @@ describe("init — apply mode (category call)", () => {
 				.map((s) => pathExists(s.filePath)),
 		);
 		expect(anyFileWritten.every((exists) => !exists)).toBe(true);
+	});
+});
+
+describe("init — would-overwrite and silent-create invariants", () => {
+	it("drifted command file: that step is would-overwrite, all other canonical steps are exists or would-create", async () => {
+		// Apply a full init run first to populate all files, then corrupt one command file.
+		const brainPath = join(tempDir, "brain");
+		const firstRun = await init(tempDir, undefined, undefined, brainPath);
+		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
+
+		// Corrupt research.md to simulate hand-editing
+		const commandDir = join(tempDir, ".claude", "commands");
+		await writeFile(join(commandDir, "aide", "research.md"), "# my custom research\n", "utf-8");
+
+		const result = await init(tempDir, undefined, undefined, brainPath);
+		const commandSteps = stepsForCategory(result, "commands");
+
+		const drifted = commandSteps.find((s) => s.name === "aide:research");
+		expect(drifted?.status).toBe("would-overwrite");
+		expect(drifted?.content).toBeTruthy();
+
+		// Every other command step must be 'exists' (was just applied byte-identical)
+		const others = commandSteps.filter((s) => s.name !== "aide:research");
+		for (const step of others) {
+			expect(step.status, `expected ${step.name} to be exists`).toBe("exists");
+		}
+	});
+
+	it("fully-initialized project: every canonical-owned step is exists", async () => {
+		// Apply all steps (brain included) to get a fully initialized state.
+		const brainPath = join(tempDir, "brain");
+		const firstRun = await init(tempDir, undefined, undefined, brainPath);
+		// Apply all non-MCP steps (MCP is a prescription, not written to disk)
+		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
+
+		// Write the canonical MCP config so wireMcp returns exists
+		await writeFile(
+			join(tempDir, ".mcp.json"),
+			JSON.stringify({ mcpServers: { aide: expectedAideMcpEntry } }),
+		);
+
+		const result = await init(tempDir, undefined, undefined, brainPath);
+
+		// None of the file-writing categories should have would-create or would-overwrite
+		const fileCategories = ["methodology", "commands", "agents", "skills", "brain"] as const;
+		for (const category of fileCategories) {
+			const steps = stepsForCategory(result, category);
+			for (const step of steps) {
+				expect(step.status, `${category} / ${step.name} should be exists or would-skip`).toMatch(
+					/^(exists|would-skip)$/,
+				);
+			}
+		}
+
+		// No would-create or would-overwrite among canonical-owned categories
+		const badStatuses = result.steps
+			.filter((s) => fileCategories.includes(s.category as (typeof fileCategories)[number]))
+			.filter((s) => s.status === "would-create" || s.status === "would-overwrite");
+		expect(badStatuses).toHaveLength(0);
+	});
+
+	it("apply mode on drifted category: overwritten status, content stripped, disk bytes match canonical", async () => {
+		// Full init + apply to set a clean baseline.
+		const brainPath = join(tempDir, "brain");
+		const firstRun = await init(tempDir, undefined, undefined, brainPath);
+		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
+
+		// Corrupt one command file.
+		const commandDir = join(tempDir, ".claude", "commands");
+		const driftedPath = join(commandDir, "aide", "spec.md");
+		await writeFile(driftedPath, "# my custom spec\n", "utf-8");
+
+		// Plan again — commands category should have one would-overwrite.
+		const secondRun = await init(tempDir, undefined, undefined, brainPath);
+		const commandSteps = secondRun.steps.filter((s) => s.category === "commands");
+
+		const drifted = commandSteps.find((s) => s.name === "aide:spec");
+		expect(drifted?.status).toBe("would-overwrite");
+		expect(drifted?.content).toBeTruthy();
+
+		// Apply the commands category.
+		const manifest = await applySteps(commandSteps);
+
+		const overwritten = manifest.find((s) => s.name === "aide:spec");
+		expect(overwritten?.status).toBe("overwritten");
+		expect(overwritten).not.toHaveProperty("content");
+
+		// Disk bytes must now match canonical (re-plan returns exists).
+		const thirdRun = await init(tempDir, undefined, undefined, brainPath);
+		const afterApply = thirdRun.steps.find((s) => s.name === "aide:spec");
+		expect(afterApply?.status).toBe("exists");
+	});
+
+	it("drifted versions.json: step is would-overwrite with content populated", async () => {
+		// Write a stale/different versions.json to simulate an older canonical manifest on disk.
+		const versionsDir = join(tempDir, ".aide");
+		await mkdir(versionsDir, { recursive: true });
+		await writeFile(join(versionsDir, "versions.json"), JSON.stringify({ stale: true }, null, 2) + "\n", "utf-8");
+
+		const result = await init(tempDir);
+
+		const versionsStep = findStep(result, "versions.json");
+		expect(versionsStep).toBeDefined();
+		expect(versionsStep?.status).toBe("would-overwrite");
+		expect(versionsStep?.content).toBeTruthy();
+	});
+
+	it("byte-identical versions.json: step is exists with no content", async () => {
+		// Apply a full init to get the byte-identical versions.json on disk.
+		const brainPath = join(tempDir, "brain");
+		const firstRun = await init(tempDir, undefined, undefined, brainPath);
+		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
+
+		const result = await init(tempDir, undefined, undefined, brainPath);
+
+		const versionsStep = findStep(result, "versions.json");
+		expect(versionsStep).toBeDefined();
+		expect(versionsStep?.status).toBe("exists");
+		expect(versionsStep?.content).toBeUndefined();
+	});
+
+	it("pure-create run (fresh tempDir, brainPath supplied): no would-overwrite statuses", async () => {
+		const brainPath = join(tempDir, "brain");
+		const result = await init(tempDir, undefined, undefined, brainPath);
+
+		const overwriteSteps = result.steps.filter((s) => s.status === "would-overwrite");
+		expect(overwriteSteps).toHaveLength(0);
+
+		// Every non-exists, non-would-skip, non-MCP step must be would-create
+		const fileSteps = result.steps.filter(
+			(s) => s.category !== "mcp" && s.status !== "exists" && s.status !== "would-skip",
+		);
+		for (const step of fileSteps) {
+			expect(step.status, `${step.category} / ${step.name} should be would-create on cold start`).toBe("would-create");
+		}
 	});
 });
 

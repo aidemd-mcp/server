@@ -1,210 +1,333 @@
 ---
-description: >
-  Add apply mode to aide_init so category calls write would-create files to disk
-  and return a manifest, and fix the sentinel brain path collision.
 intent: >
-  Add "apply mode" to aide_init: when called with a `category` parameter,
-  the tool writes all would-create files to disk itself and returns a
-  lightweight manifest (no content). Fix the sentinel brain path collision
-  (todo.aide issue 7) and add test coverage for it (issue 8).
+  Refine init's confirmation model to silent-on-create, prompt-on-overwrite.
+  Introduce a fourth status `would-overwrite` computed by byte comparison, add
+  `"overwritten"` to the apply manifest, and update every category helper plus
+  the orchestrator prompt so pure-create categories apply silently while
+  overwrite-bearing categories pause with AskUserQuestion.
 ---
+
+## Project Structure
+
+The tree below is the proposed state of `src/tools/init/` after this plan
+executes. Files marked `[NEW]` are added by this plan; unmarked files already
+exist and receive modifications listed in `## Plan`. The `/aide:init`
+orchestrator prompt lives at `.claude/commands/aide/init.md` — outside this
+scope directory — so it is declared in `## Prerequisites`, not in the tree.
+
+```
+src/tools/init/
+├── .aide                                 ← intent spec (just rewritten)
+├── plan.aide                             ← this file
+├── todo.aide                             ← existing QA retro (not re-touched)
+├── index.ts                              ← orchestrator: init(root, framework?, path?, brainPath?) => Promise<InitResult>
+├── index.test.ts                         ← orchestrator tests (existing + new would-overwrite/silent-apply cases)
+├── doctrineLiterals.test.ts              ← existing cross-cutting regression guard (untouched)
+├── applySteps/
+│   ├── index.ts                          ← (steps: InitStep[]) => Promise<InitStep[]>  — writes "would-create" AND approved "would-overwrite", returns "created" / "overwritten" / passthrough
+│   └── index.test.ts                     ← existing tests + new "would-overwrite" → "overwritten" cases
+├── shared/
+│   └── compareBytes/                     ← [NEW] sibling-shared byte-compare helper used by every category helper
+│       ├── index.ts                      ← [NEW] (filePath: string, canonicalBytes: string) => Promise<"would-create" | "would-skip" | "would-overwrite">
+│       └── index.test.ts                 ← [NEW] unit tests for the three branches
+├── detectFramework/
+│   ├── index.ts                          ← (root: string, framework?: FrameworkType) => Promise<FrameworkConfig>  (unchanged — framework is inherent-decision, no file-write status)
+│   └── index.test.ts
+├── resolveBrainHints/
+│   ├── index.ts                          ← (projectRoot: string) => Promise<BrainHint[]>  (unchanged)
+│   └── index.test.ts
+├── initContent/
+│   ├── .aide
+│   ├── index.ts                          ← (unchanged) canonical-name → bytes registry
+│   └── index.test.ts
+├── installMethodologyDocs/
+│   ├── .aide
+│   ├── index.ts                          ← (docHubDir, displayPrefix?) => Promise<InitStep[]>  — MODIFIED: uses compareBytes to emit would-overwrite
+│   └── index.test.ts                     ← MODIFIED: new would-overwrite / would-skip cases
+├── writeMethodology/
+│   ├── .aide
+│   ├── index.ts                          ← (configPath, docHubDir) => Promise<InitStep>  — MODIFIED: marker-present-but-drifted → would-overwrite
+│   └── index.test.ts                     ← MODIFIED: drift case added
+├── scaffoldCommands/
+│   ├── .aide
+│   ├── todo.aide
+│   ├── index.ts                          ← (commandDir: string) => Promise<InitStep[]>  — MODIFIED: per-file byte-compare via compareBytes
+│   └── index.test.ts                     ← MODIFIED: would-overwrite case
+├── installAgents/
+│   ├── .aide
+│   ├── plan.aide
+│   ├── todo.aide
+│   └── index.ts                          ← (agentDir, displayPrefix?) => Promise<InitStep[]>  — MODIFIED: per-file byte-compare
+├── installSkills/
+│   └── index.ts                          ← (skillDir, displayPrefix?) => Promise<InitStep[]>  — MODIFIED: per-file byte-compare
+├── installAideTree/
+│   ├── index.ts                          ← (projectRoot: string) => Promise<InitStep[]>  — MODIFIED: per-file byte-compare for aide-tree.mjs
+│   └── index.test.ts
+├── configureIde/
+│   ├── .aide
+│   ├── index.ts                          ← exports configureZed(projectRoot) and configureVscode(extensionsDir)  — MODIFIED: Zed canonical-bytes path can emit would-overwrite
+│   └── index.test.ts
+├── wireMcp/
+│   ├── index.ts                          ← (mcpConfigPath: string) => Promise<InitStep>  (unchanged — MCP is inherent-decision, status stays would-create with prescription)
+│   └── index.test.ts
+├── provisionBrain/
+│   ├── .aide
+│   ├── plan.aide
+│   ├── todo.aide
+│   ├── index.ts                          ← (brainPath, mcpConfigPath) => Promise<InitStep[]>  — MODIFIED: playbook hub + vault CLAUDE.md use compareBytes
+│   └── index.test.ts
+└── scaffoldReadme/
+    ├── .aide
+    ├── plan.aide
+    ├── index.ts                          ← (projectRoot: string) => Promise<InitStep>  (unchanged — README badge detection is a substring check, not a full-bytes compare)
+    ├── index.test.ts
+    ├── deriveProjectName/
+    │   └── index.ts                      ← (projectRoot: string) => Promise<string>
+    └── insertBadge/
+        └── index.ts                      ← (content: string) => string
+```
+
+## Prerequisites
+
+This plan's file changes are all inside `src/tools/init/` except for the
+orchestrator prompt, which belongs to a separate scope. The orchestrator
+prompt update is part of this intent shift but the file lives outside the
+plan's scope directory, so it is declared here and executed as a sibling
+plan before (or alongside) this one.
+
+- `.claude/commands/aide/init.md` must be updated to the new branch logic
+  before a user-facing release is cut. Contract this plan consumes from the
+  prompt: the agent calls `aide_init` without `category` first, inspects
+  each category's step statuses, silently calls `aide_init` with
+  `category=X` for pure-create categories (only `would-create` /
+  `would-skip` / `exists` statuses), uses `AskUserQuestion` for categories
+  that contain any `would-overwrite` step or for inherent decisions
+  (framework, brain path, MCP merge, IDE choice). If that file is not
+  updated in lockstep, the host agent will still ask per-category on
+  cold-start — the tool contract below stays correct but the UX regression
+  the spec exists to remove will persist. Produce the companion plan for
+  that file as its own `plan.aide` (single-module-scoping rule) before
+  this plan's step 9 runs.
 
 ## Plan
 
-### Phase 1 — Type changes
+### 1. Extend type unions for the four-status planning enum and overwritten manifest status
 
-- [x] **1.1 Add `"created"` to `InitStepStatus` in `src/types/index.ts`.**
-  The union becomes `"would-create" | "would-skip" | "exists" | "created"`.
-  `"created"` is the status returned when the tool has written a file to disk
-  during a category call. This is the only type change needed — `InitStep`
-  already has the right shape; the new status is additive.
+Read:
+- `coding-playbook/workflow/type-system` — string literal unions for domain values, discriminated additions
+- `coding-playbook/foundations/conventions` — JSDoc-every-function, name by verb/role
 
-- [x] **1.2 Add `brainPath` to `InitInput` Zod schema in `src/tools/init/index.ts`.**
-  Add `brainPath: z.string().optional().describe("Resolved brain vault path for the brain category. The agent provides this after interviewing the user.")`.
-  This parameter is required only when `category` is `"brain"` — the agent
-  passes the user-confirmed vault path so the tool can write scaffolding.
+- [x] 1a. In `src/types/index.ts`, extend `InitStepStatus` to include `"would-overwrite"` and `"overwritten"`. Final union: `"would-create" | "would-skip" | "would-overwrite" | "exists" | "created" | "overwritten"`. Update the JSDoc above the type to explain that `"would-overwrite"` is a planning outcome (target path exists but bytes differ from canonical — the agent must prompt the user) and `"overwritten"` is an execution outcome returned by `applySteps` after the tool has written approved overwrites during a category call.
+- [x] 1b. Update the JSDoc on `InitStep.content` to clarify that `content` is present for both `"would-create"` AND `"would-overwrite"` file steps, and absent for `"would-skip"` / `"exists"` steps. (Planning helpers must carry the canonical bytes for overwrites too, so `applySteps` can write them when the agent proceeds.)
+- [x] 1c. No change required to `InitCategory`. (Spec `outcomes.undesired[14]` warns about `InitCategory`/`UpgradeCategory` drift. This plan does not add a new category; the existing category lists stay in lockstep. Record this in Decisions.)
 
-### Phase 2 — Write-to-disk helper
+### 2. Create the shared byte-compare helper
 
-- [x] **2.1 Create `src/tools/init/applySteps/index.ts`.**
-  Export default function `applySteps(steps: InitStep[]): Promise<InitStep[]>`.
-  For each step in the input array:
-  - If `status` is `"would-create"` and `content` is present: create parent
-    directories with `mkdir(dirname(filePath), { recursive: true })`, write
-    `content` to `filePath` via `writeFile`, return the step with `status`
-    changed to `"created"` and `content` removed.
-  - If `status` is `"would-create"` and the step is a brain vault step
-    (category `"brain"`): parse the `content` JSON array of directory names,
-    create each directory under `filePath` with `mkdir(recursive: true)`,
-    return with `status: "created"` and `content` removed.
-  - If `status` is `"exists"`, `"would-skip"`, or the step is an MCP
-    prescription (has `prescription` field): pass through unchanged. MCP
-    steps are never written by this helper — the agent merges prescriptions.
-  - If `status` is `"would-create"` and the step is an IDE VS Code step
-    (category `"ide"`, name contains "VS Code"): pass through unchanged with
-    an `instructions` field set to the `code --install-extension` command.
-    The agent executes this via shell.
-  The function never strips the `prescription` field — MCP steps keep their
-  prescription so the agent can still merge.
-  JSDoc explains that this is the "apply mode" writer — it turns plans into
-  disk state and returns the manifest the agent reports to the user.
+Read:
+- `coding-playbook/foundations/conventions` — aggressive modularization, folder-name-is-function-name, JSDoc-on-every-function
+- `coding-playbook/architecture/folder-structure` — shared-submodules-within-a-domain escalation path
 
-### Phase 3 — Orchestrator changes
+- [x] 2a. Create `src/tools/init/shared/compareBytes/index.ts` with a default-exported async function `compareBytes(filePath: string, canonicalBytes: string): Promise<"would-create" | "would-skip" | "would-overwrite">`. Contract: stat/read `filePath`; return `"would-create"` when the file does not exist (ENOENT), `"would-skip"` when the file exists and its bytes are byte-identical to `canonicalBytes`, `"would-overwrite"` when the file exists and its bytes differ. Non-ENOENT read errors propagate. The return type uses only the three planning statuses that map from disk state; callers convert a matching file into `"exists"` or `"would-skip"` depending on their semantics (see step 3 and per-helper rationale in Decisions).
+- [x] 2b. Create `src/tools/init/shared/compareBytes/index.test.ts` with Vitest unit tests: missing file returns `"would-create"`; matching bytes return `"would-skip"`; differing bytes return `"would-overwrite"`; non-ENOENT errors (simulate with a directory at the path) rethrow. Co-locate per playbook convention. Use a temp directory per test (`mkdtemp` / `rm -r`) following the pattern already used in `applySteps/index.test.ts`.
 
-- [x] **3.1 Update init orchestrator signature in `src/tools/init/index.ts`.**
-  Add `brainPath?: string` as a fourth parameter to the `init` function.
-  When `brainPath` is provided, pass it to `provisionBrain` instead of using
-  the first brain hint. When `brainPath` is not provided and hints exist,
-  continue using `brainHints[0].path` for the planning check. When neither
-  is available, continue returning placeholder brain steps with empty
-  `filePath`.
+### 3. Wire `installMethodologyDocs` through `compareBytes`
 
-- [x] **3.2 Remove the sentinel brain path logic from the orchestrator.**
-  Currently when `brainHints` is empty, the orchestrator creates placeholder
-  steps with `filePath: ""`. This is correct. The old plan's issue 7 was
-  about a sentinel `join(projectRoot, "my-brain")` — that code has already
-  been replaced with the empty-string placeholder. Verify the placeholder
-  pattern is still in place and that no code path passes a fabricated path
-  to `provisionBrain`. If the empty-string pattern is intact, this step is
-  a verification-only no-op.
+Read:
+- `coding-playbook/foundations/conventions` — orchestrator/helper pattern, variable naming (`const status = await compareBytes(...)`)
+- `coding-playbook/workflow/testing` — co-located Vitest, factory functions, parameterized tests
 
-### Phase 4 — MCP handler changes
+- [x] 3a. Modify `src/tools/init/installMethodologyDocs/index.ts`: replace the `fileExists`-only branch with a call to `compareBytes(targetPath, canonicalContent)`. Map the three returned statuses to `InitStep.status` as follows — `"would-create"` → step with `status: "would-create"` and `content` populated; `"would-skip"` → step with `status: "exists"` (canonical bytes already on disk, nothing to do — semantically "exists" for this category since methodology docs are content the tool installs); `"would-overwrite"` → step with `status: "would-overwrite"` and `content` populated (agent needs the bytes to pass to `applySteps` on approval). A failing `readCanonicalDoc` still returns `"would-skip"` (no canonical to compare against — degrade gracefully, unchanged behavior). The helper still never writes to disk. Remove the now-unused `fileExists` if no other call site remains.
+- [x] 3b. Update `src/tools/init/installMethodologyDocs/index.test.ts` to add cases for the new branches: drifted doc on disk produces `would-overwrite` with `content`; byte-identical doc on disk produces `exists`; missing doc still produces `would-create` with `content`. Use factory functions to build the expected `InitStep` shapes; prefer parameterized `it.each` where the same assertion shape repeats across the doc list.
 
-- [x] **4.1 Update the `aide_init` handler in `src/index.ts` to apply steps
-  when `category` is provided.**
-  Import `applySteps` from `@/tools/init/applySteps/index.js`.
-  In the `aide_init` case, after calling `init()`:
-  - When `parsed.category` is present: filter steps to that category (as
-    today), then pipe the filtered steps through `applySteps`. Replace
-    `result.steps` with the returned manifest. Do NOT strip content —
-    `applySteps` already removes it from written steps.
-  - When `parsed.category` is absent: strip content as today (metadata-only
-    summary).
-  Pass `parsed.brainPath` through to `init()` as the fourth argument.
+### 4. Wire `writeMethodology` (pointer stub) through drift detection
 
-- [x] **4.2 Update the `aide_init` tool description in `src/index.ts`.**
-  Rewrite the description to reflect apply mode. Key changes to the
-  description text:
-  - Second call (with `category`): "The tool writes all would-create files
-    to disk and returns a manifest — steps with `filePath`, `status`
-    (`created` or `exists`), and `name`, but NO `content`. The agent never
-    sees file content and never uses the Write tool for new files."
-  - MCP exception: "For MCP steps, the manifest includes `prescription`
-    data so the agent can read the existing config, merge, and write."
-  - Brain category: "When calling with `category=brain`, also pass
-    `brainPath` with the user-confirmed vault path."
-  - IDE exception: "IDE steps that need external tooling (VS Code CLI)
-    return instructions for the agent to execute."
-  - Remove all instructions about using the Write tool per file — the tool
-    now handles writing. Keep the instruction about MCP config merging.
+Read:
+- `coding-playbook/foundations/conventions` — JSDoc explains why the function exists
+- `coding-playbook/workflow/testing` — mock-free temp-directory integration style already used in this module
 
-- [x] **4.3 Update the `inputSchema` for `aide_init` in `src/index.ts`.**
-  Add `brainPath` to the schema properties:
-  ```
-  brainPath: {
-    type: "string",
-    description: "Resolved brain vault path. Required when category=brain. The agent provides this after interviewing the user."
-  }
-  ```
+- [x] 4a. Modify `src/tools/init/writeMethodology/index.ts`: the current logic only checks whether the marker is present — it reports `exists` whenever the marker appears, even if the stub body inside the marker has drifted. Extend the logic: when the marker is absent, keep returning `status: "would-create"` with the composed stub appended. When the marker is present, extract the bytes between the marker pair and compare them to `composeStub(docHubDir)` using `compareBytes`'s byte-compare semantics (inline or via a small helper — the marker-aware extraction is not generic enough to live in `shared/compareBytes`). If identical, return `status: "exists"`. If drifted, return `status: "would-overwrite"` with `content` set to the full file contents with the drifted stub replaced in-place (so `applySteps` can write the whole file). Keep `composeStub` as a named export — upgrade's `spliceStub` continues to consume it.
+- [x] 4b. Update `src/tools/init/writeMethodology/index.test.ts` with a new case: host file contains marker + drifted stub body → returns `would-overwrite` with `content` that has the drifted body replaced by the canonical stub; host file contains marker + identical stub body → returns `exists`; host file missing → still `would-create`.
 
-### Phase 5 — Tests
+### 5. Wire `scaffoldCommands`, `installAgents`, `installSkills`, `installAideTree` through `compareBytes`
 
-- [x] **5.1 Create `src/tools/init/applySteps/index.test.ts`.**
-  Test cases:
-  - `would-create` file step: file is written to disk, returned step has
-    `status: "created"` and no `content` field.
-  - `would-create` brain vault step: directories listed in `content` JSON
-    are created under `filePath`, returned step has `status: "created"`.
-  - `exists` step: passes through unchanged, nothing written.
-  - `would-skip` step: passes through unchanged.
-  - MCP prescription step (`would-create` with `prescription`): passes
-    through unchanged, `prescription` preserved, nothing written.
-  - IDE VS Code step: passes through unchanged (not written by tool).
-  - Parent directory creation: step targeting a deeply nested path creates
-    all intermediate directories.
-  - Idempotency: applying the same steps twice does not fail (files already
-    exist on second run).
-  Use a temp directory per test. Co-locate test next to source per playbook
-  convention.
+Read:
+- `coding-playbook/foundations/conventions` — helpers as subfolders, JSDoc on every export
+- `coding-playbook/architecture/folder-structure` — shared submodules at nearest common ancestor
 
-- [x] **5.2 Add integration test for category call in
-  `src/tools/init/index.test.ts`.**
-  New `describe` block: "init — apply mode (category call)". Test cases:
-  - Call init, filter to "commands" category, pipe through `applySteps`:
-    all command files exist on disk after apply, returned steps have
-    `status: "created"` and no `content`.
-  - Call init with `category: "brain"` and a `brainPath`: vault directories
-    are created, brain step has `status: "created"`.
-  - MCP steps in a category call: `prescription` is preserved in the
-    returned manifest.
-  - Summary call (no category): no files are written, steps have `content`
-    stripped.
+- [x] 5a. Modify `src/tools/init/scaffoldCommands/index.ts`: for each entry in `COMMANDS`, call `compareBytes(filePath, canonicalContent)` and map the result as in step 3a (match → `exists`, differ → `would-overwrite` with `content`, missing → `would-create` with `content`; canonical read failure → `would-skip`). Keep `COMMANDS` exported (upgrade consumes it). Update `src/tools/init/scaffoldCommands/index.test.ts` with the new `would-overwrite` case plus the byte-match-after-install → `exists` case. The partial-overwrite example in the spec (eleven `would-skip`/`exists` + one `would-overwrite` in the `commands` category) has a test counterpart here: build a test where one canonical doc is pre-written to disk with a byte modification and assert the matching step comes back as `would-overwrite`.
+- [x] 5b. Modify `src/tools/init/installAgents/index.ts` and `src/tools/init/installSkills/index.ts` the same way — each iterates a listed set of canonical files; replace the `fileExists` fast-path with `compareBytes`, map the three returned statuses to `exists` / `would-overwrite` / `would-create`. `installSkills` has no co-located test file today — add `src/tools/init/installSkills/index.test.ts` covering the three outcomes. Add a drift test to `src/tools/init/installAgents/index.test.ts` if one exists; if not, add the file with the same shape as the new `installSkills` test.
+- [x] 5c. Modify `src/tools/init/installAideTree/index.ts`: single canonical file (`aide-tree.mjs`) — replace `fileExists` with `compareBytes`, mapping the three returned statuses the same way. Update `src/tools/init/installAideTree/index.test.ts` with the drift case.
 
-- [x] **5.3 Add sentinel brain path collision test in
-  `src/tools/init/index.test.ts`.**
-  This addresses todo.aide issue 8. Test case:
-  - Create a `my-brain/` directory inside the temp project root.
-  - Call `init(isolated)` with no env var and an isolated subdirectory
-    (so sibling hint does not fire).
-  - Assert the brain vault step has `filePath: ""` and `status:
-    "would-create"` — NOT `status: "exists"` pointing at the inner
-    `my-brain/` directory.
-  - This proves the tool does not silently adopt an unconfirmed path.
+### 6. Wire `configureIde` (Zed) through byte-compare; keep VS Code unchanged
 
-- [x] **5.4 Run `vitest run` and fix any type or assertion errors.**
+Read:
+- `coding-playbook/foundations/conventions` — name by what it does, JSDoc-on-every-function
+- `coding-playbook/workflow/testing` — co-located tests, factory functions
 
-### Phase 6 — Cleanup
+- [x] 6a. Modify `configureZed` in `src/tools/init/configureIde/index.ts`: the current code patches the existing settings JSON and returns `would-create` with the patched content whenever the file exists but `*.aide` is not in its Markdown list. Extend to also report `would-overwrite` when `*.aide` is absent AND the existing file is non-trivially different from the byte-identical patched output — i.e., compute the patched content first, then `compareBytes(settingsPath, patched)`: match → `exists`; file absent → `would-create` with `content`; non-match with file present → `would-overwrite` with `content`. The current "Zed settings JSON parse failure → `would-skip`" branch stays unchanged. `configureVscode` is unchanged — it does not write a file the tool owns (the `.vsix` is a bundled asset and the install path is an external CLI; VS Code steps always pass through `applySteps` with an `instructions` field, regardless of disk state).
+- [x] 6b. Update `src/tools/init/configureIde/index.test.ts` with a drift case: write a Zed settings file that already contains `*.aide` but with stale surrounding content (e.g. an extra unrelated key) so the patched output differs from the on-disk bytes → assert `would-overwrite` with the canonical patched `content`. Byte-identical case → `exists`. File-absent case → `would-create` (unchanged).
 
-- [x] **6.1 Update `todo.aide` to check off issues 7 and 8.**
-  Issue 7 (sentinel brain path): mark as resolved — the empty-string
-  placeholder pattern prevents the collision. Issue 8 (test gap): mark as
-  resolved — step 5.3 covers it.
+### 7. Wire `provisionBrain` per-file steps through byte-compare
+
+Read:
+- `coding-playbook/foundations/conventions` — one helper, one responsibility
+- `coding-playbook/workflow/testing` — temp-dir isolation for filesystem tests
+
+- [x] 7a. Modify `src/tools/init/provisionBrain/index.ts` for the two per-file steps — the playbook hub template and the vault `CLAUDE.md`. Replace the `exists(filePath)` fast-path in `buildPlaybookHubStep` and `buildVaultClaudeMdStep` with `compareBytes(filePath, template)`: match → `exists`; missing → `would-create` with `content`; differ → `would-overwrite` with `content`. The vault-scaffolding step (directory list) stays as-is — it reports `exists` when the vault directory is populated and `would-create` with the JSON array of subdirs when empty; a partially-scaffolded vault is treated as `exists` (spec says "exists if vault is already populated") and per-directory drift does not exist as a concept. The `buildObsidianMcpStep` MCP step is unchanged (MCP is inherent-decision; the prescription stays `would-create` when the obsidian key is absent from the config, `exists` when present).
+- [x] 7b. Update `src/tools/init/provisionBrain/index.test.ts` with drift cases for `coding-playbook/coding-playbook.md` and `CLAUDE.md`: pre-write a modified template → `would-overwrite` with `content`; pre-write byte-identical template → `exists`; missing → `would-create` with `content`.
+
+### 8. Teach `applySteps` to write approved `would-overwrite` steps
+
+Read:
+- `coding-playbook/foundations/conventions` — early returns, JSDoc explains behavior
+- `coding-playbook/workflow/testing` — existing applySteps test file as style reference
+
+- [x] 8a. Modify `src/tools/init/applySteps/index.ts`. Today the first guard returns any non-`would-create` step unchanged. Extend that guard to accept both `"would-create"` AND `"would-overwrite"` as writable, with the following contract: `"would-create"` steps write and return `status: "created"`; `"would-overwrite"` steps write and return `status: "overwritten"`. The rest of the branching logic (MCP prescriptions pass through unchanged, IDE VS Code steps receive `instructions` and pass through, brain directory/file sub-types, regular file steps) applies equally to both writable statuses — only the returned status changes. Keep the "strip `content` after writing" behavior. Update the JSDoc to name `"would-overwrite"` → `"overwritten"` alongside the existing `"would-create"` → `"created"` contract.
+- [x] 8b. Update `src/tools/init/applySteps/index.test.ts` with new cases: `would-overwrite` file step writes to disk and returns `status: "overwritten"` with `content` stripped; `would-overwrite` brain file template step writes and returns `"overwritten"`; `would-overwrite` MCP step (if this shape is ever produced — defensive) passes through unchanged (MCP prescriptions bypass writes regardless of writable status); `would-overwrite` VS Code IDE step passes through with `instructions`; mixed batch with a mix of `would-create` and `would-overwrite` returns a matching mix of `"created"` and `"overwritten"` statuses. Idempotency test: replaying an already-applied step (status `"overwritten"`) with the same input passes through unchanged.
+
+### 9. Update the init orchestrator tests and doctrineLiterals regression guard
+
+Read:
+- `coding-playbook/workflow/testing` — factory functions, co-located tests, mocking module boundaries
+- `coding-playbook/foundations/conventions` — variable naming by what the function returns
+
+- [x] 9a. Add cases to `src/tools/init/index.test.ts` exercising the orchestrator at the full-run level:
+  - Fully-initialized project where a single command file has been hand-edited: run produces every step as `exists` or `would-skip` except one `commands` step with status `"would-overwrite"` carrying `content`.
+  - Fully-initialized project where every file is byte-identical: every step's status is `"exists"` (zero `would-create`, zero `would-overwrite`, zero `would-skip` among the canonical-owned categories).
+  - Apply mode on a drifted category: call `init(...)`, filter to the drifted category, pass through `applySteps` — the drifted step comes back with `status: "overwritten"` and `content` stripped; on-disk bytes now match canonical.
+  - Pure-create run (fresh tempDir, `brainPath` supplied): no `would-overwrite` statuses in the result — every non-`exists` non-`would-skip` step is `would-create`. This is the "agent should apply silently" invariant the spec names.
+  - The existing idempotency test (initialized content → pointer + MCP are `exists`) stays intact; verify it still passes with the new status enum.
+- [x] 9b. Verify `src/tools/init/doctrineLiterals.test.ts` still applies to the same helpers and that the new `shared/compareBytes/` helper is not incorrectly swept into scope. No doctrine lives in `compareBytes` (it's a filesystem primitive); confirm the test's inclusion list is unchanged.
+
+### 10. Update the `aide_init` tool description to surface the four-status contract
+
+Read:
+- `coding-playbook/agentic/command-modules` — agent contracts via schema/description fields
+- `coding-playbook/foundations/conventions` — no prose padding, name by behavior
+
+- [x] 10a. Update the `aide_init` tool description in `src/index.ts` to reflect the new status enum. Key edits to the description string (no behavioral change to the handler itself — the handler already filters by category and pipes through `applySteps`):
+  - Planning statuses are now four: `would-create`, `would-overwrite`, `would-skip`, `exists`.
+  - Apply manifest statuses are now three: `created`, `overwritten`, `exists`. (`would-skip` steps stay `would-skip` in the manifest because apply writes nothing for them; the spec's manifest list in `outcomes.desired` names only `"created"`, `"overwritten"`, and `"exists"` — `would-skip` is still a valid pass-through status and must not be dropped. Record this as a Decision.)
+  - Agent branch rule summary: a category with only `would-create` / `would-skip` / `exists` steps is applied silently without AskUserQuestion; any step with `would-overwrite` makes the category pause the agent; inherent-decision steps (framework, brain path, MCP merge, IDE) always prompt.
+  - The existing "MCP prescription" and "IDE VS Code instructions" exceptions stay in the description.
+- [x] 10b. Verify the `category` enum in `InitInput` (in `src/tools/init/index.ts`) and the mirror `category` enum in the `inputSchema` block of `src/index.ts` still match the `InitCategory` union. No new category added, so this is a quick grep-and-match; include it because `outcomes.undesired[14]` specifically names this drift.
+
+### 11. Full test run and typecheck
+
+Read:
+- `coding-playbook/workflow/testing` — vitest run as the single unit-test tier
+- `coding-playbook/workflow/typescript` — `tsc --noEmit` after type changes
+
+- [x] 11. Run `rtk vitest run` and `rtk tsc --noEmit`. Any failure here points back to a step above — fix in place, do not paper over. Expected outcome: the whole init subtree plus the upgrade tool (which consumes `COMMANDS` and `composeStub`) stays green.
 
 ## Decisions
 
-**1. `applySteps` is a new helper, not inline logic in the handler.**
-The MCP handler in `src/index.ts` should stay thin — it parses input, calls
-the orchestrator, shapes the response. The write-to-disk logic is a distinct
-responsibility (filesystem side effects) that belongs in its own testable
-helper under `src/tools/init/applySteps/`. This follows the orchestrator/
-helper pattern from progressive-disclosure.md and the folder-structure
-playbook convention.
+**1. `would-overwrite` as a first-class planning status, not a boolean flag.**
+The spec is unambiguous: `would-overwrite` is the fourth enum value, sibling
+to `would-create`. A boolean like `hasOverwrite` on the step would force the
+agent to branch on two independent fields (`status === "would-create" &&
+hasOverwrite`) instead of one. String-literal-union enums are the playbook's
+default for domain values (see `workflow/type-system.md`), and
+`InitStepStatus` is already a string literal union — extending it is the
+natural fit.
 
-**2. `"created"` is a new status, not a reuse of `"exists"`.**
-The spec says the category call returns `status` of `"created"` or
-`"exists"`. Using `"created"` rather than overloading `"exists"` gives the
-agent a clear signal that the file was just written in this call vs. was
-already present before the call. The agent can report "created 9 files"
-vs. "all files already present" accurately.
+**2. `"overwritten"` sits next to `"created"` in the execution-status
+family.** The spec names three manifest statuses: `"created"`, `"overwritten"`,
+`"exists"`. These are parallel to upgrade's `"updated"`, `"created"`,
+`"unchanged"` (see `UpgradeFileStatus`), and `"overwritten"` is the
+semantically correct verb for a destructive write the agent approved. The
+alternative — reusing `"created"` for both fresh writes and overwrites —
+would collapse the truthful reporting the spec explicitly requires
+("created 6, overwrote 1" vs. the bad example of "installed 7 files").
 
-**3. `brainPath` is added to `InitInput`, not handled solely in the handler.**
-The brain category needs a user-confirmed vault path to write scaffolding.
-The cleanest contract is for the agent to pass this as a tool parameter
-when calling with `category=brain`. The orchestrator forwards it to
-`provisionBrain`. This avoids the handler needing to know about brain
-internals — it just passes the parameter through.
+**3. Byte-compare lives in a new `shared/compareBytes/` helper, not inlined
+per category.** Seven category helpers need the same three-way decision
+(missing / identical / drifted). Inlining the read + compare in each one
+would duplicate the ENOENT handling, the encoding choice, and the
+return-type shape seven ways — exactly the "god helper" the playbook's
+"aggressive modularization" rule exists to prevent. A shared submodule
+inside `src/tools/init/shared/` is the playbook's nearest-common-ancestor
+escalation path; it is not lifted to `src/lib/` because only init consumes
+it. (Upgrade has its own `compareFile` with a different return-type
+contract and lives alongside upgrade's helpers. The two do not converge —
+init's three-value return matches init's three planning statuses; upgrade's
+status surface is different.)
 
-**4. MCP steps are exempt from apply — prescriptions pass through.**
-The spec is explicit: "The agent only uses the Write tool for files that
-require intelligent merging — specifically MCP config." The apply helper
-skips steps that carry a `prescription` field. The agent receives the
-prescription in the manifest and performs the merge itself. This preserves
-the safety property that the tool never touches MCP config.
+**4. `would-skip` stays distinct from `exists` in the planning layer but
+collapses to `exists` for category-owned content.** The spec lists four
+planning statuses: `would-create`, `would-overwrite`, `would-skip`,
+`exists`. `would-skip` is still useful for steps where the tool
+deliberately declines to act (canonical read failure, VS Code CLI absent,
+Zed JSON parse failure) — they are not the same as a file that is already
+at canonical bytes. For the seven category helpers that write canonical
+content, `compareBytes → "would-skip"` (bytes already match canonical)
+becomes `status: "exists"` in the returned `InitStep`, because for these
+helpers "same bytes as canonical" is definitionally "already set up."
+`would-skip` is reserved for the "I can't or won't act" branch. This is
+named in each helper's step in §3–§7 and recorded here so the implementor
+does not map all three `compareBytes` outcomes 1:1 to the status enum.
 
-**5. IDE VS Code steps pass through with instructions.**
-The VS Code extension install requires the `code` CLI, which is external
-tooling the tool cannot safely invoke as a side effect of a category call.
-The apply helper passes these through unchanged. The spec says: "IDE steps
-that require external tooling return instructions for the agent to execute."
+**5. `would-skip` manifest survival.** The spec's desired-outcome list
+names `"created"`, `"overwritten"`, `"exists"` as the manifest statuses.
+That list is the set of *new* statuses the manifest carries after apply
+— it does not say `"would-skip"` disappears. A step that was already
+`"would-skip"` before `applySteps` stays `"would-skip"` after, because
+`applySteps` writes nothing for it. Dropping `would-skip` would silently
+mask the "canonical read failed, skipping this one" signal the agent
+should surface. Recorded here because it is subtle and would be easy to
+remove "for cleanliness."
 
-**6. The sentinel collision (todo issue 7) is already fixed.**
-The current orchestrator uses `filePath: ""` as the placeholder when no
-hints exist — not a fabricated path. The plan adds a test (step 5.3) to
-lock this behavior and close the todo item. No code change needed for
-issue 7 itself.
+**6. `writeMethodology` (pointer stub) uses a marker-aware drift check,
+not a straight `compareBytes`.** The pointer stub is embedded inside the
+host's agent config file (e.g. `CLAUDE.md`), surrounded by user-authored
+content. A whole-file byte-compare against `composeStub(docHubDir)` would
+always fail because the user has other content in that file. The drift
+check extracts the bytes between the marker pair and compares those to
+the canonical stub. This logic is too narrow to live in
+`shared/compareBytes` — it belongs next to the stub logic that owns the
+marker convention.
 
-**7. `content` is stripped from written steps in the manifest.**
-After `applySteps` writes a file, the returned step has `content` removed.
-This is the core of the "apply mode" contract: the agent never sees file
-content in category calls. The response stays small (manifest-only) and
-the agent cannot accidentally try to re-write what the tool already wrote.
+**7. README badge detection stays a substring check.** The spec and the
+existing scaffoldReadme helper use `BADGE_DETECTION` substring presence
+as the "already installed" signal — full-file byte-compare is
+inappropriate because the README has user-authored content around the
+badge. README therefore cannot produce `would-overwrite`; the possible
+statuses remain `would-create` (no README, create it with badge; or
+README present but badge absent, inject it) and `exists` (badge already
+present). The spec does not require a `would-overwrite` path for README,
+and the scaffoldReadme `.aide` already states "the two statuses are
+`would-create` and `exists`."
+
+**8. `InitCategory` is not extended — upgrade lockstep is preserved.**
+Spec `outcomes.undesired[14]` warns about drift between init's and
+upgrade's category lists. This plan adds no new category. The existing
+mismatch (init has `framework` and `brain`; upgrade does not) is
+deliberate — framework detection and brain provisioning are init-only
+concerns that have no upgrade counterpart. Step 10b verifies the
+`category` enum matches `InitCategory` so no accidental category slips
+in while rewriting the tool description.
+
+**9. The `/aide:init` slash-command prompt update is out-of-scope for
+this plan.** The prompt file lives at `.claude/commands/aide/init.md`,
+outside `src/tools/init/`. Per the single-module-scoping rule
+(`plan-aide.md`), the plan only covers work inside its scope directory.
+That file gets its own plan; this plan declares it as a prerequisite and
+describes the contract (silent-apply-when-pure-create, AskUserQuestion
+when overwrite-bearing, always-prompt for inherent decisions) so the
+companion plan has a clear target.
+
+**10. No ordering or category-graph changes.** The orchestrator's
+top-level flow (run every category helper, assemble `steps[]`, return
+`InitResult`) is unchanged. Each helper still plans its own steps in
+isolation. The new status value flows through without touching any
+inter-category coupling — "category isolation" from the spec's Strategy
+section is already the structure and nothing about this change disturbs
+it.
+
+**11. VS Code IDE steps are exempt from the byte-compare branch.** The
+`configureVscode` helper reports `would-create` / `exists` / `would-skip`
+based on CLI availability and extension install state — it does not own a
+file the tool writes, so "bytes on disk drift from canonical" is not a
+meaningful question. `applySteps` continues to pass VS Code steps through
+with an `instructions` field. No change needed in step 6 for the VS Code
+path.

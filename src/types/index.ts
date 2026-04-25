@@ -153,11 +153,29 @@ export type InitCategory =
 
 /**
  * Status of a single init step.
- * `"would-create"`, `"would-skip"`, and `"exists"` are planning outcomes.
- * `"created"` is an execution outcome returned by applySteps after the tool
- * has written a file to disk during a category call.
+ *
+ * Planning outcomes (returned by the dry-run phase before any writes):
+ * - `"would-create"` — target path does not exist; the tool will write it.
+ * - `"would-overwrite"` — target path exists but its bytes differ from
+ *   canonical; the agent must prompt the user before the tool writes.
+ * - `"would-skip"` — the tool deliberately declines to act (e.g. canonical
+ *   read failed, VS Code CLI absent, Zed JSON parse failure). Not the same
+ *   as a file that is already at canonical bytes.
+ * - `"exists"` — target path exists and its bytes match canonical (or the
+ *   step is already satisfied). Nothing to do.
+ *
+ * Execution outcomes (returned by applySteps after writes):
+ * - `"created"` — the tool wrote a `would-create` step to disk.
+ * - `"overwritten"` — the tool wrote a `would-overwrite` step to disk after
+ *   the agent obtained user approval for the category.
  */
-export type InitStepStatus = "would-create" | "would-skip" | "exists" | "created";
+export type InitStepStatus =
+	| "would-create"
+	| "would-skip"
+	| "would-overwrite"
+	| "exists"
+	| "created"
+	| "overwritten";
 
 /**
  * A single step in the init plan returned by aide_init.
@@ -173,7 +191,12 @@ export interface InitStep {
 	category: InitCategory;
 	/** Absolute target path on disk where this step writes. */
 	filePath: string;
-	/** File content to write — present for `would-create` file steps, absent for `exists`. */
+	/**
+	 * File content to write — present for `would-create` AND `would-overwrite`
+	 * file steps; absent for `would-skip` and `exists` steps. Planning helpers
+	 * must carry the canonical bytes for overwrites too so that `applySteps`
+	 * can write them when the agent proceeds after user approval.
+	 */
 	content?: string;
 	/** MCP prescription — present for `would-create` MCP steps, absent for `exists`. */
 	prescription?: McpPrescription;
@@ -318,12 +341,61 @@ export type TreeNode =
 	| { kind: "dir"; path: string; children: TreeNode[] }
 	| { kind: "file"; file: AideFile };
 
-/** Result returned by aide_info — the passive staleness-detection surface. */
+/**
+ * Precondition state of the host's obsidian brain vault, returned as a tagged
+ * union so the orchestrator can branch on each case independently.
+ *
+ * - `ok`: an obsidian MCP entry is configured and its vault directory resolves
+ *   on disk. `vaultPath` is the resolved directory path.
+ * - `no-mcp-entry`: no obsidian entry is present in the host's MCP config, the
+ *   config file is missing, or the config is malformed. `vaultPath` is `null` —
+ *   no path was ever configured. Remediation: open Claude Code and run `/aide`;
+ *   the orchestrator's inline-recovery flow detects the missing state and prompts
+ *   for the vault path.
+ * - `invalid-path`: an obsidian entry is configured but its vault directory does
+ *   not exist on disk. `vaultPath` is the configured (but unresolvable) path so
+ *   the orchestrator can surface the exact failing path to the user.
+ */
+export type BrainState = {
+	/** Discriminant for the three brain-precondition outcomes. */
+	status: "ok" | "no-mcp-entry" | "invalid-path";
+	/**
+	 * The vault directory path. Non-null for `ok` (the resolved path) and for
+	 * `invalid-path` (the configured-but-unresolvable path); `null` for
+	 * `no-mcp-entry` (no path was ever configured).
+	 */
+	vaultPath: string | null;
+	/**
+	 * Candidate vault locations discovered by `resolveBrainHints`. Populated
+	 * unconditionally — the orchestrator may surface these in any branch where
+	 * remediation is needed (e.g. `no-mcp-entry`, `invalid-path`). An empty
+	 * array is valid when no candidates were found on disk.
+	 */
+	hints: BrainHint[];
+};
+
+/**
+ * Result returned by aide_info — the passive boot-time reporter.
+ *
+ * Returns two independent top-level fields, each covering a distinct concern:
+ * - `serverVersion` + `outdated`: staleness of installed AIDE artifacts against
+ *   the canonical manifest shipped with this npm package. Soft notification —
+ *   the pipeline can run even when artifacts are stale.
+ * - `brain`: precondition state of the host's obsidian MCP brain vault. Hard
+ *   gate — the orchestrator halts and directs the user to run `/aide` when
+ *   `status` is anything other than `"ok"`; the inline-recovery flow detects
+ *   the broken state and prompts the user to resolve it.
+ *
+ * The two fields are structurally independent: the orchestrator reads each
+ * field in isolation and applies a different policy to each.
+ */
 export interface InfoResult {
 	/** The npm package version of the installed aide MCP server. */
 	serverVersion: string;
 	/** Artifact keys whose sourceCommit differs between local and canonical. */
 	outdated: string[];
+	/** Precondition state of the host's obsidian brain vault. */
+	brain: BrainState;
 }
 
 /** A single symbol match returned by aide_inspect. */

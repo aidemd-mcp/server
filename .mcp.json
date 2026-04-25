@@ -3,6 +3,10 @@
     "aide": {
       "command": "node",
       "args": ["D:/Code/Me/aidemd-mcp/dist/index.js"]
+    },
+    "obsidian": {
+      "command": "cmd",
+      "args": ["/c", "npx", "@bitbonsai/mcpvault", "${BRAIN_PATH}"]
     }
   }
 }

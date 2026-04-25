@@ -1,58 +1,69 @@
 ---
 description: >
-  QA findings for cascading alignment — tracks tree-walking instructions that survived in command files and stale orchestrator references after agent cleanup.
-intent: >
-  Desired outcome #6 is violated — tree-walking instructions were removed from agent
-  definitions and the previously-failing command file (spec.md), but five other command
-  files under .claude/commands/aide/ still carry the identical instruction. The fix was
-  applied narrowly rather than to the full instruction surface.
-misalignment:
-  - implementation-drift
-  - plan-gap
+  QA re-validation for .claude/.aide after the STOP-and-restart redesign of the
+  inline-recovery branch. The prior issue log (brainVaultPath vs brainPath) is
+  superseded by this run. All in-scope outcomes from this session — desired #8
+  (revised inline-recovery flow) and undesired #6–#10 (revised or new) — are
+  re-verified against the rewritten empty-vaultPath sub-branch in aide.md.
+intent: All in-scope outcomes pass. No issues remain.
+misalignment: []
 ---
 
 ## Issues
 
-- [x] `.claude/commands/aide/spec.md` line 10: "If a parent `.aide` exists up the tree, use `aide_discover` to walk the chain and understand inherited context before writing" — tree-walking instruction survives in the command file after being removed from the agent definition.
-  Traces to: desired #6 (agents no longer contain verbose tree-walking instructions), undesired #3 (agents should not duplicate the discover tool's teaching)
-  Misalignment: implementation-drift
-
-- [x] `.claude/commands/aide.md` line ~176 (Stage 6 QA section): The orchestrator describes what the QA agent will do as "Use `aide_discover` to walk the full `.aide` chain" — but the QA agent's Verification Process no longer contains this step. The orchestrator is describing removed behavior.
-  Traces to: desired #6 (tree-walking instructions removed from agents), undesired #3
-  Misalignment: implementation-drift
-
-- [x] `.claude/commands/aide.md` line ~249 (Rules section): "Every agent that reads intent should also use it to walk the `.aide` chain." — this rule directly contradicts the intent of desired outcome #6 and undesired #3. The whole point of this implementation was that agents should NOT be instructed to walk the tree; the discover tool's output teaches the protocol.
-  Traces to: desired #6, undesired #3 (no multi-paragraph or repeated tree-walking instructions)
-  Misalignment: implementation-drift
-
-- [x] `.claude/commands/aide.md` alignment suggestion guidance (Rules section bullet, ~line 255): States the orchestrator should suggest `/aide:align` "when a spec edit (Stage 1 or Stage 3) modifies `outcomes.desired` or `outcomes.undesired`." Stage 3 is Synthesize — the domain expert fills Context/Strategy/examples, not the outcomes block. Outcomes are written in Stage 1 (spec-writer) and can only be modified via a spec edit at Stage 1. The Stage 3 reference is factually wrong and may cause the orchestrator to skip alignment suggestions after genuine outcome edits in Stage 1 (if it reasons that only Stage 3 edits trigger them).
-  Traces to: desired #5 (command invocable by user or suggestable by orchestrator when drift is suspected)
-  Misalignment: implementation-drift
-
-- [x] `.claude/commands/aide/qa.md` line 10: "Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply to this module's output" — tree-walking instruction survives in the QA command file, duplicating the discover tool's teaching.
-  Traces to: desired #6 (agent definitions no longer contain verbose tree-walking instructions), undesired #3 (no duplicated tree-walking instructions)
-  Misalignment: implementation-drift
-
-- [x] `.claude/commands/aide/build.md` line 11: "Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply to this module's output" — same instruction survives in the build command file.
-  Traces to: desired #6, undesired #3
-  Misalignment: implementation-drift
-
-- [x] `.claude/commands/aide/plan.md` line 9: "Use `aide_discover` to walk the full `.aide` chain from root to leaf — ancestor outcomes still apply" — same instruction survives in the plan command file.
-  Traces to: desired #6, undesired #3
-  Misalignment: implementation-drift
-
-- [x] `.claude/commands/aide/synthesize.md` line 9: "Use `aide_discover` to walk the full `.aide` chain from root to leaf — understand the intent tree before writing anything" — same instruction survives in the synthesize command file.
-  Traces to: desired #6, undesired #3
-  Misalignment: implementation-drift
-
-- [x] `.claude/commands/aide/fix.md` line 10: "Use `aide_discover` to walk the full `.aide` chain — understand the intent tree before touching code" — same instruction survives in the fix command file.
-  Traces to: desired #6, undesired #3
-  Misalignment: implementation-drift
+*(none)*
 
 ## Retro
 
-The spec.md command file gap (Issue 1) would have been caught if the plan's scope for Step 5 had explicitly listed both the agent definition files AND their corresponding command files for each agent. The plan named `aide-spec-writer.md` (agent) but not `aide/spec.md` (command) — a parallel file that carries the same checklist-form instructions. The commands directory is a separate instruction surface that mirrors agent behavior; any cleanup of agent instructions should check for corresponding command files.
+This was a clean re-validation of the STOP-and-restart inline-recovery redesign.
+Every in-scope outcome passes. Specific findings per checkpoint:
 
-Issues 2 and 3 (orchestrator drift) would have been caught by reading the full orchestrator command after implementing the QA agent changes. The plan updated the orchestrator to add the Align section but did not include a step to audit the existing QA section and Rules section for now-stale tree-walking references. Adding a final "audit existing orchestrator content for stale references" sub-step to the orchestrator update would have caught this.
+**Desired #8 — Two-call sequence, correct order:** aide.md Step 3 calls
+`aide_init({ category: "mcp", brainPath })` and explicitly applies the returned
+prescription via Read/merge/Write on `.mcp.json`. Step 4 calls
+`aide_init({ category: "brain", brainPath })` silently. Order is correct.
 
-Issue 4 (Stage 3 factual error) would have been caught by cross-referencing the alignment suggestion guidance against the pipeline stage definitions in the same file. Stage 3's description in aide.md is explicit that the domain expert fills body sections, not outcomes.
+**`"exists"` short-circuit:** Step 3 explicitly skips the merge when the
+obsidian step's status is `"exists"` — no unnecessary Write, no clobbering.
+
+**AskUserQuestion called exactly once:** Step 1 issues it; Steps 2–6 contain
+no additional calls. Step 4 reinforces this with "No prompt, no `AskUserQuestion`."
+
+**Restart message content:** The Step 5 blockquote names `<brainPath>`, states
+`.mcp.json` was patched and the vault was scaffolded, and delivers the restart
+instruction. All three required elements present.
+
+**Hard STOP semantics:** Line 74 ("Do NOT re-call `aide_info`. Do NOT continue
+the user's original request.") is unambiguous. The prior re-verify-and-continue
+design is fully absent from the implementation.
+
+**Failure handling scope:** Step 6 enumerates the three correct failure cases
+(mcp call throws; merge throws; brain call throws) without including the
+deleted "re-verify fails" case.
+
+**Sibling branches intact:** `no-mcp-entry` and non-empty-broken-`vaultPath`
+branches are unchanged and correctly do NOT attempt inline recovery.
+
+**Process learning — mid-pipeline pivot:**
+
+1. **Spec revisions mid-implementation require QA re-scoping.** The original
+   inline-recovery design (re-call `aide_info` and continue if `status === "ok"`)
+   was replaced with STOP-and-restart after implementation revealed that the
+   running obsidian MCP server cannot pick up a mid-session `.mcp.json` patch.
+   This is the right pivot, but it means prior QA work (which verified the
+   re-verify-and-continue design) was no longer applicable. Future QA runs
+   should be explicitly told which outcomes were revised and which prior verdicts
+   are superseded.
+
+2. **Desired failure modes are as important as the happy path.** The redesign's
+   key correctness property is what the orchestrator does NOT do after recovery:
+   it does not re-call `aide_info`, it does not continue. Verifying absence of
+   behavior requires reading the text carefully for continuation language — not
+   just checking that the positive steps are present.
+
+3. **Prescription-apply pattern is clearly documented.** The "read/merge/write"
+   language in Step 3, plus the explicit "Never call `Write` with the raw
+   prescription object," is specific enough to prevent the silent-overwrite failure
+   mode. This is a pattern worth preserving as a template for any future
+   inline-recovery additions.
+---

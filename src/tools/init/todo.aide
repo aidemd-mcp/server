@@ -1,33 +1,46 @@
 ---
 description: >
-  QA re-alignment tracking missing instructions field on IDE VS Code steps and
-  the untested obsidian MCP placeholder passthrough in applySteps.
+  QA re-validation after the fix loop. Both prior issues are resolved — no
+  issues remain.
 intent: >
-  Apply mode (category call): tool writes would-create files to disk and returns
-  a manifest with no content. IDE VS Code steps return instructions for the agent
-  to execute since they require external CLI tooling.
-misalignment:
-  - plan-gap
-  - implementation-drift
-  - test-gap
+  Both violations from the previous QA run are confirmed fixed. The versionsStep
+  block now uses compareBytes (not existsSync), and the /aide:init command prompt
+  contains no reference to a skipOverwrites parameter or "Install new files only"
+  option. All 653 tests pass; TypeScript compiles clean.
+misalignment: []
 ---
 
 # QA Re-alignment Document
 
 ## Issues
 
-- [x] **`src/tools/init/applySteps/index.ts:43-46` and `src/types/index.ts` — `instructions` field promised by spec, plan, and tool description but never implemented.**
-  The spec desired outcome 11 states: "IDE steps that require external tooling (e.g., VS Code extension install via CLI) return instructions for the agent to execute." Plan step 2.1 is explicit: "pass through unchanged with an `instructions` field set to the `code --install-extension` command." The tool description in `src/index.ts:127` repeats "IDE steps that need external tooling (VS Code CLI) return instructions for the agent to execute." None of these deliver: `InitStep` has no `instructions` field, `applySteps` passes VS Code steps through unchanged without adding one, and `configureVscode` never produces one. The agent receives a VS Code step with `status: "would-create"` and no indication of what CLI command to run.
-  Traces to: desired outcome 11 — "IDE steps that require external tooling return instructions for the agent to execute"
-  Misalignment: plan-gap (plan specified the field but the type was never updated), implementation-drift (applySteps does not add the field)
-
-- [x] **`src/tools/init/applySteps/index.test.ts` — no test covers the obsidian MCP placeholder step (would-create, no prescription, no content, category mcp).**
-  When no brain hints exist, `init/index.ts:84` produces a placeholder `"MCP config (obsidian)"` step: `status: "would-create"`, `category: "mcp"`, no `prescription`, no `content`. In `applySteps` this hits the final passthrough at line 72 — correct behavior, but untested. The MCP test in `applySteps/index.test.ts:125` only covers the `would-create + prescription` case. If the passthrough is accidentally broken (e.g. a would-create + no content + mcp step starts being treated as a file write), this case produces a silent failure with a zero-byte file at `brainMcpPath`.
-  Traces to: desired outcome 10 — "The agent only uses the Write tool for files that require intelligent merging — specifically MCP config"; undesired outcome — "An init that writes MCP config entries directly, bypassing the agent"
-  Misalignment: test-gap
+_(none — all prior issues resolved, no regressions found)_
 
 ## Retro
 
-**Issue 1 (missing `instructions` field)** would have been caught at plan review. The plan named the `instructions` field in step 2.1 but contained no corresponding step to extend `InitStep` in `src/types/index.ts`. The implementor addressed the pass-through behavior (VS Code steps are not written to disk) but silently dropped the `instructions` field because the type never had it. This is the "plan scope blindspot" pattern: the plan described the output shape in prose but omitted a type-change step, so the implementor's TypeScript tooling gave no signal that anything was missing. Fix: any plan step that names a new field on an existing interface must include a type-change sub-step or it will be omitted without a compile error.
+**Issue 1 (versionsStep existsSync → compareBytes):** Confirmed fixed at
+`src/tools/init/index.ts:100`. The versionsStep block now calls
+`compareBytes(versionsHostPath, versionsJson)` and maps the three-way result
+to `"exists"` / `"would-overwrite"` / `"would-create"` correctly. A drifted
+`versions.json` will now surface as `would-overwrite` rather than silently
+passing through as `exists`. No `existsSync` call remains anywhere in the
+`src/tools/init/` source tree (only historical references in the prior
+`todo.aide` text).
 
-**Issue 2 (obsidian placeholder passthrough gap)** would have been caught if the apply-mode integration test verified the obsidian placeholder step specifically, rather than only testing MCP steps that carry prescriptions. The test at `index.test.ts:408` checks `mcpSteps.filter(s => s.prescription)` — it excludes the placeholder by construction. A test that asserts the placeholder step passes through without creating its `filePath` on disk would close this gap.
+**Issue 2 (skipOverwrites phantom parameter in init.md):** Confirmed fixed.
+The `init.md` command prompt at `.claude/commands/aide/init.md` contains no
+`skipOverwrites`, no "Install new files only" option, and no incorrect
+fallback description. The overwrite-bearing branch now correctly offers only
+"Overwrite" and "Skip this category" — both of which map to real tool
+behaviour (`aide_init({ category })` on approval, no call on skip). The
+agent's branch logic accurately reflects the tool contract from `InitInput`.
+
+**What would have caught these issues earlier:** The plan step 11 (full test
+run) and step 10a (description update) are the correct gates. The recurring
+pattern here is: a companion file outside the plan's scope directory
+(`init.md`) is updated as a prerequisite but is not tested against the tool's
+Zod schema. A simple post-plan grep of the companion prompt against the
+`InitInput` schema's property list would surface any invented parameters
+immediately. Record this in the retro pattern: whenever a command prompt
+declares a tool parameter by name, that name must exist as a key in the tool's
+Zod schema — and QA should verify this with a grep, not by inference.

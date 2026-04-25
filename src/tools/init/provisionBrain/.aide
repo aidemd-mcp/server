@@ -36,6 +36,12 @@ outcomes:
       platform-aware command (cmd /c wrapper on Windows, direct npx
       otherwise), and reports "exists" when the obsidian key is
       already present in the MCP config.
+    - "The coding-playbook hub and vault-root CLAUDE.md are treated as
+      one-time seeds, not canonical templates. When either file exists
+      on disk at its expected path, the corresponding InitStep is
+      returned with status: \"exists\" regardless of byte drift from
+      the bundled template. Once the user has the file, it is theirs
+      forever — provisionBrain never proposes replacing it."
     - Every InitStep returned is a planning artifact only — no files
       are written to disk by this helper. The calling agent or
       applySteps orchestrator handles all writes.
@@ -59,6 +65,16 @@ outcomes:
       vault. If the playbook hub or vault CLAUDE.md already exists,
       the step must report "exists" and plan no changes — same
       idempotency contract as directory scaffolding.
+    - "The coding-playbook hub or vault-root CLAUDE.md being returned
+      with status: \"would-overwrite\" under any circumstance — even
+      when on-disk bytes have drifted from the bundled template. These
+      files are seeds for an empty vault, not canonical templates to
+      enforce; full-file byte comparison against the template is the
+      wrong idempotency check for user-owned content. Presence is
+      sufficient — any drift belongs to the user. The consequence of
+      getting this wrong is data loss: a generic overwrite-confirm
+      branch in the init wizard is one Enter-press away from replacing
+      the user's curated playbook with a bare scaffold stub."
     - An InitStep that writes to disk directly. provisionBrain is a
       planner; any step that touches the filesystem violates the
       architectural contract between planning helpers and the
@@ -133,11 +149,32 @@ anything that belongs in the user's global or project CLAUDE.md.
 
 **Idempotency checks are per-file, not per-vault.** The existing vault
 check (non-empty directory or .obsidian present) gates the directory
-scaffolding step. The playbook hub and vault CLAUDE.md each have their
-own existence check — if the file exists at the expected path, the step
+scaffolding step. The playbook hub, vault CLAUDE.md, and MCP prescription
+each have their own existence check — if the target is present, that step
 reports "exists" regardless of the vault-level status. This means running
 init on a vault that has directories but lost its playbook hub will
 correctly re-plan only the missing file.
+
+**Two different idempotency semantics coexist in this module — know which
+file uses which, and why.** The coding-playbook hub and vault-root
+CLAUDE.md use **seed-semantic idempotency**: a simple presence check at
+the expected path. If the file exists, the step is "exists" — full stop.
+Never "would-overwrite," never a byte comparison against the bundled
+template. These files are scaffolds the user evolves the moment the vault
+comes alive; the playbook hub gains routing entries and wikilinks, the
+vault CLAUDE.md may pick up project-specific navigation notes. Once the
+user has the file, the bytes belong to the user and are out of scope for
+comparison. The Obsidian MCP prescription, by contrast, uses
+**canonical-template idempotency**: it is a config value the tool owns,
+so byte-identity is the right signal — if the on-disk command string
+drifts from the platform-aware prescription, the step reports
+"would-overwrite" because the tool is the source of truth for that
+entry. The distinguishing question is *who owns the bytes after first
+write*: for user-curated content, presence is enough; for
+tool-prescribed config, identity matters. Getting this wrong is not a
+cosmetic bug — a would-overwrite status on the playbook hub is one
+Enter-press away from wiping the user's curated conventions and
+replacing them with an empty scaffold.
 
 **Template text lives in the helper, not in external files.** The playbook
 hub and CLAUDE.md templates are string literals inside provisionBrain.
@@ -167,8 +204,19 @@ project-specific instructions appear.
 Step 4 — Obsidian MCP. Status: would-create. Category: mcp. Prescription
 contains the server key and platform-aware command entry.
 
-Re-running on the same vault returns all four steps as "exists." No
-content is regenerated, no files are touched.
+Re-running on the same vault returns all four steps as "exists." The
+directory step sees the expected folders. The playbook hub and vault
+CLAUDE.md are detected by a presence check at their expected paths —
+their on-disk bytes are never compared to the bundled templates. The MCP
+prescription sees the obsidian key already present in the MCP config
+with a matching command entry. No content is regenerated, no files are
+touched.
+
+Running on a vault where the user has evolved the playbook hub — added
+routing entries, wikilinked several real playbook notes, customized the
+"Always Read First" section — still returns the playbook hub step as
+"exists." The user's curated bytes are preserved; provisionBrain has no
+opinion on what the file contains beyond the fact that it is there.
 
 Running on a vault that exists but is missing the playbook hub (perhaps
 the user deleted it) returns: directories as "exists," playbook hub as
@@ -198,6 +246,17 @@ A provisionBrain that writes the playbook hub to disk directly instead of
 returning it as an InitStep. This bypasses the agent's confirmation flow,
 meaning the user never sees or approves the content before it lands in
 their vault. The planner-only contract exists precisely to prevent this.
+
+A provisionBrain that reads the existing playbook hub off disk,
+byte-compares it to the bundled template, and — when the user has added
+routing rows and wikilinks — reports the step as "would-overwrite." The
+init wizard then prompts "overwrite existing playbook hub? [y/N]," and a
+reflexive Enter replaces months of curated conventions with a bare
+scaffold. This is the exact failure the seed-semantic rule exists to
+prevent: byte identity is the wrong signal for files the user owns
+post-scaffold. The same failure shape applies to the vault-root
+CLAUDE.md — any byte-comparison branch on these two files is a bug,
+regardless of how the drift is detected.
 
 ## References
 
