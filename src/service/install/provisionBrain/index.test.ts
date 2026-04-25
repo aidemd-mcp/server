@@ -28,7 +28,7 @@ function makeBrainPath(): string {
 }
 
 describe("provisionBrain", () => {
-	it("returns four steps: vault, playbook hub, vault CLAUDE.md, and obsidian MCP", async () => {
+	it("returns four steps: vault, playbook hub, vault CLAUDE.md, and brain MCP", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
@@ -38,7 +38,7 @@ describe("provisionBrain", () => {
 		expect(results[0].name).toBe("Brain vault");
 		expect(results[1].name).toBe("Playbook hub");
 		expect(results[2].name).toBe("Vault CLAUDE.md");
-		expect(results[3].name).toBe("MCP config (obsidian)");
+		expect(results[3].name).toBe("MCP config (brain)");
 	});
 
 	it("returns vault would-create with dirs content for a new location", async () => {
@@ -57,7 +57,7 @@ describe("provisionBrain", () => {
 		expect(dirs).toContain("coding-playbook");
 	});
 
-	it("returns obsidian MCP would-create with prescription for new config", async () => {
+	it("returns brain MCP would-create with prescription for new config", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
@@ -65,7 +65,7 @@ describe("provisionBrain", () => {
 
 		expect(results[3].status).toBe("would-create");
 		expect(results[3].category).toBe("mcp");
-		expect(results[3].prescription?.key).toBe("obsidian");
+		expect(results[3].prescription?.key).toBe("brain");
 		expect(results[3].prescription?.entry).toEqual(expectedObsidianEntry(brainPath));
 	});
 
@@ -91,12 +91,12 @@ describe("provisionBrain", () => {
 		expect(results[0].status).toBe("exists");
 	});
 
-	it("detects existing obsidian MCP entry — MCP step returns exists", async () => {
+	it("detects existing brain MCP entry — MCP step returns exists", async () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 		const existing = {
 			mcpServers: {
-				obsidian: expectedObsidianEntry(brainPath),
+				brain: expectedObsidianEntry(brainPath),
 			},
 		};
 		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");
@@ -118,6 +118,54 @@ describe("provisionBrain", () => {
 		expect(results[3].configMalformed).toBe(true);
 		// Prescription is still provided so agent can proceed
 		expect(results[3].prescription).toBeDefined();
+	});
+
+	// -------------------------------------------------------------------------
+	// Migration branches: obsidian → brain key migration
+	// -------------------------------------------------------------------------
+
+	it("cold install (no brain, no obsidian key) yields would-create with key brain", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+		await writeFile(mcpPath, JSON.stringify({ mcpServers: {} }), "utf-8");
+
+		const results = await provisionBrain(brainPath, mcpPath);
+
+		expect(results[3].status).toBe("would-create");
+		expect(results[3].prescription?.key).toBe("brain");
+		expect(results[3].name).toBe("MCP config (brain)");
+	});
+
+	it("legacy install (obsidian key only) yields would-overwrite with key brain", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+		const legacy = { mcpServers: { obsidian: expectedObsidianEntry(brainPath) } };
+		await writeFile(mcpPath, JSON.stringify(legacy), "utf-8");
+
+		const results = await provisionBrain(brainPath, mcpPath);
+
+		expect(results[3].status).toBe("would-overwrite");
+		expect(results[3].prescription?.key).toBe("brain");
+		expect(results[3].name).toBe("MCP config (brain)");
+	});
+
+	it("transitional install (both brain and obsidian keys present) yields would-overwrite with key brain", async () => {
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+		const transitional = {
+			mcpServers: {
+				obsidian: expectedObsidianEntry(brainPath),
+				brain: expectedObsidianEntry(brainPath),
+			},
+		};
+		await writeFile(mcpPath, JSON.stringify(transitional), "utf-8");
+
+		const results = await provisionBrain(brainPath, mcpPath);
+
+		// Both keys present — would-overwrite so agent confirms and orphan obsidian cleanup can follow.
+		expect(results[3].status).toBe("would-overwrite");
+		expect(results[3].prescription?.key).toBe("brain");
+		expect(results[3].name).toBe("MCP config (brain)");
 	});
 
 	it("never writes to disk", async () => {
@@ -255,7 +303,7 @@ describe("provisionBrain", () => {
 		expect(results[1].status).toBe("exists");
 		expect(results[2].status).toBe("would-create");
 		expect(results[2].name).toBe("Vault CLAUDE.md");
-		expect(results[3].name).toBe("MCP config (obsidian)");
+		expect(results[3].name).toBe("MCP config (brain)");
 	});
 
 	// -------------------------------------------------------------------------
@@ -472,7 +520,7 @@ describe("provisionBrain", () => {
 		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
 		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
 		await writeFile(join(brainPath, "CLAUDE.md"), canonicalClaudeMd, "utf-8");
-		const existing = { mcpServers: { obsidian: expectedObsidianEntry(brainPath) } };
+		const existing = { mcpServers: { brain: expectedObsidianEntry(brainPath) } };
 		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");
 
 		const results = await provisionBrain(brainPath, mcpPath);

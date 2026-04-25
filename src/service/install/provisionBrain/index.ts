@@ -77,7 +77,7 @@ When reading any vault note, follow \`[[wikilinks]]\` that are relevant to your 
 There are two lookup paths — use the right one:
 
 - **Coding conventions and patterns** → use the \`study-playbook\` skill. It navigates the coding playbook hub top-down (hub → section hub → content notes → wikilinks). Do NOT flat-search for playbook content with \`search_notes\` — the hub structure gives you the full picture; search gives you fragments.
-- **Everything else** (project context, journal logs, research, domain knowledge, tasks) → use \`mcp__obsidian__search_notes\` with query terms matching the domain.
+- **Everything else** (project context, journal logs, research, domain knowledge, tasks) → use \`mcp__brain__search_notes\` with query terms matching the domain.
 
 ## Where to Find Things
 
@@ -123,7 +123,7 @@ These notes are **required reading** for every task, regardless of which section
 `;
 
 /**
- * Return planning steps for brain vault scaffolding and Obsidian MCP wiring.
+ * Return planning steps for brain vault scaffolding and brain MCP wiring.
  *
  * The function signature requires a resolved `brainPath` — the caller (agent)
  * guarantees a path is provided before calling. Returns four `InitStep` items:
@@ -138,10 +138,11 @@ These notes are **required reading** for every task, regardless of which section
  *    expected path; `would-create` with `content` when absent. Never `would-overwrite`
  *    — these files are user-owned seeds, not canonical templates. Idempotency is
  *    per-file — checked independently of the vault-level step.
- * 4. Obsidian MCP entry (category `"mcp"`): `exists` if the obsidian key is
- *    already in the config, `would-create` with a `McpPrescription`.
- *    If the config file is malformed JSON, returns `would-create` with
- *    `configMalformed: true`.
+ * 4. Brain MCP entry (category `"mcp"`): `exists` if the brain key is already in
+ *    the config with a matching vault path, `would-create` for cold installs,
+ *    `would-overwrite` for legacy `obsidian`-keyed installs or transitional
+ *    states where both keys are present. If the config file is malformed JSON,
+ *    returns `would-create` with `configMalformed: true`.
  *
  * Two idempotency modes coexist: seed-semantic (presence-only) for user-owned
  * content (steps 2, 3); canonical-template (byte-identity) for tool-owned config
@@ -156,7 +157,7 @@ export default async function provisionBrain(
 	const vaultStep = await buildVaultStep(brainPath);
 	const playbookHubStep = await buildPlaybookHubStep(brainPath);
 	const vaultClaudeMdStep = await buildVaultClaudeMdStep(brainPath);
-	const mcpStep = await buildObsidianMcpStep(brainPath, mcpConfigPath);
+	const mcpStep = await buildBrainMcpStep(brainPath, mcpConfigPath);
 
 	return [vaultStep, playbookHubStep, vaultClaudeMdStep, mcpStep];
 }
@@ -188,7 +189,7 @@ async function buildVaultStep(brainPath: string): Promise<InitStep> {
  * `exists` regardless of on-disk content. Once the user has the file, the bytes
  * belong to the user. See the spec's Strategy section ("Two different idempotency
  * semantics coexist in this module") for the rationale behind seed-semantic
- * idempotency vs. the canonical-template check used by `buildObsidianMcpStep`.
+ * idempotency vs. the canonical-template check used by `buildBrainMcpStep`.
  */
 async function buildPlaybookHubStep(brainPath: string): Promise<InitStep> {
 	const filePath = join(brainPath, "coding-playbook", "coding-playbook.md");
@@ -213,7 +214,7 @@ async function buildPlaybookHubStep(brainPath: string): Promise<InitStep> {
  * `exists` regardless of on-disk content. Once the user has the file, the bytes
  * belong to the user. See the spec's Strategy section ("Two different idempotency
  * semantics coexist in this module") for the rationale behind seed-semantic
- * idempotency vs. the canonical-template check used by `buildObsidianMcpStep`.
+ * idempotency vs. the canonical-template check used by `buildBrainMcpStep`.
  */
 async function buildVaultClaudeMdStep(brainPath: string): Promise<InitStep> {
 	const filePath = join(brainPath, "CLAUDE.md");
@@ -232,78 +233,118 @@ async function buildVaultClaudeMdStep(brainPath: string): Promise<InitStep> {
 }
 
 /**
- * Build the Obsidian MCP wiring planning step.
- *
- * Three on-disk states for an existing `obsidian` entry:
- *   - Absent entirely → `would-create` with the full prescription.
- *   - Present with a vault path that matches the caller-supplied `brainPath` →
- *     `exists` (idempotent — the entry is already correct).
- *   - Present but the vault path is empty or differs from `brainPath` →
- *     `would-overwrite` with the updated prescription. The CLI writes the
- *     obsidian shell with an empty path during cold start, and the wizard
- *     later passes this step through `applySteps` (after user confirmation)
- *     to fill in the real path. Without this branch, `aide_init` would
- *     report the entry as `exists` even when the path needs updating.
+ * Extract the vault path from an MCP server entry (last positional arg in `args`).
+ * Returns `undefined` when the entry is absent, has no args, or the last arg is
+ * not a string.
  */
-async function buildObsidianMcpStep(brainPath: string, mcpConfigPath: string): Promise<InitStep> {
+function extractVaultPath(entry: unknown): string | undefined {
+	if (!entry || typeof entry !== "object") return undefined;
+	const { args } = entry as { args?: unknown };
+	if (!Array.isArray(args) || args.length === 0) return undefined;
+	const last = args[args.length - 1];
+	return typeof last === "string" ? last : undefined;
+}
+
+/**
+ * Build the brain MCP wiring planning step.
+ *
+ * Four on-disk states are handled:
+ *   - Neither `brain` nor `obsidian` key present (cold install) →
+ *     `would-create` with key `"brain"`.
+ *   - Only `obsidian` key present (legacy install) → `would-overwrite` with
+ *     key `"brain"`. `applySteps` passes MCP steps through unchanged so the
+ *     agent merges the new entry; orphan `obsidian` cleanup is a separate step.
+ *   - `brain` key present with a matching vault path → `exists` (idempotent).
+ *   - Both `brain` and `obsidian` keys present (transitional half-migrated
+ *     state) → `would-overwrite` with key `"brain"` so the agent overwrites
+ *     the brain entry to the correct path. Orphan `obsidian` cleanup is
+ *     deferred to a follow-up step.
+ *   - Malformed JSON → `would-create` with `configMalformed: true`.
+ */
+async function buildBrainMcpStep(brainPath: string, mcpConfigPath: string): Promise<InitStep> {
 	const prescription: McpPrescription = {
-		key: "obsidian",
+		key: "brain",
 		entry: obsidianMcpEntry(brainPath),
 	};
 
 	const existing = await safeReadFile(mcpConfigPath);
 
-	if (existing) {
-		try {
-			const config = JSON.parse(existing);
-			const servers = config.mcpServers || {};
-			if ("obsidian" in servers) {
-				// Extract the existing vault path (last positional arg) and
-				// compare against the target. Same extraction rules as
-				// buildBrainState.
-				const entry = servers.obsidian as { args?: unknown } | null;
-				const args = entry && Array.isArray(entry.args) ? entry.args : [];
-				const existingPath = args.length > 0 ? args[args.length - 1] : undefined;
-				if (typeof existingPath === "string" && existingPath === brainPath) {
-					return {
-						name: "MCP config (obsidian)",
-						status: "exists",
-						category: "mcp",
-						filePath: mcpConfigPath,
-					};
-				}
-				return {
-					name: "MCP config (obsidian)",
-					status: "would-overwrite",
-					category: "mcp",
-					filePath: mcpConfigPath,
-					prescription,
-				};
-			}
-			return {
-				name: "MCP config (obsidian)",
-				status: "would-create",
-				category: "mcp",
-				filePath: mcpConfigPath,
-				prescription,
-			};
-		} catch {
-			return {
-				name: "MCP config (obsidian)",
-				status: "would-create",
-				category: "mcp",
-				filePath: mcpConfigPath,
-				prescription,
-				configMalformed: true,
-			};
-		}
+	if (!existing) {
+		return {
+			name: "MCP config (brain)",
+			status: "would-create",
+			category: "mcp",
+			filePath: mcpConfigPath,
+			prescription,
+		};
 	}
 
-	return {
-		name: "MCP config (obsidian)",
-		status: "would-create",
-		category: "mcp",
-		filePath: mcpConfigPath,
-		prescription,
-	};
+	try {
+		const config = JSON.parse(existing);
+		const servers = config.mcpServers || {};
+		const hasBrain = "brain" in servers;
+		const hasObsidian = "obsidian" in servers;
+
+		// Both keys present (transitional half-migrated state) — emit would-overwrite
+		// so the agent re-confirms. A separate follow-up cleans the orphan obsidian key.
+		if (hasBrain && hasObsidian) {
+			return {
+				name: "MCP config (brain)",
+				status: "would-overwrite",
+				category: "mcp",
+				filePath: mcpConfigPath,
+				prescription,
+			};
+		}
+
+		// Only the brain key is present — check whether the vault path matches.
+		if (hasBrain) {
+			const existingPath = extractVaultPath(servers.brain);
+			if (existingPath === brainPath) {
+				return {
+					name: "MCP config (brain)",
+					status: "exists",
+					category: "mcp",
+					filePath: mcpConfigPath,
+				};
+			}
+			// Brain key present but path differs — overwrite.
+			return {
+				name: "MCP config (brain)",
+				status: "would-overwrite",
+				category: "mcp",
+				filePath: mcpConfigPath,
+				prescription,
+			};
+		}
+
+		// Only the legacy obsidian key is present — migrate to brain.
+		if (hasObsidian) {
+			return {
+				name: "MCP config (brain)",
+				status: "would-overwrite",
+				category: "mcp",
+				filePath: mcpConfigPath,
+				prescription,
+			};
+		}
+
+		// Neither key present — cold install.
+		return {
+			name: "MCP config (brain)",
+			status: "would-create",
+			category: "mcp",
+			filePath: mcpConfigPath,
+			prescription,
+		};
+	} catch {
+		return {
+			name: "MCP config (brain)",
+			status: "would-create",
+			category: "mcp",
+			filePath: mcpConfigPath,
+			prescription,
+			configMalformed: true,
+		};
+	}
 }
