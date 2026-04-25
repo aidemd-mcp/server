@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "aide": {
+      "command": "node",
+      "args": ["./dist/index.js"]
+    },
+    "obsidian": {
+      "command": "cmd",
+      "args": ["/c", "npx", "@bitbonsai/mcpvault", "<absolute-path-to-your-obsidian-vault>"]
+    }
+  }
+}
