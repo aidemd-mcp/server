@@ -42,6 +42,7 @@ export const COMMANDS: readonly {
 	{ canonical: "commands/aide/update-playbook", hostPath: "aide/update-playbook.md", displayName: "aide:update-playbook" },
 	{ canonical: "commands/aide/refactor", hostPath: "aide/refactor.md", displayName: "aide:refactor" },
 	{ canonical: "commands/aide/align", hostPath: "aide/align.md", displayName: "aide:align" },
+	{ canonical: "commands/aide/brain", hostPath: "aide/brain.md", displayName: "aide:brain" },
 ];
 
 /**

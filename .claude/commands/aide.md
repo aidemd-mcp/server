@@ -6,98 +6,52 @@ Conversational entry point for the full AIDE pipeline. Gathers context from the 
 
 ## MANDATORY BOOT SEQUENCE
 
-**STOP. Do not respond to the user's request yet. Do not analyze it. Do not classify it. Do not decide whether it's a "pipeline request" or a "bug report" or anything else.**
+**STOP. Do not respond to the user's request yet. Do not analyze it. Do not classify it.**
 
-This boot sequence fires on EVERY `/aide` invocation — no exceptions, no matter what the user said. It applies whether the user wants to run the pipeline, report a bug, ask a question, do a refactor, or anything else. You cannot know the correct response until you have booted.
+Boot fires on EVERY `/aide` invocation — no exceptions. It is **sequential, not parallel** — brain status gates everything else. There is no point loading docs and the intent tree if the brain isn't wired.
 
-Your first tool calls MUST be these 6 calls and NOTHING else. No Bash, no Glob, no Grep, no Explore, no Agent — only these:
+### Step 1 — Call `aide_info`
+
+This is your only first call. No `Read`, no `aide_discover`, no other tool.
+
+### Step 2 — Brain status (hard gate)
+
+The brain is the pipeline's durable memory. If it isn't wired, the pipeline can't run.
+
+- **`brain.status === 'ok'`** — continue to Step 3.
+- **Anything else** (`no-mcp-entry`, `invalid-path`) — STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Instead, invoke `/aide:brain config` directly using the `Skill` tool:
+
+  ```
+  Skill(skill="aide:brain", args="config")
+  ```
+
+  Briefly tell the user what you're doing first — one line, conversational tone, no scary "boot halted" framing. Example:
+
+  > Brain isn't wired up yet — let's get that set up first.
+
+  Then call the Skill tool. The `/aide:brain config` command owns the entire wiring flow: vault path prompts, hint pickers, `.mcp.json` merging, vault seeding, restart messaging. After it returns, the orchestrator does NOT continue — `/aide:brain config` ends with a restart instruction, and the user must re-run `/aide` after Claude Code restarts so the obsidian MCP server picks up the new path.
+
+### Step 3 — Outdated artifacts (passive notification)
+
+If `outdated` from `aide_info` is non-empty, mention it once and continue:
+
+> `N` AIDE artifact(s) are outdated — run `/aide:upgrade` when you'd like to update.
+
+Outdated is informational, not a gate.
+
+### Step 4 — Load methodology + intent tree (parallel)
+
+Now — and only now — run these 5 calls in parallel:
 
 1. `Read` → `.aide/docs/index.md`
 2. `Read` → `.aide/docs/aide-spec.md`
 3. `Read` → `.aide/docs/plan-aide.md`
 4. `Read` → `.aide/docs/todo-aide.md`
-5. `aide_discover` (MCP tool) → to get the full intent tree
-6. `aide_info` (MCP tool) → no parameters needed
+5. `aide_discover` (MCP tool, no arguments)
 
-All 6 calls run in parallel — there are no dependencies between any of them.
+**Only after all 5 return** may you read the user's request, consult the sections below, and decide what to do.
 
-**Only after all 6 calls return** may you read the user's request, consult the sections below, and decide what to do.
-
-Check the `outdated` array from `aide_info`. If it is non-empty, notify the user (e.g., "N AIDE artifacts are outdated — run `/aide:upgrade` when you'd like to update.") and continue with whatever they asked. This is a passive notification, not a blocking gate.
-
-Check `brain.status` from `aide_info`. This is a **hard gate** — if the brain isn't wired up yet, don't start any pipeline work (interview, spec, research, synthesize, plan, build, QA, fix, align, refactor). Tone matters here: the user isn't blocked on a broken pipeline, they're on the final setup step. Frame it that way — welcoming, progress-oriented, never "can't proceed" or "requires" or "failed".
-
-- **`status === 'ok'`** — Brain is configured and the vault path resolves on disk. Continue boot normally.
-
-- **`status === 'no-mcp-entry'`** — Stop. Tell the user:
-
-  > One step left before the pipeline can run: wiring up an obsidian MCP entry so AIDE has a brain vault to persist research and retros into.
-  >
-  > Run `npx aidemd-mcp init` in this project's terminal — it'll add the obsidian MCP entry to `.mcp.json` and tell you what to do next. Once that's done, restart Claude Code and re-run `/aide`.
-
-  Do NOT proceed with any pipeline work until this is resolved.
-
-- **`status === 'invalid-path'`** — Stop. Branch on whether `brain.vaultPath` is empty or not:
-
-  - **Empty `vaultPath` (the obsidian entry exists but no path is set yet — the common case after a cold `npx init`):**
-
-    Final step to getting your brain vault wired up — one question and a restart away from a fully wired brain.
-
-    The obsidian MCP entry already exists in `.mcp.json`. It just needs a vault path. Do this inline now:
-
-    1. **Ask the user for the vault path.** How you ask depends on how many hints `aide_info` surfaced — `brain.hints` may be empty or non-empty:
-
-       - **`brain.hints.length === 0`** — no hints to offer. Ask inline:
-
-         > The obsidian MCP entry is already in `.mcp.json` — it just needs a vault path. What's the absolute path to your brain vault?
-
-         Treat the user's reply as `<brainPath>`.
-
-       - **`brain.hints.length >= 1`** — call `AskUserQuestion` once. Use this shape:
-         - `header`: `"Brain vault"`
-         - `question`: `"The obsidian MCP entry is already in .mcp.json — it just needs a vault path. Where is your brain vault?"`
-         - `options`: one entry per hint, using `label: "Use {hint.path}"` and `description: "{hint.source} hint"`, **plus** one explicit final entry: `label: "Different location"`, `description: "Paste a custom absolute path"`. The explicit final option is required because the schema's `minItems: 2` cannot be satisfied with a single hint — adding it here satisfies the constraint and renders correctly for both 1-hint and multi-hint cases. Maximum 4 total entries (3 hint entries + "Different location"); if hints ever exceed 3, drop the lowest-priority hint to keep the total at 4.
-
-         **STOP. Wait for the user's response before continuing.**
-
-    2. **Resolve the answer.** The mechanism depends on which branch fired in step 1:
-       - **Picker (≥1 hint):** if the user clicked a hint option, the answer is `"Use {hint.path}"` — extract the path. If the user clicked `"Different location"` or the auto-provided "Other," they typed a custom absolute path — use that text verbatim as `<brainPath>`.
-       - **Inline (0 hints):** the user's reply IS the path. Trim whitespace and use it as `<brainPath>`.
-
-       Validate `<brainPath>` is a non-empty absolute path before continuing. If it's relative or empty, ask once more inline for a corrected absolute path.
-
-    3. **Patch `.mcp.json` via the mcp-category call:**
-       - Call `aide_init({ category: "mcp", brainPath: <brainPath> })`.
-       - The response is an `InitResult` filtered to mcp-category steps only. Find the step where `category === "mcp"` and `name` contains `"obsidian"`.
-       - If the step's status is `"exists"`, `.mcp.json` already points at `<brainPath>`. Skip the merge — no `.mcp.json` write is needed — and continue to step 4.
-       - Otherwise (`"would-create"`, `"would-overwrite"`, `"created"`, or `"overwritten"`), the step carries a `prescription: { key, entry }`. Apply it: (a) Read `.mcp.json`; (b) parse the JSON and merge `prescription.entry` into `mcpServers[prescription.key]`, leaving all other `mcpServers` keys untouched; (c) Write the merged object back to `.mcp.json` preserving its current indentation (or two-space indent when creating a fresh file). If `.mcp.json` does not exist, create it as `{ "mcpServers": { [prescription.key]: prescription.entry } }`.
-       - **Never** call `Write` with the raw prescription object as if it were the full config file — that would clobber the user's other MCP entries.
-
-    4. **Seed the vault via the brain-category call:** Call `aide_init({ category: "brain", brainPath: <brainPath> })`. No prompt, no `AskUserQuestion`. Brain steps are seed-semantic — `"would-create"` (applied silently) or `"exists"` (already present). The tool writes directories and seed files itself.
-
-    5. **Emit the restart instruction and STOP.** Steps 3 and 4 completed without throwing. Write a user-facing message (use a blockquote consistent with the rest of this file):
-
-       > `<brainPath>` wired up. `.mcp.json` patched and vault scaffolded.
-       >
-       > Restart Claude Code so the obsidian MCP server loads the new config, then re-run `/aide` and we'll pick up where we left off.
-
-       After emitting this message, the orchestrator **STOPS**. Do NOT re-call `aide_info`. Do NOT continue the user's original request. `.mcp.json` was patched on disk, but the obsidian MCP server running in this session was launched at boot with the old empty-path config and will not pick up the new path until Claude Code restarts. Continuation happens on the next `/aide` invocation after the user restarts.
-
-    6. **On failure.** "Failure" means: (a) the `aide_init` mcp call threw; (b) the `.mcp.json` merge step threw (unreadable, unparseable, unwritable); (c) the `aide_init` brain call threw. Do NOT retry inline. Do NOT re-prompt the user. Surface the specific error and fall back to the cli:
-
-       > Something went wrong wiring the vault path: `<error message>`.
-       >
-       > Run `npx aidemd-mcp init` in this project's terminal to retry the setup with full per-file logging, then restart Claude Code and re-run `/aide`.
-
-  - **Non-empty `vaultPath` (the configured path doesn't resolve on disk — substitute the actual value):**
-
-    > The obsidian MCP entry points to `<brain.vaultPath>`, but that directory isn't there.
-    >
-    > Either restore the folder at that path, or run `npx aidemd-mcp init --vault-path <new-path>` in this project's terminal to point at a different one. Once the path resolves, restart Claude Code and `/aide` will continue.
-
-  Do NOT proceed with any pipeline work until this is resolved.
-
-**Why this is unconditional:** You are an orchestrator for a methodology you don't inherently know. Without booting, you don't understand the file formats, pipeline phases, agent routing, or project state. Even "simple" requests require this context — a bug report about `aide_init` requires knowing what `aide_init` should produce, which the docs and discover output tell you. Skipping boot means guessing, and guessing produces wrong answers.
+**Why this matters:** You are an orchestrator for a methodology you don't inherently know. Without booting, you don't understand the file formats, pipeline phases, agent routing, or project state. Skipping boot means guessing.
 
 After booting, three hard constraints govern everything you do:
 - **Delegation Only** — you never write files, edit code, or do substantive work; you delegate to subagents
