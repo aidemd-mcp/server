@@ -3,23 +3,26 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/service/install/detectFramework/index.js");
 vi.mock("@/service/install/resolveBrainHints/index.js");
 vi.mock("node:fs/promises");
+vi.mock("@/service/brainBackends/index.js");
 
 import detectFramework from "@/service/install/detectFramework/index.js";
 import resolveBrainHints from "@/service/install/resolveBrainHints/index.js";
 import { readFile, stat } from "node:fs/promises";
-import buildBrainState from "./index.js";
+import resolveBackend from "@/service/brainBackends/index.js";
+import buildBrainState from "@/service/buildBrainState/index.js";
 
 const mockDetectFramework = detectFramework as ReturnType<typeof vi.fn>;
 const mockResolveBrainHints = resolveBrainHints as ReturnType<typeof vi.fn>;
 const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 const mockStat = stat as ReturnType<typeof vi.fn>;
+const mockResolveBackend = resolveBackend as ReturnType<typeof vi.fn>;
 
 // Factory functions — build MCP config JSON fixtures.
 
-function makeMcpConfigWithObsidian(vaultPath: string): string {
+function makeMcpConfigWithBrain(vaultPath: string): string {
 	return JSON.stringify({
 		mcpServers: {
-			obsidian: {
+			brain: {
 				command: "npx",
 				args: ["@bitbonsai/mcpvault", vaultPath],
 			},
@@ -27,7 +30,7 @@ function makeMcpConfigWithObsidian(vaultPath: string): string {
 	});
 }
 
-function makeMcpConfigWithoutObsidian(): string {
+function makeMcpConfigWithoutBrain(): string {
 	return JSON.stringify({
 		mcpServers: {
 			"aidemd-mcp": {
@@ -67,6 +70,8 @@ describe("buildBrainState", () => {
 		mockDetectFramework.mockResolvedValue(FIXED_FRAMEWORK_CONFIG);
 		// Default: no candidates found — deterministic baseline for all tests.
 		mockResolveBrainHints.mockResolvedValue([]);
+		// Default: registry recognises the entry as the obsidian backend.
+		mockResolveBackend.mockReturnValue({ id: "obsidian", renderInstructions: vi.fn() });
 	});
 
 	it("returns no-mcp-entry when readFile rejects with ENOENT", async () => {
@@ -75,7 +80,7 @@ describe("buildBrainState", () => {
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
 	});
 
 	it("returns no-mcp-entry when readFile returns malformed JSON", async () => {
@@ -83,116 +88,122 @@ describe("buildBrainState", () => {
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
 	});
 
-	it("returns no-mcp-entry when mcpServers is present but has no obsidian key", async () => {
-		mockReadFile.mockResolvedValue(makeMcpConfigWithoutObsidian());
+	it("returns no-mcp-entry when mcpServers is present but has no brain key", async () => {
+		mockReadFile.mockResolvedValue(makeMcpConfigWithoutBrain());
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
 	});
 
-	it("returns no-mcp-entry when obsidian entry has an empty args array", async () => {
+	it("returns no-mcp-entry when brain entry has an empty args array", async () => {
 		mockReadFile.mockResolvedValue(
 			JSON.stringify({
 				mcpServers: {
-					obsidian: { command: "npx", args: [] },
+					brain: { command: "npx", args: [] },
 				},
 			}),
 		);
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
 	});
 
-	it("returns invalid-path with empty vaultPath when obsidian entry has an empty-string last arg (cold-install state)", async () => {
-		// The CLI writes an obsidian entry with an empty vault path on cold install
+	it("returns invalid-path with empty vaultPath when brain entry has an empty-string last arg (cold-install state)", async () => {
+		// The CLI writes a brain entry with an empty vault path on cold install
 		// so the orchestrator's inline-recovery flow can prompt the user for the path.
 		// This must surface as invalid-path (not no-mcp-entry) so the orchestrator
 		// fires the AskUserQuestion branch rather than telling the user to re-run init.
-		mockReadFile.mockResolvedValue(makeMcpConfigWithObsidian(""));
+		mockReadFile.mockResolvedValue(makeMcpConfigWithBrain(""));
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "invalid-path", vaultPath: "", hints: [] });
+		expect(result).toEqual({ status: "invalid-path", vaultPath: "", hints: [], backend: null });
 	});
 
-	it("returns no-mcp-entry when obsidian entry has no args field", async () => {
+	it("returns no-mcp-entry when brain entry has no args field", async () => {
 		mockReadFile.mockResolvedValue(
 			JSON.stringify({
 				mcpServers: {
-					obsidian: { command: "npx" },
+					brain: { command: "npx" },
 				},
 			}),
 		);
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
 	});
 
-	it("returns no-mcp-entry when obsidian entry has args that is not an array", async () => {
+	it("returns no-mcp-entry when brain entry has args that is not an array", async () => {
 		mockReadFile.mockResolvedValue(
 			JSON.stringify({
 				mcpServers: {
-					obsidian: { command: "npx", args: "/home/vault" },
+					brain: { command: "npx", args: "/home/vault" },
 				},
 			}),
 		);
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
 	});
 
-	it("returns no-mcp-entry when obsidian entry last arg is not a string (shape corruption)", async () => {
+	it("returns no-mcp-entry when brain entry last arg is not a string (shape corruption)", async () => {
 		// A non-string last element (e.g. null, a number) is unrecoverable shape
 		// corruption — distinct from the empty-string cold-install state which is
 		// deliberate. Both are no-mcp-entry because no vault path can be extracted.
 		mockReadFile.mockResolvedValue(
 			JSON.stringify({
 				mcpServers: {
-					obsidian: { command: "cmd", args: ["/c", "npx", "@bitbonsai/mcpvault", null] },
+					brain: { command: "cmd", args: ["/c", "npx", "@bitbonsai/mcpvault", null] },
 				},
 			}),
 		);
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [] });
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
 	});
 
-	it("returns ok with vaultPath when valid obsidian entry and stat resolves to a directory", async () => {
+	it("returns ok with vaultPath when valid brain entry and stat resolves to a directory", async () => {
 		const vaultPath = "/home/user/vault";
-		mockReadFile.mockResolvedValue(makeMcpConfigWithObsidian(vaultPath));
+		mockReadFile.mockResolvedValue(makeMcpConfigWithBrain(vaultPath));
 		mockStat.mockResolvedValue(makeStatDir());
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "ok", vaultPath, hints: [] });
+		expect(result).toEqual({ status: "ok", vaultPath, hints: [], backend: "obsidian" });
+		// Registry dispatch: resolveBackend was called once with the entry the fixture produced.
+		// Pins both the registry-dispatch contract and the "store driver.id, not the driver object" decision.
+		expect(mockResolveBackend).toHaveBeenCalledTimes(1);
+		expect(mockResolveBackend).toHaveBeenCalledWith(
+			expect.objectContaining({ command: "npx", args: expect.arrayContaining([vaultPath]) }),
+		);
 	});
 
 	it("returns invalid-path with vaultPath when stat rejects", async () => {
 		const vaultPath = "/old/moved/path";
-		mockReadFile.mockResolvedValue(makeMcpConfigWithObsidian(vaultPath));
+		mockReadFile.mockResolvedValue(makeMcpConfigWithBrain(vaultPath));
 		mockStat.mockRejectedValue(new Error("ENOENT"));
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "invalid-path", vaultPath, hints: [] });
+		expect(result).toEqual({ status: "invalid-path", vaultPath, hints: [], backend: null });
 	});
 
 	it("returns invalid-path with vaultPath when stat resolves but target is not a directory", async () => {
 		const vaultPath = "/home/user/vault-is-a-file";
-		mockReadFile.mockResolvedValue(makeMcpConfigWithObsidian(vaultPath));
+		mockReadFile.mockResolvedValue(makeMcpConfigWithBrain(vaultPath));
 		mockStat.mockResolvedValue(makeStatFile());
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "invalid-path", vaultPath, hints: [] });
+		expect(result).toEqual({ status: "invalid-path", vaultPath, hints: [], backend: null });
 	});
 
 	// Windows-shape regression: args prefix ["/c", "npx", "@bitbonsai/mcpvault", <path>].
@@ -203,7 +214,7 @@ describe("buildBrainState", () => {
 		mockReadFile.mockResolvedValue(
 			JSON.stringify({
 				mcpServers: {
-					obsidian: {
+					brain: {
 						command: "cmd",
 						args: ["/c", "npx", "@bitbonsai/mcpvault", vaultPath],
 					},
@@ -214,7 +225,7 @@ describe("buildBrainState", () => {
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "ok", vaultPath, hints: [] });
+		expect(result).toEqual({ status: "ok", vaultPath, hints: [], backend: "obsidian" });
 	});
 
 	it("includes discovered hints on every returned state", async () => {
@@ -227,6 +238,26 @@ describe("buildBrainState", () => {
 
 		const result = await buildBrainState("/project/root");
 
-		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [hint] });
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [hint], backend: null });
+	});
+
+	it("returns no-mcp-entry with backend: null when resolveBackend returns null (wired-but-unrecognized backend)", async () => {
+		mockReadFile.mockResolvedValue(makeMcpConfigWithBrain("/some/vault"));
+		mockResolveBackend.mockReturnValue(null);
+		// stat is never reached on this branch — but the test does not
+		// need to assert that; the result-shape assertion is sufficient.
+
+		const result = await buildBrainState("/project/root");
+
+		expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
+		// Pins the registry-dispatch contract: resolveBackend was called once
+		// with an entry whose command is "npx" and whose args ends with "/some/vault".
+		expect(mockResolveBackend).toHaveBeenCalledTimes(1);
+		expect(mockResolveBackend).toHaveBeenCalledWith(
+			expect.objectContaining({
+				command: "npx",
+				args: expect.arrayContaining(["/some/vault"]),
+			}),
+		);
 	});
 });

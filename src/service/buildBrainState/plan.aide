@@ -1,0 +1,382 @@
+---
+description: Lift the brain-state detector from src/tools/info/buildBrainState/ to src/service/buildBrainState/, switch to the fixed `brain` MCP key, dispatch to the brainBackends registry for identity, and surface `BrainState.backend` on every branch.
+intent: >
+  Move the existing brain-state detector to the service layer so both
+  aide_info (boot probe) and aide_brain (runtime tool) can consume it
+  without crossing horizontal-isolation boundaries; replace the legacy
+  `obsidian` MCP key lookup with the fixed `brain` key; dispatch the
+  resolved entry to `brainBackends.resolveBackend` and store
+  `driver.id` on `BrainState.backend` for `ok`; collapse the new
+  wired-but-unrecognized case to `no-mcp-entry` with `backend: null`;
+  preserve every existing edge-case branch and its tests; delete the
+  old location once the lift is complete.
+---
+
+## Project Structure
+
+The tree below shows `src/service/buildBrainState/` after this plan executes.
+Every file inside this scope directory is listed; cross-cutting edits to
+files outside this directory (`src/tools/info/index.ts`,
+`src/tools/info/index.test.ts`, and the deletion of
+`src/tools/info/buildBrainState/`) are declared as explicit steps below
+but are not part of this module's folder tree.
+
+```
+src/service/buildBrainState/
+├── .aide                ← [existing] intent spec for this orchestrator
+├── plan.aide            ← [this file] implementation plan
+├── index.ts             ← [new — lifted from src/tools/info/buildBrainState/index.ts] orchestrator: buildBrainState(root: string) => Promise<BrainState>
+└── index.test.ts        ← [new — lifted from src/tools/info/buildBrainState/index.test.ts] co-located vitest covering ENOENT, malformed JSON, missing brain key, malformed args, empty-args, non-string last arg, empty-string vault path (cold install), Windows-shape args, hints surfaced, ok-with-stat-dir, stat-rejects, stat-resolves-to-file, AND the new wired-but-unrecognized branch (resolveBackend → null)
+```
+
+The orchestrator has no helper subfolders. It composes three external
+helpers — `detectFramework` (sibling service), `resolveBrainHints`
+(sibling service), and `resolveBackend` (sibling service registry) —
+plus `node:fs/promises` primitives. None of those become local helpers
+under this module; they each live in their own module per horizontal
+isolation.
+
+## Prerequisites
+
+Two upstream contracts must already be in place before this plan runs.
+Both have already shipped (see `## Decisions` below for the audit).
+
+### 1. `src/types/index.ts` — `BrainState.backend` field
+
+Must already export `BrainState` with the new `backend: string | null`
+field defined and JSDoc-documented per `src/tools/brain/plan.aide`
+step 1c. This plan **reads** the type and **populates** the field —
+it never re-defines or extends `BrainState`. Confirmed in place at
+plan-write time (`src/types/index.ts` lines 385–411).
+
+### 2. `src/service/brainBackends/index.ts` — registry contract
+
+Must already export:
+- `default function resolveBackend(entry: McpServerEntry): BackendDriver | null`
+  — returns the matched driver or `null` when no matcher fires; never
+  throws; never falls back to a default backend.
+- (Available for downstream consumers, not used by this plan)
+  `function getDriverById(id: string): BackendDriver | null`.
+- Re-exports of `BackendDriver` and `McpServerEntry` from
+  `@/types/index.js`.
+
+This plan dispatches the wired entry shape to `resolveBackend` exactly
+once per `buildBrainState` call. The internal matcher table, the
+Obsidian launcher predicate, and the instruction template are all owned
+by the registry; this plan never inspects `command`/`args` shapes
+itself. Confirmed in place at plan-write time
+(`src/service/brainBackends/index.ts`).
+
+## Plan
+
+### 1. Create the lifted orchestrator at `src/service/buildBrainState/index.ts`
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`, `coding-playbook/services/error-handling`
+
+- [x] 1a. Create `src/service/buildBrainState/index.ts` with a default
+      export `async function buildBrainState(root: string): Promise<BrainState>`.
+      Single-positional `(root: string)` signature — single-input
+      object rule applies to two-or-more arguments; one argument stays
+      positional per the spec.
+- [x] 1b. Imports:
+        - `readFile`, `stat` from `node:fs/promises`
+        - `join` from `node:path`
+        - default `detectFramework` from `@/service/install/detectFramework/index.js`
+        - default `resolveBrainHints` from `@/service/install/resolveBrainHints/index.js`
+        - default `resolveBackend` from `@/service/brainBackends/index.js`
+        - types `BrainHint`, `BrainState`, `McpServerEntry` from `@/types/index.js`
+- [x] 1c. Pipeline (declarative, sequential — no Promise.all between
+      `detectFramework` and `resolveBrainHints` because the existing
+      detector ran them sequentially and that ordering is preserved
+      verbatim by the lift; reordering or parallelizing is out of
+      scope for the lift). The orchestrator runs:
+        1. Resolve framework config: `await detectFramework(root)` →
+           join `frameworkConfig.mcpConfigPath` to `root` for the
+           absolute MCP config path.
+        2. Resolve hints: `await resolveBrainHints(root)`. Populated
+           unconditionally so every returned `BrainState` carries the
+           same hints array.
+        3. Read the MCP config file. Wrap `readFile(..., "utf-8")` in
+           try/catch. ANY read failure (ENOENT or otherwise) collapses
+           to `no-mcp-entry` with `vaultPath: null`, `backend: null`,
+           `hints`. Never rethrow.
+        4. Parse JSON. Wrap `JSON.parse(raw)` in try/catch. Any parse
+           failure collapses to the same `no-mcp-entry` shape as
+           step 3. Never rethrow.
+        5. Look up the **fixed `"brain"` key** in `mcpServers`. The
+           existence check uses `"brain" in (servers as object)` —
+           NOT `"obsidian"`. The legacy `obsidian` fallback is
+           **forbidden** per the spec's undesired outcome (legacy
+           migration is the install service's job). If `mcpServers`
+           is missing, not an object, or has no `brain` key, return
+           the same `no-mcp-entry` shape.
+        6. Extract `args` from the brain entry. If `args` is missing,
+           not an array, or empty → `no-mcp-entry`,
+           `vaultPath: null`, `backend: null`, `hints`. The vault
+           path extraction rule is unchanged from the existing
+           detector: `args[args.length - 1]` (last positional element,
+           platform-agnostic — covers POSIX
+           `["@bitbonsai/mcpvault", <path>]` and Windows
+           `["/c", "npx", "@bitbonsai/mcpvault", <path>]`).
+        7. Validate the candidate path. If `args[args.length - 1]` is
+           not a string → `no-mcp-entry`. If it is the empty
+           string → `invalid-path` with `vaultPath: ""`,
+           `backend: null` (deliberate cold-install state from
+           `provisionBrain`).
+        8. **NEW BRANCH — registry dispatch.** Build a typed
+           `entry: McpServerEntry` from the brain entry's `command`
+           and `args` (defensively narrow `command` to a string;
+           `args` is already proven to be a string-tail array at
+           this point). Call `resolveBackend(entry)`. If the registry
+           returns `null` (wired-but-unrecognized backend), return
+           `no-mcp-entry` with `vaultPath: null`, `backend: null`,
+           `hints`. Per the spec's strategy this collapses to the
+           same `no-mcp-entry` shape as "never wired at all" — same
+           remediation, no new vocabulary.
+        9. Stat the candidate vault path. Wrap `stat(candidatePath)`
+           in try/catch. If it rejects OR the result's
+           `isDirectory()` is false → `invalid-path` with the
+           configured `candidatePath`, `backend: null`, `hints`.
+       10. Happy path: return `{ status: "ok", vaultPath: candidatePath, hints, backend: driver.id }`
+           where `driver` is the non-null result from step 8. The
+           `backend` field is the registry-resolved driver's `id`
+           string — NEVER hardcoded to `"obsidian"`.
+- [x] 1d. Discriminant invariants enforced by the branch returns:
+        - `status: "ok"` ⇒ `vaultPath: string` AND `backend: string` (the resolved driver id).
+        - `status: "no-mcp-entry"` ⇒ `vaultPath: null` AND `backend: null`.
+        - `status: "invalid-path"` ⇒ `vaultPath: string` (configured path or `""`) AND `backend: null`.
+        Never return `backend: null` on `ok` and never return a
+        non-null `backend` on `no-mcp-entry`/`invalid-path`. These
+        rules are JSDoc-documented on the type (already done in
+        `src/types/index.ts`); enforce them via the branch return
+        literals here.
+- [x] 1e. Multi-line JSDoc on the default export. The narrative
+      mirrors the existing detector's JSDoc but updated for the new
+      contract: lookup uses the fixed `"brain"` key (no `obsidian`
+      fallback; legacy migration is the install service's job),
+      backend identity comes from `resolveBackend` (never from the
+      key name), the wired-but-unrecognized case collapses to
+      `no-mcp-entry`, and every branch returns a structured value
+      including the new `backend` discriminant. Each branch in the
+      function body gets a `// Step N — …` comment naming which
+      spec outcome it satisfies. Do not duplicate the type
+      definition into JSDoc.
+- [x] 1f. **Forbidden patterns the implementor must NOT introduce**
+      (each is called out by the spec's bad examples):
+        - No `if ("obsidian" in servers)` fallback when `brain` is
+          absent.
+        - No hardcoded `backend: "obsidian"` literal anywhere — the
+          id always comes from `driver.id`.
+        - No inspecting `command`/`args` shapes inside this module
+          to derive backend identity. Pass the entry to
+          `resolveBackend`; trust the result.
+        - No storing the `BackendDriver` object on `BrainState.backend` —
+          store only `driver.id` (a plain string).
+        - No introducing a new status (`unsupported-backend` etc.)
+          for the wired-but-unrecognized case.
+        - No throwing on any branch.
+
+### 2. Lift the test file to `src/service/buildBrainState/index.test.ts` and update for the new contract
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [x] 2a. Create `src/service/buildBrainState/index.test.ts` co-located
+      with the new source. Start from the contents of
+      `src/tools/info/buildBrainState/index.test.ts` — it carries the
+      mock setup and factory functions the lift should preserve.
+- [x] 2b. Add a **module-level `vi.mock`** for the registry:
+      `vi.mock("@/service/brainBackends/index.js")`. Place it next to
+      the existing `vi.mock` calls (before any non-test imports per
+      the testing playbook's "Module-level mocks" rule).
+- [x] 2c. Import `resolveBackend` from `@/service/brainBackends/index.js`
+      and cast it: `const mockResolveBackend = resolveBackend as ReturnType<typeof vi.fn>`.
+- [x] 2d. Rename the fixture factory functions and key references:
+        - `makeMcpConfigWithObsidian(vaultPath: string)` → `makeMcpConfigWithBrain(vaultPath: string)`.
+          Body: same JSON shape, but the `mcpServers` key changes
+          from `obsidian` to `brain`. The launcher inside (`command: "npx"`,
+          `args: ["@bitbonsai/mcpvault", vaultPath]`) is unchanged —
+          the registry's matcher recognizes the same shape regardless
+          of the outer key.
+        - `makeMcpConfigWithoutObsidian()` → `makeMcpConfigWithoutBrain()`.
+          Body: keeps the `aidemd-mcp` server entry (or any non-brain
+          key) so `mcpServers` is non-empty but has no `brain` key.
+- [x] 2e. Update the `beforeEach` block: in addition to the existing
+      `mockDetectFramework.mockResolvedValue(FIXED_FRAMEWORK_CONFIG)`
+      and `mockResolveBrainHints.mockResolvedValue([])` defaults, add
+      a default `mockResolveBackend.mockReturnValue(<fake driver>)`
+      where the fake driver is `{ id: "obsidian", renderInstructions: vi.fn() }`.
+      This default keeps the happy-path tests green without each one
+      having to wire the registry mock individually.
+- [x] 2f. Update existing tests to assert the new shape — every
+      returned `BrainState` now carries `backend`. For each existing
+      test, add `backend` to the `expect(result).toEqual(...)` literal:
+        - `ENOENT` → `backend: null`
+        - malformed JSON → `backend: null`
+        - missing `brain` key (renamed from missing `obsidian`) → `backend: null`
+        - empty `args` array → `backend: null`
+        - empty-string last arg (cold install) → `backend: null` (status: "invalid-path")
+        - missing `args` field → `backend: null`
+        - `args` is not an array → `backend: null`
+        - last arg is not a string → `backend: null`
+        - happy path (stat resolves to directory) → `backend: "obsidian"` (from the mocked driver's id)
+        - stat rejects → `backend: null` (status: "invalid-path")
+        - stat resolves to a file → `backend: null` (status: "invalid-path")
+        - Windows-shape args happy path → `backend: "obsidian"`
+        - hints surfaced on every state → `backend: null`
+- [x] 2g. **Add the new test branch** for wired-but-unrecognized
+      (the one new outcome introduced by the lift):
+        ```
+        it("returns no-mcp-entry with backend: null when resolveBackend returns null (wired-but-unrecognized backend)", async () => {
+          mockReadFile.mockResolvedValue(makeMcpConfigWithBrain("/some/vault"));
+          mockResolveBackend.mockReturnValue(null);
+          // stat is never reached on this branch — but the test does not
+          // need to assert that; the result-shape assertion is sufficient.
+
+          const result = await buildBrainState("/project/root");
+
+          expect(result).toEqual({ status: "no-mcp-entry", vaultPath: null, hints: [], backend: null });
+        });
+        ```
+      Also assert that `mockResolveBackend` was called once with an
+      entry whose `command === "npx"` and whose `args` ends with
+      `"/some/vault"` — so the test pins both the registry-dispatch
+      contract and the entry-shape forwarding.
+- [x] 2h. Add a **registry-dispatch happy-path assertion** to (or as a
+      sibling test of) the existing happy-path test: assert that
+      `mockResolveBackend` was called once with an entry whose
+      `command/args` matches what the fixture produced, AND that the
+      resulting `BrainState.backend` equals `"obsidian"` (the
+      mocked driver's `id`). This pins the spec's "store driver.id,
+      not the driver object" decision.
+- [x] 2i. **Forbidden test patterns the implementor must NOT
+      introduce:**
+        - No test that asserts the detector hardcoded `"obsidian"`
+          when `resolveBackend` is not called — the assertion shape
+          is "the id from the registry's driver", never a literal.
+        - No test for an `obsidian`-key fallback. The legacy fallback
+          does not exist; a test that pins it would forbid the
+          correct behavior.
+        - No test that expects a thrown error on any branch. Every
+          branch returns a structured value.
+        - No test for a new status term (`unsupported-backend` etc.).
+- [x] 2j. Keep `vi.resetAllMocks()` at the top of `beforeEach` so
+      mock state never leaks between tests, then re-apply the four
+      defaults (`detectFramework`, `resolveBrainHints`,
+      `resolveBackend`).
+
+### 3. Update `src/tools/info/index.ts` to import from the new location
+
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/foundations/conventions`
+
+- [x] 3a. In `src/tools/info/index.ts`, change the import line
+      `import buildBrainState from "./buildBrainState/index.js";` to
+      `import buildBrainState from "@/service/buildBrainState/index.js";`.
+      Use the `@/` alias per folder-structure's "Import Paths" rule —
+      this is a cross-directory import (tool layer → service layer),
+      so the relative path is no longer appropriate.
+- [x] 3b. No other change to `src/tools/info/index.ts`. The function
+      signature, the `Promise.all` composition, and the
+      `buildBrainState(root)` call site are all unchanged. The result
+      shape carried into `InfoResult.brain` automatically picks up
+      the new `backend` field because `BrainState` is the same shared
+      type.
+
+### 4. Update `src/tools/info/index.test.ts` mock path
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 4a. In `src/tools/info/index.test.ts`, change the mock
+      declaration `vi.mock("./buildBrainState/index.js");` to
+      `vi.mock("@/service/buildBrainState/index.js");` to match the
+      new import path in step 3a. The mock must reference the same
+      specifier the source-of-truth import uses, otherwise the mock
+      does not intercept and the real `buildBrainState` runs.
+- [x] 4b. Change the import line
+      `import buildBrainState from "./buildBrainState/index.js";` to
+      `import buildBrainState from "@/service/buildBrainState/index.js";`.
+- [x] 4c. Update each test fixture object that asserts a `brain`
+      field shape: the `mockBuildBrainState.mockResolvedValue(...)`
+      calls and every `expect(result.brain).toEqual(...)` literal
+      must include the new `backend` field. The existing tests
+      already cover the three statuses; add `backend: "obsidian"` to
+      every `ok` shape and `backend: null` to every `no-mcp-entry`
+      and `invalid-path` shape. **Pattern only** — do not change the
+      test names, the test count, or any other behavioral
+      assertions.
+
+### 5. Delete the old location `src/tools/info/buildBrainState/`
+
+Read: `coding-playbook/foundations/conventions`, `.aide/docs/agent-readable-code.md`
+
+- [x] 5a. Delete the directory `src/tools/info/buildBrainState/` and
+      all its contents (`index.ts`, `index.test.ts`). Use a single
+      `rm -rf` against the directory; `git rm -r` is equivalent and
+      records the deletion in the same commit as the new files.
+- [x] 5b. Confirm no remaining references to `src/tools/info/buildBrainState/`
+      exist anywhere in the repo: run a grep against the literal
+      path `tools/info/buildBrainState`. Expected hits: zero in
+      source, zero in tests, zero in docs (the `.aide` spec for the
+      service module already names the new path; the tool's `.aide`
+      may reference the old path historically — that is acceptable
+      since `.aide` files document intent at a point in time, but
+      flag any references and let the implementor decide whether
+      they need a touch-up). The implementor must not paper over
+      stale references silently.
+
+### 6. Run `tsc --noEmit` and the full unit suite
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 6a. Run `rtk tsc --noEmit` to confirm the type system is happy
+      with the new module path, the registry import, and the
+      `BrainState.backend` field population. Investigate any errors
+      at root cause (do not patch around them) — typical failures
+      will be either an unupdated import in step 3 or a `BrainState`
+      literal somewhere that does not yet include `backend`.
+- [x] 6b. Run `rtk vitest run src/service/buildBrainState src/tools/info`
+      to confirm the lifted tests, the new wired-but-unrecognized
+      branch test, and the consumer-side `info` tests all pass.
+- [x] 6c. Run `rtk vitest run` (full suite) to confirm no other test
+      anywhere in the repo regressed. Investigate any failures at
+      root cause; do not skip or comment out tests.
+
+### 7. Validate the new `.aide` artifacts via `aide_validate`
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] 7. Call `aide_validate` with `path: "src/service/buildBrainState"`
+      and confirm zero warnings against `.aide` and `plan.aide` in
+      that folder. Resolve any warnings before declaring the plan
+      complete (e.g. `missing-description` if frontmatter omits the
+      `description` field — see the YAML safety note below). Do
+      not silence warnings; fix the underlying issue.
+
+## Decisions
+
+**Lift, never duplicate. The old location is deleted in this plan, not deferred.** The two-consumer architecture (boot probe `aide_info` and runtime tool `aide_brain`) plus the codebase's horizontal-isolation rule (`src/tools/brain/` cannot import from `src/tools/info/`) leaves the service layer as the only valid home. Deleting the old location in step 5 of this plan keeps the codebase coherent — leaving the old folder behind would create a stale duplicate and tempt future changes to drift between two copies. The lift is incomplete until the old folder is gone.
+
+**Step ordering: lift first, then update consumer, then delete old folder.** The sequence (1 → 2 → 3 → 4 → 5) is dependency-driven: the new module must exist before the consumer can import from it (steps 1–2 before step 3); the consumer's tests must point at the new mock path before the old folder is deleted (step 4 before step 5); the old folder must be gone before the type and test sweeps run (step 5 before step 6) so the test runner doesn't double-run the old `index.test.ts` against the old `index.ts`. Reordering breaks one of these invariants.
+
+**Driver re-resolution path: registry exposes both `resolveBackend(entry)` and `getDriverById(id)`.** The architect ambiguity flagged in the prompt is settled by audit: the existing `src/service/brainBackends/index.ts` exports both accessors (default `resolveBackend`, named `getDriverById`). This module uses **only `resolveBackend(entry)`** because the entry shape is what's in scope at detection time; downstream consumers (e.g. `composeInstructions` in `src/tools/brain/`) re-resolve the driver from the stored `id` via `getDriverById(id)` per `src/tools/brain/plan.aide`'s contract. If a future registry plan ever drops `getDriverById`, this module is unaffected — but consumers that re-resolve by id would need to switch to surfacing the matched entry on `BrainState`. That is documented in `src/tools/brain/plan.aide`'s `## Decisions` and is not a concern for this lift.
+
+**Hints populated unconditionally on every branch — including the new wired-but-unrecognized branch.** The existing detector already calls `resolveBrainHints(root)` once at the top of the pipeline and surfaces the resulting array on every returned `BrainState` (the test "includes discovered hints on every returned state" pins this). The new branch in step 1c.8 inherits the same rule by construction: it returns the same `no-mcp-entry` shape as the "no key wired" branches, including the same `hints` array from the same single source. No special-casing.
+
+**Deliberate sequential pipeline. No `Promise.all` between `detectFramework` and `resolveBrainHints`.** The existing detector runs them sequentially; the lift preserves that ordering verbatim. Reordering or parallelizing is a behavior change and out of scope for the lift. If a future plan wants to parallelize the two reads, that decision belongs in its own spec round — not in a "lift" plan whose only job is the move + the new contract additions named in the spec.
+
+**Defensive narrowing of `entry.command` to a string before passing to `resolveBackend`.** `McpServerEntry` is typed as `{ command: string; args: string[] }` but the JSON arriving from `mcpServers["brain"]` is `unknown` until validated. The existing detector already validates `args` (`Array.isArray`, length, last-element type); the new step 8 must also confirm `typeof entry.command === "string"` before constructing the `McpServerEntry` to hand to `resolveBackend`. If `command` is missing or non-string, the entry is shape-corrupt — collapse to `no-mcp-entry` (same branch as malformed `args`). The registry's matcher already defends against shape corruption internally (it returns `null` rather than throwing on a missing `command`), but the detector's role is to never hand the registry a value that violates the registry's input contract. Belt-and-braces; both layers narrow.
+
+**`backend: string | null` is the data shape, not the discriminant.** The existing `status` field (`"ok" | "no-mcp-entry" | "invalid-path"`) remains the load-bearing discriminant; `backend`'s null/non-null is a JSDoc-documented invariant tied to `status`, not a separate tagged-union variant. The reason is documented in `src/tools/brain/plan.aide`'s `## Decisions` — making `backend` a discriminated-union variant would force every consumer to narrow twice for what is one decision tree. This module enforces the invariant via the branch return literals (step 1d); the type system does not.
+
+**`mcpServers["brain"]` lookup is the **only** key check. No `obsidian` fallback, even transitionally.** Per the spec strategy and `src/tools/brain/plan.aide` step 4, legacy migration is the install service's job (one-shot at upgrade time, with `would-overwrite` confirmation). Pushing fallback logic into this runtime detector would create a second migration surface that drifts from the install-time one and obscures which key is canonical. The lift is the boundary at which the fallback dies; existing installs see migration on their next `/aide:upgrade` or `/aide:init`. If an existing install never runs upgrade, this detector returns `no-mcp-entry` (the user's brain wiring is invisible to the runtime) — that is the correct behavior because the install-service migration is the one-place fix.
+
+**`brain` predicate is `"brain" in (servers as object)`, not a `servers.brain != null` truthiness check.** The existing detector uses the `in` operator (line 105 of the source); the lift preserves that exactly. The `in` operator distinguishes "key absent" from "key present but value is null/undefined" — the latter is shape corruption and the existing detector treats it as if the key were absent (collapses to `no-mcp-entry`). Switching to a truthiness check would not change observable behavior in any test today, but `in` is the canonical predicate for "is this key in `mcpServers`" and matches `provisionBrain.buildObsidianMcpStep`'s pattern (now `buildBrainMcpStep` per `src/tools/brain/plan.aide` step 4b) — keeping them aligned is the load-bearing reason.
+
+**Test mock path must use the alias form `@/service/buildBrainState/index.js`, not a relative path.** The new consumer-side mock in step 4a mirrors the import path in step 3a. Using a relative path here would silently fail to intercept (Vitest matches mocks by specifier, not by resolved path) — the real `buildBrainState` would run, hit the real filesystem, and break test determinism. The mock must be a string-equal match to whichever specifier the source-of-truth `import` uses.
+
+**Frontmatter carries both `intent` and `description`.** The plan-aide.md spec says "intent only" but `aide_validate` flags `missing-description` on plan frontmatter. Until the methodology and tooling reconcile, this plan includes `description` so step 7's validation comes back clean. The `description` is a one-line summary of what the plan delivers; `intent` is the multi-line narrative. Both are present.
+
+**No new helper subfolders inside `src/service/buildBrainState/`.** The orchestrator composes external helpers (`detectFramework`, `resolveBrainHints`, `resolveBackend`) and `node:fs/promises` primitives. None of those become local helpers under this module — they each live in their own module per horizontal isolation. Aggressive modularization is not the same as inventing helpers; it is decomposing one module's responsibilities into folders when the module has internal structure to disclose. This module has none beyond the linear pipeline narrated in the orchestrator's `// Step N — …` comments.
+
+**No `.aide` spec inside any helper subfolder — because there are no helper subfolders.** Trivially satisfied. The orchestrator-only `.aide` at the module root is the single source of truth for this module's intent.
+
+**`vitest.config.ts` `include` glob already covers `src/service/**/*.test.ts`.** No config change is required for the lifted test file to be picked up by the runner. Confirmed in the testing playbook's example config (the lift moves a test from `src/tools/...` to `src/service/...`; both globs are already in scope of typical AIDE projects, but this repo's specific vitest config should be re-confirmed by the implementor at step 6b — if for any reason `src/service/**/*.test.ts` is not in the include list, the implementor stops, escalates, and does not patch around the gap).
