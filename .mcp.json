@@ -6,7 +6,7 @@
     },
     "obsidian": {
       "command": "cmd",
-      "args": ["/c", "npx", "@bitbonsai/mcpvault", "D:\\Code\\Me\\my-brain"]
+      "args": ["/c", "npx", "@bitbonsai/mcpvault", "${BRAIN_PATH}"]
     }
   }
 }
