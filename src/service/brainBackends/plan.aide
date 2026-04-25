@@ -1,0 +1,483 @@
+---
+description: >
+  Ship the brainBackends registry — a single-table dispatcher that maps MCP
+  entry shapes to backend drivers, exposing resolveBackend and getDriverById
+  over one matcher table with an obsidian matcher and instruction template.
+intent: >
+  Ship the brainBackends registry — a single-table dispatcher mapping wired
+  MCP entry shapes to backend drivers, exposing `resolveBackend(entry)` and
+  `getDriverById(id)` over one matcher table and shipping today's lone
+  obsidian matcher with its entry-point reach prose.
+---
+
+## Project Structure
+
+```
+src/service/brainBackends/
+├── .aide           ← [existing] intent spec for this orchestrator
+├── plan.aide       ← [this file] implementation plan
+├── index.ts        ← [new] orchestrator + matcher table + obsidian matcher/template
+│                     exports:
+│                       default function resolveBackend(entry: McpServerEntry): BackendDriver | null
+│                       function getDriverById(id: string): BackendDriver | null
+│                       type re-exports of BackendDriver, McpServerEntry from @/types
+└── index.test.ts   ← [new] co-located tests covering both accessors,
+                      the obsidian command/args predicate, and the rendered
+                      prose contract
+```
+
+This module ships exactly two `.ts` files. The single-helper exception in
+the progressive-disclosure note applies here: today's surface is one
+matcher predicate plus one prose template — small enough that a helper
+subfolder would add ceremony without payoff. The strategist's forcing
+function is "factor a backend into a sibling subfolder when its matcher
+or template grows past ~50 lines" (per the spec's body); today the
+obsidian matcher and template together fit comfortably under that
+threshold, so they live inline. When a second backend lands, the
+implementor following that plan re-evaluates the layout against the
+same threshold.
+
+No `.aide` next to helpers — there are no helpers to spec; the
+orchestrator's `.aide` is the single source of truth for this module's
+intent.
+
+## Prerequisites
+
+The shared types `BackendDriver` and `McpServerEntry` must already exist in
+`src/types/index.ts` before this plan runs. Their definition is the
+responsibility of the consumer's plan (`src/tools/brain/plan.aide`,
+step 1) — that plan adds them as a single edit to the central types
+module. This plan does NOT redefine those types; it imports them from
+`@/types/index.js` and re-exports them through this module's
+`index.ts`.
+
+The expected shapes (per the consumer's plan and this module's spec):
+
+- `McpServerEntry` is `{ command: string; args: string[] }` — the shape
+  found under `mcpServers[<key>]` in `.mcp.json`.
+- `BackendDriver` is
+  `{ id: string; renderInstructions: (state: { vaultPath: string }) => string }`.
+
+Step 1 of this plan opens with a sanity check that those types are
+present in `@/types/index.js`. If absent, the implementor must escalate
+back to the architect rather than redefining the types here — defining
+shared types inside a service module would violate the "types
+centralized in `src/types/`" convention and fork the contract.
+
+## Plan
+
+### 1. Sanity-check the shared types in `@/types/index.js`
+
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
+
+- [x] 1. Open `src/types/index.ts` and confirm both `BackendDriver` and
+      `McpServerEntry` are exported with the shapes above (per the
+      consumer's plan step 1). If either is missing or shaped
+      differently, STOP and escalate back to the architect — do NOT
+      redefine the types inside `src/service/brainBackends/`. Centralized
+      types are a shared boundary the registry consumes, not declares.
+
+### 2. Implement the obsidian matcher predicate, instruction template, and matcher table inside `index.ts`
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`, `coding-playbook/architecture/data-flow`
+
+- [x] 2a. Create `src/service/brainBackends/index.ts`. Imports:
+        - `type { BackendDriver, McpServerEntry } from "@/types/index.js"`.
+        Re-export both types from this module so consumers can write
+        `import type { BackendDriver } from "@/service/brainBackends/index.js"`
+        without reaching back into `@/types`. Re-exports use the
+        `export type { … }` form (preserves the type-only surface, no
+        runtime emission).
+- [x] 2b. At module scope, declare a pure synchronous predicate
+      `function matchesObsidian(entry: McpServerEntry): boolean`. The
+      predicate inspects the entry's `command` and `args` shape against
+      the launcher signature `provisionBrain` writes today
+      (`src/service/install/provisionBrain/index.ts` — `obsidianMcpEntry`).
+      Both platform shapes must match:
+        - **POSIX shape:** `command === "npx"`,
+          `args.length >= 2`, and `args[0] === "@bitbonsai/mcpvault"`.
+        - **Windows shape:** `command === "cmd"`,
+          `args.length >= 4`, `args[0] === "/c"`, `args[1] === "npx"`,
+          and `args[2] === "@bitbonsai/mcpvault"`.
+      Use a strict (exact-string) match on the package name —
+      `"@bitbonsai/mcpvault"` only, no `includes`/`startsWith` heuristic.
+      The strategist's load-bearing rule (spec body, "Matchers
+      pattern-match on the entry's command/args shape, not on the MCP
+      key") makes the package the unambiguous identity signal; loose
+      matching would dilute that. Defensive shape checks for
+      `Array.isArray(entry.args)`, `typeof entry.command === "string"`,
+      and the position-by-position string comparisons stay inside this
+      predicate so neither caller has to revalidate the shape. The
+      predicate has no I/O, no async, no side effects — per the
+      strategist's "predicates are pure synchronous functions" rule.
+      JSDoc names which platform shape each branch covers and references
+      `provisionBrain.obsidianMcpEntry` as the upstream that produces
+      these shapes.
+- [x] 2c. At module scope, declare a `const OBSIDIAN_INSTRUCTION_TEMPLATE`
+      function — `(state: { vaultPath: string }) => string`. The function
+      returns a multi-sentence prose block that:
+        1. Names the MCP read tool by its server-namespaced identifier
+           (`mcp__brain__read_note`) — never `mcp__obsidian__*`. Per the
+           handoff invariant, every brain-class entry is keyed `brain`
+           upstream so agents only ever see `mcp__brain__*` tool names.
+        2. Names the seeded entry-point file path:
+           `<vaultPath>/CLAUDE.md` (the file `provisionBrain` writes via
+           `VAULT_CLAUDE_MD_TEMPLATE`).
+        3. Says in one sentence what the file contains (navigation
+           rules) **without enumerating any of its content** — no
+           folder structure, no wikilink protocol, no
+           where-to-find-things table, no decision protocol, no write
+           rules. Those are the seeded `CLAUDE.md`'s job to own.
+        4. Closes with a "the brain takes over from here and this
+           server has no further role in your navigation" handoff
+           sentence — verbatim spirit of the spec's "Good examples"
+           Obsidian prose.
+      The string must always be non-empty (single-pass concatenation;
+      no conditional branches that could yield an empty result). The
+      `vaultPath` is interpolated as-is — no normalization, no
+      trailing-slash trimming. JSDoc names this as "the obsidian
+      driver's `renderInstructions` function" and points to the spec's
+      undesired-outcome line that forbids enumerating folder structure
+      or write rules.
+- [x] 2d. At module scope, declare a `const OBSIDIAN_DRIVER: BackendDriver`
+      assembled from `id: "obsidian"` and
+      `renderInstructions: OBSIDIAN_INSTRUCTION_TEMPLATE`. This is the
+      single source of the driver — both accessors return the **same
+      object reference** for the obsidian backend, never a fresh
+      object per call. Reference identity is the structural guarantee
+      the strategist's "two views over a single matcher table" rule
+      pays off: a future test like
+      `resolveBackend(obsidianEntry) === getDriverById("obsidian")`
+      collapses accessor-drift into a single referential equality
+      check.
+- [x] 2e. At module scope, declare the matcher table:
+      `const MATCHERS: ReadonlyArray<{ matcher: (entry: McpServerEntry) => boolean; driver: BackendDriver }>`.
+      Initial contents: a single entry
+      `{ matcher: matchesObsidian, driver: OBSIDIAN_DRIVER }`. Use
+      `as const` on the array literal so TypeScript pins the shape.
+      JSDoc explains: the array is the single source both accessors
+      walk; adding a backend = appending one entry; order matters only
+      if two predicates could ever fire on the same entry shape, which
+      today they cannot (one entry total). When a second backend
+      lands, the implementor following that plan revisits this rule.
+
+### 3. Implement `resolveBackend(entry)` as the default export
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error-handling`
+
+- [x] 3a. Below the matcher table in the same `index.ts`, declare
+      `export default function resolveBackend(entry: McpServerEntry): BackendDriver | null`.
+      The orchestrator walks `MATCHERS` and returns the first entry
+      whose `matcher(entry)` returns `true`, returning that entry's
+      `driver`. If no matcher fires, return `null`. Use early returns
+      per the conventions' "Early Returns Over Nesting" rule — a
+      `for…of` loop over `MATCHERS` with an inline `if (matcher(entry)) return driver;`
+      and a final `return null` is the canonical shape.
+- [x] 3b. Multi-line JSDoc on the default export naming the spec's
+      load-bearing contract: returns the resolved driver for any
+      command/args-shape this registry recognizes; returns `null` for
+      every unrecognized wiring (no throw, no default-backend
+      fallback, no key-based dispatch). Cite the spec's
+      `outcomes.undesired` line forbidding throws — the contract is
+      structured (driver-or-null), not exception-based.
+
+### 4. Implement `getDriverById(id)` as a named export reading the same matcher table
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
+
+- [x] 4a. Below `resolveBackend`, declare
+      `export function getDriverById(id: string): BackendDriver | null`.
+      The function walks `MATCHERS` and returns the first entry whose
+      `driver.id === id`, returning that `driver`. If no entry
+      matches, return `null`. **Walk the same `MATCHERS` array the
+      resolver walks** — never declare a parallel `Map<string,
+      BackendDriver>` or a separate registration list. This is the
+      structural guarantee for the strategist's "every driver
+      returned by the resolver is retrievable by id" rule: by reading
+      from the same data, the two accessors cannot drift. JSDoc
+      explains the symmetry and cites the spec's `outcomes.undesired`
+      line forbidding accessor inconsistency.
+- [x] 4b. Verify by reading both function bodies that
+      `OBSIDIAN_DRIVER` is the only path either accessor returns for
+      the obsidian id — same object reference, not a clone or rebuild.
+      The strategist's "single matcher table = no drift" rule rests on
+      this; an inline `// reference identity matters here` comment on
+      the matcher-table declaration earns its keep when a future
+      maintainer reaches for a `Map.get` shortcut.
+
+### 5. Write tests for the obsidian matcher predicate
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [x] 5a. Create `src/service/brainBackends/index.test.ts` co-located
+      with the source. Explicit imports from `vitest` (no globals).
+      No `vi.mock` is needed — the registry is pure data and pure
+      functions; there is nothing to mock at the module's own
+      boundary. The test file imports `resolveBackend` (default),
+      `getDriverById` (named), and the re-exported types directly.
+- [x] 5b. Factory functions for `McpServerEntry` fixtures (per the
+      testing playbook's "Factory Functions" section):
+        - `makePosixObsidianEntry(vaultPath: string = "/v"): McpServerEntry`
+          → `{ command: "npx", args: ["@bitbonsai/mcpvault", vaultPath] }`.
+        - `makeWindowsObsidianEntry(vaultPath: string = "/v"): McpServerEntry`
+          → `{ command: "cmd", args: ["/c", "npx", "@bitbonsai/mcpvault", vaultPath] }`.
+        - `makeUnknownEntry(overrides?: Partial<McpServerEntry>): McpServerEntry`
+          → `{ command: "npx", args: ["@some-org/notion-pkb-server", "ws-1"], ...overrides }`.
+- [x] 5c. Test cases for the obsidian matcher path through
+      `resolveBackend` (one assertion-cluster per `it` block):
+        1. POSIX obsidian entry resolves to the obsidian driver:
+           assert `resolveBackend(makePosixObsidianEntry("/v")).id === "obsidian"`
+           and `renderInstructions` is a function.
+        2. Windows obsidian entry resolves to the obsidian driver:
+           same assertion against `makeWindowsObsidianEntry("/v")`.
+        3. Non-obsidian entry resolves to null: assert
+           `resolveBackend(makeUnknownEntry()) === null`.
+        4. Bad-shape negatives — each should resolve to `null` with no
+           throw (uses `expect(() => resolveBackend(entry)).not.toThrow()`
+           and `expect(resolveBackend(entry)).toBeNull()`):
+             - `command: "npx"`, `args: []` (empty args).
+             - `command: "npx"`, `args: ["@bitbonsai/mcpvault"]` (missing
+               vault path positional — fails the
+               `args.length >= 2` check).
+             - `command: "cmd"`, `args: ["/c", "npx", "@bitbonsai/mcpvault"]`
+               (Windows shape missing the trailing vault path — fails
+               `args.length >= 4`).
+             - `command: "node"`, `args: ["@bitbonsai/mcpvault", "/v"]`
+               (wrong command on POSIX path).
+             - `command: "npx"`, `args: ["@bitbonsai/mcpvault-fork", "/v"]`
+               (close-but-wrong package name — pins the strict-match
+               rule from step 2b).
+             - `command: "npx"`, `args: [42, "/v"] as unknown as string[]`
+               (non-string positional — pins the defensive shape
+               check; the predicate must not throw).
+        5. Key-name irrelevance (regression pin for the spec's
+           load-bearing decision): the predicate is called with the
+           same entry shape regardless of which `mcpServers[<key>]`
+           name carries it. This is implicit in the contract (the
+           registry never sees the key) and does not require its own
+           test; document this explicitly with an inline comment in
+           the test file naming the spec line that forbids key-based
+           matching.
+
+### 6. Write tests for the rendered prose contract
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [x] 6a. In the same `index.test.ts`, a separate `describe` block
+      for `renderInstructions`. Use `resolveBackend(makePosixObsidianEntry()).renderInstructions`
+      to obtain the function (rather than importing the template
+      directly — keeps the test honest to the contract surface
+      consumers see).
+- [x] 6b. Test cases (string-contains assertions per the testing
+      playbook's "Common Assertions" — verbatim equality is too
+      brittle for prose):
+        1. **Non-empty:** for any `vaultPath`,
+           `expect(rendered.length).toBeGreaterThan(0)`. Pins the
+           spec's "Silent success forbidden" undesired outcome at the
+           registry's prose-rendering boundary.
+        2. **Names the brain MCP read tool:**
+           `expect(rendered).toContain("mcp__brain__read_note")`.
+        3. **Does NOT name the obsidian-namespaced tool:**
+           `expect(rendered).not.toMatch(/mcp__obsidian__/)`.
+           Pins the handoff invariant that brain-class agents only
+           ever see `mcp__brain__*`.
+        4. **Includes the resolved vault path verbatim:**
+           call with `vaultPath: "/Users/dev/my-brain"` and
+           `expect(rendered).toContain("/Users/dev/my-brain/CLAUDE.md")`.
+        5. **Names the seeded entry-point file:**
+           `expect(rendered).toContain("CLAUDE.md")`.
+        6. **Does not duplicate seeded-file content** — string-NOT-contains
+           on the keywords the seeded `CLAUDE.md` owns: `"wikilink"`,
+           `"crawling protocol"`, `"where to find"`, `"folder structure"`,
+           `"decision protocol"`. Pins the strategist's "prose stops at
+           the entry-point" rule and the spec's bad-example "driver
+           whose prose enumerates folder structure, search rules, or
+           write rules."
+        7. **Closes with the handoff sentence:** assert the prose
+           contains the phrase "the brain takes over" (case-insensitive
+           regex). Verbatim wording is not contractual; the
+           handoff-completes signal is.
+
+### 7. Write tests for `getDriverById` and accessor symmetry
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/architecture/data-flow`
+
+- [x] 7a. In a third `describe` block, test `getDriverById`:
+        1. `getDriverById("obsidian").id === "obsidian"` and
+           `renderInstructions` is a function.
+        2. `getDriverById("notion") === null` (unknown id today).
+        3. `getDriverById("") === null` (empty-string id, defensive).
+        4. `getDriverById("OBSIDIAN") === null` (case-sensitive id
+           lookup — pins the spec's `id` as a stable string identifier
+           treated literally, not normalized).
+- [x] 7b. Accessor-symmetry test (single `it`): assert
+      `resolveBackend(makePosixObsidianEntry()) === getDriverById("obsidian")`.
+      Reference equality (`===`), not deep equality. This is the
+      structural pin for the strategist's "two views over a single
+      matcher table, not parallel registrations that can drift"
+      decision — if a future maintainer accidentally introduces a
+      parallel `Map`, this test fails with a clear signal naming the
+      symmetry rule. Inline comment cites the spec's
+      `outcomes.undesired` line forbidding accessor inconsistency.
+
+### 8. Run `aide_validate` on the new module and the full unit suite
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [x] 8a. Call `aide_validate` with `path: "src/service/brainBackends"`
+      and confirm the only warning is the expected `orphaned-spec` for
+      `plan.aide` (architects' plan files are inert from
+      `aide_validate`'s perspective and have always surfaced as
+      orphaned — same behavior as every other `plan.aide` in the
+      repo). Any other warning kind (`missing-spec`,
+      `naming-conflict`, `broken-link`,
+      `missing-description`, `parse-error`) must be resolved before
+      the plan is declared complete.
+- [x] 8b. Run `rtk vitest run src/service/brainBackends` and confirm
+      green. Then run `rtk vitest run` (full unit suite) — the
+      registry is leaf code with no consumers in this plan's scope, so
+      no other test should be affected; investigate any unrelated
+      failures to root cause rather than patching around them.
+
+## Decisions
+
+**Matcher table shape: inline `const` array of
+`{ matcher, driver }` records, walked linearly.** Rejected: a
+function-style registry (`registerBackend(driver, matcher)` called
+from a side-effect-laden bootstrap) or a lazy/async loader. Why the
+const array: today there is one matcher; lazy loading is ceremony
+without a payoff and would force `resolveBackend` to be `async`
+(violating the strategist's "predicates are pure synchronous
+functions" rule and the wider "registry runs entirely on the data
+the detector already has in hand" point). The const array is
+inspectable from a debugger, immutable in `as const` form, and
+trivially extensible — appending one record adds a backend. When the
+roster grows past five-or-so backends or a backend's matcher needs
+to load configuration, revisit; today the data structure is a list,
+so the code is a list.
+
+**Obsidian instruction template lives inline in `index.ts` as a
+module-scoped function constant, not in a separate `obsidianTemplate.ts`
+helper.** Rejected: a sibling subfolder
+`src/service/brainBackends/obsidian/{ matcher.ts, template.ts }`. Why
+inline: today's prose is a single multi-sentence string and the matcher
+is a single shape check — together comfortably under the strategist's
+~50-line factor-out threshold (spec body, "matchers and instruction
+prose are co-located inside this module … factor [a] backend into a
+sibling subfolder when [its] matcher predicate or prose template grows
+past roughly fifty lines"). Splitting today would create a folder per
+backend with two single-export files — exactly the empty-shell layout
+the strategist's "factor by per-backend complexity, not by type of
+content" rule rules out. When obsidian's matcher or template grows
+past the threshold (or a second backend lands and the inline shape
+starts crowding `index.ts`), the implementor following that plan
+factors `obsidian/` out as a sibling subfolder containing its
+matcher and template; the matcher table in the orchestrator stays
+the same.
+
+**Module file layout: lean `index.ts` only — no helper subfolder.**
+Rejected: an `obsidian/` helper subfolder under
+`src/service/brainBackends/` containing `obsidian/index.ts` plus
+`obsidian/index.test.ts`. Why the lean shape: with one backend, the
+helper subfolder would contain a single helper that the orchestrator
+exports, which is the single-helper exception the
+progressive-disclosure note explicitly calls out (helper goes inline
+above the default export, not in a subfolder). The `index.ts` here
+maintains the orchestrator-on-bottom rule (matcher predicate and
+template above the default export, accessors below or at the bottom)
+so the file reads top-to-bottom in dependency order without forcing
+the reader to chase a folder for a one-record table. Re-evaluate
+the layout when a second backend lands.
+
+**`getDriverById(id)` walks the same `MATCHERS` array the resolver
+walks — not a parallel `Map<string, BackendDriver>`.** Rejected:
+build a `Map` at module load time keyed by `driver.id` for O(1)
+lookups. Why the linear walk: structural drift prevention is the
+load-bearing reason for the dual-accessor surface (spec
+`outcomes.desired`, "every driver returned by `resolveBackend` is
+retrievable by its id"). Two data structures cannot stay in lockstep
+without test scaffolding that proves they do — and the strategist's
+spec body explicitly calls this out: "the accessors must derive from
+a single matcher table so they cannot disagree." A linear walk over
+a single-digit-length array is O(N) but with N never approaching a
+size where the cost matters — backends are added by humans editing a
+matcher table, not at runtime. The reference-equality test in step
+7b makes the symmetry guarantee load-bearing; a parallel `Map`
+would either pass that test by coincidence (Map values point at the
+same `OBSIDIAN_DRIVER` object) or fail it loudly (Map values are
+clones), and neither outcome justifies the second data structure.
+
+**Obsidian matcher's command/args predicate: strict exact-string
+match on `"@bitbonsai/mcpvault"` at a fixed positional index per
+platform shape.** Rejected: a permissive
+`args.some(a => a.includes("mcpvault"))` heuristic, or a regex-based
+match. Why strict: the spec body's load-bearing decision is
+"identity comes from what the entry actually launches" and the
+strategist names the package as the unambiguous identity signal.
+Loose matching dilutes that — it would match a hypothetical fork
+`@some-org/mcpvault-clone` that does not implement the same MCP
+surface, silently rendering obsidian-shaped prose for a non-obsidian
+backend. The platform-shape branch (POSIX `npx`-prefixed,
+Windows `cmd /c npx`-prefixed) mirrors `obsidianMcpEntry` in
+`provisionBrain/index.ts` exactly; both shapes are pinned in the
+matcher predicate and tested in step 5c so a `provisionBrain` change
+would surface as a registry test failure (and vice-versa). When a
+real fork or alternative obsidian launcher exists, it gets its own
+matcher entry and its own driver — never a loose match on the
+existing one.
+
+**`BackendDriver` and `McpServerEntry` ownership stays with
+`src/types/index.ts` — re-exported from this module's `index.ts`,
+not redefined here.** Rejected: define the types inside
+`src/service/brainBackends/index.ts` and have `src/types/index.ts`
+re-export from this module. Why central-types ownership: the spec's
+desired outcome explicitly pins this — "the `BackendDriver` and
+`McpServerEntry` types are defined here and re-exported via
+`src/types/index.ts`." The wording in the spec body reads "defined
+here" with `here` referring to the central project boundary
+(`src/types/index.ts`), not the registry module — because every
+shared definition the project carries lives in `src/types/`. The
+reference list at the bottom of the spec confirms this:
+"`BackendDriver` and `McpServerEntry` type shapes the registry's
+**central-types declaration** carries." The consumer's plan
+(`src/tools/brain/plan.aide`, step 1) is the canonical home for the
+type-add edit; this plan's prerequisites declare that edit must
+land first and step 1 of this plan sanity-checks for it. The
+registry re-exports for consumer ergonomics — a downstream module
+that imports the matcher should not have to reach back into
+`@/types` for the types the matcher consumes.
+
+**No `.aide` spec next to helpers.** No helpers exist as their own
+folders today, so this is moot in shape — but worth noting for the
+future maintainer who factors out `obsidian/` once the threshold is
+crossed: the `.aide` rule is "next to orchestrators only." The
+factored helper folder gets no spec; the orchestrator's `.aide` (this
+file's sibling) remains the single source of truth for the module.
+
+**Tests use the public surface, not the internal `OBSIDIAN_DRIVER`
+constant.** Rejected: import `OBSIDIAN_DRIVER` directly from
+`index.ts` (which would require exporting it) and assert against it.
+Why the indirection: tests should pin the contract a downstream
+consumer sees, not the implementation detail. `resolveBackend(entry).renderInstructions`
+is the surface the brain tool calls; the tests exercise that exact
+path. The reference-equality test in step 7b is the one place
+internal-shape leaks into the tests — and that leak is intentional,
+because the structural-drift guarantee is the contract.
+
+## Follow-ups
+
+None block this plan. The downstream consumer
+(`src/tools/brain/plan.aide`) and the lifted detector
+(`src/service/buildBrainState/plan.aide`) execute after this plan
+ships — both are declared in the consumer plan's `## Follow-ups`
+already.
+
+When a second backend (Notion, GitHub Wiki, hosted PKB) is added in
+a future spec round, the implementor revisits two structural choices
+in light of the new content: (1) whether the obsidian matcher and
+template still fit inline under the ~50-line threshold, factoring
+out into `obsidian/` if not; (2) whether the matcher table's linear
+walk still suits the new roster size — almost certainly yes for a
+five-or-fewer-backend world, but the decision is worth re-examining
+when the table grows. Both are roster-shaped revisions; neither
+changes the contract this module exposes today.
