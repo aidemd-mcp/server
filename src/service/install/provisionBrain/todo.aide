@@ -1,0 +1,80 @@
+---
+description: >
+  Alignment drift after the cold-start install refactor: stale scope path
+  and "init orchestrator" references inherited from the previous parent
+  identity. Prior cycle's seed-semantic-idempotency review preserved below
+  for retro context.
+intent: >
+  provisionBrain's scope still names src/tools/init/provisionBrain. The
+  intent and outcomes reference "the init orchestrator's apply layer" and
+  "the calling agent" framing that hardcodes the MCP-tool consumer; under
+  the install-service-with-two-consumers shape, the helper is consumer-
+  agnostic and the spec should describe its contract at the service level.
+misalignment:
+  - spec-gap
+---
+
+## Issues
+
+### Active (alignment pass — post-move drift)
+
+- [ ] `src/service/install/provisionBrain/.aide` frontmatter
+  `scope: src/tools/init/provisionBrain`
+  Stale path — module moved to `src/service/install/provisionBrain/`.
+  Traces to: physical move; ancestor `.aide/intent.aide` ->
+  outcomes.desired[4] (folder tree as architecture).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/provisionBrain/.aide` outcomes.desired[6]:
+  "Every InitStep returned is a planning artifact only — no files are
+  written to disk by this helper. The calling agent or applySteps
+  orchestrator handles all writes."
+  "The calling agent" framing assumes the MCP tool's agent-driven shape.
+  The CLI consumer is not an agent and does not interpret the planning
+  artifacts the same way. The planner-only contract is correct at the
+  service level; the consumer-shape phrasing should move to a separate
+  outcome or be rewritten consumer-neutrally.
+  Traces to: parent `src/service/install/.aide` (misaligned — install
+  service identity drift); ancestor `src/.aide` -> outcomes.desired[3]
+  (client-specific logic confined to aide_init).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/provisionBrain/.aide` Context: "the init
+  orchestrator's apply layer handles actual writes"
+  Same identity drift as above — "init orchestrator" hardcodes the MCP
+  tool consumer when the apply layer is now part of the install service
+  consumed by both consumers.
+  Traces to: parent `src/service/install/.aide` identity drift.
+  Misalignment: spec-gap
+
+### Resolved (prior QA cycle — kept for retro context)
+
+- [x] Seed-semantic idempotency outcomes verified clean — no drift
+  detected between spec and code in the seed-vs-canonical-template
+  branch. Two-idempotency-mode distinction codified explicitly in the
+  Strategy section.
+
+## Retro
+
+Two layers of drift in this spec:
+
+1. **Architectural-shift drift (current):** Folder rename and new
+   consumer (CLI) should have triggered a `/aide:spec` pass. The
+   "init orchestrator" / "calling agent" terminology hardcodes the
+   MCP-tool consumer.
+
+2. **Prior cycle (resolved):** The seed-semantic / canonical-template
+   idempotency distinction was a deliberate design pivot that landed
+   cleanly. The spec's Strategy section codified the two-idempotency-mode
+   distinction explicitly and named the distinguishing question ("who
+   owns the bytes after first write?"). The parameterized regression
+   test (`describe.each` over four on-disk states) is the right
+   regression anchor for a data-loss-class invariant.
+
+Stage to watch going forward: the prior cycle introduced placeholder
+wikilinks (`[[your-conventions-note]]`, `[[your-folder-structure-note]]`)
+and a negative assertion in the test. Any future edit to
+`PLAYBOOK_HUB_TEMPLATE` that adds named wikilinks (even well-intentioned
+ones) will trip the negative assertion. The spec's
+`outcomes.undesired[1]` is the first place a future implementor should
+look when that assertion fails.

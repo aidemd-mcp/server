@@ -78,13 +78,14 @@ installations get "command not found" errors that are never explained in
 most MCP server READMEs. These are the documented friction points the
 README must address head-on.
 
-The server currently ships six tools (`aide_discover`, `aide_read`,
-`aide_scaffold`, `aide_validate`, `aide_init`, `aide_upgrade`) plus a
-`plan.aide` file type. With six tools, full parameter documentation is
-feasible and preferred over a summary list — the tool count is small
-enough that every parameter can be documented without the README becoming
-unwieldy. This is the recommendation from the tool documentation research
-for servers with ten or fewer tools.
+The server currently ships eight tools (`aide_discover`, `aide_read`,
+`aide_scaffold`, `aide_validate`, `aide_inspect`, `aide_info`,
+`aide_init`, `aide_upgrade`) plus the `plan.aide` and `todo.aide` file
+types. With eight tools, full parameter documentation is feasible and
+preferred over a summary list — the tool count is small enough that
+every parameter can be documented without the README becoming unwieldy.
+This is the recommendation from the tool documentation research for
+servers with ten or fewer tools.
 
 ## Strategy
 

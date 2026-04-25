@@ -4,17 +4,17 @@ import path from "node:path";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
 import type { InstallResult } from "./types/index.js";
-import writeMethodology from "@/tools/init/writeMethodology/index.js";
-import installMethodologyDocs from "@/tools/init/installMethodologyDocs/index.js";
-import scaffoldCommands from "@/tools/init/scaffoldCommands/index.js";
-import installAgents from "@/tools/init/installAgents/index.js";
-import installSkills from "@/tools/init/installSkills/index.js";
-import installAideTree from "@/tools/init/installAideTree/index.js";
-import scaffoldReadme from "@/tools/init/scaffoldReadme/index.js";
-import applySteps from "@/tools/init/applySteps/index.js";
-import detectFramework from "@/tools/init/detectFramework/index.js";
+import writeMethodology from "@/service/install/writeMethodology/index.js";
+import installMethodologyDocs from "@/service/install/installMethodologyDocs/index.js";
+import scaffoldCommands from "@/service/install/scaffoldCommands/index.js";
+import installAgents from "@/service/install/installAgents/index.js";
+import installSkills from "@/service/install/installSkills/index.js";
+import installAideTree from "@/service/install/installAideTree/index.js";
+import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
+import applySteps from "@/service/install/applySteps/index.js";
+import detectFramework from "@/service/install/detectFramework/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
-import compareBytes from "@/tools/init/shared/compareBytes/index.js";
+import compareBytes from "@/service/install/shared/compareBytes/index.js";
 import type { InitStep, FrameworkConfig } from "@/types/index.js";
 
 /**

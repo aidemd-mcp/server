@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { mcpEntry } from "@/tools/init/wireMcp/index.js";
-import { obsidianMcpEntry } from "@/tools/init/provisionBrain/index.js";
+import { mcpEntry } from "@/service/install/wireMcp/index.js";
+import { obsidianMcpEntry } from "@/service/install/provisionBrain/index.js";
 
 export interface WriteMcpEntryResult {
 	status: "created" | "exists";

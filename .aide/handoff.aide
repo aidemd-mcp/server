@@ -1,230 +1,173 @@
 ---
-description: Session handoff for the cold-start install refactor — moves /aide:init to npx CLI + builds runtime detection/recovery infrastructure (aide_info boot tool + orchestrator branching) for deferred vault-path handoff. Outstanding orchestrator 1-hint bug fixed and live-verified; ready to commit.
+description: Session handoff — orchestrator 1-hint bug fix shipped (commit 9a56207). Architectural conversation surfaced two open items for the next session — a small README spec drift, and a large services-layer refactor that extracts install planning helpers and replaces the misleading aide_init MCP tool surface.
 session_date: 2026-04-24
-status: ready-to-commit
+status: ready-to-spec
 ---
 
-# Session Handoff — Cold-Start Install Refactor
+# Session Handoff — Services-Layer Refactor + README Spec Drift
 
-## Context
+## What shipped this session (already committed + pushed)
 
-User removed `/aide:init` and shifted cold-start to `npx aidemd-mcp init`. The CLI now installs every canonical AIDE artifact (8 categories) without needing a Claude Code session. To make this work end-to-end, this session also built the **runtime side** of the handoff:
+**Commit `9a56207` — `feat(init): cold-start install refactor — npx CLI + runtime recovery`** is on `origin/main`.
 
-- A new boot-time MCP tool (`aide_info`) that reports brain vault state to the orchestrator.
-- An inline-recovery flow in the `/aide` orchestrator that completes vault-path setup AFTER cold install. The CLI deliberately writes an empty-vault-path obsidian entry; the orchestrator picks up the handoff.
+The bulk of that commit is the prior session's cold-start refactor (65 files, 8325 insertions, 2474 deletions: `/aide:init` removed, CLI cold-start installs all 8 categories, `aide_info` boot tool added, orchestrator inline-recovery flow with `AskUserQuestion` picker). This session's only delta inside that commit was the orchestrator 1-hint bug fix:
 
-The two halves are inseparable — without the runtime side, the CLI's empty obsidian entry would never get completed.
+- `.claude/commands/aide.md` lines 48–67 — replaced 3-branch (0/1/2+) vault-picker logic with 2-branch (0 hints inline / ≥1 hints picker). The picker now includes an explicit `"Different location"` final option to satisfy `AskUserQuestion`'s `minItems: 2` schema constraint while keeping the auto-provided "Other" UX intact (`"Different location"` label distinguishes it from the auto-Other to avoid duplicate-Other ambiguity in the UI).
 
-## Files Changed (uncommitted)
+**Verified live in `D:/Code/Me/aide-fresh`:** picker fired correctly on first call with `[Use D:\Code\Me\my-brain (sibling hint), Different location]`. User picked the hint, orchestrator patched `.mcp.json` (obsidian entry now at `D:\Code\Me\my-brain`), scaffolded vault, emitted restart instruction. End-to-end recovery flow verified.
 
-### Removed
-- `.claude/commands/aide/init.md` — the `/aide:init` slash command. Route is now `npx aidemd-mcp init` for cold install, `/aide:upgrade` for drift.
-- `src/cli/init/writeAideTree/` — replaced by the `installAideTree` planning helper.
-- `src/cli/init/writeInitCommand/` — no longer needed (init command is deleted, not installed).
-- `.aide/review.md` — stray temp file; deleted.
+**Test suite: 622/622 passing. Build: clean.**
 
-### New
-- `src/cli/init/renderWarning/` — terminal banner for the SETUP INCOMPLETE block.
-- `src/cli/init/types/` — CLI-layer `InstallStatus` and `InstallResult` types, distinct from MCP `InitStep`.
-- `src/tools/info/buildBrainState/` — parses `.mcp.json`, classifies brain vault state, returns hints. Never throws.
-- `src/tools/init/shared/compareBytes/` — byte-comparison helper used by all 5 planners.
-- `.prettierignore` — keeps Prettier off `.aide` and `.claude/` specs and agent prompts.
+## Alignment check (this session)
 
-### Significantly modified
-- `src/cli/init/index.ts` — full-methodology install orchestrator (8 categories, `--vault-path` flag, deferred-categories warning).
-- `src/tools/init/index.ts` — bootstrap MCP tool, now category-scoped: framework, methodology, commands, agents, skills, mcp, brain, ide, readme.
-- `src/tools/info/index.ts` — boot-time reporter; returns `serverVersion + outdated[] + brain`.
-- `.claude/commands/aide.md` — orchestrator: mandatory boot sequence, brain-status branching, inline-recovery flow, `AskUserQuestion` hint-count branching.
-- `src/types/index.ts` — added `BrainState`, `BrainHint`, `InfoResult`; extended `InitResult` with `brainHints`.
-- `README.md` — Quick Start rewritten to describe all 8 install categories + `--vault-path`.
-- 7 `.aide` specs updated to match new behavior: `.claude/.aide`, `src/.aide`, `src/cli/init/.aide`, `src/tools/init/.aide`, `src/tools/info/.aide`, `src/tools/init/provisionBrain/.aide`, `src/tools/init/scaffoldCommands/.aide`.
+Ran `aide-aligner` across the full intent tree (24 specs). Verdict: **MISALIGNED — one drift, surfaced as the small open item below.**
 
-## New Contracts
+- **`.aide/readme.aide`** — Context paragraph hardcodes a 6-tool count enumeration in the canonical roster. Actual MCP surface today is 8 tools (`aide_info` and `aide_inspect` were added in prior commits — `aide_inspect` landed in 0.4.0). `outcomes.desired[1]` ("describes every tool") references the same staleness via the count enumeration. The aligner extended `.aide/todo.aide` with the two new items.
 
-### `BrainState` (src/types/index.ts)
-```ts
-type BrainState = {
-  status: "ok" | "no-mcp-entry" | "invalid-path";
-  vaultPath: string | null;  // resolved path | empty string | configured-but-broken path
-  hints: BrainHint[];        // env/sibling/conventional candidates
-};
-```
+**Init/info/cli/harness scope is internally consistent.** The recent strategist updates left those specs cascading cleanly with each other.
 
-### `BrainHint`
-```ts
-interface BrainHint {
-  source: "env" | "sibling" | "conventional";
-  path: string;
-}
-```
+## Architectural discovery — the heart of this handoff
 
-### Orchestrator brain-state branching (.claude/commands/aide.md)
-- `ok` — pipeline proceeds.
-- `no-mcp-entry` — STOP. Route user to `npx aidemd-mcp init`.
-- `invalid-path` + empty `vaultPath` — inline-recovery flow: `AskUserQuestion` (or inline prompt for 0/1 hints, see outstanding bug below), `aide_init({ category: "mcp" })` to patch `.mcp.json`, `aide_init({ category: "brain" })` to scaffold vault, emit restart instruction, STOP.
-- `invalid-path` + non-empty `vaultPath` — STOP. Tell user to restore the folder or re-run init with `--vault-path`.
+A spec-vs-implementation conversation revealed that `src/tools/init/.aide` is severely stale and the MCP tool surface itself needs reshaping.
 
-### CLI install categories (src/cli/init/index.ts)
-8 idempotent categories:
-1. Framework pointer stub (CLAUDE.md).
-2. Methodology docs hub (`.aide/docs/`).
-3. Slash commands (`.claude/commands/aide/`).
-4. Agents (`.claude/agents/aide/` — 9 canonical).
-5. Skills (`.claude/skills/` — study-playbook, brain).
-6. MCP entries (`.mcp.json` — aide + obsidian shells).
-7. Brain seed (silent if vault path supplied).
-8. README badge.
+### What `aide_init` actually is today
 
-`--vault-path <path>` flag fills the obsidian entry at install time, skipping the deferred-vault warning.
+After the cold-start refactor:
 
-## Bug Fixes Applied This Session
+- **The CLI cold-start path (`npx aidemd-mcp init`)** is the user-facing bootstrap. It does NOT go through the MCP tool surface. `src/index.ts:25-31` intercepts argv and dispatches to `./cli/init/index.js`, which imports planning helpers from `src/tools/init/*` directly (`writeMethodology`, `installAgents`, `scaffoldCommands`, etc.).
 
-| Bug | Surface | Fix |
-|---|---|---|
-| `BrainState` missing `hints` (orchestrator's `brain.hints` reference had no source) | types + buildBrainState | Wired `resolveBrainHints` into `buildBrainState`; added `hints: BrainHint[]` field, propagated through every return path |
-| Empty-vaultPath misclassified as `no-mcp-entry` (broke recovery loop) | buildBrainState + spec + tests | Split: empty string → `invalid-path` w/ `vaultPath: ""`; non-string → `no-mcp-entry` |
-| 4 stale `writeMcpEntry` tests asserting old "aide-alone = exists" contract | tests | Updated fixtures + assertions for new "both aide AND obsidian must be present" contract |
-| Orchestrator manual "Other" option duplicated the auto-provided Other; missing branching for 0/1 hints | .claude/commands/aide.md | Removed manual Other; added 0/1/2+ hint branching (1-hint branch is buggy — see Outstanding) |
-| 14 stale `/aide:init` references in specs and test fixtures | info/.aide (13), init/.aide (1), cli/init test (2) | Replaced with `npx aidemd-mcp init` or `/aide` per context |
-| Dead-code ternary `postApply?.status === "created" ? "created" : "created"` | src/cli/init/index.ts:171 | Simplified to `"created"`; removed unused `appliedByPath` Map and `postApply` var |
-| README Quick Start under-described install scope | README.md | Now lists all 8 categories + `--vault-path` flag |
+- **The MCP `aide_init` tool** is narrow orchestrator plumbing. Its only callers are two specific calls inside the `/aide` orchestrator's vault-recovery flow at `.claude/commands/aide.md:75-82`:
+  1. `aide_init({ category: "mcp", brainPath })` → returns the obsidian `.mcp.json` prescription so the orchestrator can merge it into the existing config.
+  2. `aide_init({ category: "brain", brainPath })` → scaffolds vault directories and seeds content directly.
 
-Test suite: **622/622 passing.** Build: clean. Verified via live test in `D:/Code/Me/aide-fresh`.
+- **The agent never calls `aide_init` during the normal AIDE pipeline** (spec, research, plan, build, qa, fix). Module-level scaffolding is `aide_scaffold`. Methodology updates are `aide_upgrade`. The MCP `aide_init` tool exists today purely to support the recovery flow.
 
-## Outstanding Bug — FIXED & VERIFIED (2026-04-24, continuation)
+### The spec describes something that doesn't exist
 
-**The orchestrator's 1-hint case was incorrectly skipping `AskUserQuestion` and falling back to inline prompt.**
+`src/tools/init/.aide` still describes an interactive agent-driven wizard:
+- 10 categories the agent walks through with `AskUserQuestion`
+- Framework auto-detection with agent confirmation
+- Branching logic over `would-create` vs `would-overwrite` plans
+- Per-category pause-on-overwrite, silent-on-create
+- References `.claude/commands/aide/init.md` (deleted this session) as the "current wizard prompt"
 
-### What's happening
+None of that flow lives in the MCP tool anymore. It moved to the CLI module.
 
-User in `D:/Code/Me/aide-fresh` (after `/aide:upgrade` pulled the orchestrator fix):
+### Why a rename is the wrong answer
+
+`aide_bootstrap` was floated and rejected: "bootstrap" is exactly what the CLI does, so renaming reintroduces the same conflation we were trying to untangle.
+
+The deeper realization: **the MCP tool surface in its current form shouldn't exist.** It's a stale wrapper over helpers the CLI already imports directly, with a name that lies about what it does, called by exactly one consumer (the recovery flow) for exactly one job (vault provisioning).
+
+### The right shape — services-layer extraction
+
+Pull the shared planning helpers out of `src/tools/init/` into a dedicated service layer that the CLI, `aide_upgrade`, and a new narrow recovery tool all import from:
 
 ```
-One step left before the pipeline can run: wiring up the obsidian MCP entry's vault path so AIDE
-has a brain to persist research and retros into.
+src/services/install/             ← shared service layer (canonical content + per-category planning + apply)
+├── methodology/                  ← plan, diff, apply for methodology docs
+├── commands/                     ← plan, diff, apply for slash commands
+├── agents/                       ← plan, diff, apply for agent definitions
+├── skills/                       ← plan, diff, apply for skill templates
+├── brain/                        ← vault provisioning (prescription + scaffold)
+├── mcp/                          ← MCP entry prescription
+├── ide/                          ← IDE config
+├── readme/                       ← README badge install
+└── shared/
+    ├── content/                  ← canonical content registry (currently initContent/)
+    └── compareBytes/             ← byte-comparison helper (already shared)
 
-The obsidian MCP entry is already in .mcp.json — it just needs a vault path.
-I detected a candidate at D:\Code\Me\my-brain (sibling hint).
-Reply with that path to use it, or paste a different absolute path.
+src/cli/init/                     ← thin CLI entry — imports from services/install/*
+src/tools/upgrade/                ← thin MCP wrapper for drift detection — imports from services/install/*
+src/tools/provisionBrain/         ← NEW thin MCP wrapper for orchestrator's recovery flow
+                                    — imports from services/install/brain/
 ```
 
-^ That's the inline 1-hint branch firing. User wanted the clickable picker UX (`AskUserQuestion`).
+CLI, `aide_upgrade`, and the new narrow `aide_provision_brain` tool become thin entry points over the same service substrate. No duplication, no MCP tool whose name doesn't match its scope.
 
-### Why the current logic was over-engineered
+### Why services-layer extraction matters (the user's insight)
 
-`AskUserQuestion`'s schema enforces `options.minItems: 2`. With 1 hint, `[hintOption]` would fail validation. The current fix sidesteps this by going inline for 0 and 1 hints. But the original test retry (BEFORE this session's fix) showed that adding an explicit `"Other"` option DOES work — the schema's "There should be no 'Other' option, that will be provided automatically" recommendation is a UX hint, not a hard rule.
+If we delete `aide_init` from MCP without extracting the helpers:
+- The CLI still imports from `src/tools/init/*` — directory name lies (it's no longer "the init tool's helpers"; it's shared service code under a folder named after a tool that doesn't exist).
+- `aide_upgrade` already imports `initContent` from `src/tools/init/initContent/` — same lie.
+- A new narrow recovery tool would either duplicate brain-provisioning logic or import from a misnamed path.
 
-### Correct fix
+The substrate IS a service layer; it just lives under a misleading directory today. Surface it as what it is.
 
-Always use `AskUserQuestion` when at least 1 hint exists. Always include explicit Other as the last option:
+This matches the deferred-refactor memory note (`project_services_layer_refactor.md`).
 
-| Hint count | Options array | Total |
-|---|---|---|
-| 0 | inline prompt only (can't satisfy `minItems: 2`) | n/a |
-| 1 | `[Use {hint.path}, Other]` | 2 ✓ |
-| 2 | `[hint1, hint2, Other]` | 3 ✓ |
-| 3 | `[hint1, hint2, hint3, Other]` | 4 ✓ (at `maxItems: 4`) |
+## What's next
 
-If 3 hints + explicit Other hits `maxItems: 4` and `resolveBrainHints` ever returns 4 hints (currently impossible — only env/sibling/conventional sources exist), drop the lowest-priority hint to make room for Other.
+### Item 1 — Fix `.aide/readme.aide` drift (small, decoupled)
 
-If duplicate-Other in the UI turns out to be a real problem (test retry showed it works, but UI dedup wasn't verified), use `"Different location"` as the explicit-option label instead — functionally identical, semantically distinct from auto-Other.
+**User intent (clarified this session):**
+- Don't enumerate tool count — describe tools by what they do, not how many.
+- Init isn't a public tool surface — it's CLI-only from the user's perspective. (The MCP tool will be eliminated by Item 2; Item 1 should already describe the post-refactor state, since the README is user-facing.)
 
-### Where it was fixed
+**Action:** `/aide:spec` against `.aide/readme.aide` to revise:
+- Context paragraph — drop the hardcoded 6-tool count + roster enumeration; describe by function.
+- `outcomes.desired[1]` — anchor "every tool" to the live registry, not a snapshot count.
+- Add a tripwire for "lists init as a public tool surface" if appropriate (init is CLI-only).
 
-`.claude/commands/aide.md` lines 48–67 — replaced 3-branch (0/1/2+) logic with 2-branch (0 hints inline / ≥1 hints picker). The picker now includes an explicit `"Different location"` final option to satisfy `AskUserQuestion`'s `minItems: 2` schema constraint while keeping the auto-provided "Other" UX intact (`"Different location"` label distinguishes it from the auto-Other to avoid duplicate-Other ambiguity in the UI).
+Independent of Item 2; can ship quickly. Likely a patch bump on its own.
 
-Step 2 resolver collapsed accordingly: picker case (≥1 hint) extracts hint path from the label OR custom text from `"Different location"` / auto-Other; inline case (0 hints) uses the user's reply verbatim.
+### Item 2 — Services-layer refactor (large)
 
-### Verification path (executed 2026-04-24)
+The architectural cleanup. Sequence:
 
-1. Wiped `D:/Code/Me/aide-fresh` ✅
-2. Rebuilt aidemd-mcp (33 artifacts emitted, clean) ✅
-3. Reinstalled in aide-fresh from local dist (36 files, 8 categories) ✅
-4. Patched aide-fresh/.mcp.json `aide` entry to local dist ✅
-5. User restarted Claude Code in aide-fresh ✅
-6. Ran `/aide`. **Picker fired correctly on the first call** with `[Use D:\Code\Me\my-brain (sibling hint), Different location]` — no retry, no inline fallback. User picked the hint, orchestrator patched `.mcp.json` (obsidian entry now at `D:\Code\Me\my-brain`), scaffolded vault, emitted restart instruction. End-to-end recovery flow verified live. ✅
+1. **Spec phase** — `/aide:spec` against the affected module(s):
+   - New `src/services/install/.aide` capturing the service-layer intent.
+   - New `src/tools/provisionBrain/.aide` (or whatever the final name is) capturing the narrow recovery tool's intent.
+   - Rewrite or delete `src/tools/init/.aide` — the MCP orchestrator function it describes will be gone; the directory itself probably gets removed or stubbed.
+   - Possibly update `.aide/intent.aide` and `src/.aide` — the "two delivery channels (handshake + aide_init)" framing predates the CLI being a real third installer surface; the aligner this session noted but didn't flag it. The refactor is the right moment to revisit that framing.
 
-## How Testing Works (`D:/Code/Me/aide-fresh`)
+2. **Plan phase** — `/aide:plan` produces:
+   - File-by-file move plan (full `services/install/` layout).
+   - Import-rewrite checklist across CLI, upgrade tool, new recovery tool, and tests.
+   - Test relocation.
+   - Orchestrator prompt rewrite at `.claude/commands/aide.md:75-82` for the new tool's call shape.
+   - Spec lifecycle: which `.aide` files survive, which are deleted, which are net-new.
 
-`aide-fresh` is a sandbox project for testing the cold-install + boot flow without polluting real projects. The user owns the folder; you can wipe it freely.
+3. **Build phase** — execute the moves, rewrite imports, update orchestrator, update tests.
 
-### Setup
+4. **QA + commit + ship 0.6.0.** Breaking change to MCP tool surface (`aide_init` removed, `aide_provision_brain` added) justifies the minor bump.
 
-1. **Build aidemd-mcp locally:**
-   ```
-   cd D:/Code/Me/aidemd-mcp && npm run build
-   ```
+### Recommended order
 
-2. **Wipe aide-fresh.** `rm -rf` fails on Windows (directory busy). Use:
-   ```
-   cd D:/Code/Me/aide-fresh && find . -mindepth 1 -delete
-   ```
+Item 1 first (small, decoupled, ships fast as a patch). Then Item 2 (the architectural refactor as 0.6.0). Both can land in a single 0.6.0 if you want to bundle.
 
-3. **Run installer locally** (uses local dist, not the npm-published package):
-   ```
-   cd D:/Code/Me/aide-fresh && node D:/Code/Me/aidemd-mcp/dist/index.js init
-   ```
-   Optional: pass `--vault-path D:\Code\Me\my-brain` to skip the deferred-vault warning.
+## Open questions for the next session (resolve in spec phase)
 
-4. **Patch aide-fresh/.mcp.json** so the `aide` MCP entry uses the local dist (otherwise Claude Code would pull from npm and miss your unbuilt changes):
-   ```json
-   "aide": {
-     "command": "node",
-     "args": ["D:/Code/Me/aidemd-mcp/dist/index.js"]
-   }
-   ```
-   (Leave the `obsidian` entry alone — its `args` shape determines which test scenario fires.)
+1. **Final tool name.** `aide_provision_brain` is the working default. Alternatives discussed: `aide_wire_brain`, `aide_setup_vault`, `aide_recover_brain`, `aide_apply`, `aide_provision`. The bar: name should make it obvious from the registry alone what the tool does (narrow vault wiring), without overlapping CLI naming.
 
-5. **Restart Claude Code in aide-fresh.** The MCP servers boot at session-start; config changes need a restart to take effect.
+2. **Service-layer location.** `src/services/install/` is the working default. Other options: `src/services/bootstrap/`, `src/lib/install/`, `src/install/` (top-level). Pick by what reads cleanest in the import lines and matches existing repo conventions.
 
-### Test scenarios
+3. **One MCP call or two for the recovery flow?** Current orchestrator does two (`category: "mcp"` then `category: "brain"`). Refactor options:
+   - **Collapse to one:** `aide_provision_brain({ vaultPath })` returns `{ prescription, scaffolded }` — orchestrator does one call, then merges prescription. Cleanest orchestrator prompt.
+   - **Inline prescription, tool does scaffold only:** the obsidian entry shape is tiny (one JSON object, one dynamic field for vaultPath). Orchestrator prompt could carry it as a literal template; tool only does directory scaffolding + seed file writing. Smallest tool surface.
+   - **Keep two calls, rename them:** preserves current orchestrator structure, just under new tool names. Lowest blast radius but doesn't take advantage of the refactor.
 
-**Scenario A — cold install + recovery flow (the inline-recovery handoff):**
-- Setup: install without `--vault-path`. CLI writes obsidian entry as `["...", ""]` (empty vault).
-- Run `/aide`. Expected:
-  - `aide_info` reports `brain.status === "invalid-path"`, `vaultPath === ""`, `hints` populated.
-  - Orchestrator fires inline-recovery flow.
-  - User picks vault path (currently inline due to outstanding bug — should be picker).
-  - Orchestrator patches `.mcp.json`, scaffolds vault, emits restart instruction, STOPS.
-- Restart Claude Code in aide-fresh. Run `/aide` again. Expected: `brain.status === "ok"`, normal pipeline available.
+4. **What happens to `src/tools/init/` directory?** Three choices:
+   - Fully delete after migration (cleanest — git history preserves it).
+   - Tombstone the directory with a note pointing at `services/install/` (kinder to anyone with bookmarks/old imports).
+   - Keep it as a re-export shim (forwards imports to `services/install/*`). Probably overkill.
 
-**Scenario B — drift + upgrade:**
-- After scenario A is set up, modify a canonical artifact in aidemd-mcp (e.g., edit an agent file).
-- Rebuild: `npm run build`.
-- In aide-fresh, run `/aide:upgrade`. Expected: detects drift, offers per-category remediation.
+5. **Does `.aide/intent.aide` need updating?** It still describes "two delivery channels (handshake teaching surface + aide_init bootstrap)." After the refactor, the CLI is a clearly distinct third surface and `aide_init` is gone. The aligner deferred the call this session because it asked about non-init drift. Refactor is the moment to decide.
 
-**Scenario C — non-empty invalid-path:**
-- Manually edit aide-fresh/.mcp.json to point obsidian at a non-existent path (e.g., `"D:/nonexistent"`).
-- Run `/aide`. Expected: `brain.status === "invalid-path"` non-empty branch fires; user told to restore folder or re-run init with `--vault-path`.
+## Verification status
 
-**Scenario D — happy-path /aide boot:**
-- Set obsidian vault path to a valid existing folder (e.g., `D:/Code/Me/my-brain`).
-- Run `/aide`. Expected: `brain.status === "ok"`, no recovery, pipeline available; passive notification if any artifacts are outdated.
+- ✅ Test suite: 622/622 passing
+- ✅ Build: clean (33 artifacts emitted)
+- ✅ Cold install verified end-to-end in `D:/Code/Me/aide-fresh`
+- ✅ Orchestrator's 1-hint case verified live (picker fires on first call, no retry)
+- ✅ Aligner walked the full tree; one drift noted (Item 1)
+- ⏳ Item 1: `.aide/readme.aide` drift not yet addressed
+- ⏳ Item 2: services-layer refactor not yet started
 
-## Known Issues (user-acknowledged, not fixed this session)
+## Notes for the next agent
 
-1. **`${BRAIN_PATH}` env-var template in this project's own `.mcp.json`** — deliberate dev-machine pattern. Reports as `invalid-path` non-empty branch when `/aide` runs against this project itself. User said "we just changed it, tackle later, not important."
-
-2. **`--ide` flag advertised but not parsed** — `deferredCategories` text mentions `npx aidemd-mcp init --ide <choice>` but no `parseIde` function exists. User said "future plan to implement."
-
-3. **`installAgents/plan.aide` 0/32 with `installAgents/todo.aide` 6/6** — orphaned/stale plan from a prior cycle. Work is done; checkboxes were never ticked. User said "no clue" — leave as audit-trail or tombstone.
-
-4. **`outcomes.undesired` tripwire in `src/cli/init/.aide:108` references `/aide:init`** — correct-by-design. Names the removed command as a forbidden surface in CLI output. Do NOT remove it.
-
-## Recommended Commit Order
-
-1. **Fix the outstanding `AskUserQuestion` 1-hint bug** (above) — verify in aide-fresh per the verification path.
-2. **Single commit** with all session changes. Suggested message:
-   `0.5.0: cold-start install refactor — npx CLI installs full methodology, orchestrator handles vault-path handoff inline`
-   This is a breaking change (deletes `/aide:init`); minor bump justified.
-3. **Run publish script** for 0.5.0: `node scripts/publish.mjs minor "..."`.
-
-## Verification Status (this session)
-
-- ✅ Suite green (622 tests pass).
-- ✅ Build clean (33 artifacts emitted).
-- ✅ Cold install ran clean against aide-fresh (36 files, all 8 categories).
-- ✅ `/aide` boot detected `invalid-path` + empty `vaultPath` with sibling hint surfaced.
-- ✅ Inline-recovery flow completed end-to-end (vault wired, .mcp.json patched, vault scaffolded, restart message emitted) — though the FIRST call required a retry due to the orchestrator instruction bug now landed.
-- ✅ `/aide:upgrade` propagated canonical → host (verified by `diff` on `.claude/commands/aide.md`).
-- ✅ The fixed orchestrator's 1-hint case re-tested on fresh cold-install (continuation 2026-04-24) — picker fired on first call with `[Use D:\Code\Me\my-brain, Different location]`, recovery flow completed end-to-end.
+- The committed handoff at this same path (commit `9a56207`) describes the cold-start install refactor. Git history preserves it. This new handoff supersedes it.
+- The user explicitly arrived at the services-layer answer through reasoning, not because I suggested it first. Their question — "we need a service package so the cli and tool can just import from there instead yeah?" — is the architectural decision; the rest is execution.
+- `src/tools/init/.aide` is the most stale spec in the project today. If the refactor takes more than one session, an interim option is to mark the spec stale-pending-refactor rather than rewriting it twice. Don't sink time into spec-rewriting `src/tools/init/.aide` until the refactor's shape is decided in spec phase.
+- Memory note `project_services_layer_refactor.md` captures the deferred state at a higher level. Update or remove it once Item 2 lands.
+- Run `/aide` to boot the next session. The orchestrator's mandatory boot sequence will load this handoff via `aide_discover` and pick up from here.

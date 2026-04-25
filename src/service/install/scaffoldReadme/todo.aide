@@ -1,0 +1,50 @@
+---
+description: >
+  Alignment drift after the cold-start install refactor: stale scope path
+  and References pointing at moved sibling specs.
+intent: >
+  scaffoldReadme's scope still names the old path and its References
+  section enumerates sibling specs at their pre-move locations.
+misalignment:
+  - spec-gap
+---
+
+## Issues
+
+- [ ] `src/service/install/scaffoldReadme/.aide` frontmatter
+  `scope: src/tools/init/scaffoldReadme`
+  Stale path — module moved to `src/service/install/scaffoldReadme/`.
+  Traces to: physical move; ancestor `.aide/intent.aide` ->
+  outcomes.desired[4] (folder tree as architecture).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/scaffoldReadme/.aide` References list:
+  every reference points at `src/tools/init/...`
+  All four references (`src/tools/init/injectBadge/.aide`,
+  `src/tools/init/.aide`, `src/tools/init/writeMethodology/.aide`,
+  `src/tools/init/provisionBrain/.aide`) name files that have moved to
+  `src/service/install/...`. References are hints not contracts, but a
+  reader following them lands on dead paths and has to back-derive the
+  current locations.
+  Traces to: physical move; ancestor `.aide/intent.aide` ->
+  outcomes.undesired[3] (aspirational docs that describe behavior the
+  server does not deliver).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/scaffoldReadme/.aide` Strategy: "The parent
+  init spec's requirement that every init category have an upgrade path
+  applies here."
+  The "parent init spec" terminology hardcodes the parent's identity as
+  the init tool. After the refactor, the parent is the install service;
+  the upgrade-path requirement is correct but scoped to the wrong
+  parent identity.
+  Traces to: parent `src/service/install/.aide` (currently misaligned —
+  this leaf inherits the parent's stale "init tool" framing).
+  Misalignment: spec-gap
+
+## Retro
+
+Architectural-shift drift. The References section is the most fragile
+part of any moved spec — every wikilink-style path becomes stale on a
+rename. A spec-mover would benefit from a sanity check that grep-finds
+References lines pointing at the spec's old path.

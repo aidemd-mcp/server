@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@/tools/init/detectFramework/index.js");
-vi.mock("@/tools/init/resolveBrainHints/index.js");
+vi.mock("@/service/install/detectFramework/index.js");
+vi.mock("@/service/install/resolveBrainHints/index.js");
 vi.mock("node:fs/promises");
 
-import detectFramework from "@/tools/init/detectFramework/index.js";
-import resolveBrainHints from "@/tools/init/resolveBrainHints/index.js";
+import detectFramework from "@/service/install/detectFramework/index.js";
+import resolveBrainHints from "@/service/install/resolveBrainHints/index.js";
 import { readFile, stat } from "node:fs/promises";
 import buildBrainState from "./index.js";
 

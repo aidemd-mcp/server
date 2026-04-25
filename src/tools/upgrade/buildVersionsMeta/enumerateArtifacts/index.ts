@@ -3,8 +3,8 @@ import {
 	listAgents,
 	listSkills,
 	getCanonicalPath,
-} from "@/tools/init/initContent/index.js";
-import { COMMANDS } from "@/tools/init/scaffoldCommands/index.js";
+} from "@/service/install/initContent/index.js";
+import { COMMANDS } from "@/service/install/scaffoldCommands/index.js";
 
 /**
  * A single deliverable artifact with its namespaced slug and repo-relative

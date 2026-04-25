@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { UpgradeFileResult } from "@/types/index.js";
-import { getMethodologyMarker } from "@/tools/init/initContent/index.js";
-import { composeStub } from "@/tools/init/writeMethodology/index.js";
+import { getMethodologyMarker } from "@/service/install/initContent/index.js";
+import { composeStub } from "@/service/install/writeMethodology/index.js";
 
 const STEP_NAME = "Methodology pointer";
 

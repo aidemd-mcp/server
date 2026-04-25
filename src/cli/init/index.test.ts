@@ -22,54 +22,54 @@ vi.mock("./writeMcpEntry/index.js", () => ({
 vi.mock("./renderWarning/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/detectFramework/index.js", () => ({
+vi.mock("@/service/install/detectFramework/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/writeMethodology/index.js", () => ({
+vi.mock("@/service/install/writeMethodology/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/installMethodologyDocs/index.js", () => ({
+vi.mock("@/service/install/installMethodologyDocs/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/scaffoldCommands/index.js", () => ({
+vi.mock("@/service/install/scaffoldCommands/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/installAgents/index.js", () => ({
+vi.mock("@/service/install/installAgents/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/installSkills/index.js", () => ({
+vi.mock("@/service/install/installSkills/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/installAideTree/index.js", () => ({
+vi.mock("@/service/install/installAideTree/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/scaffoldReadme/index.js", () => ({
+vi.mock("@/service/install/scaffoldReadme/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/applySteps/index.js", () => ({
+vi.mock("@/service/install/applySteps/index.js", () => ({
 	default: vi.fn(),
 }));
 vi.mock("@/tools/upgrade/buildVersionsMeta/index.js", () => ({
 	default: vi.fn(),
 }));
-vi.mock("@/tools/init/shared/compareBytes/index.js", () => ({
+vi.mock("@/service/install/shared/compareBytes/index.js", () => ({
 	default: vi.fn(),
 }));
 
 import { runInit } from "./index.js";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
-import detectFramework from "@/tools/init/detectFramework/index.js";
-import writeMethodology from "@/tools/init/writeMethodology/index.js";
-import installMethodologyDocs from "@/tools/init/installMethodologyDocs/index.js";
-import scaffoldCommands from "@/tools/init/scaffoldCommands/index.js";
-import installAgents from "@/tools/init/installAgents/index.js";
-import installSkills from "@/tools/init/installSkills/index.js";
-import installAideTree from "@/tools/init/installAideTree/index.js";
-import scaffoldReadme from "@/tools/init/scaffoldReadme/index.js";
-import applySteps from "@/tools/init/applySteps/index.js";
+import detectFramework from "@/service/install/detectFramework/index.js";
+import writeMethodology from "@/service/install/writeMethodology/index.js";
+import installMethodologyDocs from "@/service/install/installMethodologyDocs/index.js";
+import scaffoldCommands from "@/service/install/scaffoldCommands/index.js";
+import installAgents from "@/service/install/installAgents/index.js";
+import installSkills from "@/service/install/installSkills/index.js";
+import installAideTree from "@/service/install/installAideTree/index.js";
+import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
+import applySteps from "@/service/install/applySteps/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
-import compareBytes from "@/tools/init/shared/compareBytes/index.js";
+import compareBytes from "@/service/install/shared/compareBytes/index.js";
 import type { InitStep } from "@/types/index.js";
 
 const mockWriteMcpEntry = vi.mocked(writeMcpEntry);

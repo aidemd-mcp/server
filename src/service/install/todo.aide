@@ -1,0 +1,157 @@
+---
+description: >
+  Alignment drift after the cold-start install refactor (npx CLI + runtime
+  recovery): this spec still describes itself as "the bootstrap MCP tool"
+  rather than the shared install service consumed by both the aide_init MCP
+  tool and the npx CLI installer. Scope path is also stale post-move.
+intent: >
+  Identity drift introduced by the src/tools/init -> src/service/install move
+  and the addition of src/cli/init/ as a second consumer of this service.
+  The spec's intent paragraph, outcomes, context, strategy, examples, and
+  references all frame the actor as "aide_init" (the MCP tool) and "the
+  tool" rather than as a shared install service. The scope frontmatter
+  still names the old path. The "two delivery channels" claim inherited
+  from the parent (src/.aide) is now contradicted by the existence of the
+  CLI surface this service feeds — the parent itself needs revision; this
+  leaf surfaces the contradiction.
+misalignment:
+  - spec-gap
+---
+
+## Issues
+
+- [ ] `src/service/install/.aide` frontmatter `scope: src/tools/init`
+  Stale path — the module moved to `src/service/install/`. The scope field
+  is a load-bearing identity claim about where this spec lives.
+  Traces to: physical move (rename in git status from `src/tools/init/.aide`
+  to `src/service/install/.aide`); ancestor commitment that the folder tree
+  *is* the architecture (`.aide/intent.aide` -> outcomes.desired[4] —
+  "progressive disclosure in the folder tree, agent-readable names, `.aide`
+  specs next to orchestrators").
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` intent paragraph: "aide_init is the
+  bootstrap — the one command that turns a cold project into an AIDE-ready
+  project."
+  Identity drift — this module is no longer the MCP tool itself. It is the
+  shared install service consumed by two callers: the `aide_init` MCP tool
+  (`src/tools/init/`) and the new npx CLI (`src/cli/init/`). The spec
+  conflates the service with one of its consumers, which means every
+  cascading commitment downstream inherits the wrong actor identity.
+  Traces to: physical reality (two consumers exist on disk); ancestor
+  `src/.aide` -> outcomes.desired[3] ("Client-specific logic is confined to
+  aide_init; every other tool is client-agnostic.") — the install service
+  was previously *the* aide_init body, but now sits underneath aide_init as
+  a callable, which means the "client-specific logic confined to aide_init"
+  invariant needs the install service to be *not* aide_init.
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` outcomes.desired throughout: "The tool
+  returns a structured JSON response...", "Re-running init on a fully
+  initialized project...", "The tool's response is structured data the
+  agent interprets..."
+  Outcomes describe a single tool returning structured JSON to a single
+  agent caller. The CLI consumer is not an agent and does not interpret a
+  structured response — it executes the install service directly and
+  surfaces a human-readable summary. The desired/undesired set was authored
+  for the MCP-tool-only world and does not say which outcomes apply to
+  which consumer.
+  Traces to: ancestor `.aide/intent.aide` -> outcomes.desired[1] (two
+  delivery channels; the spec was correct when "the tool" was the only
+  delivery shape, but is now under-specified).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` outcomes.desired bullet "When called with
+  a `category` parameter, the tool writes all `would-create` files
+  directly to disk itself..." and the surrounding bullets about "the agent
+  never sees file content"
+  These outcomes encode the MCP tool's two-call protocol (summary call ->
+  category apply call) as if it were the install service's contract. The
+  CLI does not have a "first call summary, second call apply" interaction
+  shape — it runs the install end-to-end in one process. The contract
+  needs to be re-stated: which invariants are about the install service
+  (idempotency, prescription pattern, planner/apply split, status enum)
+  and which are about the MCP tool's wire protocol on top of it.
+  Traces to: physical reality (CLI invokes service directly without the
+  two-call wire shape); ancestor `src/.aide` -> outcomes.undesired[3]
+  ("Divergent behavior between MCP clients on the same input.") — this
+  parity rule was scoped to MCP clients; the CLI is not an MCP client and
+  the spec must say so explicitly.
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` Bad examples section: "**Cold start on a
+  fresh project**" example narrates "The agent calls `aide_init` with no
+  category... The user runs `npx aidemd-mcp init` a week later..."
+  The Good examples mix the MCP-tool agent shape and the CLI command shape
+  in the same narrative without distinguishing them. The "npx aidemd-mcp
+  init" mention is the only acknowledgment that a CLI exists in this
+  spec — and it appears as a prose detail in an example, not as a
+  first-class consumer in the intent or outcomes.
+  Traces to: physical reality (CLI is a real consumer); ancestor
+  `.aide/intent.aide` -> undesired[2] ("a standalone CLI that teaches" is
+  forbidden as a delivery channel) — this is the load-bearing question
+  the parent must resolve: is the CLI a third delivery channel, or a
+  thin invocation of channel two? The spec needs to take a position so
+  the bad-example test stays meaningful.
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` References section: every path is
+  `D:/Code/Me/aidemd-mcp/src/tools/init/...`
+  Stale paths after the move. References are hints not contracts, but
+  every entry in this list points at a file that no longer exists at the
+  named path — a reader following the references reaches dead links and
+  has to back-derive the new locations. Includes the parent reference
+  `src/.aide` (still valid) and `src/tools/init/plan.aide`,
+  `src/tools/init/todo.aide`, `src/tools/init/detectFramework/index.ts`,
+  `src/tools/init/installAgents/plan.aide` (all moved).
+  Traces to: physical move; ancestor `.aide/intent.aide` ->
+  outcomes.undesired[3] ("a canonical doc that describes behavior the
+  server does not actually deliver") — references that point at moved
+  files describe a topology that no longer exists.
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` outcomes.undesired[15]: "An init that
+  appends the pointer stub on every run, fails the whole run on a single
+  step failure, hardcodes vault paths, or reaches for the network. **All
+  prior undesired outcomes from the original spec still apply.**"
+  This bullet inherits invariants by reference rather than by enumeration
+  — load-bearing under the old single-consumer model, dangerous now that
+  the consumer set has expanded. "All prior undesired outcomes" needs to
+  be re-grounded against the install-service-with-two-consumers shape so
+  consumers know which invariants they each owe.
+  Traces to: ancestor `.aide/intent.aide` -> outcomes.desired[1] ("Two
+  delivery channels, each with one clear job") — invariants must be
+  attached to clear owners; "applies to whatever the prior version was"
+  is a forwarding pointer, not a commitment.
+  Misalignment: spec-gap
+
+## Retro
+
+The cold-start install refactor — moving the module from `src/tools/init`
+to `src/service/install` and introducing `src/cli/init/` as a second
+consumer — is a positional and architectural shift that should have
+triggered a `/aide:spec` revision pass on this node *and* on the parent
+(`src/.aide`) *before* code landed. The pattern matches what
+`feedback_root_architectural_shifts.md` already records: a delivery-surface
+change accumulates as peer-level violations no single leaf carries on its
+own. The leaf-by-leaf todo here is informational; the resolution is at
+two levels:
+
+1. `src/.aide` ("two delivery channels — handshake teaching surface and
+   aide_init bootstrap") needs to widen its claim. Either the CLI is a
+   thin invocation of channel two (and the spec says so explicitly),
+   or it is a third channel (and the parent's `aide_init bootstrap`
+   claim is replaced with `install service consumed by aide_init MCP
+   tool and npx CLI`).
+2. This spec needs to re-introduce itself as the install service, with
+   outcomes scoped to the service contract (planner+apply, prescriptions,
+   idempotency, status enum) and the consumer-shape outcomes (two-call
+   wire protocol, agent-driven branching) clearly marked as MCP-tool
+   responsibilities the service supports rather than service invariants.
+
+What would have caught this earlier: a pre-merge alignment pass on any
+commit that moves a folder containing `.aide` files, or that introduces
+a new consumer of a previously single-consumer module. The git rename
+itself (`R src/tools/init/.aide -> src/service/install/.aide`) is the
+exact signal — a renamed `.aide` file should auto-flag the spec as
+needing alignment review.

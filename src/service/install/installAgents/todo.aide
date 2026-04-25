@@ -1,0 +1,84 @@
+---
+description: >
+  Alignment drift after the cold-start install refactor: stale scope path,
+  prior aligned stamp, and References that point at moved sibling files.
+  Prior six-agent enumeration drift (resolved) preserved below for retro.
+intent: >
+  installAgents was stamped aligned under the src/tools/init/ regime.
+  After the move to src/service/install/ the spec's scope path is stale
+  and prior issue traces (".aide/docs/index.md -> Pipeline Agents table")
+  remain valid by content but the surrounding spec's positional
+  commitments no longer match disk reality.
+misalignment:
+  - spec-gap
+---
+
+## Issues
+
+### Active (alignment pass — post-move drift)
+
+- [ ] `src/service/install/installAgents/.aide` frontmatter
+  `scope: src/tools/init/installAgents`
+  Stale path — module moved to `src/service/install/installAgents/`.
+  Traces to: physical move (git rename
+  `src/tools/init/installAgents/.aide -> src/service/install/installAgents/.aide`);
+  ancestor `.aide/intent.aide` -> outcomes.desired[4] (folder tree as
+  architecture).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/installAgents/.aide` Strategy: "Agent files
+  flow through the initContent chokepoint... The `installAgents` helper
+  reads them through `readCanonicalDoc()` and writes them to the host's
+  `.claude/agents/`. Same byte-faithful copy pattern as methodology docs
+  and commands."
+  Reference to "the initContent chokepoint" still matches sibling name
+  (good), but the surrounding "init" terminology in this spec frames the
+  parent module as the init tool rather than as the install service.
+  When this spec talks about "the init orchestrator's reporting pattern"
+  in outcomes.desired[7], the orchestrator it names is the MCP tool's
+  orchestrator — but the install service now serves two consumers and
+  the reporting contract should be described at the service level.
+  Traces to: parent `src/service/install/.aide` (misaligned — install
+  service identity drift).
+  Misalignment: spec-gap
+
+### Resolved (prior QA cycle — kept for retro context)
+
+- [x] `src/tools/init/installAgents/.aide` outcomes.desired[0]: "Six agent files are installed: aide-spec-writer, aide-researcher, aide-domain-expert, aide-architect, aide-implementor, aide-qa"
+  The canonical Pipeline Agents table (.aide/docs/index.md) defines eight agents. Two are missing from this spec: aide-aligner and aide-auditor. The spec also uses stale names: "aide-researcher" no longer exists (renamed to aide-domain-expert), and the old "aide-domain-expert" was renamed to aide-strategist.
+  Traces to: .aide/docs/index.md -> Pipeline Agents table (eight agents, current names)
+  Misalignment: spec-gap
+
+- [x] `src/tools/init/installAgents/.aide` outcomes.desired[4]: "opus for deep reasoning (spec-writer, domain-expert, architect), sonnet for throughput (researcher, implementor, QA)"
+  The canonical table assigns: opus to spec-writer, strategist, architect, aligner, auditor; sonnet to domain-expert, implementor, QA. The spec has domain-expert on opus (should be sonnet) and researcher on sonnet (agent no longer exists; domain-expert is the research agent and is sonnet). The model assignment description is inverted for the renamed roles.
+  Traces to: .aide/docs/index.md -> Pipeline Agents table (model column)
+  Misalignment: spec-gap
+
+- [x] `src/tools/init/installAgents/.aide` outcomes.desired[2]: "Obsidian MCP is declared for agents that need brain access -- researcher (write), domain-expert (read), architect (read)"
+  The canonical table shows brain access for: domain-expert (write), strategist (read), architect (read + playbook), auditor (read + playbook). The spec uses stale names and omits auditor entirely.
+  Traces to: .aide/docs/index.md -> Pipeline Agents table (Brain Access column)
+  Misalignment: spec-gap
+
+- [x] `src/tools/init/installAgents/.aide` intent paragraph: "spec-writer, researcher, domain-expert, architect, implementor, QA"
+  Lists six roles with stale names. Should list eight roles with current names: spec-writer, domain-expert, strategist, architect, implementor, QA, aligner, auditor.
+  Traces to: .aide/docs/index.md -> Pipeline Agents table
+  Misalignment: spec-gap
+
+- [x] `src/tools/init/installAgents/.aide` Strategy section: "Seven agents map to the seven distinct roles"
+  The canonical pipeline has eight agents. The strategy also describes "researcher and domain expert" as separate agents, but these are now "domain-expert" (research phase) and "strategist" (synthesize phase).
+  Traces to: .aide/docs/index.md -> Pipeline Agents table (eight rows)
+  Misalignment: spec-gap
+
+- [x] `src/tools/init/installAgents/.aide` Context section: "seven phases (spec, research, synthesize, plan, build, QA/fix, refactor)"
+  The canonical pipeline includes the align phase. Eight phases total, not seven.
+  Traces to: .aide/docs/index.md -> Pipeline Agents table (align phase present)
+  Misalignment: spec-gap
+
+## Retro
+
+The agent rename (aide-researcher -> aide-domain-expert, aide-domain-expert -> aide-strategist) and the addition of aide-aligner and aide-auditor updated the canonical docs (.aide/docs/index.md), the actual agent files (.claude/agents/aide/), and the initContent registry, but did not propagate to the installAgents spec. An alignment check should have been run after any commit that changes the Pipeline Agents table, since every install submodule spec encodes facts from that table. The spec-writer should have called aide_discover and cross-referenced the canonical table before writing outcomes that enumerate agents by name and count.
+
+The current (post-move) drift is positional, not enumerative — the agent
+roster is correct, but the spec's `scope` and parent-framing still name
+the old module identity. Same pattern as the rest of the moved subtree:
+folder rename plus new consumer should have triggered a `/aide:spec` pass.

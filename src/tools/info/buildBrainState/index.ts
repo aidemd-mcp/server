@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import detectFramework from "@/tools/init/detectFramework/index.js";
-import resolveBrainHints from "@/tools/init/resolveBrainHints/index.js";
+import detectFramework from "@/service/install/detectFramework/index.js";
+import resolveBrainHints from "@/service/install/resolveBrainHints/index.js";
 import type { BrainHint, BrainState } from "@/types/index.js";
 
 /**

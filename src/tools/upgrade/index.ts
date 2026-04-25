@@ -7,10 +7,10 @@ import type {
 	UpgradeFileResult,
 	UpgradeResult,
 } from "@/types/index.js";
-import detectFramework from "@/tools/init/detectFramework/index.js";
-import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
-import { COMMANDS } from "@/tools/init/scaffoldCommands/index.js";
-import scaffoldReadme from "@/tools/init/scaffoldReadme/index.js";
+import detectFramework from "@/service/install/detectFramework/index.js";
+import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/service/install/initContent/index.js";
+import { COMMANDS } from "@/service/install/scaffoldCommands/index.js";
+import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";

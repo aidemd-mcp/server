@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import writeMcpEntry from "./index.js";
-import { mcpEntry } from "@/tools/init/wireMcp/index.js";
+import { mcpEntry } from "@/service/install/wireMcp/index.js";
 
 let tempDir: string;
 

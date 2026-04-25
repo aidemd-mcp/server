@@ -1,38 +1,64 @@
 ---
 description: >
-  QA findings for the README.md rewrite — tracks the missing @latest on the Quick Start npx command.
+  Combined QA + alignment findings against `.aide/readme.aide` and the README.md it governs.
 intent: >
-  README.md rewrite against readme.aide spec. One outcome violated: the Quick
-  Start block omits @latest from the npx command, which can serve a stale
-  cached version of the CLI init subcommand to users who have previously
-  installed any version of the package.
+  Two independent finding tracks against `.aide/readme.aide`:
+  (1) QA finding from the README rewrite — Quick Start npx command omits @latest
+  (preserved from prior QA pass);
+  (2) Alignment finding from /aide:align — the spec hardcodes a six-tool count
+  and enumerates the tool roster, both of which contradict ancestor `src/.aide`
+  and root `.aide/intent.aide` rules forbidding count-pinning and roster
+  enumeration. The actual MCP tool surface is now eight tools (the six listed
+  plus `aide_info` and `aide_inspect`), and the README spec's enumeration is
+  silently stale.
 misalignment:
   - plan-gap
+  - spec-gap
 ---
 
 ## Issues
 
 - [ ] **README.md:25** — Quick Start block uses `npx @aidemd-mcp/server init` without `@latest`. The spec requires `@latest` on all npx invocations ("use `npx -y @aidemd-mcp/server@latest` rather than a bare package name. The bare name uses a locally cached version if one exists"). The plan carried this omission forward (plan.aide line 34 shows `npx @aidemd-mcp/server init` without `@latest`), meaning the gap originated at planning, not implementation.
-      Traces to: `outcomes.undesired[4]` ("A config block using a bare package name without @latest, which silently serves a stale cached version to users who have previously installed any version") | Misalignment: `plan-gap`
+      Traces to: `.aide/readme.aide` outcomes.undesired[4] ("A config block using a bare package name without @latest, which silently serves a stale cached version to users who have previously installed any version") | Misalignment: `plan-gap`
+
+- [ ] **`.aide/readme.aide` Context lines 81-83** — The Context paragraph hardcodes a tool count and enumerates the canonical roster: "The server currently ships six tools (`aide_discover`, `aide_read`, `aide_scaffold`, `aide_validate`, `aide_init`, `aide_upgrade`) plus a `plan.aide` file type. With six tools, full parameter documentation is feasible..." The actual surface is now eight tools — the six listed plus `aide_info` and `aide_inspect` (both registered in `src/index.ts` and surfaced through the handshake). The Context paragraph's reasoning ("six tools is small enough that every parameter can be documented... ten or fewer tools") cascades into the Strategy decision to "Document every tool with full parameters" — a decision that may or may not still hold at eight tools, but the spec gives the reader no way to know because the count is silently stale.
+      Traces to:
+        - `src/.aide` outcomes.undesired[6] ("A spec, test, or description that pins a specific count of tools or enumerates the tool roster as part of the contract. The count is an implementation detail of the current methodology snapshot, not an invariant — encoding it guarantees drift the moment a new lifecycle phase is added.")
+        - `.aide/intent.aide` outcomes.undesired[3] ("A canonical doc that describes behavior the server does not actually deliver. Aspirational docs are worse than missing docs, because missing docs do not lie.") — the README spec's "six tools" enumeration is the reverse failure mode: the doc describes an old surface the server has since outgrown, and a downstream README written from this spec will under-document the actual tooling.
+      Misalignment: `spec-gap`
+
+- [ ] **`.aide/readme.aide` outcomes.desired[1]** — The desired outcome says "The tools section documents every tool with full parameter lists in the canonical MCP README format... so a developer evaluating the server knows exactly what capabilities they get before installing." This outcome inherits the Context's six-tool enumeration by reference: "every tool" is bounded by whatever the Context counts, and the Context counts six. Any README produced from this spec will document six tools and silently omit `aide_info` and `aide_inspect`, leaving evaluating developers unaware of two real capabilities. The drift is silent because the outcome reads as exhaustive ("every tool") while the spec internally pins the meaning of "every" to a stale count.
+      Traces to:
+        - `src/.aide` outcomes.desired[1] ("Every tool description is complete enough to teach the convention it invokes on its own. An agent reading only the tool list learns what `.aide` files are...") — a README that documents six of eight tools fails this principle for the two omitted tools.
+        - `src/.aide` outcomes.undesired[6] (same count-pinning rule as above)
+      Misalignment: `spec-gap`
 
 ## Retro
 
-The spec's `@latest` requirement was written with config blocks in mind and the
-strategy section explicitly mentions "config blocks" as the scope ("all config
-blocks"). The plan correctly applied `@latest` to every JSON config block under
-Manual Configuration, but silently dropped it from the Quick Start CLI command,
-treating the CLI invocation as exempt from the rule.
+The first issue (Quick Start `@latest`) is plan-level: the planner read the
+`@latest` requirement as scoped only to JSON config blocks and did not apply
+it to the `npx @aidemd-mcp/server init` CLI command. That retro is preserved
+unchanged from the prior QA pass.
 
-The gap is plan-level: the planner read the `@latest` requirement as scoped
-only to JSON config blocks and did not apply it to the `npx @aidemd-mcp/server
-init` CLI command. The spec's good examples show `npx -y
-@aidemd-mcp/server@latest` consistently, including for CLI invocations, but
-the spec's strategy text says "config blocks" — the ambiguity created a
-loophole that the plan exploited.
+The second and third issues are spec-level alignment drift that should have
+been caught when `aide_info` and `aide_inspect` were added to the server. The
+exact same drift pattern is already flagged at `src/todo.aide` against
+`src/.aide` outcomes.desired[0] — the count and roster enumeration drift hit
+two specs simultaneously, but the realignment fix landed in neither. The
+README spec's Context paragraph and outcomes.desired[1] share the same blast
+radius: any new tool added to the surface silently invalidates both the
+count and the implicit "every tool" scope without any signal to the spec
+author.
 
 What would have caught this earlier:
-- The plan step for the Quick Start block should have explicitly cross-checked
-  the `@latest` and `-y` conventions from the spec's strategy section and
-  applied them to the CLI command, not just to the JSON blocks.
-- A QA checklist item "verify every `npx` invocation in the README (not just
-  JSON blocks) uses `@latest`" would have caught this mechanically.
+- An aide-aligner pass after every `src/index.ts` registration change. The
+  prior QA log on `src/.aide` already names this gap ("Any commit that adds
+  a new `case` to the `CallToolRequestSchema` handler in `src/index.ts`
+  should trigger a review of `src/.aide` outcomes.desired[0]") — the
+  alignment cascade up to `.aide/readme.aide` was missed because no agent
+  walked beyond the immediate parent.
+- A spec-writer rule against numeric tool counts and roster enumerations
+  in any spec under the project. The root `.aide/intent.aide` and parent
+  `src/.aide` both forbid these encodings; the README spec inherited the
+  rule but encoded the exact pattern the rule warns against. The aligner
+  needs to catch these inheritance violations on every alignment pass.

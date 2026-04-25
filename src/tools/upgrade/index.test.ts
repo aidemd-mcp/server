@@ -6,9 +6,9 @@ import type { FrameworkConfig, UpgradeCategoryResult, UpgradeResult } from "@/ty
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
-vi.mock("@/tools/init/detectFramework/index.js");
-vi.mock("@/tools/init/initContent/index.js");
-vi.mock("@/tools/init/scaffoldCommands/index.js", () => ({
+vi.mock("@/service/install/detectFramework/index.js");
+vi.mock("@/service/install/initContent/index.js");
+vi.mock("@/service/install/scaffoldCommands/index.js", () => ({
 	COMMANDS: [
 		{ canonical: "commands/aide/aide", hostPath: "aide.md", displayName: "aide" },
 		{ canonical: "commands/aide/research", hostPath: "aide/research.md", displayName: "aide:research" },
@@ -19,16 +19,16 @@ vi.mock("./spliceStub/index.js");
 vi.mock("./buildVersionsMeta/index.js");
 vi.mock("./checkMcpConfig/index.js");
 vi.mock("./checkIdeConfig/index.js");
-vi.mock("@/tools/init/scaffoldReadme/index.js");
+vi.mock("@/service/install/scaffoldReadme/index.js");
 
-import detectFramework from "@/tools/init/detectFramework/index.js";
-import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/tools/init/initContent/index.js";
+import detectFramework from "@/service/install/detectFramework/index.js";
+import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/service/install/initContent/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
-import scaffoldReadme from "@/tools/init/scaffoldReadme/index.js";
+import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import upgrade from "./index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -1,0 +1,55 @@
+---
+description: >
+  Alignment drift after the cold-start install refactor: stale scope path,
+  prior aligned stamp, and intent paragraph referring to "the init subtree"
+  rather than the install service subtree.
+intent: >
+  initContent's spec was previously stamped aligned under the
+  src/tools/init/ regime. After the move to src/service/install/ the path
+  is stale, and the intent's "init subtree" terminology hardcodes the old
+  module identity.
+misalignment:
+  - spec-gap
+---
+
+## Issues
+
+- [ ] `src/service/install/initContent/.aide` frontmatter
+  `scope: src/tools/init/initContent`
+  Stale path — module moved to `src/service/install/initContent/`.
+  Traces to: physical move; ancestor `.aide/intent.aide` ->
+  outcomes.desired[4] (folder tree as architecture).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/initContent/.aide` intent paragraph and
+  outcomes: repeated phrase "the init subtree", "init helpers", "init/"
+  Identity drift — the module is no longer named `init`. The terminology
+  "init subtree" was correct under `src/tools/init/`; under
+  `src/service/install/` it should be "the install service subtree" or
+  "install helpers". This is the chokepoint single-reader invariant; the
+  invariant applies to whichever subtree contains the helpers, but the
+  spec hardcodes the old subtree name.
+  Traces to: physical move; ancestor `.aide/intent.aide` ->
+  outcomes.desired[2] ("composed from the canonical doc files at build or
+  init time, never duplicated") — the chokepoint claim is correct, just
+  scoped to a name that no longer exists.
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/initContent/.aide` Bad examples mention
+  "writeMethodology bypasses initContent and opens `docs/aide-spec.md`
+  directly"
+  Locations of sibling helpers (writeMethodology, scaffoldCommands,
+  installMethodologyDocs) are all under `src/service/install/` now. The
+  examples remain semantically valid but reference paths that, when
+  resolved, point at moved files.
+  Traces to: physical move; ancestor `.aide/intent.aide` ->
+  outcomes.undesired[3] (aspirational docs).
+  Misalignment: spec-gap
+
+## Retro
+
+Same root cause as the parent. The stale `aligned` stamp this spec
+carried was correct under the old folder layout — it is the architectural
+shift, not a content drift, that invalidated it. Any folder-rename of a
+spec's directory should auto-clear `aligned` to `pending` so the next
+alignment pass re-stamps it deliberately.

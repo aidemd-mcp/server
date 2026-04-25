@@ -34,7 +34,7 @@ npx @aidemd-mcp/server@latest init
 This command:
 
 - Merges the AIDE MCP server entry into `.mcp.json`
-- Merges a placeholder Obsidian MCP entry into `.mcp.json` (vault path filled in by `/aide:init`)
+- Merges a placeholder Obsidian MCP entry into `.mcp.json` (vault path filled in by `/aide`)
 - Writes every pipeline slash command to `.claude/commands/aide/`
 - Installs 9 canonical pipeline agents to `.claude/agents/aide/`
 - Installs skills (`study-playbook`, `brain`) to `.claude/skills/`
@@ -189,6 +189,14 @@ Run a health check on `.aide` spec files in the project. Detects orphaned specs,
 
 - `path` (string, optional): Subdirectory to validate. Defaults to the entire project when omitted.
 
+### aide_info
+
+Boot-time precondition reporter. Returns two independent fields the orchestrator branches on separately: `outdated` (an array of stale AIDE artifact keys, comparing the project's `versions.json` against the shipped manifest), and `brain` (a `{ status, vaultPath }` object reporting whether the project's Obsidian MCP entry is configured and its vault directory exists on disk).
+
+**Inputs:**
+
+(none)
+
 ### aide_init
 
 Bootstrap the AIDE development environment into a project using a guided one-at-a-time wizard. On the first call (no `category`), returns a summary of every step with status and detected framework. On subsequent calls (with `category`), writes all pending files for that category to disk and returns a manifest.
@@ -197,7 +205,7 @@ Bootstrap the AIDE development environment into a project using a guided one-at-
 
 - `framework` (string, optional): Force a specific framework instead of auto-detecting. One of: `claude`, `cursor`, `windsurf`, `copilot`.
 - `path` (string, optional): Custom project root path. Defaults to the server working directory.
-- `category` (string, optional): Write all `would-create` files for this category and return a manifest. One of: `framework`, `methodology`, `commands`, `agents`, `skills`, `mcp`, `brain`, `ide`. Omit on the first call to get a metadata-only summary.
+- `category` (string, optional): Write all `would-create` files for this category and return a manifest. One of: `framework`, `methodology`, `commands`, `agents`, `skills`, `mcp`, `brain`, `ide`, `readme`. Omit on the first call to get a metadata-only summary.
 - `brainPath` (string, optional): Resolved brain vault path. Required when `category=brain`.
 
 ### aide_upgrade
@@ -208,7 +216,7 @@ Compare the AIDE methodology artifacts in this project against canonical version
 
 - `framework` (string, optional): Force a specific framework instead of auto-detecting. One of: `claude`, `cursor`, `windsurf`, `copilot`.
 - `path` (string, optional): Custom project root path. Defaults to the server working directory.
-- `category` (string, optional): Write all drifted or missing files for this category and return a manifest. One of: `pointer-stub`, `methodology-docs`, `version-metadata`, `commands`, `agents`, `skills`, `mcp`, `ide`. Omit on the first call to get a metadata-only summary.
+- `category` (string, optional): Write all drifted or missing files for this category and return a manifest. One of: `pointer-stub`, `methodology-docs`, `version-metadata`, `commands`, `agents`, `skills`, `mcp`, `ide`, `readme`. Omit on the first call to get a metadata-only summary.
 
 ## Getting Started
 

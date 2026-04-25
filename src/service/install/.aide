@@ -1,0 +1,778 @@
+---
+scope: src/service/install
+status: aligned
+description: >
+  Install service — the consumer-agnostic core that turns a cold project into an
+  AIDE-ready project, shared by the `aide_init` MCP tool and the npx CLI. Writes
+  non-existing files silently, only pausing on overwrites or inherently
+  interactive decisions (brain vault path, MCP config merge, IDE choice).
+intent: >
+  The install service is the shared core that turns a cold project
+  into an AIDE-ready project. It is consumer-agnostic: the same
+  service is invoked by the `aide_init` MCP tool (when the user is
+  talking to an agent connected to this server) and by the npx CLI
+  (when the user has nothing connected yet). The two consumers
+  differ only in their wire shape; the planning, idempotency,
+  prescriptions, and category structure live here. The service is
+  designed to be fast and unobtrusive: when a category has nothing
+  on disk to overwrite, it just writes the files and reports what it
+  did. The consumer pauses the user only when the install would
+  destroy or clobber something they already have, or when a decision
+  cannot be resolved from the filesystem alone.
+
+  The rule is: confirmation is reserved for overwrites and for
+  inherent decisions. A category whose plan contains only would-create
+  steps runs silently and reports its results. A category whose plan
+  contains would-overwrite steps pauses and asks the user — category-
+  by-category, using the consumer's native pause shape — before
+  applying. Inherent decisions — framework detection confirmation,
+  brain vault location, MCP server-merge into an existing config, and
+  IDE choice — always prompt the user regardless of disk state,
+  because filesystem contents cannot resolve them.
+
+  The categories are: framework detection, methodology pointer stub,
+  methodology doc hub, pipeline slash commands, pipeline agent
+  definitions, pipeline skill templates, MCP server registration
+  (aide), brain vault provisioning, MCP server registration
+  (obsidian), and IDE configuration. Each category still reports what
+  it would do (create, overwrite, skip, already exists), and the
+  consumer only surfaces the category to the user when an overwrite
+  is pending or an inherent decision is needed.
+
+  The brain layer is not optional — AIDE is opinionated about this.
+  The pipeline needs a brain to persist research and retros. But the
+  user chooses where it lives: they can connect to an existing vault
+  anywhere on their system, or have the install create a new one at a
+  location they specify. The consumer interviews the user to resolve
+  the vault path; the install service never silently assumes a sibling
+  folder or falls back to a default. This interview happens regardless
+  of disk state because the vault path is an inherent decision, not a
+  file-write decision.
+
+  MCP config changes are returned as prescriptions — the key name and
+  server entry the config needs — not written directly by the install
+  service. The consumer reads the existing MCP config, merges the
+  prescribed entry into it, and writes the result. The user sees the
+  merge before it happens. This ensures the consumer has full
+  visibility into what exists in the config and the user's other
+  servers are never at risk, even when the config is malformed.
+outcomes:
+  desired:
+    - The install service returns a structured plan containing a
+      categorized list of steps, each with a status (would-create,
+      would-overwrite, would-skip, exists) and the data the consumer
+      needs to execute that step (file paths, content, MCP entries).
+      The consumer interprets this plan and decides per-category
+      whether user interaction is needed. Same plan shape regardless
+      of which entry point invoked the service.
+    - Framework auto-detection picks the right framework from files
+      on disk, and the consumer confirms the detection with the user
+      before proceeding. Framework choice is an inherent decision —
+      the prompt happens regardless of disk state.
+    - "A category whose plan contains only would-create steps (no
+      existing files on disk) is applied silently by the consumer:
+      no confirmation, just write and report. The install is
+      intentionally fast for the common cold-start path where there
+      is nothing to preserve."
+    - "A category whose plan contains at least one would-overwrite
+      step pauses the consumer category-by-category using its
+      native structured-prompt mechanism (AskUserQuestion in the
+      MCP tool path, stdin prompts in the CLI path). The consumer
+      names the files that would be overwritten so the user can
+      make an informed choice, then either applies the whole
+      category or skips it per the user's selection."
+    - "Inherent decisions — brain vault location, MCP server merge
+      into an existing config, and IDE choice — always prompt the
+      user regardless of what is on disk. These are not file-write
+      decisions; filesystem state cannot resolve them. The fast-path
+      rule applies only to pure file-create categories."
+    - For MCP config, the install service returns a prescription —
+      the server key name and the entry object — instead of writing
+      the file. The consumer reads the existing config, shows the
+      user the planned merge, and writes. If the config is malformed
+      JSON, the consumer tells the user and asks how to proceed
+      rather than silently clobbering.
+    - "The brain vault interview is consumer-driven and always
+      happens. The consumer asks the user where their vault is,
+      offering three paths: discover an existing vault (from env
+      var, known locations, or user input), create a new vault at a
+      specified location, or connect to an existing vault at a
+      user-provided path. The vault is always provisioned — there is
+      no skip-brain option. Once the path is resolved, the install
+      service reports whether the vault needs scaffolding and the
+      consumer applies it."
+    - "Wiring the brain end-to-end from a resolved brainPath requires
+      consumers to invoke the install service twice with distinct
+      category values: once with \"category: mcp\" to apply the
+      obsidian MCP prescription to .mcp.json, and once with
+      \"category: brain\" to scaffold vault directories and seed
+      content files. The split is intentional and load-bearing: the
+      mcp category is prescription-only (the consumer merges the
+      returned entry into .mcp.json because the install service
+      never writes that file directly), while the brain category is
+      direct filesystem work (the install service creates vault
+      directories and seeds content itself). Neither category alone
+      fully wires the brain — both must run for the brain to be
+      reachable by pipeline agents."
+    - IDE configuration is presented as optional — the consumer asks
+      whether the user wants Zed and/or VS Code configuration, and
+      only applies what they confirm. IDE choice is an inherent
+      decision and always prompts.
+    - Every step is idempotent. Re-running the install action on a
+      fully initialized project — through either entry point —
+      returns a plan where every step shows "exists" and the
+      consumer reports that nothing needs to change, without asking
+      a single question.
+    - The install service's response is structured data the consumer
+      interprets, not a pre-formatted summary the consumer parrots.
+      The consumer composes its own output (conversational for the
+      MCP tool, terminal-friendly for the CLI) from the structured
+      data, tailored to the user's context.
+    - "The default response (no category parameter) is small enough
+      for the consumer to comprehend in a single read — metadata
+      only, no file content — and includes overwrite status per
+      category so the consumer can decide which categories need
+      prompts. The MCP-tool consumer is the primary driver of the
+      no-content-in-default-response rule because the agent reading
+      the response has a token budget; the CLI consumer benefits
+      from the same shape because re-fetching content per category
+      keeps streaming output coherent."
+    - When called with a `category` parameter, the install service
+      writes all `would-create` files directly to disk itself and
+      returns a small manifest — an array of steps with `filePath`,
+      `status` (now `"created"`, `"overwritten"`, or `"exists"`),
+      and `name`, but NO `content` field. The consumer never sees
+      file content and never needs to write new files itself. This
+      eliminates the 50-100KB response problem that caused MCP-tool
+      agents to resort to programmatic parsing via Node scripts
+      instead of conversational interaction.
+    - The consumer only writes files itself for content that
+      requires intelligent merging — specifically MCP config, where
+      the consumer must read the existing config, merge
+      prescriptions, and write. For MCP steps, the category call
+      still returns the prescription data (not file content) so the
+      consumer can perform the merge. Brain vault scaffolding
+      (creating directories) is handled by the install service
+      directly.
+    - IDE steps that require external tooling (e.g., VS Code
+      extension install via CLI) return instructions for the
+      consumer to execute, since those aren't simple file writes.
+  undesired:
+    - An install that prompts the user when there is nothing to
+      overwrite. A category whose plan is entirely would-create
+      steps must be applied silently — asking permission to write
+      files that do not yet exist is the exact friction this
+      service exists to remove, regardless of which consumer drives
+      the run.
+    - An install that silently overwrites existing files without
+      asking. The fast path is for creates only; overwrites are
+      destructive and must pause the consumer so the user can
+      consent category-by-category.
+    - "A category that bundles creates and overwrites and silently
+      applies both because most of its files are new. If any file
+      in the category would overwrite, the category pauses — the
+      user is informed about the overwrite and decides whether to
+      apply the whole category."
+    - An install that asks conversational free-text questions
+      instead of using the consumer's native structured-prompt
+      mechanism for the overwrite and inherent-decision paths.
+      Every pause point must use defined labels the user can
+      select — `AskUserQuestion` in the MCP-tool path, structured
+      stdin prompts in the CLI path — not open-ended text prompts.
+    - An install that skips the inherent-decision prompts (brain
+      vault path, MCP config merge, IDE choice) because the
+      fast-path rule was misapplied. Those prompts are not about
+      file-writes and must always happen.
+    - An install that silently assumes a brain vault path from a
+      sibling folder, environment variable, or platform default
+      without asking the user. Discovery hints are useful for
+      suggesting a default, but the consumer must confirm the path
+      with the user.
+    - An install service that writes MCP config entries directly,
+      bypassing the consumer. The prescription pattern exists so
+      the consumer has full visibility and the user's existing
+      servers are never at risk.
+    - An install that allows skipping the brain entirely. AIDE
+      requires a brain — research and retros depend on it. The
+      user chooses where, not whether.
+    - "A consumer invoking only \"category: brain\" with a resolved
+      brainPath and declaring the brain fully wired. That single
+      invocation scaffolds the vault directories and seeds content
+      but leaves the obsidian MCP prescription unapplied — the
+      .mcp.json vaultPath stays empty, pipeline agents that declare
+      mcpServers: [obsidian] cannot reach the vault, and aide_info
+      will still report \"brain.status: invalid-path\" even though
+      the vault exists on disk. The symmetric failure also applies:
+      a consumer invoking only \"category: mcp\" with a brainPath
+      patches .mcp.json but never scaffolds the vault, leaving the
+      obsidian server pointed at an unprovisioned directory. Both
+      categories must run; treating either alone as sufficient
+      produces a half-wired brain."
+    - An install that clobbers the MCP config when it encounters
+      malformed JSON. The consumer handles this case by asking the
+      user, not by overwriting.
+    - An install service that returns a pre-formatted prose summary
+      instead of structured data. Both consumers need structured
+      data to drive their flow — not a string they have to parse or
+      parrot.
+    - A category call that returns full file content for the
+      consumer to write. The category call must write files to disk
+      itself and return only a manifest. Returning content causes
+      MCP-tool agents to receive 13-50KB responses that get
+      persisted to disk as JSON files, which the agent then tries
+      to parse with Node scripts instead of using the Write tool
+      per file.
+    - An install response that embeds full file content for all
+      steps in a single payload. Even when steps are structured,
+      a 50-100KB blob causes MCP-tool agents to write Python
+      scripts to parse it instead of driving the install
+      interactively. Content must be deferred to category-specific
+      follow-up calls.
+    - An install that appends the pointer stub on every run, fails
+      the whole run on a single step failure, hardcodes vault
+      paths, or reaches for the network — regardless of which entry
+      point invoked it. The idempotency, fail-soft, no-network, and
+      no-hardcoded-path invariants live at the install-service
+      layer so both consumers inherit them identically.
+    - "A new install category added without a corresponding upgrade
+      category. The upgrade surface must mirror the install surface
+      — every category the install action installs must have an
+      upgrade path. The two category lists (InitCategory and
+      UpgradeCategory) are currently independent; adding to one
+      without the other creates silent drift."
+    - "A standalone CLI entry point that teaches AIDE doctrine
+      instead of installing. The npx CLI is permitted because it
+      is a thin invocation of channel two, exposing the same
+      install service the `aide_init` MCP tool exposes; a CLI that
+      walks the user through the methodology interactively would
+      be the forbidden third channel from the trunk spec, not a
+      thin invocation of channel two."
+---
+
+## Context
+
+Every new project that adopts AIDE has to cross the same cold-start gap:
+an entry-point pointer to AIDE in the surface the agent already reads on
+every session, the full methodology installed somewhere the agent can
+crawl on demand, pipeline slash commands scaffolded, pipeline agent
+definitions installed, pipeline skill templates installed, the MCP
+server registered, the brain layer provisioned so pipeline agents can
+persist and retrieve domain knowledge, and the IDE taught to render
+`.aide` as Markdown. Without a single install action that does all of
+this, each project rediscovers the list and gets one or two steps
+wrong — a stub written to the wrong file, a doc hub installed to a path
+the stub doesn't name, a slash command with a typo, an MCP config that
+registers the server under the wrong name, no vault for the research
+agent to write to, or an IDE that still renders `.aide` as plain text.
+This service exists to collapse the cold-start gap into one
+invocation, regardless of which entry point invoked it, so the decision
+to adopt AIDE in a new project is trivially reversible and costs
+nothing to try. The `aide_init` MCP tool is the entry point an agent
+calls when the user is already talking to a model that connected to
+this server; the npx CLI is the entry point a developer runs when they
+have nothing connected yet. Both compile down to the same install
+service contract.
+
+The previous consumer-driven design corrected the biggest failure mode
+of the original monolithic shape — silent overwrites of malformed MCP
+configs, vaults silently created at sibling defaults — by pausing the
+consumer category-by-category and asking the user to confirm each one
+before writing. That was the right instinct for destructive writes. It
+was the wrong tax for creates. The observed friction in cold-start
+runs is a user watching the consumer ask "can I create `.aide/docs/`?
+can I create `.claude/commands/aide/research.md`? can I create
+`.claude/agents/aide/aide-architect.md`?" for seven consecutive
+categories of files that do not yet exist — nothing to preserve,
+nothing to clobber, no decision the user can meaningfully make beyond
+"yes, I ran the install, apply it." Every one of those prompts is
+bureaucratic overhead on a path where the user has already committed.
+
+This spec refines the confirmation model by splitting the install
+service's decisions into two kinds. **File-write decisions** are resolvable from disk
+state: the tool can stat every target path and know with certainty
+whether a given category would create new files, overwrite existing
+ones, or do nothing. When every step in a category would create
+(nothing on disk, nothing to preserve), the category has no decision
+the user can inform — the right answer is to apply it silently.
+**Inherent decisions** are the ones disk state cannot resolve:
+framework choice (two frameworks can coexist on disk and the user
+alone knows which one the project actually targets), brain vault
+location (the user is the only one who knows where their knowledge
+lives), whether to merge the AIDE servers into their existing MCP
+config (the user's other servers are in that file), and which IDEs
+they actually want configured (tooling they don't use is noise). These
+always prompt, regardless of what is on disk, because the question
+cannot be answered by reading the filesystem.
+
+The shift is behavioral, not architectural. The install service still
+plans every step, still returns structured data, still executes writes
+itself via apply mode when called with a category — nothing about the
+two-call pattern changes for the MCP-tool consumer, and the CLI
+consumer drives the same plan/apply boundary in-process instead of
+across a wire. What changes is the consumer's branch logic over the
+plan: a category whose plan is entirely would-create steps is applied
+silently and reported after the fact; a category whose plan contains
+at least one would-overwrite step pauses the consumer with the
+affected files named so the user can make an informed choice about
+their own existing work; inherent decisions always prompt because
+they are not file-write decisions at all. A fully initialized project,
+re-run through either entry point, produces a plan that is entirely
+`exists` steps, zero prompts, and a terse "nothing to change" report.
+A fresh project produces a plan that is entirely `would-create` file
+steps plus three-or-four inherent prompts, and the user is
+interrupted only for those.
+
+Methodology delivery inside this service is split across two peer
+helpers on purpose. One installs the short pointer stub into the
+host's config file so the agent learns in its very first read of the
+session that AIDE exists and where the full material lives. The other
+installs the full material — the canonical methodology docs plus a
+hub index — into a dedicated doc-hub folder on the host's disk, so
+the agent reads only what the current task requires and only when the
+task requires it. The split mirrors the methodology's own
+progressive-disclosure rule at the delivery layer: the high-traffic
+surface teaches where to look, the low-traffic surface holds the
+actual content. Both land through the same silent-on-create path when
+nothing of the user's is at risk.
+
+The brain layer is the pipeline's shared memory. The research agent
+writes domain findings to `research/<domain>/`, QA promotes retros to
+`process/retro/`, and the coding playbook lives under
+`coding-playbook/`. Without a vault and an Obsidian MCP server entry,
+agents that declare `mcpServers: [obsidian]` in their frontmatter
+silently lose brain access — their research vanishes, retros are
+never persisted, and the pipeline cannot learn across runs. The
+install action provisions this layer: it creates a minimal vault
+with the expected directory scaffolding when the user-chosen location
+is empty, and prescribes the Obsidian MCP server entry for the
+consumer to merge into the project's MCP config alongside the aide
+server. The vault path is resolved through the consumer's interview
+with the user — never hardcoded, never silently defaulted — because
+the vault path is an inherent decision and the rule that covers it is
+"always prompt," not "apply silently when nothing is on disk."
+
+## Strategy
+
+**The install service plans with a four-status enum; the consumer
+branches on status distribution per category.** Each step in the plan
+reports `would-create` (target path does not exist),
+`would-overwrite` (target path exists and the canonical bytes differ
+from what is on disk), `would-skip` (target path exists and the
+canonical bytes match, so no write is needed), or `exists` (step is
+already satisfied, nothing to do). The consumer walks the plan
+category by category and picks one of three branches: if the
+category's steps are all `would-create` (or a mix of `would-create`,
+`would-skip`, and `exists`), apply silently — there is no decision
+the user can inform, and every prompt on that path is friction the
+spec exists to remove. If any step in the category is
+`would-overwrite`, pause and ask, naming the files so the user can
+decide whether to overwrite their own modified material. This is how
+the spec's outcomes.desired rule "a pure-create category is applied
+silently; a category with overwrites pauses" cashes out in
+consumer-visible behavior. The agent in the MCP-tool consumer drives
+this branching across the wire; the CLI consumer drives it
+in-process — the rule is identical.
+
+**`would-overwrite` is computed by byte comparison, not heuristics.**
+Each helper stats its target path; if the file exists, it reads the
+on-disk bytes and compares them to the canonical content it was about
+to write. Identical bytes ⇒ `would-skip` (the file is already what we
+would have written, no need to write again). Different bytes ⇒
+`would-overwrite` (the user has modified this file, or a prior
+version of the install service wrote something that has since
+drifted). Missing file ⇒ `would-create`. The rule is deliberately
+strict: "same name but different content" is enough to pause the
+consumer, because the install service cannot tell a user-authored
+customization from a stale previous install, and the safer branch is
+to ask. This closes the outcomes.undesired line "a category that
+bundles creates and overwrites and silently applies both because most
+of its files are new" — even one overwrite in a category tips the
+whole category into the prompt branch.
+
+**Inherent-decision prompts are orthogonal to the file-write
+branch.** Framework confirmation, brain vault location, MCP-config
+merge into an existing config, and IDE choice always pause the
+consumer regardless of the plan's status distribution. The rule
+"silent on create, prompt on overwrite" governs file-writes only;
+inherent decisions are not file-writes, they are choices about what
+the user wants their environment to look like, and the filesystem
+cannot resolve them. A fully-initialized project re-run still asks
+zero questions because the categories land as `exists` *and* the
+inherent decisions have already been answered on disk — brain path
+present in the registered MCP server entry, IDE config present,
+framework already detected — so the consumer has no new questions to
+ask. A fresh project asks three or four (framework confirm, brain
+vault path, MCP merge approval, IDE choice) and nothing else. This
+closes the outcomes.undesired line "an install that skips the
+inherent-decision prompts because the fast-path rule was misapplied"
+— the rule does not apply to them in the first place.
+
+**Apply mode writes creates immediately and defers overwrites to
+user consent.** When the consumer invokes the install service with a
+category parameter, the apply helper walks the category's steps:
+every `would-create` step is written to disk straight through and
+returned with status `"created"`; `would-skip` and `exists` steps
+pass through unchanged; `would-overwrite` steps are only written
+when the consumer explicitly signaled user approval for the category
+(the consumer does this by proceeding to the apply call — if the
+user had declined, the consumer would never have made it). On
+approval, the overwrite happens and the step is returned with status
+`"overwritten"`. The manifest that comes back carries the new
+`"overwritten"` status alongside `"created"` and `"exists"` so the
+consumer can report a truthful breakdown — "created 8, overwrote 1,
+kept 3 as-is" — not a vague "done." This satisfies the
+outcomes.desired line about manifest statuses and the
+outcomes.undesired line about silent clobbers (writes happen, but
+only when the plan already showed them as overwrites and the
+consumer already got approval).
+
+**Category isolation: one category's decision never mutates
+another.** Each helper (methodology, commands, agents, skills, MCP,
+brain, IDE) produces its plan from its own canonical content and its
+own disk inspection. No shared state, no cross-category coupling, no
+ordering dependency beyond the consumer's presentation order. This
+matches the orchestrator/helper pattern the codebase already uses
+(`study-playbook` convention: orchestrator coordinates, helpers do
+one thing) and is the forcing function that makes per-category
+pauses work — the consumer can apply methodology silently, pause on
+commands because the user has a modified slash command, apply agents
+silently, and the categories do not contaminate each other. A
+category's failure surfaces as a single category's failure in the
+report; it does not abort the rest. This closes the outcomes.desired
+"every step is idempotent" line at the category-boundary level too.
+
+**MCP merge is an inherent-decision wrapper around file-write
+prescription.** The install service never writes MCP config. It
+returns the server key name and the entry object the config needs;
+the consumer reads the existing config, shows the user the planned
+merge, and writes. The "show the user before writing" pause is an
+inherent-decision prompt — the user's other servers live in that
+file, the install service cannot know which ones the user wants
+preserved, and the filesystem state of `.mcp.json` does not answer
+the question. Malformed JSON hits the same path: the consumer
+surfaces the parse error and asks how to proceed rather than
+silently replacing the file. This closes the outcomes.undesired
+lines about clobbering MCP configs and writing MCP entries directly,
+and honors the parent spec's `src/.aide` invariant that the install
+service never touches MCP config.
+
+**Brain vault is required; location is inherent; scaffolding is
+silent-on-create.** AIDE is opinionated that the pipeline needs
+persistent memory. The consumer asks the user where their vault is,
+offering discovered hints (env var, sibling `my-brain/`, prior
+install) as suggestions the user can pick or override — the user
+cannot skip the vault, only choose where it lives. Once the path is
+resolved, the brain category's scaffolding plan follows the normal
+file-write branch: if the expected directories are absent, the
+install service creates them silently; if the vault exists and the
+scaffolding is intact, everything shows `exists` and no writes
+happen. The inherent prompt (where?) and the silent-on-create write
+(create the directories once the path is known) are cleanly
+separated. This closes the outcomes.undesired lines about skipping
+the brain and about silently adopting a sibling default.
+
+**Framework detection is a read-only inspection whose result is
+always confirmed.** Framework choice is inherent — two frameworks
+can coexist on disk, and the user alone knows which one matters for
+this project. The detector returns its best guess and the consumer
+confirms with the user; the user can accept or override. Detection
+never writes. The confirmation prompt happens even when the
+detection is unambiguous because the user is the source of truth
+about their own project, not the presence of a `.claude/`
+directory.
+
+**IDE configuration is per-IDE and always asked.** The user's IDE
+preferences are inherent — a developer on VS Code has no use for a
+Zed settings file, and vice versa. The consumer asks which IDEs to
+configure; it only applies what the user confirms. IDE steps that
+need external tooling (VS Code extension install via CLI) return an
+`instructions` field the consumer can execute rather than attempting
+the shell call from inside the install service, because the install
+service has no guarantee the CLI is on PATH and "the rest of the
+install succeeds when IDE fails" requires that IDE failure be
+reportable, not crashing.
+
+**Network is never the happy path.** Every asset the install action
+needs is checked into the repo — the methodology docs, the command
+templates, the agent definitions, the skill templates, the bundled
+VS Code `.vsix`. A developer running the install on a laptop with no
+network gets the same result as a developer running it online, and
+the silent-on-create branch is safe because the canonical content
+is local and deterministic.
+
+**The upgrade surface must mirror the install surface, category for
+category.** Every new install category has a corresponding upgrade
+category, and the two lists are maintained together. The
+outcomes.undesired line naming drift between `InitCategory` and
+`UpgradeCategory` is a deliberate guardrail — a category the install
+action installs but upgrade does not track is silently frozen at
+install time, and a category upgrade tracks without an install
+counterpart is unreachable on cold start. Keep them in lockstep.
+
+**Two consumers, one wire shape per consumer.** The MCP-tool
+consumer (`src/tools/init/`) translates the install service's plan
+into MCP responses and uses `AskUserQuestion` for inherent-decision
+and overwrite prompts. The CLI consumer (`src/cli/init/`) translates
+the same plan into terminal output and uses stdin prompts for the
+same decisions. Neither consumer is allowed to inline install logic
+that the other consumer cannot reach — every category invariant
+(idempotency, prescription pattern, planner/apply split, status
+enum) lives in the install service, and the consumers are thin
+adapters over it. A bug fix in the install service fixes both
+consumers; a fix that has to happen in both consumers is a sign the
+fix belonged in the service.
+
+## Good examples
+
+**Cold start on a fresh project via the MCP-tool consumer — four
+prompts, nothing else.** The agent calls `aide_init` with no
+category. The install service returns a plan with every step in
+`methodology`, `commands`, `agents`, `skills`, and the `.aide/` tree
+as `would-create`; MCP returns its prescription and the brain slot
+returns its placeholder because no path is resolved yet; IDE returns
+its `would-create` steps.
+
+The agent opens with:
+
+> I detected Claude Code. Is that right?
+
+The user confirms via `AskUserQuestion`. The agent, seeing every file
+category is pure `would-create`, applies methodology, commands,
+agents, skills, and `.aide/` tree one after another without another
+prompt, reporting briefly after each:
+
+> Installed methodology — 9 files under `.aide/docs/` and a pointer stub in `CLAUDE.md`.
+> Installed 12 slash commands under `.claude/commands/aide/`.
+> Installed 6 pipeline agent definitions under `.claude/agents/aide/`.
+> Installed study-playbook skill under `.claude/skills/`.
+> Scaffolded `.aide/intent.aide` for the project root.
+
+Then the inherent prompts:
+
+> AIDE needs a brain vault. I found a candidate at `D:/Code/Me/my-brain/` (sibling folder) and one at `$BRAIN` (env var → `D:/Notes/main-vault/`). Pick one, or type a path.
+
+The user picks the env-var hint. The agent invokes the install
+service with `category: "brain"` and that path; the install service
+scaffolds the missing directories and returns `"created"` for each.
+Then:
+
+> Your `.mcp.json` has `github` and `memory` configured. I'll add `aide` and `obsidian` alongside them. OK?
+
+The user confirms; the agent merges and writes. Then:
+
+> I can configure Zed and VS Code for `.aide` preview. Want both, one, or neither?
+
+The user picks Zed only; agent applies the Zed step silently, skips
+VS Code. Total prompts from a cold start: four (framework, brain
+path, MCP merge, IDE choice). Zero prompts about file-creates.
+
+**Cold start via the npx CLI consumer — same four prompts, terminal
+shape.** A developer with no AIDE-aware agent connected runs
+`npx aidemd-mcp@latest init` in their project directory. The CLI
+invokes the install service in-process and gets back the same plan
+the MCP tool would have received. The CLI prints:
+
+> Detected framework: Claude Code. [Y/n]
+
+The developer presses Enter. The CLI walks the file categories
+silently (all `would-create`), prints a per-category report after
+each apply call, then asks the same brain-vault, MCP-merge, and IDE
+prompts via stdin instead of `AskUserQuestion`. Same plan, same
+status enum, same idempotency, same outcome on disk — only the wire
+shape differs. A developer who runs `aide_init` later from inside a
+connected agent's session sees every category as `exists` because
+the install service already finished the work.
+
+**Re-run on a fully initialized project — zero prompts, either
+consumer.** A week later the developer re-invokes the install
+action — could be the agent calling `aide_init`, could be `npx
+aidemd-mcp@latest init` from the terminal. Every file category comes
+back entirely as `exists`. The MCP config already contains the aide
+and obsidian servers. The brain scaffold is intact. The consumer
+reports once and stops:
+
+> This project is already fully initialized — methodology, commands, agents, skills, `.aide` tree, MCP servers, brain vault, and Zed preview all present. Nothing to change.
+
+No prompt fires (no `AskUserQuestion` in the MCP-tool path, no stdin
+prompt in the CLI path) because the plan showed nothing to decide.
+
+**Partial overwrite — one file named, one prompt, one category.**
+The developer has edited `.claude/commands/aide/research.md` to add
+a line of their own instructions. A release later they re-invoke
+the install action. The plan comes back with the `commands`
+category mixed: eleven `would-skip` steps (canonical bytes match),
+one `would-overwrite` step for `research.md`. Every other category
+is pure `would-create` or pure `exists`.
+
+The consumer applies methodology silently (all `would-create`),
+applies agents silently, applies skills silently. At commands it
+pauses:
+
+> The `commands` category has one file that would overwrite your existing version: `.claude/commands/aide/research.md`. Eleven other slash commands are either already current or missing and would be freshly installed. Overwrite your modified `research.md`?
+
+Options: "Overwrite it" / "Keep my version and install the others" /
+"Skip the whole category." The MCP-tool consumer surfaces these via
+`AskUserQuestion`; the CLI consumer surfaces them via a structured
+stdin prompt with the same three labels. The user picks the middle
+option. The consumer invokes the install service with
+`category: "commands"` and signals that the overwrite is declined;
+the install service writes only the `would-create` steps, returns
+the `would-overwrite` step with status unchanged, and the consumer
+reports:
+
+> Installed 11 new slash commands under `.claude/commands/aide/`. Kept your modified `research.md` as-is.
+
+One prompt, surgically scoped to the one file that actually needed a
+decision — same outcome regardless of which consumer drove the run.
+
+## Bad examples
+
+**Prompting on pure-create categories.** Cold start, fresh project,
+and the consumer asks:
+
+> Methodology — this will create the CLAUDE.md pointer stub and 9 docs in `.aide/docs/`. Want me to set this up?
+
+Then:
+
+> Commands — this will create 12 slash commands in `.claude/commands/aide/`. Want me to set these up?
+
+Then:
+
+> Agents — this will create 6 pipeline agents in `.claude/agents/aide/`. Want me to set these up?
+
+The user hits "yes" seven times in a row for files that do not yet
+exist, staring at a wizard that is asking permission to do the thing
+they invoked it to do. This is the exact friction the confirmation
+model removes; the category-by-category pause belongs to overwrites,
+not creates. Same failure mode whether the consumer asks via
+`AskUserQuestion` or via a stdin prompt — the install service's plan
+told the consumer there was nothing to decide, and the consumer
+asked anyway.
+
+**Silent overwrite because "most of the category is new."** A
+developer has a customized `research.md` from the previous example.
+The consumer heuristically decides the `commands` category is
+"mostly creates (eleven new, one overwrite)" and applies the whole
+category without pausing, overwriting the user's modifications. The
+consumer reports "installed 12 slash commands" and the user
+discovers tomorrow that their custom instructions are gone. The
+rule is strict: even one `would-overwrite` step in a category tips
+the category into the prompt branch.
+
+**Skipping an inherent-decision prompt because the "fast path"
+applies.** The consumer sees a `my-brain/` directory sibling to the
+project, decides that counts as the brain being "already present,"
+skips the brain-path question, and wires the project's MCP config
+to that sibling vault. The user's actual AIDE vault is at
+`D:/Notes/aide-vault/` and the sibling is an old experiment. The
+inherent-decision rule exists precisely for this case: the vault
+path is not resolvable from disk state, so the consumer must ask
+regardless of what is on disk.
+
+**Silent MCP merge.** The consumer finds `.mcp.json` on disk with
+two existing servers, assumes the merge is a file-write decision,
+and writes the new config without pausing. In the best case the user
+is surprised; in the worst case the existing config was malformed
+and the consumer has just replaced it with a "clean" version that
+silently dropped the user's custom servers. MCP merge is inherent —
+always prompt, in every consumer.
+
+**One summary table, one blanket confirmation, zero granularity.**
+The consumer returns:
+
+> Here's the full plan: methodology (9 creates), commands (12 creates), agents (6 creates), skills (1 create), MCP (1 prescription), brain (pending vault path), IDE (2 creates). Apply all?
+
+The user says yes and loses their modified `research.md` to a silent
+overwrite they had no way to see in the table. The per-category
+pause model exists so overwrites surface against their own category,
+with the affected files named — not buried in a global "apply all."
+
+**Prompts fired via free-text instead of structured options.** The
+consumer writes:
+
+> Do you want me to go ahead with methodology? (yes/no)
+
+The user types "y" and the consumer parses it. This violates the
+structured-options rule from outcomes.undesired — every pause point
+must use defined labels (`AskUserQuestion` in the MCP-tool consumer,
+structured stdin prompts in the CLI consumer), because free-text
+prompts cost the agent a parse turn and the CLI a fragile string
+match. Both consumers have native structured-prompt mechanisms; the
+install service's invariant is that the consumer uses them.
+
+**Reporting that does not distinguish created from overwritten.**
+After an apply call that wrote six new files and overwrote one, the
+consumer reports:
+
+> Done — installed 7 files.
+
+The user has no way to know which file was theirs and got replaced.
+The manifest statuses exist so the consumer can say "created 6,
+overwrote 1: research.md" — using them as a single undifferentiated
+count defeats the purpose of the status enum.
+
+**A consumer that inlines install logic instead of going through
+the service.** A maintainer adds a "post-install hook" feature to
+the MCP-tool consumer that touches files outside the install
+service's plan — say, optimistically running `npm install` after the
+install action finishes. The CLI consumer doesn't get the hook, the
+two consumers diverge, and a future developer running the CLI sees
+different results than a developer using the agent. The rule is
+that every category invariant lives in the install service; if a
+behavior should affect both consumers, it belongs in the service,
+not in either consumer.
+
+## References
+
+- `D:/Code/Me/aidemd-mcp/.aide/intent.aide` — Canonical parent: the
+  two delivery channels (handshake teaching + install action) and
+  the rule that no doctrine lives outside the canonical docs.
+  Anchors the "MCP is a renderer, docs are the source" framing used
+  in the Strategy.
+- `D:/Code/Me/aidemd-mcp/src/.aide` — Immediate parent: the client-
+  parity, idempotency-as-invariant, and "tool never touches MCP
+  config" rules the Strategy inherits without restating. Source of
+  the per-category idempotency point and the MCP prescription
+  contract.
+- `D:/Code/Me/aidemd-mcp/.aide/docs/aide-spec.md` — Canonical methodology.
+  Source of the "intent governs, strategy is decisions with citations,
+  no code in the body" rules that shape how this Strategy is written;
+  also the "orchestrator/helper, `.aide` next to orchestrators only"
+  placement rule that underwrites the category-isolation decision.
+- `D:/Code/Me/aidemd-mcp/.aide/docs/progressive-disclosure.md` — Source of the
+  "helper does one thing, orchestrator coordinates" convention the
+  category-isolation decision rests on; also the tier model the
+  methodology-split context paragraph invokes.
+- `D:/Code/Me/aidemd-mcp/src/service/install/plan.aide` — Prior
+  apply-mode plan. Established the two-call pattern (summary call →
+  category apply call), the `"created"` status, and the MCP/IDE
+  exceptions. The new `"overwritten"` status slots into the same
+  manifest shape without restructuring the call contract.
+- `D:/Code/Me/aidemd-mcp/src/service/install/todo.aide` — Prior QA
+  re-alignment. Documents the "plan scope blindspot" lesson
+  (type-change steps must be explicit) and the untested
+  passthrough gap; both inform the "manifest statuses must
+  distinguish created from overwritten" rule and the category-
+  isolation invariant.
+- `D:/Code/Me/aidemd-mcp/src/service/install/detectFramework/index.ts` —
+  Source of the per-framework path table (`configPath`,
+  `commandDir`, `docHubDir`, etc.). Confirms that disk inspection
+  alone cannot resolve framework choice when multiple frameworks'
+  markers coexist, anchoring the "framework is an inherent
+  decision" point.
+- `D:/Code/Me/aidemd-mcp/src/service/install/installAgents/plan.aide` —
+  Sibling category plan. Establishes the agents/skills delivery
+  shape the silent-on-create branch applies to, and confirms that
+  the install and upgrade category lists must move in lockstep.
+- `D:/Code/Me/aidemd-mcp/src/tools/init/` — MCP-tool consumer that
+  exposes the install service through the `aide_init` MCP tool.
+  Translates plan/apply calls into MCP responses and uses
+  `AskUserQuestion` for inherent-decision and overwrite prompts.
+- `D:/Code/Me/aidemd-mcp/src/cli/init/` — npx CLI consumer that
+  exposes the install service through `npx aidemd-mcp@latest init`.
+  Drives the same plan/apply boundary in-process and uses stdin
+  prompts for inherent-decision and overwrite branches.
+- `D:/Code/Me/aidemd-mcp/.claude/commands/aide/init.md` — Wizard
+  prompt for the MCP-tool consumer. Source of the `AskUserQuestion`
+  contract and the "never summary table, never 'all' option" rules
+  referenced in the Bad examples.

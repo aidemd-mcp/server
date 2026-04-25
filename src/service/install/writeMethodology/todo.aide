@@ -1,0 +1,50 @@
+---
+description: >
+  Alignment drift after the cold-start install refactor: stale scope path
+  and identity-locked references to "aide_init" as the sole caller.
+intent: >
+  writeMethodology's scope still names the old path; the spec describes
+  itself as a helper of "aide_init" rather than as a helper of the
+  install service that aide_init and the CLI both consume.
+misalignment:
+  - spec-gap
+---
+
+## Issues
+
+- [ ] `src/service/install/writeMethodology/.aide` frontmatter
+  `scope: src/tools/init/writeMethodology`
+  Stale path — module moved to `src/service/install/writeMethodology/`.
+  Traces to: physical move; ancestor `.aide/intent.aide` ->
+  outcomes.desired[4] (folder tree as architecture).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/writeMethodology/.aide` Good examples:
+  "A host project runs `aide_init` for the first time..."
+  Identity drift — the example narrates the MCP tool path, not the
+  install service. With two consumers (MCP tool and npx CLI) the
+  example should narrate the service contract once and call out the
+  consumer-specific shape, or distinguish the two narrations.
+  Traces to: parent `src/service/install/.aide` identity drift;
+  ancestor `.aide/intent.aide` -> outcomes.desired[1] (two delivery
+  channels).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/writeMethodology/.aide` Strategy: "The
+  parent spec's renderer invariants still govern..."
+  References "the parent spec" generically; with the install service
+  now sitting between this helper and `src/.aide`, the renderer
+  invariants come from two ancestors (the install service and the
+  trunk), not one. The spec should name which invariant comes from
+  which ancestor or stop pinning to a single "parent".
+  Traces to: parent `src/service/install/.aide` (misaligned — see its
+  todo); ancestor `src/.aide` -> outcomes.desired[2] (no AIDE doctrine
+  as string literals).
+  Misalignment: spec-gap
+
+## Retro
+
+Architectural-shift drift. The "the tool runs aide_init" framing in the
+Good examples is the highest-friction part of every moved spec — it
+locks the narrative to a single consumer when the install service
+should be consumer-neutral.

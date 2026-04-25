@@ -1,5 +1,6 @@
 ---
 scope: .
+status: aligned
 description: >
   Canonical home of the AIDE methodology and the MCP server that delivers it — single source of truth for every downstream host project.
 intent: >

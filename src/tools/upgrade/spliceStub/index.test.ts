@@ -7,8 +7,8 @@ vi.mock("node:fs/promises", () => ({
 
 import { readFile } from "node:fs/promises";
 import spliceStub from "./index.js";
-import { composeStub } from "@/tools/init/writeMethodology/index.js";
-import { getMethodologyMarker } from "@/tools/init/initContent/index.js";
+import { composeStub } from "@/service/install/writeMethodology/index.js";
+import { getMethodologyMarker } from "@/service/install/initContent/index.js";
 
 const mockReadFile = readFile as Mock;
 
