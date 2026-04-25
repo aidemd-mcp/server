@@ -1,48 +1,68 @@
 ---
 name: brain
 description: >
-  General-purpose interface to the user's Obsidian vault. Reads the vault's
-  root CLAUDE.md and follows its navigation instructions to find and return
-  vault content relevant to the user's request — research, project context,
-  environment, identity, references, or any other vault content. Use this
-  skill for any vault query that is not specifically about coding conventions.
+  Signpost to the brain — an external, team-shareable knowledge store that
+  holds context too durable for the repo and too cross-project for any single
+  codebase (domain research, coding playbook, project history, journal,
+  environment, identity, references). When the current task needs knowledge
+  that isn't in the working directory, or the user references shared notes /
+  research / conventions, invoke the `/aide:brain` slash command and let it
+  discover and navigate the brain. This skill does NOT navigate the brain
+  itself. Do NOT trigger for coding conventions or patterns (use `study-playbook`
+  instead) or for first-time brain wiring (that's `/aide:brain config`, which
+  `/aide` routes to directly).
 ---
 
-# /brain — Access Vault Knowledge
+# brain — Signpost to the Brain
 
-Read the user's Obsidian vault and return the content relevant to their request.
-
----
-
-## Step 1: Read the Vault CLAUDE.md
-
-Use the Obsidian MCP to read the vault's root CLAUDE.md.
-
-This file contains all navigation intelligence for the vault — crawling
-protocol, decision protocol, and a table of where to find different types
-of content. Read it before doing anything else.
+Pointer skill. The brain interface lives in the `/aide:brain` slash command —
+this skill exists so any agent that needs brain access discovers it.
 
 ---
 
-## Step 2: Follow the Navigation Instructions
+## What the brain is
 
-Execute the navigation steps the vault CLAUDE.md provides to find the content
-relevant to the user's request. Do not supplement, override, or paraphrase
-the vault's navigation rules — defer to them entirely.
+The brain is a knowledge store that lives **external to the project** and
+**outside any single codebase**. It can be a personal store for one developer
+or a shared store an entire team points at — when teammates wire their agents
+to the same brain, every member's agent reads and writes against the same
+playbook, research, project context, and conventions. That makes it the
+authoritative source for anything the team has agreed on or learned, and the
+place where new findings become reusable across projects and across people.
 
----
+Typical contents: domain research, the coding playbook, project history and
+context, journal logs, environment config, identity, references. AIDE's research
+phase writes to it; the strategist and architect phases read from it; explorer
+agents draw on it for context the code doesn't carry. The brain is a logical
+surface — the underlying backend is an implementation detail the `/aide:brain`
+command abstracts.
 
-## Step 3: Fulfill the User's Request
+## When to invoke `/aide:brain`
 
-Return what you found from the vault, synthesized in response to what the
-user asked.
+Trigger when the current task needs knowledge that isn't in the working
+directory:
 
----
+- **Unfamiliar domain.** You're about to make a decision in a domain you have no
+  loaded context for (e.g. cold email tactics, local SEO scoring, a vendor API
+  quirk).
+- **Shared context referenced.** The user says "check my notes," "what does the
+  team do for X," "we already researched this," or names a project / research
+  area / convention without giving you the file.
+- **Saving findings.** You produced research, a decision, or a pattern the team
+  will need again — synthesis the brain should own, not the repo.
 
-## Navigation Rules
+## What `/aide:brain` does
 
-- **Read the vault CLAUDE.md first.** Do not search, list directories, or
-  read any other file before reading the vault's root CLAUDE.md.
-- **Defer to the vault CLAUDE.md's navigation rules.** Do not supplement,
-  override, or paraphrase them. The vault CLAUDE.md is the single source
-  of truth for how this vault is organized.
+It discovers the brain's root navigation surface first — the brain owns its own
+structure and navigation rules — then follows those rules to find and return
+content (or write what it's been asked to save).
+
+## When NOT to use this skill
+
+- **Coding conventions, patterns, architecture decisions** — use `study-playbook`.
+  It's scoped to the playbook subset of the brain.
+- **First-time brain wiring** — that's `/aide:brain config`, and `/aide` routes
+  to it directly when the brain isn't wired yet.
+- **Web lookups, repo file searches, MCP memory** — the brain is the external
+  knowledge store wired to this project. Use the appropriate tool for those
+  other surfaces.
