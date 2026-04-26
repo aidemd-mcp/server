@@ -88,7 +88,7 @@ const mockCompareBytes = vi.mocked(compareBytes);
 
 // Canonical three deferred categories the orchestrator always passes.
 const DEFERRED_CATEGORIES = [
-	"Vault path — the obsidian MCP entry shell is written but the vault path is empty; open Claude Code and run /aide — the orchestrator will prompt for it",
+	"Vault path — the brain MCP entry shell is written but the vault path is empty; open Claude Code and run /aide — the orchestrator will prompt for it",
 	"Brain vault scaffolding (directories, playbook hub, vault CLAUDE.md) — follows the vault path above (same /aide run)",
 	"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
 ];
