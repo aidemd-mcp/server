@@ -1,7 +1,12 @@
 /**
- * Tests for brain tool — five-status branching + verbatim-prose invariants.
+ * Tests for brain tool — BrainState-contract branching + verbatim-prose invariants.
  *
- * INVARIANT (4h): This file MUST NOT import from `@/service/brainBackends`.
+ * Branches covered: one describe block per BrainState status (`ok`, `no-brain-aide`,
+ * `no-mcp-entry`, `mcp-drift`) plus the defensive-fallback path. Tests are written
+ * against the BrainState vocabulary exported from `@/types/index.ts`; the test
+ * count is derived from those branches, not pinned as a fixed number.
+ *
+ * INVARIANT: This file MUST NOT import from `@/service/brainBackends`.
  * The brain tool never dispatches through a backend registry; importing that
  * module here would re-introduce the anti-pattern the spec explicitly retired.
  * If you find yourself reaching for brainBackends in a test, stop — the test
@@ -27,19 +32,18 @@ const mockParseBrainAide = parseBrainAide as ReturnType<typeof vi.fn>;
 
 /** Minimal valid BrainAideConfig — exact field values are not under test here. */
 const MINIMAL_CONFIG = {
-	connector: "obsidian",
-	rootPath: "/x",
-	entryFile: "CLAUDE.md",
-	mcpServerConfig: { command: "npx", args: ["-y", "obsidian-mcp", "/x"] },
-	tools: { read: "mcp__brain__read_note", search: "mcp__brain__search_notes" },
+	name: "obsidian",
+	mcpServerConfig: {
+		command: "npx",
+		args: ["@bitbonsai/mcpvault", "/x"],
+	},
 };
 
-/** ok state fixture with a given connector. */
-function makeOkState(connector = "obsidian") {
+/** ok state fixture with a given name. */
+function makeOkState(name = "obsidian") {
 	return {
 		status: "ok" as const,
-		rootPath: "/x",
-		connector,
+		name,
 		hints: [],
 	};
 }
@@ -92,10 +96,10 @@ describe("brain — ok: verbatim prose (4a)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4b. ok — response shape has no `backend` field
+// 4b. ok — response shape has no `name`, `backend`, or `connector` field
 // ---------------------------------------------------------------------------
 
-describe("brain — ok: no backend field (4b)", () => {
+describe("brain — ok: no name, backend, or connector field (4b)", () => {
 	it("does NOT include a backend field on the ok branch", async () => {
 		mockBuildBrainState.mockResolvedValue(makeOkState());
 		mockParseBrainAide.mockResolvedValue({
@@ -107,6 +111,42 @@ describe("brain — ok: no backend field (4b)", () => {
 		const result = await brain("/root");
 
 		expect(result).not.toHaveProperty("backend");
+	});
+
+	it("does NOT include a name field on the ok branch", async () => {
+		mockBuildBrainState.mockResolvedValue(makeOkState());
+		mockParseBrainAide.mockResolvedValue({
+			kind: "ok",
+			config: MINIMAL_CONFIG,
+			prose: "some prose",
+		});
+
+		const result = await brain("/root");
+
+		expect(result).not.toHaveProperty("name");
+	});
+
+	it("does NOT include a connector field on the ok branch", async () => {
+		mockBuildBrainState.mockResolvedValue(makeOkState());
+		mockParseBrainAide.mockResolvedValue({
+			kind: "ok",
+			config: MINIMAL_CONFIG,
+			prose: "some prose",
+		});
+
+		const result = await brain("/root");
+
+		expect(result).not.toHaveProperty("connector");
+	});
+
+	it("does NOT include a name field on a non-ok branch", async () => {
+		mockBuildBrainState.mockResolvedValue({ status: "no-brain-aide", hints: [] });
+
+		const result = await brain("/root");
+
+		expect(result).not.toHaveProperty("name");
+		expect(result).not.toHaveProperty("backend");
+		expect(result).not.toHaveProperty("connector");
 	});
 });
 
@@ -142,8 +182,7 @@ describe("brain — no-mcp-entry: remediation prose (4d)", () => {
 	it("returns status no-mcp-entry with prose containing npx aidemd-mcp sync", async () => {
 		mockBuildBrainState.mockResolvedValue({
 			status: "no-mcp-entry",
-			rootPath: "/x",
-			connector: "obsidian",
+			name: "obsidian",
 			hints: [],
 		});
 
@@ -156,36 +195,14 @@ describe("brain — no-mcp-entry: remediation prose (4d)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4e. invalid-path — canonical remediation prose
+// 4e. mcp-drift — canonical remediation prose
 // ---------------------------------------------------------------------------
 
-describe("brain — invalid-path: remediation prose (4e)", () => {
-	it("returns status invalid-path with prose mentioning rootPath correction", async () => {
-		mockBuildBrainState.mockResolvedValue({
-			status: "invalid-path",
-			rootPath: "/broken/path",
-			connector: "obsidian",
-			hints: [],
-		});
-
-		const result = await brain("/root");
-
-		expect(result.status).toBe("invalid-path");
-		// Load-bearing phrase: agent must tell the user to correct rootPath.
-		expect(result.instructions).toContain("rootPath");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// 4f. mcp-drift — canonical remediation prose
-// ---------------------------------------------------------------------------
-
-describe("brain — mcp-drift: remediation prose (4f)", () => {
+describe("brain — mcp-drift: remediation prose (4e)", () => {
 	it("returns status mcp-drift with prose containing sync command and drift mention", async () => {
 		mockBuildBrainState.mockResolvedValue({
 			status: "mcp-drift",
-			rootPath: "/x",
-			connector: "obsidian",
+			name: "obsidian",
 			hints: [],
 		});
 
@@ -199,11 +216,11 @@ describe("brain — mcp-drift: remediation prose (4f)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4g. defensive fallback — parseBrainAide returns missing despite ok state
+// 4f. defensive fallback — parseBrainAide returns non-ok despite ok state
 // ---------------------------------------------------------------------------
 
-describe("brain — defensive fallback: parseBrainAide non-ok (4g)", () => {
-	it("returns invalid-path with non-empty instructions when parseBrainAide returns missing", async () => {
+describe("brain — defensive fallback: parseBrainAide non-ok (4f)", () => {
+	it("returns no-brain-aide with non-empty instructions when parseBrainAide returns missing", async () => {
 		// Simulate the upstream contract violation: buildBrainState says ok but
 		// parseBrainAide returns missing (e.g. file deleted between the two calls).
 		mockBuildBrainState.mockResolvedValue(makeOkState());
@@ -211,46 +228,38 @@ describe("brain — defensive fallback: parseBrainAide non-ok (4g)", () => {
 
 		const result = await brain("/root");
 
-		expect(result.status).toBe("invalid-path");
+		expect(result.status).toBe("no-brain-aide");
 		expect(result.instructions.length).toBeGreaterThan(0);
+		expect(result.instructions).toContain("npx aidemd-mcp init");
 	});
 
-	it("returns invalid-path when parseBrainAide returns malformed-frontmatter", async () => {
+	it("returns no-brain-aide when parseBrainAide returns malformed-frontmatter", async () => {
 		mockBuildBrainState.mockResolvedValue(makeOkState());
 		mockParseBrainAide.mockResolvedValue({
 			kind: "malformed-frontmatter",
-			reason: "required field connector is missing",
+			reason: "required field name is missing",
 		});
 
 		const result = await brain("/root");
 
-		expect(result.status).toBe("invalid-path");
+		expect(result.status).toBe("no-brain-aide");
 		expect(result.instructions.length).toBeGreaterThan(0);
+		expect(result.instructions).toContain("npx aidemd-mcp init");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4i. instructions never empty — all branches + defensive fallback
+// 4g. instructions never empty — all branches + defensive fallback
 // ---------------------------------------------------------------------------
 
-describe("brain — instructions always non-empty (4i)", () => {
+describe("brain — instructions always non-empty (4g)", () => {
 	it.each([
 		["no-brain-aide", { status: "no-brain-aide" as const, hints: [] }],
 		[
 			"no-mcp-entry",
 			{
 				status: "no-mcp-entry" as const,
-				rootPath: "/x",
-				connector: "obsidian",
-				hints: [],
-			},
-		],
-		[
-			"invalid-path",
-			{
-				status: "invalid-path" as const,
-				rootPath: "/x",
-				connector: "obsidian",
+				name: "obsidian",
 				hints: [],
 			},
 		],
@@ -258,8 +267,7 @@ describe("brain — instructions always non-empty (4i)", () => {
 			"mcp-drift",
 			{
 				status: "mcp-drift" as const,
-				rootPath: "/x",
-				connector: "obsidian",
+				name: "obsidian",
 				hints: [],
 			},
 		],
@@ -294,17 +302,18 @@ describe("brain — instructions always non-empty (4i)", () => {
 
 		const result = await brain("/root");
 
+		expect(result.status).toBe("no-brain-aide");
 		expect(result.instructions.length).toBeGreaterThan(0);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4j. No connector dispatch — ok branch output is identical across connectors
+// 4h. No name dispatch — ok branch output is identical across names
 // ---------------------------------------------------------------------------
 
-describe("brain — no connector dispatch (4j)", () => {
+describe("brain — no name dispatch (4h)", () => {
 	it("returns byte-identical instructions for obsidian and notion when prose input is identical", async () => {
-		const prose = "identical prose for both connectors";
+		const prose = "identical prose for both names";
 
 		mockBuildBrainState.mockResolvedValue(makeOkState("obsidian"));
 		mockParseBrainAide.mockResolvedValue({
@@ -317,13 +326,13 @@ describe("brain — no connector dispatch (4j)", () => {
 		mockBuildBrainState.mockResolvedValue(makeOkState("notion"));
 		mockParseBrainAide.mockResolvedValue({
 			kind: "ok",
-			config: { ...MINIMAL_CONFIG, connector: "notion" },
+			config: { ...MINIMAL_CONFIG, name: "notion" },
 			prose,
 		});
 		const notionResult = await brain("/root");
 
 		// Identical prose input must produce identical instructions output — no
-		// connector-keyed branching inside the tool.
+		// name-keyed branching inside the tool.
 		expect(obsidianResult.instructions).toBe(notionResult.instructions);
 	});
 });

@@ -197,7 +197,7 @@ plans first.
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
 
-- [ ] Edit `src/cli/init/index.ts`. Two coupled changes:
+- [x] Edit `src/cli/init/index.ts`. Two coupled changes:
       - 1a. Replace the `join(cwd, ".aide", "brain.aide")` literal in
         `runInit`'s brain-scaffold step (currently around line 107) with
         `join(cwd, ".aide", "config", "brain.aide")`. Use a single named
@@ -229,7 +229,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/f
 
 Read: `coding-playbook/foundations/conventions`
 
-- [ ] Edit `src/cli/init/writeMcpEntry/index.ts`. The wrapper reads
+- [x] Edit `src/cli/init/writeMcpEntry/index.ts`. The wrapper reads
       brain.aide from disk (when present) to derive the brain MCP entry;
       the read path must move from `.aide/brain.aide` to
       `.aide/config/brain.aide`. Coupled changes:
@@ -267,7 +267,7 @@ Read: `coding-playbook/foundations/conventions`
 
 Read: `coding-playbook/foundations/conventions`
 
-- [ ] Edit `src/cli/init/index.ts`'s `deferredCategories(vaultPath)`
+- [x] Edit `src/cli/init/index.ts`'s `deferredCategories(vaultPath)`
       function. Today it returns three strings when `vaultPath` is absent
       — one for `Brain config`, one for `Brain MCP entry`, one for
       `IDE configuration`. The aligned spec collapses brain config + MCP
@@ -310,7 +310,7 @@ Read: `coding-playbook/foundations/conventions`
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/workflow/testing`
 
-- [ ] Edit `src/cli/init/renderWarning/index.ts` and
+- [x] Edit `src/cli/init/renderWarning/index.ts` and
       `src/cli/init/renderWarning/index.test.ts`. The renderer's runtime
       behavior is unchanged — it takes whatever strings the caller passes
       in. Only the JSDoc example list and the test fixtures need to
@@ -340,7 +340,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/workflow/testi
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] Edit `src/cli/init/index.test.ts`. The test file currently uses
+- [x] Edit `src/cli/init/index.test.ts`. The test file currently uses
       a `DEFERRED_CATEGORIES` constant with three strings (Brain config,
       Brain MCP entry, IDE) and a `DEFERRED_CATEGORIES_WITH_VAULT`
       constant with one (IDE). Coupled changes:
@@ -395,7 +395,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] Edit `src/cli/init/index.integration.test.ts`. This file uses real
+- [x] Edit `src/cli/init/index.integration.test.ts`. This file uses real
       filesystem temp dirs and exercises the full pipeline. Coupled
       changes:
       - 6a. Every `join(tempDir, ".aide", "brain.aide")` becomes
@@ -450,7 +450,7 @@ Read: `coding-playbook/workflow/testing`
 
 Read: `coding-playbook/foundations/conventions`
 
-- [ ] Edit `src/cli/init/index.ts`'s `--help` branch (the `process.argv.
+- [x] Edit `src/cli/init/index.ts`'s `--help` branch (the `process.argv.
       includes("--help")` block at the bottom of the file). Three coupled
       string updates:
       - 7a. In the install-footprint summary (the "Full cold-start
@@ -486,7 +486,7 @@ Read: `coding-playbook/foundations/conventions`
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] Edit `src/cli/init/writeMcpEntry/index.test.ts`. This file uses
+- [x] Edit `src/cli/init/writeMcpEntry/index.test.ts`. This file uses
       real filesystem temp dirs and exercises the wrapper end-to-end.
       Coupled changes:
       - 8a. Every `join(brainAideDir, "brain.aide")` /
@@ -530,7 +530,7 @@ Read: `coding-playbook/workflow/testing`
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] Run two verification commands and resolve any failures by
+- [x] Run two verification commands and resolve any failures by
       narrowing back to the steps above:
       - 9a. `rtk grep -nF ".aide/brain.aide" src/cli/init/` — must
         return zero hits. Any remaining literal is a missed path

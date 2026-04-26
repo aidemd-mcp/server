@@ -109,7 +109,7 @@ edit) imports the parser. The orchestrator must execute
 
 Read: `coding-playbook/foundations/conventions`, `.aide/docs/brain-aide.md`
 
-- [ ] 1a. Rewrite `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts`.
+- [x] 1a. Rewrite `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts`.
       Function signature is unchanged: `default function obsidianBrainAideTemplate(rootPath: string): string`.
       The returned string must contain:
 
@@ -150,7 +150,7 @@ Read: `coding-playbook/foundations/conventions`, `.aide/docs/brain-aide.md`
       - Remove the JSDoc paragraph about `${rootPath}` being a literal
         placeholder — the new template has no placeholders at all.
 
-- [ ] 1b. Rewrite `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.test.ts`.
+- [x] 1b. Rewrite `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.test.ts`.
       Keep the existing test scaffolding (vi.mock for `node:os`, dynamic
       import via `getTemplate(rootPath, mockedPlatform?)`,
       `writeBrainAide(root, content)` helper, temp-dir lifecycle) but
@@ -219,7 +219,7 @@ Read: `coding-playbook/foundations/conventions`, `.aide/docs/brain-aide.md`
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`, `.aide/docs/brain-aide.md`
 
-- [ ] 2a. Edit `src/service/install/provisionBrain/index.ts`. Two surgical
+- [x] 2a. Edit `src/service/install/provisionBrain/index.ts`. Two surgical
       changes inside `buildBrainAideStep`:
 
       - Change the `filePath` constant from
@@ -241,7 +241,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/d
         itself as the ownership signal — there is no per-file
         allowlist.").
 
-- [ ] 2b. In the orchestrator body of `provisionBrain` (the default
+- [x] 2b. In the orchestrator body of `provisionBrain` (the default
       export), add a Tier 3 inline comment above the call to
       `buildBrainAideStep` that names the directory-wide invariant in
       one sentence. Phrasing target: this step writes under
@@ -273,7 +273,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/d
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] Rewrite `src/service/install/provisionBrain/index.test.ts`. The
+- [x] Rewrite `src/service/install/provisionBrain/index.test.ts`. The
       test scaffolding (vi.mock for `node:os`, `mockPlatform`, temp-dir
       lifecycle, `makeProjectRoot/makeBrainPath/makeMcpPath`) stays as
       is. Every test case that touches the brain config file's path
@@ -385,7 +385,7 @@ Read: `coding-playbook/workflow/testing`
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] 4a. Run `npm test -- provisionBrain` and confirm both
+- [x] 4a. Run `npm test -- provisionBrain` and confirm both
       `obsidianBrainAideTemplate/index.test.ts` and
       `provisionBrain/index.test.ts` pass cleanly. If a test fails,
       diagnose the root cause — do not patch the test to make it green.
@@ -399,7 +399,7 @@ Read: `coding-playbook/workflow/testing`
         `"brain.aide"` and confirm every occurrence is part of a
         `.aide/config/brain.aide` join.
 
-- [ ] 4b. Run `npx tsc --noEmit` to confirm no type errors. The most
+- [x] 4b. Run `npx tsc --noEmit` to confirm no type errors. The most
       likely class of error is `BrainAideConfig` field access in
       `resolveBrainAideConfig`: the helper reads
       `config.mcpServerConfig.command` and calls

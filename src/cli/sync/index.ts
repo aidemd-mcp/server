@@ -3,7 +3,7 @@ import parseBrainAide, { interpolateArgs } from "@/service/parseBrainAide/index.
 import writeMcpEntry from "@/cli/shared/writeMcpEntry/index.js";
 
 /**
- * Propagates `.aide/brain.aide` into the host's `.mcp.json` under the fixed
+ * Propagates `.aide/config/brain.aide` into the host's `.mcp.json` under the fixed
  * `brain` key. Also removes the legacy `obsidian` key when present (one-way
  * migration).
  *
@@ -16,7 +16,7 @@ import writeMcpEntry from "@/cli/shared/writeMcpEntry/index.js";
  * mutates `.mcp.json`'s `brain` entry. The MCP server never rewrites the file
  * silently; every change is a command the user typed with output they saw.
  *
- * @param cwd      Absolute path to the host project root. Both `.aide/brain.aide`
+ * @param cwd      Absolute path to the host project root. Both `.aide/config/brain.aide`
  *                 and `.mcp.json` are resolved relative to this path.
  * @param write    Line-writer for stdout; defaults to `process.stdout.write`.
  *                 Injected for tests so stdout can be captured per test.
@@ -28,33 +28,33 @@ export async function runSync(
 	write: (line: string) => void = (line) => process.stdout.write(line + "\n"),
 	writeErr: (line: string) => void = (line) => process.stderr.write(line + "\n"),
 ): Promise<number> {
-	// Step 1 — Parse brain.aide. Branch immediately on each failure kind so the
+	// Step 1 — Parse .aide/config/brain.aide. Branch immediately on each failure kind so the
 	// error message names exactly what is wrong and what the user should do.
 	const result = await parseBrainAide(cwd);
 
 	if (result.kind === "missing") {
 		writeErr(
-			"No `.aide/brain.aide` found. Run `npx aidemd-mcp init` to scaffold it, or create the file by hand.",
+			"No `.aide/config/brain.aide` found. Run `npx aidemd-mcp init` to scaffold it, or create the file by hand.",
 		);
 		return 1;
 	}
 
 	if (result.kind === "malformed-frontmatter") {
 		writeErr(
-			`\`.aide/brain.aide\` frontmatter is malformed: ${result.reason}. Fix the YAML and re-run sync.`,
+			`\`.aide/config/brain.aide\` frontmatter is malformed: ${result.reason}. Fix the YAML and re-run sync.`,
 		);
 		return 1;
 	}
 
 	if (result.kind === "malformed-body") {
 		writeErr(
-			`\`.aide/brain.aide\` is missing the \`## Prose\` section: ${result.reason}. Fix the file and re-run sync.`,
+			`\`.aide/config/brain.aide\` is missing the \`## Prose\` section: ${result.reason}. Fix the file and re-run sync.`,
 		);
 		return 1;
 	}
 
 	// Step 2 — Compute the expected MCP entry. interpolateArgs substitutes
-	// ${rootPath} and ${entryFile} placeholders in mcpServerConfig.args.
+	// any ${<key>} placeholders in mcpServerConfig.args against frontmatter fields.
 	const expectedEntry = {
 		command: result.config.mcpServerConfig.command,
 		args: interpolateArgs(result.config),
@@ -84,12 +84,12 @@ export async function runSync(
 	}
 
 	// Step 5 — Report outcome. Distinguish "already in sync" from "wrote changes".
+	write("Read .aide/config/brain.aide");
 	if (writeResult.unchanged) {
 		write(".mcp.json already in sync — no changes.");
 		return 0;
 	}
 
-	write("Read .aide/brain.aide");
 	write("Wrote brain MCP entry into .mcp.json");
 	write(`  command: ${expectedEntry.command}`);
 	write(`  args: [${expectedEntry.args.join(", ")}]`);
@@ -104,7 +104,7 @@ export async function runSync(
 	if (process.argv.includes("--help")) {
 		process.stdout.write(
 			"Usage: npx aidemd-mcp sync\n\n" +
-				"Reads `.aide/brain.aide` from the current project root, derives the brain\n" +
+				"Reads `.aide/config/brain.aide` from the current project root, derives the brain\n" +
 				"MCP server entry by interpolating the configured vault path into the\n" +
 				"mcpServerConfig.args template, and writes the result into `.mcp.json` under\n" +
 				"the fixed `brain` key. Every other key in `mcpServers` (including any `aide`\n" +
@@ -112,10 +112,10 @@ export async function runSync(
 				"obsolete `obsidian` key is present it is removed in the same write.\n\n" +
 				"Sync is idempotent — running it twice in succession produces the same\n" +
 				"`.mcp.json` bytes, and the second invocation prints 'already in sync'.\n\n" +
-				"Run sync after editing `.aide/brain.aide` to propagate your changes:\n" +
+				"Run sync after editing `.aide/config/brain.aide` to propagate your changes:\n" +
 				"  npx aidemd-mcp sync\n\n" +
 				"Sync accepts no flags other than --help. Both paths are conventional:\n" +
-				"  brain.aide  →  <cwd>/.aide/brain.aide\n" +
+				"  brain.aide  →  <cwd>/.aide/config/brain.aide\n" +
 				"  mcp config  →  <cwd>/.mcp.json\n",
 		);
 		process.exit(2);

@@ -62,15 +62,15 @@ function makeCapture(): { lines: string[]; write: (line: string) => void } {
 // 5a. brain.aide scaffold + parseBrainAide round-trip
 // ---------------------------------------------------------------------------
 
-describe("5a — .aide/brain.aide is scaffolded with canonical Obsidian content", () => {
-	it("file exists on disk after runInit and parseBrainAide returns ok with the expected rootPath", async () => {
+describe("5a — .aide/config/brain.aide is scaffolded with canonical Obsidian content", () => {
+	it("file exists on disk after runInit and parseBrainAide returns ok with the new two-field schema", async () => {
 		const vaultPath = tmpdir();
 		const { write } = makeCapture();
 
 		await runInit(tempDir, write, { vaultPath });
 
-		// Verify the file is on disk.
-		const brainAidePath = join(tempDir, ".aide", "brain.aide");
+		// Verify the file is on disk at the new config-subdirectory path.
+		const brainAidePath = join(tempDir, ".aide", "config", "brain.aide");
 		const diskContent = await readFile(brainAidePath, "utf-8");
 		expect(diskContent).toBeTruthy();
 
@@ -79,19 +79,21 @@ describe("5a — .aide/brain.aide is scaffolded with canonical Obsidian content"
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return; // narrow
 
-		// The parsed config should match what the template produces.
-		const templateContent = obsidianBrainAideTemplate(vaultPath);
-		const templateResult = await parseBrainAide(tempDir); // already on disk
-		expect(templateResult.kind).toBe("ok");
-		if (templateResult.kind !== "ok") return;
+		// New two-field schema: name + mcpServerConfig.
+		expect(result.config.name).toBe("obsidian");
 
-		expect(result.config.connector).toBe("obsidian");
-		expect(result.config.rootPath).toBe(vaultPath);
-		expect(result.config.entryFile).toBe("CLAUDE.md");
-		expect(result.config.tools.read).toBe("mcp__brain__read_note");
-		expect(result.config.tools.search).toBe("mcp__brain__search_notes");
+		// Platform-branching for command, per the existing test pattern.
+		if (platform() === "win32") {
+			expect(result.config.mcpServerConfig.command).toBe("cmd");
+		} else {
+			expect(result.config.mcpServerConfig.command).toBe("npx");
+		}
+
+		// The vault path must appear byte-for-byte in args (no ${rootPath} placeholder).
+		expect(result.config.mcpServerConfig.args).toContain(vaultPath);
 
 		// The disk content must be byte-identical to the template.
+		const templateContent = obsidianBrainAideTemplate(vaultPath);
 		expect(diskContent).toBe(templateContent);
 	});
 });
@@ -118,15 +120,19 @@ describe("5b — .mcp.json contains mcpServers.aide and mcpServers.brain with va
 		expect(mcp.mcpServers).toHaveProperty("brain");
 
 		// The brain entry must have the vaultPath fully substituted — no literal
-		// ${rootPath} placeholder may remain in any arg.
+		// ${rootPath} placeholder may remain in any arg (regression guard: default
+		// scaffold inlines the path byte-for-byte, no substitution step needed).
 		const brainEntry = mcp.mcpServers["brain"];
 		expect(brainEntry).toBeDefined();
 		const hasUninterpolated = brainEntry.args.some((a) => a.includes("${rootPath}"));
 		expect(hasUninterpolated).toBe(false);
 
-		// The vaultPath value itself must appear in the brain args.
+		// The vaultPath value itself must appear as an exact element in brain args.
 		const hasVaultPath = brainEntry.args.some((a) => a === vaultPath);
 		expect(hasVaultPath).toBe(true);
+
+		// The launcher must be @bitbonsai/mcpvault (not obsidian-mcp).
+		expect(brainEntry.args).toContain("@bitbonsai/mcpvault");
 
 		// Windows uses cmd wrapper; POSIX uses npx directly.
 		if (platform() === "win32") {
@@ -144,7 +150,7 @@ describe("5b — .mcp.json contains mcpServers.aide and mcpServers.brain with va
 // ---------------------------------------------------------------------------
 
 describe("5c — stdout includes brain.aide and MCP log lines; warning contains only IDE deferred entry", () => {
-	it("emits [created] brain.aide and [created] .mcp.json lines; warning block lists only IDE", async () => {
+	it("emits [created] .aide/config/brain.aide and [created] .mcp.json lines; warning block lists only IDE", async () => {
 		const vaultPath = tmpdir();
 		const { lines, write } = makeCapture();
 
@@ -152,10 +158,10 @@ describe("5c — stdout includes brain.aide and MCP log lines; warning contains 
 
 		const joined = lines.join("\n");
 
-		// brain.aide log line must be present.
+		// brain.aide log line must be present at the new config-subdirectory path.
 		const brainLine = lines.find((l) => l.includes("brain.aide"));
 		expect(brainLine).toBeDefined();
-		expect(brainLine).toMatch(/^\[created\] \.aide\/brain\.aide/);
+		expect(brainLine).toMatch(/^\[created\] \.aide\/config\/brain\.aide/);
 
 		// .mcp.json log line must be present.
 		const mcpLine = lines.find((l) => l.includes(".mcp.json"));
@@ -164,12 +170,17 @@ describe("5c — stdout includes brain.aide and MCP log lines; warning contains 
 		// brain.aide line must appear before the .mcp.json line.
 		expect(lines.indexOf(brainLine!)).toBeLessThan(lines.indexOf(mcpLine!));
 
-		// The warning block must not contain the brain-config or brain-MCP deferred strings.
-		expect(joined).not.toContain("Brain config (.aide/brain.aide)");
-		expect(joined).not.toContain("Brain MCP entry");
+		// The warning block must not contain any string starting with the retired
+		// separate "Brain config" or "Brain MCP entry" item labels.
+		const lines6d = joined.split("\n");
+		const hasBrainConfig = lines6d.some((l) => l.trimStart().startsWith("Brain config"));
+		const hasBrainMcpEntry = lines6d.some((l) => l.trimStart().startsWith("Brain MCP entry"));
+		expect(hasBrainConfig).toBe(false);
+		expect(hasBrainMcpEntry).toBe(false);
 
-		// The warning block must contain only the IDE deferred entry (from renderWarning).
-		// With vaultPath supplied, only IDE is deferred.
+		// Positive: with vaultPath supplied, no deferred Brain content at all —
+		// only IDE remains in the warning block.
+		expect(joined).not.toContain("Brain wiring");
 		expect(joined).toContain("IDE configuration");
 	});
 });
@@ -206,9 +217,11 @@ describe("5d — second runInit against the same dir reports every step as exist
 		const mcpAfter = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(mcpAfter).toBe(mcpBefore);
 
-		// brain.aide bytes must be unchanged.
+		// brain.aide bytes must be unchanged — content matches the canonical template
+		// bytes for the new two-field schema (name + mcpServerConfig).
+		const brainAidePath = join(tempDir, ".aide", "config", "brain.aide");
 		const brainBefore = obsidianBrainAideTemplate(vaultPath);
-		const brainAfter = await readFile(join(tempDir, ".aide", "brain.aide"), "utf-8");
+		const brainAfter = await readFile(brainAidePath, "utf-8");
 		expect(brainAfter).toBe(brainBefore);
 	});
 });

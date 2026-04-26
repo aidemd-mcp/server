@@ -46,16 +46,16 @@ async function getTemplate(rootPath: string, mockedPlatform?: "win32" | "posix")
 }
 
 async function writeBrainAide(root: string, content: string): Promise<void> {
-	await mkdir(join(root, ".aide"), { recursive: true });
-	await writeFile(join(root, ".aide", "brain.aide"), content, "utf-8");
+	await mkdir(join(root, ".aide", "config"), { recursive: true });
+	await writeFile(join(root, ".aide", "config", "brain.aide"), content, "utf-8");
 }
 
 // ---------------------------------------------------------------------------
-// 2a. Output is parseable by parseBrainAide — round-trip invariant
+// Round-trip parses cleanly under the new schema
 // ---------------------------------------------------------------------------
 
-describe("2a — output is parseable by parseBrainAide", () => {
-	it("template output round-trips through parseBrainAide with kind ok and matching config", async () => {
+describe("round-trip parses cleanly under the new schema", () => {
+	it("template output round-trips through parseBrainAide with kind ok", async () => {
 		const rootPath = "/foo/my-vault";
 		const content = await getTemplate(rootPath);
 
@@ -65,11 +65,7 @@ describe("2a — output is parseable by parseBrainAide", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.connector).toBe("obsidian");
-		expect(result.config.rootPath).toBe(rootPath);
-		expect(result.config.entryFile).toBe("CLAUDE.md");
-		expect(result.config.tools.read).toBe("mcp__brain__read_note");
-		expect(result.config.tools.search).toBe("mcp__brain__search_notes");
+		expect(result.config.name).toBe("obsidian");
 	});
 
 	it("parseBrainAideFromString produces the same ok result as writing to disk", async () => {
@@ -87,55 +83,106 @@ describe("2a — output is parseable by parseBrainAide", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2b. rootPath interpolated into YAML field but NOT into args
+// Parsed config contains EXACTLY the new fields
 // ---------------------------------------------------------------------------
 
-describe("2b — rootPath is interpolated into the YAML field but not into args", () => {
-	it("parsed config.rootPath equals the passed rootPath value", async () => {
-		const rootPath = "/foo";
-		const content = await getTemplate(rootPath);
+describe("parsed config contains exactly the new fields", () => {
+	it("name is obsidian", async () => {
+		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.rootPath).toBe("/foo");
+		expect(result.config.name).toBe("obsidian");
 	});
 
-	it("parsed config.mcpServerConfig.args still contains the literal ${rootPath} placeholder", async () => {
-		const rootPath = "/foo";
-		const content = await getTemplate(rootPath);
+	it("mcpServerConfig.command is a non-empty string", async () => {
+		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.mcpServerConfig.args).toContain("${rootPath}");
+		expect(typeof result.config.mcpServerConfig.command).toBe("string");
+		expect(result.config.mcpServerConfig.command.length).toBeGreaterThan(0);
 	});
 
-	it("${rootPath} does not appear as the rootPath value — the YAML field is resolved, the args placeholder is not", async () => {
-		const rootPath = "/foo";
-		const content = await getTemplate(rootPath);
+	it("mcpServerConfig.args is a non-empty string array", async () => {
+		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		// rootPath field holds the resolved value
-		expect(result.config.rootPath).toBe("/foo");
-		// args hold the literal placeholder, not the resolved value
-		const lastArg = result.config.mcpServerConfig.args[result.config.mcpServerConfig.args.length - 1];
-		expect(lastArg).toBe("${rootPath}");
-		expect(lastArg).not.toBe("/foo");
+		expect(Array.isArray(result.config.mcpServerConfig.args)).toBe(true);
+		expect(result.config.mcpServerConfig.args.length).toBeGreaterThan(0);
+		for (const arg of result.config.mcpServerConfig.args) {
+			expect(typeof arg).toBe("string");
+		}
+	});
+
+	it("config has no connector, rootPath, entryFile, or tools keys", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(Object.prototype.hasOwnProperty.call(result.config, "connector")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result.config, "rootPath")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result.config, "entryFile")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result.config, "tools")).toBe(false);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 2c. Platform branching — Windows vs POSIX
+// Path is inlined, no placeholder
 // ---------------------------------------------------------------------------
 
-describe("2c — platform branching", () => {
-	it("win32: command is cmd and first two args are /c and npx", async () => {
+describe("path is inlined, no placeholder", () => {
+	it("last arg equals the rootPath value byte-for-byte", async () => {
+		const rootPath = "/foo/my-vault";
+		const content = await getTemplate(rootPath);
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const args = result.config.mcpServerConfig.args;
+		expect(args[args.length - 1]).toBe(rootPath);
+	});
+
+	it("last arg is not the literal string ${rootPath}", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const args = result.config.mcpServerConfig.args;
+		expect(args[args.length - 1]).not.toBe("${rootPath}");
+	});
+
+	it("no arg element contains a ${...} placeholder", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		for (const arg of result.config.mcpServerConfig.args) {
+			expect(arg).not.toMatch(/\$\{.+\}/);
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Platform branching — Windows
+// ---------------------------------------------------------------------------
+
+describe("platform branching — Windows", () => {
+	it("command is cmd on win32", async () => {
 		const content = await getTemplate("/vault", "win32");
 		const result = parseBrainAideFromString(content);
 
@@ -143,11 +190,56 @@ describe("2c — platform branching", () => {
 		if (result.kind !== "ok") return;
 
 		expect(result.config.mcpServerConfig.command).toBe("cmd");
-		expect(result.config.mcpServerConfig.args[0]).toBe("/c");
-		expect(result.config.mcpServerConfig.args[1]).toBe("npx");
 	});
 
-	it("posix (linux): command is npx and args does not start with /c", async () => {
+	it("args are [/c, npx, @bitbonsai/mcpvault, rootPath] on win32", async () => {
+		const rootPath = "/vault";
+		const content = await getTemplate(rootPath, "win32");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.config.mcpServerConfig.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", rootPath]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Windows path round-trip (regression for backslash YAML escape bug)
+// ---------------------------------------------------------------------------
+
+describe("Windows path round-trip (backslash regression)", () => {
+	it("win32 branch: Windows path with backslashes parses cleanly and round-trips byte-for-byte", async () => {
+		const rootPath = "C:\\Users\\test\\my-vault";
+		const content = await getTemplate(rootPath, "win32");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const args = result.config.mcpServerConfig.args;
+		expect(args[args.length - 1]).toBe(rootPath);
+	});
+
+	it("posix branch: Windows-formatted path string parses cleanly and round-trips byte-for-byte", async () => {
+		const rootPath = "C:\\Users\\test\\my-vault";
+		const content = await getTemplate(rootPath, "posix");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const args = result.config.mcpServerConfig.args;
+		expect(args[args.length - 1]).toBe(rootPath);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Platform branching — POSIX
+// ---------------------------------------------------------------------------
+
+describe("platform branching — POSIX", () => {
+	it("command is npx on linux", async () => {
 		const content = await getTemplate("/vault", "posix");
 		const result = parseBrainAideFromString(content);
 
@@ -155,35 +247,25 @@ describe("2c — platform branching", () => {
 		if (result.kind !== "ok") return;
 
 		expect(result.config.mcpServerConfig.command).toBe("npx");
-		expect(result.config.mcpServerConfig.args[0]).not.toBe("/c");
 	});
 
-	it("win32: args shape is exactly [\"/c\", \"npx\", \"-y\", \"obsidian-mcp\", \"${rootPath}\"]", async () => {
-		const content = await getTemplate("/vault", "win32");
+	it("args are [@bitbonsai/mcpvault, rootPath] on linux", async () => {
+		const rootPath = "/vault";
+		const content = await getTemplate(rootPath, "posix");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.mcpServerConfig.args).toEqual(["/c", "npx", "-y", "obsidian-mcp", "${rootPath}"]);
-	});
-
-	it("posix: args shape is exactly [\"-y\", \"obsidian-mcp\", \"${rootPath}\"]", async () => {
-		const content = await getTemplate("/vault", "posix");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.config.mcpServerConfig.args).toEqual(["-y", "obsidian-mcp", "${rootPath}"]);
+		expect(result.config.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", rootPath]);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 2d. Parsed prose body is non-empty and contains expected sentinel phrases
+// Prose body sentinel phrases preserved
 // ---------------------------------------------------------------------------
 
-describe("2d — parsed prose body is non-empty and contains sentinel phrases", () => {
+describe("prose body sentinel phrases preserved", () => {
 	it("prose is non-empty", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
@@ -202,6 +284,16 @@ describe("2d — parsed prose body is non-empty and contains sentinel phrases", 
 		if (result.kind !== "ok") return;
 
 		expect(result.prose).toContain("mcp__brain__read_note");
+	});
+
+	it("prose contains mcp__brain__search_notes", async () => {
+		const content = await getTemplate("/vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.prose).toContain("mcp__brain__search_notes");
 	});
 
 	it("prose contains CLAUDE.md", async () => {
@@ -226,11 +318,11 @@ describe("2d — parsed prose body is non-empty and contains sentinel phrases", 
 });
 
 // ---------------------------------------------------------------------------
-// 2e. interpolateArgs round-trip
+// interpolateArgs is a no-op on the default scaffold
 // ---------------------------------------------------------------------------
 
-describe("2e — interpolateArgs round-trip", () => {
-	it("interpolateArgs replaces ${rootPath} placeholder with the literal rootPath value", async () => {
+describe("interpolateArgs is a no-op on the default scaffold", () => {
+	it("interpolated args are deep-equal to original args (no placeholders to replace)", async () => {
 		const rootPath = "/home/user/vault";
 		const content = await getTemplate(rootPath);
 		const result = parseBrainAideFromString(content);
@@ -239,40 +331,11 @@ describe("2e — interpolateArgs round-trip", () => {
 		if (result.kind !== "ok") return;
 
 		const interpolated = interpolateArgs(result.config);
-
-		expect(interpolated).toContain(rootPath);
-		expect(interpolated).not.toContain("${rootPath}");
-	});
-
-	it("win32: interpolated args replace placeholder with actual vault path in correct position", async () => {
-		const rootPath = "D:/notes/my-vault";
-		const content = await getTemplate(rootPath, "win32");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		const interpolated = interpolateArgs(result.config);
-
-		expect(interpolated).toEqual(["/c", "npx", "-y", "obsidian-mcp", rootPath]);
-	});
-
-	it("posix: interpolated args replace placeholder with actual vault path in correct position", async () => {
-		const rootPath = "/home/user/vault";
-		const content = await getTemplate(rootPath, "posix");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		const interpolated = interpolateArgs(result.config);
-
-		expect(interpolated).toEqual(["-y", "obsidian-mcp", rootPath]);
+		expect(interpolated).toEqual(result.config.mcpServerConfig.args);
 	});
 
 	it("interpolateArgs does not mutate the parsed config args", async () => {
-		const rootPath = "/vault";
-		const content = await getTemplate(rootPath);
+		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -280,35 +343,40 @@ describe("2e — interpolateArgs round-trip", () => {
 
 		const originalArgs = [...result.config.mcpServerConfig.args];
 		interpolateArgs(result.config);
-
 		expect(result.config.mcpServerConfig.args).toEqual(originalArgs);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Additional: schema does NOT include intent-spec fields
+// Schema does not include intent-spec or deprecated fields
 // ---------------------------------------------------------------------------
 
-describe("schema does not include intent-spec frontmatter fields", () => {
-	it("parsed frontmatter has no scope, outcomes, intent, or status field", async () => {
+describe("schema does not include intent-spec or deprecated fields", () => {
+	it("frontmatter block contains name and mcpServerConfig", async () => {
 		const content = await getTemplate("/vault");
-
-		// Parse the YAML frontmatter directly to confirm absence of intent-spec fields.
-		// We do this by checking that the raw content string does not contain these keys
-		// at the YAML level (not in prose), and that parseBrainAideFromString succeeds
-		// without them — the parser does not look for or surface these fields.
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		// The config type has no scope, outcomes, intent, or status field.
-		// TypeScript enforces this at compile time; at runtime we verify the
-		// raw string does not contain these keys in the frontmatter block.
 		const frontmatterBlock = content.split("\n---\n")[0];
+
+		expect(frontmatterBlock).toMatch(/^name:/m);
+		expect(frontmatterBlock).toMatch(/^mcpServerConfig:/m);
+	});
+
+	it("frontmatter block does not contain intent-spec fields", async () => {
+		const content = await getTemplate("/vault");
+		const frontmatterBlock = content.split("\n---\n")[0];
+
 		expect(frontmatterBlock).not.toMatch(/^scope:/m);
 		expect(frontmatterBlock).not.toMatch(/^outcomes:/m);
 		expect(frontmatterBlock).not.toMatch(/^intent:/m);
 		expect(frontmatterBlock).not.toMatch(/^status:/m);
+	});
+
+	it("frontmatter block does not contain deprecated schema fields", async () => {
+		const content = await getTemplate("/vault");
+		const frontmatterBlock = content.split("\n---\n")[0];
+
+		expect(frontmatterBlock).not.toMatch(/^connector:/m);
+		expect(frontmatterBlock).not.toMatch(/^rootPath:/m);
+		expect(frontmatterBlock).not.toMatch(/^entryFile:/m);
+		expect(frontmatterBlock).not.toMatch(/^tools:/m);
 	});
 });

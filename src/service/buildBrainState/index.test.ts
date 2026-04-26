@@ -1,7 +1,7 @@
 /**
- * Tests for buildBrainState — the five-state brain precondition detector.
+ * Tests for buildBrainState — the four-state brain precondition detector.
  *
- * INVARIANT (4l): This file MUST NOT import from `@/service/brainBackends`.
+ * INVARIANT (3n): This file MUST NOT import from `@/service/brainBackends`.
  * The detector never calls resolveBackend or any registry function; importing
  * that module here would re-introduce the anti-pattern the spec explicitly
  * retired. If you find yourself reaching for brainBackends in a test, stop —
@@ -13,8 +13,8 @@ import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-// Mock only the two I/O helpers whose output the detector consumes structurally.
-// parseBrainAide, stat, and readFile operate on real temp files — no fs mocking.
+// Mock only the two helpers whose output the detector consumes structurally.
+// parseBrainAide and readFile operate on real temp files — no fs mocking.
 vi.mock("@/service/install/detectFramework/index.js");
 vi.mock("@/service/install/resolveBrainHints/index.js");
 
@@ -29,36 +29,29 @@ const mockResolveBrainHints = resolveBrainHints as ReturnType<typeof vi.fn>;
 // Fixture helpers
 // ---------------------------------------------------------------------------
 
-/** Minimal valid brain.aide content. rootPath and mcpServerConfig.args use ${rootPath}
- *  so that interpolateArgs substitutes the actual temp directory at comparison time.
- *  connector and entryFile are fixed for most tests; individual tests may override. */
+/**
+ * Minimal valid brain.aide content against the new two-field schema.
+ * Emits ONLY `name` and `mcpServerConfig.{command, args}` — no `connector`,
+ * no `rootPath`, no `entryFile`, no `tools`. Body includes `## Prose` heading
+ * plus a prose line so parseBrainAide returns `kind: "ok"`.
+ */
 function makeBrainAideContent({
-	connector = "obsidian",
-	rootPath,
-	entryFile = "START HERE.md",
+	name = "obsidian",
 	command = "npx",
-	args,
+	args = ["@bitbonsai/mcpvault", "<vault-path>"],
 }: {
-	connector?: string;
-	rootPath: string;
-	entryFile?: string;
+	name?: string;
 	command?: string;
 	args?: string[];
 }): string {
-	const resolvedArgs = args ?? ["-y", "obsidian-mcp", "${rootPath}"];
-	const argsYaml = resolvedArgs.map((a) => `    - "${a}"`).join("\n");
+	const argsYaml = args.map((a) => `    - "${a}"`).join("\n");
 	return [
 		"---",
-		`connector: ${connector}`,
-		`rootPath: ${rootPath}`,
-		`entryFile: ${entryFile}`,
+		`name: ${name}`,
 		"mcpServerConfig:",
 		`  command: ${command}`,
 		"  args:",
 		argsYaml,
-		"tools:",
-		'  read: "mcp__obsidian__read_note"',
-		'  search: "mcp__obsidian__search_notes"',
 		"---",
 		"",
 		"## Prose",
@@ -67,8 +60,7 @@ function makeBrainAideContent({
 	].join("\n");
 }
 
-/** Build a .mcp.json whose mcpServers.brain entry matches an interpolated
- *  brain.aide config exactly — produces the `ok` case by construction. */
+/** Build a .mcp.json whose mcpServers.brain entry carries the given command/args. */
 function makeMcpJson(brainEntry: { command: string; args: string[] }): string {
 	return JSON.stringify({ mcpServers: { brain: brainEntry } }, null, 2);
 }
@@ -97,8 +89,8 @@ beforeEach(async () => {
 
 	// Each test gets an isolated temp directory as the project root.
 	tempRoot = await mkdtemp(join(tmpdir(), "buildBrainState-test-"));
-	// Ensure .aide/ exists so brain.aide can be written into it.
-	await mkdir(join(tempRoot, ".aide"), { recursive: true });
+	// Ensure .aide/config/ exists so brain.aide can be written into it.
+	await mkdir(join(tempRoot, ".aide", "config"), { recursive: true });
 });
 
 afterEach(async () => {
@@ -106,11 +98,12 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Helper: write brain.aide into tempRoot
+// Helper: write brain.aide into tempRoot at the canonical path
+// parseBrainAide reads from .aide/config/brain.aide
 // ---------------------------------------------------------------------------
 
 async function writeBrainAide(content: string): Promise<void> {
-	await writeFile(join(tempRoot, ".aide", "brain.aide"), content, "utf-8");
+	await writeFile(join(tempRoot, ".aide", "config", "brain.aide"), content, "utf-8");
 }
 
 async function writeMcpJson(content: string): Promise<void> {
@@ -118,45 +111,49 @@ async function writeMcpJson(content: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 4a. ok — brain.aide valid, rootPath exists, .mcp.json matches exactly.
+// 3a. ok — brain.aide parses, .mcp.json matches exactly.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — ok state (4a)", () => {
-	it("returns ok with rootPath and connector when brain.aide is valid and .mcp.json matches", async () => {
-		// tempRoot IS the vault directory for this test — it already exists.
-		const vaultPath = tempRoot;
-
+describe("buildBrainState — ok state (3a)", () => {
+	it("returns ok with name and hints when brain.aide is valid and .mcp.json matches exactly", async () => {
 		await writeBrainAide(
-			makeBrainAideContent({ connector: "obsidian", rootPath: vaultPath }),
+			makeBrainAideContent({
+				name: "obsidian",
+				command: "npx",
+				args: ["@bitbonsai/mcpvault", "/x/vault"],
+			}),
 		);
-		// interpolateArgs substitutes ${rootPath} → vaultPath
 		await writeMcpJson(
-			makeMcpJson({ command: "npx", args: ["-y", "obsidian-mcp", vaultPath] }),
+			makeMcpJson({ command: "npx", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
 		);
 
 		const result = await buildBrainState(tempRoot);
 
 		expect(result.status).toBe("ok");
 		if (result.status === "ok") {
-			expect(result.rootPath).toBe(vaultPath);
-			expect(result.connector).toBe("obsidian");
+			expect(result.name).toBe("obsidian");
 			expect(result.hints).toEqual([]);
 		}
-		// The backend field must not exist anywhere on the returned shape.
+		// Retired fields must not exist anywhere on the returned shape.
+		expect(result).not.toHaveProperty("rootPath");
+		expect(result).not.toHaveProperty("connector");
+		expect(result).not.toHaveProperty("entryFile");
+		expect(result).not.toHaveProperty("tools");
 		expect(result).not.toHaveProperty("backend");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4b. no-brain-aide — brain.aide file is missing entirely.
+// 3b. no-brain-aide — brain.aide file is missing entirely.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — no-brain-aide: file missing (4b)", () => {
-	it("returns no-brain-aide when .aide/brain.aide does not exist", async () => {
-		// No brain.aide written — tempRoot/.aide/ exists but brain.aide is absent.
+describe("buildBrainState — no-brain-aide: file missing (3b)", () => {
+	it("returns no-brain-aide when .aide/config/brain.aide does not exist", async () => {
+		// No brain.aide written — tempRoot/.aide/config/ exists but brain.aide is absent.
 		const result = await buildBrainState(tempRoot);
 
 		expect(result.status).toBe("no-brain-aide");
+		expect(result).not.toHaveProperty("name");
 		expect(result).not.toHaveProperty("rootPath");
 		expect(result).not.toHaveProperty("connector");
 		expect(result).not.toHaveProperty("backend");
@@ -164,16 +161,16 @@ describe("buildBrainState — no-brain-aide: file missing (4b)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4c. no-brain-aide — brain.aide exists but frontmatter is malformed YAML.
+// 3c. no-brain-aide — brain.aide exists but frontmatter is malformed YAML.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — no-brain-aide: frontmatter malformed (4c)", () => {
+describe("buildBrainState — no-brain-aide: frontmatter malformed (3c)", () => {
 	it("returns no-brain-aide when brain.aide contains broken YAML frontmatter", async () => {
 		await writeBrainAide(
 			[
 				"---",
-				"connector: obsidian",
-				"rootPath: [this is: broken: yaml: {",
+				"name: obsidian",
+				"mcpServerConfig: [this is: broken: yaml: {",
 				"---",
 				"",
 				"## Prose",
@@ -184,6 +181,7 @@ describe("buildBrainState — no-brain-aide: frontmatter malformed (4c)", () => 
 		const result = await buildBrainState(tempRoot);
 
 		expect(result.status).toBe("no-brain-aide");
+		expect(result).not.toHaveProperty("name");
 		expect(result).not.toHaveProperty("rootPath");
 		expect(result).not.toHaveProperty("connector");
 		expect(result).not.toHaveProperty("backend");
@@ -191,29 +189,21 @@ describe("buildBrainState — no-brain-aide: frontmatter malformed (4c)", () => 
 });
 
 // ---------------------------------------------------------------------------
-// 4d. no-brain-aide — brain.aide has valid frontmatter but no ## Prose heading.
+// 3d. no-brain-aide — brain.aide has valid frontmatter but no ## Prose heading.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — no-brain-aide: body malformed (4d)", () => {
+describe("buildBrainState — no-brain-aide: body malformed (3d)", () => {
 	it("returns no-brain-aide when brain.aide has valid frontmatter but missing ## Prose section", async () => {
-		const vaultPath = tempRoot;
-		// Valid frontmatter — all required fields present — but the body has no
-		// ## Prose heading, which parseBrainAide reports as malformed-body.
+		// Valid two-field frontmatter but the body has no ## Prose heading.
 		await writeBrainAide(
 			[
 				"---",
-				`connector: obsidian`,
-				`rootPath: ${vaultPath}`,
-				`entryFile: START HERE.md`,
+				"name: obsidian",
 				"mcpServerConfig:",
 				"  command: npx",
 				"  args:",
-				'    - "-y"',
-				'    - "obsidian-mcp"',
-				'    - "${rootPath}"',
-				"tools:",
-				'  read: "mcp__obsidian__read_note"',
-				'  search: "mcp__obsidian__search_notes"',
+				'    - "@bitbonsai/mcpvault"',
+				'    - "/x/vault"',
 				"---",
 				"",
 				"This body has no Prose heading, only free text.",
@@ -223,6 +213,7 @@ describe("buildBrainState — no-brain-aide: body malformed (4d)", () => {
 		const result = await buildBrainState(tempRoot);
 
 		expect(result.status).toBe("no-brain-aide");
+		expect(result).not.toHaveProperty("name");
 		expect(result).not.toHaveProperty("rootPath");
 		expect(result).not.toHaveProperty("connector");
 		expect(result).not.toHaveProperty("backend");
@@ -230,63 +221,54 @@ describe("buildBrainState — no-brain-aide: body malformed (4d)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4e. invalid-path — rootPath does not exist on disk.
+// 3e. no-brain-aide — parser rejects deprecated field alongside valid fields.
+// Anchors that ALL malformed-frontmatter sub-cases collapse to no-brain-aide.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — invalid-path: rootPath missing (4e)", () => {
-	it("returns invalid-path when brain.aide rootPath points at a non-existent directory", async () => {
-		const brokenPath = join(tempRoot, "this-directory-does-not-exist");
-
+describe("buildBrainState — no-brain-aide: parser rejects deprecated field (3e)", () => {
+	it("returns no-brain-aide when brain.aide frontmatter carries a deprecated field (rootPath)", async () => {
+		// Deprecated field rootPath present alongside valid name/mcpServerConfig.
+		// parseBrainAide rejects this with malformed-frontmatter; detector collapses to no-brain-aide.
 		await writeBrainAide(
-			makeBrainAideContent({ connector: "obsidian", rootPath: brokenPath }),
+			[
+				"---",
+				"name: obsidian",
+				"rootPath: D:/notes/something",
+				"mcpServerConfig:",
+				"  command: npx",
+				"  args:",
+				'    - "@bitbonsai/mcpvault"',
+				'    - "/x/vault"',
+				"---",
+				"",
+				"## Prose",
+				"",
+				"This is the prose body.",
+			].join("\n"),
 		);
 
 		const result = await buildBrainState(tempRoot);
 
-		expect(result.status).toBe("invalid-path");
-		if (result.status === "invalid-path") {
-			expect(result.rootPath).toBe(brokenPath);
-			expect(result.connector).toBe("obsidian");
-		}
+		expect(result.status).toBe("no-brain-aide");
+		expect(result).not.toHaveProperty("name");
+		expect(result).not.toHaveProperty("rootPath");
+		expect(result).not.toHaveProperty("connector");
 		expect(result).not.toHaveProperty("backend");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4f. invalid-path — rootPath points at a file, not a directory.
+// 3f. no-mcp-entry — brain.aide valid, no .mcp.json written.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — invalid-path: rootPath is a file (4f)", () => {
-	it("returns invalid-path when brain.aide rootPath points at a file", async () => {
-		// Write a file at the path the brain.aide will declare.
-		const filePath = join(tempRoot, "not-a-directory.txt");
-		await writeFile(filePath, "I am a file, not a vault", "utf-8");
-
+describe("buildBrainState — no-mcp-entry: .mcp.json missing (3f)", () => {
+	it("returns no-mcp-entry with name when .mcp.json does not exist", async () => {
 		await writeBrainAide(
-			makeBrainAideContent({ connector: "obsidian", rootPath: filePath }),
-		);
-
-		const result = await buildBrainState(tempRoot);
-
-		expect(result.status).toBe("invalid-path");
-		if (result.status === "invalid-path") {
-			expect(result.rootPath).toBe(filePath);
-			expect(result.connector).toBe("obsidian");
-		}
-		expect(result).not.toHaveProperty("backend");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// 4g. no-mcp-entry — brain.aide valid, rootPath exists, .mcp.json absent.
-// ---------------------------------------------------------------------------
-
-describe("buildBrainState — no-mcp-entry: .mcp.json missing (4g)", () => {
-	it("returns no-mcp-entry with rootPath and connector when .mcp.json does not exist", async () => {
-		const vaultPath = tempRoot;
-
-		await writeBrainAide(
-			makeBrainAideContent({ connector: "obsidian", rootPath: vaultPath }),
+			makeBrainAideContent({
+				name: "obsidian",
+				command: "npx",
+				args: ["@bitbonsai/mcpvault", "/x/vault"],
+			}),
 		);
 		// No .mcp.json written.
 
@@ -294,43 +276,54 @@ describe("buildBrainState — no-mcp-entry: .mcp.json missing (4g)", () => {
 
 		expect(result.status).toBe("no-mcp-entry");
 		if (result.status === "no-mcp-entry") {
-			expect(result.rootPath).toBe(vaultPath);
-			expect(result.connector).toBe("obsidian");
+			expect(result.name).toBe("obsidian");
+			expect(result.hints).toEqual([]);
 		}
+		expect(result).not.toHaveProperty("rootPath");
+		expect(result).not.toHaveProperty("connector");
 		expect(result).not.toHaveProperty("backend");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4h. no-mcp-entry — .mcp.json exists but contains broken JSON.
+// 3g. no-mcp-entry — .mcp.json exists but contains broken JSON.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — no-mcp-entry: .mcp.json malformed (4h)", () => {
+describe("buildBrainState — no-mcp-entry: .mcp.json malformed (3g)", () => {
 	it("returns no-mcp-entry when .mcp.json exists but cannot be parsed as JSON", async () => {
-		const vaultPath = tempRoot;
-
 		await writeBrainAide(
-			makeBrainAideContent({ connector: "obsidian", rootPath: vaultPath }),
+			makeBrainAideContent({
+				name: "obsidian",
+				command: "npx",
+				args: ["@bitbonsai/mcpvault", "/x/vault"],
+			}),
 		);
 		await writeMcpJson("{ not valid json }");
 
 		const result = await buildBrainState(tempRoot);
 
 		expect(result.status).toBe("no-mcp-entry");
+		if (result.status === "no-mcp-entry") {
+			expect(result.name).toBe("obsidian");
+		}
+		expect(result).not.toHaveProperty("rootPath");
+		expect(result).not.toHaveProperty("connector");
 		expect(result).not.toHaveProperty("backend");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4i. no-mcp-entry — .mcp.json present but no mcpServers.brain key.
+// 3h. no-mcp-entry — .mcp.json has mcpServers.aide but no mcpServers.brain.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — no-mcp-entry: no brain key (4i)", () => {
+describe("buildBrainState — no-mcp-entry: no brain key (3h)", () => {
 	it("returns no-mcp-entry when .mcp.json has mcpServers but no brain key", async () => {
-		const vaultPath = tempRoot;
-
 		await writeBrainAide(
-			makeBrainAideContent({ connector: "obsidian", rootPath: vaultPath }),
+			makeBrainAideContent({
+				name: "obsidian",
+				command: "npx",
+				args: ["@bitbonsai/mcpvault", "/x/vault"],
+			}),
 		);
 		// .mcp.json has mcpServers.aide but NOT mcpServers.brain.
 		await writeMcpJson(
@@ -344,215 +337,291 @@ describe("buildBrainState — no-mcp-entry: no brain key (4i)", () => {
 		const result = await buildBrainState(tempRoot);
 
 		expect(result.status).toBe("no-mcp-entry");
+		if (result.status === "no-mcp-entry") {
+			expect(result.name).toBe("obsidian");
+		}
 		expect(result).not.toHaveProperty("backend");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4j. mcp-drift — command differs.
+// 3i. mcp-drift — command mismatch.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — mcp-drift: command mismatch (4j)", () => {
+describe("buildBrainState — mcp-drift: command mismatch (3i)", () => {
 	it("returns mcp-drift when .mcp.json brain entry command differs from brain.aide", async () => {
-		const vaultPath = tempRoot;
-
 		// brain.aide declares command: npx
 		await writeBrainAide(
 			makeBrainAideContent({
-				connector: "obsidian",
-				rootPath: vaultPath,
+				name: "obsidian",
 				command: "npx",
+				args: ["@bitbonsai/mcpvault", "/x/vault"],
 			}),
 		);
 		// .mcp.json has command: node — deliberate mismatch
 		await writeMcpJson(
-			makeMcpJson({ command: "node", args: ["-y", "obsidian-mcp", vaultPath] }),
+			makeMcpJson({ command: "node", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
 		);
 
 		const result = await buildBrainState(tempRoot);
 
 		expect(result.status).toBe("mcp-drift");
+		if (result.status === "mcp-drift") {
+			expect(result.name).toBe("obsidian");
+		}
 		expect(result).not.toHaveProperty("backend");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4k. mcp-drift — args differ (various shapes via it.each).
+// 3j. mcp-drift — args mismatch via it.each.
+// All inline-path args (no ${rootPath} placeholders — that field is gone).
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — mcp-drift: args mismatch (4k)", () => {
+describe("buildBrainState — mcp-drift: args mismatch (3j)", () => {
 	/** Each entry: [description, brainAideArgs, mcpJsonArgs] */
 	it.each([
 		[
 			"extra arg appended to .mcp.json entry",
-			["-y", "obsidian-mcp", "${rootPath}"],
-			// Actual rootPath will be injected dynamically below — use a sentinel
-			// here; the test overwrites it per run.
-			["-y", "obsidian-mcp", "__VAULT__", "--extra-flag"],
+			["@bitbonsai/mcpvault", "/x/vault"],
+			["@bitbonsai/mcpvault", "/x/vault", "--extra-flag"],
 		],
 		[
-			"rootPath arg changed to old vault (user edited brain.aide, forgot sync)",
-			["-y", "obsidian-mcp", "${rootPath}"],
-			["-y", "obsidian-mcp", "/old/vault/path"],
+			"vault path differs (user retargeted brain.aide, forgot sync)",
+			["@bitbonsai/mcpvault", "/x/new-vault"],
+			["@bitbonsai/mcpvault", "/x/old-vault"],
 		],
 		[
 			"arg count shorter than expected",
-			["-y", "obsidian-mcp", "${rootPath}"],
-			["-y", "obsidian-mcp"],
+			["@bitbonsai/mcpvault", "/x/vault"],
+			["@bitbonsai/mcpvault"],
 		],
 		[
-			"arg value differs at middle position",
-			["-y", "obsidian-mcp", "${rootPath}"],
-			["-y", "different-package", "__VAULT__"],
+			"package name differs at middle position",
+			["@bitbonsai/mcpvault", "/x/vault"],
+			["different-package", "/x/vault"],
 		],
 	])(
 		"returns mcp-drift when %s",
-		async (_desc, brainAideArgs, rawMcpArgs) => {
-			const vaultPath = tempRoot;
-
+		async (_desc, brainAideArgs, mcpJsonArgs) => {
 			await writeBrainAide(
 				makeBrainAideContent({
-					connector: "obsidian",
-					rootPath: vaultPath,
+					name: "obsidian",
 					command: "npx",
 					args: brainAideArgs,
 				}),
 			);
-
-			// Replace the __VAULT__ sentinel with the real vault path so the test
-			// fixture is realistic (actual absolute path, just a different one).
-			const mcpArgs = rawMcpArgs.map((a: string) =>
-				a === "__VAULT__" ? vaultPath : a,
-			);
-
-			await writeMcpJson(makeMcpJson({ command: "npx", args: mcpArgs }));
+			await writeMcpJson(makeMcpJson({ command: "npx", args: mcpJsonArgs }));
 
 			const result = await buildBrainState(tempRoot);
 
 			expect(result.status).toBe("mcp-drift");
-			expect(result).not.toHaveProperty("backend");
 		},
 	);
 });
 
 // ---------------------------------------------------------------------------
-// 4l. No registry dispatch — enforced by import absence (see file-level comment).
-// The invariant is structural: this file never imports from @/service/brainBackends.
-// No runtime assertion is possible for an absent import — the invariant lives in
-// the comment above and in the spec's undesired outcomes. A future contributor
-// adding a brainBackends import here violates the spec.
+// 3k. No name dispatch — two ok cases with different name values, identical shape.
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// 4m. No connector dispatch — detection is connector-agnostic.
-// Two ok cases with different connector labels; result shape identical except connector.
-// ---------------------------------------------------------------------------
-
-describe("buildBrainState — no connector dispatch (4m)", () => {
+describe("buildBrainState — no name dispatch (3k)", () => {
 	it.each([
-		["obsidian", "-y", "obsidian-mcp"],
-		["notion", "-y", "notion-mcp"],
+		["obsidian", "npx", ["@bitbonsai/mcpvault", "/x/vault"]],
+		["notion", "npx", ["@notionhq/mcp", "/x/notion-vault"]],
 	])(
-		"returns ok with connector=%s without varying detection logic",
-		async (connector, flag, packageName) => {
-			const vaultPath = tempRoot;
-			const args = [flag, packageName, "${rootPath}"];
-
-			await writeBrainAide(
-				makeBrainAideContent({
-					connector,
-					rootPath: vaultPath,
-					command: "npx",
-					args,
-				}),
-			);
-			// .mcp.json must match the interpolated form: ${rootPath} → vaultPath
-			await writeMcpJson(
-				makeMcpJson({
-					command: "npx",
-					args: [flag, packageName, vaultPath],
-				}),
-			);
+		"returns ok regardless of name=%s",
+		async (name, command, args) => {
+			await writeBrainAide(makeBrainAideContent({ name, command, args }));
+			await writeMcpJson(makeMcpJson({ command, args }));
 
 			const result = await buildBrainState(tempRoot);
 
 			expect(result.status).toBe("ok");
 			if (result.status === "ok") {
-				expect(result.connector).toBe(connector);
-				expect(result.rootPath).toBe(vaultPath);
+				expect(result.name).toBe(name);
 			}
-			expect(result).not.toHaveProperty("backend");
 		},
 	);
 
-	it("obsidian and notion ok results share identical shape structure, differing only in connector", async () => {
-		// This test makes the connector-agnostic contract explicit: run both
-		// connectors and assert the shapes are structurally identical minus connector.
-		async function runWith(connector: string, packageName: string) {
-			// Unique subdirectory so both runs use valid but independent vaults.
-			const vaultDir = await mkdtemp(join(tmpdir(), `vault-${connector}-`));
+	it("obsidian and notion ok results share identical object key sets, differing only in name value", async () => {
+		async function runWith(name: string, args: string[]) {
+			const root = await mkdtemp(join(tmpdir(), `bbs-name-dispatch-${name}-`));
 			try {
-				const aideDir = join(vaultDir, ".aide");
-				await mkdir(aideDir, { recursive: true });
-
-				const args = ["-y", packageName, "${rootPath}"];
-				const content = makeBrainAideContent({
-					connector,
-					rootPath: vaultDir,
-					command: "npx",
-					args,
-				});
-				await writeFile(join(aideDir, "brain.aide"), content, "utf-8");
+				await mkdir(join(root, ".aide", "config"), { recursive: true });
+				const content = makeBrainAideContent({ name, command: "npx", args });
+				await writeFile(join(root, ".aide", "config", "brain.aide"), content, "utf-8");
 				await writeFile(
-					join(vaultDir, ".mcp.json"),
-					makeMcpJson({ command: "npx", args: ["-y", packageName, vaultDir] }),
+					join(root, ".mcp.json"),
+					makeMcpJson({ command: "npx", args }),
 					"utf-8",
 				);
-
 				mockDetectFramework.mockResolvedValue(FIXED_FRAMEWORK_CONFIG);
-				const result = await buildBrainState(vaultDir);
-				return result;
+				mockResolveBrainHints.mockResolvedValue([]);
+				return await buildBrainState(root);
 			} finally {
-				await rm(vaultDir, { recursive: true, force: true });
+				await rm(root, { recursive: true, force: true });
 			}
 		}
 
-		const obsidianResult = await runWith("obsidian", "obsidian-mcp");
-		const notionResult = await runWith("notion", "notion-mcp");
+		const obsidianResult = await runWith("obsidian", ["@bitbonsai/mcpvault", "/x/vault"]);
+		const notionResult = await runWith("notion", ["@notionhq/mcp", "/x/notion-vault"]);
 
 		// Both must be ok.
 		expect(obsidianResult.status).toBe("ok");
 		expect(notionResult.status).toBe("ok");
 
-		// Shape keys must be identical (status, rootPath, connector, hints).
-		expect(Object.keys(obsidianResult).sort()).toEqual(
-			Object.keys(notionResult).sort(),
-		);
+		// Object key sets must be identical — same fields present on both shapes.
+		expect(Object.keys(obsidianResult).sort()).toEqual(Object.keys(notionResult).sort());
 
-		// connector values differ; everything else structurally equivalent.
+		// Only the name value differs; everything else is structurally equivalent.
 		if (obsidianResult.status === "ok" && notionResult.status === "ok") {
-			expect(obsidianResult.connector).toBe("obsidian");
-			expect(notionResult.connector).toBe("notion");
-			// Neither carries a backend field.
+			expect(obsidianResult.name).toBe("obsidian");
+			expect(notionResult.name).toBe("notion");
+			// Neither carries retired fields.
 			expect(obsidianResult).not.toHaveProperty("backend");
 			expect(notionResult).not.toHaveProperty("backend");
+			expect(obsidianResult).not.toHaveProperty("connector");
+			expect(notionResult).not.toHaveProperty("connector");
 		}
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Bonus: hints pass through to every returned state.
+// 3l. Drift comparison is structural, not byte-equal.
+// Same command/args semantically, .mcp.json formatted with different whitespace.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — hints propagation", () => {
-	it("carries hints on no-brain-aide state when resolveBrainHints returns candidates", async () => {
-		const hint = { source: "env" as const, path: "/candidate/vault" };
-		mockResolveBrainHints.mockResolvedValue([hint]);
-		// No brain.aide → no-brain-aide branch.
+describe("buildBrainState — structural equality, not byte-equality (3l)", () => {
+	it("returns ok when brain.aide and .mcp.json agree semantically despite different JSON formatting", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({
+				name: "obsidian",
+				command: "npx",
+				args: ["@bitbonsai/mcpvault", "/x/vault"],
+			}),
+		);
+		// Write .mcp.json with 4-space indent and extra trailing newline — different
+		// serialization than JSON.stringify(_, null, 2) but semantically identical.
+		const differentlyFormatted =
+			JSON.stringify({ mcpServers: { brain: { command: "npx", args: ["@bitbonsai/mcpvault", "/x/vault"] } } }, null, 4) + "\n";
+		await writeMcpJson(differentlyFormatted);
 
 		const result = await buildBrainState(tempRoot);
 
+		expect(result.status).toBe("ok");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3m. Hints propagate to every state.
+// ---------------------------------------------------------------------------
+
+describe("buildBrainState — hints propagate to every state (3m)", () => {
+	const HINT = [{ source: "env" as const, path: "/candidate/vault" }];
+
+	beforeEach(() => {
+		mockResolveBrainHints.mockResolvedValue(HINT);
+	});
+
+	it("carries hints on no-brain-aide state", async () => {
+		// No brain.aide → no-brain-aide branch.
+		const result = await buildBrainState(tempRoot);
 		expect(result.status).toBe("no-brain-aide");
-		expect(result.hints).toEqual([hint]);
+		expect(result.hints).toEqual(HINT);
+	});
+
+	it("carries hints on no-mcp-entry state", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ name: "obsidian", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		// No .mcp.json → no-mcp-entry branch.
+		const result = await buildBrainState(tempRoot);
+		expect(result.status).toBe("no-mcp-entry");
+		expect(result.hints).toEqual(HINT);
+	});
+
+	it("carries hints on mcp-drift state", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ name: "obsidian", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		await writeMcpJson(
+			makeMcpJson({ command: "node", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		const result = await buildBrainState(tempRoot);
+		expect(result.status).toBe("mcp-drift");
+		expect(result.hints).toEqual(HINT);
+	});
+
+	it("carries hints on ok state", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ name: "obsidian", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		await writeMcpJson(
+			makeMcpJson({ command: "npx", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		const result = await buildBrainState(tempRoot);
+		expect(result.status).toBe("ok");
+		expect(result.hints).toEqual(HINT);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3n. No registry import — by absence (see file-level comment).
+// The invariant is structural: this file never imports from @/service/brainBackends.
+// No runtime assertion is possible for an absent import — the invariant lives in
+// the comment at the top of this file and in the spec's undesired outcomes.
+// A future contributor adding a brainBackends import here violates the spec.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 3o. Detector never throws — every state produces a structured value.
+// ---------------------------------------------------------------------------
+
+describe("buildBrainState — detector never throws (3o)", () => {
+	it("resolves to no-brain-aide (missing) without rejecting", async () => {
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-brain-aide" });
+	});
+
+	it("resolves to no-brain-aide (malformed frontmatter) without rejecting", async () => {
+		await writeBrainAide("---\nbroken: [yaml: {\n---\n\n## Prose\ncontent");
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-brain-aide" });
+	});
+
+	it("resolves to no-brain-aide (body malformed) without rejecting", async () => {
+		await writeBrainAide(
+			["---", "name: obsidian", "mcpServerConfig:", "  command: npx", "  args:", '    - "@bitbonsai/mcpvault"', "---", "", "No prose heading here."].join("\n"),
+		);
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-brain-aide" });
+	});
+
+	it("resolves to no-mcp-entry (missing .mcp.json) without rejecting", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ name: "obsidian", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-mcp-entry" });
+	});
+
+	it("resolves to no-mcp-entry (malformed .mcp.json) without rejecting", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ name: "obsidian", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		await writeMcpJson("{ not valid json }");
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-mcp-entry" });
+	});
+
+	it("resolves to mcp-drift without rejecting", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ name: "obsidian", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		await writeMcpJson(makeMcpJson({ command: "node", args: ["@bitbonsai/mcpvault", "/x/vault"] }));
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "mcp-drift" });
+	});
+
+	it("resolves to ok without rejecting", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ name: "obsidian", args: ["@bitbonsai/mcpvault", "/x/vault"] }),
+		);
+		await writeMcpJson(makeMcpJson({ command: "npx", args: ["@bitbonsai/mcpvault", "/x/vault"] }));
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "ok" });
 	});
 });

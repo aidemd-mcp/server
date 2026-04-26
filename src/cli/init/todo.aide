@@ -1,129 +1,141 @@
 ---
 intent: >
-  Two layers of drift in this spec. First (prior cycle): four misalignments
-  against outcomes.desired and outcomes.undesired around the --vault-path
-  flag, the deferredCategories shape, the warning's coverage of exists
-  files, and a downstream test-string mismatch. Second (active, after the
-  fixed-`brain`-key refactor): every outcome in this spec that names the
-  obsidian MCP server entry as a key written into .mcp.json is stale —
-  the handoff at the project root settles the brain MCP key as `brain`,
-  not `obsidian`. The "obsidian" token survives only as the backend
-  driver id, never as the MCP config key.
+  Two carry-forward misalignments that survived the schema-collapse build
+  phase (steps 1-9 of plan.aide, 2026-04-26). Both were pre-existing before
+  this phase; neither was regressed or introduced by it. The phase completed
+  its scoped work cleanly: all 77 tests pass, typecheck is clean, all nine
+  verifications in plan.aide step 9 pass, and all plan checkboxes are checked.
+  These items are the remaining open work before `status: aligned` is valid.
 misalignment:
-  - spec-gap
-  - strategy-gap
   - implementation-drift
-  - test-gap
+  - plan-gap
 ---
 
 ## Issues
 
-### Active (alignment pass 2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+### Carry-forward (post schema-collapse build, 2026-04-26)
 
-The root `.aide/intent.aide` was rewritten across two spec-writer passes that landed five interlocking decisions: brain.aide moved to `.aide/config/brain.aide` under a new user-owned scaffold-once directory, the default scaffolded launcher changed to `@bitbonsai/mcpvault`, and the brain.aide frontmatter collapsed to exactly two fields (`name` + `mcpServerConfig.{command,args}`) — `connector` was renamed to `name`, and `rootPath`, `entryFile`, `tools` were removed entirely along with the `invalid-path` boot state. This spec was authored against the prior schema and now drifts at every reference.
+Both issues were present before the schema-collapse build phase and are
+unchanged by it. The schema-collapse plan (steps 1-9) was scoped to
+path constants, prose strings, deferred-category collapse, and test
+fixtures — neither item was in scope. They are documented here so the
+next build phase can address them explicitly.
 
-- [x] `src/cli/init/.aide` outcomes.desired (cold-start install enumeration): repeats "the `brain` MCP server entry... with an obsidian-shaped command/args underneath" and references `--vault-path` as the supplier of the resolved path.
-  Under the new root, the brain.aide file lives at `.aide/config/brain.aide` (not `.aide/brain.aide`), the default launcher is `@bitbonsai/mcpvault` (not `obsidian-mcp`), and the path is carried inline in `mcpServerConfig.args` byte-for-byte under user ownership — the package never derives a logical root from args. The `--vault-path` flag and the `placeholder empty path slot` mechanism both depended on the package owning a `rootPath` field; with `rootPath` removed, the placeholder mechanism is gone too.
-  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is canonical home of user-owned configuration; default scaffolded launcher is `@bitbonsai/mcpvault`; brain.aide frontmatter contains exactly `name` + `mcpServerConfig.{command, args}`); outcomes.undesired (`aide_init` overwriting under `.aide/config/`; reintroducing a `rootPath` field).
-  Misalignment: spec-gap
+- [ ] **src/cli/init/index.ts:258-259 (warningSkipped filter)** — `exists`
+      (byte-identical) results are excluded from the warning's Skipped files
+      section. The spec's good example (second example run, lines 273-278 of
+      `.aide`) shows five `[exists]` files explicitly listed under
+      `Skipped files (already on disk or write failed — not overwritten)` in
+      the warning block: "The five pre-existing files are explicitly named in
+      the warning so the user can investigate whether their on-disk versions
+      are current." The strategy paragraph (line 159) says "if present record
+      a skip with a stable reason string" and line 165 says the warning lists
+      "every skipped file path" with reason "already present" — confirming
+      `[exists]` results are skips that belong in the warning. The current
+      filter at line 258-259 only routes `skipped-drift` and
+      `skipped-missing-canonical` to `warningSkipped`, silently dropping all
+      `exists` entries from the user-visible summary.
 
-- [x] `src/cli/init/.aide` intent paragraph: "...derived from the scaffolded `.aide/brain.aide` when `--vault-path` is supplied, and written with a placeholder empty path slot when it is not, so `aide_info` reports `invalid-path` and the orchestrator's inline-recovery flow inside Claude Code finishes wiring it..."
-  The `invalid-path` boot state has been removed from the new root (boot states reduce to `ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`). The `placeholder empty path slot` was the mechanism that produced `invalid-path`; with that state gone and `rootPath` retired, the entire deferred-path mechanism collapses. The CLI no longer has a "write a placeholder, let aide_info report invalid-path" branch.
-  Traces to: `.aide/intent.aide` outcomes.desired ("Boot reporter brain status states are reduced to `ok`, `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` — the prior `invalid-path` state goes away with `rootPath`").
-  Misalignment: spec-gap
+      The fix: add `exists` to the `warningSkipped` filter. The suppression
+      rule (strategy line 167: "zero skips and zero deferrals") already
+      handles the fully-clean case correctly — when all artifacts are `[exists]`
+      AND deferredCategories is empty, the warning is suppressed and
+      `Already set up.` is printed. When ANY artifact is `[exists]` AND
+      deferredCategories is non-empty (the common partial-install case),
+      those `[exists]` entries must appear in the Skipped files section.
+      The `types/index.ts` `InstallStatus` type comment at line 7 also
+      needs updating: "Does NOT surface in the warning" should flip to
+      "Surfaces in the warning's skipped list when the warning fires."
 
-- [x] `src/cli/init/.aide` outcomes.desired ("When `--vault-path` is supplied, the CLI scaffolds `.aide/brain.aide` using the canonical Obsidian template..."): pins the scaffold path to `.aide/brain.aide` (legacy location).
-  Under the new root, the canonical location is `.aide/config/brain.aide` — and the file lives in a user-owned directory that is scaffolded once and never overwritten by init or upgrade. The "seed-semantic" framing is correct in spirit but the directory boundary (`.aide/config/`) is the new ownership signal the install/upgrade tooling reads, with no per-file allowlist.
-  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is the canonical home of user-owned configuration; files inside are scaffolded once at `aide_init` if absent, then belong to the user forever).
-  Misalignment: spec-gap
+      Traces to: `outcomes.desired[2]` (line 106: "records the skip for the
+      final warning") and `outcomes.desired[8]` (line 112: "names every file
+      it skipped (because it already existed)") and the good example at lines
+      273-278.
+      Misalignment: implementation-drift
 
-- [x] `src/cli/init/.aide` outcomes.undesired ("Post-install brain edits (retargeting `rootPath`, customizing the launcher, adding `tools` entries) propagate to `.mcp.json` via `npx aidemd-mcp sync`..."): names `rootPath` as the editable field and `tools` as a frontmatter section.
-  Both are gone from the schema. The launcher path lives inline in `mcpServerConfig.args`; tool names live in the prose body, not in frontmatter. Post-install edits are still propagated by sync, but the fields that get edited are different.
-  Traces to: `.aide/intent.aide` outcomes.desired (frontmatter contains exactly `name` + `mcpServerConfig.{command, args}` — no `rootPath`, no `entryFile`, no `tools`); outcomes.undesired (any frontmatter field whose only consumer is the parser's own validation is rejected; `tools.*` is called out by name).
-  Misalignment: spec-gap
+- [ ] **src/cli/init/index.ts (IIFE, no parseIde call)** — `--ide <choice>`
+      is named as a recognized flag in outcomes.desired at line 111, in the
+      help text (line 328), and in the deferred-categories string (line 44),
+      but no `parseIde()` function exists and the IIFE never reads or acts on
+      `--ide`. This means: (a) IDE is permanently deferred regardless of
+      whether the flag was supplied, (b) `Already set up.` is structurally
+      unreachable because deferredCategories always contains at least the IDE
+      entry, and (c) outcomes.desired (line 109: "when the user supplies
+      `--ide <choice>`, the CLI applies the IDE configuration for that choice")
+      is violated.
 
-- [x] `src/cli/init/.aide` good-examples log block ("[created] .mcp.json — aide MCP server entry") and warning block both name `Brain MCP entry` as a separately-deferred item from `Brain config (.aide/brain.aide)`.
-  The new root makes brain config a single user-owned file under `.aide/config/`, and the MCP entry is derived from that file at sync time. The two items are conceptually one decision (the user owns the file; sync derives the entry); splitting them in the deferred-warning narrative duplicates the contract surface.
-  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/brain.aide` is the canonical and only source of truth; sync writes the derived entry).
-  Misalignment: spec-gap
+      The fix requires: a `parseIde(argv)` function alongside `parseVaultPath`,
+      an IDE-application step in `runInit` (analogous to the brain.aide
+      scaffold step), and a `deferredCategories(vaultPath, ide)` signature
+      that omits the IDE string when `--ide` was supplied. When both
+      `--vault-path` AND `--ide` are supplied and all artifacts exist,
+      `deferredCategories` returns `[]`, `renderWarning` returns `""`, and
+      `Already set up.` is printed — the idempotency contract at outcomes.desired
+      line 115-116.
 
-- [x] `src/cli/init/.aide` strategy paragraph ("**The canonical-artifact matrix splits by decision, not by file type.**"): enumerates `obsidianBrainAideTemplate` as the source of the scaffolded bytes and pins the file path to `.aide/brain.aide`.
-  The template helper either needs to move to `.aide/config/brain.aide` content or be renamed to reflect the launcher rename to `@bitbonsai/mcpvault`. The `parseBrainAideFromString` + `interpolateArgs` chain is still load-bearing for sync, but the default scaffold no longer exercises substitution — `mcpServerConfig.args` carries the path inline byte-for-byte under user ownership.
-  Traces to: `.aide/intent.aide` outcomes.desired ("The default scaffolded `brain.aide` makes no use of substitution: `mcpServerConfig.args` carries the path inline, byte-for-byte under user ownership").
-  Misalignment: spec-gap
+      IDE application itself is inherently framework-specific (Zed, VS Code,
+      Cursor) and will require its own design; this issue tracks the flag-
+      parsing and deferred-list gap that blocks the `Already set up.` path
+      even in the absence of a full IDE application implementation.
 
-- [x] `src/cli/init/.aide` references section: cites `src/cli/init/writeMcpEntry/index.ts` and `src/tools/init/wireMcp/index.ts`. The former exists but the latter was lifted into `src/service/install/` during the install-service refactor; the path is stale.
-  Traces to: physical move; ancestor `src/.aide` outcomes.desired (folder tree as architecture).
-  Misalignment: spec-gap
-
-### Active (alignment pass — fixed-`brain`-key drift)
-
-- [x] `src/cli/init/.aide` outcomes.desired (cold-start install enumeration): "...the `obsidian` MCP server entry (additively merged into `.mcp.json`, with a real path when `--vault-path` was supplied and a placeholder empty path slot otherwise)..."
-  Under the fixed-key settlement (`.aide/handoff.aide`: "The brain MCP key is fixed at `brain`"), the entry is keyed `brain` in `.mcp.json`, not `obsidian`. The CLI writes `mcpServers.brain`, never `mcpServers.obsidian`. The desired outcome pins the wrong key.
-  Traces to: `.aide/handoff.aide` (settled) -> "Migration path: rename `obsidian` -> `brain` at install time."
-  Misalignment: spec-gap
-
-- [x] `src/cli/init/.aide` outcomes.desired ("The `obsidian` MCP server entry is always written into `.mcp.json` by the CLI..."): the entire bullet repeats the wrong key shape — "obsidian MCP server entry" should read "brain MCP server entry" (with the entry value carrying an obsidian-shaped command/args that the registry will identify as the `obsidian` driver).
-  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` MCP key.
-  Misalignment: spec-gap
-
-- [x] `src/cli/init/.aide` outcomes.undesired ("The CLI fails to write the `obsidian` MCP server entry on a run where `--vault-path` was not supplied..."): same key-name drift. The undesired outcome is structurally still load-bearing (the entry must always be written) but the key it names is stale.
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-- [x] `src/cli/init/.aide` outcomes.undesired ("The CLI invents or guesses a vault path to fill the `obsidian` entry's path slot..."): refers to "the `obsidian` entry" — should read "the `brain` entry" since the MCP config key is `brain`.
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-- [x] `src/cli/init/.aide` Strategy ("the `obsidian` MCP entry shell is always written by the CLI"): same key-name drift in the strategy paragraph that codifies the load-bearing decision.
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-- [x] `src/cli/init/.aide` Good examples (first deferred-category warning): "Vault path — the obsidian MCP entry shell is written but the vault path is empty..."
-  The warning's user-facing copy names the wrong key. Even taken as illustrative prose, this is the user-visible string the spec is committing to — agents and humans reading this spec will reproduce the wrong key in tests, in build verification, and in user-facing logs.
-  Traces to: `.aide/handoff.aide` (settled) — `brain` MCP key as the shipped name.
-  Misalignment: spec-gap
-
-- [x] `src/cli/init/.aide` Good examples (second mid-install log block): the per-file log line `[created] .mcp.json — aide MCP server entry (merged with 1 existing server)` is correct under the dual-key setup the prior version envisioned, but the two later worked examples explicitly mention "aide and obsidian MCP server entries" — under the fixed-key world the CLI writes only the `aide` and `brain` keys (the brain entry's value is obsidian-shaped, but the key is `brain`).
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-- [x] `src/cli/init/.aide` Bad examples ("The CLI silently replaces the user's existing `.mcp.json`"): the example narrative "had `github`, `obsidian`, and two custom MCP servers configured. All four are gone..." Under the fixed-key world the user might have a legacy `obsidian` key from a pre-migration install — the CLI's responsibility around it is to leave it alone (the install service's `provisionBrain` is the migration surface, per `.aide/handoff.aide`). The example is still illustrative of the failure shape but the inventory of pre-existing MCP servers should reflect the post-handoff world.
-  Traces to: `.aide/handoff.aide` (settled) — install service handles the `obsidian` -> `brain` rename, never the CLI silently.
-  Misalignment: spec-gap
-
-### Prior cycle (resolved — pre-handoff cycle, see Retro)
-
-- [ ] **src/cli/init/index.ts:237-249 (parseVaultPath) and :276** — `--vault-path` is introduced as a recognized flag but the spec's undesired outcome explicitly states "The only recognized flag is `--help`." No desired outcome in the spec sanctions this flag or the behavior it enables.
-      Traces to: `outcomes.undesired[12]` ("Prompting the user interactively on the happy path — `y/N` gates, conversational questions, or any flag beyond `--help`") | Misalignment: `strategy-gap`
-
-- [ ] **src/cli/init/index.ts:34-43 (deferredCategories)** — When `--vault-path` is supplied, the function returns only 1 deferred category (IDE) rather than the spec's always-3. The spec desired outcome #5 states "Categories that require an inherent user decision — the brain vault path, the `obsidian` MCP server entry that depends on that vault path, and IDE configuration choices — are **always** deferred to the interactive `/aide:init` run inside Claude Code." The spec's strategy paragraph reinforces "regardless of disk state." Reducing the deferred list when a vault path is provided contradicts this invariant.
-      Traces to: `outcomes.desired[5]` | Misalignment: `implementation-drift`
-
-- [ ] **src/cli/init/index.ts:208-210 (warningSkipped filter)** — `exists` (byte-identical) results are excluded from the warning. The spec's good example (second example run) shows every `[exists]` file explicitly listed under `Skipped files (already on disk — not overwritten)` in the warning block: "The five pre-existing files are explicitly named in the warning so the user can investigate whether their on-disk versions are current." The implementation only routes `skipped-drift` and `skipped-missing-canonical` to the warning, silently dropping all `exists` entries from the user-visible summary.
-      Traces to: `outcomes.desired[6]` ("names every file it skipped"), `outcomes.undesired[2]` ("The CLI finishes with files skipped or categories deferred but prints no warning") | Misalignment: `implementation-drift`
-
-- [ ] **src/cli/init/index.test.ts:90-93 (DEFERRED_CATEGORIES constant) — 9 failing tests** — The test constant uses `"Brain vault path"` and `"Obsidian MCP server entry (depends on the vault path above)"` but `deferredCategories()` in the implementation produces `"Vault path — obsidian MCP entry shell is written but the vault path is empty; /aide:init will prompt for it"` and `"Brain vault scaffolding (directories, playbook hub, vault CLAUDE.md) — follows the vault path"`. String mismatch causes 9 assertion failures. Fixing issue #2 above (restoring the always-3 contract) will also require aligning the test constant with whichever wording the implementation settles on.
-      Traces to: `outcomes.desired[9]` (idempotent re-run behavior) | Misalignment: `test-gap`
+      Traces to: `outcomes.desired[7]` (line 111: recognized flags include
+      `--ide <choice>`), `outcomes.desired[5]` (line 109: `--ide` applies
+      IDE configuration), `outcomes.desired[9]` (line 113: `Already set up.`
+      when no categories remain deferred), and outcomes.desired (line 116:
+      "no categories remain deferred" requires `--ide` path to resolve IDE).
+      Misalignment: plan-gap
 
 ## Retro
 
-### Active cycle (2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+### Schema-collapse build phase (2026-04-26)
 
-The root settled five interlocking decisions in one revision: a new user-owned `.aide/config/` directory with scaffold-once-never-overwritten semantics, a launcher rename from `obsidian-mcp` to `@bitbonsai/mcpvault`, and a schema collapse that removes `rootPath`, `entryFile`, and `tools` while renaming `connector` to `name`. The cascade through this leaf is broad because the cold-start CLI is the primary writer of all five surfaces — the brain.aide file path, the directory boundary, the MCP launcher shape, the schema fields the install template scaffolds, and the `--vault-path` flag whose existence justification (supplying the answer to a deferred `rootPath` decision) collapses with `rootPath` removal.
+Steps 1-9 of plan.aide executed cleanly. All plan checkboxes are checked,
+77/77 tests pass, typecheck is clean, and the three verifications in step 9
+(grep for stale paths, grep for stale launcher strings, tests) all pass. The
+phase successfully collapsed deferred categories from three items to two
+(Brain wiring unified, IDE remaining), moved the brain.aide path constant to
+`.aide/config/brain.aide` across all five files, updated all test fixtures,
+updated `--help` text, and added the regression guard (test 5e) for the
+`.aide/config/` ownership boundary.
 
-This is the same fixed-key-cascade pattern from the prior cycle (one root-level identifier change ripples through every leaf that pinned the old name), now amplified by a multi-axis revision rather than a single-axis one. The `--vault-path` flag and the `placeholder empty path slot` mechanism were both elaborate compensations for the absence of an inherent decision — with `rootPath` removed and the path inlined into `mcpServerConfig.args` under user ownership, the entire deferred-path branch can be deleted, not refactored.
+The two carry-forward issues above were out of scope and pre-existed the
+phase. They were documented in the prior todo.aide (item #3 for the exists-
+in-warning gap; the `--ide` gap was implicit in the `deferredCategories`
+design). Neither was regressed by this phase.
 
-What would have caught this earlier: the spec-writer pass that introduced `--vault-path` and the placeholder-slot mechanism in the prior cycle did so against a `rootPath`-bearing schema; the current root revision deletes that schema. Any spec change that removes a frontmatter field should trigger a downstream alignment pass against every spec that referenced it as a load-bearing field.
+What these items teach about the pipeline:
 
-### Active cycle (fixed-`brain`-key drift)
+**exists-in-warning (issue 1):** This is the third cycle this issue has
+survived without being fixed. It originates from a deliberate plan-time
+decision in an early cycle: the implementor read the spec's good example,
+noted that `exists` entries appear in the warning, then explicitly decided
+"bytes already match canonical so no action is needed" and excluded them.
+This is the canonical plan-overrides-spec failure mode — the plan reasoned
+away a spec requirement without flagging it as a deliberate departure. Each
+subsequent plan (including the schema-collapse plan) correctly scoped to
+its work without picking up this pre-existing carry-forward. The fix is
+small (a one-line filter change plus a type comment update) and should be
+bundled into the next plan that touches the warning path.
 
-The fixed-key shift in `.aide/handoff.aide` reaches into every spec that names the obsidian MCP server entry as a config key. This spec was written with the `obsidian`-keyed worldview baked into both outcomes and worked examples — the contract correctly anticipates that the CLI must always write the entry (with a placeholder path when `--vault-path` is absent) but pins the key to the wrong name throughout. The fix is mechanical: replace "obsidian MCP server entry" / "obsidian MCP entry" with "brain MCP server entry" / "brain MCP entry" everywhere it refers to the `.mcp.json` key, but leave the obsidian-shaped command/args content of the entry value alone. The Bad-examples narrative also needs a refresh so the inventory of pre-existing MCP servers reflects the post-handoff world (legacy `obsidian` keys are migrated by `provisionBrain`, not silently overwritten by the CLI).
+**`--ide` gap (issue 2):** The CLI's `--ide` flag has been in the help text
+and deferred-category strings since the schema-collapse spec was written, but
+no plan has ever included implementing it. This is a plan-gap: the spec
+states it as a recognized flag with behavior, but every plan scoped around
+it as "IDE is out of scope for cold-start." The consequence is that
+`Already set up.` is permanently unreachable and the idempotency contract
+(outcomes.desired line 115-116) cannot be exercised end-to-end. The next
+plan that addresses IDE configuration should pair the flag-parsing step with
+a minimal stub (even a no-op `--ide` handler that removes IDE from deferrals
+and defers the actual configuration step to a future plan) so the
+`Already set up.` path is unblocked.
 
-### Prior cycle (pre-handoff)
-
-Issues 1 and 2 share a single root: the `--vault-path` flag and its downstream effects (the variable deferred list, the new obsidian-entry-with-empty-path behavior) were designed in at the strategy/plan layer without checking whether they were permitted by the spec. The spec's "only `--help`" and "always defer three categories" invariants are explicit and hard — they should have been cross-checked before the flag was introduced. The plan's "Decisions" section documents the planner-reuse rationale in detail but does not mention the flag or justify the deferred-categories reduction against the spec's always-defer contract. A plan-time check against the spec's undesired outcomes would have caught both.
-
-Issue 3 (exists entries excluded from the warning) is a direct plan-level misread: the plan's step 3.8 correctly quotes the spec's good example but then explicitly decides `exists` does NOT go in the warning ("bytes already match canonical so no action is needed"). The spec's good example says the opposite — file list in the warning is for user inspection of which existing files were not updated, not only for files with errors. The plan overrode the spec's example without flagging it as a deliberate departure.
-
-Issue 4 (test string mismatch) is a downstream symptom of issue 2 — fixing issue 2 should resolve it. It would have been caught by any test run before shipping.
+**Multi-plan dependency chain carry:** The schema-collapse refactor touched
+five prerequisites before this leaf could land, and intermediate states
+(template emits old schema, parser rejects new schema) were briefly in
+conflict. The plan correctly documented prerequisites and blocked on them.
+The cascade pattern (one root-level identifier change ripples through every
+leaf that pinned the old name) is now well-understood in this codebase and
+the retro notes in prior cycles capture it. The lesson that holds: any spec
+change that removes or renames a load-bearing field should trigger an
+immediate downstream alignment pass tagged against every leaf that references
+that field — not a follow-on build cycle.

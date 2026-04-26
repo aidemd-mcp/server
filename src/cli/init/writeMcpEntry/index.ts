@@ -20,8 +20,11 @@ export interface WriteMcpEntryResult {
  * 1. Computes the `aide` entry via `mcpEntry()`.
  * 2. When `vaultPath` is supplied:
  *    - Computes the canonical Obsidian brain.aide template content.
- *    - If `.aide/brain.aide` exists on disk, reads it (user edits win over
- *      the template). Otherwise uses the in-memory template content.
+ *    - If `.aide/config/brain.aide` exists on disk, reads it (user edits win
+ *      over the template). Otherwise uses the in-memory template content.
+ *      The file lives inside the user-owned `.aide/config/` directory; this
+ *      wrapper never writes to that path — only the orchestrator's
+ *      seed-semantic scaffold step (Step 1 of runInit) writes it.
  *    - Parses the content via `parseBrainAideFromString`. On `ok`, derives
  *      the `brain` entry. On any non-ok kind, throws — a hand-edited
  *      brain.aide that doesn't parse is a user error to surface.
@@ -33,8 +36,8 @@ export interface WriteMcpEntryResult {
  *    - `unchanged: true` and no writes → `{ status: "exists", ... }`.
  *    - Otherwise → `{ status: "created", message: <composed from written + deleted> }`.
  *
- * This helper only mutates `.mcp.json`. Writing `.aide/brain.aide` is
- * `runInit`'s responsibility (Step 3), not this helper's.
+ * This helper only mutates `.mcp.json`. Writing `.aide/config/brain.aide` is
+ * `runInit`'s responsibility (Step 1), not this helper's.
  *
  * Throws on malformed JSON — the only abort trigger for the CLI.
  */
@@ -52,7 +55,7 @@ export default async function writeMcpEntry(
 
 		// If brain.aide already exists on disk, use the user's version; otherwise
 		// fall back to the in-memory template (handles first-run and re-run cases).
-		const brainAidePath = join(projectRoot, ".aide", "brain.aide");
+		const brainAidePath = join(projectRoot, ".aide", "config", "brain.aide");
 		let brainAideContent: string;
 		try {
 			brainAideContent = await readFile(brainAidePath, "utf-8");
@@ -69,7 +72,7 @@ export default async function writeMcpEntry(
 		if (parseResult.kind !== "ok") {
 			const reason = parseResult.kind === "missing" ? "missing" : parseResult.reason;
 			throw new Error(
-				`.aide/brain.aide could not be parsed: ${reason}. Fix the file and re-run.`,
+				`.aide/config/brain.aide could not be parsed: ${reason}. Fix the file and re-run.`,
 			);
 		}
 

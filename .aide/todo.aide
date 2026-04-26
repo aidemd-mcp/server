@@ -58,14 +58,16 @@ The root `.aide/intent.aide` outcomes.desired commits to "`brain.aide` is a docu
   Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is the canonical home of user-owned configuration; scaffolded once at `aide_init` if absent, then belong to the user forever).
   Misalignment: spec-gap
 
-- [ ] `.aide/handoff.aide` ("Design decisions" #1): "`brain.aide` is the 6th AIDE file type. Lives at `.aide/brain.aide`. Schema: `connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools` + a `## Prose` body. No `scope`/`outcomes`/`status` fields."
+- [x] `.aide/handoff.aide` ("Design decisions" #1): "`brain.aide` is the 6th AIDE file type. Lives at `.aide/brain.aide`. Schema: `connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools` + a `## Prose` body. No `scope`/`outcomes`/`status` fields."
   Stale path and stale schema. handoff.aide is a session-log artifact, not an authoritative spec, but it's the file a cold-start agent reads to orient on the prior session's decisions. Letting it carry the old schema means future agents reorient on outdated state. The handoff should be updated to reflect the post-revision schema and path, with the old schema labeled as superseded.
   Traces to: `.aide/intent.aide` outcomes.desired (path move; schema collapse; field rename).
   Misalignment: spec-gap
+  **Resolved:** the handoff was rewritten end-to-end before the schema-collapse build cycle. The current handoff has no "Design decisions" section; its body documents the new schema, the new path, and the four-state vocabulary throughout.
 
-- [ ] `.aide/handoff.aide` followup #3: "Package name on the launcher: `obsidian-mcp` vs `@bitbonsai/mcpvault`." This followup is now resolved by the root revision (the new default IS `@bitbonsai/mcpvault`). The handoff entry should be marked resolved or removed; leaving it as an open followup misleads future agents into thinking the question is still live.
+- [x] `.aide/handoff.aide` followup #3: "Package name on the launcher: `obsidian-mcp` vs `@bitbonsai/mcpvault`." This followup is now resolved by the root revision (the new default IS `@bitbonsai/mcpvault`). The handoff entry should be marked resolved or removed; leaving it as an open followup misleads future agents into thinking the question is still live.
   Traces to: `.aide/intent.aide` outcomes.desired (default launcher is `@bitbonsai/mcpvault`).
   Misalignment: spec-gap
+  **Resolved:** the handoff was rewritten end-to-end before the schema-collapse build cycle. The current handoff has no "followups" section; the launcher question is settled and reflected throughout the new content.
 
 ## Retro
 

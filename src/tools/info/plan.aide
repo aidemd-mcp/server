@@ -70,7 +70,7 @@ work in this plan beyond declaring the dependency.
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
 
-- [ ] 1a. Open `src/tools/info/index.ts` and confirm the orchestrator
+- [x] 1a. Open `src/tools/info/index.ts` and confirm the orchestrator
       already forwards `buildBrainState(root)`'s return value unchanged
       into the `brain` field of the returned `InfoResult`. The expected
       shape — already in place — is:
@@ -80,21 +80,21 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/d
         reads `.aide/versions.json` and compares against canonical).
       - `brain: await buildBrainState(root)` (verbatim forward).
       - The two async reads run in parallel via `Promise.all`.
-- [ ] 1b. If the orchestrator does ANY transformation of `brain` between
+- [x] 1b. If the orchestrator does ANY transformation of `brain` between
       receiving it from `buildBrainState` and returning it (field
       stripping, field rewrite, compatibility shim, defaulting,
       shape massaging), strip that code. The contract is verbatim
       forward — the consumer of `aide_info` reads the same plain-data
       `BrainState` the detector returned. If no transformation exists
       (the expected state), this sub-step is a no-op.
-- [ ] 1c. Update the orchestrator's JSDoc summary if it still references
+- [x] 1c. Update the orchestrator's JSDoc summary if it still references
       the five-state vocabulary or the retired `invalid-path` state.
       The current JSDoc (lines 29-47) reads "the orchestrator must halt
       and direct the user to run `/aide` when `brain.status` is anything
       other than `"ok"`" — that statement is correct under the new
       vocabulary and may stay. Any prose that enumerates specific states
       must enumerate the four current states only.
-- [ ] 1d. Run `npx tsc --noEmit` after the verify-edits land. The
+- [x] 1d. Run `npx tsc --noEmit` after the verify-edits land. The
       orchestrator must compile cleanly against the new `BrainState`
       union from the prerequisite plan. If it does not, the
       orchestrator is doing more than forwarding and must be reduced
@@ -104,7 +104,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/d
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/workflow/type-system`
 
-- [ ] 2a. Open `src/tools/info/index.test.ts`. The fixture block at
+- [x] 2a. Open `src/tools/info/index.test.ts`. The fixture block at
       lines 40-77 currently declares five `BrainState` constants
       (`BRAIN_OK`, `BRAIN_NO_BRAIN_AIDE`, `BRAIN_INVALID_PATH`,
       `BRAIN_NO_MCP_ENTRY`, `BRAIN_MCP_DRIFT`). Rewrite them to match
@@ -120,11 +120,11 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/workflow/type-system`
       - `BRAIN_MCP_DRIFT`: `{ status: "mcp-drift", name: "obsidian",
         hints: [] }`. Same shape as `no-mcp-entry`.
       - **Delete `BRAIN_INVALID_PATH` entirely.** The state is retired.
-- [ ] 2b. Use `"obsidian"` as the canonical fixture `name` value to
+- [x] 2b. Use `"obsidian"` as the canonical fixture `name` value to
       mirror the example responses in the spec body (`.aide` lines
       210-274). It is descriptive metadata only — the package never
       branches on this value.
-- [ ] 2c. Confirm fixtures type-check against `BrainState` from
+- [x] 2c. Confirm fixtures type-check against `BrainState` from
       `@/types/index.js` (run `npx tsc --noEmit`). Each fixture is
       annotated `: BrainState` already; if the prerequisite plan has
       landed correctly, these constants compile cleanly. If not, the
@@ -134,14 +134,14 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/workflow/type-system`
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] 3a. In the `describe("info — all five brain states (3a)", ...)`
+- [x] 3a. In the `describe("info — all five brain states (3a)", ...)`
       block (currently lines 199-239), rename to `"info — all four
       brain states"` and reduce to four cases — one per variant. Delete
       the `it("surfaces invalid-path status when buildBrainState
       returns invalid-path", ...)` test entirely. The remaining four
       cases (one per variant) assert `result.brain.status` matches the
       mocked return value's status discriminant.
-- [ ] 3b. In the `describe("info — backend field absent from
+- [x] 3b. In the `describe("info — backend field absent from
       result.brain (3b)", ...)` block (currently lines 247-287),
       keep the structural assertion (`expect(result.brain).not.toHaveProperty
       ("backend")`) but reduce to four test cases — one per variant.
@@ -152,7 +152,7 @@ Read: `coding-playbook/workflow/testing`
       any name. Add a third assertion in each case where the variant
       carries `name`: `expect(result.brain).not.toHaveProperty
       ("connector")`. The renamed field stays in absentia too.
-- [ ] 3c. In the `describe("info — brain state and outdated
+- [x] 3c. In the `describe("info — brain state and outdated
       independence (3d)", ...)` block (currently lines 295-354),
       rewrite the four cases that pin `BRAIN_INVALID_PATH` (none
       currently — none use that fixture in this block, but verify) and
@@ -160,7 +160,7 @@ Read: `coding-playbook/workflow/testing`
       independence assertion (brain non-ok does not suppress outdated;
       outdated empty does not suppress brain status) remains
       structurally identical with one fewer state.
-- [ ] 3d. In the `describe("info — never throws on broken brain state
+- [x] 3d. In the `describe("info — never throws on broken brain state
       (3e)", ...)` block (currently lines 366-411), drop the
       `it("resolves without throwing when brain state is invalid-path
       (vault deleted)", ...)` case. The remaining four cases
@@ -170,7 +170,7 @@ Read: `coding-playbook/workflow/testing`
       (`brokenWithHints`) already uses the `no-brain-aide` shape with
       no `name` or `rootPath` — that fixture is already aligned with
       the new union and stays.
-- [ ] 3e. In the `describe("info — brain pass-through (verbatim
+- [x] 3e. In the `describe("info — brain pass-through (verbatim
       forwarding)", ...)` block (currently lines 419-469), drop the
       `it("forwards BrainState invalid-path verbatim ...")` case.
       The remaining four cases assert `expect(result.brain).toEqual
@@ -184,7 +184,7 @@ Read: `coding-playbook/workflow/testing`
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] 4a. Add a new `describe("info — name field forwarding", ...)`
+- [x] 4a. Add a new `describe("info — name field forwarding", ...)`
       block. The block contains three test cases, one per variant
       that carries `name` (`ok`, `no-mcp-entry`, `mcp-drift`). Each
       case mocks `buildBrainState` to return the corresponding
@@ -194,7 +194,7 @@ Read: `coding-playbook/workflow/testing`
       user's descriptive label through to the response so the
       orchestrator can compose targeted remediation prose ("your
       Obsidian brain is wired but ...").
-- [ ] 4b. Add one negative case in the same block: a test that mocks
+- [x] 4b. Add one negative case in the same block: a test that mocks
       `buildBrainState` to return `BRAIN_NO_BRAIN_AIDE` and asserts
       `expect(result.brain).not.toHaveProperty("name")`. The
       `no-brain-aide` variant carries no `name` because there is no
@@ -206,12 +206,12 @@ Read: `coding-playbook/workflow/testing`
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] 5a. Run `npm test -- tools/info` (or the project's equivalent
+- [x] 5a. Run `npm test -- tools/info` (or the project's equivalent
       Vitest invocation scoped to this module). All tests pass.
-- [ ] 5b. Run `npx tsc --noEmit`. No type errors. The orchestrator
+- [x] 5b. Run `npx tsc --noEmit`. No type errors. The orchestrator
       and tests compile against the prerequisite-plan's new
       `BrainState` union.
-- [ ] 5c. Spot-check the response shape against the spec's `## Good
+- [x] 5c. Spot-check the response shape against the spec's `## Good
       examples` block (`.aide` lines 200-281). The shapes the tests
       assert — `{ status: "ok", name: "obsidian", hints: [] }`,
       `{ status: "no-brain-aide", hints: [] }`, etc. — must match

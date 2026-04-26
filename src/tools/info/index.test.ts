@@ -40,12 +40,12 @@ const LOCAL_VERSIONS_PATH_PATTERN = /versions\.json$/;
 // ---------------------------------------------------------------------------
 // Canonical brain state fixtures — one per BrainState variant.
 // No `backend` field on any of them: that field is retired from BrainState.
+// No `rootPath`. No `connector`. The label field is `name`.
 // ---------------------------------------------------------------------------
 
 const BRAIN_OK: BrainState = {
 	status: "ok",
-	rootPath: "/home/user/vault",
-	connector: "obsidian",
+	name: "obsidian",
 	hints: [],
 };
 
@@ -54,24 +54,15 @@ const BRAIN_NO_BRAIN_AIDE: BrainState = {
 	hints: [],
 };
 
-const BRAIN_INVALID_PATH: BrainState = {
-	status: "invalid-path",
-	rootPath: "/old/moved/path",
-	connector: "obsidian",
-	hints: [],
-};
-
 const BRAIN_NO_MCP_ENTRY: BrainState = {
 	status: "no-mcp-entry",
-	rootPath: "/home/user/vault",
-	connector: "obsidian",
+	name: "obsidian",
 	hints: [],
 };
 
 const BRAIN_MCP_DRIFT: BrainState = {
 	status: "mcp-drift",
-	rootPath: "/home/user/new-vault",
-	connector: "obsidian",
+	name: "obsidian",
 	hints: [],
 };
 
@@ -191,12 +182,12 @@ describe("info — staleness reporting (3c)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3a. All five brain states surface in result.brain.status
+// 3a. All four brain states surface in result.brain.status
 // Each test sets up a mock return from buildBrainState and asserts the
 // forwarded status matches.
 // ---------------------------------------------------------------------------
 
-describe("info — all five brain states (3a)", () => {
+describe("info — all four brain states", () => {
 	it("surfaces ok status when buildBrainState returns ok", async () => {
 		mockBuildBrainState.mockResolvedValue(BRAIN_OK);
 
@@ -211,14 +202,6 @@ describe("info — all five brain states (3a)", () => {
 		const result = await info("/project/root");
 
 		expect(result.brain.status).toBe("no-brain-aide");
-	});
-
-	it("surfaces invalid-path status when buildBrainState returns invalid-path", async () => {
-		mockBuildBrainState.mockResolvedValue(BRAIN_INVALID_PATH);
-
-		const result = await info("/project/root");
-
-		expect(result.brain.status).toBe("invalid-path");
 	});
 
 	it("surfaces no-mcp-entry status when buildBrainState returns no-mcp-entry", async () => {
@@ -242,47 +225,47 @@ describe("info — all five brain states (3a)", () => {
 // 3b. `backend` field is absent from result.brain — for every state.
 // Load-bearing test for outcomes.desired[7]:
 // "no `backend` field, no connector label, no enum the server interprets".
+// Also asserts retired fields `rootPath` and `connector` are absent.
 // ---------------------------------------------------------------------------
 
 describe("info — backend field absent from result.brain (3b)", () => {
-	it("result.brain has no backend field when status is ok", async () => {
+	it("result.brain has no backend, rootPath, or connector field when status is ok", async () => {
 		mockBuildBrainState.mockResolvedValue(BRAIN_OK);
 
 		const result = await info("/project/root");
 
 		expect(result.brain).not.toHaveProperty("backend");
+		expect(result.brain).not.toHaveProperty("rootPath");
+		expect(result.brain).not.toHaveProperty("connector");
 	});
 
-	it("result.brain has no backend field when status is no-brain-aide", async () => {
+	it("result.brain has no backend or rootPath field when status is no-brain-aide", async () => {
 		mockBuildBrainState.mockResolvedValue(BRAIN_NO_BRAIN_AIDE);
 
 		const result = await info("/project/root");
 
 		expect(result.brain).not.toHaveProperty("backend");
+		expect(result.brain).not.toHaveProperty("rootPath");
 	});
 
-	it("result.brain has no backend field when status is invalid-path", async () => {
-		mockBuildBrainState.mockResolvedValue(BRAIN_INVALID_PATH);
-
-		const result = await info("/project/root");
-
-		expect(result.brain).not.toHaveProperty("backend");
-	});
-
-	it("result.brain has no backend field when status is no-mcp-entry", async () => {
+	it("result.brain has no backend, rootPath, or connector field when status is no-mcp-entry", async () => {
 		mockBuildBrainState.mockResolvedValue(BRAIN_NO_MCP_ENTRY);
 
 		const result = await info("/project/root");
 
 		expect(result.brain).not.toHaveProperty("backend");
+		expect(result.brain).not.toHaveProperty("rootPath");
+		expect(result.brain).not.toHaveProperty("connector");
 	});
 
-	it("result.brain has no backend field when status is mcp-drift", async () => {
+	it("result.brain has no backend, rootPath, or connector field when status is mcp-drift", async () => {
 		mockBuildBrainState.mockResolvedValue(BRAIN_MCP_DRIFT);
 
 		const result = await info("/project/root");
 
 		expect(result.brain).not.toHaveProperty("backend");
+		expect(result.brain).not.toHaveProperty("rootPath");
+		expect(result.brain).not.toHaveProperty("connector");
 	});
 });
 
@@ -380,14 +363,6 @@ describe("info — never throws on broken brain state (3e)", () => {
 		expect(result.brain.status).toBe("no-mcp-entry");
 	});
 
-	it("resolves without throwing when brain state is invalid-path (vault deleted)", async () => {
-		mockBuildBrainState.mockResolvedValue(BRAIN_INVALID_PATH);
-
-		await expect(info("/project/root")).resolves.toBeDefined();
-		const result = await info("/project/root");
-		expect(result.brain.status).toBe("invalid-path");
-	});
-
 	it("resolves without throwing when brain state is mcp-drift (brain.aide and .mcp.json disagree)", async () => {
 		mockBuildBrainState.mockResolvedValue(BRAIN_MCP_DRIFT);
 
@@ -412,7 +387,7 @@ describe("info — never throws on broken brain state (3e)", () => {
 
 // ---------------------------------------------------------------------------
 // Brain pass-through — the info tool forwards BrainState verbatim.
-// Covers exact shape equality for all five states to prevent any accidental
+// Covers exact shape equality for all four states to prevent any accidental
 // field addition or transformation in the forwarder.
 // ---------------------------------------------------------------------------
 
@@ -433,14 +408,6 @@ describe("info — brain pass-through (verbatim forwarding)", () => {
 		expect(result.brain).toEqual(BRAIN_NO_BRAIN_AIDE);
 	});
 
-	it("forwards BrainState invalid-path verbatim when buildBrainState returns invalid-path", async () => {
-		mockBuildBrainState.mockResolvedValue(BRAIN_INVALID_PATH);
-
-		const result = await info("/project/root");
-
-		expect(result.brain).toEqual(BRAIN_INVALID_PATH);
-	});
-
 	it("forwards BrainState no-mcp-entry verbatim when buildBrainState returns no-mcp-entry", async () => {
 		mockBuildBrainState.mockResolvedValue(BRAIN_NO_MCP_ENTRY);
 
@@ -459,12 +426,55 @@ describe("info — brain pass-through (verbatim forwarding)", () => {
 
 	it("forwards hints in BrainState verbatim when buildBrainState returns hints", async () => {
 		const hints = [{ source: "env" as const, path: "/mocked/brain" }];
-		const withHints: BrainState = { status: "no-mcp-entry", rootPath: "/home/user/vault", connector: "obsidian", hints };
+		const withHints: BrainState = { status: "no-mcp-entry", name: "obsidian", hints };
 		mockBuildBrainState.mockResolvedValue(withHints);
 
 		const result = await info("/project/root");
 
 		expect(result.brain).toEqual(withHints);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 4a/4b. name field forwarding — load-bearing test for the new contract.
+// The `name` field carries the user's descriptive brain label (e.g. "obsidian")
+// so the orchestrator can compose targeted remediation prose. The three variants
+// that carry `name` (ok, no-mcp-entry, mcp-drift) must surface it in result.brain.
+// The one variant without a name (no-brain-aide) must not surface it — there is
+// no usable brain.aide to read it from, so no label to forward.
+// ---------------------------------------------------------------------------
+
+describe("info — name field forwarding", () => {
+	it("forwards name from BrainState when status is ok", async () => {
+		mockBuildBrainState.mockResolvedValue(BRAIN_OK);
+
+		const result = await info("/project/root");
+
+		expect(result.brain).toHaveProperty("name", "obsidian");
+	});
+
+	it("forwards name from BrainState when status is no-mcp-entry", async () => {
+		mockBuildBrainState.mockResolvedValue(BRAIN_NO_MCP_ENTRY);
+
+		const result = await info("/project/root");
+
+		expect(result.brain).toHaveProperty("name", "obsidian");
+	});
+
+	it("forwards name from BrainState when status is mcp-drift", async () => {
+		mockBuildBrainState.mockResolvedValue(BRAIN_MCP_DRIFT);
+
+		const result = await info("/project/root");
+
+		expect(result.brain).toHaveProperty("name", "obsidian");
+	});
+
+	it("does not forward name when status is no-brain-aide (no usable brain.aide)", async () => {
+		mockBuildBrainState.mockResolvedValue(BRAIN_NO_BRAIN_AIDE);
+
+		const result = await info("/project/root");
+
+		expect(result.brain).not.toHaveProperty("name");
 	});
 });
 

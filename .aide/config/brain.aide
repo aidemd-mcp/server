@@ -1,0 +1,20 @@
+---
+name: obsidian
+mcpServerConfig:
+  command: cmd
+  args:
+    - '/c'
+    - 'npx'
+    - '@bitbonsai/mcpvault'
+    - 'D:\Code\Me\my-brain'
+---
+
+## Prose
+
+Your brain is an Obsidian vault. Use `mcp__brain__read_note` to open files by
+their vault-relative path. Use `mcp__brain__search_notes` for keyword queries
+across every note in the vault. The vault's entry file is `CLAUDE.md` at the
+vault root — read that first; it carries wikilinks (`[[note-name]]`) you follow
+to deepen context. When a wikilink looks relevant to your task, read it (depth 1)
+and check that note's links too. Stay in scope; don't follow links into unrelated
+topics.

@@ -76,7 +76,7 @@ describe("provisionBrain", () => {
 		const brainAideStep = results[0];
 		expect(brainAideStep.status).toBe("would-create");
 		expect(brainAideStep.category).toBe("brain");
-		expect(brainAideStep.filePath).toBe(join(projectRoot, ".aide", "brain.aide"));
+		expect(brainAideStep.filePath).toBe(join(projectRoot, ".aide", "config", "brain.aide"));
 		expect(brainAideStep.content).toBeTruthy();
 
 		// Content must be parseable by parseBrainAideFromString.
@@ -94,10 +94,10 @@ describe("provisionBrain", () => {
 		const mcpPath = makeMcpPath();
 
 		// Pre-write a brain.aide so the step sees it on disk.
-		const aideDir = join(projectRoot, ".aide");
-		await mkdir(aideDir, { recursive: true });
+		const aideConfigDir = join(projectRoot, ".aide", "config");
+		await mkdir(aideConfigDir, { recursive: true });
 		await writeFile(
-			join(aideDir, "brain.aide"),
+			join(aideConfigDir, "brain.aide"),
 			obsidianBrainAideTemplate(brainPath),
 			"utf-8",
 		);
@@ -139,9 +139,9 @@ describe("provisionBrain", () => {
 		expect(mcpStep.name).toBe("MCP config (brain)");
 		expect(mcpStep.prescription?.entry).toEqual(expectedEntry);
 
-		// Windows-specific shape: cmd /c npx -y obsidian-mcp <brainPath>
+		// Windows-specific shape: cmd /c npx @bitbonsai/mcpvault <brainPath>
 		expect(mcpStep.prescription?.entry.command).toBe("cmd");
-		expect(mcpStep.prescription?.entry.args).toEqual(["/c", "npx", "-y", "obsidian-mcp", brainPath]);
+		expect(mcpStep.prescription?.entry.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", brainPath]);
 	});
 
 	it("5c (posix): cold install — MCP entry derived from template args on POSIX", async () => {
@@ -167,9 +167,9 @@ describe("provisionBrain", () => {
 		const mcpStep = results[4];
 		expect(mcpStep.prescription?.entry).toEqual(expectedEntry);
 
-		// POSIX shape: npx -y obsidian-mcp <brainPath>
+		// POSIX shape: npx @bitbonsai/mcpvault <brainPath>
 		expect(mcpStep.prescription?.entry.command).toBe("npx");
-		expect(mcpStep.prescription?.entry.args).toEqual(["-y", "obsidian-mcp", brainPath]);
+		expect(mcpStep.prescription?.entry.args).toEqual(["@bitbonsai/mcpvault", brainPath]);
 	});
 
 	// -----------------------------------------------------------------------
@@ -181,20 +181,15 @@ describe("provisionBrain", () => {
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		// User has customized their brain.aide with non-canonical args.
+		// User has customized their brain.aide with the new minimal schema.
 		const customBrainAide = [
 			"---",
-			"connector: obsidian",
-			`rootPath: ${brainPath}`,
-			"entryFile: CLAUDE.md",
+			"name: obsidian",
 			"mcpServerConfig:",
 			"  command: node",
 			"  args:",
 			'    - "/custom/path/to/launcher.js"',
-			'    - "${rootPath}"',
-			"tools:",
-			"  read: mcp__brain__read_note",
-			"  search: mcp__brain__search_notes",
+			`    - ${brainPath}`,
 			"---",
 			"",
 			"## Prose",
@@ -202,9 +197,9 @@ describe("provisionBrain", () => {
 			"Custom user prose.",
 		].join("\n");
 
-		const aideDir = join(projectRoot, ".aide");
-		await mkdir(aideDir, { recursive: true });
-		await writeFile(join(aideDir, "brain.aide"), customBrainAide, "utf-8");
+		const aideConfigDir = join(projectRoot, ".aide", "config");
+		await mkdir(aideConfigDir, { recursive: true });
+		await writeFile(join(aideConfigDir, "brain.aide"), customBrainAide, "utf-8");
 
 		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
@@ -257,9 +252,9 @@ describe("provisionBrain", () => {
 
 		// Brain config file.
 		const brainAideContent = obsidianBrainAideTemplate(brainPath);
-		const aideDir = join(projectRoot, ".aide");
-		await mkdir(aideDir, { recursive: true });
-		await writeFile(join(aideDir, "brain.aide"), brainAideContent, "utf-8");
+		const aideConfigDir = join(projectRoot, ".aide", "config");
+		await mkdir(aideConfigDir, { recursive: true });
+		await writeFile(join(aideConfigDir, "brain.aide"), brainAideContent, "utf-8");
 
 		// Vault: non-empty directory (has .obsidian/).
 		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
@@ -300,10 +295,10 @@ describe("provisionBrain", () => {
 	});
 
 	// -----------------------------------------------------------------------
-	// 5h. brain.aide schema does NOT include intent-spec fields
+	// 5h. brain.aide schema does NOT include intent-spec or deprecated fields
 	// -----------------------------------------------------------------------
 
-	it("5h: scaffolded brain.aide has no scope, outcomes, or status fields", async () => {
+	it("5h: scaffolded brain.aide has no scope, outcomes, status, deprecated, and only contains name and mcpServerConfig", async () => {
 		mockPlatform.mockReturnValue("linux");
 
 		const projectRoot = makeProjectRoot();
@@ -324,16 +319,34 @@ describe("provisionBrain", () => {
 		expect(config).not.toHaveProperty("status");
 		expect(config).not.toHaveProperty("intent");
 
+		// The config must NOT contain deprecated fields — the parser rejects them, but
+		// verify at the structural level too as an extra regression anchor.
+		expect(config).not.toHaveProperty("connector");
+		expect(config).not.toHaveProperty("rootPath");
+		expect(config).not.toHaveProperty("entryFile");
+		expect(config).not.toHaveProperty("tools");
+
 		// The raw template bytes also must not contain those keys anywhere in the frontmatter.
 		// Extract frontmatter block for a targeted check.
 		const fenceStart = templateContent.indexOf("---\n");
 		const fenceEnd = templateContent.indexOf("\n---\n", fenceStart + 3);
 		const frontmatterBlock = templateContent.slice(fenceStart, fenceEnd);
 
+		// Intent-spec fields must be absent.
 		expect(frontmatterBlock).not.toContain("scope:");
 		expect(frontmatterBlock).not.toContain("outcomes:");
 		expect(frontmatterBlock).not.toContain("status:");
 		expect(frontmatterBlock).not.toContain("intent:");
+
+		// Deprecated fields must be absent.
+		expect(frontmatterBlock).not.toContain("connector:");
+		expect(frontmatterBlock).not.toContain("rootPath:");
+		expect(frontmatterBlock).not.toContain("entryFile:");
+		expect(frontmatterBlock).not.toContain("tools:");
+
+		// Required minimal-schema fields must be present.
+		expect(frontmatterBlock).toContain("name:");
+		expect(frontmatterBlock).toContain("mcpServerConfig:");
 	});
 
 	// -----------------------------------------------------------------------
@@ -505,7 +518,7 @@ describe("provisionBrain", () => {
 		await expect(access(join(brainPath, "CLAUDE.md"))).rejects.toThrow();
 		await expect(access(mcpPath)).rejects.toThrow();
 		// brain.aide must NOT be written either.
-		await expect(access(join(projectRoot, ".aide", "brain.aide"))).rejects.toThrow();
+		await expect(access(join(projectRoot, ".aide", "config", "brain.aide"))).rejects.toThrow();
 	});
 
 	// -----------------------------------------------------------------------

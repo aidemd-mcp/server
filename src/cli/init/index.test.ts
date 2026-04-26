@@ -99,10 +99,9 @@ const mockApplySteps = vi.mocked(applySteps);
 const mockReadVersionsManifest = vi.mocked(readVersionsManifest);
 const mockCompareBytes = vi.mocked(compareBytes);
 
-// Canonical three deferred categories when vaultPath is absent.
+// Canonical two deferred categories when vaultPath is absent.
 const DEFERRED_CATEGORIES = [
-	"Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
-	"Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
+	"Brain wiring (.aide/config/brain.aide + derived brain MCP entry) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold .aide/config/brain.aide, and tell you to run npx aidemd-mcp sync",
 	"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
 ];
 
@@ -219,7 +218,7 @@ describe("cold-start happy path — every step is would-create", () => {
 		expect(calledWith.every((s: InitStep) => s.status === "would-create")).toBe(true);
 	});
 
-	it("renderWarning receives skipped:[], failed:[], and the three deferred categories", async () => {
+	it("renderWarning receives skipped:[], failed:[], and the two deferred categories", async () => {
 		await runInit(CWD, () => {});
 
 		expect(mockRenderWarning).toHaveBeenCalledWith({
@@ -290,7 +289,7 @@ describe("idempotent re-run — every step is exists", () => {
 		expect(lines.some((l) => l.startsWith("[skipped"))).toBe(false);
 	});
 
-	it("renderWarning is still called with skipped:[], failed:[], and the three deferred categories", async () => {
+	it("renderWarning is still called with skipped:[], failed:[], and the two deferred categories", async () => {
 		await runInit(CWD, () => {});
 
 		expect(mockRenderWarning).toHaveBeenCalledWith({
@@ -559,7 +558,7 @@ describe("invocation ordering", () => {
 // Deferred categories — always passed to renderWarning in every non-abort test
 // ---------------------------------------------------------------------------
 describe("deferred categories — always passed to renderWarning", () => {
-	it("cold-start: passes exactly the three canonical deferred categories", async () => {
+	it("cold-start: passes exactly the two canonical deferred categories", async () => {
 		await runInit(CWD, () => {});
 
 		expect(mockRenderWarning).toHaveBeenCalledWith(
@@ -567,7 +566,7 @@ describe("deferred categories — always passed to renderWarning", () => {
 		);
 	});
 
-	it("all-exists run: still passes the three deferred categories", async () => {
+	it("all-exists run: still passes the two deferred categories", async () => {
 		mockWriteMcpEntry.mockResolvedValue({ status: "exists", message: "already configured" });
 		mockWriteMethodology.mockResolvedValue({
 			status: "exists",
@@ -583,7 +582,7 @@ describe("deferred categories — always passed to renderWarning", () => {
 		);
 	});
 
-	it("mixed-status run: still passes the three deferred categories", async () => {
+	it("mixed-status run: still passes the two deferred categories", async () => {
 		mockInstallAgents.mockResolvedValue([
 			makeStep({
 				filePath: `${CWD}/.claude/agents/aide/aide-architect.md`,
@@ -737,7 +736,7 @@ describe("3a — vaultPath supplied, brain.aide absent: scaffold is created", ()
 		mockAccess.mockRejectedValue(enoent);
 	});
 
-	it("writes .aide/brain.aide with the canonical Obsidian content", async () => {
+	it("writes .aide/config/brain.aide with the canonical Obsidian content", async () => {
 		await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
 
 		expect(mockObsidianBrainAideTemplate).toHaveBeenCalledWith(VAULT_PATH);
@@ -748,12 +747,12 @@ describe("3a — vaultPath supplied, brain.aide absent: scaffold is created", ()
 		);
 	});
 
-	it("logs [created] .aide/brain.aide before the MCP entry log line", async () => {
+	it("logs [created] .aide/config/brain.aide before the MCP entry log line", async () => {
 		const lines: string[] = [];
 		await runInit(CWD, (l) => lines.push(l), { vaultPath: VAULT_PATH });
 
 		const brainLine = lines.find((l) => l.includes("brain.aide"));
-		expect(brainLine).toMatch(/^\[created\] \.aide\/brain\.aide/);
+		expect(brainLine).toMatch(/^\[created\] \.aide\/config\/brain\.aide/);
 
 		const mcpLine = lines.find((l) => l.includes(".mcp.json"));
 		expect(mcpLine).toBeDefined();
@@ -791,15 +790,12 @@ describe("3b — vaultPath absent: no brain.aide scaffold, new deferred-category
 		expect(lines.some((l) => l.includes("brain.aide"))).toBe(false);
 	});
 
-	it("passes the two new brain-related deferred-category strings to renderWarning", async () => {
+	it("passes the combined Brain-wiring and IDE deferred-category strings to renderWarning", async () => {
 		await runInit(CWD, () => {});
 
 		const call = mockRenderWarning.mock.calls[0][0];
 		expect(call.deferredCategories).toContain(
-			"Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
-		);
-		expect(call.deferredCategories).toContain(
-			"Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
+			"Brain wiring (.aide/config/brain.aide + derived brain MCP entry) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold .aide/config/brain.aide, and tell you to run npx aidemd-mcp sync",
 		);
 		expect(call.deferredCategories).toContain(
 			"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
@@ -813,6 +809,15 @@ describe("3b — vaultPath absent: no brain.aide scaffold, new deferred-category
 		const deferred: string[] = call.deferredCategories as string[];
 		expect(deferred.some((s) => s.startsWith("Vault path"))).toBe(false);
 		expect(deferred.some((s) => s.startsWith("Brain vault scaffolding"))).toBe(false);
+	});
+
+	it("deferred categories no longer split brain config and brain MCP entry into two separate items", async () => {
+		await runInit(CWD, () => {});
+
+		const call = mockRenderWarning.mock.calls[0][0];
+		const deferred: string[] = call.deferredCategories as string[];
+		expect(deferred.some((s) => s.startsWith("Brain config"))).toBe(false);
+		expect(deferred.some((s) => s.startsWith("Brain MCP entry"))).toBe(false);
 	});
 });
 
@@ -832,12 +837,12 @@ describe("3c — second run with vaultPath: brain.aide already exists, idempoten
 		expect(mockWriteFile).not.toHaveBeenCalled();
 	});
 
-	it("logs [exists] .aide/brain.aide — already present", async () => {
+	it("logs [exists] .aide/config/brain.aide — already present", async () => {
 		const lines: string[] = [];
 		await runInit(CWD, (l) => lines.push(l), { vaultPath: VAULT_PATH });
 
 		const brainLine = lines.find((l) => l.includes("brain.aide"));
-		expect(brainLine).toBe("[exists] .aide/brain.aide — already present");
+		expect(brainLine).toBe("[exists] .aide/config/brain.aide — already present");
 	});
 
 	it("returns exit code 0", async () => {
@@ -876,5 +881,31 @@ describe("3d — user-edited brain.aide: seed-semantic, never overwritten", () =
 		// writeMcpEntry reads brain.aide from disk — passing vaultPath ensures it
 		// opens the user's version rather than falling back to the in-memory template.
 		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD, VAULT_PATH);
+	});
+});
+
+// 5e: user has scaffolded .aide/config/brain.aide via sync or hand-edit before init runs
+describe("5e — pre-existing .aide/config/brain.aide: ownership boundary regression guard", () => {
+	const VAULT_PATH = "/my/vault";
+
+	beforeEach(() => {
+		// Simulate the file already present on disk (e.g., written by sync or hand-edit):
+		// access resolves → file exists.
+		mockAccess.mockResolvedValue(undefined);
+	});
+
+	it("does NOT call writeFile for brain.aide when the file is already present", async () => {
+		await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+
+		// The existing-file branch must NOT write anything to brain.aide.
+		expect(mockWriteFile).not.toHaveBeenCalled();
+	});
+
+	it("does NOT call obsidianBrainAideTemplate when the file is already present", async () => {
+		await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+
+		// The existing-file branch must NOT compute the template content as a fallback —
+		// this is the regression guard for the .aide/config/ ownership boundary.
+		expect(mockObsidianBrainAideTemplate).not.toHaveBeenCalled();
 	});
 });

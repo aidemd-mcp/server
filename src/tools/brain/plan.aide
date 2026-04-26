@@ -85,13 +85,13 @@ plan's steps begin. This plan does NOT modify those files.
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error-handling`
 
-- [ ] 1a. Delete the `INVALID_PATH_PROSE` constant declaration entirely
+- [x] 1a. Delete the `INVALID_PATH_PROSE` constant declaration entirely
   (the string literal and its surrounding documentation comment, if the
   comment refers only to that constant). Leave the
   `NO_BRAIN_AIDE_PROSE`, `NO_MCP_ENTRY_PROSE`, and `MCP_DRIFT_PROSE`
   constants in place.
 
-- [ ] 1b. Update the `NO_BRAIN_AIDE_PROSE` constant's text. The path
+- [x] 1b. Update the `NO_BRAIN_AIDE_PROSE` constant's text. The path
   reference inside the prose currently reads `.aide/brain.aide`; change
   it to `.aide/config/brain.aide`. Every other word of the prose stays
   byte-identical — the load-bearing phrases (the npx command name, the
@@ -114,14 +114,14 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error
   that `aide_init` writes, so they should match the new canonical
   location.)
 
-- [ ] 1c. Delete the `if (state.status === "invalid-path") return { ... }`
+- [x] 1c. Delete the `if (state.status === "invalid-path") return { ... }`
   branch entirely (the `if` head and the return statement). This branch
   is no longer reachable once the prerequisite type-shrink lands —
   TypeScript will surface the now-unreachable comparison as TS2367 if
   left in place. After deletion, the branch ladder is exactly three
   non-ok branches: `no-brain-aide`, `no-mcp-entry`, `mcp-drift`.
 
-- [ ] 1d. Retarget the defensive fallback (the final `return` after the
+- [x] 1d. Retarget the defensive fallback (the final `return` after the
   `parseResult.kind === "ok"` check). The current fallback returns
   `{ status: "invalid-path", instructions: INVALID_PATH_PROSE }`; the
   new fallback returns `{ status: "no-brain-aide", instructions:
@@ -132,7 +132,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error
   missing/broken file," which is the missing-or-broken-file shape that
   `no-brain-aide` is the natural remediation for.
 
-- [ ] 1e. Update the orchestrator's JSDoc and the inline comment above
+- [x] 1e. Update the orchestrator's JSDoc and the inline comment above
   the defensive-fallback `return` to reflect the new vocabulary. The
   JSDoc bullet that enumerated `invalid-path` should be removed; the
   inline comment above the defensive fallback should name
@@ -143,7 +143,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error
   in terms of the `BrainState` vocabulary rather than naming "four
   states."
 
-- [ ] 1f. Confirm the orchestrator's response literals never include a
+- [x] 1f. Confirm the orchestrator's response literals never include a
   `name`, `backend`, or `connector` field. Each return statement should
   be exactly `{ status: <status>, instructions: <prose> }`. This is the
   no-discriminant-leakage invariant from the spec's outcomes.desired —
@@ -155,13 +155,13 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] 2a. Update the file-header invariant comment. The current header
+- [x] 2a. Update the file-header invariant comment. The current header
   says "five-status branching"; change it to describe the new contract
   in terms of the `BrainState` vocabulary without pinning a count
   (mirroring the spec's enumeration-drift guidance). Keep the existing
   invariant comment forbidding imports from `@/service/brainBackends`.
 
-- [ ] 2b. Update the `MINIMAL_CONFIG` fixture to match the new
+- [x] 2b. Update the `MINIMAL_CONFIG` fixture to match the new
   `BrainAideConfig` shape that lives in `src/types/index.ts`. The
   current fixture carries `connector`, `rootPath`, `entryFile`, `tools`
   — those are removed from the schema. The new fixture carries `name`
@@ -184,7 +184,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
   fields at the time this test is rewritten, escalate — the
   prerequisites have not landed.
 
-- [ ] 2c. Update the `makeOkState` helper and every inline state
+- [x] 2c. Update the `makeOkState` helper and every inline state
   fixture in the file to match the new four-variant `BrainState`. The
   current `makeOkState` returns `{ status: "ok", rootPath, connector,
   hints }`; the new shape carries `{ status: "ok", name, hints }` (the
@@ -198,7 +198,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
   every fixture that carries `rootPath` on a state that no longer
   declares it.
 
-- [ ] 2d. Delete the entire `describe("brain — invalid-path:
+- [x] 2d. Delete the entire `describe("brain — invalid-path:
   remediation prose (4e)", ...)` block. The branch is gone; tests
   for it are dead code. Renumber surrounding describe-block labels
   if your project's convention does so (the existing labels are
@@ -207,13 +207,13 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
   static and accept the gap; either is acceptable, just be
   consistent within the file).
 
-- [ ] 2e. Remove the `invalid-path` row from the `it.each([...])`
+- [x] 2e. Remove the `invalid-path` row from the `it.each([...])`
   parameterization in the "instructions always non-empty" describe
   block. The remaining rows are `no-brain-aide`, `no-mcp-entry`,
   `mcp-drift`. Each row's state fixture must conform to the new
   `BrainState` shape (field set per step 2c).
 
-- [ ] 2f. Rewrite the defensive-fallback describe block (currently
+- [x] 2f. Rewrite the defensive-fallback describe block (currently
   asserting `result.status === "invalid-path"` when `parseBrainAide`
   returns non-ok despite `buildBrainState` ok). The new assertions:
   - `result.status === "no-brain-aide"` (not `"invalid-path"`)
@@ -230,14 +230,14 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
   `{ kind: "malformed-frontmatter", reason: "..." }`) — both must
   route to the same `no-brain-aide` fallback.
 
-- [ ] 2g. Update the "instructions is non-empty on the defensive
+- [x] 2g. Update the "instructions is non-empty on the defensive
   fallback branch" test (currently asserting fallback returns a
   non-empty `instructions`). Keep the invariant assertion; update
   the surrounding mock setup if any field of the fixture changed
   with `BrainState`'s collapse. The status assertion (if any) must
   read `"no-brain-aide"`, not `"invalid-path"`.
 
-- [ ] 2h. Add a new test (or augment an existing describe block)
+- [x] 2h. Add a new test (or augment an existing describe block)
   asserting the response shape never includes `name`, `backend`,
   or `connector`. Use `expect(result).not.toHaveProperty("name")`,
   `expect(result).not.toHaveProperty("backend")`,
@@ -249,7 +249,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
   enforces the spec's load-bearing outcome that the response carries
   `status` + `instructions` only.
 
-- [ ] 2i. Verify the no-connector-dispatch test (currently 4j) still
+- [x] 2i. Verify the no-connector-dispatch test (currently 4j) still
   passes after the fixture rename. The test's purpose — identical
   prose input must produce identical instructions output — does
   not change; only the fixture field names need to update from
@@ -257,7 +257,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
   / `makeOkState("notion")` calls (or whatever the new helper
   signature is) and the `MINIMAL_CONFIG` overrides.
 
-- [ ] 2j. Run the test suite for this file: `npx vitest run
+- [x] 2j. Run the test suite for this file: `npx vitest run
   src/tools/brain/index.test.ts`. Expect every test to pass. If a
   test fails because a prerequisite type or function shape differs
   from the spec, escalate to the architect rather than patching
@@ -267,7 +267,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] 3a. Run `npx tsc --noEmit` from the project root. Expect zero
+- [x] 3a. Run `npx tsc --noEmit` from the project root. Expect zero
   errors in `src/tools/brain/`. If the prerequisite type-shrink in
   `src/types/index.ts` and the prerequisite detector refactor in
   `src/service/buildBrainState/` have landed, the compile passes
@@ -275,10 +275,10 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
   have not landed and this plan should not have been executed
   yet — escalate.
 
-- [ ] 3b. Run `npm test -- tools/brain` (or
+- [x] 3b. Run `npm test -- tools/brain` (or
   `npx vitest run src/tools/brain/`). Expect every test to pass.
 
-- [ ] 3c. Run the full project test suite once
+- [x] 3c. Run the full project test suite once
   (`npm test` or `npx vitest run`) to confirm no other consumer
   regresses. The brain tool's response shape has not changed
   (`{ status, instructions }` was already the contract); the only

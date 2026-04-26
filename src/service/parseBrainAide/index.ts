@@ -4,9 +4,14 @@ import { parse } from "yaml";
 import type { BrainAideConfig, ParseBrainAideResult } from "@/types/index.js";
 
 /**
- * Returns a copy of `config.mcpServerConfig.args` with every `${<key>}` placeholder
- * substituted by the corresponding value from the config. Currently supports
- * `${rootPath}` and `${entryFile}`.
+ * Returns a copy of `config.mcpServerConfig.args` with every `${fieldName}` placeholder
+ * substituted against the top-level frontmatter fields. `${name}` is the only field the
+ * current schema resolves; unknown keys (any `${something-not-in-the-map}`) pass through
+ * verbatim.
+ *
+ * The default scaffold contains no placeholders — this helper is a no-op for the canonical
+ * install. Advanced users can embed `${name}` in their `args` to inject the brain's name
+ * at install time (e.g. `["some-launcher", "--profile", "${name}"]`).
  *
  * Audience: install-time callers only — this is the `.mcp.json`-writer surface, never
  * the agent-facing surface. It is the ONLY substitution surface in the package:
@@ -15,8 +20,7 @@ import type { BrainAideConfig, ParseBrainAideResult } from "@/types/index.js";
  */
 export function interpolateArgs(config: BrainAideConfig): string[] {
 	const substitutions: Record<string, string> = {
-		rootPath: config.rootPath,
-		entryFile: config.entryFile,
+		name: config.name,
 	};
 
 	return config.mcpServerConfig.args.map((arg) =>
@@ -35,6 +39,13 @@ export function interpolateArgs(config: BrainAideConfig): string[] {
  * Returns the same `ParseBrainAideResult` union as `parseBrainAide`. The `"missing"`
  * variant is unreachable (the input is bytes, not a path): empty input returns
  * `{ kind: "malformed-frontmatter", reason: "frontmatter is required" }`.
+ *
+ * Validation order: required fields are checked first (`name`, `mcpServerConfig`,
+ * `mcpServerConfig.command`, `mcpServerConfig.args`), then deprecated fields
+ * (`connector`, `rootPath`, `entryFile`, `tools`) are rejected as
+ * `malformed-frontmatter` with a reason listing every stale field found, in
+ * deprecated-set order. This sequencing ensures a user missing a required field
+ * sees the actionable required-field error before any deprecated-field error.
  */
 export function parseBrainAideFromString(content: string): ParseBrainAideResult {
 	// Step 2: Split on first `---\n` opening fence.
@@ -74,17 +85,10 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 
 	const fm = parsed as Record<string, unknown>;
 
-	// Step 4: Validate required fields by name. Each failure names exactly which field is wrong.
-	if (typeof fm["connector"] !== "string" || fm["connector"].trim() === "") {
-		return { kind: "malformed-frontmatter", reason: "connector is required and must be a non-empty string" };
-	}
-
-	if (typeof fm["rootPath"] !== "string" || fm["rootPath"].trim() === "") {
-		return { kind: "malformed-frontmatter", reason: "rootPath is required and must be a non-empty string" };
-	}
-
-	if (typeof fm["entryFile"] !== "string" || fm["entryFile"].trim() === "") {
-		return { kind: "malformed-frontmatter", reason: "entryFile is required and must be a non-empty string" };
+	// Step 4: Validate required fields. Each failure short-circuits with a reason naming the field.
+	// Order: name → mcpServerConfig (object) → mcpServerConfig.command → mcpServerConfig.args.
+	if (typeof fm["name"] !== "string" || fm["name"].trim() === "") {
+		return { kind: "malformed-frontmatter", reason: "name is required and must be a non-empty string" };
 	}
 
 	if (!fm["mcpServerConfig"] || typeof fm["mcpServerConfig"] !== "object" || Array.isArray(fm["mcpServerConfig"])) {
@@ -101,30 +105,22 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		return { kind: "malformed-frontmatter", reason: "mcpServerConfig.args is required and must be an array of strings" };
 	}
 
-	if (!fm["tools"] || typeof fm["tools"] !== "object" || Array.isArray(fm["tools"])) {
-		return { kind: "malformed-frontmatter", reason: "tools is required and must be an object" };
+	// Step 4b: Reject deprecated fields. Runs AFTER required-field validation so a user
+	// missing a required field sees that error first. Deprecated fields are listed in
+	// fixed set order (not user-file order) for deterministic output.
+	const DEPRECATED_FIELDS = ["connector", "rootPath", "entryFile", "tools"] as const;
+	const foundDeprecated = DEPRECATED_FIELDS.filter((key) => Object.prototype.hasOwnProperty.call(fm, key));
+	if (foundDeprecated.length > 0) {
+		return { kind: "malformed-frontmatter", reason: `deprecated fields: ${foundDeprecated.join(", ")}` };
 	}
 
-	const tools = fm["tools"] as Record<string, unknown>;
-
-	if (typeof tools["read"] !== "string" || tools["read"].trim() === "") {
-		return { kind: "malformed-frontmatter", reason: "tools.read is required and must be a non-empty string" };
-	}
-
-	if (typeof tools["search"] !== "string" || tools["search"].trim() === "") {
-		return { kind: "malformed-frontmatter", reason: "tools.search is required and must be a non-empty string" };
-	}
-
-	// Validated config — construct the typed config object.
+	// Step 4c: Construct the validated config — exactly the two top-level fields.
 	const config: BrainAideConfig = {
-		connector: fm["connector"],
-		rootPath: fm["rootPath"],
-		entryFile: fm["entryFile"],
+		name: fm["name"],
 		mcpServerConfig: {
 			command: mcpServerConfig["command"],
 			args: mcpServerConfig["args"] as string[],
 		},
-		tools: tools as Record<string, string>,
 	};
 
 	// Step 5: Find `## Prose` heading in the body. Everything after it (through EOF)
@@ -146,8 +142,8 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 }
 
 /**
- * Reads `.aide/brain.aide` from the given host project root and parses it into a
- * tagged-result union. The brain.aide path is derived as `join(root, ".aide", "brain.aide")`.
+ * Reads `.aide/config/brain.aide` from the given host project root and parses it into a
+ * tagged-result union. The brain.aide path is derived as `join(root, ".aide", "config", "brain.aide")`.
  *
  * Result branches:
  * - `"ok"` — file found, frontmatter parsed, all required fields valid, `## Prose` located.
@@ -162,12 +158,12 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
  * - Never interpolates the prose body — the returned `prose` string is byte-identical
  *   to the file content after the `## Prose` heading. Call `interpolateArgs` separately
  *   when writing the MCP entry.
- * - Never branches on `connector` — the field is surfaced unchanged for consumers to use.
+ * - Never branches on `name` — the field is surfaced unchanged for consumers to use.
  */
 export default async function parseBrainAide(root: string): Promise<ParseBrainAideResult> {
 	// Step 1: Read the file. ENOENT and other I/O failures both collapse to `missing` —
 	// the file is unreachable in either case and remediation is the same.
-	const brainAidePath = join(root, ".aide", "brain.aide");
+	const brainAidePath = join(root, ".aide", "config", "brain.aide");
 
 	let content: string;
 	try {

@@ -86,7 +86,7 @@ escalate — this plan cannot be partially executed against the old
 
 Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 
-- [ ] Replace the existing five-variant `BrainState` definition with the
+- [x] Replace the existing five-variant `BrainState` definition with the
       new four-variant tagged union. The new shape, per the spec's
       `outcomes.desired[12]` and Good examples:
 
@@ -141,7 +141,7 @@ Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conve
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`, `coding-playbook/services/error-handling`
 
-- [ ] Rewrite `src/service/buildBrainState/index.ts` to implement the new
+- [x] Rewrite `src/service/buildBrainState/index.ts` to implement the new
       four-state pipeline. The default export signature is unchanged:
       `default async function buildBrainState(root: string):
       Promise<BrainState>`.
@@ -232,7 +232,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/d
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] Rewrite `src/service/buildBrainState/index.test.ts` to cover the
+- [x] Rewrite `src/service/buildBrainState/index.test.ts` to cover the
       new four-state vocabulary. Keep the existing test infrastructure
       shape — temp dirs via `mkdtemp`, real `parseBrainAide` against real
       brain.aide files, real `readFile` against real `.mcp.json` files,
@@ -398,13 +398,13 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] Run `npm test -- buildBrainState` (or `rtk vitest run
+- [x] Run `npm test -- buildBrainState` (or `rtk vitest run
       src/service/buildBrainState`). All tests in the rewritten file
       must pass. If any case fails, diagnose the root cause — do not
       patch the test to match a buggy implementation. The test is the
       contract.
 
-- [ ] Run `npx tsc --noEmit`. Expected outcome: this module compiles
+- [x] Run `npx tsc --noEmit`. Expected outcome: this module compiles
       cleanly. Errors in OTHER files (`src/tools/info`, `src/tools/brain`,
       `src/cli/sync`) are dependency-contract failures owned by their
       respective plans (`src/tools/info/plan.aide`,
@@ -415,7 +415,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
       consumers in this plan; this plan's scope is buildBrainState's
       module only.
 
-- [ ] Sanity grep: confirm `src/service/buildBrainState/` contains no
+- [x] Sanity grep: confirm `src/service/buildBrainState/` contains no
       references to `stat`, `existsSync`, `lstat`, `invalid-path`,
       `connector`, `rootPath`, `entryFile`, `tools` (as a brain.aide
       field), `backend`, `resolveBackend`, `brainBackends`, or

@@ -86,7 +86,7 @@ is the next plan in the orchestrator's dependency chain.
 
 Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 
-- [ ] Edit `src/types/index.ts` to collapse the brain.aide-related types.
+- [x] Edit `src/types/index.ts` to collapse the brain.aide-related types.
       The new shape is exactly what the spec's frontmatter declares — every
       retired field is removed from the type so consumers cannot reach for
       it without a TypeScript error.
@@ -128,7 +128,7 @@ Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conve
 
 Read: `coding-playbook/foundations/conventions`
 
-- [ ] Edit `src/service/parseBrainAide/index.ts`. In the default export
+- [x] Edit `src/service/parseBrainAide/index.ts`. In the default export
       `parseBrainAide(root)`, change the `brainAidePath` derivation from
       `join(root, ".aide", "brain.aide")` to
       `join(root, ".aide", "config", "brain.aide")`. Update the function's
@@ -140,7 +140,7 @@ Read: `coding-playbook/foundations/conventions`
 
 Read: `coding-playbook/services/error-handling`, `coding-playbook/foundations/conventions`
 
-- [ ] Edit `src/service/parseBrainAide/index.ts`. Replace the existing
+- [x] Edit `src/service/parseBrainAide/index.ts`. Replace the existing
       "Step 4: Validate required fields" block of `parseBrainAideFromString`
       with the new two-field validation. The block lives between the
       successful YAML parse and the prose-extraction step.
@@ -205,7 +205,7 @@ Read: `coding-playbook/services/error-handling`, `coding-playbook/foundations/co
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
 
-- [ ] Edit `src/service/parseBrainAide/index.ts`. Replace the
+- [x] Edit `src/service/parseBrainAide/index.ts`. Replace the
       `interpolateArgs` body. The contract is unchanged at the signature
       level (`(config: BrainAideConfig) => string[]`), but the substitution
       map shrinks to a single key.
@@ -238,7 +238,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/d
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] Replace `src/service/parseBrainAide/index.test.ts`. The structure
+- [x] Replace `src/service/parseBrainAide/index.test.ts`. The structure
       stays the same (per-branch `describe` blocks, real-tempdir fixtures,
       `it.each` for parameterized validation), but every fixture and
       assertion needs to swap to the two-field schema. The test file is a
@@ -354,7 +354,7 @@ Read: `coding-playbook/workflow/testing`
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] Run the verification commands and record the results. Two distinct
+- [x] Run the verification commands and record the results. Two distinct
       checks: the parser's own test suite (must pass cleanly) and the
       project-wide type check (expected to surface downstream consumer
       breakage; that breakage is OUT OF SCOPE for this plan).

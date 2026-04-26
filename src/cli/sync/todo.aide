@@ -1,57 +1,22 @@
 ---
-intent: >
-  Active drift after the root revision (2026-04-25): the spec pins brain.aide
-  at `.aide/brain.aide`, references `${rootPath}` interpolation as the load-
-  bearing substitution surface, names `obsidian-mcp` as the launcher in worked
-  examples, and treats the `connector` field as metadata. Under the new root,
-  brain.aide moves to `.aide/config/brain.aide`, the default scaffold no
-  longer exercises `${rootPath}` (path is byte-inline in args), the launcher
-  becomes `@bitbonsai/mcpvault`, and `connector` is renamed to `name`.
+intent: outcomes.desired[5] — "the parsed brain.aide path" logged on every invocation
 misalignment:
-  - spec-gap
+  - implementation-drift
+  - test-gap
 ---
 
 ## Issues
 
-### Active (alignment pass 2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+- [x] `src/cli/sync/index.ts:87–90` — On the `writeResult.unchanged` branch, `write("Read .aide/config/brain.aide")` is never emitted. The spec's Good Example for idempotency shows "Read .aide/config/brain.aide" as the first stdout line even on a no-change run, and `outcomes.desired[5]` lists "the parsed brain.aide path" as something that should always be logged — not only when a write occurred. The implementation suppresses this line on the no-change path, so a second sync invocation prints only `.mcp.json already in sync — no changes.` with no breadcrumb showing which file was consulted.
+  Traces to: `outcomes.desired[5]` ("Logs every action it takes on stdout — the parsed brain.aide path, … whether the file was unchanged")
+  Misalignment: implementation-drift
 
-- [x] `src/cli/sync/.aide` description: "reads `.aide/brain.aide`, interpolates `${rootPath}` into `mcpServerConfig.args`, and writes the resulting object into `.mcp.json` under the fixed `brain` key."
-  Two stale references in one sentence: the path is now `.aide/config/brain.aide`, and `${rootPath}` interpolation is no longer the load-bearing substitution shape because `rootPath` is removed as a frontmatter field. The default scaffold writes the path inline byte-for-byte into `mcpServerConfig.args`, with no substitution applied. The interpolation engine still exists for advanced users who want to DRY a value across positions, but the description should not pin it as the primary case.
-  Traces to: `.aide/intent.aide` outcomes.desired (path move; default scaffold makes no use of substitution; the parser still supports `${...}` for advanced users).
-  Misalignment: spec-gap
-
-- [x] `src/cli/sync/.aide` intent paragraph: "reads the `.aide/brain.aide` via `parseBrainAide`, derives the MCP entry by interpolating `${rootPath}` into `mcpServerConfig.args` via `interpolateArgs`..."
-  Same path-and-interpolation drift. The contract is correct in shape (sync derives the entry from brain.aide via the parser) but the path and the default substitution behavior are stale.
-  Traces to: `.aide/intent.aide` outcomes.desired (path move; default scaffold byte-inline path).
-  Misalignment: spec-gap
-
-- [x] `src/cli/sync/.aide` outcomes.desired ("Computes the expected MCP entry as `{ command: config.mcpServerConfig.command, args: interpolateArgs(config) }`..."): structurally fine because `interpolateArgs` is a no-op when no placeholders are present, but the outcome's pinning of `interpolateArgs` as a load-bearing default obscures that the default scaffold's args are byte-inline. The outcome should clarify that interpolation runs but is a no-op for the default scaffold.
-  Traces to: `.aide/intent.aide` outcomes.desired (default scaffold makes no use of substitution).
-  Misalignment: spec-gap
-
-- [x] `src/cli/sync/.aide` Good examples ("A user retargets their vault and runs sync"): worked example shows the user editing "the `rootPath` field from `D:/notes/old-vault` to `D:/notes/new-vault`" and the resulting args list `[-y, obsidian-mcp, D:/notes/new-vault]`.
-  Three stale references: there's no `rootPath` field for the user to edit; the launcher is `@bitbonsai/mcpvault`, not `obsidian-mcp`; and the user retargets by editing the path inline in `mcpServerConfig.args`, not a separate `rootPath` field. The example needs to show editing the args list directly.
-  Traces to: `.aide/intent.aide` outcomes.desired (no `rootPath` field; default launcher; path inline in args).
-  Misalignment: spec-gap
-
-- [x] `src/cli/sync/.aide` Bad examples ("Sync interpolates the prose body" / "${variable} placeholders"): the structural rule is correct and load-bearing under the new root (substitution lives only in `mcpServerConfig.args`, never in the prose body). The example body content references `${rootPath}` as the install-time substitution surface; should clarify that the install-time interpolation runs against any frontmatter field name the user references (currently `name` and any user-added fields), not specifically `${rootPath}`.
-  Traces to: `.aide/intent.aide` Strategy paragraph "Brain configuration is user-owned, not code-owned" (interpolation generalizes; only `name` is in the default schema).
-  Misalignment: spec-gap
-
-- [x] `src/cli/sync/.aide` outcomes.undesired ("A sync verb that branches on `connector`"): the structural rule is correct (sync derives from `mcpServerConfig` directly; no dispatch on labels), but the field name has been renamed to `name`. The undesired-outcome rule should mention `name` (the new label field) explicitly.
-  Traces to: `.aide/intent.aide` outcomes.desired (rename `connector` → `name`); outcomes.undesired (any code path branching on connector identity is forbidden — same rule, new field name).
-  Misalignment: spec-gap
-
-- [x] `src/cli/sync/.aide` references the brain.aide path as `.aide/brain.aide` throughout. Every prose mention should update to `.aide/config/brain.aide`.
-  Traces to: `.aide/intent.aide` outcomes.desired (path move).
-  Misalignment: spec-gap
+- [x] `src/cli/sync/index.test.ts:111–129` — Test 3b (idempotent re-run) does not assert that "Read .aide/config/brain.aide" appears in `lines` on the no-change path. The only assertion on stdout is `toContain("already in sync")`. This test would continue to pass even if the fix is applied; it does not currently catch the omission.
+  Traces to: `outcomes.desired[5]` (test coverage gap for the "parsed brain.aide path" log on the unchanged path)
+  Misalignment: test-gap
 
 ## Retro
 
-### Active cycle (2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+Both issues are traceable to the same root: the `if (writeResult.unchanged)` early-return at line 87 was written to produce minimal output on no-change, but the spec's intent is to always surface which file was read — the breadcrumb is useful for confirming sync looked at the right project root. The Good Example in the spec makes this visible, but neither the plan.aide (which focused on string-update and schema-collapse) nor the test author pinned it explicitly.
 
-This spec is the user-facing terminal verb that propagates brain.aide into `.mcp.json`. The sync verb's contract is largely unaffected by the root revision in shape — the verb still reads brain.aide via parseBrainAide, derives the MCP entry, writes it under the fixed `brain` key, and is idempotent. What drifts is the bytes the spec uses to describe that contract: every path reference, every launcher example, every `${rootPath}` mention, every `connector` field reference is now stale.
-
-The deepest drift is the `${rootPath}` paragraph in the description and intent sections. The interpolation engine still exists, but it's now an opt-in advanced-user feature rather than the default substitution shape. The default scaffold writes the path inline byte-for-byte into args, so a sync run against the default scaffold runs through `interpolateArgs` as a no-op. The spec should either reframe interpolation as advanced-user-only or note that it's a no-op for the default scaffold.
-
-What would have caught this earlier: a `/aide:align` pass at the moment the root settled the schema collapse and the byte-inline default. The spec's structural contract (derive entry, merge into .mcp.json, idempotent) is unchanged; only the worked examples and field references drift.
+What would have caught this earlier: the plan's step 3 output-format verification (step 1, last bullet — exit-code contract) checked control flow but not output-line coverage across both branches. A test plan item that explicitly enumerates all expected stdout lines for each scenario, keyed to the Good Examples block, would have surfaced the missing "Read" line in the no-change branch before the test was written. This is a recurring pattern: implementations that short-circuit on "no-op" tend to skip logging that still has diagnostic value — the spec should be explicit that the breadcrumb fires unconditionally.

@@ -6,22 +6,16 @@ import parseBrainAide, { parseBrainAideFromString, interpolateArgs } from "./ind
 import type { BrainAideConfig } from "@/types/index.js";
 
 // ---------------------------------------------------------------------------
-// Shared fixture: the canonical Obsidian brain.aide from the spec's good example
+// 5a. Shared fixture: the canonical brain.aide from the spec's good example
 // ---------------------------------------------------------------------------
 
 const CANONICAL_BRAIN_AIDE = `---
-connector: obsidian
-rootPath: D:/notes/my-vault
-entryFile: CLAUDE.md
+name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - "@bitbonsai/mcpvault"
+    - "D:/notes/my-vault"
 ---
 
 ## Prose
@@ -34,26 +28,20 @@ carries wikilinks (\`[[note-name]]\`) you follow to deepen context.
 `;
 
 const CANONICAL_CONFIG: BrainAideConfig = {
-	connector: "obsidian",
-	rootPath: "D:/notes/my-vault",
-	entryFile: "CLAUDE.md",
+	name: "obsidian",
 	mcpServerConfig: {
 		command: "npx",
-		args: ["-y", "obsidian-mcp", "${rootPath}"],
-	},
-	tools: {
-		read: "mcp__brain__read_note",
-		search: "mcp__brain__search_notes",
+		args: ["@bitbonsai/mcpvault", "D:/notes/my-vault"],
 	},
 };
 
 // ---------------------------------------------------------------------------
-// Helpers
+// 5b. Helpers
 // ---------------------------------------------------------------------------
 
 async function writeBrainAide(root: string, content: string): Promise<void> {
-	await mkdir(join(root, ".aide"), { recursive: true });
-	await writeFile(join(root, ".aide", "brain.aide"), content, "utf-8");
+	await mkdir(join(root, ".aide", "config"), { recursive: true });
+	await writeFile(join(root, ".aide", "config", "brain.aide"), content, "utf-8");
 }
 
 // ---------------------------------------------------------------------------
@@ -71,11 +59,11 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3a. Happy path
+// 5c. 3a. Happy path
 // ---------------------------------------------------------------------------
 
 describe("3a — happy path", () => {
-	it("returns ok with all config fields correct and prose starting with first sentence", async () => {
+	it("returns ok with two-field config and prose starting with first sentence", async () => {
 		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
 
 		const result = await parseBrainAide(tempDir);
@@ -83,14 +71,9 @@ describe("3a — happy path", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.connector).toBe("obsidian");
-		expect(result.config.rootPath).toBe("D:/notes/my-vault");
-		expect(result.config.entryFile).toBe("CLAUDE.md");
+		expect(result.config.name).toBe("obsidian");
 		expect(result.config.mcpServerConfig.command).toBe("npx");
-		// args contain the literal placeholder, pre-interpolation
-		expect(result.config.mcpServerConfig.args).toEqual(["-y", "obsidian-mcp", "${rootPath}"]);
-		expect(result.config.tools.read).toBe("mcp__brain__read_note");
-		expect(result.config.tools.search).toBe("mcp__brain__search_notes");
+		expect(result.config.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", "D:/notes/my-vault"]);
 		// Prose starts with the first sentence from the spec's good example.
 		// The blank line between the ## Prose heading and the body text is
 		// preserved — the implementation strips only the single newline immediately
@@ -100,12 +83,12 @@ describe("3a — happy path", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3b. Missing file
+// 5d. 3b. Missing file
 // ---------------------------------------------------------------------------
 
 describe("3b — missing file", () => {
-	it("returns missing when no .aide/brain.aide exists — never throws", async () => {
-		// tempDir exists but no .aide/brain.aide inside it
+	it("returns missing when no .aide/config/brain.aide exists — never throws", async () => {
+		// tempDir exists but no .aide/config/brain.aide inside it
 		const result = await parseBrainAide(tempDir);
 
 		expect(result.kind).toBe("missing");
@@ -113,14 +96,14 @@ describe("3b — missing file", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3c. Malformed YAML
+// 5d. 3c. Malformed YAML
 // ---------------------------------------------------------------------------
 
 describe("3c — malformed YAML frontmatter", () => {
 	it("returns malformed-frontmatter with a non-empty reason for invalid YAML", async () => {
 		const badYaml = `---
-connector: obsidian
-rootPath: [unclosed bracket
+mcpServerConfig:
+  args: [unclosed bracket
 ---
 
 ## Prose
@@ -138,81 +121,47 @@ Some prose.
 });
 
 // ---------------------------------------------------------------------------
-// 3d. Missing required field (parameterized)
+// 5e. 3d. Missing required field (parameterized)
 // ---------------------------------------------------------------------------
 
 describe("3d — missing required field", () => {
 	function makeContentMissing(field: string): string {
-		// Build a valid canonical YAML block and then remove the specified field line.
-		// For nested fields like mcpServerConfig.command and tools.read / tools.search,
-		// we handle them explicitly below.
-		const validFrontmatter: Record<string, string> = {
-			connector: "obsidian",
-			rootPath: "D:/notes/my-vault",
-			entryFile: "CLAUDE.md",
-		};
-
 		let frontmatterLines: string[];
 
-		if (field === "mcpServerConfig.command") {
+		if (field === "name") {
+			// Include mcpServerConfig but omit name
+			frontmatterLines = [
+				"mcpServerConfig:",
+				"  command: npx",
+				'  args:',
+				'    - "@bitbonsai/mcpvault"',
+				'    - "D:/notes/my-vault"',
+			];
+		} else if (field === "mcpServerConfig.command") {
 			// Include mcpServerConfig but omit the command sub-key
 			frontmatterLines = [
-				`connector: ${validFrontmatter.connector}`,
-				`rootPath: ${validFrontmatter.rootPath}`,
-				`entryFile: ${validFrontmatter.entryFile}`,
+				"name: obsidian",
 				"mcpServerConfig:",
 				'  args:',
-				'    - "-y"',
-				'    - "obsidian-mcp"',
-				'    - "${rootPath}"',
-				"tools:",
-				"  read: mcp__brain__read_note",
-				"  search: mcp__brain__search_notes",
+				'    - "@bitbonsai/mcpvault"',
+				'    - "D:/notes/my-vault"',
 			];
-		} else if (field === "tools.read") {
+		} else if (field === "mcpServerConfig.args") {
+			// Include mcpServerConfig but omit the args sub-key
 			frontmatterLines = [
-				`connector: ${validFrontmatter.connector}`,
-				`rootPath: ${validFrontmatter.rootPath}`,
-				`entryFile: ${validFrontmatter.entryFile}`,
+				"name: obsidian",
 				"mcpServerConfig:",
 				"  command: npx",
-				'  args:',
-				'    - "-y"',
-				'    - "obsidian-mcp"',
-				'    - "${rootPath}"',
-				"tools:",
-				"  search: mcp__brain__search_notes",
-			];
-		} else if (field === "tools.search") {
-			frontmatterLines = [
-				`connector: ${validFrontmatter.connector}`,
-				`rootPath: ${validFrontmatter.rootPath}`,
-				`entryFile: ${validFrontmatter.entryFile}`,
-				"mcpServerConfig:",
-				"  command: npx",
-				'  args:',
-				'    - "-y"',
-				'    - "obsidian-mcp"',
-				'    - "${rootPath}"',
-				"tools:",
-				"  read: mcp__brain__read_note",
 			];
 		} else {
-			// Top-level field: omit it from the frontmatter
-			const remaining = Object.entries(validFrontmatter)
-				.filter(([k]) => k !== field)
-				.map(([k, v]) => `${k}: ${v}`);
+			// Fallback: full valid frontmatter (should not be reached by test cases)
 			frontmatterLines = [
-				...remaining,
+				"name: obsidian",
 				"mcpServerConfig:",
 				"  command: npx",
 				'  args:',
-				'    - "-y"',
-				'    - "obsidian-mcp"',
-				'    - "${rootPath}"',
-				"tools:",
-				"  read: mcp__brain__read_note",
-				"  search: mcp__brain__search_notes",
+				'    - "@bitbonsai/mcpvault"',
+				'    - "D:/notes/my-vault"',
 			];
 		}
 
@@ -220,11 +169,9 @@ describe("3d — missing required field", () => {
 	}
 
 	it.each([
-		"rootPath",
-		"entryFile",
+		"name",
 		"mcpServerConfig.command",
-		"tools.read",
-		"tools.search",
+		"mcpServerConfig.args",
 	])("missing %s → malformed-frontmatter with reason mentioning the field", async (field) => {
 		const content = makeContentMissing(field);
 		await writeBrainAide(tempDir, content);
@@ -239,24 +186,94 @@ describe("3d — missing required field", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3e. Missing prose body
+// 5f. 3d'. Deprecated-field rejection (parameterized)
+// ---------------------------------------------------------------------------
+
+describe("3d' — deprecated field rejection", () => {
+	// Each test case: [description, yaml-frontmatter-lines, expected-reason]
+	// Every fixture includes valid required fields so the deprecated-field
+	// check is the failing branch — proves rejection fires AFTER required-field
+	// validation passes.
+	const cases: Array<[description: string, extraLines: string[], expectedReason: string]> = [
+		[
+			"single deprecated field: connector",
+			["connector: obsidian"],
+			"deprecated fields: connector",
+		],
+		[
+			"single deprecated field: rootPath",
+			["rootPath: D:/notes/my-vault"],
+			"deprecated fields: rootPath",
+		],
+		[
+			"single deprecated field: entryFile",
+			["entryFile: CLAUDE.md"],
+			"deprecated fields: entryFile",
+		],
+		[
+			"single deprecated field: tools",
+			["tools:", "  read: mcp__brain__read_note", "  search: mcp__brain__search_notes"],
+			"deprecated fields: tools",
+		],
+		[
+			"multiple deprecated fields: rootPath + tools listed in deprecated-set order",
+			["rootPath: D:/notes/my-vault", "tools:", "  read: mcp__brain__read_note", "  search: mcp__brain__search_notes"],
+			"deprecated fields: rootPath, tools",
+		],
+		[
+			"multiple deprecated fields: connector + entryFile listed in deprecated-set order",
+			["connector: obsidian", "entryFile: CLAUDE.md"],
+			"deprecated fields: connector, entryFile",
+		],
+		[
+			"all four deprecated fields: reason lists all in set order",
+			[
+				"connector: obsidian",
+				"rootPath: D:/notes/my-vault",
+				"entryFile: CLAUDE.md",
+				"tools:",
+				"  read: mcp__brain__read_note",
+				"  search: mcp__brain__search_notes",
+			],
+			"deprecated fields: connector, rootPath, entryFile, tools",
+		],
+	];
+
+	it.each(cases)("%s", async (_description, extraLines, expectedReason) => {
+		const requiredLines = [
+			"name: obsidian",
+			"mcpServerConfig:",
+			"  command: npx",
+			'  args:',
+			'    - "@bitbonsai/mcpvault"',
+			'    - "D:/notes/my-vault"',
+		];
+		const frontmatter = [...requiredLines, ...extraLines].join("\n");
+		const content = `---\n${frontmatter}\n---\n\n## Prose\n\nSome prose body.\n`;
+
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("malformed-frontmatter");
+		if (result.kind !== "malformed-frontmatter") return;
+		expect(result.reason).toBe(expectedReason);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 5g. 3e. Missing prose body
 // ---------------------------------------------------------------------------
 
 describe("3e — missing prose body", () => {
 	it("returns malformed-body when valid frontmatter has no ## Prose heading", async () => {
 		const content = `---
-connector: obsidian
-rootPath: D:/notes/my-vault
-entryFile: CLAUDE.md
+name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - "@bitbonsai/mcpvault"
+    - "D:/notes/my-vault"
 ---
 
 This is the body but there is no Prose heading here.
@@ -272,30 +289,26 @@ This is the body but there is no Prose heading here.
 });
 
 // ---------------------------------------------------------------------------
-// 3f. Prose returned verbatim (no-substitution invariant)
+// 5g. 3f. Prose returned verbatim (no-substitution invariant)
 // ---------------------------------------------------------------------------
 
 describe("3f — prose returned verbatim", () => {
-	it("prose body containing literal ${rootPath} and other markdown passes through byte-identical", async () => {
-		const literalProseBody = `This is a prose body with a literal \${rootPath} placeholder.
+	it("prose body containing literal ${name} and ${rootPath} passes through byte-identical", async () => {
+		// ${rootPath} is deprecated as a frontmatter field but a user might write it
+		// in their prose to describe something else — it must pass through unchanged.
+		const literalProseBody = `This is a prose body with a literal \${name} placeholder.
 
 It also has **markdown** and a [link](https://example.com) and a wikilink [[note-name]].
 
-The \${entryFile} value is also here for good measure.
+The \${rootPath} value is also here for good measure.
 `;
 		const content = `---
-connector: obsidian
-rootPath: D:/notes/my-vault
-entryFile: CLAUDE.md
+name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - "@bitbonsai/mcpvault"
+    - "D:/notes/my-vault"
 ---
 
 ## Prose
@@ -307,9 +320,10 @@ ${literalProseBody}`;
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
-		// The prose must contain the literal ${rootPath} unchanged — no substitution
+		// The prose must contain the literal ${name} unchanged — no substitution
+		expect(result.prose).toContain("${name}");
+		// ${rootPath} in prose is not a deprecated frontmatter field — it is just prose text
 		expect(result.prose).toContain("${rootPath}");
-		expect(result.prose).toContain("${entryFile}");
 		expect(result.prose).toContain("**markdown**");
 		expect(result.prose).toContain("[[note-name]]");
 		// Full byte-identity check: the prose equals the literal body string
@@ -321,39 +335,33 @@ ${literalProseBody}`;
 });
 
 // ---------------------------------------------------------------------------
-// 3g. Connector is metadata, not dispatched on
+// 5g. 3g. Name is metadata, not dispatched on
 // ---------------------------------------------------------------------------
 
-describe("3g — connector is metadata, not dispatched on", () => {
-	function makeContentWithConnector(connector: string): string {
+describe("3g — name is metadata, not dispatched on", () => {
+	function makeContentWithName(name: string): string {
 		return `---
-connector: ${connector}
-rootPath: D:/notes/my-vault
-entryFile: CLAUDE.md
+name: ${name}
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - "@bitbonsai/mcpvault"
+    - "D:/notes/my-vault"
 ---
 
 ## Prose
 
-Prose body for ${connector} connector.
+Prose body for ${name} brain.
 `;
 	}
 
-	it("obsidian and notion connectors both parse identically — result.kind is ok for both", async () => {
-		const obsidianDir = await mkdtemp(join(tmpdir(), "aide-connector-obsidian-"));
-		const notionDir = await mkdtemp(join(tmpdir(), "aide-connector-notion-"));
+	it("obsidian and notion names both parse identically — result.kind is ok for both", async () => {
+		const obsidianDir = await mkdtemp(join(tmpdir(), "aide-name-obsidian-"));
+		const notionDir = await mkdtemp(join(tmpdir(), "aide-name-notion-"));
 
 		try {
-			await writeBrainAide(obsidianDir, makeContentWithConnector("obsidian"));
-			await writeBrainAide(notionDir, makeContentWithConnector("notion"));
+			await writeBrainAide(obsidianDir, makeContentWithName("obsidian"));
+			await writeBrainAide(notionDir, makeContentWithName("notion"));
 
 			const obsidianResult = await parseBrainAide(obsidianDir);
 			const notionResult = await parseBrainAide(notionDir);
@@ -363,20 +371,17 @@ Prose body for ${connector} connector.
 
 			if (obsidianResult.kind !== "ok" || notionResult.kind !== "ok") return;
 
-			// Both have the same shape — only connector value and prose differ
-			expect(obsidianResult.config.connector).toBe("obsidian");
-			expect(notionResult.config.connector).toBe("notion");
+			// Both have the same shape — only name value and prose differ
+			expect(obsidianResult.config.name).toBe("obsidian");
+			expect(notionResult.config.name).toBe("notion");
 
-			// All other fields are identical
-			expect(obsidianResult.config.rootPath).toBe(notionResult.config.rootPath);
-			expect(obsidianResult.config.entryFile).toBe(notionResult.config.entryFile);
+			// mcpServerConfig is identical — name did not influence it
 			expect(obsidianResult.config.mcpServerConfig).toEqual(notionResult.config.mcpServerConfig);
-			expect(obsidianResult.config.tools).toEqual(notionResult.config.tools);
 
-			// Both prose bodies pass through verbatim (no connector-based rewriting).
+			// Both prose bodies pass through verbatim (no name-based rewriting).
 			// The blank line between ## Prose and the body text is preserved in prose.
-			expect(obsidianResult.prose).toBe("\nProse body for obsidian connector.\n");
-			expect(notionResult.prose).toBe("\nProse body for notion connector.\n");
+			expect(obsidianResult.prose).toBe("\nProse body for obsidian brain.\n");
+			expect(notionResult.prose).toBe("\nProse body for notion brain.\n");
 		} finally {
 			await rm(obsidianDir, { recursive: true, force: true });
 			await rm(notionDir, { recursive: true, force: true });
@@ -385,14 +390,14 @@ Prose body for ${connector} connector.
 });
 
 // ---------------------------------------------------------------------------
-// 3h. interpolateArgs substitutes ${rootPath}
+// 5h. 3h. interpolateArgs — canonical config is a no-op
 // ---------------------------------------------------------------------------
 
-describe("3h — interpolateArgs substitutes ${rootPath}", () => {
-	it("replaces ${rootPath} with the literal rootPath value from config", () => {
+describe("3h — interpolateArgs canonical config is a no-op", () => {
+	it("canonical args have no placeholders — return is structurally equal to input args", () => {
 		const result = interpolateArgs(CANONICAL_CONFIG);
 
-		expect(result).toEqual(["-y", "obsidian-mcp", "D:/notes/my-vault"]);
+		expect(result).toEqual(["@bitbonsai/mcpvault", "D:/notes/my-vault"]);
 	});
 
 	it("does not mutate the original config.mcpServerConfig.args", () => {
@@ -402,46 +407,58 @@ describe("3h — interpolateArgs substitutes ${rootPath}", () => {
 
 		expect(CANONICAL_CONFIG.mcpServerConfig.args).toEqual(originalArgs);
 	});
+
+	it("advanced-user case: ${name} in args is substituted with config.name", () => {
+		const config: BrainAideConfig = {
+			name: "my-vault",
+			mcpServerConfig: {
+				command: "some-launcher",
+				args: ["some-launcher", "--profile", "${name}"],
+			},
+		};
+
+		const result = interpolateArgs(config);
+
+		expect(result).toEqual(["some-launcher", "--profile", "my-vault"]);
+	});
 });
 
 // ---------------------------------------------------------------------------
-// 3i. interpolateArgs is positional (string replacement, not arg replacement)
+// 5h. 3i. interpolateArgs is positional (string replacement, not arg replacement)
 // ---------------------------------------------------------------------------
 
 describe("3i — interpolateArgs is positional", () => {
-	it("substitutes ${rootPath} embedded within a larger string, not the whole arg", () => {
+	it("substitutes ${name} embedded within a larger string, not the whole arg", () => {
 		const config: BrainAideConfig = {
-			...CANONICAL_CONFIG,
-			rootPath: "D:/notes/my-vault",
+			name: "my-brain",
 			mcpServerConfig: {
 				...CANONICAL_CONFIG.mcpServerConfig,
-				args: ["some-prefix-${rootPath}-suffix"],
+				args: ["prefix-${name}-suffix"],
 			},
 		};
 
 		const result = interpolateArgs(config);
 
-		expect(result).toEqual(["some-prefix-D:/notes/my-vault-suffix"]);
+		expect(result).toEqual(["prefix-my-brain-suffix"]);
 	});
 
-	it("substitutes multiple occurrences of ${rootPath} within a single arg", () => {
+	it("substitutes multiple occurrences of ${name} within a single arg", () => {
 		const config: BrainAideConfig = {
-			...CANONICAL_CONFIG,
-			rootPath: "D:/notes/my-vault",
+			name: "my-brain",
 			mcpServerConfig: {
 				...CANONICAL_CONFIG.mcpServerConfig,
-				args: ["${rootPath}:${rootPath}"],
+				args: ["${name}:${name}"],
 			},
 		};
 
 		const result = interpolateArgs(config);
 
-		expect(result).toEqual(["D:/notes/my-vault:D:/notes/my-vault"]);
+		expect(result).toEqual(["my-brain:my-brain"]);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 3j. interpolateArgs does not touch the prose body
+// 5h. 3j. interpolateArgs does not touch the prose body
 // ---------------------------------------------------------------------------
 
 describe("3j — interpolateArgs does not touch the prose body", () => {
@@ -466,7 +483,7 @@ describe("3j — interpolateArgs does not touch the prose body", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3k. parseBrainAideFromString parses bytes identically to parseBrainAide
+// 5i. 3k. parseBrainAideFromString parses bytes identically to parseBrainAide
 // ---------------------------------------------------------------------------
 
 describe("3k — parseBrainAideFromString parses bytes identically to parseBrainAide from disk", () => {
@@ -488,7 +505,8 @@ describe("3k — parseBrainAideFromString parses bytes identically to parseBrain
 
 	it("malformed-frontmatter — invalid YAML parses identically via both paths", async () => {
 		const badYaml = `---
-rootPath: [unclosed
+mcpServerConfig:
+  args: [unclosed
 ---
 
 ## Prose
@@ -507,18 +525,12 @@ Prose.
 
 	it("malformed-body — missing ## Prose heading parses identically via both paths", async () => {
 		const noProseContent = `---
-connector: obsidian
-rootPath: D:/notes/my-vault
-entryFile: CLAUDE.md
+name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - "@bitbonsai/mcpvault"
+    - "D:/notes/my-vault"
 ---
 
 Body with no Prose heading.

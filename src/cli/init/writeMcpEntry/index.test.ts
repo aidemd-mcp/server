@@ -68,7 +68,7 @@ describe("writeMcpEntry (init wrapper)", () => {
 	it("2b: vaultPath supplied + existing user-edited brain.aide — reads file, derives entry from user config", async () => {
 		// Scaffold a hand-edited brain.aide with a different vault path than the supplied one.
 		const userVaultPath = "/user/custom/vault";
-		const brainAideDir = join(tempDir, ".aide");
+		const brainAideDir = join(tempDir, ".aide", "config");
 		await mkdir(brainAideDir, { recursive: true });
 		const userContent = obsidianBrainAideTemplate(userVaultPath);
 		await writeFile(join(brainAideDir, "brain.aide"), userContent, "utf-8");
@@ -89,7 +89,7 @@ describe("writeMcpEntry (init wrapper)", () => {
 	});
 
 	it("2b: user-edited brain.aide with custom rootPath wins over template", async () => {
-		const brainAideDir = join(tempDir, ".aide");
+		const brainAideDir = join(tempDir, ".aide", "config");
 		await mkdir(brainAideDir, { recursive: true });
 		// Write template for /original/path
 		const original = obsidianBrainAideTemplate("/original/path");
@@ -273,5 +273,38 @@ describe("writeMcpEntry (init wrapper)", () => {
 		expect(written).toMatch(/^\{/);
 		expect(written.endsWith("\n")).toBe(true);
 		expect(written).toContain('  "mcpServers"');
+	});
+
+	// --- 8e. Regression: deprecated-field rejection flows through writeMcpEntry ---
+
+	it("8e: vaultPath supplied + .aide/config/brain.aide with deprecated connector field — throws naming the path and field", async () => {
+		// Pre-write a brain.aide that looks like a pre-migration install: it has the
+		// required fields present (so the parser reaches the deprecated-field check)
+		// but also carries the deprecated 'connector' field left from the old schema.
+		const brainAideDir = join(tempDir, ".aide", "config");
+		await mkdir(brainAideDir, { recursive: true });
+		const deprecatedContent = [
+			"---",
+			"name: 'obsidian'",
+			"connector: obsidian",
+			"mcpServerConfig:",
+			"  command: npx",
+			"  args:",
+			"    - '-y'",
+			"    - '@bitbonsai/mcpvault'",
+			"    - '/old/vault'",
+			"---",
+			"",
+			"## Prose",
+			"Brain.",
+		].join("\n");
+		await writeFile(join(brainAideDir, "brain.aide"), deprecatedContent, "utf-8");
+
+		// writeMcpEntry must throw via parseBrainAideFromString's malformed-frontmatter
+		// branch with a message naming .aide/config/brain.aide and the deprecated field.
+		await expect(writeMcpEntry(tempDir, "/my/vault")).rejects.toThrow(
+			".aide/config/brain.aide",
+		);
+		await expect(writeMcpEntry(tempDir, "/my/vault")).rejects.toThrow("connector");
 	});
 });

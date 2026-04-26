@@ -109,7 +109,7 @@ the missing `BrainAideConfig` fields. Run parseBrainAide's plan first.
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/agentic/command-modules`
 
-- [ ] Open `src/cli/sync/index.ts`. Replace every literal occurrence
+- [x] Open `src/cli/sync/index.ts`. Replace every literal occurrence
       of `` `.aide/brain.aide` `` (in stderr lines, the `--help` usage
       prose, and any inline comments) with `` `.aide/config/brain.aide` ``.
       The strings to update appear in:
@@ -138,7 +138,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/agentic/comman
       verbatim. No paraphrase, no wrapping that would obscure which
       stale fields the user must remove.
 
-- [ ] Confirm the `expectedEntry` derivation in `runSync` reads
+- [x] Confirm the `expectedEntry` derivation in `runSync` reads
       ONLY from `result.config.mcpServerConfig`:
 
       ```
@@ -156,18 +156,18 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/agentic/comman
       `interpolateArgs`); this step's job is to verify that and fix
       the moment if any leftover reference appears.
 
-- [ ] The shared `writeMcpEntry(cwd, entries)` call site is unchanged.
+- [x] The shared `writeMcpEntry(cwd, entries)` call site is unchanged.
       The entries map continues to set `brain: expectedEntry` and
       always include `obsidian: "delete"` (the helper treats
       "delete a key that isn't present" as a no-op). This is the
       load-bearing migration surface and stays exactly as today.
 
-- [ ] The malformed-JSON catch (the `try/catch` around `writeMcpEntry`
+- [x] The malformed-JSON catch (the `try/catch` around `writeMcpEntry`
       that translates the helper's invalid-JSON throw to an
       action-naming stderr line) is unchanged. The helper's error
       message has not moved.
 
-- [ ] Confirm `runSync`'s exit-code contract is preserved:
+- [x] Confirm `runSync`'s exit-code contract is preserved:
       - 0 on success (write OR no-change — "already in sync" is
         success).
       - 1 on operational failure (missing brain.aide,
@@ -185,7 +185,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/agentic/comman
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] Open `src/cli/sync/index.test.ts`. The current `VALID_BRAIN_AIDE`
+- [x] Open `src/cli/sync/index.test.ts`. The current `VALID_BRAIN_AIDE`
       fixture renders the legacy five-field schema (`connector`,
       `rootPath`, `entryFile`, `mcpServerConfig` with `obsidian-mcp`,
       `tools.read`/`tools.search`). The new fixture must collapse to
@@ -221,7 +221,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
       authored in their `brain.aide`, and the canonical default
       uses `@bitbonsai/mcpvault` directly.
 
-- [ ] Update the `writeBrainAide` helper's filesystem layout so it
+- [x] Update the `writeBrainAide` helper's filesystem layout so it
       writes to `.aide/config/brain.aide` instead of `.aide/brain.aide`:
 
       The helper currently does:
@@ -237,7 +237,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
       the parser reads from the new path, the test setup writes to
       the new path.
 
-- [ ] Update the malformed-fixture string literals in tests 3f
+- [x] Update the malformed-fixture string literals in tests 3f
       (malformed frontmatter) and 3g (missing prose body) to use the
       two-field schema as their starting point:
 
@@ -251,7 +251,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
       - 3g's `noProseBody` should also use the collapsed shape and
         omit only the `## Prose` heading. Same rationale.
 
-- [ ] Update test 3k (no prose interpolation) to use the collapsed
+- [x] Update test 3k (no prose interpolation) to use the collapsed
       schema. The prose body keeps its `${rootPath}` and `${entryFile}`
       literal characters — the test's load-bearing assertion is that
       the prose body is byte-unchanged after sync, which is unaffected
@@ -268,7 +268,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] Test 3j currently exercises `interpolateArgs` by writing a
+- [x] Test 3j currently exercises `interpolateArgs` by writing a
       brain.aide with a `${rootPath}` placeholder in args and asserting
       the literal `rootPath` value gets substituted into the
       `.mcp.json` brain entry. Under the collapsed schema, the default
@@ -291,7 +291,7 @@ Read: `coding-playbook/workflow/testing`
       was present. This locks in the spec's `outcomes.desired[1]`
       ("`interpolateArgs` is a no-op for the default scaffold").
 
-- [ ] (Optional, only if the test author wants explicit coverage of
+- [x] (Optional, only if the test author wants explicit coverage of
       the advanced-user opt-in surface): add a SEPARATE test that
       writes a brain.aide whose `mcpServerConfig.args` contains a
       `${name}` placeholder, and assert sync writes the literal
@@ -308,7 +308,7 @@ Read: `coding-playbook/workflow/testing`
 
 Read: `coding-playbook/workflow/testing`
 
-- [ ] The legacy `obsidian` key migration test (3c) is unchanged in
+- [x] The legacy `obsidian` key migration test (3c) is unchanged in
       intent — sync still removes `mcpServers.obsidian` when present,
       writes `mcpServers.brain` from the parsed `brain.aide`, and the
       `Removed legacy \`obsidian\` MCP key (migrated to \`brain\`)`
@@ -336,7 +336,7 @@ Read: `coding-playbook/workflow/testing`
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] 5a. Run the type-checker:
+- [x] 5a. Run the type-checker:
 
       ```
       npx tsc --noEmit
@@ -349,7 +349,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
       against `result.config.<deprecated>`, the offending reference
       is the bug — remove it.
 
-- [ ] 5b. Run the sync verb's tests:
+- [x] 5b. Run the sync verb's tests:
 
       ```
       npm test -- cli/sync
@@ -369,7 +369,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
         in its assertion. Either fix the runSync string OR update
         the test's substring.
 
-- [ ] 5c. (Defensive) Run the full project test suite to verify the
+- [x] 5c. (Defensive) Run the full project test suite to verify the
       sync-module changes haven't tripped a sibling consumer:
 
       ```

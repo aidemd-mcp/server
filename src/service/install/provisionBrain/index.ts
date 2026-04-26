@@ -113,8 +113,10 @@ These notes are **required reading** for every task, regardless of which section
  * Returns five `InitStep` items in order:
  *
  * 1. Brain config (category `"brain"`): `would-create` with the canonical Obsidian
- *    brain.aide bytes when absent; `exists` when present. Seed-semantic idempotency —
- *    never `would-overwrite` because the file is user-owned the moment it lands.
+ *    brain.aide bytes when absent; `exists` when present. Written to `.aide/config/brain.aide`.
+ *    Seed-semantic idempotency — never `would-overwrite` because the file is user-owned
+ *    the moment it lands. The directory-level rule applies to every future inhabitant of
+ *    `.aide/config/`: nothing under that directory may ever return `would-overwrite`.
  * 2. Vault scaffolding (category `"brain"`): `exists` if vault is already populated,
  *    `would-create` with the directories list as JSON content.
  * 3. Playbook hub (category `"brain"`): `exists` when the file is present at its
@@ -134,7 +136,7 @@ These notes are **required reading** for every task, regardless of which section
  *
  * No step writes to disk — this helper is a planner only.
  *
- * @param projectRoot - Host project root (where `.aide/brain.aide` lives).
+ * @param projectRoot - Host project root (where `.aide/config/brain.aide` lives).
  * @param brainPath - Resolved vault directory path.
  * @param mcpConfigPath - Absolute path to the host's `.mcp.json`.
  */
@@ -145,6 +147,9 @@ export default async function provisionBrain(
 ): Promise<InitStep[]> {
 	// Step 1: Plan the brain.aide config file. This step runs first so that steps
 	// downstream (especially the MCP step) can derive their prescription from it.
+	// This step writes under .aide/config/, which the install layer treats as user-owned
+	// the moment any file lands inside it — neither this step nor any future step that
+	// touches .aide/config/ may return would-overwrite.
 	const brainAideStep = await buildBrainAideStep(projectRoot, brainPath);
 
 	// Steps 2–4: Vault scaffolding, playbook hub, and vault CLAUDE.md.
@@ -164,12 +169,15 @@ export default async function provisionBrain(
 /**
  * Build the brain.aide config file planning step.
  *
- * Presence-only (seed-semantic) idempotency — if the file exists at `.aide/brain.aide`
- * within the host project root, the step is `exists`. The file is user-owned the
- * moment it lands on disk; provisionBrain never returns `would-overwrite` for it.
+ * Presence-only (seed-semantic) idempotency — if the file exists at `.aide/config/brain.aide`
+ * within the host project root, the step is `exists`. The file lives under `.aide/config/`,
+ * the host's user-owned configuration directory established by the root spec. The
+ * seed-semantic invariant (never `would-overwrite`) applies to every path under `.aide/config/`,
+ * not just brain.aide — the directory boundary is the ownership signal, not a per-file
+ * allowlist. provisionBrain never returns `would-overwrite` for any file under `.aide/config/`.
  */
 async function buildBrainAideStep(projectRoot: string, brainPath: string): Promise<InitStep> {
-	const filePath = join(projectRoot, ".aide", "brain.aide");
+	const filePath = join(projectRoot, ".aide", "config", "brain.aide");
 
 	if (await exists(filePath)) {
 		return {

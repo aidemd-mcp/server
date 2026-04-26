@@ -5,27 +5,22 @@ import { tmpdir } from "node:os";
 import { runSync } from "./index.js";
 
 // ---------------------------------------------------------------------------
-// Shared fixture: a hand-crafted brain.aide with a known rootPath.
+// Shared fixture: a hand-crafted brain.aide using the two-field schema.
 // Using a literal fixture (not obsidianBrainAideTemplate) keeps tests
 // platform-independent — the template emits platform-specific command/args.
-// The rootPath used here is a stable test sentinel.
+// The vault path used here is a stable test sentinel embedded inline in args.
+// YAML args scalars use single quotes to avoid backslash-escape on Windows paths.
 // ---------------------------------------------------------------------------
 
-const TEST_ROOT_PATH = "/test/vault";
+const TEST_VAULT_PATH = "/test/vault";
 
 const VALID_BRAIN_AIDE = `---
-connector: obsidian
-rootPath: ${TEST_ROOT_PATH}
-entryFile: CLAUDE.md
+name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - '@bitbonsai/mcpvault'
+    - '${TEST_VAULT_PATH}'
 ---
 
 ## Prose
@@ -33,10 +28,11 @@ tools:
 Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
 `;
 
-// The expected interpolated entry derived from VALID_BRAIN_AIDE.
+// The expected entry derived from VALID_BRAIN_AIDE — args are byte-for-byte
+// from mcpServerConfig; no interpolation occurs on the default scaffold.
 const EXPECTED_BRAIN_ENTRY = {
 	command: "npx",
-	args: ["-y", "obsidian-mcp", TEST_ROOT_PATH],
+	args: ["@bitbonsai/mcpvault", TEST_VAULT_PATH],
 };
 
 // ---------------------------------------------------------------------------
@@ -44,8 +40,8 @@ const EXPECTED_BRAIN_ENTRY = {
 // ---------------------------------------------------------------------------
 
 async function writeBrainAide(root: string, content: string): Promise<void> {
-	await mkdir(join(root, ".aide"), { recursive: true });
-	await writeFile(join(root, ".aide", "brain.aide"), content, "utf-8");
+	await mkdir(join(root, ".aide", "config"), { recursive: true });
+	await writeFile(join(root, ".aide", "config", "brain.aide"), content, "utf-8");
 }
 
 async function writeMcpJson(root: string, content: object): Promise<void> {
@@ -129,6 +125,7 @@ describe("3b — idempotent re-run", () => {
 		// Bytes must be unchanged.
 		expect(after).toBe(before);
 
+		expect(lines.join("\n")).toContain("Read .aide/config/brain.aide");
 		expect(lines.join("\n")).toContain("already in sync");
 	});
 });
@@ -231,8 +228,12 @@ describe("3e — missing brain.aide", () => {
 describe("3f — malformed brain.aide frontmatter", () => {
 	it("exits 1, stderr says 'Fix the YAML and re-run sync', .mcp.json unchanged", async () => {
 		const badFrontmatter = `---
-connector: obsidian
-rootPath: [unclosed bracket
+name: obsidian
+mcpServerConfig:
+  command: npx
+  args:
+    - '@bitbonsai/mcpvault'
+    - [unclosed bracket
 ---
 
 ## Prose
@@ -261,18 +262,12 @@ Some prose.
 describe("3g — missing prose body", () => {
 	it("exits 1, stderr mentions '## Prose', .mcp.json unchanged", async () => {
 		const noProseBody = `---
-connector: obsidian
-rootPath: ${TEST_ROOT_PATH}
-entryFile: CLAUDE.md
+name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - '@bitbonsai/mcpvault'
+    - '${TEST_VAULT_PATH}'
 ---
 
 This body has no Prose heading at all.
@@ -339,32 +334,27 @@ describe("3i — cold start (no .mcp.json)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3j. Args interpolation
+// 3j. Default-scaffold args pass through verbatim (interpolateArgs is a no-op)
 // ---------------------------------------------------------------------------
 
-describe("3j — args interpolation", () => {
-	it("substitutes the literal rootPath value into ${rootPath} position in args", async () => {
-		const customRootPath = "/custom/brain/vault";
-		const customBrainAide = `---
-connector: obsidian
-rootPath: ${customRootPath}
-entryFile: CLAUDE.md
+describe("3j — default-scaffold no-op interpolation", () => {
+	it("default-scaffold args pass through verbatim (interpolateArgs is a no-op)", async () => {
+		// Setup: canonical two-field shape with no ${...} placeholders anywhere in args.
+		// Single-quoted YAML scalars avoid Windows path backslash-escape issues.
+		const noPlaceholderBrainAide = `---
+name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - '@bitbonsai/mcpvault'
+    - '/literal/inline/path'
 ---
 
 ## Prose
 
 Prose body.
 `;
-		await writeBrainAide(tempDir, customBrainAide);
+		await writeBrainAide(tempDir, noPlaceholderBrainAide);
 
 		const { write, writeErr } = makeCapture();
 		const code = await runSync(tempDir, write, writeErr);
@@ -372,9 +362,45 @@ Prose body.
 		expect(code).toBe(0);
 
 		const written = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8"));
-		// The literal rootPath value must appear in the args array, not the placeholder.
-		expect(written.mcpServers.brain.args).toContain(customRootPath);
-		expect(written.mcpServers.brain.args).not.toContain("${rootPath}");
+		// Args must be byte-for-byte from mcpServerConfig — no substitution occurred
+		// because no placeholder was present. Locks in outcomes.desired[1].
+		expect(written.mcpServers.brain.args).toEqual([
+			"@bitbonsai/mcpvault",
+			"/literal/inline/path",
+		]);
+	});
+
+	it("advanced-user `${name}` placeholder resolves at sync time", async () => {
+		// Setup: brain.aide with ${name} placeholder in args. Single-quoted YAML
+		// scalars preserve the literal $ character on all platforms.
+		const withNamePlaceholder = `---
+name: my-vault
+mcpServerConfig:
+  command: npx
+  args:
+    - 'some-launcher'
+    - '--profile'
+    - '\${name}'
+---
+
+## Prose
+
+Prose body.
+`;
+		await writeBrainAide(tempDir, withNamePlaceholder);
+
+		const { write, writeErr } = makeCapture();
+		const code = await runSync(tempDir, write, writeErr);
+
+		expect(code).toBe(0);
+
+		const written = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8"));
+		// The literal name value must be substituted into the placeholder slot.
+		expect(written.mcpServers.brain.args).toEqual([
+			"some-launcher",
+			"--profile",
+			"my-vault",
+		]);
 	});
 });
 
@@ -385,18 +411,12 @@ Prose body.
 describe("3k — no prose interpolation", () => {
 	it("brain.aide is byte-unchanged after sync; only .mcp.json is mutated", async () => {
 		const proseWithPlaceholder = `---
-connector: obsidian
-rootPath: ${TEST_ROOT_PATH}
-entryFile: CLAUDE.md
+name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "-y"
-    - "obsidian-mcp"
-    - "\${rootPath}"
-tools:
-  read: mcp__brain__read_note
-  search: mcp__brain__search_notes
+    - '@bitbonsai/mcpvault'
+    - '${TEST_VAULT_PATH}'
 ---
 
 ## Prose
@@ -406,7 +426,7 @@ These should pass through verbatim — sync only interpolates mcpServerConfig.ar
 `;
 		await writeBrainAide(tempDir, proseWithPlaceholder);
 
-		const brainAidePath = join(tempDir, ".aide", "brain.aide");
+		const brainAidePath = join(tempDir, ".aide", "config", "brain.aide");
 		const brainBefore = await readFile(brainAidePath, "utf-8");
 
 		const { write, writeErr } = makeCapture();
@@ -422,8 +442,8 @@ These should pass through verbatim — sync only interpolates mcpServerConfig.ar
 		expect(brainAfter).toContain("${rootPath}");
 		expect(brainAfter).toContain("${entryFile}");
 
-		// .mcp.json was created and has the interpolated entry.
+		// .mcp.json was created and has the correct entry — args pass through verbatim.
 		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8"));
-		expect(mcp.mcpServers.brain.args).toContain(TEST_ROOT_PATH);
+		expect(mcp.mcpServers.brain).toEqual(EXPECTED_BRAIN_ENTRY);
 	});
 });
