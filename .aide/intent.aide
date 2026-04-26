@@ -1,8 +1,7 @@
 ---
 scope: .
-status: aligned
 description: >
-  Canonical home of the AIDE methodology and the MCP server that delivers it — single source of truth for every downstream host project.
+  Canonical home of the AIDE methodology and the MCP server that delivers it — single source of truth for every downstream host project, with brain configuration owned by the user via a single editable file rather than by code-level backend registries.
 intent: >
   This repository is the canonical home of the AIDE methodology — Autonomous
   Intent-Driven Engineering, with a deliberate second reading as AI Domain
@@ -14,9 +13,14 @@ intent: >
   Success is an agent in a brand-new host project receiving the full
   methodology via tooling alone, then working intent-first — describing what
   it wants in cascading layers of abstraction and letting the agent turn
-  those layers into code. Full autonomy through intent-driven development,
-  with AI domain experts filling the expertise gap, is the north star every
-  other decision in this repo must serve.
+  those layers into code. The brain layer — the external knowledge store
+  the methodology routes agents through for cross-project knowledge — is
+  configured per host project by a single user-editable file the host owns
+  and edits directly, not by a registry of connector identities baked into
+  the server's code. Full autonomy through intent-driven development, with
+  AI domain experts filling the expertise gap and brain wiring under direct
+  user control, is the north star every other decision in this repo must
+  serve.
 outcomes:
   desired:
     - >-
@@ -54,6 +58,138 @@ outcomes:
       every spec. Cascading intent at every level, so a contributor can
       write a new submodule spec by inheritance without re-deriving the
       rules.
+    - >-
+      Brain configuration in every host project lives in a single
+      user-editable file at the host's `.aide/config/brain.aide` — the
+      canonical and only source of truth for the host's brain layer.
+      Its frontmatter declares exactly two things: a human-readable
+      `name` for the wired brain (the user and the agent read it as a
+      label; the package never branches on it) and a `mcpServerConfig`
+      object naming the launcher command and args (consumed by sync,
+      written into `.mcp.json`). Every other agent-facing concern —
+      which MCP tool to call for reads, searches, writes, navigation;
+      where to start; how to follow links — lives in the hand-written
+      `## Prose` body. The default scaffolded `brain.aide` makes no use
+      of substitution: `mcpServerConfig.args` carries the path inline,
+      byte-for-byte under user ownership. The parser still supports
+      `${...}` interpolation of frontmatter fields inside
+      `mcpServerConfig.args` for advanced users who want to DRY a value
+      across positions, but that surface is not exercised by the default
+      scaffold. The prose body is hand-written verbatim per backend — no
+      templating, no rendering, no agent-facing substitution. Adding,
+      replacing, or retargeting a brain is a host-side edit to one file
+      followed by a sync, never a code change to this package.
+    - >-
+      `brain.aide` is a documented AIDE file type sitting alongside
+      `intent.aide`, `plan.aide`, `todo.aide`, and `research.aide` in
+      the canonical methodology — with its own dedicated methodology doc
+      under `.aide/docs/` describing its schema, lifecycle, and the
+      explicit divergence that it is a config file, not an intent spec
+      (no `scope`, no `outcomes`, its frontmatter is a typed config
+      object and its body is hand-written agent-facing prose). The
+      methodology doc ships from this repo to every host project the
+      same way every other canonical doc does.
+    - >-
+      The MCP server never dispatches on connector identity. `aide_brain`
+      reads the host's `brain.aide` and returns its prose body verbatim
+      alongside a status — no server-side substitution at the prose
+      layer, no rendering pass, no template engine. The response shape
+      carries status and instructions only — no `backend` field, no
+      connector label, no enum the server interprets. What brain is
+      wired is information for the user and the agent reading the
+      literal prose, not for the server's control flow. Different
+      connectors ship structurally different prose; sharing prose across
+      connectors via templating would force a uniformity their actual
+      instructions do not have.
+    - >-
+      `aide_init` ships a ready-to-use brain out of the box: it scaffolds
+      `.aide/config/brain.aide` pre-filled with a canonical Obsidian
+      configuration that launches via `@bitbonsai/mcpvault`, so a host
+      running the standard install has a working brain UX the moment
+      init finishes — no extra step, no regression in default-install
+      ergonomics. Users who want a different brain edit one file and
+      run sync.
+    - >-
+      `.aide/config/` is the canonical home of user-owned configuration
+      in every host project. Files inside are scaffolded once at
+      `aide_init` if absent, then belong to the user forever — neither
+      `aide_init` nor `aide_upgrade` overwrites, patches, or migrates
+      anything under `.aide/config/` on subsequent runs. Files outside
+      `.aide/config/` (the methodology doc hub at `.aide/docs/`,
+      pipeline command templates, agent definitions, skills, every
+      other artifact the package ships) are package-owned and
+      re-installed on every init/upgrade. The boundary is the directory
+      path itself — install/upgrade tooling reads the path as the
+      ownership signal, with no per-file allowlist. `brain.aide` is the
+      current inhabitant; the convention is forward-compatible with
+      future user-owned config files.
+    - >-
+      `brain.aide` carries no `rootPath` field — the brain's location
+      lives exactly once, inline in `mcpServerConfig.args`. The package
+      never derives a logical root from args, never stats a path to
+      validate it, never introspects args to infer connector identity.
+      Path validation is the launcher's job at MCP server startup; the
+      package does not second-guess it. Agents call MCP tools with
+      vault-relative paths and trust the server's responses. Boot
+      reporter brain status states are reduced to `ok`, `no-brain-aide`,
+      `no-mcp-entry`, and `mcp-drift` — the prior `invalid-path` state
+      goes away with `rootPath`.
+    - >-
+      `brain.aide`'s frontmatter contains exactly two top-level fields:
+      `name` (string, the human-readable label for the wired brain) and
+      `mcpServerConfig` (object with `command` and `args`, consumed by
+      sync to write the `.mcp.json` brain entry). No `connector`, no
+      `rootPath`, no `entryFile`, no `tools` — the schema is the
+      minimum that still has real consumers. `name` is a label; the
+      package never branches on it. Different brains may share names
+      without affecting code behavior. The label exists for the human
+      reading the file and for the agent narrating, in conversation
+      with the user, which brain it is connected to.
+      `mcpServerConfig.command` and `mcpServerConfig.args` mirror the
+      shape `.mcp.json` expects under `mcpServers["brain"]` so the sync
+      verb can write them through unchanged; the args list carries the
+      launcher invocation and the path or identifier inline.
+    - >-
+      The brain's interface contract is the prose body, not a
+      frontmatter declaration. There is no frontmatter field declaring
+      expected MCP tool names, expected operations (read, search, write,
+      list), or expected entry-point paths — the schema does not
+      enumerate any of those. The agent reads the prose verbatim, calls
+      whatever MCP tools the prose names, and surfaces failures
+      (missing tool, wrong shape, unwired backend) to the user at the
+      first call. Failure is fast, specific, and unmistakable: a user
+      whose MCP session does not expose what their prose names finds
+      out immediately, not after passing a parser check that lied.
+      Placing the binding cost in one place — the prose body — instead
+      of forcing the user to keep frontmatter declarations and prose
+      in sync is the whole point. The schema's minimum justifies its
+      maximum: every frontmatter field must name a real runtime
+      consumer (sync writes `mcpServerConfig` into `.mcp.json`; the
+      user and agent read `name` as a label). A frontmatter field with
+      no code path that consumes its value is validation theater and
+      is rejected.
+    - >-
+      `brain.aide` and the host's `.mcp.json` brain entry stay in sync
+      through one explicit, user-driven action — `npx aidemd-mcp sync` —
+      that reads `brain.aide` and writes the corresponding `.mcp.json`
+      brain entry. Sync is idempotent. The MCP server never silently
+      rewrites `.mcp.json`; mutation of the host's MCP wiring is always
+      a deliberate user action with a visible command boundary.
+    - >-
+      Drift between `brain.aide` and `.mcp.json` is a hard halt for the
+      pipeline. The boot reporter detects drift and surfaces it as the
+      `mcp-drift` brain status state, which the orchestrator treats the
+      same way it treats a missing MCP entry — the pipeline does not
+      proceed until the user runs sync. The brain status state set is
+      `ok`, `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` — covering
+      the healthy case, the absence of `brain.aide`, the absence of the
+      `.mcp.json` brain entry, and the drift case respectively.
+    - >-
+      The in-code backend registry — matchers, drivers, identity inference
+      — is fully retired. There is no module in this package whose job is
+      to enumerate connectors, infer connector identity from MCP entries,
+      or dispatch behavior on a connector enum. Adding a new brain is a
+      user-side edit, never a code-level extension to this package.
   undesired:
     - >-
       A rule, convention, or doctrine that lives anywhere other than the
@@ -81,6 +217,83 @@ outcomes:
       parent so narrow that its children have nothing to inherit, a helper
       with a `.aide` file, an orchestrator without one. These are
       regressions even when they add features.
+    - >-
+      Any code path in this package that branches on connector identity —
+      a switch on `connector`, a registry lookup keyed by name, a matcher
+      that maps an MCP entry to a "known backend" so dispatch can pick a
+      driver. The server reads `brain.aide` and returns its prose body
+      verbatim; it does not know nor care what brand of brain is wired.
+    - >-
+      A `brain.aide` whose schema borrows intent-spec frontmatter
+      conventions — a `scope` field, an `intent` paragraph, an `outcomes`
+      block, a `status` lifecycle field. `brain.aide` is a config file,
+      not an intent spec; conflating the two erodes the distinction
+      between intent contracts and runtime configuration and confuses
+      every downstream agent that has to decide which rules apply.
+    - >-
+      The MCP server silently rewriting the host's `.mcp.json` to "fix"
+      drift, "auto-sync" on boot, or repair a missing brain entry. Every
+      mutation of the host's MCP wiring must be an explicit user action
+      run through the sync verb; auto-repair shifts a load-bearing
+      contract surface out from under the user.
+    - >-
+      `aide_init` or `aide_upgrade` overwriting, patching, migrating, or
+      otherwise mutating any file under `.aide/config/` on a subsequent
+      run. Files in that directory are user-owned the moment they are
+      scaffolded; any code path that touches them after their first
+      write — even to "fix" a stale template, land newer defaults, or
+      tidy formatting — shifts a load-bearing user surface out from
+      under the user. Same class of failure as the MCP server silently
+      rewriting `.mcp.json`. New defaults reach existing hosts only
+      through the sync verb or a deliberate user edit, never through
+      the install or upgrade path.
+    - >-
+      Any code path that introspects `mcpServerConfig.args` to extract
+      a vault path, infer connector identity, or stat a derived path.
+      Path validation is the launcher's job at startup; the package
+      does not second-guess it. Reintroducing a `rootPath` field, an
+      `invalid-path` boot state, or any per-connector path validation
+      is the same regression in different clothing — the brain
+      refactor's no-connector-branching invariant must hold even
+      against helpers that look like generic plumbing.
+    - >-
+      Any frontmatter field added to `brain.aide` whose only consumer
+      is the parser's own validation — `tools.*` declaring expected
+      MCP tool names the runtime never actually checks; `entryFile`
+      naming a path no code reads; `connector` declaring a backend
+      identifier the server is forbidden from branching on; `rootPath`
+      shadowing a value already inline in args. This is validation
+      theater: a field that exists to nag the user into filling it in,
+      with no code path that consumes the value once filled. The
+      schema must justify each field by naming a real runtime consumer
+      (sync writes `mcpServerConfig`; the user and agent read `name`
+      as a label). Anything else belongs in the prose body where the
+      agent actually reads it, or nowhere at all.
+    - >-
+      Connector-specific prose hardcoded into the package — Obsidian
+      launcher snippets baked into `aide_brain`'s response, Notion-shaped
+      examples compiled into the rendered output, vault-path conventions
+      assumed in the boot reporter. The only place connector-specific
+      content lives is inside `brain.aide` itself, where the user owns
+      and edits it.
+    - >-
+      Server-side substitution applied to the prose body — placeholder
+      rendering, template engines, variable interpolation, anything that
+      mutates the prose between disk and `aide_brain`'s response. The
+      prose body is hand-written per connector and ships verbatim;
+      introducing a substitution pass conflates the install-time
+      interpolation surface (`mcpServerConfig.args`) with the
+      agent-facing surface and forces every prose author to think about
+      which strings will be rewritten. Substitution lives only in
+      `mcpServerConfig.args` (install-time), never in the prose body
+      (agent-time).
+    - >-
+      Boot reporting that reduces the post-refactor brain layer to a
+      single binary state — wired or not. Without explicit states for
+      "no `brain.aide`" and "drift between `brain.aide` and `.mcp.json`,"
+      the pipeline cannot tell the user what to do to recover, and the
+      orchestrator cannot enforce the hard halt the sync contract
+      depends on.
 ---
 
 ## Context
@@ -101,6 +314,20 @@ remembering anything across sessions or the user editing any file by hand.
 
 This repo's job is to author the methodology once, hold it as the single
 source of truth, and ship it through those two channels. Nothing else.
+
+The brain layer — the external knowledge store the methodology routes
+agents through for durable, cross-project knowledge — used to be wired
+into this package by code. The server enumerated connectors, inferred
+which one a host had wired by sniffing the shape of an MCP entry, and
+returned connector-specific prose composed in the package's own source.
+That contradicted the portability commitment the methodology itself
+makes: every host gets to run AIDE the same way, against whatever
+knowledge store fits its situation, without this package having to be
+extended every time a new store appears. The refactor moves brain
+configuration out of the package's code and into a single user-editable
+file the host owns. The package no longer has an opinion about which
+brain a host runs against; it has an opinion about how the host
+declares it.
 
 ## Strategy
 
@@ -150,6 +377,44 @@ repo is deleted or archived from the brain on the same commit. Drift
 between two copies of a canonical doc is the worst kind of drift,
 because it silently propagates to every host project on its next init
 and no one notices which copy is authoritative.
+
+**Brain configuration is user-owned, not code-owned.** The architectural
+boundary is sharp: the server reads the host's `brain.aide`, returns
+its prose body verbatim, and never branches on connector identity. There
+is no module in this package whose job is to enumerate brains, infer
+which one a host has wired, or dispatch behavior on a connector enum —
+the in-code backend registry is retired entirely. The package ships
+zero connector-specific code paths. What replaces the registry is a
+single file in the host's own repo: a typed config frontmatter the
+host edits, and a hand-written prose body the host edits. Adding a new
+brain is never a code change to this package; it is a host-side edit
+plus a sync. The default scaffolded `brain.aide` makes no use of
+substitution — `mcpServerConfig.args` carries the path inline,
+byte-for-byte under user ownership, and the package never derives a
+logical root from args, never stats a path to validate it, and never
+introspects args to infer connector identity. The parser still
+supports `${...}` interpolation of frontmatter fields inside
+`mcpServerConfig.args` for advanced users who want to DRY a value
+across positions; that surface remains for them, but it is not
+exercised by the default scaffold and the `.mcp.json` writer applies
+it at sync time only. The prose body is agent-time content that
+returns verbatim with no rendering pass. The decision to hand-write
+the prose per connector rather than template it is load-bearing:
+different connectors need structurally different agent instructions,
+not the same instructions with values swapped. One brain's prose may
+say "read the entry file and crawl wikilinks for relevant subnotes,"
+another's may say "search the indexed database for tagged pages and
+follow backlinks via the hosted API"; templating cannot bridge that
+shape difference without forcing both into a uniformity neither
+actually has. The mutation surface for `.mcp.json` is `npx aidemd-mcp
+sync` and only `npx aidemd-mcp sync` — the MCP server NEVER silently
+rewrites the host's MCP wiring, because every load-bearing contract
+surface needs a visible command boundary the user controls. Drift
+between `brain.aide` and `.mcp.json` is a hard halt: the boot reporter
+detects it, surfaces it as an explicit brain status state alongside
+the absence-of-`brain.aide` state and the preexisting healthy and
+broken-wiring states, and the orchestrator refuses to advance until
+the user runs sync.
 
 **Intent-driven development is the measurement.** Every change to this
 repo — a new doc, a new tool, a revised description, a refactored helper
@@ -205,6 +470,48 @@ between methodology phases and tools, client parity, idempotency,
 progressive disclosure in the code, cascading intent in the spec.
 A small number of reads, full contract, no source files opened.
 
+A host runs `aide_init` and the installer scaffolds
+`.aide/config/brain.aide` prefilled with the canonical Obsidian
+configuration. The frontmatter looks like this:
+
+```
+---
+name: obsidian
+mcpServerConfig:
+  command: npx
+  args:
+    - "@bitbonsai/mcpvault"
+    - "D:/notes/my-vault"
+---
+```
+
+The body is a hand-written `## Prose` section the agent reads verbatim.
+A few representative sentences from it: "Your brain is an Obsidian
+vault. Use `mcp__brain__read_note` to open files by their vault-relative
+path. Use `mcp__brain__search_notes` for keyword queries across every
+note in the vault. The vault's entry file is `CLAUDE.md` at the vault
+root — read that first; it carries wikilinks (`[[note-name]]`) you
+follow to deepen context. When a wikilink looks relevant to your task,
+read it (depth 1) and check that note's links too. Stay in scope; don't
+follow links into unrelated topics." The agent reads the prose verbatim
+and follows it. No code in this package interpreted any of those
+sentences; they are the user's instructions to the agent, owned by the
+user, edited by the user.
+
+The user makes a one-line edit to their `brain.aide` — they retarget
+the vault by changing the path string inline in `mcpServerConfig.args`
+(the second list entry, sitting next to `"@bitbonsai/mcpvault"`) and
+rerun `npx aidemd-mcp sync`. The sync verb reads the file's
+frontmatter, takes `mcpServerConfig` byte-for-byte as the user wrote
+it, and writes the resulting object into `.mcp.json` under the `brain`
+key. The transcript is short — sync reports that it read the config,
+names the brain key it wrote, and exits. The user runs
+`npx aidemd-mcp sync` again immediately to test idempotency: sync
+reads the same file, computes the same target object, sees
+`.mcp.json` already matches, and exits reporting no change. The host's
+MCP wiring was mutated exactly once, on a command the user typed, with
+the user looking at the terminal.
+
 ## Bad examples
 
 A doctrine change that lands as a one-liner in a host project's CLAUDE.md
@@ -258,3 +565,69 @@ AIDE…" — a verbatim restatement of this spec's intent paragraph. The
 child has earned nothing by copying; every token spent restating is a
 token the child could have used to say what only it can say. Cascading
 intent failed because the child didn't cascade.
+
+`aide_brain`'s implementation peeks at `mcpServers["brain"]` in the
+host's `.mcp.json`, inspects the entry's `command` and `args` shape,
+matches the args against a registered table of "known launchers,"
+identifies "this is Obsidian," and returns Obsidian-specific prose
+hardcoded in the package's source. The package now has to know about
+every brain a user might ever wire — the registry the refactor
+retired comes back through the side door. A user who wires an MCP
+server whose launcher shape doesn't match any registered matcher gets
+a "no brain wired" status from the boot reporter even though they
+clearly wired one; the package doesn't recognize their brain so it
+pretends it isn't there. The host's brain configuration is no longer
+user-owned; it is a vote the package gets to override. The whole
+point of the refactor was to remove this branching, and re-introducing
+it under any name — registry, matcher table, identity inferrer,
+"connector detection helper" — is the same regression in different
+clothing.
+
+The boot reporter runs at server startup, detects that `brain.aide`
+and `.mcp.json` disagree about the brain's launcher args, and
+"helpfully" auto-syncs by overwriting `.mcp.json`'s brain entry from
+the `brain.aide` source of truth. The user wakes up the next morning and
+finds their `.mcp.json` mutated by something that was not a command
+they typed. Worse: the prior afternoon they had hand-edited
+`.mcp.json` to point the brain MCP server at a temporary debug
+vault while reproducing a bug; that hand-edit is now silently gone,
+because the auto-sync treated `brain.aide` as authoritative without
+asking. The user no longer trusts that the file they just edited
+will still say what they wrote when they come back to it. The
+substitution surface they thought they controlled — `.mcp.json` is
+the host's file, mutated only on commands the user runs — has been
+shifted out from under them. Drift is a hard halt, not a self-repair
+event; the only thing the boot reporter is allowed to do with drift
+is name it and stop.
+
+`aide_brain` runs a substitution pass over the prose body before
+returning it — the same `${...}` interpolation of frontmatter values
+that lives in the `mcpServerConfig.args` install-time surface,
+applied to the agent-facing prose at response time. Two failure
+modes follow. First: a connector whose prose legitimately documents
+a templating language uses literal `${...}` characters in the body —
+say, the prose explains that the user's knowledge store lets them
+define page templates with `${variable}` placeholders. The substitution
+engine eats those characters and either errors or silently strips
+them, mangling the agent-facing instructions in a way that's
+invisible from this package's tests. Second, and more load-bearing:
+with substitution in place, every prose author has to track which
+strings will be rewritten before delivery, and the temptation to
+"just template the prose body too" lands. Two structurally different
+connectors get forced into a shared template that fits neither —
+Connector A's prose grows placeholders for concepts only Connector
+B's agents need, Connector B's prose grows placeholders for concepts
+only Connector A's agents need, both bodies bloat with conditionals
+that exist only to keep the shared template from breaking either
+side, and the user editing their own `brain.aide` now has to learn
+the package's template DSL before they can write instructions for
+their own brain. Hand-written prose per connector with zero
+agent-time substitution is the only shape that scales without
+forcing connectors to agree on a vocabulary they don't share.
+
+## References
+
+- `.aide/docs/aide-spec.md` -- canonical AIDE spec format conventions: required body sections, frontmatter rules, and the rule that strategy decisions trace to outcomes; informed the section integration and decision-form writing of the new strategy paragraph.
+- `.aide/docs/index.md` -- current canonical doc set inventory; informed the implicit commitment that a new `brain-aide.md` doc will join the doc hub when the methodology adds `brain.aide` as a sixth file type.
+
+(No external research references were drawn for the brain-layer additions — that design was specified in conversation between the user and the orchestrator. The existing body's strategy decisions about methodology delivery were established in prior spec rounds and stand on the canonical doc set itself.)

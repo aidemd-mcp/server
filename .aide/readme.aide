@@ -1,5 +1,6 @@
 ---
 scope: README.md
+status: aligned
 description: >
   Spec for the @aidemd-mcp/server README — the primary conversion surface
   on GitHub and npm that must turn visitors into installed users.

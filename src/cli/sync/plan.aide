@@ -1,0 +1,381 @@
+---
+intent: >
+  Ship the `npx aidemd-mcp sync` CLI verb. New module under `src/cli/`,
+  parallel to `src/cli/init/`. Reads `.aide/brain.aide` via parseBrainAide,
+  computes the expected MCP entry via `interpolateArgs`, and writes it
+  into `.mcp.json` under the fixed `brain` key while preserving every
+  other key in `mcpServers`. Idempotent. The only `.mcp.json` mutation
+  surface for the brain entry in the entire package.
+---
+
+## Project Structure
+
+```
+src/cli/sync/
+├── .aide                        ← [existing] intent spec (authored with this plan)
+├── plan.aide                    ← [this file]
+├── index.ts                     ← [new] CLI entry point
+│                                   exports:
+│                                     export async function runSync(
+│                                       cwd: string,
+│                                       write?: (line: string) => void,
+│                                     ): Promise<number>
+│                                   IIFE at file bottom dispatches argv:
+│                                     --help → usage prose, exit 2
+│                                     <no flags> → call runSync(process.cwd()), exit with returned code
+└── index.test.ts                ← [new] co-located tests covering all behaviors
+
+src/cli/shared/writeMcpEntry/    ← [new helper, EXTRACTED from src/cli/init/writeMcpEntry/]
+├── index.ts                     ← [extract] shared read-parse-merge-write
+│                                   exports:
+│                                     default async function writeMcpEntry(
+│                                       projectRoot: string,
+│                                       entries: Record<string, McpServerEntry | "delete">,
+│                                     ): Promise<{ written: string[]; deleted: string[]; unchanged: boolean }>
+│                                   The `entries` map declares which keys to set or delete:
+│                                     { brain: <entry> } sets brain
+│                                     { obsidian: "delete" } removes obsidian
+│                                     {} returns no-op
+│                                   Throws on malformed JSON. No platform branching here —
+│                                   that's the caller's concern.
+└── index.test.ts                ← [new]
+
+package.json                     ← [edit] add `bin` entry or update existing entry to
+                                   route `aidemd-mcp sync` to this module's compiled dist
+```
+
+This plan ships TWO new modules: the sync CLI itself, and a shared
+`writeMcpEntry` helper extracted from the cold-start CLI. Plan 8
+rewrites `src/cli/init/` to consume the same shared helper, so both
+verbs go through one mutation surface for `.mcp.json`.
+
+The shared helper sits at `src/cli/shared/` because both CLI verbs are
+its only consumers. Per the playbook's "shared submodules within a
+domain" rule: lift to `shared/` at the nearest common ancestor. Both
+`init/` and `sync/` are under `src/cli/`; `src/cli/shared/` is the
+right home. (Cross-domain consumers would push it to `src/lib/`; for
+now, neither service code nor the tools layer needs it.)
+
+## Prerequisites
+
+**Plan 2 (`src/service/parseBrainAide/plan.aide`)** must complete first:
+- This plan imports `parseBrainAide` and `interpolateArgs`.
+
+**Plan 6 (`src/service/install/provisionBrain/plan.aide`)** must
+complete first **only if** the legacy `obsidianMcpEntry()` is referenced
+by the cold-start CLI's `writeMcpEntry/`. Plan 6's step 4 documents
+that the cold-start CLI is rewritten by Plan 8 to drop the import. As
+long as Plan 8 lands AFTER this plan (it does — Plan 8 depends on this
+plan's shared helper), the dependency cycle resolves.
+
+**Plan 8 (`src/cli/init/plan.aide`)** does NOT need to complete first;
+it depends on this plan's shared helper. Order: (this plan) → Plan 8.
+
+## Plan
+
+### 1. Extract `writeMcpEntry` into `src/cli/shared/`
+
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/foundations/conventions`
+
+- [x] Create `src/cli/shared/writeMcpEntry/index.ts`. The job is to
+      take the existing logic in `src/cli/init/writeMcpEntry/index.ts`
+      and generalize it so both `init` and `sync` can call it.
+
+      **New signature:**
+      ```
+      default async function writeMcpEntry(
+        projectRoot: string,
+        entries: Record<string, McpServerEntry | "delete">,
+      ): Promise<{
+        written: string[];           // keys actually written this call
+        deleted: string[];           // keys actually removed this call
+        unchanged: boolean;          // true when no write happened (already in sync)
+      }>
+      ```
+
+      The `entries` map describes the desired mutations:
+      - `entries["brain"] = <entry>` → set or update `mcpServers.brain`.
+      - `entries["obsidian"] = "delete"` → remove `mcpServers.obsidian`
+        if present.
+      - The map can mix sets and deletes in one call.
+
+      Pipeline:
+      1. Compute `mcpPath = join(projectRoot, ".mcp.json")`.
+      2. Read the file. ENOENT → `existing = ""`. Other I/O errors
+         throw (caller catches).
+      3. If `existing` is non-empty, parse JSON. Parse failure throws
+         `Error(".mcp.json exists but contains invalid JSON. Fix the
+         syntax error and re-run.")` — same wording as today's helper.
+      4. Build `nextServers` by copying `existing.mcpServers ?? {}`.
+         For each key in `entries`:
+         - If value is `"delete"` and the key is present in
+           `nextServers`, mark for deletion.
+         - If value is an entry object, structurally compare against
+           `nextServers[key]`. If equal, skip. Otherwise mark for
+           write.
+      5. If no writes and no deletes → return `{ written: [], deleted:
+         [], unchanged: true }`.
+      6. Apply mutations: assign written entries, delete removed keys.
+      7. Write `merged = { ...existing, mcpServers: nextServers }` back
+         to disk with two-space indent + trailing newline (mirrors
+         existing helper's serialization).
+      8. Return `{ written, deleted, unchanged: false }`.
+
+      JSDoc names the load-bearing invariants: never throws on missing
+      `.mcp.json` (creates it); throws on malformed JSON; preserves
+      every key not named in `entries`; structural equality (not byte)
+      for change detection.
+
+      **Tests:** mirror the existing `writeMcpEntry/index.test.ts`
+      tests but adapted to the new generalized signature. Add cases:
+      - Setting one key when the file doesn't exist (creates the
+        file).
+      - Setting one key when the file has unrelated keys (preserves
+        them).
+      - Setting a key already present with the same entry (returns
+        `unchanged: true`, no file write).
+      - Deleting a key that's present.
+      - Deleting a key that's absent (no-op for that delete).
+      - Mixed set + delete in one call.
+      - Malformed JSON throws.
+
+      Once this helper exists, Plan 8 will rewrite `src/cli/init/
+      writeMcpEntry/index.ts` to be a thin wrapper that calls this
+      helper. **Do not delete the old file in this plan** — Plan 8
+      owns that.
+
+### 2. Implement the sync CLI
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/agentic/command-modules`
+
+- [x] Create `src/cli/sync/index.ts`. Two concerns: the testable
+      `runSync` function and the IIFE that wraps it for the `node`
+      entry point.
+
+      **`runSync(cwd: string, write?: (line: string) => void):
+      Promise<number>`**
+
+      `write` defaults to `(line) => process.stdout.write(line + "\n")`,
+      injected for tests.
+
+      Pipeline (Tier 3 inline-narrated):
+
+      1. Call `parseBrainAide(cwd)`. Branch on `result.kind`:
+         - `"missing"` → write to stderr "No `.aide/brain.aide` found.
+           Run `npx aidemd-mcp init` to scaffold it, or create the
+           file by hand." Return 1.
+         - `"malformed-frontmatter"` → write stderr "`.aide/brain.aide`
+           frontmatter is malformed: <result.reason>. Fix the YAML and
+           re-run sync." Return 1.
+         - `"malformed-body"` → write stderr "`.aide/brain.aide` is
+           missing the `## Prose` section: <result.reason>. Fix the
+           file and re-run sync." Return 1.
+         - `"ok"` → continue.
+      2. Compute the expected entry: `expectedEntry = { command:
+         result.config.mcpServerConfig.command, args:
+         interpolateArgs(result.config) }`.
+      3. Build the entries map. Always set `brain` to `expectedEntry`.
+         Add `obsidian: "delete"` unconditionally — the helper handles
+         "key absent" as no-op for the delete, so this is safe to
+         always include.
+      4. Call the shared `writeMcpEntry(cwd, entries)`. Catch the
+         malformed-JSON throw — translate to stderr "`.mcp.json` exists
+         but contains invalid JSON. Fix the syntax error and re-run
+         sync." and return 1.
+      5. On success, branch on the return shape:
+         - `unchanged: true` → write stdout `.mcp.json already in sync
+           — no changes.` Return 0.
+         - Otherwise → write stdout multiple lines:
+           - `Read .aide/brain.aide`
+           - `Wrote brain MCP entry into .mcp.json`
+           - `  command: ${expectedEntry.command}`
+           - `  args: [${expectedEntry.args.join(", ")}]`
+           - If `result.deleted.includes("obsidian")` → `Removed
+             legacy \`obsidian\` MCP key (migrated to \`brain\`)`
+           - `Done.`
+           Return 0.
+
+      JSDoc on `runSync` names the exit-code contract (0 on success
+      including no-change, 1 on file failures) and the
+      visible-command-boundary invariant (this is the only path that
+      mutates `.mcp.json`'s brain entry).
+
+      **IIFE at file bottom:**
+      ```
+      (async () => {
+        if (process.argv.includes("--help")) { … print usage … process.exit(2); }
+        try {
+          const code = await runSync(process.cwd());
+          process.exit(code);
+        } catch (err) {
+          process.stderr.write(`Error: ${...}\n`);
+          process.exit(1);
+        }
+      })();
+      ```
+
+      Usage prose for `--help`: one paragraph describing what sync does,
+      that it reads `.aide/brain.aide` and writes `.mcp.json`, and that
+      it accepts no flags. Mirror the cold-start CLI's `--help` style.
+
+### 3. Tests
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] Create `src/cli/sync/index.test.ts`. Use temp dirs (`mkdtemp`)
+      for filesystem isolation. Inject the `write` function so stdout
+      can be captured per test. Test `runSync` directly — do not
+      invoke the IIFE (which calls `process.exit`).
+
+      Test cases:
+
+      - 3a. **Happy path** — pre-write a valid `brain.aide` and a
+        `.mcp.json` with no `brain` key. Run `runSync`. Assert exit
+        code 0, `.mcp.json` now has `mcpServers.brain` matching the
+        expected entry, output mentions writing the brain entry.
+
+      - 3b. **Idempotent re-run** — same setup as 3a but `.mcp.json`
+        already has the matching `brain` entry. Run `runSync`. Assert
+        exit code 0, no file mutation (compare bytes before/after),
+        output says "already in sync".
+
+      - 3c. **Legacy obsidian migration** — pre-write `.mcp.json` with
+        `mcpServers.obsidian` and no `brain`. Run `runSync`. Assert
+        exit code 0, `.mcp.json` now has `mcpServers.brain` AND
+        `mcpServers.obsidian` is absent. Output mentions migration.
+
+      - 3d. **Preserve other keys** — pre-write `.mcp.json` with
+        `mcpServers = { aide: ..., custom-mcp: ... }`. Run `runSync`.
+        Assert exit code 0, the `aide` and `custom-mcp` entries are
+        byte-identical to before, plus `brain` is added.
+
+      - 3e. **Missing brain.aide** — temp root has no `.aide/brain.aide`.
+        Run `runSync`. Assert exit code 1, stderr line mentions
+        `aidemd-mcp init`. Assert `.mcp.json` is unchanged (or absent
+        if it was absent).
+
+      - 3f. **Malformed brain.aide frontmatter** — write a brain.aide
+        with broken YAML. Assert exit code 1, stderr line names "Fix
+        the YAML and re-run sync". `.mcp.json` unchanged.
+
+      - 3g. **Missing prose body** — assert exit code 1, stderr line
+        mentions `## Prose`. `.mcp.json` unchanged.
+
+      - 3h. **Malformed `.mcp.json`** — write a valid brain.aide and a
+        `.mcp.json` containing invalid JSON. Run `runSync`. Assert
+        exit code 1, stderr names "Fix the syntax error". `.mcp.json`
+        is byte-unchanged.
+
+      - 3i. **Cold start (no .mcp.json)** — write a valid brain.aide,
+        no `.mcp.json` exists. Run `runSync`. Assert exit code 0,
+        `.mcp.json` now exists with `{ mcpServers: { brain: <entry> } }`,
+        output reports the write.
+
+      - 3j. **Args interpolation** — pre-write a brain.aide with a
+        custom `rootPath`. Run `runSync`. Assert the `.mcp.json`'s
+        `brain.args` array has the literal `rootPath` value
+        substituted into the `${rootPath}` position. (Verifies
+        `interpolateArgs` is being called.)
+
+      - 3k. **No prose interpolation** — pre-write a brain.aide whose
+        prose body contains literal `${rootPath}` characters. Run
+        sync. Assert `.mcp.json` is the only file mutated; brain.aide
+        is byte-unchanged. (Verifies sync doesn't touch the prose
+        body.)
+
+### 4. Wire the verb into the binary entry point
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] Update `package.json` so `npx aidemd-mcp sync` invokes this
+      module's compiled output. Two paths possible depending on the
+      existing layout:
+
+      - 4a. **Sub-command dispatch.** If the existing
+        `package.json#bin` declares a single binary that routes on
+        `argv[2]`, add a case for `"sync"` that delegates to this
+        module.
+      - 4b. **Separate bin entry.** If the existing layout has one
+        bin per verb (the `init` flow uses `src/cli/init/index.ts` as
+        a direct shebang), add a sibling entry — e.g.
+        `"aidemd-mcp-sync": "dist/cli/sync/index.js"` — and a
+        dispatcher in the main binary.
+
+      Inspect current `package.json` and the existing CLI layout
+      (`src/cli/init/index.ts` has a `#!/usr/bin/env node` shebang),
+      and pick the path that matches. **Decision-form:** if the
+      existing CLI is dispatching by separate bin entries, mirror that;
+      if there's a top-level dispatcher in `src/cli/index.ts` or
+      `bin/aidemd-mcp.js`, add a `sync` case there. The implementor
+      reads the current state and picks the matching shape.
+
+      Update the `bin` field in `package.json` if needed. Run `npm
+      pack --dry-run` to verify the dist output includes the new
+      script.
+
+### 5. Document the verb in README.md and the CLI's own --help
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] Add a section to README.md (under whatever section currently
+      documents `npx aidemd-mcp init`) describing the sync verb. One
+      short paragraph: when to use it (after editing `brain.aide`),
+      what it does (reads brain.aide, writes `.mcp.json`), idempotency,
+      exit code semantics. Code block showing a typical invocation.
+
+      The `--help` text from step 2's IIFE is the in-CLI version of
+      the same explanation. README is the authoritative reference;
+      `--help` is the inline reminder.
+
+      Reading README as a canonical doc: it's not in `DOC_PATHS` (it
+      doesn't ship to host projects), so this README edit is local
+      to this repo. No `installMethodologyDocs` impact.
+
+## Decisions
+
+- **Sync is a CLI verb, not a service tool.** The parent spec's
+  Strategy paragraph names sync as the "explicit user-driven action"
+  with a "visible command boundary." Exposing it as an MCP tool
+  (`aide_sync`) would put it inside the agent surface, making it
+  invokable from inside a Claude Code session — exactly the
+  invisible-mutation pattern the parent spec rules out. Keeping it as
+  a CLI verb means the user must type the command themselves, in
+  their terminal, with output they see.
+- **Shared `writeMcpEntry` helper at `src/cli/shared/`.** Per the
+  playbook's "shared submodules within a domain" rule: lift to
+  `shared/` at the nearest common ancestor. Both CLI verbs use it; no
+  service or tool needs it. This keeps the dependency vertical (CLI
+  is a level above `src/lib/` in the existing layout, but treats CLI-
+  internal code as its own domain with `shared/` as the lift point).
+- **Generalized signature with an entries map.** The cold-start CLI
+  writes `aide` AND `brain`; sync writes only `brain` and deletes
+  `obsidian`. Generalizing the helper to take an entries map (with a
+  `"delete"` sentinel for removals) keeps both verbs sharing one
+  function. Alternative: two separate helpers (one to set, one to
+  delete) — but that doubles the I/O surface (two reads + two writes
+  for sync's combined set+delete operation).
+- **Idempotency via structural equality on the entry shape.** Sync's
+  contract names "running twice produces the same `.mcp.json`." The
+  helper compares the proposed entry against the existing entry and
+  skips the write when they match — same shape `buildBrainState` uses
+  for drift detection. This makes idempotency a structural property,
+  not a state-machine flag.
+- **Legacy `obsidian` deletion happens unconditionally.** Sync always
+  passes `obsidian: "delete"` in its entries map. The helper treats
+  "delete a key that isn't present" as a no-op, so this is safe and
+  removes a branch from the CLI's logic. The first sync against a
+  legacy host migrates; every subsequent sync is a no-op for the
+  delete. Documented in the CLI output ("Removed legacy obsidian
+  key…") only when a deletion actually occurred.
+- **Exit codes follow Unix convention.** 0 on success (including the
+  no-change case — "I was asked to make sure things were in sync,
+  they already were, that's success"), 1 on operational failure
+  (broken file, write error), 2 on usage error (`--help`, invalid
+  argv). Matches the cold-start CLI's existing exit-code map.
+- **No flags besides `--help`.** The brain.aide path and `.mcp.json`
+  path are conventional. Adding flags expands the CLI's surface and
+  invites users to point sync at non-conventional paths, which would
+  re-introduce the "two sources of truth" failure mode the parent
+  spec rules out (a brain.aide one user-typed flag away from
+  `.aide/brain.aide` is still a brain.aide; sync's job is to be the
+  ONE mutation pipeline, not to support every possible variant).

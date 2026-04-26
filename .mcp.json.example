@@ -4,9 +4,9 @@
       "command": "node",
       "args": ["./dist/index.js"]
     },
-    "obsidian": {
+    "brain": {
       "command": "cmd",
-      "args": ["/c", "npx", "@bitbonsai/mcpvault", "<absolute-path-to-your-obsidian-vault>"]
+      "args": ["/c", "npx", "@bitbonsai/mcpvault", "<absolute-path-to-your-brain-vault>"]
     }
   }
 }

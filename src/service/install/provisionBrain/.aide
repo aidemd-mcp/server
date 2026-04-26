@@ -2,308 +2,504 @@
 scope: src/service/install/provisionBrain
 status: aligned
 description: >
-  Plans vault directory scaffolding, playbook hub template, vault CLAUDE.md, and
-  the `brain` MCP server entry as InitStep items — writes nothing to disk
-  directly. Migrates legacy `obsidian`-keyed installs to the fixed `brain` key.
+  Plans vault directory scaffolding, playbook hub template, vault CLAUDE.md,
+  brain config file scaffolding at `.aide/config/brain.aide`, and the `brain`
+  MCP server entry as InitStep items — writes nothing to disk directly. Is the
+  install pipeline's one-place migration surface for legacy `obsidian`-keyed
+  installs to the fixed `brain` key. The MCP entry is derived from the
+  scaffolded brain.aide via parseBrainAide, never constructed inline.
 intent: >
-  provisionBrain scaffolds the brain vault layer that AIDE's pipeline
-  agents depend on for persistent memory. Given a resolved vault path,
-  it plans the creation of vault directories, content templates that
-  make the vault immediately useful to agents, and the `brain` MCP
-  server entry (under the fixed `brain` key with an obsidian-shaped
-  command/args underneath) — returning InitStep items the install
-  service's consumer applies. provisionBrain is also the one-place
-  migration surface for legacy installs that wrote the entry under the
-  old `obsidian` key: it emits a `would-overwrite` step that moves the
+  provisionBrain's primary output is the scaffolded `.aide/config/brain.aide` —
+  the canonical user-editable config file that becomes the single source of
+  truth for how the brain layer is wired. Given a project root, a resolved
+  vault path, and an MCP config path, it plans five InitStep items: the
+  brain config file (under `.aide/config/`, the user-owned directory whose
+  ownership boundary is inherited verbatim from the root spec), vault
+  directory creation, the coding-playbook hub template, the vault-root
+  CLAUDE.md, and the brain MCP server entry. The MCP step's prescription is
+  derived from the scaffolded brain.aide bytes via parseBrainAide and
+  interpolateArgs — this module composes the InitStep for the MCP write but
+  does not own its byte-level construction. provisionBrain is also the
+  one-place migration surface for legacy installs that wrote the entry under
+  the old `obsidian` key: it emits a `would-overwrite` step that moves the
   entry to the fixed `brain` key during the next `/aide:upgrade` or
   `/aide:init`. A new vault must be structurally complete on first run:
-  directory scaffolding alone is not enough — the coding-playbook hub
-  and a vault-root CLAUDE.md must also be present so agents can navigate
-  the vault and discover conventions without the user having to manually
-  seed content first. Existing vaults are never overwritten.
+  directory scaffolding alone is not enough — the coding-playbook hub and a
+  vault-root CLAUDE.md must also be present so agents can navigate the vault
+  and discover conventions without the user having to manually seed content
+  first. Existing files at any of the seed paths are never overwritten — the
+  rule applies file-by-file in the vault and directory-wide for everything
+  under `.aide/config/`.
 outcomes:
   desired:
-    - The vault scaffolding step plans creation of all expected
-      directories (research, process/retro, coding-playbook) and
-      reports "exists" when the vault is already populated, preserving
-      idempotency.
-    - A coding-playbook hub template is planned as its own InitStep
-      when the vault is new. The template contains the exact section
-      structure (Task Routing table, How to Use This Index, Always
-      Read First, Sections, Contents) so the study-playbook skill's
-      crawling protocol works on day one. Sections are structurally
-      present but content-empty.
-    - A vault-root CLAUDE.md is planned as its own InitStep when the
-      vault is new. It contains wikilink crawling protocol, decision
-      protocol (coding conventions vs. search_notes), a "where to find
-      things" table, and the brain's role in AIDE — enough for any
-      agent reading the vault to know how to navigate it without prior
-      knowledge.
-    - "The brain MCP server prescription is planned under the fixed `brain` key, with the correct platform-aware command (cmd /c wrapper on Windows, direct npx otherwise) and obsidian-shaped command/args underneath. Three migration branches are emitted: cold install (no `brain` and no `obsidian` key) reports `would-create`; legacy `obsidian`-only install reports `would-overwrite` with key `brain` (the entry moves from `obsidian` to `brain`); both keys present reports `would-overwrite` with key `brain`. The step reports `exists` when the `brain` key is already present in the MCP config with a matching command entry."
+    - >-
+      "The brain config step plans creation of `.aide/config/brain.aide`
+      inside the host project root as its own InitStep (category: brain,
+      name: \"Brain config (brain.aide)\"). When absent, the step is
+      would-create with a content field containing the canonical Obsidian
+      brain.aide bytes from obsidianBrainAideTemplate. When present, the
+      step is exists with no content field. The `.aide/config/` directory is
+      the host's user-owned configuration boundary inherited from the root
+      spec: any file scaffolded into it is owned by the user the moment it
+      lands, and provisionBrain never returns would-overwrite for any path
+      under `.aide/config/`. The invariant is structural — directory-level —
+      not a per-file allowlist for brain.aide alone."
+    - The vault scaffolding step plans creation of all expected directories
+      (research, process/retro, coding-playbook) and reports "exists" when
+      the vault is already populated, preserving idempotency.
+    - A coding-playbook hub template is planned as its own InitStep when
+      the vault is new. The template contains the exact section structure
+      (Task Routing table, How to Use This Index, Always Read First,
+      Sections, Contents) so the study-playbook skill's crawling protocol
+      works on day one. Sections are structurally present but
+      content-empty.
+    - A vault-root CLAUDE.md is planned as its own InitStep when the vault
+      is new. It contains wikilink crawling protocol, decision protocol
+      (coding conventions vs. search_notes), a "where to find things"
+      table, and the brain's role in AIDE — enough for any agent reading
+      the vault to know how to navigate it without prior knowledge.
+    - >-
+      "The brain MCP server prescription is planned under the fixed `brain`
+      key. The MCP step's prescription.entry is derived from the scaffolded
+      brain.aide bytes via parseBrainAide + interpolateArgs, not from a
+      hardcoded launcher constant. The canonical default scaffolded
+      brain.aide launches via `@bitbonsai/mcpvault` and continues to
+      support both Windows (cmd /c npx ...) and POSIX (npx ...) per the
+      template helper's platform branching. The default scaffold inlines
+      the vault path byte-for-byte in `mcpServerConfig.args` and makes no
+      use of `${...}` substitution; the parser still supports `${...}`
+      interpolation of frontmatter fields for advanced users who want to
+      DRY a value across positions, but that surface is not exercised by
+      the default scaffold. Three migration branches are emitted: cold
+      install (no `brain` and no `obsidian` key) reports would-create;
+      legacy `obsidian`-only install reports would-overwrite with key
+      `brain` (the entry moves from `obsidian` to `brain`); both keys
+      present reports would-overwrite with key `brain`. The step reports
+      exists when the `brain` key is already present in the MCP config
+      with an entry that matches the derived command and args."
     - "The coding-playbook hub and vault-root CLAUDE.md are treated as
-      one-time seeds, not canonical templates. When either file exists
-      on disk at its expected path, the corresponding InitStep is
-      returned with status: \"exists\" regardless of byte drift from
-      the bundled template. Once the user has the file, it is theirs
-      forever — provisionBrain never proposes replacing it."
-    - Every InitStep returned is a planning artifact only — no files
-      are written to disk by this helper. The install service's apply
-      layer handles all writes; whichever consumer (agent-driven or
-      CLI) drives the apply layer is consumer-shape detail, not part
-      of this helper's contract.
+      one-time seeds, not canonical templates. When either file exists on
+      disk at its expected path, the corresponding InitStep is returned with
+      status: \"exists\" regardless of byte drift from the bundled template.
+      Once the user has the file, it is theirs forever — provisionBrain
+      never proposes replacing it."
+    - Every InitStep returned is a planning artifact only — no files are
+      written to disk by this helper. The install service's apply layer
+      handles all writes; whichever consumer (agent-driven or CLI) drives
+      the apply layer is consumer-shape detail, not part of this helper's
+      contract.
   undesired:
+    - Constructing the MCP entry inline without going through the scaffolded
+      brain.aide as the source of truth — the MCP step's prescription must
+      always derive from parsed brain.aide bytes via parseBrainAide +
+      interpolateArgs.
+    - >-
+      Hardcoding the `@bitbonsai/mcpvault` launcher shape outside of
+      obsidianBrainAideTemplate — the launcher bytes belong in the template
+      helper and nowhere else in this module. Reintroducing an inline
+      `obsidian-mcp` shape (the legacy launcher) is the same regression in
+      different clothing: any duplication of launcher bytes outside the
+      template is rejected.
+    - "Scaffolding a brain.aide whose `name` value the package later
+      branches on — the name field is a human-readable label for the user
+      and the agent only; no code in this package may dispatch on it. Any
+      code path that reads `name` to pick a backend, render
+      connector-specific prose, or alter the MCP step is the in-code
+      backend registry coming back through the side door."
+    - >-
+      Scaffolding a brain.aide whose frontmatter contains any field beyond
+      `name` and `mcpServerConfig.{command, args}` — no `connector`, no
+      `rootPath`, no `entryFile`, no `tools` block. Those fields were
+      removed by the schema collapse; reintroducing any of them adds a
+      validation-theater field with no real runtime consumer (sync writes
+      `mcpServerConfig`; the user and agent read `name` as a label) and
+      forces the parser to either ignore it or fail on it. The schema
+      minimum is the schema maximum.
+    - >-
+      Scaffolding a default brain.aide whose `mcpServerConfig.args` uses
+      `${rootPath}` (or any other `${...}` placeholder) — the default
+      scaffold inlines the vault path byte-for-byte under user ownership.
+      Substitution is the opt-in advanced-user surface, not the
+      default-scaffold surface. Shipping a default that exercises
+      substitution forces every user to learn the interpolation DSL
+      before they can edit their own config.
+    - Replacing would-create with would-overwrite for the seed files (brain
+      config, playbook hub, vault CLAUDE.md) — those files are
+      seed-semantic; presence is the only check; byte comparison against
+      the bundled template is the wrong idempotency signal for user-owned
+      content.
+    - >-
+      Returning a would-overwrite step for any path under `.aide/config/`,
+      regardless of which file it is — same class of failure as the MCP
+      server silently rewriting `.mcp.json`. The `.aide/config/` directory
+      is a load-bearing user-owned surface inherited from the root spec.
+      Per-file allowlists are forbidden; the directory boundary is the
+      ownership signal, and any code path that touches a file under
+      `.aide/config/` after its first write — even to "fix" a stale
+      template, land newer defaults, or tidy formatting — is rejected.
+    - "Writing a brain.aide whose schema borrows intent-spec frontmatter
+      conventions — no `scope`, no `outcomes`, no `intent`, no `status`
+      lifecycle field. brain.aide is a config file, not an intent spec;
+      conflating the two erodes the distinction every downstream agent
+      depends on."
     - A vault that has directories but no playbook hub template. Agents
       invoking the study-playbook skill will find an empty
-      coding-playbook folder with no hub to crawl, causing the skill
-      to silently return nothing. The hub template is the minimum
-      viable content for the playbook to function.
+      coding-playbook folder with no hub to crawl, causing the skill to
+      silently return nothing.
     - A playbook hub template that invents section content, routing
       entries, or note wikilinks for the user. The template enforces
       structure (headings, table skeleton, placeholder prose) — never
-      fills in domain-specific content. A hub with fabricated sections
-      teaches agents wrong conventions on the first read.
-    - A vault CLAUDE.md that duplicates the user's personal global
-      CLAUDE.md or a project's CLAUDE.md. The vault CLAUDE.md is
-      scoped to vault navigation only — how agents read and traverse
-      brain notes. It does not contain project instructions, coding
-      conventions, or user preferences.
-    - Content templates that overwrite existing files in an established
-      vault. If the playbook hub or vault CLAUDE.md already exists,
-      the step must report "exists" and plan no changes — same
-      idempotency contract as directory scaffolding.
-    - "The coding-playbook hub or vault-root CLAUDE.md being returned
-      with status: \"would-overwrite\" under any circumstance — even
-      when on-disk bytes have drifted from the bundled template. These
-      files are seeds for an empty vault, not canonical templates to
-      enforce; full-file byte comparison against the template is the
-      wrong idempotency check for user-owned content. Presence is
-      sufficient — any drift belongs to the user. The consequence of
-      getting this wrong is data loss: a generic overwrite-confirm
-      branch in the init wizard is one Enter-press away from replacing
-      the user's curated playbook with a bare scaffold stub."
+      fills in domain-specific content.
     - An InitStep that writes to disk directly. provisionBrain is a
       planner; any step that touches the filesystem violates the
-      architectural contract between planning helpers and the
-      apply layer.
+      architectural contract between planning helpers and the apply layer.
 ---
 
 ## Context
 
-The brain vault is the pipeline's durable memory — research agents write
-domain findings into it, QA agents promote retros, and the coding playbook
-captures engineering conventions that survive across projects. Without it,
-agents that declare `mcpServers: [brain]` silently lose the ability to
-persist or retrieve knowledge, and the pipeline cannot learn across runs.
+provisionBrain scaffolds the brain layer that AIDE's pipeline agents
+depend on for persistent memory. The original module returned four steps
+(vault directories, playbook hub, vault CLAUDE.md, MCP prescription) and
+constructed the MCP entry inline via a hardcoded `obsidianMcpEntry()`
+constant. That left the package owning the launcher bytes — any user
+customization of the brain's MCP server would be silently overwritten on
+the next init.
 
-The original provisionBrain created directories and wired the MCP server,
-but left the vault content-empty. This meant a new user's first
-study-playbook invocation found an empty coding-playbook folder with no hub
-note, returning nothing. Their agents had no vault CLAUDE.md to teach them
-how to navigate the brain. The user had to manually create these files —
-an invisible prerequisite that contradicted the install action's promise
-of "one command to a working AIDE project."
+The refactor moves ownership of the launcher bytes to the user by
+scaffolding `.aide/config/brain.aide` first. brain.aide is the single
+source of truth for how the brain MCP server is wired; the `.mcp.json`
+entry is a derived artifact computed from it at install or sync time.
+This module's job is to plan the brain.aide seed file (when absent) and
+to derive the MCP step from whatever brain.aide says — either the
+in-memory template bytes for a cold install, or the on-disk user-edited
+bytes for a re-run.
 
-The fix is to scaffold content alongside structure. Two templates make the
-vault immediately agent-navigable: a coding-playbook hub with the section
-structure the study-playbook skill expects, and a vault-root CLAUDE.md with
-the crawling and decision protocols agents need to interact with the brain.
-Both are structurally complete but content-empty — they establish the
-pattern without fabricating domain-specific knowledge the user hasn't
-created yet.
-
-The planner-only constraint is load-bearing. provisionBrain returns
-InitStep items describing what to create; the install service's apply
-layer handles actual writes. This separation means provisionBrain never
-touches the filesystem, the apply layer has full visibility into what
-will be created, and the consumer (whichever shape — agent-driven or
-CLI) confirms before anything is written. Content templates are just
-InitStep items with a content field — they flow through the same
-planning and apply pipeline as directory scaffolding, regardless of
-which entry point invoked the install service.
+The brain.aide path lives under `.aide/config/`, the host's
+user-owned configuration directory established by the root spec. The
+ownership rule is directory-wide: any file scaffolded into `.aide/config/`
+is owned by the user the moment it lands, and neither aide_init nor
+aide_upgrade overwrites, patches, or migrates anything inside that
+directory on subsequent runs. brain.aide is the current inhabitant; the
+convention is forward-compatible with future user-owned config files,
+and provisionBrain inherits the structural rule rather than restating a
+per-file invariant.
 
 provisionBrain is also the one-place migration surface for the fixed
-`brain` MCP key. The brain MCP key is fixed at `brain` per the
-project-root settlement; legacy installs that wrote the entry under
-the old `obsidian` key are migrated to `brain` here, not anywhere else.
-The migration runs as part of the normal MCP-prescription planning:
-when a legacy `obsidian`-only entry is present, the step reports
-`would-overwrite` with key `brain`, so the next `/aide:upgrade` or
-`/aide:init` moves the entry. There is no runtime fallback to the
-legacy key elsewhere in the codebase — this helper is the single
-migration boundary.
+`brain` MCP key. Legacy installs that wrote the entry under the old
+`obsidian` key are migrated here and nowhere else: when a legacy
+`obsidian`-only entry is present, the MCP step reports `would-overwrite`
+with key `brain`, so the next `/aide:upgrade` or `/aide:init` moves the
+entry. There is no runtime fallback to the legacy key elsewhere in the
+codebase.
 
 ## Strategy
 
-**Four planning steps, not two.** The current implementation returns two
-steps (vault directories, MCP prescription). The expanded version returns
-up to four: vault directories, playbook hub template, vault CLAUDE.md,
-and MCP prescription. Each is its own InitStep with independent
-idempotency — if the vault exists but the playbook hub is missing, only
-the hub step reports would-create.
+**Five planning steps, not four.** The legacy implementation returns
+four steps (vault directories, playbook hub, vault CLAUDE.md, MCP
+prescription). The new implementation returns five: brain config
+(brain.aide), vault directories, playbook hub, vault CLAUDE.md, and MCP
+prescription. Each is its own InitStep with independent idempotency.
 
-**Content steps use the same InitStep shape as directory steps.** The
-playbook hub and vault CLAUDE.md are InitStep items with category "brain",
-a filePath pointing to the target location inside the vault, and a content
-field containing the template text. The apply layer already knows how to
-write content from InitStep — no new machinery needed.
+**brain.aide is the source of truth; the MCP step is derived from it.**
+The load-bearing change is the ordering: brain.aide is planned first,
+and the MCP step's prescription is computed from those bytes — either
+the in-memory template string for a cold install, or the on-disk content
+for a re-run where brain.aide already exists. The legacy path
+(`obsidianMcpEntry()`) returned a hardcoded launcher object; the new
+path calls `parseBrainAide` (or its string-input sibling for the
+in-memory case) and then `interpolateArgs` to compute the args list.
+For the default scaffold the args list is byte-identical to what the
+template emitted — the path is inline, no substitution runs — but
+`interpolateArgs` is still called to keep the advanced-user `${...}`
+surface available. Any user customization of brain.aide automatically
+flows into the MCP step on the next init or sync — the package no
+longer competes with the user for ownership of the launcher bytes.
 
-**Playbook hub structure is enforced, content is empty.** The template
-contains five sections in a fixed order: Task Routing (a Markdown table
-with header row and no data rows), How to Use This Index (navigation
-instructions), Always Read First (placeholder wikilinks for conventions
-and folder structure), Sections (empty numbered list), and Contents (empty
-flat list). This structure is what the study-playbook skill's crawling
-protocol expects to find. The empty-but-structured pattern means the skill
-works on day one — it finds the hub, reads the sections, and correctly
-reports that no playbook notes exist yet.
+**`obsidianBrainAideTemplate` lives in its own helper subfolder.** The
+canonical Obsidian brain.aide content — the collapsed two-field
+frontmatter plus the hand-written prose body — is approximately 50
+lines of templated text with multiple test cases: a parse round-trip
+invariant, platform branching (Windows vs POSIX), and prose-content
+sentinels. The coding playbook's threshold for extracting a helper into
+its own subfolder is roughly 50 lines with dedicated test coverage; this
+template body hits both. Keeping it inline in `index.ts` would embed the
+entire prose body in the orchestrator, making the pipeline unreadable
+as a recipe. The helper's name keeps "Obsidian" because the scaffolded
+config still ships an Obsidian-flavored default — the launcher
+implementation underneath that default is `@bitbonsai/mcpvault`, but
+the configuration's identity (the `name: obsidian` label and the
+Obsidian-shaped prose body) is unchanged.
 
-**Vault CLAUDE.md is scoped to navigation, not project instructions.** The
-template covers four concerns: wikilink crawling protocol (hub vs content
-notes, depth counting, never re-read), decision protocol (coding
-conventions route through study-playbook, everything else through
-search_notes), a "where to find things" table mapping information types
-to vault paths, and a brief statement of the brain's role in AIDE. It
-does not include project-specific instructions, user preferences, or
-anything that belongs in the user's global or project CLAUDE.md.
+**The legacy `obsidianMcpEntry()` export is removed.** That function
+returned a hardcoded launcher object directly. Callers that needed it
+now go through the template + `parseBrainAide` + `interpolateArgs`
+pipeline. Consumers that previously imported `obsidianMcpEntry` migrate
+to derive the entry from a scaffolded or existing brain.aide.
 
-**Idempotency checks are per-file, not per-vault.** The existing vault
-check (non-empty directory or .obsidian present) gates the directory
-scaffolding step. The playbook hub, vault CLAUDE.md, and MCP prescription
-each have their own existence check — if the target is present, that step
-reports "exists" regardless of the vault-level status. This means running
-init on a vault that has directories but lost its playbook hub will
-correctly re-plan only the missing file.
+**brain.aide scaffolding is seed-semantic, and the rule is
+directory-wide.** The brain.aide file is user-owned the moment it lands
+on disk — the user may swap the launcher, retarget the inline path,
+rewrite the prose, or change the label. A presence check at the
+expected path is the correct idempotency signal. The module never
+returns `would-overwrite` for brain.aide; doing so would replace a
+user's customized config with the package's default on every subsequent
+init. The same rule applies to every other file under `.aide/config/`
+should one ever be added: the directory itself is the ownership
+boundary, inherited from the root spec, with no per-file allowlist.
 
-**Two different idempotency semantics coexist in this module — know which
-file uses which, and why.** The coding-playbook hub and vault-root
-CLAUDE.md use **seed-semantic idempotency**: a simple presence check at
-the expected path. If the file exists, the step is "exists" — full stop.
-Never "would-overwrite," never a byte comparison against the bundled
-template. These files are scaffolds the user evolves the moment the vault
-comes alive; the playbook hub gains routing entries and wikilinks, the
-vault CLAUDE.md may pick up project-specific navigation notes. Once the
-user has the file, the bytes belong to the user and are out of scope for
-comparison. The brain MCP prescription, by contrast, uses
-**canonical-template idempotency**: the entry is keyed `brain` per the
-fixed-key settlement and the command/args is a config value the tool
-owns, so byte-identity is the right signal — if the on-disk command
-string drifts from the platform-aware prescription, the step reports
-"would-overwrite" because the tool is the source of truth for that
-entry. The same canonical-template path also runs the legacy-`obsidian`
-migration: a `would-overwrite` with key `brain` fires whenever the
-on-disk state is a legacy-`obsidian`-only entry or both keys present,
-so the next apply moves the entry to the fixed key. The distinguishing
-question is *who owns the bytes after first write*: for user-curated
-content, presence is enough; for tool-prescribed config, identity
-matters. Getting this wrong is not a
-cosmetic bug — a would-overwrite status on the playbook hub is one
-Enter-press away from wiping the user's curated conventions and
-replacing them with an empty scaffold.
+**Two different idempotency semantics coexist in this module.** The
+brain config file, coding-playbook hub, and vault CLAUDE.md use
+**seed-semantic idempotency**: a simple presence check. If the file
+exists, the step is `exists` — no byte comparison, no drift detection.
+These files are scaffolds the user evolves the moment the vault comes
+alive. The brain MCP prescription uses **canonical-derived
+idempotency**: the expected entry is computed from the current
+brain.aide and compared against what is in `.mcp.json`. Divergence means
+`would-overwrite` (the user may have re-run init before syncing, or the
+package default changed), and the migration branches fire on the same
+path. The distinguishing question is who owns the bytes after first
+write: for user-curated content, presence is enough; for the derived
+MCP entry under `.mcp.json["brain"]`, the current brain.aide is the
+source of truth.
 
-**Template text lives in the helper, not in external files.** The playbook
-hub and CLAUDE.md templates are string literals inside provisionBrain.
-They are small (under 2KB each), change only when the AIDE methodology
-changes, and are consumed by exactly one caller. Externalizing them to
-separate template files would add indirection without reducing coupling.
+**Signature takes `projectRoot`, not just `brainPath` and
+`mcpConfigPath`.** The new pipeline needs the host project root to
+derive the brain.aide path at `.aide/config/brain.aide`. The existing
+signature conflated `brainPath` (vault location) and the project root
+(where brain.aide lives); separating them makes the module's contract
+explicit. The install orchestrator passes all three values and the
+single caller update is mechanical.
 
 ## Good examples
 
-A new vault is being scaffolded. provisionBrain returns four InitStep
-items:
+A cold install on a fresh project. provisionBrain returns five InitStep
+items in order:
 
-Step 1 — Vault directories. Status: would-create. Category: brain.
+**Step 1 — Brain config.** Status: would-create. Category: brain.
+Name: "Brain config (brain.aide)". FilePath:
+`.aide/config/brain.aide` inside the host project root. Content: the
+canonical Obsidian brain.aide bytes from
+obsidianBrainAideTemplate(brainPath), which on POSIX looks like:
+
+```
+---
+name: obsidian
+mcpServerConfig:
+  command: npx
+  args:
+    - "@bitbonsai/mcpvault"
+    - "/home/user/vault"
+---
+
+## Prose
+
+Your brain is an Obsidian vault. Use `mcp__brain__read_note` to open
+files by their vault-relative path. Use `mcp__brain__search_notes` for
+keyword queries across every note in the vault. The vault's entry file
+is `CLAUDE.md` at the vault root — read that first; it carries wikilinks
+(`[[note-name]]`) you follow to deepen context. When a wikilink looks
+relevant to your task, read it (depth 1) and check that note's links
+too. Stay in scope; don't follow links into unrelated topics.
+```
+
+(On Windows the `mcpServerConfig` block becomes `command: cmd` with
+`args: ["/c", "npx", "@bitbonsai/mcpvault", "D:/notes/my-vault"]` —
+adding the `cmd /c npx` wrapper required by the Windows shell.) Note
+the frontmatter has exactly two top-level fields: `name` (label only;
+the package never branches on it) and `mcpServerConfig`. The vault
+path is inlined byte-for-byte in `args` — no `${rootPath}` placeholder,
+no separate `rootPath` field, no `entryFile`, no `tools` block.
+
+**Step 2 — Brain vault.** Status: would-create. Category: brain.
 Content: JSON array of directory paths to create.
 
-Step 2 — Playbook hub. Status: would-create. Category: brain. FilePath
-points to coding-playbook/coding-playbook.md inside the vault. Content
-is a Markdown file with five headings: Task Routing (table with headers,
-no rows), How to Use This Index, Always Read First, Sections (empty),
-Contents (empty). Every heading is present; no domain content is filled.
+**Step 3 — Playbook hub.** Status: would-create. Category: brain.
+FilePath inside the vault. Content: a Markdown file with five headings
+(Task Routing table with header row only, How to Use This Index, Always
+Read First, Sections, Contents) and no fabricated domain entries.
 
-Step 3 — Vault CLAUDE.md. Status: would-create. Category: brain. FilePath
-points to CLAUDE.md at the vault root. Content covers crawling protocol,
-decision protocol, where-to-find-things table, and AIDE brain role. No
-project-specific instructions appear.
+**Step 4 — Vault CLAUDE.md.** Status: would-create. Category: brain.
+FilePath at the vault root. Content covers crawling protocol, decision
+protocol, where-to-find-things table, and the brain's role in AIDE.
 
-Step 4 — Brain MCP. Status: would-create. Category: mcp. Prescription
-contains the fixed `brain` server key and the platform-aware
-command/args entry (obsidian-shaped underneath, but keyed `brain`).
+**Step 5 — MCP config (brain).** Status: would-create. Category: mcp.
+Prescription derived from the Step 1 content bytes: parseBrainAide
+parses the template string, interpolateArgs walks
+`mcpServerConfig.args` (which contains no `${...}` placeholders for the
+default scaffold, so the args pass through unchanged), and the
+resulting entry on POSIX is:
 
-Re-running on the same vault returns all of the planned steps as
-"exists." The directory step sees the expected folders. The playbook
-hub and vault CLAUDE.md are detected by a presence check at their
-expected paths — their on-disk bytes are never compared to the bundled
-templates. The MCP prescription sees the `brain` key already present
-in the MCP config with a matching command entry. No content is
-regenerated, no files are touched.
+```
+{
+  command: "npx",
+  args: ["@bitbonsai/mcpvault", "/home/user/vault"]
+}
+```
 
-A migration run on a legacy install (the entry was previously written
-under the `obsidian` key, before the fixed-key settlement) returns
-the MCP prescription as "would-overwrite" with key `brain`, while
-the playbook hub, vault CLAUDE.md, and directory steps run their
-normal idempotency checks. After apply, the legacy `obsidian` key is
-replaced by the canonical `brain` key.
+(On Windows: `{ command: "cmd", args: ["/c", "npx",
+"@bitbonsai/mcpvault", "D:/notes/my-vault"] }`.) The args list is
+byte-identical to what the template wrote to disk — interpolateArgs
+runs but has nothing to substitute on the default scaffold.
 
-Running on a vault where the user has evolved the playbook hub — added
-routing entries, wikilinked several real playbook notes, customized the
-"Always Read First" section — still returns the playbook hub step as
-"exists." The user's curated bytes are preserved; provisionBrain has no
-opinion on what the file contains beyond the fact that it is there.
+Re-running on the same project after the first install: all five steps
+return `exists`. The brain.aide presence check fires (the file is on
+disk under `.aide/config/`); the vault directories are present; the
+playbook hub and vault CLAUDE.md are present (presence-only check, no
+byte comparison); the MCP config `brain` key matches the derived entry.
 
-Running on a vault that exists but is missing the playbook hub (perhaps
-the user deleted it) returns: directories as "exists," playbook hub as
-"would-create," CLAUDE.md as "exists," MCP as "exists" (the `brain`
-key is present and matches the canonical command). Only the missing
-piece is re-planned.
+Running on a vault where the user has hand-edited their brain.aide to
+retarget the vault by changing the inline path string in
+`mcpServerConfig.args`: the brain config step is `exists` (the file is
+present under `.aide/config/`); the vault directory step reports based
+on the new path; the MCP step derives its expected entry from the
+user's edited brain.aide, NOT from the obsidianBrainAideTemplate
+default — the user's customization flows through automatically. An
+advanced user who instead pulls the path into a (now custom)
+top-level field and references it in `args` via `${myPath}` exercises
+the `${...}` interpolation surface; `interpolateArgs` substitutes the
+value and the derived entry's args carry the resolved string.
+
+A migration run on a legacy install (entry previously written under
+`obsidian` key, no `brain` key): the MCP step reports `would-overwrite`
+with `prescription: { key: "brain", entry: <derived from brain.aide> }`.
+The brain config, vault, playbook hub, and vault CLAUDE.md steps run
+their normal idempotency checks. After apply, the legacy `obsidian` key
+is replaced by the canonical `brain` key.
 
 ## Bad examples
 
-A playbook hub template that contains fabricated section entries like
-"## Section 1: TypeScript Conventions" with wikilinks to notes that do
-not exist. The user has not created any playbook content yet — invented
-sections mislead agents into thinking conventions exist when they do not.
+A provisionBrain that skips the brain.aide step and constructs the MCP
+entry inline:
 
-A vault CLAUDE.md that includes the user's personal configuration, like
-"You are helping a data scientist" or "This project uses Prisma." The
-vault CLAUDE.md is a generic navigation guide, not a project or user
-profile. Mixing concerns means every project sharing the vault inherits
-instructions meant for one project.
+```
+// Wrong — reconstructs launcher directly
+const entry = obsidianMcpEntry(brainPath);
+steps.push({ name: "MCP config (brain)", prescription: { key: "brain", entry } });
+```
 
-A provisionBrain that checks only "does the vault directory exist" and
-returns all content steps as "exists" even when the playbook hub file is
-missing. Per-vault idempotency is too coarse — each content file needs
-its own existence check, or the user cannot recover from a partially
-scaffolded vault without deleting everything and starting over.
+The user's brain.aide (which may have a custom launcher, a different
+label, or a different inline path) is ignored. The package's compiled
+constant wins every time, defeating the user-ownership model the
+refactor was built around.
 
-A provisionBrain that writes the playbook hub to disk directly instead of
-returning it as an InitStep. This bypasses the agent's confirmation flow,
-meaning the user never sees or approves the content before it lands in
-their vault. The planner-only contract exists precisely to prevent this.
+A provisionBrain that hardcodes the Windows launcher shape in index.ts:
 
-A provisionBrain that reads the existing playbook hub off disk,
-byte-compares it to the bundled template, and — when the user has added
-routing rows and wikilinks — reports the step as "would-overwrite." The
-init wizard then prompts "overwrite existing playbook hub? [y/N]," and a
-reflexive Enter replaces months of curated conventions with a bare
-scaffold. This is the exact failure the seed-semantic rule exists to
-prevent: byte identity is the wrong signal for files the user owns
-post-scaffold. The same failure shape applies to the vault-root
-CLAUDE.md — any byte-comparison branch on these two files is a bug,
-regardless of how the drift is detected.
+```
+// Wrong — launcher bytes outside the template helper
+const command = process.platform === "win32" ? "cmd" : "npx";
+const args = process.platform === "win32"
+  ? ["/c", "npx", "@bitbonsai/mcpvault", brainPath]
+  : ["@bitbonsai/mcpvault", brainPath];
+```
+
+The canonical launcher bytes now live in two places. When the template
+helper changes (say, a new flag is added to the args list, or the
+default launcher is swapped out for something else), this inline copy
+silently diverges and the scaffolded brain.aide no longer matches what
+the MCP step would compute for a cold install. The same rejection
+applies to any inline copy of the legacy `obsidian-mcp` launcher —
+duplicating launcher bytes outside the template is the bug, not the
+specific launcher being duplicated.
+
+A provisionBrain that returns `would-overwrite` for the seed brain.aide:
+
+```
+// Wrong — byte-compares a user-owned config file
+const disk = await readFile(brainAidePath, "utf8");
+const template = obsidianBrainAideTemplate(brainPath);
+if (disk !== template) {
+  return { name: "Brain config (brain.aide)", status: "would-overwrite", content: template };
+}
+```
+
+The user edited their brain.aide to point at a new vault. On the next
+init, they are asked "overwrite your brain config?" A reflexive Enter
+replaces their custom inline path with the stale default from the
+template. This is data loss from a pattern that only looks safe — and
+the same failure mode applies to any future file scaffolded under
+`.aide/config/`: the directory boundary is the ownership signal, and
+no code path in this module is allowed to return `would-overwrite`
+for any path inside it.
+
+A provisionBrain that scaffolds a default brain.aide using `${rootPath}`
+substitution:
+
+```
+// Wrong — default scaffold exercises the advanced-user interpolation surface
+return obsidianBrainAideTemplate(brainPath); // emits args: ["@bitbonsai/mcpvault", "${rootPath}"]
+```
+
+The default scaffold's job is to produce a working brain config that the
+user can read top-to-bottom without learning a templating DSL.
+Substitution is the opt-in path for advanced users who want to DRY a
+value across positions; baking it into the default forces every user
+into the advanced workflow before they have ever touched their config.
+
+A brain.aide scaffolded with intent-spec frontmatter fields:
+
+```
+---
+scope: .aide/config/brain.aide # Wrong — no scope in brain.aide
+intent: configures the brain   # Wrong — no intent paragraph
+outcomes:                      # Wrong — no outcomes block
+  desired:
+    - brain is wired
+name: obsidian
+...
+```
+
+Every downstream agent that reads this file now has to decide which
+rules apply — the brain.aide config rules or the intent-spec rules.
+The distinction between config files and intent specs is load-bearing
+and must be enforced at the scaffolding layer.
+
+A brain.aide scaffolded with extra frontmatter fields beyond the
+collapsed schema:
+
+```
+---
+name: obsidian
+connector: obsidian            # Wrong — field renamed away; `name` is the only label
+rootPath: D:/notes/my-vault    # Wrong — path lives inline in args, not as its own field
+entryFile: CLAUDE.md           # Wrong — no code consumes this
+mcpServerConfig:
+  command: npx
+  args: ["@bitbonsai/mcpvault", "${rootPath}"]
+tools:                         # Wrong — interface contract lives in the prose body
+  read: mcp__brain__read_note
+  search: mcp__brain__search_notes
+---
+```
+
+Each removed field is validation theater — a slot the user is nagged
+to fill in with no code path that consumes the value once filled. The
+schema collapse is load-bearing: every frontmatter field must justify
+itself by naming a real runtime consumer (sync writes
+`mcpServerConfig`; the user and agent read `name` as a label). The
+agent-facing interface (which MCP tool names to call, where to start
+reading, how to follow links) lives in the prose body where the agent
+actually reads it.
 
 ## References
 
-<!-- The synthesis agent populates this section during synthesis — do not fill
-  it manually after the fact. Rules for what goes here:
-  - Each entry is a bullet: the brain note path, then ` -- `, then a one-line
-    description of what was drawn from that note for the Strategy.
-  - Only notes that actually informed a strategy decision belong here. Notes
-    the agent opened but did not use are excluded — padding the list destroys
-    the signal between each reference and the decision it supports.
-  - Descriptions are breadcrumbs: name the source and the specific finding or
-    data point drawn from it for the Strategy. Do not restate the full finding;
-    do not duplicate the Strategy.
-  - Paths are hints, not contracts. Brain notes move; the description is the
-    fallback. No tooling should validate reference paths, and no agent should
-    treat a stale path as an error.
-  Delete this entire HTML comment once the real references are written. -->
+- `.aide/intent.aide` — Parent spec: brain.aide as the single source of
+  truth for brain configuration, the collapsed two-field schema (`name`
+  + `mcpServerConfig.{command, args}`), the `@bitbonsai/mcpvault`
+  default launcher, the `.aide/config/` directory ownership boundary,
+  the sync contract as the only mutation surface for `.mcp.json`, the
+  no-substitution-in-the-default-scaffold rule, and the
+  outcomes.undesired rule that brain.aide must not borrow intent-spec
+  frontmatter conventions or add validation-theater fields.
+- `src/service/parseBrainAide/.aide` — Sibling spec: the parser that
+  reads brain.aide and returns typed frontmatter + prose, and the
+  interpolateArgs helper that walks `mcpServerConfig.args` substituting
+  `${...}` references against frontmatter values. provisionBrain
+  consumes both exports; the MCP step's prescription is derived
+  exclusively through this module. The default scaffold does not
+  exercise the substitution surface, but interpolateArgs is still the
+  call path so the advanced-user `${...}` workflow stays available.
+- `.aide/docs/brain-aide.md` — Methodology doc: brain.aide file format,
+  frontmatter field semantics, the two substitution surfaces (args at
+  install time, prose verbatim at agent time), and the divergence from
+  intent-spec conventions that makes scope/intent/outcomes fields
+  explicitly absent.

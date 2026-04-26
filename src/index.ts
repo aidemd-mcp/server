@@ -28,6 +28,10 @@ export async function routeSubcommand(): Promise<boolean> {
 		await import("./cli/init/index.js");
 		return true;
 	}
+	if (process.argv[2] === "sync") {
+		await import("./cli/sync/index.js");
+		return true;
+	}
 	return false;
 }
 
@@ -141,7 +145,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_info",
 			description:
-				"Boot-time reporter called by the orchestrator at startup. Returns two independent top-level fields that the orchestrator must branch on separately:\n\n**`outdated` (array of stale artifact keys) — soft notification.**\nCompares the host's `.aide/versions.json` against the canonical manifest shipped with this npm package. Each element names an artifact key that is behind. An empty array means everything is current. A missing `.aide/versions.json` (old install predating version tracking) silently collapses to `[]`. Staleness is informational — the orchestrator continues with a heads-up to the user.\n\n**`brain` (precondition state) — hard gate.**\nReports whether the host's Obsidian brain vault is ready. Shape: `{ status: 'ok' | 'no-mcp-entry' | 'invalid-path', vaultPath: string | null }`. The orchestrator must halt and direct the user to resolve the issue before continuing if `status` is not `'ok'`.\n\nThe three `brain.status` values:\n- `ok` — the host's MCP config contains a `brain` entry and its configured vault directory exists on disk. `vaultPath` is the resolved path string. The pipeline may proceed.\n- `no-mcp-entry` — the MCP config is missing, malformed, or contains no `brain` entry. `vaultPath` is `null`. Remediation: run `/aide`; the orchestrator's inline-recovery flow detects the missing state and prompts the user to configure the brain.\n- `invalid-path` — a `brain` entry exists but its configured `vaultPath` does not resolve to a directory on disk. `vaultPath` is the path string that failed. Remediation: fix the path in the existing MCP config entry or restore the missing directory.\n\nNo parameters needed — uses the server's working directory.",
+				"Boot-time reporter called by the orchestrator at startup. Returns two independent top-level fields that the orchestrator must branch on separately:\n\n**`outdated` (array of stale artifact keys) — soft notification.**\nCompares the host's `.aide/versions.json` against the canonical manifest shipped with this npm package. Each element names an artifact key that is behind. An empty array means everything is current. A missing `.aide/versions.json` (old install predating version tracking) silently collapses to `[]`. Staleness is informational — the orchestrator continues with a heads-up to the user.\n\n**`brain` (precondition state) — hard gate.**\nReports whether the host's brain vault is ready. Shape: `{ status: 'ok' | 'no-mcp-entry' | 'invalid-path', vaultPath: string | null }`. The orchestrator must halt and direct the user to resolve the issue before continuing if `status` is not `'ok'`.\n\nThe three `brain.status` values:\n- `ok` — the host's MCP config contains a `brain` entry and its configured vault directory exists on disk. `vaultPath` is the resolved path string. The pipeline may proceed.\n- `no-mcp-entry` — the MCP config is missing, malformed, or contains no `brain` entry. `vaultPath` is `null`. Remediation: run `/aide`; the orchestrator's inline-recovery flow detects the missing state and prompts the user to configure the brain.\n- `invalid-path` — a `brain` entry exists but its configured `vaultPath` does not resolve to a directory on disk. `vaultPath` is the path string that failed. Remediation: fix the path in the existing MCP config entry or restore the missing directory.\n\nNo parameters needed — uses the server's working directory.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {},

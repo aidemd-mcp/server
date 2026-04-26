@@ -33,6 +33,40 @@ misalignment:
         - `src/.aide` outcomes.undesired[6] (same count-pinning rule as above)
       Misalignment: `spec-gap`
 
+### Active (alignment pass 2026-04-25 — root revision: brain-aide.md methodology doc out of sync with new schema)
+
+The root `.aide/intent.aide` outcomes.desired commits to "`brain.aide` is a documented AIDE file type sitting alongside `intent.aide`, `plan.aide`, `todo.aide`, and `research.aide` in the canonical methodology — with its own dedicated methodology doc under `.aide/docs/` describing its schema, lifecycle, and the explicit divergence." The doc exists at `.aide/docs/brain-aide.md` but documents the prior schema (`connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools`) with `obsidian-mcp` as the launcher and `.aide/brain.aide` as the file path. Under the new root, the schema collapses to two fields, the path moves, and the launcher renames. The doc is the canonical-doctrine surface every host project receives via `aide_init`; drift here means every new install ships stale doctrine.
+
+- [x] `.aide/docs/brain-aide.md` Format section: renders the YAML example with all five legacy fields (`connector`, `rootPath`, `entryFile`, `mcpServerConfig` referencing `obsidian-mcp` and `${rootPath}`, `tools` block with `read`/`search`).
+  Should collapse to exactly `name` + `mcpServerConfig.{command, args}` with `@bitbonsai/mcpvault` and the path inline byte-for-byte (no `${rootPath}` substitution in the default scaffold).
+  Traces to: `.aide/intent.aide` outcomes.desired (frontmatter contains exactly two top-level fields: `name` + `mcpServerConfig`; default scaffold uses `@bitbonsai/mcpvault`; `mcpServerConfig.args` carries the path inline byte-for-byte).
+  Misalignment: spec-gap
+
+- [x] `.aide/docs/brain-aide.md` "Frontmatter fields" subsection: documents `connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools` as required fields. With the schema collapse, only `name` and `mcpServerConfig.{command, args}` remain — every other field is removed. The doc must reject the legacy fields (the parser surfaces them as `malformed-frontmatter`).
+  Traces to: `.aide/intent.aide` outcomes.desired (schema is `name` + `mcpServerConfig.{command, args}` only); outcomes.undesired (any frontmatter field whose only consumer is the parser's own validation is rejected).
+  Misalignment: spec-gap
+
+- [x] `.aide/docs/brain-aide.md` "Substitution surfaces" subsection: pins `${rootPath}` as the load-bearing install-time substitution case. With `rootPath` removed, the engine generalizes to any field name (currently `${name}` is the only resolvable placeholder) and the default scaffold doesn't exercise it at all.
+  Traces to: `.aide/intent.aide` outcomes.desired (default scaffold makes no use of substitution; parser still supports `${...}` for advanced users who want to DRY a value across positions).
+  Misalignment: spec-gap
+
+- [x] `.aide/docs/brain-aide.md` Lifecycle subsection: describes scaffold creation at `.aide/brain.aide` (legacy path) and includes the `invalid-path` boot state in the drift-detection step. Both are stale.
+  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/brain.aide` is the canonical path; boot states reduce to four with `invalid-path` removed).
+  Misalignment: spec-gap
+
+- [x] `.aide/docs/brain-aide.md` (entire doc): every prose mention of the brain.aide path uses `.aide/brain.aide`; should update to `.aide/config/brain.aide`. The user-owned scaffold-once-never-overwritten contract for the `.aide/config/` directory should also be documented here, since the lifecycle subsection covers ownership semantics.
+  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is the canonical home of user-owned configuration; scaffolded once at `aide_init` if absent, then belong to the user forever).
+  Misalignment: spec-gap
+
+- [ ] `.aide/handoff.aide` ("Design decisions" #1): "`brain.aide` is the 6th AIDE file type. Lives at `.aide/brain.aide`. Schema: `connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools` + a `## Prose` body. No `scope`/`outcomes`/`status` fields."
+  Stale path and stale schema. handoff.aide is a session-log artifact, not an authoritative spec, but it's the file a cold-start agent reads to orient on the prior session's decisions. Letting it carry the old schema means future agents reorient on outdated state. The handoff should be updated to reflect the post-revision schema and path, with the old schema labeled as superseded.
+  Traces to: `.aide/intent.aide` outcomes.desired (path move; schema collapse; field rename).
+  Misalignment: spec-gap
+
+- [ ] `.aide/handoff.aide` followup #3: "Package name on the launcher: `obsidian-mcp` vs `@bitbonsai/mcpvault`." This followup is now resolved by the root revision (the new default IS `@bitbonsai/mcpvault`). The handoff entry should be marked resolved or removed; leaving it as an open followup misleads future agents into thinking the question is still live.
+  Traces to: `.aide/intent.aide` outcomes.desired (default launcher is `@bitbonsai/mcpvault`).
+  Misalignment: spec-gap
+
 ## Retro
 
 The first issue (Quick Start `@latest`) is plan-level: the planner read the
@@ -62,3 +96,13 @@ What would have caught this earlier:
   `src/.aide` both forbid these encodings; the README spec inherited the
   rule but encoded the exact pattern the rule warns against. The aligner
   needs to catch these inheritance violations on every alignment pass.
+
+### Active cycle (2026-04-25 — root revision: methodology doc + handoff out of sync)
+
+The root `.aide/intent.aide` revision settled five interlocking decisions (path move to `.aide/config/`, launcher rename, schema collapse, `connector` → `name`, `invalid-path` removal) that cascade through every spec downstream. The methodology doc `.aide/docs/brain-aide.md` is the canonical-doctrine surface that ships with `aide_init` and teaches every host project the file format — it must agree with the root, but it currently documents the prior schema.
+
+The handoff at `.aide/handoff.aide` describes a refactor that COMPLETED with the prior schema, so its design-decisions block and its followups are now historically accurate-but-superseded. Future cold-start agents reading the handoff will reorient on outdated state unless the handoff is updated to flag the supersession.
+
+This is the same root-architectural-shifts pattern from `feedback_root_architectural_shifts.md`: a major root revision leaves the trunk surfaces (handoff, methodology docs) un-updated, and the drift accumulates as peer-level violations no single leaf carries.
+
+What would have caught this earlier: `/aide:align` should follow root revisions immediately, before any handoff or methodology-doc consumer can re-cite the old shape. The methodology doc's load-bearing role (every `aide_init` ships it) makes this drift especially expensive — it propagates to every new host install on the next release.

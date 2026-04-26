@@ -1,7 +1,10 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mcpEntry } from "@/service/install/wireMcp/index.js";
-import { obsidianMcpEntry } from "@/service/install/provisionBrain/index.js";
+import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
+import { parseBrainAideFromString, interpolateArgs } from "@/service/parseBrainAide/index.js";
+import sharedWriteMcpEntry from "@/cli/shared/writeMcpEntry/index.js";
+import type { McpServerEntry } from "@/types/index.js";
 
 export interface WriteMcpEntryResult {
 	status: "created" | "exists";
@@ -9,31 +12,29 @@ export interface WriteMcpEntryResult {
 }
 
 /**
- * Read-parse-merge-write for `.mcp.json` in the given project root.
+ * Thin wrapper around the shared `writeMcpEntry` helper that builds the MCP
+ * entries map for the cold-start CLI and maps the shared helper's result to
+ * the CLI's `WriteMcpEntryResult` shape.
  *
- * Writes the `aide` and `brain` MCP server entries additively.
- * The aide entry is pure canonical. The brain entry is written with
- * `vaultPath` when provided, or an empty string placeholder when not —
- * an empty path is intentional: `aide_info` reports it as `invalid-path`,
- * which the orchestrator's inline-recovery flow (open Claude Code and run
- * `/aide`) detects and prompts the user to fill in the real vault path.
+ * Pipeline:
+ * 1. Computes the `aide` entry via `mcpEntry()`.
+ * 2. When `vaultPath` is supplied:
+ *    - Computes the canonical Obsidian brain.aide template content.
+ *    - If `.aide/brain.aide` exists on disk, reads it (user edits win over
+ *      the template). Otherwise uses the in-memory template content.
+ *    - Parses the content via `parseBrainAideFromString`. On `ok`, derives
+ *      the `brain` entry. On any non-ok kind, throws — a hand-edited
+ *      brain.aide that doesn't parse is a user error to surface.
+ *    - Adds `brain: brainEntry` and `obsidian: "delete"` to the entries map
+ *      (legacy key migration, uniform with sync).
+ * 3. When `vaultPath` is absent: only `aide` is in the entries map — the
+ *    caller's deferred-categories messaging handles the brain followup.
+ * 4. Delegates to the shared helper, then maps the result to the CLI shape:
+ *    - `unchanged: true` and no writes → `{ status: "exists", ... }`.
+ *    - Otherwise → `{ status: "created", message: <composed from written + deleted> }`.
  *
- * Brain entry migration semantics (mirrors `buildBrainMcpStep` in provisionBrain):
- *
- * - Cold install (no `obsidian` key, no `brain` key) → write under `brain`.
- * - Legacy (`obsidian` exists, `brain` does not) → write under `brain`.
- *   The `obsidian` orphan key is preserved; cleanup is deferred to a
- *   separate follow-up step.
- * - Transitional (both `obsidian` and `brain` exist) → leave alone, no
- *   brain write needed. The brain key is already present.
- * - Already-current (`brain` exists, no `obsidian`) → leave alone.
- *
- * The `aide` entry follows the original never-overwrite semantics: if
- * `aide` (or legacy `aidemd-mcp`) is present, it is preserved.
- *
- * Returns `exists` only when BOTH aide and brain are already present.
- * Otherwise returns `created` and the message names which entries were
- * added.
+ * This helper only mutates `.mcp.json`. Writing `.aide/brain.aide` is
+ * `runInit`'s responsibility (Step 3), not this helper's.
  *
  * Throws on malformed JSON — the only abort trigger for the CLI.
  */
@@ -41,93 +42,88 @@ export default async function writeMcpEntry(
 	projectRoot: string,
 	vaultPath?: string,
 ): Promise<WriteMcpEntryResult> {
-	const mcpPath = join(projectRoot, ".mcp.json");
-
-	let existing: string;
-	try {
-		existing = await readFile(mcpPath, "utf-8");
-	} catch (err: unknown) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-			existing = "";
-		} else {
-			throw err;
-		}
-	}
-
-	let config: Record<string, unknown> = {};
-
-	if (existing) {
-		try {
-			config = JSON.parse(existing) as Record<string, unknown>;
-		} catch {
-			throw new Error(
-				`.mcp.json exists but contains invalid JSON. Fix the syntax error and re-run.`,
-			);
-		}
-	}
-
-	const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
-
-	const aidePresent = "aide" in servers || "aidemd-mcp" in servers;
-	const brainPresent = "brain" in servers;
-	const obsidianPresent = "obsidian" in servers;
-
-	// Transitional or already-current: brain key is already present.
-	// Aide key check is still independent — aide may still need to be written.
-	if (brainPresent && aidePresent) {
-		return {
-			status: "exists",
-			message: "aide and brain MCP server entries already configured",
-		};
-	}
-
-	const nextServers: Record<string, unknown> = { ...servers };
-	const added: string[] = [];
-
-	if (!aidePresent) {
-		nextServers.aide = mcpEntry();
-		added.push("aide");
-	}
-
-	// Write brain when not already present (covers cold-install and legacy-obsidian branches).
-	// When both obsidian and brain are already present (transitional), brainPresent is true
-	// and we already returned `exists` above (when aide is also present) or fall through
-	// to only add aide. When brain is absent but obsidian exists (legacy), we write brain.
-	if (!brainPresent) {
-		nextServers.brain = obsidianMcpEntry(vaultPath ?? "");
-		added.push("brain");
-	}
-
-	if (added.length === 0) {
-		// aide is present, brain is present — both covered. Should not reach here
-		// because brainPresent && aidePresent returns early above, but guard for safety.
-		return {
-			status: "exists",
-			message: "aide and brain MCP server entries already configured",
-		};
-	}
-
-	const merged: Record<string, unknown> = {
-		...config,
-		mcpServers: nextServers,
+	const entries: Record<string, McpServerEntry | "delete"> = {
+		aide: mcpEntry(),
 	};
 
-	await writeFile(mcpPath, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+	if (vaultPath !== undefined) {
+		// Compute the canonical template content for this vault path.
+		const templateContent = obsidianBrainAideTemplate(vaultPath);
 
-	// Count preserved servers: all servers except the managed keys (aide, aidemd-mcp, brain, obsidian).
-	const managedKeys = new Set(["aide", "aidemd-mcp", "brain", "obsidian"]);
-	const preservedCount = Object.keys(servers).filter((k) => !managedKeys.has(k)).length;
-	const addedText = added.join(" and ");
-	const base = `${addedText} MCP server ${added.length === 1 ? "entry" : "entries"}`;
+		// If brain.aide already exists on disk, use the user's version; otherwise
+		// fall back to the in-memory template (handles first-run and re-run cases).
+		const brainAidePath = join(projectRoot, ".aide", "brain.aide");
+		let brainAideContent: string;
+		try {
+			brainAideContent = await readFile(brainAidePath, "utf-8");
+		} catch (err: unknown) {
+			if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+				brainAideContent = templateContent;
+			} else {
+				throw err;
+			}
+		}
 
-	let message: string;
-	if (preservedCount > 0) {
-		message = `${base} (merged with ${preservedCount} existing server${preservedCount === 1 ? "" : "s"})`;
-	} else {
-		message = base;
+		// Parse the brain.aide content. Any non-ok result is a user error to surface.
+		const parseResult = parseBrainAideFromString(brainAideContent);
+		if (parseResult.kind !== "ok") {
+			const reason = parseResult.kind === "missing" ? "missing" : parseResult.reason;
+			throw new Error(
+				`.aide/brain.aide could not be parsed: ${reason}. Fix the file and re-run.`,
+			);
+		}
+
+		const { config } = parseResult;
+		const brainEntry: McpServerEntry = {
+			command: config.mcpServerConfig.command,
+			args: interpolateArgs(config),
+		};
+
+		entries.brain = brainEntry;
+		// Migrate legacy obsidian key — uniform with sync's behavior.
+		entries.obsidian = "delete";
 	}
-	if (!brainPresent && !vaultPath) {
-		message += " — brain vault path is a placeholder; open Claude Code and run /aide to set it";
+
+	const result = await sharedWriteMcpEntry(projectRoot, entries);
+
+	if (result.unchanged) {
+		return {
+			status: "exists",
+			message: "aide and brain MCP server entries already configured",
+		};
+	}
+
+	// Compose the message from written and deleted keys.
+	const { written, deleted } = result;
+
+	// Count preserved (non-managed) servers by reading the current .mcp.json.
+	// We need the preserved count for the "merged with N existing server(s)" suffix.
+	// Re-read the file that was just written to get the full server map.
+	const managedKeys = new Set(["aide", "aidemd-mcp", "brain", "obsidian"]);
+	let preservedCount = 0;
+	try {
+		const mcpPath = join(projectRoot, ".mcp.json");
+		const raw = await readFile(mcpPath, "utf-8");
+		const parsed = JSON.parse(raw) as Record<string, unknown>;
+		const servers = (parsed.mcpServers ?? {}) as Record<string, unknown>;
+		preservedCount = Object.keys(servers).filter((k) => !managedKeys.has(k)).length;
+	} catch {
+		// If reading fails after the write, preserve count stays 0 — non-fatal.
+	}
+
+	const parts: string[] = [];
+	if (written.length > 0) {
+		const entryWord = written.length === 1 ? "entry" : "entries";
+		parts.push(`${written.join(" and ")} MCP server ${entryWord}`);
+	}
+	if (deleted.length > 0) {
+		parts.push(`removed legacy ${deleted.join(", ")} key${deleted.length === 1 ? "" : "s"}`);
+	}
+
+	let message = parts.join("; ");
+
+	if (preservedCount > 0) {
+		message += ` (merged with ${preservedCount} existing server${preservedCount === 1 ? "" : "s"})`;
 	}
 
 	return { status: "created", message };

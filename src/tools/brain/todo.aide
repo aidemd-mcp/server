@@ -22,6 +22,41 @@ misalignment:
 
 ## Issues
 
+### Active (alignment pass 2026-04-25 — root revision: schema collapse removes invalid-path state)
+
+The root removed `rootPath` from brain.aide's schema and the `invalid-path` boot state with it. This spec enumerates five branches in `outcomes.desired` (one per BrainState status) including a dedicated `invalid-path` branch with a fixed remediation sentence; the four-state collapse means that branch is removed entirely.
+
+- [x] `src/tools/brain/.aide` description: "with no server-side substitution, no registry dispatch, and no `backend` field" — fine in spirit but the spec inherits `BrainState`'s five-state vocabulary throughout the body and that needs to drop to four states.
+  Traces to: `.aide/intent.aide` outcomes.desired (boot reporter states reduce to four; `invalid-path` removed with `rootPath`).
+  Misalignment: spec-gap
+
+- [x] `src/tools/brain/.aide` outcomes.desired ("On `status: invalid-path`, `instructions` is a fixed remediation sentence directing the user to correct the `rootPath` in `brain.aide` or create the declared directory"): the entire branch is removed under the new root. There is no `invalid-path` state, and `rootPath` is no longer a frontmatter field for the user to correct.
+  Traces to: `.aide/intent.aide` outcomes.desired (no `invalid-path` state; no `rootPath` field).
+  Misalignment: spec-gap
+
+- [x] `src/tools/brain/.aide` outcomes.desired (defensive fallback): "In the event that upstream contract is violated... falls through to the `invalid-path` remediation prose rather than returning an empty `instructions`." The defensive-fallback rule is still load-bearing but its target prose ceases to exist; the fallback should pick a different remediation sentence (probably `no-brain-aide`'s, since the upstream violation pattern is "buildBrainState says ok but parser disagrees" which is a missing/broken file shape).
+  Traces to: `.aide/intent.aide` outcomes.desired (no `invalid-path` state).
+  Misalignment: spec-gap
+
+- [x] `src/tools/brain/.aide` Strategy ("A defensive fallback guards the 'instructions never empty' invariant"): mentions "fall through to the `invalid-path` remediation prose" — same fix as above.
+  Traces to: `.aide/intent.aide` outcomes.desired (no `invalid-path` state).
+  Misalignment: spec-gap
+
+- [x] `src/tools/brain/.aide` Strategy ("Status vocabulary mirrors `buildBrainState` exactly"): "The five statuses — `ok`, `no-brain-aide`, `no-mcp-entry`, `invalid-path`, `mcp-drift` — are forwarded unchanged..."
+  Should read four statuses with `invalid-path` removed.
+  Traces to: `.aide/intent.aide` outcomes.desired (boot reporter states reduce to four).
+  Misalignment: spec-gap
+
+- [x] `src/tools/brain/.aide` Strategy ("Today, five states and four non-ok constants"): the count-pin is exactly the enumeration-drift pattern from `feedback_enumeration_drift.md`. Should read "four states and three non-ok constants" — or, better, drop the count entirely and let the registry be the source of truth for membership.
+  Traces to: `.aide/intent.aide` outcomes.desired (state count change).
+  Misalignment: spec-gap
+
+- [x] `src/tools/brain/.aide` references the user-owned brain.aide path as `.aide/brain.aide` throughout. The new canonical location is `.aide/config/brain.aide`. Every prose mention should update.
+  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/brain.aide` is the canonical and only source of truth).
+  Misalignment: spec-gap
+
+### Resolved (prior cycle — narrative section drift, see Retro)
+
 - [x] `src/tools/brain/.aide` Good examples (first response object): `instructions` field renders "Use `mcp__obsidian__read_note` to read CLAUDE.md at the vault root."
   Under the fixed-`brain`-key settlement the tool name in instruction prose is `mcp__brain__read_note`, not `mcp__obsidian__read_note`. The driver-id `obsidian` is correct; only the `mcp__*__*` tool name is stale.
   Traces to: `.aide/handoff.aide` Key architectural decisions (settled) — "Tool names emitted in `aide_brain`'s `instructions` prose are always `mcp__brain__*`" and the upstream pin "The brain MCP key is fixed at `brain`."
@@ -44,6 +79,16 @@ misalignment:
   Misalignment: spec-gap
 
 ## Retro
+
+### Active cycle (2026-04-25 — root revision: schema collapse removes invalid-path state)
+
+This spec was the canonical author of the `invalid-path` remediation prose at the runtime brain-tool layer. With `invalid-path` removed, the entire branch deletes — but the defensive-fallback rule that guarded the "instructions never empty" invariant still needs a target, and that target shifts to `no-brain-aide`'s prose since the upstream-contract-violation pattern this guard was written for is "buildBrainState says ok but parser says missing/broken file."
+
+The "five states and four non-ok constants" line in Strategy is the enumeration-drift pattern (`feedback_enumeration_drift.md`): a count pinned to a current methodology snapshot rather than to the registry as source of truth. The fix is mechanical (drop to four-and-three) but the better fix is to remove the count and let the BrainState type definition be the single source of truth for membership.
+
+What would have caught this earlier: the same `/aide:align` pass at the moment `rootPath` was removed from the root would have surfaced both the `invalid-path` branch removal here and at `src/tools/info/.aide` (which carries the same five-state vocabulary in mirror).
+
+### Prior cycle (resolved — narrative section drift)
 
 This is the narrative-section-escapes-rewrite pattern from `feedback_narrative_sections_escape_rewrites.md`: the spec was authored late in the brain tool's build phase, the `mcp__obsidian__*` tool names were copy-pasted from the prior shim prose in `.claude/commands/aide/brain.md`, and the post-handoff fixed-`brain`-key invariant did not propagate into the example bodies. The frontmatter and Strategy section themselves are correct (they describe the abstraction layer and never name `mcp__obsidian__*`); only the worked examples — Good and Bad alike — carry the stale tool-name shape.
 

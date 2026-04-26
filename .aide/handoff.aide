@@ -1,420 +1,245 @@
-# AIDE TODO
+# AIDE HANDOFF
 
-High-level work tracker — what we want to get done and why. Not a `plan.aide`,
-not a QA `todo.aide`. Just context for future sessions.
+Cold-start protocol for agents reorienting on this project. This is a
+snapshot of the current architectural intent, the implementation gap
+between intent and code, and the pipeline phase that comes next. It is
+NOT historical commentary — superseded design decisions are cut, not
+annotated.
 
 ---
 
 ## Cold-start protocol (do this first if you're picking up cold)
 
-State at the time of this handoff:
+**The intent layer is fully aligned. The code is not yet aligned to it.**
+A root-level architectural revision just landed in `.aide/intent.aide`
+that collapses the brain.aide schema, moves the file path, renames a
+field, and reduces the boot reporter's state set. The 7 child specs
+that touch the brain layer (`src/service/parseBrainAide`,
+`src/service/buildBrainState`, `src/service/install/provisionBrain`,
+`src/service/install/initContent`, `src/cli/init`, `src/cli/sync`,
+`src/tools/brain`, `src/tools/info`) all carry `status: aligned` against
+the new root.
 
-- **9 commits landed on `main`** covering the brain-MCP-key refactor + alignment
-  cleanup. First 8 are pushed; the 9th (`a8c4361` chore(specs)…) is local.
-  This handoff update will be the 10th commit when you commit it.
-- **Tests green** (666 passing — was 659 before the writeMcpEntry rewrite added
-  7 new migration-branch tests). `tsc` clean, `npm run build` clean.
-- **MCP server runs from `dist/`** which was last built this session. If you
-  haven't restarted Claude Code since the last `npm run build`, restart so
-  the MCP server picks up the `aide_brain` registration and the validator
-  change.
-- **QA passed** on `src/tools/brain/` against its `.aide` outcomes.
-- **Alignment passed** across the intent tree after the spec drift sweep.
+**The code still implements the OLD schema.** The parser still validates
+the legacy 5-field frontmatter, `BrainState` still has the old 5-state
+shape, `obsidianBrainAideTemplate` still emits the old launcher and
+field set, `provisionBrain` still scaffolds at the legacy path, and the
+boot reporter still stats a path it should no longer touch.
 
-Step through these in order before doing new work:
+**The methodology doc rewrite is in flight in parallel.**
+`.aide/docs/brain-aide.md` is being rewritten right now to teach the
+new schema; it is the canonical-doctrine surface every host project
+receives via `aide_init`, so it has to land alongside the code change.
 
-1. **Confirm `git status` is clean and `origin/main` is in sync.** Push any
-   local commits if not already up to date.
-2. **Eyeball the substantive changes** below — most of the diff is mechanical
-   prose / migration but a few files are real behavior changes worth a read.
-3. **Decide on publish.** All gates clear. To ship: `node scripts/publish.mjs <patch|minor|major>`.
-4. **If not publishing**, pick from "Remaining work" below in priority order.
-
-Historical conversation context: the original brain-key refactor conversation
-ID is `fc26ded1-1f83-4c45-9bca-14fdbc42e227` (preserved from the prior
-handoff). Trace via `claude -r <id>` if you need the earlier thread.
+If you're picking up cold, the next pipeline phase is **plan + build,
+per child spec**, to bring the code in line with the aligned specs.
 
 ---
 
-## Commits in this session
+## The architectural intent (what the specs now say)
 
-Chronological. `*` = file count includes new files.
+The brain layer is governed by these decisions, all of which live in
+`.aide/intent.aide` outcomes.desired and are cascaded into the 7 child
+specs above. Read them in the root before drilling into any child.
 
-| # | SHA | Subject | Files |
-|---|---|---|---|
-| 1 | `0a2c096` | feat(types): McpServerEntry, BackendDriver, BrainToolResult; extend BrainState | 1 |
-| 2 | `d8ff352` | feat(service/brainBackends): backend driver registry for the brain layer | 4* |
-| 3 | `27558b8` | refactor(service): lift buildBrainState from tools/info to service layer | 5* |
-| 4 | `88d0a4f` | feat(provisionBrain): migrate from obsidian to fixed brain MCP key | 2 |
-| 5 | `7e85d8b` | feat(cli/writeMcpEntry): migrate to brain MCP key with full migration semantics | 2 |
-| 6 | `770ce36` | feat(aide_brain): runtime brain entry-point tool with on-demand instructions | 9* |
-| 7 | `b08606a` | fix(validate): gate missing-description warning to intent and research only | 1 |
-| 8 | `7db4dea` | chore: backend-agnostic brain skill, mcpServers: [brain] in agents | 10 |
-| 9 | `a8c4361` | chore(specs): align spec text with fixed-brain-key contract; remove count enumerations | 22 |
+1. **`brain.aide` lives at `.aide/config/brain.aide`.** The new
+   `.aide/config/` directory is user-owned: scaffolded once at
+   `aide_init` if absent, never overwritten by `aide_init` or
+   `aide_upgrade` after that. The directory path itself is the
+   ownership signal — install/upgrade tooling reads it, no per-file
+   allowlist. `brain.aide` is the current inhabitant; the convention is
+   forward-compatible with future user-owned config files.
 
-Total: 52 files changed, +5242 / -1220.
+2. **The default scaffolded launcher is `@bitbonsai/mcpvault`.** The
+   `aide_init` brain template invokes it via `npx @bitbonsai/mcpvault
+   <vault-path>`. Hosts that want a different brain edit one file and
+   run `npx aidemd-mcp sync`.
 
----
+3. **The frontmatter schema collapses to exactly two top-level fields:**
+   `name` (a human-readable label the package never branches on) and
+   `mcpServerConfig` (an object with `command` and `args` that sync
+   writes through verbatim into `.mcp.json` under `mcpServers["brain"]`).
+   Final shape:
 
-## Affected root modules — file trees
+   ```yaml
+   ---
+   name: obsidian
+   mcpServerConfig:
+     command: npx
+     args:
+       - "@bitbonsai/mcpvault"
+       - "D:/notes/my-vault"
+   ---
+   ```
 
-### `src/types/` (modified)
+   Plus a hand-written `## Prose` body. No other fields are valid.
 
-Single-file module.
+4. **Removed fields:** `connector`, `rootPath`, `entryFile`, `tools`.
+   The parser actively rejects these (returns `malformed-frontmatter`
+   naming every stale field it found) so users migrate cleanly rather
+   than carrying dead fields forward into a file the package has
+   stopped honoring.
 
-```
-src/types/
-└── index.ts                                [M]
-```
+5. **Brain location lives once, inline in `mcpServerConfig.args`.**
+   The package never derives a logical root from args, never stats a
+   path to validate it, never introspects args to infer connector
+   identity. Path validation is the launcher's job at MCP server
+   startup; the package does not second-guess it.
 
-Added: `McpServerEntry`, `BackendDriver`, `BrainToolResult`. Extended
-`BrainState` with `backend: string | null`. JSDoc reworded to backend-agnostic.
+6. **Entry point is named in the prose body, not the frontmatter.**
+   The `entryFile` field is gone. Users describe their entry point
+   (e.g. "read `CLAUDE.md` at the vault root first") in `## Prose`
+   where the agent reads it.
 
-### `src/service/brainBackends/` (NEW)
+7. **The brain's interface contract is the prose body, not a
+   frontmatter declaration.** The `tools` field is gone. The agent
+   reads the prose verbatim, calls whatever MCP tools it names, and
+   surfaces failures (missing tool, wrong shape, unwired backend) at
+   the first call. No frontmatter declaration of expected tool calls
+   to keep in sync with the prose.
 
-```
-src/service/brainBackends/
-├── .aide                                   [+]
-├── plan.aide                               [+]
-├── index.ts                                [+]
-└── index.test.ts                           [+]
-```
+8. **`connector` field renamed to `name`.** It's a label for the user
+   and the agent reading the file, never a dispatcher. Different
+   brains may share names without affecting code behavior.
 
-Backend driver registry. Single matcher table walked by both accessors
-(`resolveBackend(entry)` default, `getDriverById(id)` named). Inline
-obsidian matcher (POSIX + Windows shapes). Inline instruction template
-prose names `mcp__brain__*` tool names. 21 tests.
+9. **Boot reporter brain status states reduce to four:** `ok`,
+   `no-brain-aide`, `no-mcp-entry`, `mcp-drift`. The prior
+   `invalid-path` state goes away with `rootPath` — there is no path
+   for the package to validate anymore.
 
-### `src/service/buildBrainState/` (NEW — lifted from `src/tools/info/buildBrainState/`)
+10. **`${...}` interpolation of frontmatter values into
+    `mcpServerConfig.args` remains supported** for advanced users who
+    want to DRY a value across argument positions. The default
+    scaffold does NOT exercise this surface (the path is inline,
+    byte-for-byte). With the schema collapsed, the only resolvable
+    placeholder today is `${name}`. Substitution lives ONLY in
+    `mcpServerConfig.args` at install/sync time, NEVER in the prose
+    body at agent time.
 
-```
-src/service/buildBrainState/
-├── .aide                                   [+]
-├── plan.aide                               [+]
-├── index.ts                                [+]
-└── index.test.ts                           [+ — moved from tools/info]
-```
-
-Old `src/tools/info/buildBrainState/` directory **deleted** as part of the
-lift (both `index.ts` and `index.test.ts`). Switched to fixed `brain` key
-lookup, registry-dispatched backend identity, populates `BrainState.backend`
-on every branch. 14 tests including the new wired-but-unrecognized branch.
-
-### `src/service/install/provisionBrain/` (modified)
-
-```
-src/service/install/provisionBrain/
-├── .aide                                   [M]
-├── plan.aide                               [unchanged]
-├── todo.aide                               [M — alignment items resolved]
-├── index.ts                                [M]
-└── index.test.ts                           [M]
-```
-
-`buildObsidianMcpStep` renamed `buildBrainMcpStep`, MCP key switched to
-`brain`. Three migration branches: cold install, legacy obsidian-only,
-both keys present. Vault `CLAUDE.md` template prose updated to
-`mcp__brain__search_notes`. 33 tests.
-
-### `src/cli/init/writeMcpEntry/` (modified)
-
-```
-src/cli/init/writeMcpEntry/
-├── index.ts                                [M]
-└── index.test.ts                           [M]
-```
-
-Rewrote with four-branch migration mirroring `buildBrainMcpStep`: cold
-install writes `brain`; legacy obsidian-only writes `brain` alongside
-(orphan obsidian preserved per intentional deferral); transitional both
-keys leaves `brain` untouched; already-current returns `exists`.
-Preserved-server count excludes managed keys (`aide`, `aidemd-mcp`,
-`brain`, `obsidian`). Tests grew 9 → 16.
-
-### `src/tools/brain/` (NEW)
-
-```
-src/tools/brain/
-├── .aide                                   [+]
-├── plan.aide                               [+]
-├── todo.aide                               [+ — alignment-pass items, all resolved]
-├── index.ts                                [+ — orchestrator]
-├── index.test.ts                           [+]
-└── composeInstructions/
-    ├── index.ts                            [+ — instruction composer]
-    └── index.test.ts                       [+]
-```
-
-New `aide_brain` MCP tool. Returns `{ status, backend, instructions }`.
-Three branches: `ok` (driver prose), `no-mcp-entry` (remediation prose),
-`invalid-path` (remediation prose). Defends impossible states (status `ok`
-with null `vaultPath` or null `backend`, unknown driver id) by collapsing
-to `invalid-path` shape. 12 tests across orchestrator and
-`composeInstructions` helper.
-
-### `src/tools/info/` (modified)
-
-```
-src/tools/info/
-├── .aide                                   [M — substantial spec rewrite]
-├── plan.aide                               [unchanged]
-├── todo.aide                               [M — alignment items resolved]
-├── index.ts                                [M — import re-point + JSDoc]
-└── index.test.ts                           [M — mock target + backend field]
-```
-
-Consumes `buildBrainState` from its lifted service location. All test
-fixtures include the new `backend` field on `BrainState` shapes.
-
-### `src/tools/validate/` (modified)
-
-```
-src/tools/validate/
-├── .aide                                   [unchanged]
-├── index.ts                                [M]
-└── index.test.ts                           [unchanged]
-```
-
-`missing-description` warning gated to `intent` and `research` types only.
-Plan and todo files exempt per `plan-aide.md` ("Frontmatter is minimal.
-intent only"). Isolated commit for revertability.
-
-### `src/index.ts` (MCP entry-point — modified)
-
-```
-src/index.ts                                [M]
-```
-
-Registered `aide_brain` tool entry alongside `aide_info`. Updated the
-`aide_info` description block to reference the `brain` key (not
-`obsidian`) per the fixed-key contract.
-
-### `.claude/skills/brain/` (modified)
-
-```
-.claude/skills/brain/
-└── SKILL.md                                [M — rewritten as backend-agnostic signpost]
-```
-
-Removed: `.claude/skills/brain/.aide` and `.claude/skills/brain/plan.aide`
-(helper-level skills don't carry their own spec; intent lives in the
-parent `.claude/.aide`).
-
-### `.claude/agents/aide/` (modified — frontmatter sweep)
-
-```
-.claude/agents/aide/
-├── aide-aligner.md                         [unchanged — no brain access by spec]
-├── aide-architect.md                       [M — mcpServers: [brain]]
-├── aide-auditor.md                         [M — mcpServers: [brain]]
-├── aide-domain-expert.md                   [M — mcpServers: [brain] + color blue]
-├── aide-explorer.md                        [unchanged — mcpServers: [aide] only]
-├── aide-implementor.md                     [M — mcpServers: [brain]]
-├── aide-qa.md                              [unchanged — no brain access]
-├── aide-spec-writer.md                     [unchanged — no brain access]
-└── aide-strategist.md                      [M — mcpServers: [brain]]
-```
-
-Five agents migrated to `mcpServers: [brain]`. `aide-domain-expert` color
-collision with `aide-explorer` resolved (cyan → blue). One residual color
-collision remains: `aide-spec-writer` and `aide-strategist` both `purple`
-— acceptable since they run sequentially, not concurrently, in the spec
-phase.
-
-### `.aide/` doc-hub (modified)
-
-```
-.aide/
-├── docs/
-│   └── index.md                            [M — Pipeline Agents intro de-counted]
-├── intent.aide                             [M — count phrases rephrased]
-├── readme.aide                             [M — count phrases rephrased + aide_brain added to roster]
-└── handoff.aide                            [M — this rewrite]
-```
-
-### Other touched specs
-
-Status field added (no body changes):
-
-```
-src/cli/.aide                               [M — status: aligned added]
-src/service/brainBackends/.aide             [M — status: aligned added]
-src/service/buildBrainState/.aide           [M — status: aligned added]
-```
-
-Body swept (count-enumeration phrasing + key-rename drift):
-
-```
-src/.aide                                   [M]
-src/cli/init/.aide                          [M]
-src/service/install/.aide                   [M]
-src/service/install/installAgents/.aide     [M]
-src/service/install/installMethodologyDocs/.aide [M]
-.claude/.aide                               [M]
-```
-
-`todo.aide` files updated (drift items marked resolved):
-
-```
-src/tools/info/todo.aide                    [M]
-src/cli/init/todo.aide                      [M]
-src/service/install/provisionBrain/todo.aide [M]
-src/service/install/installAgents/todo.aide [M]
-src/service/install/todo.aide               [M]
-.claude/todo.aide                           [M]
-```
+11. **The MCP server never silently rewrites `.mcp.json`.** Mutation
+    of the host's MCP wiring is always an explicit user action through
+    `npx aidemd-mcp sync`. Drift between `brain.aide` and `.mcp.json`
+    is a hard halt — the boot reporter surfaces `mcp-drift` and the
+    pipeline refuses to advance until the user runs sync.
 
 ---
 
-## What needs human review before publish
+## The implementation gap (what the code does NOT yet do)
 
-### Substantive behavior changes — read these carefully
+Every item below is a known divergence between the aligned specs and
+the current source. None of them are open design questions; they are
+build work waiting on plan + implement.
 
-1. **`src/cli/init/writeMcpEntry/index.ts`** — full rewrite from one-key
-   write to four-branch migration. The CLI install path is the cold-start
-   surface for new users; if this has a bug, every fresh install breaks.
-   Test count went 9 → 16; verify the four branches are all covered.
-2. **`src/service/install/provisionBrain/index.ts`** — `buildBrainMcpStep`
-   migration logic. Same three branches as writeMcpEntry, but lives
-   on the planner side. The MCP-tool path through `aide_init`.
-3. **`src/tools/brain/index.ts`** + **`composeInstructions/index.ts`** —
-   the new `aide_brain` orchestrator and its instruction composer.
-   Defensive impossible-state collapse worth a sanity check.
-4. **`src/service/brainBackends/index.ts`** — the registry. Single
-   matcher table. POSIX + Windows shapes for the obsidian matcher.
-5. **`src/service/buildBrainState/index.ts`** — lifted from tools/info
-   to service. New wired-but-unrecognized branch. Defensive narrowing
-   of `command` field.
-6. **`src/tools/validate/index.ts`** — small but it ships to every
-   downstream project. The gate to intent/research only is correct
-   per `plan-aide.md` but it does change behavior. Isolated commit so
-   it can be reverted independently.
-
-### Mechanical changes — low review priority
-
-- `src/types/index.ts` — additive types, JSDoc rewords
-- `src/index.ts` — tool registration entry, description prose
-- `src/tools/info/index.ts` — import re-point, JSDoc reword
-- `.claude/skills/brain/SKILL.md` — rewrite as backend-agnostic signpost
-- `.claude/agents/aide/*.md` (×5) — frontmatter `obsidian` → `brain` only
-- All `.aide` and `todo.aide` files in commit `a8c4361` — spec drift
-  fixes + count phrasing sweep, no normative semantics changed
+| Module | Current code | Required by aligned spec |
+|---|---|---|
+| `src/service/parseBrainAide/` | Validates legacy 5-field frontmatter (`connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools`); accepts them as required. | Accept exactly `name` + `mcpServerConfig.{command, args}`. Reject `connector` / `rootPath` / `entryFile` / `tools` as `malformed-frontmatter` naming every stale field. Generalize `${...}` interpolation over any frontmatter top-level key. |
+| `src/types/index.ts` | `BrainAideConfig` carries the 5-field shape; `BrainState` is a 5-variant union including `invalid-path`. | `BrainAideConfig` is `{ name: string; mcpServerConfig: { command: string; args: string[] } }`. `BrainState` is a 4-variant union: `ok | no-brain-aide | no-mcp-entry | mcp-drift`. |
+| `src/service/buildBrainState/` | Stats a path derived from `rootPath`/args; emits `invalid-path`. | Drop the path stat entirely. Emit only the 4-state vocabulary. Path validation is the launcher's job. |
+| `src/service/install/provisionBrain/obsidianBrainAideTemplate/` | Emits `obsidian-mcp` launcher with the legacy 5-field frontmatter. | Emit `@bitbonsai/mcpvault` launcher with the 2-field frontmatter (`name: obsidian`, `mcpServerConfig.{command: "npx", args: ["@bitbonsai/mcpvault", <vault-path>]}`). |
+| `src/service/install/provisionBrain/` | Scaffolds at `.aide/brain.aide`. | Scaffold at `.aide/config/brain.aide`. Honor the user-owned scaffold-once-never-overwritten contract for everything under `.aide/config/`. |
+| `src/service/install/` (broader) | `aide_init` and `aide_upgrade` may touch files at `.aide/brain.aide`. | Read `.aide/config/` as the ownership signal; never overwrite anything inside it on subsequent runs. |
+| `src/tools/brain/` | Returns 5-state shape including `invalid-path`. | Return 4-state shape; `name` field surfaces in the response (replacing any prior `connector` exposure). |
+| `src/tools/info/` | Forwards 5-state `BrainState`. | Forward 4-state `BrainState`. |
+| `src/cli/init/` | Cold-start CLI scaffolds `brain.aide` at the legacy path with the legacy template. | Scaffold at `.aide/config/brain.aide` with the new template. |
+| `src/cli/sync/` | Reads `.aide/brain.aide`. | Read `.aide/config/brain.aide`. |
+| `.aide/docs/brain-aide.md` | Documents the legacy 5-field schema, `obsidian-mcp` launcher, `.aide/brain.aide` path, `${rootPath}` substitution example, `invalid-path` state. | Documents the 2-field schema, `@bitbonsai/mcpvault` launcher, `.aide/config/brain.aide` path, generalized `${...}` over frontmatter keys, 4-state vocabulary, user-owned scaffold-once contract. (Rewrite in flight in parallel.) |
 
 ---
 
-## Settled architectural decisions
+## What's next: plan + build per child spec
 
-Carried forward from prior session, plus the new methodology principle.
+The pipeline phase is `/aide:plan` followed by `/aide:build` for each
+of the 7 aligned child specs. Each child gets its own `plan.aide` that
+decomposes its slice of the implementation gap into ordered steps,
+then a fresh implementor agent per step (per the
+`feedback_build_one_agent_per_step.md` memory: never one agent for the
+whole plan).
 
-- **The brain MCP key is fixed at `brain`.** Backend identity is inferred
-  from the command/args shape of the entry under the `brain` key.
-- **The brain owns its own navigation rules after the entry-point.** The
-  backend driver only needs to know how to reach the entry-point file;
-  once read, the brain takes over.
-- **`instructions` is pre-formatted prose, not structured fields.** The
-  server assembles the string per backend; the agent just executes it.
-- **Wired-but-unrecognized collapses to `no-mcp-entry`.** Same vocabulary,
-  same remediation, no new term.
-- **Migration path: rename `obsidian` → `brain` at install time.** Both
-  `provisionBrain.buildBrainMcpStep` (MCP-tool path) and
-  `cli/writeMcpEntry` (CLI path) carry the migration. Orphan `obsidian`
-  key intentionally NOT deleted — deferred to a separate plan.
-- **`aide_info` stays a fast boot probe.** Brain runtime instructions
-  live in `aide_brain`, invoked only when an agent reaches for the brain.
-- **Specs MUST NOT enumerate counts of extensible rosters.** "Eight
-  agents", "six tools", "13 commands" — every count phrase becomes drift
-  the moment the roster grows. Use roster-neutral phrasing instead. The
-  rule applies project-wide to `.aide` specs and methodology docs.
-  Closed-shape counts (e.g. "four planning steps" of provisionBrain) and
-  hyperbolic non-roster counts in Bad examples are exempt — those are
-  fixed inventories, not extension points.
+Suggested ordering (dependency-first):
 
----
+1. `src/types/index.ts` — types are upstream of everything.
+2. `src/service/parseBrainAide/` — every consumer reads through the
+   parser, so the parser's new schema enforcement lands first.
+3. `src/service/buildBrainState/` — consumes the parser; emits the
+   4-state vocabulary.
+4. `src/service/install/provisionBrain/` — scaffolds the new file at
+   the new path with the new template.
+5. `src/service/install/` (initContent, install orchestrator) —
+   honors the `.aide/config/` ownership boundary.
+6. `src/tools/brain/` and `src/tools/info/` — surface the new
+   4-state shape and the `name` field.
+7. `src/cli/init/` and `src/cli/sync/` — read/write at the new path.
 
-## Remaining work
-
-### Obsidian orphan-key cleanup (deferred)
-
-Both `provisionBrain.buildBrainMcpStep` and `cli/writeMcpEntry` emit
-their migration without deleting the legacy `obsidian` key when both
-keys are present. A follow-up plan removes the `obsidian` key from
-`mcpServers` after the `brain` write succeeds. Holding for a separate
-plan keeps each migration step's scope tight and avoids interleaving
-delete-on-overwrite logic into `applySteps`.
-
-### `/aide:brain` Mode 2 shim refactor
-
-Gut the default mode in `.claude/commands/aide/brain.md` to a 3-line
-shim: "call `aide_brain`, branch on `backend === null`, follow
-`instructions`." Drop all Obsidian-specific prose from default mode.
-Mode 1 (`config`) stays Obsidian-specific — provisioning is a separate
-concern. Lives in a different module governed by `.claude/.aide`; needs
-its own `/aide:plan` round.
-
-### `aide_info` description: mention `aide_brain` on demand
-
-Today `aide_info`'s description in `src/index.ts` mentions only the boot
-probe semantics. A one-line addition ("for runtime brain reach prose,
-call `aide_brain` on demand") helps agents that read only the tool list
-at handshake time. Not a blocker — agents learn about `aide_brain` from
-its own description.
-
-### `plan.aide` count-enumeration sweep (deliberate non-decision)
-
-This session swept count phrases out of intent specs and the doc-hub but
-deliberately left `plan.aide` files alone. Plans are point-in-time
-implementation tracking — rewriting them edits history. If you decide
-you want plans treated as live specs that rot if not maintained, run a
-follow-up sweep across:
-
-- `src/service/install/installAgents/plan.aide` (says "Ship six canonical
-  AIDE pipeline agent files...")
-- `src/service/install/scaffoldCommands/plan.aide` (says "the seven
-  pipeline phases" and has 13-command checklists)
-- Various other `plan.aide` files with embedded count phrases
-
-### `config.aide` — host-project configuration (still deferred)
-
-Not a blocker. Becomes load-bearing once we ship a second backend (need
-a tiebreaker between two `brain`-shaped wirings) or once we want
-configuration explicit and version-controlled instead of inferred.
-
-Open design questions before scoping:
-
-- **Scope** — brain-only, or AIDE-wide (IDE choice, framework override, etc.)?
-- **Format** — real `.aide` spec (with intent + outcomes), or `.aide/config.yaml`
-  (config is user choice, not module intent)? Leaning toward yaml.
-- **Migration** — existing installs have no config file; need a fallback
-  inference path so they keep working.
+The methodology doc rewrite at `.aide/docs/brain-aide.md` is on its
+own track and lands when its rewrite agent finishes.
 
 ---
 
-## Open questions / review needed
+## Anti-regression invariants the build phase must hold
 
-1. **Publish version bump.** All gates clear. Version bump is a
-   semver judgment:
-   - **patch** if you treat `aide_brain` as a point upgrade and the
-     migration logic as additive (not breaking)
-   - **minor** if you treat the new `aide_brain` tool surface and the
-     fixed-`brain`-key contract as a feature addition
-   - **major** if you treat the obsidian → brain MCP key migration as
-     breaking for any downstream that pinned to the obsidian key
-     directly (low risk; the migration handles it transparently, but
-     it IS a key rename)
+These are the hard rules from `.aide/intent.aide` outcomes.undesired.
+The build phase must not violate them, even if a quick path through a
+ticket looks like it could:
 
-   Default recommendation: **minor**. New tool, additive types,
-   migration is transparent.
+- **No code path branches on `name`.** `name` is metadata. Different
+  brains may share names without affecting code behavior. If a future
+  consumer wants per-brain behavior, push it back into the user's
+  prose — never into a registry.
+- **No introspection of `mcpServerConfig.args`.** Don't extract a
+  vault path, don't infer connector identity, don't stat any derived
+  path. Reading args for any purpose other than passing them through
+  to `.mcp.json` is the same regression as a `rootPath` field in
+  different clothing.
+- **No silent acceptance of deprecated fields.** `connector` /
+  `rootPath` / `entryFile` / `tools` must be REJECTED with a
+  `malformed-frontmatter` reason, not stripped on the floor.
+- **No server-side substitution in the prose body.** Prose returns
+  verbatim. Substitution lives only in `mcpServerConfig.args` at
+  install/sync time.
+- **No silent `.mcp.json` mutation.** The MCP server reads `.mcp.json`;
+  it never rewrites it. Sync is the only mutation surface.
+- **No overwrite of files under `.aide/config/` on subsequent
+  `aide_init` / `aide_upgrade` runs.** Scaffolded once if absent;
+  user-owned forever after. Same failure class as silent `.mcp.json`
+  rewriting.
+- **No new frontmatter field whose only consumer is the parser's
+  own validation.** Every field must name a real runtime consumer
+  (sync writes `mcpServerConfig`; the user and agent read `name` as
+  a label). Anything else is validation theater.
 
-2. **End-to-end smoke test.** All 666 unit tests pass, but no
-   integration test exercises the full `aide_brain` round-trip from
-   MCP server → tool → `buildBrainState` → registry → composer →
-   response. Worth a manual smoke (or a single integration test) before
-   tagging a release if the version bump is minor or major.
+---
 
-3. **Stale `buildBrainState` location references — should be resolved.**
-   The lift moved `buildBrainState` from `src/tools/info/buildBrainState/`
-   to `src/service/buildBrainState/`. The alignment sweep (`a8c4361`)
-   updated normative spec References blocks. Historical mentions in
-   `plan.aide` files are preserved as point-in-time intent records.
-   If you find a current/normative framing of the old path that wasn't
-   caught, flag it.
+## Working tree state
+
+The repo currently shows uncommitted work from prior sessions plus the
+in-progress alignment work. Build-phase commits should be ordered
+along the dependency chain above (one commit per child after its plan
++ build + qa cycle). Ask the user before committing — cadence is a
+judgment call worth confirming.
+
+The package publishes via `node scripts/publish.mjs <patch|minor|major>`
+which bumps versions, syncs `server.json`, tags, and lets CI handle
+the npm + MCP Registry publish. Do NOT publish until the entire build
+phase is green and the methodology doc rewrite has landed; an
+intermediate publish would ship code and docs that disagree with each
+other.
+
+---
+
+## Resume protocol for next session
+
+1. Run `/aide` — orchestrator boots, runs `aide_info`, reads docs +
+   intent tree.
+2. Read this handoff to confirm the state above is still current.
+3. Read `.aide/intent.aide` outcomes (the 11 brain-layer decisions
+   above all live there) and the 7 aligned child `.aide` files for
+   their slices of the contract.
+4. Pick up at `/aide:plan` for the next child in the dependency
+   ordering above (or whichever child the user prioritizes).
+5. After planning, `/aide:build` with one fresh implementor agent per
+   plan step, then `/aide:qa` per child.
+
+If the user asks "what's the state?" — answer: intent layer aligned
+across root + 7 child specs, methodology doc rewrite in flight, code
+not yet aligned, next phase is plan + build per child along the
+dependency chain.

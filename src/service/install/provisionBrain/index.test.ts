@@ -1,533 +1,571 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+/**
+ * invariant(5g): The `obsidianMcpEntry` export was removed from `./index.ts` in
+ * Step 4 of the provisionBrain plan. This test file intentionally does NOT import
+ * `{ obsidianMcpEntry }` from `"./index.js"`. Any future attempt to add that import
+ * will fail at compile time (TypeScript: "has no exported member 'obsidianMcpEntry'")
+ * and at runtime (undefined). This comment is the spec-enforceable boundary: the
+ * provisionBrain module must never re-export obsidianMcpEntry.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir, platform } from "node:os";
-import provisionBrain from "./index.js";
+import { tmpdir } from "node:os";
 
-const expectedObsidianEntry = (brainPath: string) =>
-	platform() === "win32"
-		? { command: "cmd", args: ["/c", "npx", "@bitbonsai/mcpvault", brainPath] }
-		: { command: "npx", args: ["@bitbonsai/mcpvault", brainPath] };
+// Mock node:os so platform-dependent tests can control the platform value.
+vi.mock("node:os", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:os")>();
+	return { ...actual, platform: vi.fn(() => actual.platform()) };
+});
+
+import { platform } from "node:os";
+import provisionBrain from "./index.js";
+import obsidianBrainAideTemplate from "./obsidianBrainAideTemplate/index.js";
+import { parseBrainAideFromString, interpolateArgs } from "@/service/parseBrainAide/index.js";
+
+const mockPlatform = vi.mocked(platform);
 
 let tempDir: string;
 
 beforeEach(async () => {
 	tempDir = await mkdtemp(join(tmpdir(), "aide-provision-brain-"));
+	// Reset to host platform by default; individual tests override as needed.
+	vi.mocked(platform).mockReturnValue(process.platform as ReturnType<typeof platform>);
 });
 
 afterEach(async () => {
 	await rm(tempDir, { recursive: true, force: true });
+	vi.restoreAllMocks();
 });
 
-function makeMcpPath(): string {
-	return join(tempDir, ".mcp.json");
+/** Returns the project root for the current test (host project, not vault). */
+function makeProjectRoot(): string {
+	return tempDir;
 }
 
+/** Returns the brain vault path for the current test. */
 function makeBrainPath(): string {
 	return join(tempDir, "brain");
 }
 
+/** Returns the .mcp.json path for the current test. */
+function makeMcpPath(): string {
+	return join(tempDir, ".mcp.json");
+}
+
 describe("provisionBrain", () => {
-	it("returns four steps: vault, playbook hub, vault CLAUDE.md, and brain MCP", async () => {
+	// -----------------------------------------------------------------------
+	// 5a. Cold install scaffolds brain.aide
+	// -----------------------------------------------------------------------
+
+	it("5a: cold install — Brain config step is would-create with parseable content", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		const results = await provisionBrain(brainPath, mcpPath);
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
-		expect(results).toHaveLength(4);
-		expect(results[0].name).toBe("Brain vault");
-		expect(results[1].name).toBe("Playbook hub");
-		expect(results[2].name).toBe("Vault CLAUDE.md");
-		expect(results[3].name).toBe("MCP config (brain)");
+		// Five steps returned in order.
+		expect(results).toHaveLength(5);
+		expect(results[0].name).toBe("Brain config (brain.aide)");
+		expect(results[1].name).toBe("Brain vault");
+		expect(results[2].name).toBe("Playbook hub");
+		expect(results[3].name).toBe("Vault CLAUDE.md");
+		expect(results[4].name).toBe("MCP config (brain)");
+
+		// Brain config step is would-create with content.
+		const brainAideStep = results[0];
+		expect(brainAideStep.status).toBe("would-create");
+		expect(brainAideStep.category).toBe("brain");
+		expect(brainAideStep.filePath).toBe(join(projectRoot, ".aide", "brain.aide"));
+		expect(brainAideStep.content).toBeTruthy();
+
+		// Content must be parseable by parseBrainAideFromString.
+		const parsed = parseBrainAideFromString(brainAideStep.content!);
+		expect(parsed.kind).toBe("ok");
 	});
 
-	it("returns vault would-create with dirs content for a new location", async () => {
+	// -----------------------------------------------------------------------
+	// 5b. Existing brain.aide stays untouched
+	// -----------------------------------------------------------------------
+
+	it("5b: existing brain.aide — Brain config step is exists with no content field", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		const results = await provisionBrain(brainPath, mcpPath);
+		// Pre-write a brain.aide so the step sees it on disk.
+		const aideDir = join(projectRoot, ".aide");
+		await mkdir(aideDir, { recursive: true });
+		await writeFile(
+			join(aideDir, "brain.aide"),
+			obsidianBrainAideTemplate(brainPath),
+			"utf-8",
+		);
 
-		expect(results[0].status).toBe("would-create");
-		expect(results[0].category).toBe("brain");
-		// content is a JSON array of directories to create
-		expect(results[0].content).toBeTruthy();
-		const dirs = JSON.parse(results[0].content!);
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const brainAideStep = results[0];
+		expect(brainAideStep.name).toBe("Brain config (brain.aide)");
+		expect(brainAideStep.status).toBe("exists");
+		expect(brainAideStep.content).toBeUndefined();
+	});
+
+	// -----------------------------------------------------------------------
+	// 5c. MCP step derives from scaffolded brain.aide on cold install
+	// -----------------------------------------------------------------------
+
+	it("5c (win32): cold install — MCP entry derived from template args on Windows", async () => {
+		mockPlatform.mockReturnValue("win32");
+
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		// On cold install, the template bytes drive the derivation.
+		const templateContent = obsidianBrainAideTemplate(brainPath);
+		const parsed = parseBrainAideFromString(templateContent);
+		expect(parsed.kind).toBe("ok");
+		if (parsed.kind !== "ok") return; // narrow for TypeScript
+
+		const expectedArgs = interpolateArgs(parsed.config);
+		const expectedEntry = {
+			command: parsed.config.mcpServerConfig.command,
+			args: expectedArgs,
+		};
+
+		const mcpStep = results[4];
+		expect(mcpStep.name).toBe("MCP config (brain)");
+		expect(mcpStep.prescription?.entry).toEqual(expectedEntry);
+
+		// Windows-specific shape: cmd /c npx -y obsidian-mcp <brainPath>
+		expect(mcpStep.prescription?.entry.command).toBe("cmd");
+		expect(mcpStep.prescription?.entry.args).toEqual(["/c", "npx", "-y", "obsidian-mcp", brainPath]);
+	});
+
+	it("5c (posix): cold install — MCP entry derived from template args on POSIX", async () => {
+		mockPlatform.mockReturnValue("linux");
+
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const templateContent = obsidianBrainAideTemplate(brainPath);
+		const parsed = parseBrainAideFromString(templateContent);
+		expect(parsed.kind).toBe("ok");
+		if (parsed.kind !== "ok") return;
+
+		const expectedArgs = interpolateArgs(parsed.config);
+		const expectedEntry = {
+			command: parsed.config.mcpServerConfig.command,
+			args: expectedArgs,
+		};
+
+		const mcpStep = results[4];
+		expect(mcpStep.prescription?.entry).toEqual(expectedEntry);
+
+		// POSIX shape: npx -y obsidian-mcp <brainPath>
+		expect(mcpStep.prescription?.entry.command).toBe("npx");
+		expect(mcpStep.prescription?.entry.args).toEqual(["-y", "obsidian-mcp", brainPath]);
+	});
+
+	// -----------------------------------------------------------------------
+	// 5d. MCP step derives from existing brain.aide (source-of-truth test)
+	// -----------------------------------------------------------------------
+
+	it("5d: existing brain.aide with custom args — MCP entry reflects user's config, not canonical template", async () => {
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// User has customized their brain.aide with non-canonical args.
+		const customBrainAide = [
+			"---",
+			"connector: obsidian",
+			`rootPath: ${brainPath}`,
+			"entryFile: CLAUDE.md",
+			"mcpServerConfig:",
+			"  command: node",
+			"  args:",
+			'    - "/custom/path/to/launcher.js"',
+			'    - "${rootPath}"',
+			"tools:",
+			"  read: mcp__brain__read_note",
+			"  search: mcp__brain__search_notes",
+			"---",
+			"",
+			"## Prose",
+			"",
+			"Custom user prose.",
+		].join("\n");
+
+		const aideDir = join(projectRoot, ".aide");
+		await mkdir(aideDir, { recursive: true });
+		await writeFile(join(aideDir, "brain.aide"), customBrainAide, "utf-8");
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const mcpStep = results[4];
+		// Must use user's custom command and args, NOT the canonical Obsidian template.
+		expect(mcpStep.prescription?.entry.command).toBe("node");
+		expect(mcpStep.prescription?.entry.args).toEqual(["/custom/path/to/launcher.js", brainPath]);
+
+		// Confirm it does NOT match the canonical template.
+		const templateParsed = parseBrainAideFromString(obsidianBrainAideTemplate(brainPath));
+		if (templateParsed.kind !== "ok") return;
+		expect(mcpStep.prescription?.entry.command).not.toBe(templateParsed.config.mcpServerConfig.command);
+	});
+
+	// -----------------------------------------------------------------------
+	// 5e. Legacy obsidian-key migration
+	// -----------------------------------------------------------------------
+
+	it("5e: legacy obsidian-only .mcp.json — MCP step is would-overwrite with key brain", async () => {
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		const legacyEntry = { command: "npx", args: ["-y", "obsidian-mcp", brainPath] };
+		await writeFile(
+			mcpPath,
+			JSON.stringify({ mcpServers: { obsidian: legacyEntry } }),
+			"utf-8",
+		);
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const mcpStep = results[4];
+		expect(mcpStep.name).toBe("MCP config (brain)");
+		expect(mcpStep.status).toBe("would-overwrite");
+		expect(mcpStep.prescription?.key).toBe("brain");
+	});
+
+	// -----------------------------------------------------------------------
+	// 5f. Full idempotency — all five steps return exists
+	// -----------------------------------------------------------------------
+
+	it("5f: fully provisioned project — all five steps return exists", async () => {
+		// Must mock a deterministic platform so template bytes are stable.
+		mockPlatform.mockReturnValue("linux");
+
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// Brain config file.
+		const brainAideContent = obsidianBrainAideTemplate(brainPath);
+		const aideDir = join(projectRoot, ".aide");
+		await mkdir(aideDir, { recursive: true });
+		await writeFile(join(aideDir, "brain.aide"), brainAideContent, "utf-8");
+
+		// Vault: non-empty directory (has .obsidian/).
+		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
+
+		// Playbook hub.
+		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
+		await writeFile(
+			join(brainPath, "coding-playbook", "coding-playbook.md"),
+			"# Coding Playbook\n",
+			"utf-8",
+		);
+
+		// Vault CLAUDE.md.
+		await writeFile(join(brainPath, "CLAUDE.md"), "# Brain Vault\n", "utf-8");
+
+		// .mcp.json with the derived brain entry.
+		const parsed = parseBrainAideFromString(brainAideContent);
+		expect(parsed.kind).toBe("ok");
+		if (parsed.kind !== "ok") return;
+		const derivedEntry = {
+			command: parsed.config.mcpServerConfig.command,
+			args: interpolateArgs(parsed.config),
+		};
+		await writeFile(
+			mcpPath,
+			JSON.stringify({ mcpServers: { brain: derivedEntry } }),
+			"utf-8",
+		);
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		expect(results).toHaveLength(5);
+		expect(results[0].status).toBe("exists"); // Brain config
+		expect(results[1].status).toBe("exists"); // Brain vault
+		expect(results[2].status).toBe("exists"); // Playbook hub
+		expect(results[3].status).toBe("exists"); // Vault CLAUDE.md
+		expect(results[4].status).toBe("exists"); // MCP config
+	});
+
+	// -----------------------------------------------------------------------
+	// 5h. brain.aide schema does NOT include intent-spec fields
+	// -----------------------------------------------------------------------
+
+	it("5h: scaffolded brain.aide has no scope, outcomes, or status fields", async () => {
+		mockPlatform.mockReturnValue("linux");
+
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+
+		// Get the template content as it would be written on a cold install.
+		const templateContent = obsidianBrainAideTemplate(brainPath);
+		const parsed = parseBrainAideFromString(templateContent);
+
+		expect(parsed.kind).toBe("ok");
+		if (parsed.kind !== "ok") return;
+
+		// The config object must NOT contain intent-spec frontmatter fields.
+		// Enforces outcomes.undesired[5]: "no scope, no outcomes, no intent, no status lifecycle field."
+		const config = parsed.config as Record<string, unknown>;
+		expect(config).not.toHaveProperty("scope");
+		expect(config).not.toHaveProperty("outcomes");
+		expect(config).not.toHaveProperty("status");
+		expect(config).not.toHaveProperty("intent");
+
+		// The raw template bytes also must not contain those keys anywhere in the frontmatter.
+		// Extract frontmatter block for a targeted check.
+		const fenceStart = templateContent.indexOf("---\n");
+		const fenceEnd = templateContent.indexOf("\n---\n", fenceStart + 3);
+		const frontmatterBlock = templateContent.slice(fenceStart, fenceEnd);
+
+		expect(frontmatterBlock).not.toContain("scope:");
+		expect(frontmatterBlock).not.toContain("outcomes:");
+		expect(frontmatterBlock).not.toContain("status:");
+		expect(frontmatterBlock).not.toContain("intent:");
+	});
+
+	// -----------------------------------------------------------------------
+	// Regression: existing behaviours preserved from prior test suite
+	// -----------------------------------------------------------------------
+
+	it("vault would-create contains expected directory list", async () => {
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const vaultStep = results[1];
+		expect(vaultStep.status).toBe("would-create");
+		expect(vaultStep.category).toBe("brain");
+		expect(vaultStep.content).toBeTruthy();
+		const dirs = JSON.parse(vaultStep.content!);
 		expect(Array.isArray(dirs)).toBe(true);
 		expect(dirs).toContain("research");
 		expect(dirs).toContain("coding-playbook");
 	});
 
-	it("returns brain MCP would-create with prescription for new config", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[3].status).toBe("would-create");
-		expect(results[3].category).toBe("mcp");
-		expect(results[3].prescription?.key).toBe("brain");
-		expect(results[3].prescription?.entry).toEqual(expectedObsidianEntry(brainPath));
-	});
-
-	it("detects existing vault by .obsidian/ dir — vault step returns exists", async () => {
+	it("vault exists when .obsidian dir is present", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
 
-		const results = await provisionBrain(brainPath, mcpPath);
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
-		expect(results[0].status).toBe("exists");
-		expect(results[0].content).toBeUndefined();
+		expect(results[1].status).toBe("exists");
+		expect(results[1].content).toBeUndefined();
 	});
 
-	it("detects existing vault by non-empty dir — vault step returns exists", async () => {
+	it("vault exists when directory is non-empty", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 		await mkdir(brainPath, { recursive: true });
 		await writeFile(join(brainPath, "notes.md"), "# Notes", "utf-8");
 
-		const results = await provisionBrain(brainPath, mcpPath);
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
-		expect(results[0].status).toBe("exists");
+		expect(results[1].status).toBe("exists");
 	});
 
-	it("detects existing brain MCP entry — MCP step returns exists", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-		const existing = {
-			mcpServers: {
-				brain: expectedObsidianEntry(brainPath),
-			},
-		};
-		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[3].status).toBe("exists");
-		expect(results[3].prescription).toBeUndefined();
-	});
-
-	it("returns configMalformed when MCP config has invalid JSON", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-		await writeFile(mcpPath, "not valid json {{{", "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[3].status).toBe("would-create");
-		expect(results[3].configMalformed).toBe(true);
-		// Prescription is still provided so agent can proceed
-		expect(results[3].prescription).toBeDefined();
-	});
-
-	// -------------------------------------------------------------------------
-	// Migration branches: obsidian → brain key migration
-	// -------------------------------------------------------------------------
-
-	it("cold install (no brain, no obsidian key) yields would-create with key brain", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-		await writeFile(mcpPath, JSON.stringify({ mcpServers: {} }), "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[3].status).toBe("would-create");
-		expect(results[3].prescription?.key).toBe("brain");
-		expect(results[3].name).toBe("MCP config (brain)");
-	});
-
-	it("legacy install (obsidian key only) yields would-overwrite with key brain", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-		const legacy = { mcpServers: { obsidian: expectedObsidianEntry(brainPath) } };
-		await writeFile(mcpPath, JSON.stringify(legacy), "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[3].status).toBe("would-overwrite");
-		expect(results[3].prescription?.key).toBe("brain");
-		expect(results[3].name).toBe("MCP config (brain)");
-	});
-
-	it("transitional install (both brain and obsidian keys present) yields would-overwrite with key brain", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-		const transitional = {
-			mcpServers: {
-				obsidian: expectedObsidianEntry(brainPath),
-				brain: expectedObsidianEntry(brainPath),
-			},
-		};
-		await writeFile(mcpPath, JSON.stringify(transitional), "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		// Both keys present — would-overwrite so agent confirms and orphan obsidian cleanup can follow.
-		expect(results[3].status).toBe("would-overwrite");
-		expect(results[3].prescription?.key).toBe("brain");
-		expect(results[3].name).toBe("MCP config (brain)");
-	});
-
-	it("never writes to disk", async () => {
+	it("playbook hub is would-create with five-section Markdown content", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		await provisionBrain(brainPath, mcpPath);
-
-		// Neither the brain dir, the playbook hub, the vault CLAUDE.md, nor the MCP config should have been created
-		await expect(import("node:fs/promises").then((fs) => fs.access(brainPath))).rejects.toThrow();
-		await expect(
-			import("node:fs/promises").then((fs) =>
-				fs.access(join(brainPath, "coding-playbook", "coding-playbook.md")),
-			),
-		).rejects.toThrow();
-		await expect(
-			import("node:fs/promises").then((fs) => fs.access(join(brainPath, "CLAUDE.md"))),
-		).rejects.toThrow();
-		await expect(import("node:fs/promises").then((fs) => fs.readFile(mcpPath, "utf-8"))).rejects.toThrow();
-	});
-
-	it("new vault returns playbook hub as would-create with five-section Markdown content", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		const results = await provisionBrain(brainPath, mcpPath);
-		const hubStep = results[1];
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+		const hubStep = results[2];
 
 		expect(hubStep.name).toBe("Playbook hub");
 		expect(hubStep.status).toBe("would-create");
-		expect(hubStep.category).toBe("brain");
 		expect(hubStep.content).toBeTruthy();
 		expect(hubStep.content).toContain("## Task Routing");
 		expect(hubStep.content).toContain("## How to Use This Index");
 		expect(hubStep.content).toContain("## Always Read First");
 		expect(hubStep.content).toContain("## Sections");
 		expect(hubStep.content).toContain("## Contents");
-		// Wikilinks must be placeholders — resolved note names fabricate content for a new vault
-		expect(hubStep.content).not.toContain("[[conventions]]");
-		expect(hubStep.content).not.toContain("[[folder-structure]]");
 	});
 
-	it("existing playbook hub file byte-identical to template returns playbook hub step as exists with no content", async () => {
+	it("playbook hub returns exists when file is present (seed-semantic — no byte comparison)", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
-
-		// Get canonical content from the first call
-		const firstResults = await provisionBrain(brainPath, mcpPath);
-		const canonicalHub = firstResults[1].content!;
-
-		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
 		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
+		await writeFile(
+			join(brainPath, "coding-playbook", "coding-playbook.md"),
+			"# Totally different content\n\nUser modified this.\n",
+			"utf-8",
+		);
 
-		const results = await provisionBrain(brainPath, mcpPath);
-		const hubStep = results[1];
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
-		expect(hubStep.status).toBe("exists");
-		expect(hubStep.content).toBeUndefined();
+		expect(results[2].status).toBe("exists");
+		expect(results[2].content).toBeUndefined();
 	});
 
-	it("partial vault — directories exist but playbook hub missing returns vault exists, hub would-create", async () => {
+	it("vault CLAUDE.md is would-create with navigation content", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[0].status).toBe("exists");
-		expect(results[1].status).toBe("would-create");
-		expect(results[1].name).toBe("Playbook hub");
-	});
-
-	it("vault would-create step has the correct filePath", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[0].filePath).toBe(brainPath);
-	});
-
-	it("new vault returns vault CLAUDE.md as would-create with navigation content", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		const results = await provisionBrain(brainPath, mcpPath);
-		const claudeStep = results[2];
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+		const claudeStep = results[3];
 
 		expect(claudeStep.name).toBe("Vault CLAUDE.md");
 		expect(claudeStep.status).toBe("would-create");
-		expect(claudeStep.category).toBe("brain");
 		expect(claudeStep.content).toBeTruthy();
 		expect(claudeStep.content).toContain("Wikilink Crawling Protocol");
 		expect(claudeStep.content).toContain("Decision Protocol");
 		expect(claudeStep.content).toContain("Where to Find Things");
-		expect(claudeStep.content).toContain("Brain");
 	});
 
-	it("existing vault CLAUDE.md byte-identical to template returns vault CLAUDE.md step as exists with no content", async () => {
+	it("vault CLAUDE.md returns exists when file is present (seed-semantic)", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
-
-		// Get canonical content from the first call
-		const firstResults = await provisionBrain(brainPath, mcpPath);
-		const canonicalClaudeMd = firstResults[2].content!;
-
-		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
-		await writeFile(join(brainPath, "CLAUDE.md"), canonicalClaudeMd, "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-		const claudeStep = results[2];
-
-		expect(claudeStep.name).toBe("Vault CLAUDE.md");
-		expect(claudeStep.status).toBe("exists");
-		expect(claudeStep.content).toBeUndefined();
-	});
-
-	it("partial vault — directories exist but CLAUDE.md missing returns CLAUDE.md as would-create", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		// Get canonical hub content to write byte-identical file
-		const firstResults = await provisionBrain(brainPath, mcpPath);
-		const canonicalHub = firstResults[1].content!;
-
-		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
-		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[0].status).toBe("exists");
-		expect(results[1].status).toBe("exists");
-		expect(results[2].status).toBe("would-create");
-		expect(results[2].name).toBe("Vault CLAUDE.md");
-		expect(results[3].name).toBe("MCP config (brain)");
-	});
-
-	// -------------------------------------------------------------------------
-	// Drift cases: playbook hub byte-compare
-	// -------------------------------------------------------------------------
-
-	it("playbook hub byte-identical to template returns exists", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		// First call to get the canonical content
-		const firstResults = await provisionBrain(brainPath, mcpPath);
-		const canonicalContent = firstResults[1].content!;
-
-		// Write the byte-identical template to disk
-		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalContent, "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-		const hubStep = results[1];
-
-		expect(hubStep.status).toBe("exists");
-		expect(hubStep.content).toBeUndefined();
-	});
-
-	it("playbook hub drifted from template still returns exists — user owns the bytes post-scaffold", async () => {
-		// Spec trace:
-		//   outcomes.desired — "When either file exists on disk at its expected path, the corresponding
-		//     InitStep is returned with status: 'exists' regardless of byte drift from the bundled template."
-		//   outcomes.undesired — "The coding-playbook hub or vault-root CLAUDE.md being returned with
-		//     status: 'would-overwrite' under any circumstance — even when on-disk bytes have drifted
-		//     from the bundled template."
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		// Get canonical content then modify it
-		const firstResults = await provisionBrain(brainPath, mcpPath);
-		const driftedContent = firstResults[1].content! + "\n## Extra Section\n\nUnexpected drift.\n";
-
-		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), driftedContent, "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-		const hubStep = results[1];
-
-		expect(hubStep.status).toBe("exists");
-		expect(hubStep.content).toBeUndefined();
-	});
-
-	it("playbook hub missing returns would-create with content", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		// Vault exists but playbook hub is absent
-		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
-
-		const results = await provisionBrain(brainPath, mcpPath);
-		const hubStep = results[1];
-
-		expect(hubStep.status).toBe("would-create");
-		expect(hubStep.content).toBeTruthy();
-	});
-
-	// -------------------------------------------------------------------------
-	// Drift cases: vault CLAUDE.md byte-compare
-	// -------------------------------------------------------------------------
-
-	it("vault CLAUDE.md byte-identical to template returns exists", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		// First call to get the canonical content
-		const firstResults = await provisionBrain(brainPath, mcpPath);
-		const canonicalContent = firstResults[2].content!;
-
-		// Write the byte-identical template to disk
 		await mkdir(brainPath, { recursive: true });
-		await writeFile(join(brainPath, "CLAUDE.md"), canonicalContent, "utf-8");
+		await writeFile(join(brainPath, "CLAUDE.md"), "# User content\n", "utf-8");
 
-		const results = await provisionBrain(brainPath, mcpPath);
-		const claudeStep = results[2];
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
-		expect(claudeStep.status).toBe("exists");
-		expect(claudeStep.content).toBeUndefined();
+		expect(results[3].status).toBe("exists");
+		expect(results[3].content).toBeUndefined();
 	});
 
-	it("vault CLAUDE.md drifted from template still returns exists — user owns the bytes post-scaffold", async () => {
-		// Spec trace:
-		//   outcomes.desired — "When either file exists on disk at its expected path, the corresponding
-		//     InitStep is returned with status: 'exists' regardless of byte drift from the bundled template."
-		//   outcomes.undesired — "The coding-playbook hub or vault-root CLAUDE.md being returned with
-		//     status: 'would-overwrite' under any circumstance — even when on-disk bytes have drifted
-		//     from the bundled template."
+	it("cold install (no brain, no obsidian key in existing .mcp.json) yields would-create with key brain", async () => {
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+		await writeFile(mcpPath, JSON.stringify({ mcpServers: {} }), "utf-8");
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const mcpStep = results[4];
+		expect(mcpStep.status).toBe("would-create");
+		expect(mcpStep.prescription?.key).toBe("brain");
+	});
+
+	it("transitional install (both brain and obsidian keys) yields would-overwrite with key brain", async () => {
+		mockPlatform.mockReturnValue("linux");
+
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+		const entry = { command: "npx", args: ["-y", "obsidian-mcp", brainPath] };
+		await writeFile(
+			mcpPath,
+			JSON.stringify({ mcpServers: { obsidian: entry, brain: entry } }),
+			"utf-8",
+		);
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const mcpStep = results[4];
+		expect(mcpStep.status).toBe("would-overwrite");
+		expect(mcpStep.prescription?.key).toBe("brain");
+	});
+
+	it("malformed .mcp.json yields would-create with configMalformed: true", async () => {
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+		await writeFile(mcpPath, "not valid json {{{", "utf-8");
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const mcpStep = results[4];
+		expect(mcpStep.status).toBe("would-create");
+		expect(mcpStep.configMalformed).toBe(true);
+		expect(mcpStep.prescription).toBeDefined();
+	});
+
+	it("never writes to disk", async () => {
+		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
-		// Get canonical content then modify it
-		const firstResults = await provisionBrain(brainPath, mcpPath);
-		const driftedContent = firstResults[2].content! + "\n## Extra\n\nDrifted content.\n";
+		await provisionBrain(projectRoot, brainPath, mcpPath);
 
-		await mkdir(brainPath, { recursive: true });
-		await writeFile(join(brainPath, "CLAUDE.md"), driftedContent, "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-		const claudeStep = results[2];
-
-		expect(claudeStep.status).toBe("exists");
-		expect(claudeStep.content).toBeUndefined();
+		const { access } = await import("node:fs/promises");
+		await expect(access(brainPath)).rejects.toThrow();
+		await expect(access(join(brainPath, "coding-playbook", "coding-playbook.md"))).rejects.toThrow();
+		await expect(access(join(brainPath, "CLAUDE.md"))).rejects.toThrow();
+		await expect(access(mcpPath)).rejects.toThrow();
+		// brain.aide must NOT be written either.
+		await expect(access(join(projectRoot, ".aide", "brain.aide"))).rejects.toThrow();
 	});
 
-	it("vault CLAUDE.md missing returns would-create with content", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		// Vault exists but CLAUDE.md is absent
-		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
-
-		const results = await provisionBrain(brainPath, mcpPath);
-		const claudeStep = results[2];
-
-		expect(claudeStep.status).toBe("would-create");
-		expect(claudeStep.content).toBeTruthy();
-	});
-
-	// -------------------------------------------------------------------------
-	// Negative assertion: no brain seed step ever returns would-overwrite
-	// -------------------------------------------------------------------------
-	// Spec trace:
-	//   outcomes.undesired — "The coding-playbook hub or vault-root CLAUDE.md being returned with
-	//     status: 'would-overwrite' under any circumstance — even when on-disk bytes have drifted
-	//     from the bundled template."
+	// -----------------------------------------------------------------------
+	// Negative: seed files never return would-overwrite
+	// -----------------------------------------------------------------------
 
 	describe.each([
 		{
 			scenario: "file absent",
-			setup: async (_brainPath: string) => {
-				// nothing — neither file is written
+			setup: async (_projectRoot: string, _brainPath: string) => {
+				// nothing
 			},
 		},
 		{
-			scenario: "byte-identical to template",
-			setup: async (brainPath: string) => {
-				const firstResults = await provisionBrain(brainPath, makeMcpPath());
-				const canonicalHub = firstResults[1].content!;
-				const canonicalClaudeMd = firstResults[2].content!;
-				await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-				await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
-				await writeFile(join(brainPath, "CLAUDE.md"), canonicalClaudeMd, "utf-8");
-			},
-		},
-		{
-			scenario: "drifted from template",
-			setup: async (brainPath: string) => {
-				const firstResults = await provisionBrain(brainPath, makeMcpPath());
-				const driftedHub = firstResults[1].content! + "\n## Extra Section\n\nUnexpected drift.\n";
-				const driftedClaudeMd = firstResults[2].content! + "\n## Extra\n\nDrifted content.\n";
-				await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-				await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), driftedHub, "utf-8");
-				await writeFile(join(brainPath, "CLAUDE.md"), driftedClaudeMd, "utf-8");
-			},
-		},
-		{
-			scenario: "completely replaced with unrelated content",
-			setup: async (brainPath: string) => {
+			scenario: "user-modified content",
+			setup: async (_projectRoot: string, brainPath: string) => {
 				await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
 				await writeFile(
 					join(brainPath, "coding-playbook", "coding-playbook.md"),
-					"# My curated notes\n\nTotally different content.\n",
+					"# My curated notes\n",
 					"utf-8",
 				);
-				await writeFile(join(brainPath, "CLAUDE.md"), "# My curated notes\n\nTotally different content.\n", "utf-8");
+				await writeFile(join(brainPath, "CLAUDE.md"), "# My custom CLAUDE.md\n", "utf-8");
 			},
 		},
 	])(
-		"provisionBrain never returns would-overwrite for playbook hub or vault CLAUDE.md under any on-disk state [$scenario]",
+		"seed files never would-overwrite [$scenario]",
 		({ setup }) => {
-			it("playbook hub (results[1]) status is exists or would-create, never would-overwrite", async () => {
+			it("playbook hub status is never would-overwrite", async () => {
+				const projectRoot = makeProjectRoot();
 				const brainPath = makeBrainPath();
 				const mcpPath = makeMcpPath();
-				await setup(brainPath);
+				await setup(projectRoot, brainPath);
 
-				const results = await provisionBrain(brainPath, mcpPath);
-				const hubStep = results[1];
+				const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
-				expect(["exists", "would-create"]).toContain(hubStep.status);
-				expect(hubStep.status).not.toBe("would-overwrite");
+				expect(results[2].status).not.toBe("would-overwrite");
 			});
 
-			it("vault CLAUDE.md (results[2]) status is exists or would-create, never would-overwrite", async () => {
+			it("vault CLAUDE.md status is never would-overwrite", async () => {
+				const projectRoot = makeProjectRoot();
 				const brainPath = makeBrainPath();
 				const mcpPath = makeMcpPath();
-				await setup(brainPath);
+				await setup(projectRoot, brainPath);
 
-				const results = await provisionBrain(brainPath, mcpPath);
-				const claudeStep = results[2];
+				const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
-				expect(["exists", "would-create"]).toContain(claudeStep.status);
-				expect(claudeStep.status).not.toBe("would-overwrite");
+				expect(results[3].status).not.toBe("would-overwrite");
+			});
+
+			it("brain.aide config status is never would-overwrite", async () => {
+				const projectRoot = makeProjectRoot();
+				const brainPath = makeBrainPath();
+				const mcpPath = makeMcpPath();
+				await setup(projectRoot, brainPath);
+
+				const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+				expect(results[0].status).not.toBe("would-overwrite");
 			});
 		},
 	);
-
-	it("is idempotent — second call with fully provisioned vault returns all exists", async () => {
-		const brainPath = makeBrainPath();
-		const mcpPath = makeMcpPath();
-
-		// First pass: get canonical template content for the file steps
-		const firstResults = await provisionBrain(brainPath, mcpPath);
-		const canonicalHub = firstResults[1].content!;
-		const canonicalClaudeMd = firstResults[2].content!;
-
-		// Simulate fully provisioned state using canonical template bytes
-		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
-		await mkdir(join(brainPath, "coding-playbook"), { recursive: true });
-		await writeFile(join(brainPath, "coding-playbook", "coding-playbook.md"), canonicalHub, "utf-8");
-		await writeFile(join(brainPath, "CLAUDE.md"), canonicalClaudeMd, "utf-8");
-		const existing = { mcpServers: { brain: expectedObsidianEntry(brainPath) } };
-		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");
-
-		const results = await provisionBrain(brainPath, mcpPath);
-
-		expect(results[0].status).toBe("exists");
-		expect(results[1].status).toBe("exists");
-		expect(results[2].status).toBe("exists");
-		expect(results[3].status).toBe("exists");
-	});
 });

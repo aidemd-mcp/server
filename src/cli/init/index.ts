@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { join, dirname } from "node:path";
+import { writeFile, access, mkdir } from "node:fs/promises";
 import path from "node:path";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
 import type { InstallResult } from "./types/index.js";
+import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
 import writeMethodology from "@/service/install/writeMethodology/index.js";
 import installMethodologyDocs from "@/service/install/installMethodologyDocs/index.js";
 import scaffoldCommands from "@/service/install/scaffoldCommands/index.js";
@@ -22,14 +24,14 @@ import type { InitStep, FrameworkConfig } from "@/types/index.js";
  * Each string is self-contained guidance that names the per-category follow-up
  * surface inline:
  *
- * - Vault path (absent when `--vault-path` was supplied): open Claude Code and
- *   run `/aide` — the orchestrator's inline-recovery flow detects the missing
- *   path via `aide_info` and prompts for it.
- * - Brain vault scaffolding (absent when `--vault-path` was supplied): follows
- *   the vault path above via the same `/aide` run.
+ * - Brain config and brain MCP entry (absent when `--vault-path` was supplied):
+ *   the orchestrator's inline-recovery flow handles both — open Claude Code and
+ *   run `/aide`; the orchestrator prompts for the vault path, scaffolds
+ *   `brain.aide`, and tells you to run `npx aidemd-mcp sync`.
  * - IDE configuration (always present): re-run the CLI with `--ide <choice>`.
  *
- * When `--vault-path` IS provided, only IDE remains deferred.
+ * When `--vault-path` IS provided, brain.aide and the brain MCP entry are fully
+ * resolved by the CLI, so only IDE remains deferred.
  *
  * Single source of truth: passed as data to `renderWarning` so the renderer
  * remains reusable by any caller with a different deferred set.
@@ -41,8 +43,8 @@ function deferredCategories(vaultPath: string | undefined): readonly string[] {
 		];
 	}
 	return [
-		"Vault path — the brain MCP entry shell is written but the vault path is empty; open Claude Code and run /aide — the orchestrator will prompt for it",
-		"Brain vault scaffolding (directories, playbook hub, vault CLAUDE.md) — follows the vault path above (same /aide run)",
+		"Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
+		"Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
 		"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
 	];
 }
@@ -50,31 +52,37 @@ function deferredCategories(vaultPath: string | undefined): readonly string[] {
 /**
  * Orchestrates the full cold-start install pipeline using planning-helper reuse:
  *
- * 1. **`writeMcpEntry` runs first** — it is the ONLY abort trigger. If `.mcp.json`
- *    is malformed, this function throws immediately with zero side effects (no other
- *    helper has run). The top-level IIFE's catch block converts the throw to a stderr
+ * 1. **Brain.aide scaffold** (new) — if `--vault-path` was supplied and
+ *    `.aide/brain.aide` does not yet exist, writes the canonical Obsidian template
+ *    to disk. Seed-semantic: never overwrites. Logs `[created]` or `[exists]`.
+ *    This step runs BEFORE `writeMcpEntry` because `writeMcpEntry` reads brain.aide
+ *    from disk to derive the brain MCP entry.
+ *
+ * 2. **`writeMcpEntry` runs second** — it is the ONLY abort trigger. If `.mcp.json`
+ *    is malformed, this function throws immediately (only the brain.aide scaffold
+ *    may have run). The top-level IIFE's catch block converts the throw to a stderr
  *    error line and exits 1.
  *
- * 2. **`detectFramework`** resolves canonical Claude paths (`CLAUDE.md`,
+ * 3. **`detectFramework`** resolves canonical Claude paths (`CLAUDE.md`,
  *    `.claude/commands`, `.claude/agents`, `.claude/skills`, `.aide/docs`, `.mcp.json`).
  *    The CLI is Claude-only; passing `"claude"` explicitly skips the detection walk.
  *
- * 3. **Planning helpers** (`writeMethodology`, `installMethodologyDocs`,
+ * 4. **Planning helpers** (`writeMethodology`, `installMethodologyDocs`,
  *    `scaffoldCommands`, `installAgents`, `installSkills`, `installAideTree`,
  *    `scaffoldReadme`, plus an inline `versions.json` step) collect `InitStep[]`.
  *    These are planners — they never write to disk.
  *
- * 4. **Partition** by status: `toApply` (`would-create` only — enforces skip-on-exists),
+ * 5. **Partition** by status: `toApply` (`would-create` only — enforces skip-on-exists),
  *    `skipped` (`would-overwrite` | `would-skip` — surfaces in the warning),
  *    `alreadyExists` (`exists` — logs `[exists]`, does NOT appear in the warning).
  *
- * 5. **`applySteps(toApply)`** writes only the `would-create` steps. The
+ * 6. **`applySteps(toApply)`** writes only the `would-create` steps. The
  *    `would-create`-only filter is the mechanical invariant for "never overwrites".
  *
- * 6. **Per-file log** — one `[status] displayPath — message` line per artifact in
- *    original `plannedSteps` order, with the MCP result prepended.
+ * 7. **Per-file log** — one `[status] displayPath — message` line per artifact in
+ *    original `plannedSteps` order, with the brain.aide and MCP results prepended.
  *
- * 7. **Warning block** — `renderWarning` receives every `skipped-drift` and
+ * 8. **Warning block** — `renderWarning` receives every `skipped-drift` and
  *    `skipped-missing-canonical` result as `skipped`, an empty `failed` array, and
  *    always `DEFERRED_CATEGORIES`. Non-empty → print the block. Empty → print the
  *    plain completion line.
@@ -90,18 +98,52 @@ export async function runInit(
 	write: (line: string) => void = (line) => process.stdout.write(line + "\n"),
 	options: { vaultPath?: string } = {},
 ): Promise<number> {
-	// Step 1 — MCP entry first: the only helper that can throw (malformed JSON).
-	// If it throws, propagate immediately — no other helpers run, guaranteeing
-	// zero side effects on the abort path. Writes BOTH aide + obsidian entries;
-	// the obsidian entry uses `vaultPath` when provided or an empty placeholder.
+	// Step 1 — Brain.aide scaffold: seed-semantic write that must happen BEFORE
+	// writeMcpEntry because writeMcpEntry reads brain.aide from disk to derive the
+	// brain MCP entry. Only runs when vaultPath is supplied — without a vault path
+	// the CLI cannot know the rootPath and the category is deferred.
+	let brainAideResult: InstallResult | null = null;
+	if (options.vaultPath) {
+		const brainAidePath = join(cwd, ".aide", "brain.aide");
+		let brainAideExists = false;
+		try {
+			await access(brainAidePath);
+			brainAideExists = true;
+		} catch {
+			// ENOENT — file does not exist, proceed to create.
+		}
+
+		if (brainAideExists) {
+			brainAideResult = {
+				status: "exists",
+				displayPath: ".aide/brain.aide",
+				message: "already present",
+			};
+		} else {
+			const content = obsidianBrainAideTemplate(options.vaultPath);
+			await mkdir(dirname(brainAidePath), { recursive: true });
+			await writeFile(brainAidePath, content, "utf-8");
+			brainAideResult = {
+				status: "created",
+				displayPath: ".aide/brain.aide",
+				message: "Brain config (Obsidian default)",
+			};
+		}
+	}
+
+	// Step 2 — MCP entry: the only helper that can throw (malformed JSON). Runs
+	// AFTER the brain.aide scaffold so brain.aide is on disk when vaultPath is
+	// supplied — writeMcpEntry reads it to derive the brain entry. If it throws,
+	// propagate immediately; the IIFE catch block converts the throw to a stderr
+	// error line and exits 1.
 	const mcpRaw = await writeMcpEntry(cwd, options.vaultPath);
 	const mcpResult: InstallResult = { ...mcpRaw, displayPath: ".mcp.json" };
 
-	// Step 2 — Resolve framework config. Explicit "claude" skips the detection
+	// Step 3 — Resolve framework config. Explicit "claude" skips the detection
 	// walk and guarantees the canonical Claude paths without filesystem access.
 	const config: FrameworkConfig = await detectFramework(cwd, "claude");
 
-	// Step 3 — Collect planning steps from each helper. These planners never
+	// Step 4 — Collect planning steps from each helper. These planners never
 	// write to disk; they inspect disk state and return InitStep[] with
 	// would-create / would-overwrite / would-skip / exists status.
 	const methodologyStep = await writeMethodology(join(cwd, config.configPath), config.docHubDir);
@@ -141,20 +183,23 @@ export async function runInit(
 		readmeStep,
 	];
 
-	// Step 4 — Partition by status. The CLI may only write `would-create` steps
+	// Step 5 — Partition by status. The CLI may only write `would-create` steps
 	// (skip-on-exists is the sole safe branch — there is no user to consent to
 	// an overwrite). `would-overwrite` and `would-skip` steps are never applied;
 	// they surface in the warning instead.
 	const toApply = plannedSteps.filter((s) => s.status === "would-create");
 
-	// Step 5 — Apply only the would-create steps. applySteps returns the same
+	// Step 6 — Apply only the would-create steps. applySteps returns the same
 	// steps with status flipped to "created" (for writes that succeeded).
 	const applied = await applySteps(toApply);
 
-	// Step 6 — Build the per-file log input. The MCP result is prepended;
-	// every planned step follows in original order. Status is adapted from
-	// InitStep status to InstallStatus.
-	const results: InstallResult[] = [mcpResult];
+	// Step 6 (now 7) — Build the per-file log input. Brain.aide result (if present)
+	// is first, the MCP result is second, then every planned step in original order.
+	// Status is adapted from InitStep status to InstallStatus.
+	const results: InstallResult[] = [
+		...(brainAideResult ? [brainAideResult] : []),
+		mcpResult,
+	];
 
 	for (const step of plannedSteps) {
 		const displayPath = path.relative(cwd, step.filePath).split(path.sep).join("/");
@@ -198,10 +243,10 @@ export async function runInit(
 		);
 	}
 
-	// Step 7 — Print the per-file log: one line per artifact in collected order.
+	// Step 8 — Print the per-file log: one line per artifact in collected order.
 	for (const r of results) write(`[${r.status}] ${r.displayPath} — ${r.message}`);
 
-	// Step 8 — Aggregate the warning input. Only skipped-drift and
+	// Step 9 — Aggregate the warning input. Only skipped-drift and
 	// skipped-missing-canonical entries surface in the warning — `exists` means
 	// bytes already match canonical, so no action is needed.
 	const warningSkipped = results.filter(
@@ -209,7 +254,7 @@ export async function runInit(
 	);
 	const warningFailed: InstallResult[] = [];
 
-	// Step 9 — Render and write the warning block. Deferred categories depend on
+	// Step 10 — Render and write the warning block. Deferred categories depend on
 	// whether the user supplied `--vault-path`: with a path, only IDE defers;
 	// without, the vault path + brain scaffolding are also deferred.
 	const warning = renderWarning({
@@ -224,7 +269,7 @@ export async function runInit(
 		write("Already set up.");
 	}
 
-	// Step 10 — Always return 0. Non-zero exits happen only in the IIFE's catch.
+	// Step 11 — Always return 0. Non-zero exits happen only in the IIFE's catch.
 	return 0;
 }
 
@@ -254,19 +299,24 @@ function parseVaultPath(argv: readonly string[]): string | undefined {
 				"Full cold-start installer for AIDE. Installs the complete non-interactive\n" +
 				"footprint into the current project: methodology pointer stub, methodology doc\n" +
 				"hub (.aide/docs/), all pipeline slash commands, all pipeline agent definitions,\n" +
-				"all skill templates, aide + obsidian MCP server entries (additively merged into\n" +
-				".mcp.json), and the aide-tree launcher. Never overwrites existing files —\n" +
-				"skip-on-exists is the only safe branch.\n\n" +
+				"all skill templates, .aide/brain.aide (when --vault-path is supplied), aide and\n" +
+				"brain MCP server entries (additively merged into .mcp.json), and the aide-tree\n" +
+				"launcher. Never overwrites existing files — skip-on-exists is the only safe branch.\n\n" +
 				"Flags:\n" +
-				"  --vault-path <path>   Set the obsidian MCP vault path at install time. When\n" +
-				"                        omitted, the obsidian entry is written with an empty\n" +
-				"                        path placeholder; open Claude Code and run /aide —\n" +
-				"                        the orchestrator will prompt for it. `--vault-path=<path>` also works.\n\n" +
-				"When --vault-path is not provided, the obsidian vault path and brain scaffolding\n" +
-				"defer to /aide (the orchestrator's inline-recovery flow), and IDE configuration\n" +
-				"defers to re-running this CLI with --ide <choice>. When --vault-path is provided,\n" +
-				"only IDE configuration remains deferred. After the install pass, a terminal warning\n" +
-				"lists anything skipped or deferred, with each entry naming its own follow-up surface.\n",
+				"  --vault-path <path>   Set the brain vault path at install time. When supplied,\n" +
+				"                        the CLI scaffolds .aide/brain.aide from the canonical\n" +
+				"                        Obsidian template and derives the brain MCP entry from\n" +
+				"                        it. When omitted, both are deferred — open Claude Code\n" +
+				"                        and run /aide; the orchestrator will prompt for the\n" +
+				"                        vault path, scaffold brain.aide, and tell you to run\n" +
+				"                        npx aidemd-mcp sync. `--vault-path=<path>` also works.\n\n" +
+				"Post-install brain edits (retargeting rootPath, customizing the launcher) propagate\n" +
+				"to .mcp.json via: npx aidemd-mcp sync\n\n" +
+				"When --vault-path is not provided, brain config and brain MCP entry defer to /aide\n" +
+				"(the orchestrator's inline-recovery flow), and IDE configuration defers to re-running\n" +
+				"this CLI with --ide <choice>. When --vault-path is provided, only IDE configuration\n" +
+				"remains deferred. After the install pass, a terminal warning lists anything skipped\n" +
+				"or deferred, with each entry naming its own follow-up surface.\n",
 		);
 		process.exit(0);
 	}

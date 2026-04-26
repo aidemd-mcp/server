@@ -106,7 +106,10 @@ describe("init — structured JSON result", () => {
 
 		// When no explicit brainPath is supplied, brain placeholder steps have empty
 		// filePaths — this signals the agent must interview the user before applying.
-		const brainPlaceholders = new Set(["Brain vault", "Playbook hub", "Vault CLAUDE.md"]);
+		// "Brain config (brain.aide)" is now the first of the five placeholder steps
+		// and also carries an empty filePath. The MCP config (brain) step retains a
+		// real filePath (the .mcp.json path) because the consumer still needs it.
+		const brainPlaceholders = new Set(["Brain config (brain.aide)", "Brain vault", "Playbook hub", "Vault CLAUDE.md"]);
 
 		for (const step of result.steps) {
 			if (brainPlaceholders.has(step.name)) {
@@ -242,12 +245,11 @@ describe("init — structured JSON result", () => {
 		expect(vaultStep?.status).toBe("would-create");
 		expect(vaultStep?.filePath).toBe("");
 
-		// Brain MCP entry prescription must also use empty vault path
+		// Brain MCP step must have NO prescription when brainPath is absent —
+		// the entry cannot be derived without a brain.aide, so no prescription is emitted.
 		const brainMcpStep = result.steps.find((s) => s.name === "MCP config (brain)");
 		expect(brainMcpStep).toBeDefined();
-		expect(brainMcpStep?.prescription).toBeDefined();
-		const lastArg = brainMcpStep?.prescription?.entry.args?.at(-1);
-		expect(lastArg).toBe("");
+		expect(brainMcpStep?.prescription).toBeUndefined();
 	});
 
 	it("no brainPath + hints empty: vault step has empty-string filePath", async () => {

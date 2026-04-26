@@ -45,9 +45,29 @@ This command:
 
 All operations are additive — files that already exist are never overwritten. Safe to re-run at any time.
 
-Pass `--vault-path <path>` to record your Obsidian vault location at install time, skipping the vault-path prompt when `/aide` first runs.
+Pass `--vault-path <path>` to record your brain vault location at install time, skipping the vault-path prompt when `/aide` first runs.
 
 After running, open Claude Code and run `/aide` — the orchestrator will prompt for any setup the cli could not finish (IDE choice, vault path if not supplied).
+
+### Syncing brain.aide to .mcp.json
+
+Run this after editing `.aide/brain.aide` — for example, when you change `rootPath` to point at a different vault or update `mcpServerConfig.args`:
+
+```bash
+npx aidemd-mcp sync
+```
+
+`sync` reads `.aide/brain.aide`, derives the brain MCP entry by interpolating `${rootPath}` into `mcpServerConfig.args`, and writes the result into `.mcp.json` under the fixed `brain` key. Every other key in `mcpServers` (including your `aide` entry and any personal MCP integrations) is left byte-identical. If a legacy `obsidian` key is present it is removed in the same write. The command is idempotent — running it twice produces the same `.mcp.json` bytes, and the second invocation prints `already in sync` without touching the file. Exit code is `0` on success (including the no-change case), `1` on a missing or malformed `brain.aide` or invalid `.mcp.json`, and `2` on `--help`.
+
+Example output after changing `rootPath`:
+
+```
+Read .aide/brain.aide
+Wrote brain MCP entry into .mcp.json
+  command: npx
+  args: [-y, obsidian-mcp, D:/notes/new-vault]
+Done.
+```
 
 ### Manual Configuration
 

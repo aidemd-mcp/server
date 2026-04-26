@@ -342,9 +342,10 @@ export type TreeNode =
 	| { kind: "file"; file: AideFile };
 
 /**
- * The shape of a single MCP server entry under `mcpServers[<key>]` in `.mcp.json`.
- * This is the argument shape the `brainBackends` registry consumes when matching
- * a wired backend to its driver.
+ * The canonical MCP-server entry shape consumed by the shared `writeMcpEntry` helper.
+ * Represents a single server entry under `mcpServers[<key>]` in `.mcp.json`.
+ * Also used by `buildBrainState` when comparing the parsed `brain.aide` expected
+ * entry against the actual entry in the host's `.mcp.json`.
  */
 export type McpServerEntry = {
 	command: string;
@@ -352,74 +353,100 @@ export type McpServerEntry = {
 };
 
 /**
- * A backend driver registered in the `brainBackends` registry.
+ * Precondition state of the host's brain vault, returned as a five-state tagged
+ * union so the orchestrator can branch on each case and compose targeted
+ * remediation prose. `buildBrainState` is the single source of this value;
+ * both `aide_brain` and `aide_info` consume the same plain-data shape without
+ * re-deriving detection logic.
  *
- * - `id` is the structured backend identifier surfaced in `aide_brain`'s response
- *   (e.g. `"obsidian"`). It is the value stored on `BrainState.backend` when the
- *   backend is successfully matched.
- * - `renderInstructions` is the per-backend prose template the registry returns
- *   for the `ok` branch. It receives the resolved vault state and returns
- *   ready-to-execute prose telling the agent which MCP tools to use to reach
- *   the wired backend's seeded entry-point file.
- */
-export type BackendDriver = {
-	id: string;
-	renderInstructions: (state: { vaultPath: string }) => string;
-};
-
-/**
- * Precondition state of the host's brain vault, returned as a tagged
- * union so the orchestrator can branch on each case independently.
+ * Discriminant invariants:
  *
- * - `ok`: a brain MCP entry is configured and its vault directory resolves
- *   on disk. `vaultPath` is the resolved directory path.
- * - `no-mcp-entry`: no brain entry is present in the host's MCP config, the
- *   config file is missing, or the config is malformed. `vaultPath` is `null` —
- *   no path was ever configured. Remediation: open Claude Code and run `/aide`;
- *   the orchestrator's inline-recovery flow detects the missing state and prompts
- *   for the vault path.
- * - `invalid-path`: a brain MCP entry is configured but its vault directory does
- *   not exist on disk. `vaultPath` is the configured (but unresolvable) path so
- *   the orchestrator can surface the exact failing path to the user.
+ * - `ok` — `.aide/brain.aide` parsed successfully, the declared `rootPath`
+ *   resolves to an existing directory on disk, and the host's `.mcp.json`
+ *   `mcpServers.brain` entry matches the parsed/interpolated `mcpServerConfig`.
+ *   Carries `rootPath` (validated to exist on disk), `connector` (the
+ *   user-declared descriptive label — never dispatched on by any code), and
+ *   `hints`.
+ *
+ * - `no-brain-aide` — `parseBrainAide` returned `missing`, `malformed-frontmatter`,
+ *   or `malformed-body`. All three sub-cases collapse to this status: without a
+ *   usable brain.aide there is no `rootPath` or `connector` to report. Carries
+ *   only `hints` — no path, no connector. Remediation: fix or create
+ *   `.aide/brain.aide`.
+ *
+ * - `invalid-path` — brain.aide parsed successfully but the declared `rootPath`
+ *   does not resolve to an existing directory (stat failed, or the path resolves
+ *   to a file rather than a directory). Carries the configured-but-unresolvable
+ *   `rootPath`, the user's `connector` label, and `hints` so the orchestrator
+ *   can name the failing path in remediation prose.
+ *
+ * - `no-mcp-entry` — brain.aide parsed and `rootPath` is valid, but the host's
+ *   `.mcp.json` cannot be read (ENOENT or any I/O failure), cannot be parsed as
+ *   JSON, or has no `mcpServers.brain` key. Carries `rootPath`, `connector`, and
+ *   `hints` from brain.aide. Remediation: run `npx aidemd-mcp sync`.
+ *
+ * - `mcp-drift` — brain.aide parsed, `rootPath` is valid, `.mcp.json` has a
+ *   `brain` entry, but the entry's `command` or `args` differ from the
+ *   parsed/interpolated `mcpServerConfig`. Drift is detected by structural
+ *   comparison (string equality on `command`; element-by-element equality on
+ *   `args`). Carries `rootPath`, `connector`, and `hints`. Remediation: run
+ *   `npx aidemd-mcp sync`.
+ *
+ * `hints` is populated unconditionally on every state — the orchestrator may
+ * surface candidate vault locations on `no-brain-aide` (fresh project) just as
+ * much as on `invalid-path` (broken path). No state carries a `backend` field —
+ * backend identity is no longer part of the detector's contract; `connector` is
+ * the user's descriptive label, threaded through unchanged and never branched on.
  */
-export type BrainState = {
-	/** Discriminant for the three brain-precondition outcomes. */
-	status: "ok" | "no-mcp-entry" | "invalid-path";
-	/**
-	 * The vault directory path. Non-null for `ok` (the resolved path) and for
-	 * `invalid-path` (the configured-but-unresolvable path); `null` for
-	 * `no-mcp-entry` (no path was ever configured).
-	 */
-	vaultPath: string | null;
-	/**
-	 * Candidate vault locations discovered by `resolveBrainHints`. Populated
-	 * unconditionally — the orchestrator may surface these in any branch where
-	 * remediation is needed (e.g. `no-mcp-entry`, `invalid-path`). An empty
-	 * array is valid when no candidates were found on disk.
-	 */
-	hints: BrainHint[];
-	/**
-	 * The resolved backend driver identifier. Non-null only when `status` is `"ok"` —
-	 * carries the id of the matched driver (e.g. `"obsidian"`). Null for
-	 * `"no-mcp-entry"` and `"invalid-path"` because no driver was successfully
-	 * matched on those branches. The existing `status` field is the primary
-	 * discriminant; this field is a structured carry-forward of the registry
-	 * match result so downstream formatters (e.g. `composeInstructions`) do not
-	 * need to re-run the registry lookup.
-	 */
-	backend: string | null;
-};
+export type BrainState =
+	| {
+			status: "ok";
+			/** Validated absolute path to the knowledge store root directory. */
+			rootPath: string;
+			/** User-declared descriptive connector label (e.g. `"obsidian"`). Descriptive only — no code branches on this value. */
+			connector: string;
+			/** Candidate vault locations for orchestrator remediation suggestions. */
+			hints: BrainHint[];
+	  }
+	| {
+			status: "no-brain-aide";
+			/** Candidate vault locations for orchestrator remediation suggestions. */
+			hints: BrainHint[];
+	  }
+	| {
+			status: "no-mcp-entry";
+			/** The `rootPath` declared in brain.aide (valid on disk). */
+			rootPath: string;
+			/** User-declared descriptive connector label. Descriptive only — no code branches on this value. */
+			connector: string;
+			/** Candidate vault locations for orchestrator remediation suggestions. */
+			hints: BrainHint[];
+	  }
+	| {
+			status: "invalid-path";
+			/** The configured-but-unresolvable path from brain.aide — surfaced so the orchestrator can name it in remediation. */
+			rootPath: string;
+			/** User-declared descriptive connector label. Descriptive only — no code branches on this value. */
+			connector: string;
+			/** Candidate vault locations for orchestrator remediation suggestions. */
+			hints: BrainHint[];
+	  }
+	| {
+			status: "mcp-drift";
+			/** The `rootPath` declared in brain.aide (valid on disk). */
+			rootPath: string;
+			/** User-declared descriptive connector label. Descriptive only — no code branches on this value. */
+			connector: string;
+			/** Candidate vault locations for orchestrator remediation suggestions. */
+			hints: BrainHint[];
+	  };
 
 /**
  * The structured JSON result returned by `aide_brain` — the runtime brain
  * entry-point tool.
  *
- * - `status` mirrors `aide_info.brain.status` exactly (`"ok"`, `"no-mcp-entry"`,
- *   `"invalid-path"`), so an agent that already saw boot-time brain state does
- *   not learn new terms from this tool.
- * - `backend` is the structured signal of which branch fired: non-null (the
- *   driver id, e.g. `"obsidian"`) only on `"ok"`; `null` on all other branches.
- *   Programmatic consumers can branch on `backend === null` without parsing prose.
+ * - `status` mirrors `BrainState["status"]` exactly, so an agent that already
+ *   saw boot-time brain state from `aide_info` does not learn new terms.
  * - `instructions` is always non-empty — ready-to-execute prose composed by the
  *   server. On `"ok"`, it tells the agent which MCP tools to call and how to
  *   reach the wired backend's seeded entry-point file. On non-ok branches, it
@@ -429,7 +456,6 @@ export type BrainState = {
  */
 export type BrainToolResult = {
 	status: BrainState["status"];
-	backend: string | null;
 	instructions: string;
 };
 
@@ -486,6 +512,82 @@ export interface InspectHit {
 export type InspectResult = {
 	hits: InspectHit[];
 };
+
+/**
+ * Semantic-action → MCP-tool-call mapping parsed from the `tools` frontmatter
+ * field of `brain.aide`. Two keys are required by contract: `read` (the tool
+ * name used to retrieve a note by path) and `search` (the tool name used to
+ * query the vault). Additional keys are allowed — the user may add arbitrary
+ * action names for other MCP capabilities their backend exposes. Typed as
+ * `Record<string, string>` because the package does not enumerate connector
+ * identities; the user owns the values and the package surfaces them unchanged.
+ * Consumed by `parseBrainAide` (validation), `buildBrainState`, and the brain
+ * tool when composing agent instructions.
+ */
+export type BrainAideToolMapping = Record<string, string>;
+
+/**
+ * The `mcpServerConfig` block parsed from `brain.aide` frontmatter. Mirrors
+ * the shape of `McpServerEntry` but is kept as a separate type because `args`
+ * may contain `${rootPath}` placeholder strings pre-interpolation — that
+ * semantic detail is visible at the type boundary and documents that callers
+ * must run `interpolateArgs` before writing the entry to `.mcp.json`. Consumed
+ * by `parseBrainAide` (parsing and validation) and `interpolateArgs`
+ * (substitution).
+ */
+export type BrainAideMcpServerConfig = {
+	command: string;
+	args: string[];
+};
+
+/**
+ * The full parsed frontmatter of a `brain.aide` file. Every field is required
+ * and validated by `parseBrainAide`; a missing or wrong-typed field produces a
+ * `malformed-frontmatter` result rather than a partial config. `connector` is a
+ * freeform descriptive label (e.g. `"obsidian"`) — the package never branches on
+ * it, so it is typed as `string`. `rootPath` is the absolute path to the
+ * knowledge store as written by the user; `entryFile` is a path relative to
+ * `rootPath`. Consumed by `buildBrainState`, the brain tool, `provisionBrain`,
+ * and `cli/sync`.
+ */
+export type BrainAideConfig = {
+	/** Descriptive label for the brain connector; never dispatched on by the package. */
+	connector: string;
+	/** Absolute path to the knowledge store root directory. */
+	rootPath: string;
+	/** Path to the brain entry-point file, relative to `rootPath`. */
+	entryFile: string;
+	/** MCP server configuration, with args that may contain `${rootPath}` placeholders. */
+	mcpServerConfig: BrainAideMcpServerConfig;
+	/** Semantic-action → MCP-tool-call mapping; `read` and `search` are required. */
+	tools: BrainAideToolMapping;
+};
+
+/**
+ * Tagged-result union returned by `parseBrainAide` and `parseBrainAideFromString`.
+ * The discriminant is `kind`. Consumers narrow on `kind` to handle each outcome:
+ *
+ * - `"ok"` — the file was found, frontmatter parsed cleanly, all required fields
+ *   validated, and the `## Prose` body was located. `config` is the full parsed
+ *   config; `prose` is the verbatim body text after the heading line, never
+ *   interpolated.
+ * - `"missing"` — `.aide/brain.aide` does not exist at the given root (or was
+ *   unreachable due to an I/O error). Remediation: run `/aide` and complete the
+ *   brain wiring interview.
+ * - `"malformed-frontmatter"` — the file exists but its YAML frontmatter could
+ *   not be parsed, or a required field is absent or wrong-typed. `reason` names
+ *   the exact field or parse error so the consumer can surface a targeted
+ *   remediation message to the user.
+ * - `"malformed-body"` — frontmatter is valid but the `## Prose` heading is
+ *   absent. `reason` describes what is missing. Consumed by `buildBrainState`,
+ *   the brain tool, `provisionBrain`, and `cli/sync` to compose branch-specific
+ *   remediation prose.
+ */
+export type ParseBrainAideResult =
+	| { kind: "ok"; config: BrainAideConfig; prose: string }
+	| { kind: "missing" }
+	| { kind: "malformed-frontmatter"; reason: string }
+	| { kind: "malformed-body"; reason: string };
 
 /** Directories to skip during filesystem walks. */
 export const SKIP_DIRS = [

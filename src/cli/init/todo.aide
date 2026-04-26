@@ -18,6 +18,44 @@ misalignment:
 
 ## Issues
 
+### Active (alignment pass 2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+
+The root `.aide/intent.aide` was rewritten across two spec-writer passes that landed five interlocking decisions: brain.aide moved to `.aide/config/brain.aide` under a new user-owned scaffold-once directory, the default scaffolded launcher changed to `@bitbonsai/mcpvault`, and the brain.aide frontmatter collapsed to exactly two fields (`name` + `mcpServerConfig.{command,args}`) — `connector` was renamed to `name`, and `rootPath`, `entryFile`, `tools` were removed entirely along with the `invalid-path` boot state. This spec was authored against the prior schema and now drifts at every reference.
+
+- [x] `src/cli/init/.aide` outcomes.desired (cold-start install enumeration): repeats "the `brain` MCP server entry... with an obsidian-shaped command/args underneath" and references `--vault-path` as the supplier of the resolved path.
+  Under the new root, the brain.aide file lives at `.aide/config/brain.aide` (not `.aide/brain.aide`), the default launcher is `@bitbonsai/mcpvault` (not `obsidian-mcp`), and the path is carried inline in `mcpServerConfig.args` byte-for-byte under user ownership — the package never derives a logical root from args. The `--vault-path` flag and the `placeholder empty path slot` mechanism both depended on the package owning a `rootPath` field; with `rootPath` removed, the placeholder mechanism is gone too.
+  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is canonical home of user-owned configuration; default scaffolded launcher is `@bitbonsai/mcpvault`; brain.aide frontmatter contains exactly `name` + `mcpServerConfig.{command, args}`); outcomes.undesired (`aide_init` overwriting under `.aide/config/`; reintroducing a `rootPath` field).
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` intent paragraph: "...derived from the scaffolded `.aide/brain.aide` when `--vault-path` is supplied, and written with a placeholder empty path slot when it is not, so `aide_info` reports `invalid-path` and the orchestrator's inline-recovery flow inside Claude Code finishes wiring it..."
+  The `invalid-path` boot state has been removed from the new root (boot states reduce to `ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`). The `placeholder empty path slot` was the mechanism that produced `invalid-path`; with that state gone and `rootPath` retired, the entire deferred-path mechanism collapses. The CLI no longer has a "write a placeholder, let aide_info report invalid-path" branch.
+  Traces to: `.aide/intent.aide` outcomes.desired ("Boot reporter brain status states are reduced to `ok`, `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` — the prior `invalid-path` state goes away with `rootPath`").
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` outcomes.desired ("When `--vault-path` is supplied, the CLI scaffolds `.aide/brain.aide` using the canonical Obsidian template..."): pins the scaffold path to `.aide/brain.aide` (legacy location).
+  Under the new root, the canonical location is `.aide/config/brain.aide` — and the file lives in a user-owned directory that is scaffolded once and never overwritten by init or upgrade. The "seed-semantic" framing is correct in spirit but the directory boundary (`.aide/config/`) is the new ownership signal the install/upgrade tooling reads, with no per-file allowlist.
+  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is the canonical home of user-owned configuration; files inside are scaffolded once at `aide_init` if absent, then belong to the user forever).
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` outcomes.undesired ("Post-install brain edits (retargeting `rootPath`, customizing the launcher, adding `tools` entries) propagate to `.mcp.json` via `npx aidemd-mcp sync`..."): names `rootPath` as the editable field and `tools` as a frontmatter section.
+  Both are gone from the schema. The launcher path lives inline in `mcpServerConfig.args`; tool names live in the prose body, not in frontmatter. Post-install edits are still propagated by sync, but the fields that get edited are different.
+  Traces to: `.aide/intent.aide` outcomes.desired (frontmatter contains exactly `name` + `mcpServerConfig.{command, args}` — no `rootPath`, no `entryFile`, no `tools`); outcomes.undesired (any frontmatter field whose only consumer is the parser's own validation is rejected; `tools.*` is called out by name).
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` good-examples log block ("[created] .mcp.json — aide MCP server entry") and warning block both name `Brain MCP entry` as a separately-deferred item from `Brain config (.aide/brain.aide)`.
+  The new root makes brain config a single user-owned file under `.aide/config/`, and the MCP entry is derived from that file at sync time. The two items are conceptually one decision (the user owns the file; sync derives the entry); splitting them in the deferred-warning narrative duplicates the contract surface.
+  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/brain.aide` is the canonical and only source of truth; sync writes the derived entry).
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` strategy paragraph ("**The canonical-artifact matrix splits by decision, not by file type.**"): enumerates `obsidianBrainAideTemplate` as the source of the scaffolded bytes and pins the file path to `.aide/brain.aide`.
+  The template helper either needs to move to `.aide/config/brain.aide` content or be renamed to reflect the launcher rename to `@bitbonsai/mcpvault`. The `parseBrainAideFromString` + `interpolateArgs` chain is still load-bearing for sync, but the default scaffold no longer exercises substitution — `mcpServerConfig.args` carries the path inline byte-for-byte under user ownership.
+  Traces to: `.aide/intent.aide` outcomes.desired ("The default scaffolded `brain.aide` makes no use of substitution: `mcpServerConfig.args` carries the path inline, byte-for-byte under user ownership").
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` references section: cites `src/cli/init/writeMcpEntry/index.ts` and `src/tools/init/wireMcp/index.ts`. The former exists but the latter was lifted into `src/service/install/` during the install-service refactor; the path is stale.
+  Traces to: physical move; ancestor `src/.aide` outcomes.desired (folder tree as architecture).
+  Misalignment: spec-gap
+
 ### Active (alignment pass — fixed-`brain`-key drift)
 
 - [x] `src/cli/init/.aide` outcomes.desired (cold-start install enumeration): "...the `obsidian` MCP server entry (additively merged into `.mcp.json`, with a real path when `--vault-path` was supplied and a placeholder empty path slot otherwise)..."
@@ -69,6 +107,14 @@ misalignment:
       Traces to: `outcomes.desired[9]` (idempotent re-run behavior) | Misalignment: `test-gap`
 
 ## Retro
+
+### Active cycle (2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+
+The root settled five interlocking decisions in one revision: a new user-owned `.aide/config/` directory with scaffold-once-never-overwritten semantics, a launcher rename from `obsidian-mcp` to `@bitbonsai/mcpvault`, and a schema collapse that removes `rootPath`, `entryFile`, and `tools` while renaming `connector` to `name`. The cascade through this leaf is broad because the cold-start CLI is the primary writer of all five surfaces — the brain.aide file path, the directory boundary, the MCP launcher shape, the schema fields the install template scaffolds, and the `--vault-path` flag whose existence justification (supplying the answer to a deferred `rootPath` decision) collapses with `rootPath` removal.
+
+This is the same fixed-key-cascade pattern from the prior cycle (one root-level identifier change ripples through every leaf that pinned the old name), now amplified by a multi-axis revision rather than a single-axis one. The `--vault-path` flag and the `placeholder empty path slot` mechanism were both elaborate compensations for the absence of an inherent decision — with `rootPath` removed and the path inlined into `mcpServerConfig.args` under user ownership, the entire deferred-path branch can be deleted, not refactored.
+
+What would have caught this earlier: the spec-writer pass that introduced `--vault-path` and the placeholder-slot mechanism in the prior cycle did so against a `rootPath`-bearing schema; the current root revision deletes that schema. Any spec change that removes a frontmatter field should trigger a downstream alignment pass against every spec that referenced it as a load-bearing field.
 
 ### Active cycle (fixed-`brain`-key drift)
 

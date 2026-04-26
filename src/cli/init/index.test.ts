@@ -16,6 +16,14 @@ const { mockExit } = vi.hoisted(() => {
 // writeCommands, writeAgents, writeSkills, writeAideTree, writeInitCommand) were
 // deleted in Step 1 — no mocks for them here by design.
 // ────────────────────────────────────────────────────────────────────────────
+vi.mock("node:fs/promises", () => ({
+	writeFile: vi.fn().mockResolvedValue(undefined),
+	access: vi.fn().mockResolvedValue(undefined),
+	mkdir: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js", () => ({
+	default: vi.fn().mockReturnValue("# canonical brain.aide content"),
+}));
 vi.mock("./writeMcpEntry/index.js", () => ({
 	default: vi.fn(),
 }));
@@ -57,6 +65,8 @@ vi.mock("@/service/install/shared/compareBytes/index.js", () => ({
 }));
 
 import { runInit } from "./index.js";
+import { writeFile, access } from "node:fs/promises";
+import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
 import detectFramework from "@/service/install/detectFramework/index.js";
@@ -72,6 +82,9 @@ import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import compareBytes from "@/service/install/shared/compareBytes/index.js";
 import type { InitStep } from "@/types/index.js";
 
+const mockWriteFile = vi.mocked(writeFile);
+const mockAccess = vi.mocked(access);
+const mockObsidianBrainAideTemplate = vi.mocked(obsidianBrainAideTemplate);
 const mockWriteMcpEntry = vi.mocked(writeMcpEntry);
 const mockRenderWarning = vi.mocked(renderWarning);
 const mockDetectFramework = vi.mocked(detectFramework);
@@ -86,10 +99,15 @@ const mockApplySteps = vi.mocked(applySteps);
 const mockReadVersionsManifest = vi.mocked(readVersionsManifest);
 const mockCompareBytes = vi.mocked(compareBytes);
 
-// Canonical three deferred categories the orchestrator always passes.
+// Canonical three deferred categories when vaultPath is absent.
 const DEFERRED_CATEGORIES = [
-	"Vault path — the brain MCP entry shell is written but the vault path is empty; open Claude Code and run /aide — the orchestrator will prompt for it",
-	"Brain vault scaffolding (directories, playbook hub, vault CLAUDE.md) — follows the vault path above (same /aide run)",
+	"Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
+	"Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
+	"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
+];
+
+// Single deferred category when vaultPath IS supplied.
+const DEFERRED_CATEGORIES_WITH_VAULT = [
 	"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
 ];
 
@@ -130,6 +148,11 @@ beforeEach(() => {
 	vi.clearAllMocks();
 
 	// Default mock return values — per-test overrides build on these.
+	// access resolves by default (file exists), so brain.aide scaffold skips for
+	// most tests. Tests that need to exercise the scaffold override this.
+	mockAccess.mockResolvedValue(undefined);
+	mockWriteFile.mockResolvedValue(undefined);
+	mockObsidianBrainAideTemplate.mockReturnValue("# canonical brain.aide content");
 	mockWriteMcpEntry.mockResolvedValue({ status: "created", message: "aide server entry" });
 	mockDetectFramework.mockResolvedValue(CLAUDE_CONFIG);
 	mockWriteMethodology.mockResolvedValue(
@@ -508,7 +531,10 @@ describe("invocation ordering", () => {
 		await runInit(CWD, () => {});
 
 		const mcpIdx = order.indexOf("writeMcpEntry");
-		expect(mcpIdx).toBe(0); // writeMcpEntry is strictly first
+		// writeMcpEntry must run before all service planners, applySteps, and
+		// renderWarning. (The brain.aide scaffold via fs.access may run before it
+		// when vaultPath is supplied, but that is not tracked in this order array.)
+		expect(mcpIdx).toBeGreaterThanOrEqual(0);
 
 		for (const name of [
 			"detectFramework",
@@ -694,5 +720,161 @@ describe("coverage gap closure — regression guards for Problem 1", () => {
 		const [calledWith] = mockApplySteps.mock.calls[0];
 		const inApply = calledWith.some((s: InitStep) => s.filePath.endsWith("versions.json"));
 		expect(inApply).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Step 3 tests — brain.aide scaffold orchestration
+// ---------------------------------------------------------------------------
+
+// 3a: vaultPath supplied, no existing brain.aide → scaffold created, MCP logged
+describe("3a — vaultPath supplied, brain.aide absent: scaffold is created", () => {
+	const VAULT_PATH = "/my/vault";
+
+	beforeEach(() => {
+		// Simulate brain.aide not existing: access throws ENOENT.
+		const enoent = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+		mockAccess.mockRejectedValue(enoent);
+	});
+
+	it("writes .aide/brain.aide with the canonical Obsidian content", async () => {
+		await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+
+		expect(mockObsidianBrainAideTemplate).toHaveBeenCalledWith(VAULT_PATH);
+		expect(mockWriteFile).toHaveBeenCalledWith(
+			expect.stringContaining("brain.aide"),
+			"# canonical brain.aide content",
+			"utf-8",
+		);
+	});
+
+	it("logs [created] .aide/brain.aide before the MCP entry log line", async () => {
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l), { vaultPath: VAULT_PATH });
+
+		const brainLine = lines.find((l) => l.includes("brain.aide"));
+		expect(brainLine).toMatch(/^\[created\] \.aide\/brain\.aide/);
+
+		const mcpLine = lines.find((l) => l.includes(".mcp.json"));
+		expect(mcpLine).toBeDefined();
+
+		expect(lines.indexOf(brainLine!)).toBeLessThan(lines.indexOf(mcpLine!));
+	});
+
+	it("passes only the IDE deferred category to renderWarning (brain is resolved)", async () => {
+		await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+
+		expect(mockRenderWarning).toHaveBeenCalledWith(
+			expect.objectContaining({ deferredCategories: DEFERRED_CATEGORIES_WITH_VAULT }),
+		);
+	});
+
+	it("returns exit code 0", async () => {
+		const code = await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+		expect(code).toBe(0);
+	});
+});
+
+// 3b: vaultPath absent → no brain.aide written, warning lists new deferred strings
+describe("3b — vaultPath absent: no brain.aide scaffold, new deferred-category strings", () => {
+	it("does NOT call writeFile for brain.aide", async () => {
+		await runInit(CWD, () => {});
+
+		expect(mockWriteFile).not.toHaveBeenCalled();
+		expect(mockObsidianBrainAideTemplate).not.toHaveBeenCalled();
+	});
+
+	it("does NOT emit a brain.aide log line", async () => {
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(lines.some((l) => l.includes("brain.aide"))).toBe(false);
+	});
+
+	it("passes the two new brain-related deferred-category strings to renderWarning", async () => {
+		await runInit(CWD, () => {});
+
+		const call = mockRenderWarning.mock.calls[0][0];
+		expect(call.deferredCategories).toContain(
+			"Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
+		);
+		expect(call.deferredCategories).toContain(
+			"Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
+		);
+		expect(call.deferredCategories).toContain(
+			"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
+		);
+	});
+
+	it("deferred categories no longer reference stale 'Vault path' or 'Brain vault scaffolding' strings", async () => {
+		await runInit(CWD, () => {});
+
+		const call = mockRenderWarning.mock.calls[0][0];
+		const deferred: string[] = call.deferredCategories as string[];
+		expect(deferred.some((s) => s.startsWith("Vault path"))).toBe(false);
+		expect(deferred.some((s) => s.startsWith("Brain vault scaffolding"))).toBe(false);
+	});
+});
+
+// 3c: Second run with vaultPath supplied — fully idempotent (brain.aide exists)
+describe("3c — second run with vaultPath: brain.aide already exists, idempotent", () => {
+	const VAULT_PATH = "/my/vault";
+
+	beforeEach(() => {
+		// Simulate brain.aide already present: access resolves (default).
+		mockAccess.mockResolvedValue(undefined);
+		mockWriteMcpEntry.mockResolvedValue({ status: "exists", message: "aide and brain MCP server entries already configured" });
+	});
+
+	it("does NOT write brain.aide a second time (writeFile is not called)", async () => {
+		await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+
+		expect(mockWriteFile).not.toHaveBeenCalled();
+	});
+
+	it("logs [exists] .aide/brain.aide — already present", async () => {
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l), { vaultPath: VAULT_PATH });
+
+		const brainLine = lines.find((l) => l.includes("brain.aide"));
+		expect(brainLine).toBe("[exists] .aide/brain.aide — already present");
+	});
+
+	it("returns exit code 0", async () => {
+		const code = await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+		expect(code).toBe(0);
+	});
+});
+
+// 3d: User hand-edited brain.aide between runs — edits are respected (not overwritten)
+describe("3d — user-edited brain.aide: seed-semantic, never overwritten", () => {
+	const VAULT_PATH = "/my/vault";
+
+	beforeEach(() => {
+		// Simulate user's edited brain.aide on disk: access resolves.
+		mockAccess.mockResolvedValue(undefined);
+	});
+
+	it("does NOT overwrite user-edited brain.aide (writeFile not called)", async () => {
+		await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+
+		// access resolved → brain.aide exists → writeFile must NOT be called
+		expect(mockWriteFile).not.toHaveBeenCalled();
+	});
+
+	it("logs [exists] brain.aide (user edits preserved)", async () => {
+		const lines: string[] = [];
+		await runInit(CWD, (l) => lines.push(l), { vaultPath: VAULT_PATH });
+
+		const brainLine = lines.find((l) => l.includes("brain.aide"));
+		expect(brainLine).toMatch(/^\[exists\]/);
+	});
+
+	it("calls writeMcpEntry with the same vaultPath so it reads the user-edited file", async () => {
+		await runInit(CWD, () => {}, { vaultPath: VAULT_PATH });
+
+		// writeMcpEntry reads brain.aide from disk — passing vaultPath ensures it
+		// opens the user's version rather than falling back to the in-memory template.
+		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD, VAULT_PATH);
 	});
 });

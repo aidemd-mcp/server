@@ -1,0 +1,289 @@
+---
+intent: >
+  Author the new `brain-aide.md` canonical methodology doc, register it in
+  the canonical-doc registry so `installMethodologyDocs` ships it to host
+  projects automatically, list it in `index.md`, and update the orchestrator
+  command files (`aide.md`, `aide/brain.md`) so the boot sequence and
+  brain-config flow speak the new five-state vocabulary and route the user
+  to `npx aidemd-mcp sync` for drift recovery.
+---
+
+## Project Structure
+
+The `initContent` module's job is unchanged — it remains the single chokepoint
+reader/registry for canonical docs. This plan adds one entry to the registry
+and adds one canonical doc file under `.aide/docs/`. The orchestrator command
+files (`aide.md`, `aide/brain.md`) are also canonical docs registered here;
+this plan edits their bodies so they teach the new five-state brain status
+vocabulary and the sync workflow.
+
+```
+src/service/install/initContent/
+├── .aide                                   ← [existing] intent spec
+├── plan.aide                               ← [this file]
+├── index.ts                                ← [edit] add `brain-aide` entry to DOC_PATHS, append it to METHODOLOGY_DOCS
+│                                              public surface unchanged:
+│                                                readCanonicalDoc(name: CanonicalDocName): string
+│                                                listMethodologyDocs(): readonly MethodologyDocEntry[]
+│                                                listAgentDocs(): readonly AgentDocEntry[]
+│                                                listSkillDocs(): readonly SkillDocEntry[]
+├── index.test.ts                           ← [edit] new test asserting `brain-aide` is enumerated by listMethodologyDocs
+│                                              and that readCanonicalDoc("brain-aide") returns non-empty content
+└── todo.aide                               ← [existing, untouched]
+```
+
+Files outside this module that this plan also edits (canonical-doc bodies that
+flow through the registry):
+
+```
+.aide/docs/
+├── brain-aide.md                           ← [new] canonical methodology doc — schema/lifecycle of the brain.aide file type
+└── index.md                                ← [edit] add a bullet linking to brain-aide.md so the host-side hub lists it
+
+.claude/commands/
+├── aide.md                                 ← [edit] boot sequence: branch on five-state vocabulary
+│                                              (`ok`, `no-mcp-entry`, `no-brain-aide`, `invalid-path`, `mcp-drift`).
+│                                              Add `mcp-drift` arm directing user to `npx aidemd-mcp sync` and HALT.
+│                                              Add `no-brain-aide` arm directing user to `npx aidemd-mcp init` (cold)
+│                                              or `/aide:brain config` (write the file inline) and HALT.
+└── aide/
+    └── brain.md                            ← [edit] config-mode flow speaks new vocabulary; sync is the
+                                              mutation surface for `.mcp.json`; this command no longer
+                                              merges `.mcp.json` itself — it scaffolds `brain.aide` and
+                                              instructs the user to run sync
+```
+
+The orchestrator-command files are canonical docs (already registered under
+`commands/aide/aide` and `commands/aide/brain` in `DOC_PATHS`) — editing them
+in this plan is the same kind of work as editing `aide-spec.md`. No new code
+in `initContent`'s `index.ts` is needed for the orchestrator-command edits;
+the registry already enumerates them.
+
+## Prerequisites
+
+None. This plan is the foundation every other refactor plan depends on. The
+new `brain-aide.md` defines the file format every consumer reads; the
+orchestrator-command edits define the boot vocabulary every consumer's status
+must match.
+
+## Plan
+
+### 1. Author `.aide/docs/brain-aide.md`
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] Create `.aide/docs/brain-aide.md` as a new canonical methodology doc
+      structured parallel to `plan-aide.md` and `todo-aide.md`. The file is
+      authored prose — no code in this plan, but the doc body must specify:
+
+      **Heading structure** (mirrors `plan-aide.md` and `todo-aide.md`):
+      - `# brain.aide Spec` opener with one-line summary that names brain.aide
+        as a sixth AIDE file type and emphasizes the explicit divergence: it
+        is a config file, not an intent spec.
+      - `## Format` — the YAML frontmatter shape and the body shape, given as
+        a fenced example block. Frontmatter fields (typed, required unless
+        noted): `connector` (string — descriptive label only, never dispatched
+        on by code), `rootPath` (string — absolute path to the knowledge
+        store on disk), `entryFile` (string — path relative to `rootPath`
+        the agent reads first), `mcpServerConfig` (object: `command: string`,
+        `args: string[]` where `args` may contain `${rootPath}` placeholders),
+        `tools` (object — semantic-action → MCP tool call mapping; `read`
+        and `search` are the floor; users may add more keys for additional
+        actions). Body shape: a `## Prose` section containing hand-written
+        agent-facing instructions returned verbatim by `aide_brain`.
+      - `## Substitution surfaces` — explicit, load-bearing section. Two
+        surfaces, partitioned cleanly: (1) `${rootPath}` (and any other
+        frontmatter values the user references) inside
+        `mcpServerConfig.args`, applied at install time by `npx aidemd-mcp
+        sync` only, audience is the `.mcp.json` writer; (2) the `## Prose`
+        body, hand-written verbatim per connector, no rendering pass, no
+        templating, audience is the agent reading instructions. State the
+        invariant: substitution NEVER applies to the prose body.
+      - `## Lifecycle` — when the file is created (`aide_init` scaffolds
+        the canonical Obsidian default), how the user edits it
+        (hand-edits the file directly), how it propagates to `.mcp.json`
+        (one explicit user-typed `npx aidemd-mcp sync`), drift
+        semantics (boot reporter detects drift between `brain.aide` and
+        `.mcp.json`, surfaces `mcp-drift` status, orchestrator HALTS).
+      - `## Divergence from intent specs` — name each frontmatter field
+        the intent-spec template requires that brain.aide explicitly does
+        NOT have: no `scope`, no `description` requirement, no `intent`
+        paragraph, no `outcomes` block, no `status` lifecycle field. State
+        the rationale: brain.aide is runtime configuration, not an intent
+        contract; conflating the two erodes the methodology's central
+        distinction.
+      - `## Rules` — a bulleted list of invariants. Includes (at minimum):
+        prose body returned verbatim by `aide_brain`, no server-side
+        templating; `mcpServerConfig.args` interpolation runs only at
+        sync time; `tools` floor is `read` + `search`; `connector` is
+        descriptive metadata, never dispatched on by package code;
+        adding a new brain is a host-side edit + sync, never a code
+        change to this package.
+      - `## Placement` — fenced example showing `brain.aide` lives at
+        `.aide/brain.aide` (project root), parallel to `intent.aide`.
+
+      **Voice and length:** match `plan-aide.md` (~115 lines, decision-form
+      prose, examples in fenced blocks). Cite the parent intent spec's
+      `outcomes.desired[6]` and Strategy paragraph "Brain configuration
+      is user-owned, not code-owned" as the load-bearing constraints.
+
+### 2. Register `brain-aide.md` in the canonical-doc registry
+
+Read: `coding-playbook/architecture/data-flow`, `coding-playbook/foundations/conventions`
+
+- [x] In `src/service/install/initContent/index.ts`:
+      - 2a. Add `"brain-aide": ".aide/docs/brain-aide.md"` to the `DOC_PATHS`
+        record. Position it adjacent to `"plan-aide"` and `"todo-aide"` so
+        the registry reads top-to-bottom in the same order the methodology
+        hub introduces the file types.
+      - 2b. Append `{ canonical: "brain-aide", hostFilename: "brain-aide.md" }`
+        to the `METHODOLOGY_DOCS` array. Position it next to the existing
+        `plan-aide` and `todo-aide` entries — `aide-spec`, `aide-template`,
+        `progressive-disclosure`, `agent-readable-code`, `automated-qa`,
+        `plan-aide`, `todo-aide`, **`brain-aide`**, `cascading-alignment`.
+        Order is the host-hub reading order; this entry slots in after
+        the other AIDE-file-type docs and before `cascading-alignment`.
+      - 2c. No public-surface changes. `listMethodologyDocs()` continues to
+        return the array verbatim; downstream `installMethodologyDocs` picks
+        the new entry up automatically. `CanonicalDocName` widens by one
+        member through the `keyof typeof DOC_PATHS` derivation.
+
+### 3. Update `.aide/docs/index.md` to list the new doc
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] In `.aide/docs/index.md`, add a single line bullet
+      `- [brain-aide.md](./brain-aide.md)` to the doc-list block. Position
+      it adjacent to `plan-aide.md` and `todo-aide.md` so the hub presents
+      AIDE-file-type docs together. No prose changes elsewhere — index.md
+      is a flat doc list, the body table about Pipeline Agents stays
+      untouched.
+
+### 4. Test the registry change
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] In `src/service/install/initContent/index.test.ts`, add tests that:
+      - 4a. Assert `listMethodologyDocs()` includes an entry whose
+        `canonical === "brain-aide"` and `hostFilename === "brain-aide.md"`.
+      - 4b. Assert `readCanonicalDoc("brain-aide")` returns a non-empty
+        string whose first line is the doc heading from step 1
+        (`# brain.aide Spec`). This test enforces that step 1's authoring
+        landed and matches what the registry resolves.
+      - 4c. Re-run the existing tests for `listMethodologyDocs()` to confirm
+        the new entry doesn't break the existing methodology-doc count or
+        ordering invariants.
+
+### 5. Update `.claude/commands/aide.md` boot sequence
+
+Read: `coding-playbook/agentic/command-modules`, `coding-playbook/foundations/conventions`
+
+- [x] Edit `.claude/commands/aide.md`'s **MANDATORY BOOT SEQUENCE** section.
+      Specifically, edit Step 2 ("Brain status (hard gate)") to handle the
+      new five-state vocabulary returned by `aide_info.brain.status`:
+
+      The five states the orchestrator must branch on:
+      - `ok` — continue to Step 3 (unchanged).
+      - `no-brain-aide` — `.aide/brain.aide` is missing. STOP boot. Do NOT
+        read docs. Do NOT call `aide_discover`. Tell the user (one line,
+        conversational) that the brain config file is missing, then invoke
+        `Skill(skill="aide:brain", args="config")` — the config flow now
+        scaffolds `brain.aide` instead of patching `.mcp.json`. After it
+        returns, halt; the user re-runs `/aide` after running sync.
+      - `no-mcp-entry` — same flow as `no-brain-aide` (the user needs to
+        wire it). Direct user to `npx aidemd-mcp sync` (or for cold cases,
+        `npx aidemd-mcp init` followed by sync).
+      - `invalid-path` — the `rootPath` declared in `brain.aide` does not
+        resolve on disk. STOP boot. Direct the user to fix the `rootPath`
+        in `brain.aide` and re-run `/aide`. (Sync alone won't fix this —
+        the path itself is broken on disk.)
+      - `mcp-drift` — `brain.aide` and `.mcp.json` disagree about the brain
+        entry. STOP boot. Direct the user to run **`npx aidemd-mcp sync`**
+        in their terminal, then re-run `/aide`. This is the load-bearing
+        new arm: drift is a hard halt, not a self-repair event. The
+        orchestrator NEVER attempts to fix `.mcp.json` itself.
+
+      **Vocabulary edit in surrounding prose:** the line currently reading
+      "Anything else (`no-mcp-entry`, `invalid-path`)" must enumerate the
+      full five-state vocabulary. The "Brain status is a hard gate" framing
+      stays — what changes is which states fall under "anything else."
+
+### 6. Update `.claude/commands/aide/brain.md` config flow
+
+Read: `coding-playbook/agentic/command-modules`
+
+- [x] Edit `.claude/commands/aide/brain.md`. Two cuts:
+
+      **Mode 2 (Config) is rewritten:** the previous flow read `aide_info`
+      and patched `.mcp.json` directly via `aide_init({ category: "mcp" })`.
+      That patches the wrong surface in the new world. The rewrite:
+      - 6a. Step 1 reads `aide_info` and branches on the five-state
+        vocabulary. For `ok` with no override path, exit with "nothing
+        to do." For `no-brain-aide`, scaffold `brain.aide` (delegate to
+        `aide_init({ category: "brain", brainPath: <resolved> })` which
+        — per Plan 6 — now writes `.aide/brain.aide` from the canonical
+        Obsidian default with the user's `rootPath`). For `mcp-drift`,
+        instruct user to run `npx aidemd-mcp sync` and stop. For
+        `invalid-path`, instruct user to fix `rootPath` in `brain.aide`
+        and re-run `/aide`.
+      - 6b. Step 2 (resolve vault path) is unchanged in shape — the
+        AskUserQuestion + hint flow stays — but the resolved path is
+        now used to populate `rootPath` in the scaffolded `brain.aide`,
+        not to construct an `.mcp.json` entry directly.
+      - 6c. Step 3 (previously "Patch `.mcp.json`") is removed entirely.
+        Replace with a single instruction: "After scaffolding completes,
+        tell the user to run `npx aidemd-mcp sync` in their terminal,
+        then restart Claude Code, then re-run `/aide`." The sync verb is
+        the only mutation surface for `.mcp.json`. The reasoning sentence:
+        every `.mcp.json` mutation runs through a visible command boundary
+        the user typed.
+      - 6d. Step 4 (vault seeding) stays — `aide_init({ category: "brain" })`
+        still seeds the vault directories.
+      - 6e. Step 5 (restart instruction) stays, but the user's two-line
+        instruction is now: "Run `npx aidemd-mcp sync` to apply the
+        config to `.mcp.json`. Then restart Claude Code so the brain
+        MCP server picks up the new config, then re-run `/aide`."
+
+      **Mode 1 (default brain query)** is unchanged — `aide_brain` returns
+      prose body verbatim and the agent follows it.
+
+      The "general-purpose interface" framing in the doc opener stays
+      intact, but the "config" mode is repositioned: it does NOT mutate
+      `.mcp.json` directly; it scaffolds `brain.aide` and routes the user
+      to sync.
+
+## Decisions
+
+- **Single plan owns all canonical-doc edits for this refactor.** The
+  initContent registry is the single chokepoint that ships canonical docs
+  (methodology hub + orchestrator command files) to host projects. Editing
+  them in one plan keeps the "fixes go in canonical docs, not memory"
+  invariant clean — every behavioral change to the orchestrator that ships
+  to host projects is co-located with the registry edit that delivers it.
+- **`brain-aide.md` is structured parallel to `plan-aide.md` and
+  `todo-aide.md`.** Those two are the existing reference shapes for "an
+  AIDE file type spec doc." Following the same heading structure (Format,
+  Lifecycle, Rules, Placement) makes the methodology hub readable as a
+  unit instead of a doc-by-doc grab bag.
+- **Doc body authored as part of step 1, not deferred.** The architect's
+  plan does not contain code; doc bodies are NOT code. Authoring the
+  methodology doc body inline in step 1 means the implementor follows the
+  step's spec to write the prose; the spec gives the heading structure
+  and required fields, the implementor writes the words. The user
+  explicitly noted: "agents need this doc to know how to write a
+  brain.aide" — so authoring it is part of unlocking every downstream
+  plan.
+- **Orchestrator-command edits are required even though they look like
+  doc edits.** The five-state vocabulary is meaningless without the
+  orchestrator branching on it. If only Plans 3 (buildBrainState) and 5
+  (info) ship the new states but the orchestrator still reads three-state
+  vocabulary, drift goes unflagged silently. Pairing the vocabulary
+  introduction with the orchestrator's branch logic in the same delivery
+  surface keeps them in lockstep.
+- **`npx aidemd-mcp sync` is the only `.mcp.json` mutation surface — the
+  orchestrator never patches it.** This collapses two cases the existing
+  `/aide:brain config` flow was muddling: "we have brain.aide already, the
+  user just needs to run sync" and "we have nothing, we need a fresh
+  install." Both routes point at terminal commands the user types
+  (`sync` or `init`), preserving the visible-command-boundary invariant
+  the parent spec's Strategy paragraph names.

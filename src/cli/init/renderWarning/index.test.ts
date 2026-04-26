@@ -19,7 +19,11 @@ describe("renderWarning", () => {
     });
 
     it("deferred-only: block contains heading, deferred list, and next-step line but no skipped-files heading", () => {
-        const deferred = ["Brain vault path", "Obsidian MCP server entry", "IDE configuration"];
+        const deferred = [
+            "Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
+            "Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
+            "IDE configuration",
+        ];
         const result = renderWarning({ skipped: [], failed: [], deferredCategories: deferred });
 
         const expected = [
@@ -29,8 +33,8 @@ describe("renderWarning", () => {
             BORDER,
             "",
             "  Deferred (each item names how to finish it):",
-            "    1. Brain vault path",
-            "    2. Obsidian MCP server entry",
+            "    1. Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
+            "    2. Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
             "    3. IDE configuration",
             "",
             BORDER,
@@ -83,7 +87,10 @@ describe("renderWarning", () => {
     it("full block: skipped + failed + deferred all present — sections appear in order (skipped first, deferred second)", () => {
         const skipped = [makeSkipped(".claude/CLAUDE.md", "already present")];
         const failed = [makeFailed(".aide/docs/index.md", "write failed")];
-        const deferred = ["Brain vault path", "Obsidian MCP server entry"];
+        const deferred = [
+            "Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
+            "Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
+        ];
 
         const result = renderWarning({ skipped, failed, deferredCategories: deferred });
 
@@ -98,8 +105,8 @@ describe("renderWarning", () => {
             "    2. .aide/docs/index.md — write failed",
             "",
             "  Deferred (each item names how to finish it):",
-            "    1. Brain vault path",
-            "    2. Obsidian MCP server entry",
+            "    1. Brain config (.aide/brain.aide) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold brain.aide, and tell you to run npx aidemd-mcp sync",
+            "    2. Brain MCP entry — applied by npx aidemd-mcp sync after brain.aide is scaffolded",
             "",
             BORDER,
         ].join("\n");

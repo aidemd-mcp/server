@@ -1,0 +1,520 @@
+---
+scope: src/service/parseBrainAide
+status: aligned
+description: >
+  Single canonical reader for `.aide/config/brain.aide` — parses the two-field
+  YAML frontmatter (`name` + `mcpServerConfig`) and the hand-written `## Prose`
+  body, optionally applies install-time frontmatter-value interpolation to
+  `mcpServerConfig.args` for advanced users (a surface the default scaffold does
+  not exercise), and returns a structured value the install service, the brain
+  tool, the boot reporter, and the sync verb all consume.
+intent: >
+  parseBrainAide is the single canonical-code module that knows the
+  `brain.aide` file format. Four distinct consumers depend on it: the boot
+  reporter that compares `brain.aide` against `.mcp.json` for drift, the
+  runtime brain tool that returns the prose body verbatim, the install
+  service's brain provisioner that derives the `.mcp.json` entry from a
+  scaffolded `brain.aide`, and the `npx aidemd-mcp sync` verb that mutates
+  `.mcp.json` from the parsed file. None of those consumers reach into the
+  raw file format directly; they ask this module for the parsed result.
+  The parser is the load-bearing boundary that keeps the file format
+  hand-written (the user owns it) while every downstream consumer sees the
+  same typed structure. The frontmatter schema is the minimum that still
+  has real consumers — exactly `name` (a label) and `mcpServerConfig`
+  (consumed by sync). Every removed field (`connector`, `rootPath`,
+  `entryFile`, `tools`) is rejected as malformed-frontmatter so users
+  migrate cleanly rather than carrying dead fields forward. Substitution
+  is partitioned by audience: frontmatter-value interpolation
+  (`${fieldName}`) into `mcpServerConfig.args` is install-time work the
+  parser performs on demand for sync-class consumers; the default scaffold
+  does not exercise this surface (the path lives byte-inline in args), and
+  the only frontmatter value resolvable today is `${name}`. The prose body
+  is returned verbatim with zero substitution because its audience is the
+  agent, not the `.mcp.json` writer.
+outcomes:
+  desired:
+    - >-
+      "Reads `.aide/config/brain.aide` from disk and returns a structured
+      value with the typed frontmatter object — exactly `name` (string)
+      and `mcpServerConfig` (object with `command` and `args`) — plus the
+      verbatim `## Prose` body. No other frontmatter fields appear in the
+      returned shape. Consumers reference shared types from
+      `src/types/index.ts`, not module-internal definitions."
+    - >-
+      "Failure to read or parse the file collapses to a structured tagged
+      result — never throws. Three explicit failure shapes: file missing
+      (no `.aide/config/brain.aide` at the expected path), frontmatter
+      malformed (YAML parse failure, required field missing among `name`
+      / `mcpServerConfig.command` / `mcpServerConfig.args`, or any
+      removed-and-now-rejected field present — `connector`, `rootPath`,
+      `entryFile`, `tools`), body malformed (no `## Prose` heading)."
+    - >-
+      "Rejects deprecated fields explicitly. If parsed frontmatter
+      contains any of `connector`, `rootPath`, `entryFile`, or `tools`,
+      the parser returns `malformed-frontmatter` with a reason that names
+      every stale field it found. The parser does NOT silently strip and
+      ignore them; rejection forces the user to migrate cleanly to the
+      two-field schema rather than carrying dead fields forward into a
+      file the package has stopped honoring."
+    - >-
+      "Provides an interpolation helper applied at install time only:
+      given the parsed frontmatter, returns a copy of
+      `mcpServerConfig.args` with every `${fieldName}` placeholder
+      substituted with the frontmatter's matching field value (today the
+      only resolvable name is `${name}`; the surface generalizes to any
+      future top-level frontmatter key). This is the ONLY substitution
+      surface in the package; it runs only for `.mcp.json`-writer
+      consumers (the install service and sync verb) and never runs
+      against the prose body. The default scaffold contains no
+      placeholders, so the helper is a no-op for default installs and
+      exists for advanced users who want to DRY a value across positions."
+    - >-
+      "The prose body returns verbatim — byte-identical to what the user
+      wrote between the `## Prose` heading and end-of-file. No trimming,
+      no normalization, no markdown rewriting, no template engine."
+    - >-
+      "The parser never branches on `name`. The `name` field is treated
+      as descriptive metadata only — the user-supplied label that
+      surfaces in `aide_info` and in `brain.aide` itself, never a
+      dispatcher. Different brains may share names without affecting
+      code behavior. The fixed `brain` MCP key is the only routing
+      surface this module knows about."
+    - >-
+      "Pure detection. The parser reads the file and parses it; it never
+      writes, never spawns, never networks, never stats a path embedded
+      in args, never introspects args to infer connector identity. Every
+      consumer's mutation logic lives in the consumer (sync writes
+      `.mcp.json`, provisionBrain scaffolds the file)."
+  undesired:
+    - >-
+      "Branching on `name` to vary parse behavior, validation rules, or
+      default-value insertion. `name` is the user's label; if the parser
+      dispatches on it, the package re-introduces the identity-inference
+      anti-pattern the brainBackends retirement was meant to delete.
+      Different brains may share `name` values; nothing in the parser
+      may treat that as meaningful."
+    - >-
+      "Accepting deprecated fields by silently stripping or ignoring
+      them. `connector`, `rootPath`, `entryFile`, and `tools` are
+      removed from the schema; their presence in a parsed file is a
+      structured failure, not a tolerated wart. Silent acceptance lets
+      users carry the old shape forward indefinitely while believing
+      their file is honored, then surfaces as drift when they wonder
+      why their `tools.read` declaration has no effect."
+    - >-
+      "Re-introducing `rootPath`, `entryFile`, `tools.*`, or any other
+      schema field whose only consumer is the parser's own validation.
+      The schema's minimum justifies its maximum: every frontmatter
+      field must name a real runtime consumer (sync writes
+      `mcpServerConfig`; the user and agent read `name` as a label).
+      Adding a frontmatter field with no code path that reads its
+      value is validation theater and is the exact regression the
+      schema collapse was meant to prevent."
+    - >-
+      "Introspecting `mcpServerConfig.args` to extract a vault path,
+      infer connector identity, derive a `rootPath`, or stat any
+      derived path. Path validation is the launcher's job at MCP
+      server startup; the package does not second-guess it. Reading
+      args for any purpose other than passing them through to the
+      `.mcp.json` writer is the same regression as a `rootPath` field
+      in different clothing."
+    - >-
+      "Applying interpolation to the prose body. Prose returns verbatim;
+      mixing the install-time substitution surface with the agent-time
+      surface forces every prose author to think about which `${...}`
+      strings will be rewritten, exactly the failure mode the parent
+      spec's bad example calls out. Substitution lives in
+      `mcpServerConfig.args` only."
+    - >-
+      "Throwing on missing or malformed input. Failure modes are
+      structured (tagged result variants) so consumers can branch and
+      compose remediation; an MCP-protocol error from a thrown parser
+      gives the agent no actionable surface."
+    - >-
+      "Server-side defaults injected when frontmatter fields are absent.
+      The user owns the file; if a required field is missing, the parser
+      surfaces it as a malformed-frontmatter result and the consumer
+      composes a remediation message. The package never silently fills
+      in `name: obsidian` or a default `mcpServerConfig.command` of
+      `npx` to 'help'."
+    - >-
+      "A second copy of the file format encoded in any consumer.
+      `buildBrainState`, the brain tool, the install service, and sync
+      all derive from this parser. Re-reading the YAML in any of them
+      re-decentralizes the format the parser exists to centralize."
+    - >-
+      "Module-private types for the parsed shape. The `BrainAideConfig`
+      type — exactly `{ name: string; mcpServerConfig: { command:
+      string; args: string[] } }` — and its tagged-result variants live
+      in `src/types/index.ts` so consumers reference shared definitions.
+      A consumer that has to `import type { ParsedBrainAide } from
+      '@/service/parseBrainAide'` reaches into module internals,
+      breaking the central-types invariant."
+---
+
+## Context
+
+Before this module exists, the package's brain layer treats the host's
+`.mcp.json` `brain` entry as the authoritative source for what brain is
+wired and where its data lives. After the refactor settled in the parent
+intent spec, the source of truth is a hand-written file the host owns —
+`.aide/config/brain.aide`, sitting under the new user-owned
+`.aide/config/` scaffold-once-never-overwritten directory — and
+`.mcp.json` becomes a derived artifact the host's `npx aidemd-mcp sync`
+writes from that file. Four consumers all need to read the same
+brain.aide and agree on what they see: the boot reporter detecting
+drift, the runtime brain tool returning prose verbatim, the install
+service scaffolding fresh installs, and the sync verb writing the
+derived `.mcp.json` entry. Without a single parser, each consumer
+would re-implement YAML reading, body extraction, and frontmatter
+validation — the exact decentralization the brain backend registry's
+retirement was meant to eliminate.
+
+The parser is therefore peer-level service code, not a helper of any
+single consumer. It sits at `src/service/parseBrainAide/` alongside
+`install/`, `buildBrainState/`, and (post-retirement) the deleted
+`brainBackends/` slot. Two consumers in `src/service/`, one in
+`src/tools/`, and one in `src/cli/` all depend on it; placing it under
+any single consumer would force the others to reach across a sibling
+boundary the playbook's horizontal-isolation rule forbids.
+
+The frontmatter schema is the parent spec's load-bearing minimum:
+exactly `name` (a label) and `mcpServerConfig` (consumed by sync).
+Every other field the prior schema carried — `connector`, `rootPath`,
+`entryFile`, `tools` — has been removed because no runtime code
+consumed it; their presence in a parsed file was validation theater.
+The parser's job is to enforce that minimum: accept the two-field
+shape, reject deprecated fields by name so users migrate cleanly, and
+return a typed structure whose surface area matches the schema's
+surface area exactly. Brain location lives once, inline in
+`mcpServerConfig.args`; the parser never derives a logical root from
+args, never stats a path, never introspects args to infer connector
+identity. The interface contract for what MCP tools the agent calls
+lives in the prose body, not in frontmatter — the agent reads the
+prose verbatim, calls whatever it names, and surfaces failures fast.
+
+The interpolation surface is the second load-bearing decision but is
+nearly dormant by default. The parent spec partitions substitution
+into two surfaces with different audiences: install-time interpolation
+of `mcpServerConfig.args` (the `.mcp.json` writer's audience) and
+agent-time prose (the agent's audience). The same parser knows about
+both surfaces because both derive from the same parsed file, but the
+helper that performs interpolation is exposed separately so consumers
+that don't need it (the brain tool returning prose, the boot reporter
+checking drift on disk-shape) cannot accidentally invoke it. With the
+schema collapsed to `name` + `mcpServerConfig`, the only frontmatter
+value resolvable by `${...}` is `${name}`, and the default scaffold
+contains no placeholders at all — the helper exists for advanced
+users who want to DRY a value across positions. The shape still keeps
+the parent spec's bad example (server-side substitution leaking into
+the prose body) impossible by construction.
+
+## Strategy
+
+**Single canonical reader, four consumers.** The boot reporter, the
+brain tool, the install scaffolder, and the sync verb all import from
+this module. None of them re-parses YAML, none of them extracts the
+prose body independently, none of them validates required frontmatter
+fields. Centralizing format knowledge here means a future change to
+the brain.aide schema is a one-file edit; the consumers see the new
+shape automatically. This is the same chokepoint pattern the install
+service's `initContent` already uses for canonical docs — one reader,
+many composers.
+
+**Tagged-result return shape, never throws.** The parser returns a
+discriminated union: `{ kind: "ok", config, prose }`,
+`{ kind: "missing" }`, `{ kind: "malformed-frontmatter", reason }`,
+`{ kind: "malformed-body", reason }`. Every consumer branches on
+`kind` and composes its own remediation prose. This mirrors how
+`buildBrainState` already returns a tagged union for brain
+precondition state — both modules participate in the same boot-time
+diagnostic surface, and both must produce structured states the
+orchestrator can speak about. Throwing would surface as an MCP
+protocol error with no `instructions` field for the agent to act
+on, defeating the parent spec's "structured-state at every layer"
+invariant.
+
+**Substitution is exposed as a separate helper, not folded into
+the parse step.** The parser returns frontmatter and prose verbatim.
+A second exported function — `interpolateArgs(config) → string[]` —
+takes the parsed config and applies frontmatter-value substitution to
+`mcpServerConfig.args`. Two consumers call it (the install service's
+brain provisioner, the sync verb); two consumers do not (the brain
+tool returning prose, the boot reporter checking drift). Splitting
+the interpolation into an opt-in helper means a consumer that never
+imports `interpolateArgs` cannot accidentally apply substitution to
+something it shouldn't — the prose body has no path through the
+exported surface that runs interpolation on it. This closes the
+parent spec's bad example about substitution leaking into the prose
+body.
+
+**Interpolation is generalized over frontmatter fields, not
+field-specific.** The substitution engine walks each string in `args`
+looking for `${<key>}` patterns and replaces them with the matching
+top-level frontmatter value. With the schema collapsed to `name` +
+`mcpServerConfig`, the only resolvable placeholder today is
+`${name}`; the default scaffold uses no placeholders at all and the
+helper is a no-op for default installs. The engine generalizes
+naturally if the schema ever grows — no field-specific privilege.
+Crucially, the engine does NOT know about environment variables,
+shell metacharacters, or any other expansion source — substitution
+is purely frontmatter-value-to-args-position. This is small enough
+to keep inline in this module without a sub-helper folder.
+
+**`name` is metadata, never dispatched on.** The parser reads `name`
+from frontmatter and includes it in the returned config (consumers
+may surface it in `aide_info` for human-readable display). But no
+parser code branches on its value, and different brains may share
+names without affecting code behavior. If a future consumer wants
+per-brain behavior, the right move is to push that decision back
+into the user's `brain.aide` (where the user authors brain-specific
+prose verbatim), not to add a registry to this module. The parent
+spec's no-connector-branching invariant makes this load-bearing
+under the renamed field.
+
+**Schema is exactly `name` + `mcpServerConfig.{command, args}`;
+deprecated fields are rejected, not stripped.** Required frontmatter
+fields are `name`, `mcpServerConfig.command`, and
+`mcpServerConfig.args`; absence of any of these returns
+`{ kind: "malformed-frontmatter", reason: <which field> }`.
+Presence of any removed field — `connector`, `rootPath`, `entryFile`,
+`tools` — also returns `malformed-frontmatter` with a reason that
+names every stale field it found. The parser does NOT silently strip
+deprecated fields; rejection forces clean migration rather than
+indefinite drift. Defaults are never injected for missing required
+fields — no defaulting `name: obsidian`, no defaulting
+`mcpServerConfig.command: npx`. A missing required field is a user
+error to surface, not a hole to paper over. The user's edit is
+authoritative; package-side defaults would re-introduce the "vote
+the package gets to override" pattern the parent spec's bad examples
+explicitly rule out.
+
+**Single-helper file layout.** The module has one orchestrator export
+(`parseBrainAide`) and one auxiliary export (`interpolateArgs`).
+Today both fit comfortably under ~150 lines and do not warrant
+separate sub-helper folders. The progressive-disclosure
+"single-helper exception" applies — both helpers stay in one
+`index.ts`, with `interpolateArgs` defined above the default export
+to honor the function-ordering rule. When the file format grows
+(a new tagged-result variant, additional frontmatter validation
+rules, environment-variable-style expansions), factor each
+responsibility into its own subfolder.
+
+**Pure detection, no I/O orchestration of `.mcp.json`.** The parser
+reads `.aide/config/brain.aide` and parses it. It does not stat any
+path embedded in args (path validation is the launcher's job at MCP
+server startup), it does not write `.mcp.json` (that's `sync`'s job),
+it does not enumerate the file system. One async hop (`readFile`) on
+the happy path. This keeps the module's test surface tiny and makes
+the consumers' tests independent — the brain tool's tests don't have
+to mock filesystem walks the parser doesn't perform.
+
+## Good examples
+
+**A canonical Obsidian `brain.aide` parses to the expected
+structure.** The host's `.aide/config/brain.aide` contains:
+
+```
+---
+name: obsidian
+mcpServerConfig:
+  command: npx
+  args:
+    - "@bitbonsai/mcpvault"
+    - "D:/notes/my-vault"
+---
+
+## Prose
+
+Your brain is an Obsidian vault. Use `mcp__brain__read_note` to open
+files by their vault-relative path. Use `mcp__brain__search_notes`
+for keyword queries across every note in the vault. The vault's
+entry file is `CLAUDE.md` at the vault root — read that first; it
+carries wikilinks (`[[note-name]]`) you follow to deepen context.
+```
+
+The parser returns:
+
+```
+{
+  kind: "ok",
+  config: {
+    name: "obsidian",
+    mcpServerConfig: {
+      command: "npx",
+      args: ["@bitbonsai/mcpvault", "D:/notes/my-vault"]
+    }
+  },
+  prose: "Your brain is an Obsidian vault. Use `mcp__brain__read_note`..."
+}
+```
+
+No `connector`, no `rootPath`, no `entryFile`, no `tools` appear in
+the parsed shape — the schema is exactly `name` + `mcpServerConfig`.
+The `args` array carries the path inline byte-for-byte under user
+ownership; no placeholders, no substitution. The `prose` field starts
+after the `## Prose` heading and ends at end-of-file, byte-identical
+to what the user wrote between those bounds. Which MCP tools the
+agent calls (`mcp__brain__read_note`, `mcp__brain__search_notes`)
+appears only in the prose body — the agent reads them there, not
+from a frontmatter declaration.
+
+**Sync calls the interpolation helper; on the default scaffold it is
+a no-op.** Given the parsed config above:
+
+```
+interpolateArgs(config) === ["@bitbonsai/mcpvault", "D:/notes/my-vault"]
+```
+
+The args contain no `${...}` placeholders, so the helper returns
+them unchanged. Sync writes the result into `.mcp.json` under
+`mcpServers.brain` along with `command: "npx"`. The brain tool
+returning the prose body for this same config never calls
+`interpolateArgs` — it returns `result.prose` verbatim.
+
+**An advanced user opts into interpolation by referencing `${name}`
+in args.** A user authoring a brain whose launcher accepts the
+brain name as a CLI arg writes:
+
+```
+---
+name: my-vault
+mcpServerConfig:
+  command: npx
+  args:
+    - "some-launcher"
+    - "--profile"
+    - "${name}"
+---
+```
+
+The parser returns the args verbatim with `"${name}"` literal.
+`interpolateArgs(config)` substitutes the `${name}` placeholder
+against the matching top-level frontmatter field, returning
+`["some-launcher", "--profile", "my-vault"]`. The substitution is
+purely frontmatter-value-to-args-position; the engine knows nothing
+about environment variables or shell expansion.
+
+**A missing `.aide/config/brain.aide` returns `{ kind: "missing" }`.**
+A fresh project that has not run `aide_init` yet has no `brain.aide`
+on disk. The parser tries to read it, gets ENOENT, and returns
+`{ kind: "missing" }`. The boot reporter forwards this to
+`aide_info.brain.status === "no-brain-aide"`. The orchestrator
+HALTS and tells the user to run `npx aidemd-mcp init`.
+
+**A frontmatter missing `name` returns
+`{ kind: "malformed-frontmatter", reason: "name is required" }`.**
+The user hand-edited `brain.aide` and accidentally deleted the
+`name` line. The parser reads YAML, validates required fields,
+detects the absence, and returns a structured failure. No defaulting
+to "obsidian" or any other label — the user's broken edit is
+surfaced as a structured state, and the orchestrator routes them to
+fix their file. The same shape applies to a missing
+`mcpServerConfig.command` or `mcpServerConfig.args`.
+
+**A frontmatter carrying deprecated fields returns
+`{ kind: "malformed-frontmatter", reason: "deprecated fields:
+rootPath, tools" }`.** A user upgrading from a pre-collapse
+`brain.aide` runs the parser against their old file. The parser
+reads YAML, sees `rootPath` and `tools`, and returns a structured
+failure naming every stale field. The user removes them, moves the
+path inline into `mcpServerConfig.args`, and reruns sync. Clean
+migration; no silent acceptance carrying dead fields forward into
+a file the package has stopped honoring.
+
+## Bad examples
+
+**A parser that branches on `name`.** The parser reads
+`config.name === "obsidian"` and applies different validation rules
+for `mcpServerConfig.args` (`obsidian` expects a path arg, `notion`
+expects an API token arg, etc.). This re-introduces the
+identity-inference anti-pattern the brainBackends retirement was
+specifically meant to delete — different brains may share `name`
+values, and the package never branches on the label. If a future
+user wants brain-specific behavior, they encode it in their
+hand-written prose body, not in a registry the package owns.
+
+**A parser that silently strips deprecated fields.** The user's old
+`brain.aide` still carries `connector: obsidian`, `rootPath:
+D:/notes`, and `tools.read`. The parser sees them, drops them on the
+floor, and returns a config containing only `name` and
+`mcpServerConfig`. The user believes their file is honored — their
+`tools.read` declaration is sitting right there in the file — but
+nothing in the package reads it. Months later they wonder why
+changing `tools.read` has no effect. Silent acceptance is the worst
+possible failure mode here: rejection forces clean migration, while
+silent stripping creates dead-field drift the user never finds out
+about. The parser must reject deprecated fields by name.
+
+**A parser that introspects `mcpServerConfig.args` to derive a
+`rootPath`.** "We removed the `rootPath` field, but we still need to
+know the vault path for the boot reporter, so let's just take
+`args[1]` as the rootPath." Now the package has a structural
+assumption about argument ordering that varies per launcher, and
+the moment a user runs `@bitbonsai/mcpvault` with `--config-file
+foo.json` instead of an inline path, the introspection reads
+`foo.json` as the vault path and the boot reporter reports a
+nonsensical state. Path validation is the launcher's job at MCP
+server startup; the package does not second-guess it. Reading args
+for any purpose other than passing them through to `.mcp.json` is
+the same regression as a `rootPath` field in different clothing.
+
+**A parser that adds an `entryFile` field back to the schema "for
+documentation."** Someone notices the prose body keeps mentioning
+`CLAUDE.md` as the entry point and proposes a frontmatter
+`entryFile` field "so it's structured." No code reads the field;
+the agent still picks up the entry path from the prose body. This
+is validation theater — a frontmatter field whose only consumer is
+the parser's own validation. The schema must justify each field by
+naming a real runtime consumer (sync writes `mcpServerConfig`; the
+user and agent read `name` as a label). Anything else belongs in
+the prose body or nowhere.
+
+**A parser that interpolates the prose body.** Before returning
+prose, the parser walks the body string and replaces `${name}`
+occurrences with the resolved label. The first user whose prose
+legitimately documents a `${variable}` syntax has their body
+mangled. Worse: prose authors now need to know which placeholders
+the package will rewrite before delivery, and the temptation to
+"just template the prose body too" lands. Substitution lives only
+in `mcpServerConfig.args`.
+
+**A parser that throws on missing brain.aide.** The host project
+calls the parser, no file exists, the parser raises an exception,
+the consumer's MCP-protocol response is an error with no
+`instructions` field. The orchestrator cannot tell the user what
+to do because no structured state was produced. Missing-file is a
+normal pre-init state; it must be a tagged-result variant.
+
+**A parser that injects defaults for missing frontmatter fields.**
+The user's `brain.aide` is missing `name`. The parser silently
+defaults it to `"obsidian"` because "every brain we've scaffolded
+so far is Obsidian." Three failure modes follow. First: a brain
+that genuinely is not Obsidian gets the wrong label injected, and
+`aide_info` narrates a label the user did not choose. Second: the
+user's edit was an in-progress draft; defaulting it forward
+silently completes a config the user wasn't ready to commit. Third:
+the next time the user re-edits `brain.aide`, they expect the file
+they wrote to round-trip through the parser; defaulting makes that
+promise false. Required fields are required, and a missing required
+field is a structured failure the user resolves by editing.
+
+**A consumer that re-reads `.aide/config/brain.aide` directly
+instead of calling this parser.** The boot reporter implements its
+own YAML read because "we only need `mcpServerConfig` to compare
+against `.mcp.json`, the rest is ceremony." Two consumers now
+decode the file format, and the moment the format gains a new
+field or rejects a deprecated one, they disagree on what's valid.
+Centralizing the format in this module means every consumer sees
+the same parse result; bypassing it re-decentralizes exactly the
+surface this module exists to own.
+
+## References
+
+(No external research was drawn. The schema, deprecated-field
+rejection, substitution-surface partition, and path move were
+specified directly in the parent `.aide/intent.aide` — see the
+outcomes about the two-field minimum schema, validation theater
+rejection, the `.aide/config/` user-owned directory, and the
+prose-as-interface-contract decision; and the Strategy paragraph
+"Brain configuration is user-owned, not code-owned.")

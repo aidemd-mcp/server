@@ -18,11 +18,13 @@ You receive a research task from the orchestrator — a domain that needs covera
 
 ## Research Process
 
+**Before any step below**, call `aide_brain` once. It returns ready-to-execute prose naming the exact MCP tools wired to this project's brain (the backend may be Obsidian today and something else tomorrow). Use those tool names for every "search the brain" / "read the brain" / "write to the brain" action that follows.
+
 ### Step 1: Search the brain first
 
 Before any external research, check what the vault already knows:
 
-1. Use `mcp__obsidian__search_notes` with multiple query variations related to the domain
+1. Search the brain with multiple query variations related to the domain
 2. Search `research/` for existing research notes on the topic
 3. Search `research/transcripts/` for video transcripts covering the domain
 4. Follow `[[wikilinks]]` in any notes you find — the vault's power is in its connections
@@ -39,7 +41,7 @@ If the brain has gaps:
 
 ### Step 3: Persist findings to the brain
 
-Write research notes using `mcp__obsidian__write_note`:
+Write research notes to the brain (using the write tool `aide_brain` named for this backend):
 
 1. File by **domain** not project — `research/<domain-topic>/` (e.g., `research/cold-email/`, `research/local-seo/`)
 2. Include proper frontmatter: `created`, `updated`, `tags`

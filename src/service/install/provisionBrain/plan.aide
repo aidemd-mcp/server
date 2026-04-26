@@ -1,125 +1,507 @@
 ---
 intent: >
-  Convert the playbook hub and vault-root CLAUDE.md planning steps from
-  canonical-template byte-compare to seed-semantic presence-only checks,
-  so provisionBrain can never return `would-overwrite` for either file.
-  The Obsidian MCP prescription keeps its existing byte-identity
-  idempotency. Tests are rewritten to match the new contract.
+  Rewrite provisionBrain so its primary output is `.aide/brain.aide` —
+  scaffolded with the canonical Obsidian configuration that matches the
+  package's existing launcher shape across Windows and POSIX. The brain
+  MCP entry written into `.mcp.json` is then derived from that scaffolded
+  file via the parser and `interpolateArgs`, not constructed inline by
+  this module. The legacy `obsidianMcpEntry()` export is removed; consumers
+  that needed it (the cold-start CLI) call into shared scaffolding logic
+  instead.
 ---
 
 ## Project Structure
 
-All files already exist. Only `index.ts` and `index.test.ts` are modified; nothing is added or removed.
-
 ```
-src/tools/init/provisionBrain/
-├── .aide                 ← (MODIFY: spec already updated by the spec phase — not in this plan's scope, listed for orientation) intent spec governing this module
-├── plan.aide             ← (REPLACED) this file — supersedes the completed v1 plan
-├── index.ts              ← (MODIFY) orchestrator: provisionBrain(brainPath: string, mcpConfigPath: string) => Promise<InitStep[]>
-│                            default export unchanged in signature; internals of
-│                            buildPlaybookHubStep and buildVaultClaudeMdStep swap
-│                            compareBytes for a presence-only existence check
-└── index.test.ts         ← (MODIFY) Vitest suite. Two drift tests rewritten to assert
-                             status: "exists" on drift; helper tests unchanged
+src/service/install/provisionBrain/
+├── .aide                          ← [needs spec rewrite — see step 1]
+├── plan.aide                      ← [this file]
+├── index.ts                       ← [rewrite] orchestrator: scaffolds brain.aide,
+│                                     then derives MCP step from it
+│                                     exports:
+│                                       default async function provisionBrain(
+│                                         brainPath: string, mcpConfigPath: string
+│                                       ): Promise<InitStep[]>
+│                                       export function obsidianBrainAideTemplate(
+│                                         rootPath: string
+│                                       ): string  // canonical brain.aide bytes
+├── index.test.ts                  ← [rewrite] tests cover the new brain.aide step,
+│                                     legacy-obsidian-key migration, and MCP-derivation
+│                                     from the scaffolded file
+├── obsidianBrainAideTemplate/     ← [new helper subfolder]
+│   ├── index.ts                   ← [new] export default function
+│   │                                  obsidianBrainAideTemplate(rootPath: string): string
+│   │                                  composes the canonical Obsidian brain.aide bytes
+│   └── index.test.ts              ← [new] verifies the template renders the expected
+│                                     frontmatter shape and prose body, with rootPath
+│                                     interpolated correctly into `${rootPath}` and
+│                                     `mcpServerConfig.args` matching the platform's
+│                                     legacy launcher (Windows cmd /c vs POSIX npx)
+└── todo.aide                      ← [existing, retire OR rewrite — this plan supersedes it]
 ```
 
-Internal (non-exported) functions in `index.ts` after this change:
+The single existing helper subfolder added here is `obsidianBrainAideTemplate/`
+because the template body is large and well-defined enough to warrant its
+own helper (the playbook's threshold is roughly 50 lines; the Obsidian
+template body — frontmatter plus the canonical prose — sits around 40-60
+lines of templated text). Extracting it makes the scaffolder's pipeline
+readable as a recipe and gives the test suite a focused unit surface.
 
-- `exists(path: string) => Promise<boolean>` — unchanged helper, now consumed by the two seed-file step builders as their sole idempotency primitive
-- `vaultExists(brainPath: string) => Promise<boolean>` — unchanged
-- `safeReadFile(path: string) => Promise<string>` — unchanged, still used by `buildObsidianMcpStep`
-- `obsidianMcpEntry(brainPath: string) => McpPrescription["entry"]` — unchanged, exported
-- `buildVaultStep(brainPath: string) => Promise<InitStep>` — unchanged
-- `buildPlaybookHubStep(brainPath: string) => Promise<InitStep>` — **MODIFIED**: body switches from `compareBytes(filePath, PLAYBOOK_HUB_TEMPLATE)` to `exists(filePath)`. Returns `{ status: "exists" }` when the file is present at `join(brainPath, "coding-playbook", "coding-playbook.md")` regardless of bytes on disk; returns `{ status: "would-create", content: PLAYBOOK_HUB_TEMPLATE }` when absent. The `"would-overwrite"` branch is deleted.
-- `buildVaultClaudeMdStep(brainPath: string) => Promise<InitStep>` — **MODIFIED**: same shape of change. Presence at `join(brainPath, "CLAUDE.md")` is the sole idempotency signal. The `"would-overwrite"` branch is deleted.
-- `buildObsidianMcpStep(brainPath: string, mcpConfigPath: string) => Promise<InitStep>` — **UNCHANGED**. Continues to use `safeReadFile` + JSON parse + args-tail comparison (not `compareBytes`). MCP retains canonical-template idempotency because it IS a tool-owned config value.
-
-Module-scope constants (unchanged):
-
-- `VAULT_DIRS: readonly string[]`
-- `PLAYBOOK_HUB_TEMPLATE: string`
-- `VAULT_CLAUDE_MD_TEMPLATE: string`
+The legacy `obsidianMcpEntry()` exported function is removed. Callers that
+referenced it migrate to derive the entry from a scaffolded brain.aide
+(the cold-start CLI's `writeMcpEntry` is rewritten in Plan 8 to use the
+shared template + `interpolateArgs` pipeline).
 
 ## Prerequisites
 
-- `@/tools/init/shared/compareBytes` must continue to export
-  `compareBytes: (filePath: string, canonicalBytes: string) => Promise<"would-create" | "would-skip" | "would-overwrite">`.
-  After this plan, `provisionBrain/index.ts` no longer imports it — but the helper itself remains in use by other canonical-template callers (`versions.json`, methodology docs, etc.). Do not delete, rename, or change its signature.
-- `@/types` must continue to export `InitStep`, `InitStepStatus`, and `McpPrescription` with their current shapes. No new status variant is introduced by this plan; the existing `"exists"` and `"would-create"` cover the new behavior.
+**Plan 1 (canonical-doc registry)** must complete first:
+- The `brain-aide.md` methodology doc defines the file format this
+  module scaffolds. Every field in the template traces to a rule in
+  that doc.
+
+**Plan 2 (`src/service/parseBrainAide/plan.aide`)** must complete first:
+- This plan imports `parseBrainAide` and `interpolateArgs` to derive
+  the MCP entry from the scaffolded brain.aide.
+- After scaffolding the file, the orchestrator parses it and uses
+  `interpolateArgs` to compute the args list to write into `.mcp.json`.
+  This is the canonical-source-of-truth pattern: the file IS the
+  source, the MCP entry is derived.
 
 ## Plan
 
-### 1. Flip the playbook hub step from byte-compare to presence-only
-
-Read: `coding-playbook/architecture/data-flow`, `coding-playbook/foundations/conventions`
-
-- [x] 1a. In `src/tools/init/provisionBrain/index.ts`, remove the `compareBytes` import line at the top of the file. Audit the rest of the module to confirm no other call site in this file uses it (only the two seed-file helpers do today). If `buildObsidianMcpStep` still does not use `compareBytes`, the import is truly dead after the helpers are flipped.
-  <!-- Completed in step 2 — `buildVaultClaudeMdStep` no longer calls `compareBytes` after step 2's flip; confirmed zero remaining call sites; import removed. -->
-- [x] 1b. Rewrite `buildPlaybookHubStep` so its body uses the already-defined `exists()` helper on the computed `filePath` (`join(brainPath, "coding-playbook", "coding-playbook.md")`). The function must return exactly two shapes: when `exists(filePath)` resolves true → `{ name: "Playbook hub", status: "exists", category: "brain", filePath }` with no `content` field; when it resolves false → `{ name: "Playbook hub", status: "would-create", category: "brain", filePath, content: PLAYBOOK_HUB_TEMPLATE }`. The `"would-overwrite"` branch is deleted. The function must never reference `compareBytes`, `PLAYBOOK_HUB_TEMPLATE` bytes-on-disk, or any byte comparison.
-- [x] 1c. Update the JSDoc comment above `buildPlaybookHubStep` to describe seed-semantic idempotency: "Presence-only check — if the file exists at its expected path, the step is `exists` regardless of on-disk content. Once the user has the file, the bytes belong to the user." Cross-reference the spec's Strategy section rather than restating it.
-
-### 2. Flip the vault CLAUDE.md step from byte-compare to presence-only
-
-Read: `coding-playbook/architecture/data-flow`, `coding-playbook/foundations/conventions`
-
-- [x] 2a. Rewrite `buildVaultClaudeMdStep` with the same transformation as step 1b, targeting `join(brainPath, "CLAUDE.md")`. Two return shapes only: `exists` (no content) or `would-create` (with `VAULT_CLAUDE_MD_TEMPLATE`). Delete the `"would-overwrite"` branch.
-- [x] 2b. Update the JSDoc on `buildVaultClaudeMdStep` to describe seed-semantic idempotency identically to step 1c.
-
-### 3. Update the orchestrator JSDoc to codify the two idempotency modes
+### 1. Rewrite the `.aide` intent spec
 
 Read: `coding-playbook/foundations/conventions`
 
-- [x] Update the JSDoc on the default export `provisionBrain` so the per-step contract description for items 2 and 3 (playbook hub, vault CLAUDE.md) says "`exists` when the file is present at its expected path; `would-create` with `content` when absent. Never `would-overwrite` — these files are user-owned seeds, not canonical templates." Item 4 (MCP prescription) keeps the existing canonical-template description. Add one sentence naming the two modes explicitly so a future reader can see the intentional asymmetry: "Two idempotency modes coexist: seed-semantic (presence-only) for user-owned content (steps 2, 3); canonical-template (byte-identity) for tool-owned config (step 4)."
+- [x] Rewrite `src/service/install/provisionBrain/.aide`. The current
+      spec describes a module that writes the legacy obsidian-keyed MCP
+      entry directly. The rewrite must:
 
-### 4. Rewrite the playbook hub drift test to assert the new seed behavior
+      - `intent` paragraph: provisionBrain's primary output is the
+        scaffolded `.aide/brain.aide` (and the seed vault-side files —
+        the playbook hub and the vault CLAUDE.md, which stay in scope).
+        The MCP entry is now derived from the scaffolded brain.aide
+        via parseBrainAide; this module composes the
+        InitStep for the MCP write but does not own its byte-level
+        construction.
+      - `outcomes.desired`: enumerate the planning steps emitted —
+        `Brain config (brain.aide)`, `Brain vault`, `Playbook hub`,
+        `Vault CLAUDE.md`, `MCP config (brain)`. The first one is new;
+        the others are unchanged in shape. Add: the MCP step's
+        `prescription.entry` is derived from the scaffolded brain.aide
+        bytes via `parseBrainAide` + `interpolateArgs`, not from a
+        hardcoded launcher constant. Add: the canonical Obsidian
+        template's launcher shape continues to support both Windows
+        (`cmd /c npx ...`) and POSIX (`npx ...`) per the existing
+        platform branching.
+      - `outcomes.undesired`: tripwires for regressions —
+        constructing the MCP entry inline without going through the
+        scaffolded brain.aide as the source of truth; hardcoding the
+        Obsidian launcher shape outside of `obsidianBrainAideTemplate`;
+        scaffolding a brain.aide whose `connector` value the package
+        later branches on (the field is metadata for the user only);
+        replacing `would-create` with `would-overwrite` for the seed
+        files (those stay seed-semantic per the existing rule); writing
+        a brain.aide whose schema borrows intent-spec frontmatter
+        conventions (no `scope`, no `outcomes`, no `intent` — per the
+        parent spec's `outcomes.undesired[6]`).
+      - Body sections rewritten in decision form. Strategy explains
+        why brain.aide is the source of truth and the MCP entry is
+        derived; why the template helper is its own subfolder
+        (~50 line content, multiple test cases); why the legacy
+        `obsidianMcpEntry()` export was removed (consumers go through
+        the template + interpolateArgs path now); why brain.aide
+        scaffolding is seed-semantic (presence-only check), not
+        canonical-byte (the user owns the file the moment it lands).
+      - References include the parent intent spec, parseBrainAide
+        spec, brain-aide methodology doc.
 
-Read: `coding-playbook/workflow/testing`
+### 2. Build the canonical Obsidian template helper
 
-- [x] In `src/tools/init/provisionBrain/index.test.ts`, rewrite the test currently titled "playbook hub drifted from template returns would-overwrite with content" (lines ~284-302). Rename it to "playbook hub drifted from template still returns exists — user owns the bytes post-scaffold". The setup stays the same (write drifted content to disk). The assertions flip: `expect(hubStep.status).toBe("exists")` and `expect(hubStep.content).toBeUndefined()`. The test must trace back to the spec's `outcomes.desired` bullet on seed semantics and the `outcomes.undesired` bullet forbidding `would-overwrite` for this file.
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
 
-### 5. Rewrite the vault CLAUDE.md drift test to assert the new seed behavior
+- [x] Create `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts`
+      and its co-located test file.
 
-Read: `coding-playbook/workflow/testing`
+      **Function signature:**
+      `default function obsidianBrainAideTemplate(rootPath: string): string`
 
-- [x] Rewrite the test currently titled "vault CLAUDE.md drifted from template returns would-overwrite with content" (lines ~341-359) with the same transformation as step 4. Rename to "vault CLAUDE.md drifted from template still returns exists — user owns the bytes post-scaffold". Flip the assertions: `status === "exists"`, `content === undefined`. Same spec trace.
+      Returns the complete canonical Obsidian `brain.aide` file content
+      as a string, ready to write to disk. The string includes:
 
-### 6. Add a negative assertion test: no brain seed step ever returns would-overwrite
+      - Frontmatter fence opener `---\n`.
+      - YAML body with these fields, in this order, exactly matching
+        the parent spec's good example:
+        - `connector: obsidian`
+        - `rootPath: <rootPath>` (the value passed in)
+        - `entryFile: CLAUDE.md`
+        - `mcpServerConfig:` with nested `command` and `args`. The
+          launcher shape is platform-conditional — Windows uses
+          `command: cmd` and `args: ["/c", "npx", "-y", "obsidian-mcp",
+          "${rootPath}"]`; POSIX uses `command: npx` and `args:
+          ["-y", "obsidian-mcp", "${rootPath}"]`. The `${rootPath}`
+          string is a literal placeholder in `args` — interpolation
+          is the consumer's job at install/sync time.
 
-Read: `coding-playbook/workflow/testing`
+          **Important:** the placeholder is the literal three
+          characters `$`, `{`, `r`, ..., `}` — the template does NOT
+          pre-interpolate. The user sees `${rootPath}` in their
+          file alongside the resolved `rootPath` field, exactly as
+          the parent spec's good example shows.
+        - `tools:` with `read: mcp__brain__read_note` and
+          `search: mcp__brain__search_notes`.
+      - Frontmatter fence closer `---\n\n`.
+      - `## Prose\n\n` heading.
+      - The canonical Obsidian prose body — the sample sentences from
+        the parent spec's good example, refined into a complete
+        agent-facing instruction. Approximate content (the implementor
+        writes the final words):
+        > Your brain is an Obsidian vault. Use
+        > `mcp__brain__read_note` to open files by their
+        > vault-relative path. Use `mcp__brain__search_notes` for
+        > keyword queries across every note in the vault. The
+        > vault's entry file is `CLAUDE.md` at the vault root —
+        > read that first; it carries wikilinks (`[[note-name]]`)
+        > you follow to deepen context. When a wikilink looks
+        > relevant to your task, read it (depth 1) and check that
+        > note's links too. Stay in scope; don't follow links into
+        > unrelated topics.
+        Approximately 5–10 sentences. The exact wording is a doc-
+        authoring decision; constraints: name the read tool, name
+        the search tool, name the entry file, describe the wikilink
+        crawling protocol briefly, name the staying-in-scope rule.
 
-- [x] Add one new test at the bottom of the "Drift cases: vault CLAUDE.md byte-compare" section (or in a new `describe.each` block — architect's preference; pick whichever keeps the file readable). Title: "provisionBrain never returns would-overwrite for playbook hub or vault CLAUDE.md under any on-disk state". Use parameterized cases over the drift scenarios already covered individually: (a) file absent, (b) file byte-identical to template, (c) file drifted from template, (d) file completely replaced with unrelated content. For each case, assert that both `results[1].status` (playbook hub) and `results[2].status` (vault CLAUDE.md) are in the set `{"exists", "would-create"}` and never equal `"would-overwrite"`. This is the regression guard that maps directly onto the spec's `outcomes.undesired` bullet: "being returned with `status: \"would-overwrite\"` under any circumstance."
+      JSDoc names the load-bearing decisions: this is the SINGLE
+      source of the canonical Obsidian brain.aide bytes; the legacy
+      `obsidianMcpEntry()` is replaced by parsing this template.
 
-### 7. Verify the idempotent full-vault test still passes without change
+      **Tests** (`obsidianBrainAideTemplate/index.test.ts`):
 
-Read: `coding-playbook/workflow/testing`
+      - 2a. **Output is parseable by `parseBrainAide`** — the most
+        load-bearing test. Write the template's output to a temp
+        `brain.aide`, call `parseBrainAide(<temp root>)`, assert
+        `result.kind === "ok"` and the parsed config matches what
+        the template wrote. This enforces the round-trip invariant:
+        anything provisionBrain scaffolds, the parser must read.
+      - 2b. **`rootPath` is interpolated into the YAML field but NOT
+        into `args`** — given `rootPath: "/foo"`, the parsed config
+        has `config.rootPath === "/foo"` and `config.mcpServerConfig
+        .args` still contains the literal `"${rootPath}"` placeholder.
+      - 2c. **Platform branching** — on win32, `command === "cmd"` and
+        args[0..1] === `["/c", "npx"]`. On POSIX, `command === "npx"`.
+        Use `vi.mock("node:os", ...)` to mock `platform()` per the
+        existing test pattern.
+      - 2d. **Parsed prose body is non-empty and contains the expected
+        sentinel phrases** — assert the prose contains
+        `mcp__brain__read_note`, `CLAUDE.md`, `wikilink`. This guards
+        against silent template breakage that strips the body.
+      - 2e. **`interpolateArgs` round-trip** — given the parsed config,
+        `interpolateArgs(config)` returns the args list with
+        `${rootPath}` replaced by the literal `rootPath` value. This
+        verifies that the template's substitution surface lines up
+        exactly with the parser's expectations.
 
-- [x] Re-read the test "is idempotent — second call with fully provisioned vault returns all exists" (lines ~375-398). Its setup writes byte-identical templates; the assertions already expect `"exists"`. Under the new seed semantics the behavior is the same (both the old byte-match path and the new presence-only path return `exists` when the canonical template is on disk). Confirm no edit is needed and leave this test as a passing regression anchor for both code paths. Document this verification as a completed checkbox so the implementor does not second-guess whether to touch it.
+### 3. Rewrite `provisionBrain/index.ts`
 
-### 8. Verify init.md's overwrite-branch prompt does not need a brain-specific edit
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
+
+- [x] Rewrite `src/service/install/provisionBrain/index.ts`. The
+      function signature is unchanged: `default async function
+      provisionBrain(brainPath: string, mcpConfigPath: string):
+      Promise<InitStep[]>`.
+
+      The new pipeline:
+
+      1. **Build the brain.aide planning step.** Compute the host
+         path: `join(<projectRoot>, ".aide", "brain.aide")`. The
+         caller passes `mcpConfigPath` (which already encodes the
+         project root via `join(projectRoot, ".mcp.json")`); derive
+         project root by `dirname(mcpConfigPath)`, OR change the
+         signature to accept project root directly. **Decision:**
+         change the signature to accept `projectRoot` instead of
+         `mcpConfigPath`, so the helper derives both paths from one
+         clean input. Update `src/service/install/index.ts` (the
+         install orchestrator) to pass `projectRoot` and the
+         framework-resolved `mcpConfigPath` separately. **(See step
+         3a below for the resulting signature.)**
+
+         Check disk for `.aide/brain.aide`. If present →
+         `{ name: "Brain config", status: "exists", category:
+         "brain", filePath }`. If absent → call
+         `obsidianBrainAideTemplate(brainPath)`, return
+         `{ name: "Brain config", status: "would-create", category:
+         "brain", filePath, content: <template output> }`.
+
+         Seed-semantic idempotency: the brain.aide file is
+         user-owned the moment it lands. The helper never returns
+         `would-overwrite` for it. This matches how the playbook
+         hub and vault CLAUDE.md steps already work.
+
+      2. **Vault scaffolding step** (unchanged in shape) —
+         `Brain vault` step. Same logic as before: `exists` if the
+         vault directory is non-empty or has `.obsidian/`,
+         `would-create` with the directories list otherwise.
+
+      3. **Playbook hub step** (unchanged) — seed-semantic, present
+         or not, never `would-overwrite`.
+
+      4. **Vault CLAUDE.md step** (unchanged) — seed-semantic.
+
+      5. **MCP config step — derived from scaffolded brain.aide.**
+         This is the load-bearing change. The new pipeline:
+
+         a. After deciding what would be written for brain.aide
+            (the `content` from step 1, OR the existing on-disk
+            content if step 1 returned `exists`), parse it via
+            `parseBrainAide` (or in the `would-create` case, parse
+            the in-memory string via a sibling helper that takes
+            bytes — design choice in step 3b below).
+         b. From the parsed config, compute `expectedEntry =
+            { command: config.mcpServerConfig.command,
+              args: interpolateArgs(config) }`.
+         c. Read the existing `.mcp.json`. Walk the same four
+            on-disk states the existing helper does:
+            - Cold (no `brain`, no `obsidian` keys) → `would-create`
+              with `prescription: { key: "brain", entry:
+              expectedEntry }`.
+            - Legacy (`obsidian` only) → `would-overwrite` with
+              `prescription: { key: "brain", entry: expectedEntry }`.
+              The orphan `obsidian` cleanup is a separate follow-up
+              step; this step writes the new `brain` key only.
+            - Transitional (both `obsidian` and `brain`) →
+              `would-overwrite` with the same prescription.
+            - Idempotent (`brain` already present, entry equals
+              `expectedEntry`) → `exists`.
+            - Brain present but entry differs → `would-overwrite`.
+            - Malformed JSON → `would-create` with
+              `configMalformed: true`.
+
+         d. The MCP step's prescription is ALWAYS derived from the
+            scaffolded brain.aide bytes — never constructed inline
+            from `obsidianMcpEntry(brainPath)` or any equivalent
+            launcher constant. This is the canonical-source-of-truth
+            invariant.
+
+      Return all five InitStep items in order: `[brainAideStep,
+      vaultStep, playbookHubStep, vaultClaudeMdStep, mcpStep]`.
+
+      Sub-decisions:
+
+      - 3a. **Signature change to take projectRoot.** Update the
+        export signature from `(brainPath: string, mcpConfigPath:
+        string)` to `(projectRoot: string, brainPath: string,
+        mcpConfigPath: string)`. Update the single caller
+        (`src/service/install/index.ts`) to pass all three. The
+        `brainPath` (vault location) and `projectRoot` (host project)
+        are different things; the existing signature conflated them
+        because brain.aide didn't exist as a separate target.
+
+      - 3b. **Parse from in-memory bytes.** The MCP step needs to
+        derive `expectedEntry` from the brain.aide content the
+        scaffolder is about to write OR from what's already on disk.
+        For the `would-create` path, the bytes are in memory (from
+        `obsidianBrainAideTemplate`). For `exists`, parse from
+        disk via `parseBrainAide`. Add a small helper —
+        `parseBrainAideFromString(content: string):
+        ParseBrainAideResult` — exported from
+        `@/service/parseBrainAide` (this is a Plan 2 amendment;
+        confirm with the architect before proceeding). Alternative:
+        always parse from disk by writing the temp file first.
+        **Decision:** add `parseBrainAideFromString` to
+        `parseBrainAide` as a small adjunct export — it's the same
+        parsing logic, just sourced from a string instead of a file.
+        Update Plan 2's tests to cover it. **For this plan, treat
+        it as a contract this module consumes; if the architect
+        finds it doesn't fit, fall back to writing-then-parsing.**
+
+      Tier 3 inline comments narrate each pipeline step in the
+      orchestrator body.
+
+### 4. Remove the legacy `obsidianMcpEntry` export
 
 Read: `coding-playbook/foundations/conventions`
 
-- [x] Re-read `.claude/commands/aide/init.md` lines 80-95 (the generic overwrite-branch prompt block). Confirm the branch fires only when `any step is would-overwrite` for a category, which after this plan is impossible for the two brain seed files. The brain category may still surface `would-overwrite` through the MCP sub-step (obsidian key present but path differs), which is the intended behavior — that step still carries canonical-template idempotency. Conclude in a short note inside the step's checkbox acknowledgment: either "no edit needed — generic branch is naturally correct" or, if verification surfaces a brain-specific clause, record it and escalate back to `/aide:plan` for a follow-up plan scoped to the command file. Do NOT edit `init.md` from within this plan's scope — the scope directory is `src/tools/init/provisionBrain/`.
-  <!-- no edit needed — generic branch is naturally correct after seed-semantic flip. The branch condition (line 80: "any step is would-overwrite") is purely data-driven: it fires iff the category's step list contains a would-overwrite entry. No hardcoded brain/file-name logic exists. After this plan, provisionBrain never produces would-overwrite for playbook hub or vault CLAUDE.md, so the prompt silently stops firing for those two files with zero changes to init.md. The MCP sub-step can still produce would-overwrite (stale obsidian path), triggering the generic prompt correctly. -->
+- [x] Remove the `export function obsidianMcpEntry(brainPath: string):
+      McpPrescription["entry"]` export from `provisionBrain/index.ts`.
+      This export was the legacy way to construct the MCP entry inline;
+      after this plan's rewrite, all callers derive the entry from the
+      scaffolded brain.aide via the template + parser pipeline.
 
-### 9. Run the full test suite and confirm the two flipped tests and the new negative test pass
+      **Caller migration:**
+      - `src/cli/init/writeMcpEntry/index.ts` previously imported
+        `obsidianMcpEntry` to construct the brain entry shell. Plan 8
+        rewrites that file to use `obsidianBrainAideTemplate` +
+        `parseBrainAideFromString` + `interpolateArgs` instead. **Do
+        not patch `writeMcpEntry` in this plan** — Plan 8 owns it.
+        Document the breakage as the dependency contract for Plan 8.
+
+      Verify no other file imports `obsidianMcpEntry` from this
+      module. The two known consumers are `src/service/install/index.ts`
+      (for the placeholder cold path; that path is rewritten in step
+      3 above to scaffold a real brain.aide) and `src/cli/init/
+      writeMcpEntry/index.ts`.
+
+### 5. Rewrite the tests
 
 Read: `coding-playbook/workflow/testing`
 
-- [x] Run `rtk npx vitest run src/tools/init/provisionBrain/index.test.ts` (or the project's equivalent test command). Confirm: all pre-existing tests still pass; the two renamed drift tests pass with their new assertions; the new step-6 regression guard passes; zero tests reference `"would-overwrite"` against the playbook hub or vault CLAUDE.md. Also run the broader init test suite (`rtk npx vitest run src/tools/init`) to confirm no sibling helper broke — in particular, `applySteps` tests must stay green because its brain-category branch is untouched by this plan.
+- [x] Rewrite `src/service/install/provisionBrain/index.test.ts` to
+      cover the new pipeline. Use the existing test pattern (real
+      filesystem, mocked `node:os` for platform tests). Key test
+      cases:
+
+      - 5a. **Cold install scaffolds brain.aide** — fresh project,
+        no `.aide/brain.aide` on disk. Assert the returned step list
+        contains a `Brain config` step with `status: "would-create"`
+        and `content` that's parseable by `parseBrainAide`.
+      - 5b. **Existing brain.aide stays untouched** — pre-write a
+        brain.aide to `.aide/brain.aide`. Assert the `Brain config`
+        step is `exists` and contains no `content` field.
+      - 5c. **MCP step derives from scaffolded brain.aide** — assert
+        that on cold install, the MCP step's `prescription.entry`
+        matches what `interpolateArgs` would compute from the
+        template's args. Compare against a known good fixture: the
+        Obsidian launcher with `${rootPath}` replaced by the actual
+        path.
+      - 5d. **MCP step derives from existing brain.aide on idempotent
+        re-run** — pre-write a brain.aide with a custom user-edited
+        `mcpServerConfig.args` (not the canonical Obsidian shape).
+        Assert the MCP step's `prescription.entry` matches the
+        user's args, NOT the canonical template's args. This is the
+        load-bearing test that brain.aide is the source of truth —
+        if the user customized their config, provisionBrain reflects
+        the customization, not the package's default.
+      - 5e. **Legacy obsidian-key migration** — pre-write a
+        `.mcp.json` with `mcpServers.obsidian` and no
+        `mcpServers.brain`. Assert the MCP step is `would-overwrite`
+        with `prescription.key === "brain"`.
+      - 5f. **Idempotency** — fully provisioned project (brain.aide
+        present, vault present, playbook hub present, vault
+        CLAUDE.md present, `.mcp.json` brain entry matches scaffolded
+        bytes). All five steps return `exists`.
+      - 5g. **No `obsidianMcpEntry` export** — verify by absence:
+        `import { obsidianMcpEntry } from "./index.js"` is now a
+        type error / runtime undefined. The test file does not
+        attempt this import; document the invariant in a comment.
+      - 5h. **brain.aide schema does NOT include intent-spec
+        fields** — write the template, parse it, assert the
+        frontmatter has NO `scope`, NO `outcomes`, NO `status`
+        field. This enforces the parent spec's `outcomes.undesired[6]`
+        ("a brain.aide whose schema borrows intent-spec frontmatter
+        conventions").
+
+### 6. Update install-orchestrator caller
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] Update `src/service/install/index.ts` where it calls
+      `provisionBrain`. Two changes:
+
+      - 6a. Update the call signature to match step 3a:
+        `provisionBrain(projectRoot, brainPath, brainMcpPath)`.
+      - 6b. The placeholder cold-install branch (where `brainPath`
+        is `undefined` and the orchestrator constructs four
+        placeholder steps including `obsidianMcpEntry("")`) is
+        rewritten. The new branch:
+
+        - When `brainPath` is provided → call `provisionBrain` as
+          today (with new signature). All five steps land
+          structurally.
+        - When `brainPath` is absent → return five placeholder steps
+          mirroring the new shape: `Brain config` (would-create with
+          empty filePath), `Brain vault`, `Playbook hub`, `Vault
+          CLAUDE.md`, `MCP config (brain)`. The MCP step's
+          prescription is **omitted entirely** (or set to a sentinel
+          that signals "agent must interview first") — it cannot be
+          derived from a brain.aide that doesn't exist yet. This is
+          a behavior change from today's "always emit a placeholder
+          MCP entry shell"; the new contract is "no brain.aide,
+          no derivable MCP entry." The orchestrator's recovery flow
+          (`/aide:brain config`) is what actually drives the
+          interview after this point — the placeholder is just a
+          marker that the category needs work.
+
+      Update the install service's tests to reflect the new shape
+      (one new placeholder, no `obsidianMcpEntry` call).
 
 ## Decisions
 
-**Seed-semantic vs canonical-template is the load-bearing distinction.** The spec's `## Strategy` section codifies two idempotency modes and names the rule for picking between them: *who owns the bytes after first write.* Playbook hub and vault CLAUDE.md are user-owned the moment they land — the user adds routing rows, wikilinks, navigation notes. The MCP prescription is tool-owned forever — a config value the tool prescribes, so byte identity is the correct signal. This asymmetry is intentional and permanent; the architect codifies it in the orchestrator JSDoc (step 3) so future readers see why two different idempotency implementations coexist in one module.
+- **brain.aide is the SINGLE source of truth for the MCP entry; the
+  MCP step derives from it.** This is the load-bearing pattern
+  change. The legacy `obsidianMcpEntry()` constant returned a
+  hardcoded launcher shape; the new pipeline writes a template,
+  parses it back, interpolates, and uses the result. Any future
+  user-side customization of brain.aide flows through to `.mcp.json`
+  automatically because the package no longer has its own
+  competing source.
+- **`obsidianBrainAideTemplate` lives in its own helper subfolder.**
+  ~50 lines of templated content with multiple test cases (parse
+  round-trip, platform branching, prose-content invariants). The
+  playbook's threshold for splitting a helper is around 50 lines;
+  this hits it. Inline keeping it in `index.ts` would also force
+  the orchestrator file to carry the entire prose body, which makes
+  the orchestrator unreadable.
+- **Signature change to take `projectRoot`.** The existing signature
+  conflated `brainPath` (vault location) and `mcpConfigPath` (where
+  `.mcp.json` lives in the host) — the new pipeline needs the host
+  project root explicitly to derive `.aide/brain.aide`'s path.
+  Updating one caller is mechanical; the signature shift makes the
+  module's contract clearer.
+- **`parseBrainAideFromString` is added to `parseBrainAide` as part
+  of this plan's contract with Plan 2.** Plan 2 ships
+  `parseBrainAide(root: string)` which reads from disk; this plan
+  needs to parse the in-memory template bytes before they are
+  written. The cleanest fix is a small adjunct export. **Action:
+  this plan's step 3b lists this as a contract dependency on Plan 2;
+  the architect amends Plan 2's step 2 to include
+  `parseBrainAideFromString(content: string):
+  ParseBrainAideResult` as a sibling export.** (Marked in the
+  open-questions handback at the end.)
+- **Cold-install placeholder MCP step has no prescription.** Today's
+  placeholder includes `obsidianMcpEntry("")` so the orchestrator
+  can detect the empty path and prompt for it. The new world has
+  no such fallback construction; brain.aide must exist before an
+  MCP entry can be derived. The orchestrator's `/aide:brain config`
+  flow scaffolds brain.aide first, then the install service can
+  derive the MCP entry. This is a small behavior change that
+  preserves the parent spec's invariant: the package never owns
+  the MCP entry; the user's brain.aide does.
 
-**No shared comparator helper between the two modes.** A tempting refactor would be to introduce a `compareOrExists(filePath, template, mode)` helper that switches on `mode: "seed" | "canonical"`. The spec forbids this explicitly: "No shared comparator between the two modes. The architect must not route both through a single `compareOrExists`-style helper — that hides the semantic distinction." The distinct failure modes (a byte-compare on seed content is a data-loss bug; a presence-only check on MCP config is a stale-config bug) justify distinct code paths. The two seed-file helpers call `exists()` directly; `buildObsidianMcpStep` keeps its bespoke JSON-parse-and-args-tail comparison.
+## Execution log — Step 4
 
-**`compareBytes` stays in the shared folder, just unused by this module.** Removing `compareBytes` from `@/tools/init/shared/` would be out of scope and would break other callers (methodology docs, versions.json, per-file canonical comparisons elsewhere in the init pipeline). The plan removes only the import from `provisionBrain/index.ts` — the helper itself is untouched.
+**Date:** 2026-04-25
 
-**No new InitStep status variant.** The spec explicitly considered this and rejected it: "Do not introduce a new status variant unless there's a strong architectural reason." The existing `"exists"` and `"would-create"` are sufficient — seed presence maps to `"exists"`, seed absence maps to `"would-create"`. Introducing a `"seed-exists"` variant would force downstream code (`applySteps`, the init command prompt, integration tests) to branch on a distinction that matters only inside `provisionBrain`. The InitStep consumers only need to know *apply* vs *skip*; the idempotency reason is the helper's business.
+**Verification: `obsidianMcpEntry` is gone from `provisionBrain/index.ts`.**
+The Step 3 rewrite did not carry the export forward. A full read of the current
+`src/service/install/provisionBrain/index.ts` (415 lines) confirms zero occurrences
+of `export function obsidianMcpEntry`, `export const obsidianMcpEntry`, or
+`export { obsidianMcpEntry }`.
 
-**Drift tests are rewritten, not deleted.** The two existing drift tests are valuable test coverage — they already set up the drifted-file state correctly. Rewriting their assertions (rather than deleting them and adding net-new tests) preserves the investment in the setup code and gives the implementor a concrete before/after to verify against. The new negative-assertion regression test in step 6 complements them with parameterized exhaustive coverage.
+**Grep results — all remaining occurrences of `obsidianMcpEntry` in `src/`:**
 
-**`init.md` is out of scope.** The init command's generic overwrite-branch prompt (lines 80-95) fires on any `would-overwrite` step in a category. After this plan, the brain seed files never produce that status, so the prompt is naturally no longer triggered for them. The MCP sub-step can still produce `would-overwrite` (e.g., when the obsidian entry has a stale path) — and in that case the generic prompt is exactly what should fire. Step 8 is a verify-only step that confirms this by reading `init.md` and produces no edit; a separate plan is spun up only if verification surprises the implementor.
+| File | Lines | Category | Owner |
+|------|-------|----------|-------|
+| `src/cli/init/writeMcpEntry/index.ts` | 4, 97 | Live import + call site | Plan 8 |
+| `src/cli/init/writeMcpEntry/index.test.ts` | 7, 40, 74, 104, 135, 155, 173 | Import + 6 test call sites | Plan 8 |
+| `src/service/install/index.ts` | 77 | Comment only (no import, no call) | n/a |
+| `src/service/install/provisionBrain/.aide` | 115, 150, 167, 170, 299 | Spec prose | n/a |
+| `src/service/install/provisionBrain/plan.aide` | multiple | Plan text | n/a |
+| `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts` | 9 | JSDoc comment only | n/a |
+| `src/service/brainBackends/index.ts` | 7 | JSDoc comment only | n/a |
+| `src/service/brainBackends/plan.aide` | 44, 48 | Plan text | n/a |
+| `src/service/buildBrainState/plan.aide` | 320, 404 | Plan text | n/a |
+| `src/cli/sync/plan.aide` | 65 | Plan text | n/a |
+| `src/cli/init/plan.aide` | 7, 312, 314 | Plan text | n/a |
 
-**Playbook note references in Read lists.** The plan references three playbook notes across its steps: `coding-playbook/foundations/conventions` (function ordering, default-export-last, early-return style — all the code-hygiene conventions the implementor will apply while editing), `coding-playbook/architecture/data-flow` (function signatures, single input objects, self-contained functions — governs how the two helpers look after the flip), and `coding-playbook/workflow/testing` (Vitest patterns, co-located tests, parameterized test style — governs the new and rewritten test cases). These three cover every edit in the plan without forcing the implementor to load the entire playbook.
+**Live code consumers (typecheck errors):** 2 files, both in `src/cli/init/writeMcpEntry/`.
+These errors are EXPECTED — Plan 8 owns the rewrite of that module.
+
+**Surprise consumers outside Plan 8 scope:** None.
+
+**Dependency contract for Plan 8:**
+`src/cli/init/writeMcpEntry/index.ts` currently imports `obsidianMcpEntry` from
+`@/service/install/provisionBrain/index.js` (line 4) and calls it at line 97.
+`src/cli/init/writeMcpEntry/index.test.ts` imports the same symbol and uses it
+in 6 assertions. Both files will fail to typecheck until Plan 8 rewrites them to
+use `obsidianBrainAideTemplate` + `parseBrainAideFromString` + `interpolateArgs`
+in place of the removed export.

@@ -1,0 +1,402 @@
+---
+scope: src/cli/sync
+status: aligned
+description: >
+  The `npx aidemd-mcp sync` verb — reads `.aide/config/brain.aide`, takes
+  the post-interpolation `mcpServerConfig` from `parseBrainAide` byte-for-byte,
+  and writes the resulting `{ command, args }` object into `.mcp.json` under
+  the fixed `brain` key. Idempotent. The only mutation surface for
+  `.mcp.json`'s brain entry in the entire package.
+intent: >
+  sync is the user-typed terminal command that propagates the host's
+  `.aide/config/brain.aide` into the host's `.mcp.json`. The CLI reads
+  brain.aide via `parseBrainAide`, derives the MCP entry by taking
+  `mcpServerConfig.command` and `interpolateArgs(config)` (a no-op for
+  the default scaffold, which carries the path inline byte-for-byte in
+  args; the interpolation surface still exists for advanced users who
+  DRY a frontmatter value across positions, but sync's role is to write
+  whatever args the parser returns post-interpolation), and writes the
+  result into `mcpServers.brain` while leaving every other key in the
+  existing `.mcp.json` untouched. Sync is idempotent — running it twice
+  in succession produces the same `.mcp.json`. Sync is the ONLY command
+  in the package that mutates the host's `.mcp.json` brain entry; the
+  MCP server itself never silently rewrites the file, and every other
+  helper that needs an MCP entry derived from brain.aide either calls
+  into sync's logic or computes a planning step the user-driven flow
+  eventually applies through this verb. The boundary is cleanly
+  partitioned: every `.mcp.json` mutation runs through a visible command
+  boundary the user typed.
+outcomes:
+  desired:
+    - >-
+      "Reads `.aide/config/brain.aide` via `parseBrainAide` and reports
+      a structured failure (with a non-zero exit code and a stderr line
+      naming the reason) when the file is missing or malformed —
+      `missing`, `malformed-frontmatter`, or `malformed-body`. Sync
+      never writes `.mcp.json` when the source file is unusable. The
+      malformed-frontmatter case includes presence of any deprecated
+      schema field the parser now rejects (`connector`, `rootPath`,
+      `entryFile`, `tools`); sync surfaces the parser's reason verbatim
+      so the user knows which stale fields to remove."
+    - >-
+      "On a successfully parsed brain.aide, computes the expected MCP
+      entry as `{ command: config.mcpServerConfig.command, args:
+      interpolateArgs(config) }` and writes it into the host's
+      `.mcp.json` under the fixed `brain` key, leaving every other key
+      in `mcpServers` (including any existing `aide` entry) untouched.
+      `interpolateArgs` is a no-op for the default scaffold (whose args
+      contain no `${...}` placeholders); sync writes the post-
+      interpolation args byte-for-byte regardless of whether
+      substitution actually fired."
+    - >-
+      "Idempotent. Running sync twice in succession on a clean state
+      produces the same `.mcp.json` bytes, and the second invocation
+      emits a 'no changes' line on stdout — no file rewrite, no
+      timestamp churn."
+    - >-
+      Aborts (with a non-zero exit code) without writing if `.mcp.json`
+      exists but contains malformed JSON. Same abort semantics as the
+      cold-start CLI's existing malformed-JSON handling — the user fixes
+      their file and re-runs sync.
+    - >-
+      "Cleans up the legacy `mcpServers.obsidian` key when present.
+      When a host has both `obsidian` and `brain` keys, sync writes the
+      derived entry under `brain` and removes `obsidian` in the same
+      write — a one-way migration the user explicitly opted into by
+      running sync. The transcript names what was migrated."
+    - >-
+      "Logs every action it takes on stdout — the parsed brain.aide
+      path, the derived `brain` key it wrote, whether other keys were
+      preserved, whether the file was unchanged. Failures land on
+      stderr with a non-zero exit code. Log lines are short and
+      terminal-friendly, mirroring the cold-start CLI's per-file log
+      format."
+    - >-
+      "The verb is invoked as `npx aidemd-mcp sync` from the host
+      project's terminal. The CLI accepts no flags except `--help`.
+      The path to `.mcp.json` is always `<cwd>/.mcp.json`; the path to
+      brain.aide is always `<cwd>/.aide/config/brain.aide`. No override
+      flags — the file paths are conventional and deviation is a
+      host-misconfiguration the user fixes by running sync from the
+      project root."
+  undesired:
+    - >-
+      A sync verb that runs at MCP server startup, on `aide_info`,
+      or on any non-user-typed trigger. Sync's existence justification
+      is the visible-command-boundary invariant; auto-running it
+      anywhere reverses the parent spec's load-bearing decision.
+    - >-
+      "A sync verb that interpolates the prose body of brain.aide.
+      Substitution lives only in `mcpServerConfig.args` and runs
+      against any frontmatter field the user references with `${...}`
+      (today only `${name}` is resolvable, since `name` is the sole
+      non-`mcpServerConfig` top-level field; the surface generalizes
+      to any future top-level key). The prose body returns verbatim
+      through the brain tool, never mutated by sync."
+    - >-
+      "A sync verb that branches on `name` (or any other frontmatter
+      label). Sync derives the MCP entry from `mcpServerConfig`
+      directly; `name` is metadata for humans and agents, not a
+      dispatcher. Different brains may share `name` values; nothing in
+      sync's code path may treat that as meaningful. Re-introducing
+      `connector`-style label dispatch under any new field name is the
+      same regression in different clothing."
+    - >-
+      "A sync verb that introspects `mcpServerConfig.args` to extract
+      a vault path, infer connector identity, derive a `rootPath`, or
+      stat a derived path. Args flow through to `.mcp.json`
+      byte-for-byte after `interpolateArgs`; reading them for any
+      other purpose re-introduces the retired `rootPath`/`invalid-path`
+      regression in different clothing."
+    - >-
+      "A sync verb that overwrites unrelated `.mcp.json` keys. Sync
+      mutates `mcpServers.brain` and (during one-way migration)
+      removes `mcpServers.obsidian`; every other key is preserved
+      verbatim."
+    - >-
+      "A sync verb that creates a brain.aide if it's missing. Sync's
+      job is to propagate brain.aide → .mcp.json; creating the source
+      file is `aide_init`'s job (and the orchestrator's
+      `/aide:brain config` flow). Conflating them violates the parent
+      spec's principle that brain.aide is user-owned."
+    - >-
+      "A sync verb that prompts the user for input. Sync runs in plain
+      terminal context with no agent surface; it has no
+      AskUserQuestion equivalent. The brain.aide on disk is the
+      complete input set; if it is incomplete or wrong, the user
+      edits the file and re-runs."
+    - >-
+      A sync verb that auto-resolves drift by reading `.mcp.json` and
+      writing back to `brain.aide`. Drift always resolves in one
+      direction: brain.aide → .mcp.json. The reverse direction would
+      let `.mcp.json` (which the user may hand-edit for debugging)
+      silently overwrite the user's authoritative config — exactly
+      the failure mode the parent spec's "auto-sync overwriting hand
+      edits" bad example calls out.
+    - >-
+      "A sync verb that mutates anything under `.aide/config/`. That
+      directory is user-owned the moment it is scaffolded; sync reads
+      `.aide/config/brain.aide` and never writes to it, never patches
+      it, never tidies its formatting. Same class of failure as the
+      MCP server silently rewriting `.mcp.json`."
+---
+
+## Context
+
+Before this module exists, the package has two surfaces that mutate the
+host's `.mcp.json`: the cold-start CLI (`npx aidemd-mcp init`) which
+adds the `aide` and `brain` entries on first install, and the
+`/aide:brain config` slash command which (today) patches `.mcp.json`
+inside a Claude Code session via `aide_init({ category: "mcp" })`. The
+parent intent spec's `outcomes.desired[8]` consolidates this into one
+explicit user-driven action: `npx aidemd-mcp sync`. Every other
+surface either calls into sync's logic or routes the user to type sync
+in their terminal.
+
+The architectural reason is the visible-command-boundary invariant.
+The host's `.mcp.json` is a load-bearing config file the user often
+hand-edits — to point a brain at a temporary debug vault, to disable an
+MCP server while reproducing a bug, to add a personal MCP integration.
+Mutations from inside an agent session are invisible from the user's
+perspective; the user wakes up the next day to find their `.mcp.json`
+changed by something they didn't type. Sync fixes this by being the
+exclusive mutation path: every change to the brain entry is a command
+the user typed, with output the user saw scroll past.
+
+The verb is small. brain.aide is already parsed by `parseBrainAide`;
+the args interpolation is already in `interpolateArgs`; the JSON
+read/merge/write pattern is already in the cold-start CLI's
+`writeMcpEntry`. Sync is the user-facing assembly of those pieces —
+it's a CLI entry point, not a service; the substantive work lives one
+layer below in the parser and the shared write helper.
+
+The path forward for the cold-start CLI's `writeMcpEntry` (Plan 8) is to
+factor the read-merge-write logic into a shared helper that both sync
+and the cold-start CLI consume. That extraction keeps the mutation
+contract uniform: whether the user types `npx aidemd-mcp init` or
+`npx aidemd-mcp sync`, the same code merges into `.mcp.json` with the
+same key-preservation semantics.
+
+## Strategy
+
+**Sync is a thin CLI wrapper over `parseBrainAide` + `interpolateArgs`
++ a shared read/merge/write helper.** No business logic lives in this
+module; every step is a delegation. The CLI's single responsibility is
+sequencing the steps and emitting human-friendly terminal output. This
+keeps the file under ~150 lines and makes it easy to verify against
+the parent spec's good example (read brain.aide, derive entry, merge,
+report).
+
+**The read/merge/write helper is shared with the cold-start CLI.** Plan
+8 extracts the existing `writeMcpEntry` logic in `src/cli/init/` into
+a sibling module both `init/` and `sync/` consume. The shared helper
+takes a `key`, an `entry`, and a `projectRoot`; reads `.mcp.json`,
+merges the entry under the key, writes the result. This is the only
+file that mutates `.mcp.json`, and both verbs go through it. Where the
+helper lives is a Plan 8 decision (`src/cli/shared/writeMcpEntry/` or
+`src/service/install/wireMcp/...`); for sync's purposes, the shape is
+fixed: in, key, entry; out, result with status and message; throws on
+malformed JSON.
+
+**Idempotency is byte-comparison-based, not state-machine-based.** Sync
+computes the expected entry, reads the existing `.mcp.json`, and if
+the existing `mcpServers.brain` is structurally equal to the expected
+entry AND the legacy `obsidian` key is absent, sync writes nothing and
+reports "no changes." Otherwise it writes. This matches how the
+cold-start CLI's existing logic already behaves; sync inherits the
+same structural-equality comparison on the entry shape that
+`buildBrainState` uses for drift detection.
+
+**Legacy `obsidian` key removal is part of the same write.** A host
+that ran the package's old install has `mcpServers.obsidian`. When sync
+runs against that host, it writes the new `brain` entry AND deletes
+the orphan `obsidian` key in the same `.mcp.json` write. This is
+one-way migration; the parent spec's `outcomes.desired[8]` ("idempotent
+sync") implicitly covers the migration case because the second sync
+invocation finds `obsidian` already gone and `brain` already correct,
+so it's a no-op. The first invocation does the cleanup on the way to
+the steady state.
+
+**Failure messages are short and action-naming.** Sync runs in plain
+terminal context; the user is reading the output directly, with no
+agent to translate. Each error message names the file path that's
+broken and what the user should do. Examples (the implementor uses
+exact wording):
+- "No `.aide/config/brain.aide` found. Run `npx aidemd-mcp init` to
+  scaffold it, or create the file by hand."
+- "`.aide/config/brain.aide` frontmatter is malformed: `<reason>`. Fix
+  the YAML and re-run sync."
+- "`.mcp.json` exists but contains invalid JSON. Fix the syntax error
+  and re-run sync."
+
+When the parser's reason names a deprecated field (`connector`,
+`rootPath`, `entryFile`, `tools`), sync passes the parser's reason
+through verbatim — the user reads exactly which stale fields to
+remove. Sync does not paraphrase or wrap; the parser owns the schema
+and its rejection messages are the user's migration guide.
+
+**The CLI is `node` script-style, not Commander/Yargs.** The cold-start
+CLI follows this pattern (no framework, manual argv parsing); sync
+mirrors it for consistency and to keep the package's dependency
+footprint small. The only argv handling sync needs is `--help` (one
+line of usage prose); no flag for `.mcp.json` path, no flag for
+brain.aide path — both paths are conventional.
+
+**Sync is registered as a `bin` entry in `package.json`.** The package
+already exposes `aidemd-mcp` as the binary name (the CLI entry point
+in `src/cli/init/index.ts`); sync becomes a sub-command of the same
+binary, dispatched on `argv[2]`. The existing `init` flow becomes
+`npx aidemd-mcp init` (or just `npx aidemd-mcp` for backward
+compatibility); `npx aidemd-mcp sync` routes into this module. The
+dispatch lives in a top-level CLI router (`src/cli/index.ts` or
+similar — the existing layout in this repo has separate `bin/` files
+per verb); design choice in Plan 8 (which owns the rewrite of
+`src/cli/init/`).
+
+**Sync exits zero on success and non-zero on failure.** The exit code
+contract:
+- 0 on successful write (with or without changes — "already in sync"
+  is success).
+- 1 on malformed brain.aide, malformed `.mcp.json`, write failure.
+- 2 on `--help` or invalid argv (matches cold-start CLI conventions).
+
+## Good examples
+
+**A user retargets their vault and runs sync.** The user opens
+`.aide/config/brain.aide` and edits the second entry of
+`mcpServerConfig.args` (the path string sitting next to
+`"@bitbonsai/mcpvault"`) from `"D:/notes/old-vault"` to
+`"D:/notes/new-vault"`. They save the file and run `npx aidemd-mcp
+sync` in their terminal. The output:
+
+```
+Read .aide/config/brain.aide
+Wrote brain MCP entry into .mcp.json
+  command: npx
+  args: ["@bitbonsai/mcpvault", "D:/notes/new-vault"]
+Done.
+```
+
+The host's `.mcp.json` previously contained
+`mcpServers.brain.args[1] === "D:/notes/old-vault"`; after sync, that
+position holds `"D:/notes/new-vault"`. Every other key in `mcpServers`
+(including the user's `aide` entry, their `linear` MCP, their personal
+custom MCP) is byte-identical. The exit code is 0.
+
+**The user runs sync immediately again to test idempotency.** The
+output:
+
+```
+Read .aide/config/brain.aide
+.mcp.json already in sync — no changes.
+```
+
+`.mcp.json`'s mtime is unchanged. Exit code 0.
+
+**A host with the legacy obsidian key runs sync for the first time.**
+The host's `.mcp.json` has `mcpServers.obsidian` from a long-ago
+install and no `mcpServers.brain` (or a `brain` key whose entry
+disagrees). After sync:
+
+```
+Read .aide/config/brain.aide
+Wrote brain MCP entry into .mcp.json
+Removed legacy `obsidian` MCP key (migrated to `brain`)
+Done.
+```
+
+`mcpServers.obsidian` is gone; `mcpServers.brain` carries the derived
+entry. The user's other keys are preserved.
+
+**Sync aborts on a brain.aide that still carries deprecated fields.**
+The user upgraded the package but never migrated their old `brain.aide`,
+which still has `rootPath`, `entryFile`, and `tools` lines from the
+previous schema. They run sync:
+
+```
+Error: .aide/config/brain.aide frontmatter is malformed: deprecated
+fields present: rootPath, entryFile, tools. Remove them and re-run
+sync — the path now lives inline in mcpServerConfig.args.
+```
+
+Exit code 1. `.mcp.json` is untouched. The user removes the stale
+fields, re-runs sync, and gets a clean write.
+
+## Bad examples
+
+**Sync auto-runs on MCP server boot.** The package "helpfully" calls
+sync's logic from `aide_info` so the boot reporter reflects the latest
+`brain.aide` automatically. The user wakes up to find their hand-edit
+of `.mcp.json` (a temporary debug vault path) silently reverted. Worse:
+the user trusted that `.mcp.json` was the source of truth for what
+brain was actually wired this session, so the divergence between the
+boot reporter's view and the actual MCP server's launcher (which still
+has the old config in this session because it loaded at startup) makes
+diagnostic information lie. Sync runs ONLY when the user types
+`npx aidemd-mcp sync`. No exceptions.
+
+**Sync prompts the user when brain.aide is missing.**
+
+```
+Error: .aide/config/brain.aide not found. Where is your vault? [enter path]
+```
+
+Sync has no agent surface and no AskUserQuestion equivalent; treating
+the verb as interactive blurs the boundary between the agent-mediated
+`/aide:brain config` flow and the user-typed-command flow. Sync runs
+non-interactively against on-disk state; missing inputs are errors,
+not prompts.
+
+**Sync interpolates the prose body.** Sync runs `${...}` substitution
+across the prose body before storing it somewhere (or reading it for
+some derived purpose). The user's prose body documenting
+`${variable}` placeholders for their knowledge store is mangled.
+Sync only ever interpolates `mcpServerConfig.args` via
+`interpolateArgs` (against any frontmatter field name the user
+references — today only `${name}` is resolvable); the prose body is
+for the brain tool to read, not for sync to touch.
+
+**Sync overwrites the user's other MCP keys.** Sync reads
+`.mcp.json`, computes a new object from `brain.aide`, and writes
+`{ mcpServers: { brain: <entry> } }` — clobbering every other server
+the user had configured. Sync must read the existing config, merge
+the brain entry into it (and delete the legacy `obsidian` key), and
+preserve all other keys verbatim.
+
+**Sync auto-creates a brain.aide when it's missing.** Sync detects
+brain.aide is missing and writes a default Obsidian-shaped one with a
+launcher command derived from a sibling-folder hint, then continues
+to write `.mcp.json`. The user runs `npx aidemd-mcp sync` after a
+fresh checkout and finds the package has scaffolded an entire brain
+config they never asked for. Brain.aide creation is `aide_init`'s job
+(or the orchestrator's `/aide:brain config` flow); sync only
+propagates an existing brain.aide. This is the same regression class
+as `aide_upgrade` mutating files under `.aide/config/` — sync may
+read that directory, never write to it.
+
+**Sync introspects args to validate a path.** Sync extracts the
+second entry of `mcpServerConfig.args` (where the default scaffold
+puts the vault path next to `"@bitbonsai/mcpvault"`), stats it, and
+aborts with `invalid-path` if the directory doesn't exist. Path
+validation is the launcher's job at MCP server startup; the package
+does not second-guess it. The brain status state set is exactly
+`ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift` — there is no
+`invalid-path` state, and re-introducing one through sync is the
+same regression as a `rootPath` field in different clothing.
+
+## References
+
+- `.aide/intent.aide` -- parent spec's outcomes naming
+  `.aide/config/brain.aide` as the canonical brain config path,
+  the two-field schema (`name` + `mcpServerConfig`), the
+  `@bitbonsai/mcpvault` default launcher, and the brain status
+  state set (`ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`);
+  Strategy paragraph "Brain configuration is user-owned, not
+  code-owned" defines the visible-command-boundary invariant and
+  names sync as the only `.mcp.json` mutation surface.
+- `src/service/parseBrainAide/.aide` -- parser whose `parseBrainAide`
+  and `interpolateArgs` exports this CLI consumes; also defines the
+  schema-rejection contract for deprecated fields (`connector`,
+  `rootPath`, `entryFile`, `tools`) that sync surfaces verbatim.
+- `src/cli/init/.aide` and `src/cli/init/writeMcpEntry/index.ts` --
+  existing read/merge/write pattern this CLI extracts and shares.

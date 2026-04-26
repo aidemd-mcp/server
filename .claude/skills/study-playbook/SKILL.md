@@ -1,22 +1,24 @@
 ---
 name: study-playbook
 description: >
-  Load relevant coding-playbook sections from the Obsidian vault for the current task.
+  Load relevant coding-playbook sections from the project's brain for the current task.
   Navigates the playbook hub top-down: reads the index, identifies which sections apply,
   drills into section hubs, then reads the specific child notes needed. Use this skill
   whenever you need to look up coding conventions, patterns, or architecture decisions
-  before writing or reviewing code. Do NOT trigger for non-coding vault work.
+  before writing or reviewing code. Do NOT trigger for non-coding brain content.
 ---
 
 # /study-playbook — Load Coding Playbook Context
 
-Navigate the coding playbook hub and load only the sections relevant to the current task.
+Navigate the coding playbook hub in the brain and load only the sections relevant to the current task.
+
+The brain backend is configurable. Before the first read in this skill, call `aide_brain` once — it returns the read tool name wired to this project's brain. Use that tool name for every read in the steps below.
 
 ---
 
 ## Step 1: Read the Playbook Hub
 
-Read `coding-playbook/coding-playbook.md` via `mcp__obsidian__read_note`.
+Use the read tool from `aide_brain` to read `coding-playbook/coding-playbook.md` from the brain.
 
 The hub lists sections with descriptions. Match your current task domain against
 those descriptions to identify which sections apply. Do NOT read all sections —
@@ -43,7 +45,7 @@ These contain the concrete patterns and code examples to follow.
 
 ## Navigation Rules
 
-- **Use the hub's link structure, not search.** Do NOT use `mcp__obsidian__search_notes`
+- **Use the hub's link structure, not search.** Do NOT use the brain's search tool
   to find playbook content. Searching produces fragments without context; the hub
   structure gives you the full picture.
 - **Read top-down.** Hub → section hub → child note. Never skip levels.

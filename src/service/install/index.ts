@@ -12,7 +12,7 @@ import installAgents from "./installAgents/index.js";
 import installSkills from "./installSkills/index.js";
 import installAideTree from "./installAideTree/index.js";
 import wireMcp from "./wireMcp/index.js";
-import provisionBrain, { obsidianMcpEntry } from "./provisionBrain/index.js";
+import provisionBrain from "./provisionBrain/index.js";
 import scaffoldReadme from "./scaffoldReadme/index.js";
 import compareBytes from "./shared/compareBytes/index.js";
 
@@ -82,12 +82,16 @@ export default async function init(
 	const brainMcpPath = join(projectRoot, config.mcpConfigPath);
 	let brainSteps: InitStep[];
 	if (brainPath !== undefined) {
-		brainSteps = await provisionBrain(brainPath, brainMcpPath);
+		// Delegate to provisionBrain with all three inputs: the host project root
+		// (where .aide/brain.aide lives), the vault location, and the MCP config path.
+		brainSteps = await provisionBrain(projectRoot, brainPath, brainMcpPath);
 	} else {
 		// No explicit brainPath — the agent must ask the user. Return placeholder
-		// steps with empty filePaths. The MCP entry prescription uses an empty
-		// vault path so the orchestrator's recovery flow can route correctly.
+		// steps with empty filePaths. The MCP step prescription is omitted: without
+		// brain.aide there is no source of truth to derive an entry from. The
+		// orchestrator's /aide:brain config flow scaffolds brain.aide first.
 		brainSteps = [
+			{ name: "Brain config (brain.aide)", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{ name: "Brain vault", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{ name: "Playbook hub", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{ name: "Vault CLAUDE.md", status: "would-create" as const, category: "brain" as const, filePath: "" },
@@ -96,7 +100,6 @@ export default async function init(
 				status: "would-create" as const,
 				category: "mcp" as const,
 				filePath: brainMcpPath,
-				prescription: { key: "brain", entry: obsidianMcpEntry("") },
 			},
 		];
 	}

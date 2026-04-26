@@ -2,7 +2,7 @@ import { readFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
-import { getMethodologyMarker, readCanonicalDoc } from "./index.js";
+import { getMethodologyMarker, listMethodologyDocs, readCanonicalDoc } from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const METHODOLOGY_ROOT = join(REPO_ROOT, ".aide", "docs");
@@ -49,6 +49,40 @@ describe("readCanonicalDoc", () => {
 		} finally {
 			renameSync(sidelined, original);
 		}
+	});
+});
+
+describe("listMethodologyDocs — brain-aide registration (Step 4a/4c)", () => {
+	it("includes an entry with canonical 'brain-aide' and hostFilename 'brain-aide.md'", () => {
+		const docs = listMethodologyDocs();
+		const entry = docs.find((d) => d.canonical === "brain-aide");
+		expect(entry).toBeDefined();
+		expect(entry!.hostFilename).toBe("brain-aide.md");
+	});
+
+	it("preserves the expected methodology-doc count after brain-aide was added", () => {
+		// This count must be updated whenever a new methodology doc is added to
+		// METHODOLOGY_DOCS. Failing here means the registry changed without a
+		// corresponding update to this guard — making the omission visible at CI
+		// time rather than shipping a silently incomplete methodology install.
+		expect(listMethodologyDocs()).toHaveLength(10);
+	});
+
+	it("lists brain-aide after todo-aide (hub reading-order invariant)", () => {
+		const docs = listMethodologyDocs();
+		const todoIndex = docs.findIndex((d) => d.canonical === "todo-aide");
+		const brainIndex = docs.findIndex((d) => d.canonical === "brain-aide");
+		expect(todoIndex).toBeGreaterThanOrEqual(0);
+		expect(brainIndex).toBeGreaterThan(todoIndex);
+	});
+});
+
+describe("readCanonicalDoc — brain-aide content (Step 4b)", () => {
+	it("returns a non-empty string whose first line is '# brain.aide Spec'", () => {
+		const content = readCanonicalDoc("brain-aide");
+		expect(content.length).toBeGreaterThan(0);
+		const firstLine = content.split("\n")[0];
+		expect(firstLine).toBe("# brain.aide Spec");
 	});
 });
 

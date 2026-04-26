@@ -18,18 +18,45 @@ This is your only first call. No `Read`, no `aide_discover`, no other tool.
 
 The brain is the pipeline's durable memory. If it isn't wired, the pipeline can't run.
 
-- **`brain.status === 'ok'`** — continue to Step 3.
-- **Anything else** (`no-mcp-entry`, `invalid-path`) — STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Instead, invoke `/aide:brain config` directly using the `Skill` tool:
+`aide_info` returns one of five `brain.status` values. Branch on them exactly:
+
+- **`ok`** — continue to Step 3.
+
+- **`no-brain-aide`** — the `brain.aide` config file is missing. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line, conversational tone — e.g.:
+
+  > The brain config file (`brain.aide`) is missing — let's set that up first.
+
+  Then invoke the config flow:
 
   ```
   Skill(skill="aide:brain", args="config")
   ```
 
-  Briefly tell the user what you're doing first — one line, conversational tone, no scary "boot halted" framing. Example:
+  The config flow scaffolds `brain.aide` and syncs it into `.mcp.json`. After it returns, halt — the user must run `npx aidemd-mcp sync` and then re-run `/aide`.
 
-  > Brain isn't wired up yet — let's get that set up first.
+- **`no-mcp-entry`** — the brain backend is not wired into `.mcp.json`. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line — e.g.:
 
-  Then call the Skill tool. The `/aide:brain config` command owns the entire wiring flow: vault path prompts, hint pickers, `.mcp.json` merging, vault seeding, restart messaging. After it returns, the orchestrator does NOT continue — `/aide:brain config` ends with a restart instruction, and the user must re-run `/aide` after Claude Code restarts so the obsidian MCP server picks up the new path.
+  > The brain isn't wired up yet — let's fix that first.
+
+  Then invoke the config flow:
+
+  ```
+  Skill(skill="aide:brain", args="config")
+  ```
+
+  For cold projects (no `brain.aide` either): run `npx aidemd-mcp init` followed by `npx aidemd-mcp sync`. For warm projects (brain.aide exists): `npx aidemd-mcp sync` is sufficient. After the skill returns, halt — the user re-runs `/aide` once sync is done.
+
+- **`invalid-path`** — `brain.aide` exists but the `rootPath` it declares does not resolve on disk. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line — e.g.:
+
+  > The brain path in `brain.aide` doesn't exist on disk — please fix `rootPath` and re-run `/aide`.
+
+  Do NOT invoke the config flow and do NOT run sync — sync copies the broken path into `.mcp.json`; it won't fix it. The user must edit `brain.aide` directly to correct `rootPath`, then re-run `/aide`.
+
+- **`mcp-drift`** — `brain.aide` and `.mcp.json` disagree about the brain entry. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line — e.g.:
+
+  > Brain config is out of sync — run `npx aidemd-mcp sync` in your terminal, then re-run `/aide`.
+
+  Do NOT attempt to patch `.mcp.json` yourself. Drift is a hard halt, not a self-repair event. The orchestrator NEVER fixes `.mcp.json`.
 
 ### Step 3 — Outdated artifacts (passive notification)
 

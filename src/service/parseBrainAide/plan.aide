@@ -1,0 +1,327 @@
+---
+intent: >
+  Ship the parseBrainAide service — a single canonical reader for
+  `.aide/brain.aide` that returns a tagged-result union (ok | missing |
+  malformed-frontmatter | malformed-body) plus an opt-in `interpolateArgs`
+  helper that substitutes `${rootPath}` placeholders inside
+  `mcpServerConfig.args`. Four downstream consumers (`buildBrainState`, the
+  brain tool, `provisionBrain`, and the new `cli/sync` verb) all import
+  from here.
+---
+
+## Project Structure
+
+This is a new module. Greenfield install. The `.aide` spec already exists
+(authored alongside this plan); this plan ships the code beneath it.
+
+```
+src/service/parseBrainAide/
+├── .aide                        ← [existing] intent spec (authored with this plan)
+├── plan.aide                    ← [this file]
+├── index.ts                     ← [new] orchestrator + interpolation helper
+│                                   exports:
+│                                     default async function parseBrainAide(root: string): Promise<ParseBrainAideResult>
+│                                     export function parseBrainAideFromString(content: string): ParseBrainAideResult
+│                                     export function interpolateArgs(config: BrainAideConfig): string[]
+└── index.test.ts                ← [new] co-located tests covering all four
+                                    tagged-result branches and interpolateArgs
+
+src/types/index.ts               ← [edit] add BrainAideConfig, ParseBrainAideResult,
+                                    BrainAideToolMapping (and re-affirm the new
+                                    BrainState contract; that lands in Plan 3)
+```
+
+The single-helper exception applies. `interpolateArgs` is small enough that
+splitting it into a sibling subfolder would add ceremony without payoff.
+It lives above the default export per the function-ordering rule. When the
+substitution engine grows past ~50 lines (e.g. supporting other frontmatter
+keys, environment-variable expansion), factor it into
+`src/service/parseBrainAide/interpolateArgs/index.ts`.
+
+The parser uses `js-yaml` for frontmatter parsing — already a transitive
+dependency through other tools in the package; verify in step 1 and add
+explicitly to `package.json` if not direct.
+
+## Prerequisites
+
+**Plan 1 (`src/service/install/initContent/plan.aide`)** must complete first:
+- The new methodology doc `.aide/docs/brain-aide.md` defines the file
+  schema this parser implements. Without the doc, every type and validation
+  decision in this plan would be a free invention.
+- The doc names the required frontmatter fields (`connector`, `rootPath`,
+  `entryFile`, `mcpServerConfig`, `tools`) and the body shape (`## Prose`)
+  this parser must validate against.
+
+The schema this plan implements is also fully specified in
+`src/service/parseBrainAide/.aide` (Strategy and Good examples). When
+Plan 1 lands, the `.aide` and the canonical doc agree by construction —
+the doc is the canonical statement, the spec is its concrete reflection
+in this module.
+
+## Plan
+
+### 1. Add shared types to `src/types/index.ts`
+
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
+
+- [x] Add the following types to `src/types/index.ts`. These are the
+      shared definitions every consumer references — no module-private
+      copies elsewhere.
+
+      **`BrainAideToolMapping`** — `Record<string, string>` describing the
+      semantic-action → MCP-tool-call mapping. Two keys are required by
+      contract (`read`, `search`); additional keys are allowed. Type as
+      `Record<string, string>` because the user may add arbitrary action
+      names, but document in JSDoc that `read` and `search` are the floor.
+
+      **`BrainAideMcpServerConfig`** — object with `{ command: string;
+      args: string[] }`. Mirrors the `McpServerEntry` shape today but
+      stays a separate type so the brain.aide-side semantics (args may
+      contain `${rootPath}` placeholders pre-interpolation) are visible
+      at the type boundary.
+
+      **`BrainAideConfig`** — the full parsed frontmatter:
+      ```
+      {
+        connector: string;             // descriptive label, never dispatched on
+        rootPath: string;              // absolute path to the knowledge store
+        entryFile: string;             // path relative to rootPath
+        mcpServerConfig: BrainAideMcpServerConfig;
+        tools: BrainAideToolMapping;
+      }
+      ```
+
+      **`ParseBrainAideResult`** — discriminated union:
+      ```
+      | { kind: "ok"; config: BrainAideConfig; prose: string }
+      | { kind: "missing" }
+      | { kind: "malformed-frontmatter"; reason: string }
+      | { kind: "malformed-body"; reason: string }
+      ```
+
+      JSDoc each type with one paragraph describing what it represents and
+      where it's consumed. The discriminant is `kind`. Reason strings on
+      malformed branches are human-readable, used by consumers when
+      composing remediation prose for the user.
+
+### 2. Implement the parser
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`, `coding-playbook/services/error-handling`
+
+- [x] Create `src/service/parseBrainAide/index.ts`. Two exported functions
+      live here.
+
+      - 2a. **`interpolateArgs(config: BrainAideConfig): string[]`** —
+        defined ABOVE the default export per function-ordering rule.
+        Takes the parsed config, returns a copy of
+        `config.mcpServerConfig.args` where every `${rootPath}` substring
+        is replaced with the literal value of `config.rootPath`. Future
+        frontmatter keys (e.g. `${entryFile}`) follow the same rule —
+        for now `rootPath` is the only supported key, but the
+        implementation walks each arg looking for any `${<key>}` pattern
+        and substitutes from a small map `{ rootPath, entryFile }`. JSDoc
+        names the install-time-only audience (this is the
+        `.mcp.json`-writer surface, never the agent-facing surface) and
+        the load-bearing rule that this is the ONLY substitution surface
+        in the package.
+
+      - 2b. **`parseBrainAide(root: string): Promise<ParseBrainAideResult>`**
+        — the default export. Takes the host project's root path and
+        derives the brain.aide path as `join(root, ".aide", "brain.aide")`.
+        JSDoc summarizes the four tagged-result branches and names the
+        load-bearing invariants: never throws, never interpolates the
+        prose body, never branches on `connector`.
+
+      - 2bʹ. **`parseBrainAideFromString(content: string):
+        ParseBrainAideResult`** — small adjunct export that parses
+        brain.aide bytes already in memory (no I/O). Used by
+        `provisionBrain` (Plan 6) to derive an MCP entry from a
+        scaffolded but not-yet-written brain.aide template. The
+        implementation factors out steps 2–6 of the parser pipeline
+        (the parts that operate on the file content); `parseBrainAide`
+        becomes a thin wrapper that reads the file then delegates to
+        `parseBrainAideFromString`. This refactor keeps the validation
+        logic in one place. Returns the same `ParseBrainAideResult`
+        union; the `"missing"` variant is unreachable here (the input
+        is bytes, not a path), so empty input returns `{ kind:
+        "malformed-frontmatter", reason: "frontmatter is required" }`
+        — same as a missing-fence file.
+
+        The orchestrator pipeline (inline-narrated per Tier 3 — this is
+        an orchestrator, even though small):
+        1. Read the file. ENOENT → `{ kind: "missing" }`. Other I/O
+           failures collapse to the same `missing` branch (the file is
+           unreachable; remediation is the same).
+        2. Split on the first `^---\n` opening fence — content before
+           is empty/skipped, content between fences is YAML frontmatter,
+           content after is the body.
+        3. Parse frontmatter via `js-yaml.load`. Parse failure or non-
+           object result → `{ kind: "malformed-frontmatter", reason:
+           "YAML parse error" }` (or the parser's error message).
+        4. Validate required fields by name:
+           - `connector` is non-empty string
+           - `rootPath` is non-empty string
+           - `entryFile` is non-empty string
+           - `mcpServerConfig.command` is non-empty string
+           - `mcpServerConfig.args` is `string[]`
+           - `tools` is an object with at minimum `read` and `search`
+             both non-empty strings
+           Any missing/wrong-typed field → `{ kind:
+           "malformed-frontmatter", reason: "<field> is required" }` (or
+           `"<field> must be a non-empty string"` etc.). The reason
+           string names exactly which field is wrong so the consumer can
+           tell the user.
+        5. Extract the prose body. Find the first occurrence of
+           `^## Prose` (case-sensitive) in the body section. Everything
+           after that heading line, through end-of-file, is the prose
+           — byte-identical, no trimming. Heading not found →
+           `{ kind: "malformed-body", reason: "## Prose section is
+           required" }`.
+        6. Return `{ kind: "ok", config, prose }`.
+
+      JSDoc on both functions explains why each exists and what role it
+      plays. Inline step-by-step comments narrate the orchestrator
+      pipeline per Tier 3.
+
+### 3. Co-located tests
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] Create `src/service/parseBrainAide/index.test.ts` covering each
+      tagged-result branch plus interpolation. Use Vitest with co-located
+      tests per the project's standard. Use temporary directories
+      (`mkdtemp` from `node:fs/promises`) to write fake `brain.aide`
+      files and pass the temp root to the parser. No mocking of `fs` —
+      the parser's I/O surface is small enough that real filesystem
+      operations against a temp dir keep tests honest.
+
+      Test cases (each in a `describe` block):
+
+      - 3a. **Happy path** — write the canonical Obsidian `brain.aide`
+        from the spec's Good examples (frontmatter + `## Prose` body
+        with the sample sentences). Assert `result.kind === "ok"`,
+        `config.connector === "obsidian"`, `config.rootPath ===
+        "D:/notes/my-vault"`, `config.mcpServerConfig.args` equals
+        `["-y", "obsidian-mcp", "${rootPath}"]` (placeholder PRE-
+        interpolation), `config.tools.read === "mcp__brain__read_note"`,
+        `prose` starts with the first sentence of the example body.
+
+      - 3b. **Missing file** — pass a temp root with no `.aide/brain.aide`.
+        Assert `result.kind === "missing"`. Never throws.
+
+      - 3c. **Malformed YAML** — write `brain.aide` whose frontmatter
+        contains invalid YAML (e.g. unclosed bracket). Assert
+        `result.kind === "malformed-frontmatter"`, `result.reason`
+        is non-empty.
+
+      - 3d. **Missing required field** — write valid YAML missing
+        `rootPath`. Assert `result.kind === "malformed-frontmatter"`,
+        `result.reason` mentions `rootPath`. Repeat for each required
+        field (`entryFile`, `mcpServerConfig.command`, `tools.read`,
+        `tools.search`) using `it.each` per the playbook's
+        parameterized-tests pattern.
+
+      - 3e. **Missing prose body** — write valid frontmatter but no
+        `## Prose` heading. Assert `result.kind === "malformed-body"`,
+        `result.reason` mentions `## Prose`.
+
+      - 3f. **Prose returned verbatim** — write a brain.aide whose
+        prose body contains literal `${rootPath}` characters and other
+        markdown. Assert `result.prose` contains those characters
+        unchanged. This is the load-bearing test for the no-substitution-
+        on-prose invariant.
+
+      - 3g. **Connector is metadata, not dispatched on** — write two
+        valid brain.aide files with different `connector` values
+        (`obsidian` and `notion`); assert both parse identically (same
+        result kind, same shape) and both prose bodies pass through
+        verbatim. This test enforces by example that the parser does
+        not branch on connector.
+
+      - 3h. **`interpolateArgs` substitutes `${rootPath}`** — given a
+        parsed config from 3a, assert
+        `interpolateArgs(config) === ["-y", "obsidian-mcp",
+        "D:/notes/my-vault"]`. The original `config.mcpServerConfig.args`
+        is unchanged (immutability — the helper returns a copy).
+
+      - 3i. **`interpolateArgs` is positional** — args containing
+        `"some-prefix-${rootPath}-suffix"` substitute to
+        `"some-prefix-<actual path>-suffix"`. Substitution is string
+        replacement, not arg replacement.
+
+      - 3j. **`interpolateArgs` does not touch the prose body** —
+        verify that calling `interpolateArgs` on a config does not
+        mutate the prose string returned alongside it. (This test is
+        partially structural — `interpolateArgs` takes the config only,
+        not prose — but assert it explicitly so a future refactor that
+        widens the signature to take both fields fails the test.)
+
+      - 3k. **`parseBrainAideFromString` parses bytes identically to
+        `parseBrainAide` reading the same bytes from disk** — write
+        the canonical brain.aide bytes to a temp file, parse via
+        both functions, assert results are deep-equal. Cover all four
+        result kinds the same way (an empty string returns
+        `malformed-frontmatter`, valid bytes return `ok`, etc.).
+
+### 4. Verify dependency on `js-yaml`
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] Check `package.json` for `js-yaml` as a direct dependency. The
+      package already uses YAML elsewhere (see `aide_read` and
+      `aide_validate` for `.aide` frontmatter parsing); confirm those
+      imports come from a direct dependency. If not, add `js-yaml` and
+      `@types/js-yaml` as direct deps. Run `npm install` to verify
+      lockfile updates cleanly.
+
+      If the project uses a different YAML library (e.g. `yaml`),
+      use the same one as the existing `.aide` parser so the codebase
+      has one YAML dependency, not two. Inspect with
+      `aide_inspect name="parseFrontmatter"` or grep for YAML imports
+      under `src/` first.
+
+## Decisions
+
+- **Module is a peer service, not a helper of any single consumer.** Four
+  consumers in three different folder trees (`src/service/buildBrainState`,
+  `src/service/install/provisionBrain`, `src/tools/brain`,
+  `src/cli/sync`) all depend on parsing the same file. Per the playbook's
+  horizontal-isolation rule, the parser cannot live under any one of
+  them. A peer-level service at `src/service/parseBrainAide/` is the
+  right shape — same architectural slot the retired `brainBackends`
+  module occupied, and the same slot `buildBrainState` already uses.
+- **Tagged-result return shape mirrors `BrainState`.** Both modules
+  participate in the boot-time diagnostic surface and both must return
+  states the orchestrator can speak about. Mirroring the discriminator
+  pattern (`kind` here, `status` in `BrainState`) means the boot reporter
+  can compose its tagged union from this parser's output mechanically.
+- **Interpolation is a separate helper, not folded into `parseBrainAide`.**
+  The parent `.aide`'s Strategy paragraph "splitting the interpolation
+  into an opt-in helper" is load-bearing: a consumer that doesn't import
+  `interpolateArgs` cannot accidentally apply substitution to something
+  it shouldn't. The brain tool returning prose, in particular, has no
+  path through this module's exports that would interpolate the prose.
+- **Required fields are validated; defaults are not injected.** The
+  parent spec's bad example "package-side defaults silently fill in
+  values the user didn't write" rules this out. A missing field is a
+  structured failure the user resolves by editing. The reason strings
+  on malformed branches name exactly which field is wrong so the user
+  knows what to fix.
+- **Single-file layout per progressive-disclosure single-helper
+  exception.** Both functions fit comfortably in one file today. The
+  parent `.aide`'s Strategy names ~50 lines per helper as the threshold
+  for splitting; today neither helper approaches that. Once
+  `interpolateArgs` grows past the threshold, factor it into a sibling
+  subfolder. Today, inline.
+- **Tests use real filesystem temp dirs, not `fs` mocking.** The
+  parser's I/O surface is one `readFile` call; mocking it would test
+  the mock more than the parser. Temp dirs cost ~5ms per test and
+  ensure the parser's filesystem error handling matches real Node
+  semantics. This matches how `provisionBrain.index.test.ts` already
+  tests against real temp dirs.
+- **`connector` is a freeform string, not a string literal union.** The
+  parent `.aide`'s `outcomes.undesired[0]` rules out any module
+  enumerating connector identities. Typing `connector` as `string` is
+  the structural enforcement that the package does not know which
+  brains exist; the user owns the value, the package surfaces it
+  unchanged.

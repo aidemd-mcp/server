@@ -1,333 +1,187 @@
 ---
 intent: >
-  Extend aide_info from a staleness-only surface into a dual-concern boot
-  reporter that returns both `outdated[]` (unchanged behavior) and a new
-  `brain` tagged union describing whether the host's obsidian MCP entry is
-  configured and whether its vault directory exists on disk.
+  Update aide_info so its `brain` field reflects the new five-state
+  vocabulary returned by buildBrainState. The detector itself does the
+  heavy lifting; this plan ensures the tool's response shape, type, and
+  tests carry the new states (`no-brain-aide`, `mcp-drift`) and that the
+  `backend` field is removed from the response. The tool stays passive —
+  detection only, no mutation.
 ---
 
 ## Project Structure
 
-After this plan executes, `src/tools/info/` contains the existing orchestrator
-alongside a new `buildBrainState` helper. The orchestrator composes the existing
-staleness logic with the new brain-state helper and returns both as independent
-top-level fields.
-
 ```
 src/tools/info/
-├── .aide                             ← [existing] intent spec for this orchestrator
-├── plan.aide                         ← [this file] implementation plan
-├── index.ts                          ← [modified] orchestrator: info(root: string) => Promise<InfoResult>
-├── index.test.ts                     ← [modified] co-located tests covering staleness + brain branches
-└── buildBrainState/                  ← [new] helper: resolve host's brain precondition state
-    ├── index.ts                      ← [new] buildBrainState(root: string) => Promise<BrainState>
-    └── index.test.ts                 ← [new] co-located unit tests for the helper's five branches
+├── .aide               ← [needs spec edit — see step 1]
+├── plan.aide           ← [this file]
+├── index.ts            ← [edit] forwards `buildBrainState` output unchanged;
+│                          shape adapts via the BrainState type rewrite from Plan 3.
+│                          signature unchanged: default async function
+│                            info(root: string): Promise<InfoResult>
+├── index.test.ts       ← [edit] update tests to assert the new five-state
+│                          vocabulary and the absence of the `backend` field
+└── todo.aide           ← [existing, untouched]
 ```
 
-Types live in the central `src/types/index.ts` — no type files inside this
-module. The module-scoped tree ends here; `src/types/index.ts` is outside this
-plan's scope directory and is edited in step 1 as an explicit cross-cutting
-change.
+This module does very little direct work in this plan — most of the change
+lands in Plan 3 (the `BrainState` type and the detector that produces it).
+What this plan does:
+
+1. Update the `.aide` to teach the new vocabulary and tripwires.
+2. Verify (and edit if necessary) that `index.ts` forwards the state
+   unchanged — no transformation, no field stripping, no field addition.
+3. Update the tests to cover all five states and verify the `backend`
+   field is absent from the response.
+
+## Prerequisites
+
+**Plan 3 (`src/service/buildBrainState/plan.aide`)** must complete first:
+- The `BrainState` type rewrite (five states, no `backend` field) lands in
+  Plan 3. This plan inherits that change.
+- This plan's tests assert the new states; without Plan 3's detector
+  rewrite, those assertions would fail because the detector still
+  returns the old vocabulary.
 
 ## Plan
 
-### 1. Update shared types in `src/types/index.ts`
-
-Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
-
-- [x] 1a. Add a new exported type `BrainState` as a tagged union keyed on
-      `status`. Shape: `{ status: 'ok' | 'no-mcp-entry' | 'invalid-path',
-      vaultPath: string | null }`. Use a string-literal union for `status`
-      (per the type-system playbook's "string literal unions" rule — no enum).
-      `vaultPath` is `string | null`: non-null for `ok` (the resolved path)
-      and for `invalid-path` (the configured-but-unresolvable path); `null`
-      for `no-mcp-entry`.
-- [x] 1b. Extend the existing `InfoResult` interface with a new required
-      field `brain: BrainState`. Keep `serverVersion: string` and
-      `outdated: string[]` unchanged. Update the interface's JSDoc to
-      describe both concerns (staleness + brain precondition) as independent
-      top-level fields.
-- [x] 1c. Export both `BrainState` and `InfoResult` from the same file; no
-      new types file is created (all shared types live in `src/types/` per
-      folder-structure's "Types Organization" rule).
-
-### 2. Create `buildBrainState/` helper
-
-Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/architecture/data-flow`, `coding-playbook/services/error-handling`
-
-- [x] 2a. Create `src/tools/info/buildBrainState/index.ts` with a default
-      export: `async function buildBrainState(root: string): Promise<BrainState>`.
-      Single `root` argument (the host project root) — matches the existing
-      `info(root)` signature and the "single input object" rule's intent
-      (one argument is fine; the rule kicks in at two+).
-- [x] 2b. Reuse `detectFramework` from
-      `@/tools/init/detectFramework/index.js` to resolve the host's framework
-      config. Pass only `root` (no framework override) so detection defaults
-      to Claude Code for cold projects — this is the inherited "cold project"
-      semantic the spec's strategy section codifies.
-- [x] 2c. Resolve the MCP config path by joining `root` with
-      `frameworkConfig.mcpConfigPath` (the `FRAMEWORK_CONFIGS` map's
-      `.mcp.json` / `.cursor/mcp.json` / etc. per framework — do NOT
-      duplicate that mapping here).
-- [x] 2d. Implement the pipeline declaratively (each step is an early
-      return per the conventions note's "Early Returns Over Nesting" rule;
-      no nested try/catch):
-      1. Read the MCP config file. Missing file (ENOENT) or any read
-         failure → return `{ status: 'no-mcp-entry', vaultPath: null }`.
-      2. Parse JSON. Parse failure → return `{ status: 'no-mcp-entry',
-         vaultPath: null }`. (Mirrors `wireMcp`'s malformed-JSON handling:
-         map to a structured state, never rethrow.)
-      3. Extract `config.mcpServers ?? {}`. Dual-key existence check: if
-         `"obsidian"` key is NOT in `servers`, return `{ status:
-         'no-mcp-entry', vaultPath: null }`. The spec's strategy explicitly
-         mirrors `provisionBrain.buildObsidianMcpStep`'s single-key check
-         on `"obsidian"`. There is no documented fallback key for obsidian
-         — the dual-key pattern exists for the aide entry (`"aide"` /
-         `"aidemd-mcp"`) in `wireMcp`, not for obsidian in `provisionBrain`.
-         Keep this check single-key to match `provisionBrain` exactly, and
-         document the alignment in a source comment.
-      4. Extract the entry's vault path. Read `servers.obsidian.args` and
-         take the LAST positional element (matches
-         `provisionBrain.obsidianMcpEntry`'s shape:
-         `["@bitbonsai/mcpvault", <vaultPath>]` on POSIX, or `["/c", "npx",
-         "@bitbonsai/mcpvault", <vaultPath>]` on Windows — the vault path
-         is always the final positional arg). If `args` is missing, not an
-         array, empty, or the last element is not a non-empty string →
-         return `{ status: 'no-mcp-entry', vaultPath: null }` (treats
-         "configured-but-unparseable" as equivalent to "not configured" per
-         the spec's strategy note).
-      5. Stat the candidate vault path with `fs/promises.access` (or
-         `stat`). Resolves to an existing directory → return
-         `{ status: 'ok', vaultPath: <candidatePath> }`. Fails or the
-         target is not a directory → return `{ status: 'invalid-path',
-         vaultPath: <candidatePath> }` (the configured path is carried
-         forward so the orchestrator can name the failing path in its
-         message).
-- [x] 2e. Write a multi-line JSDoc block on the default export explaining
-      the five branches and why each collapses the way it does — this is
-      the orchestrator's "decisions not descriptions" contract. Each inline
-      step above gets a short `// …` comment in the body narrating its
-      branch (inline narration belongs on orchestrators; the helper-as-
-      orchestrator pattern applies here because `buildBrainState` itself
-      orchestrates a small pipeline).
-- [x] 2f. The helper must never throw. All failure modes (missing file,
-      malformed JSON, missing key, bad args shape, failed stat) map to
-      structured `BrainState` values — per the spec's "never thrown errors"
-      desired outcome and the error-handling playbook's "structured states
-      over exceptions at leaf I/O" pattern.
-
-### 3. Write tests for `buildBrainState/`
-
-Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
-
-- [x] 3a. Create `src/tools/info/buildBrainState/index.test.ts` co-located
-      with the source.
-- [x] 3b. Mock `@/tools/init/detectFramework/index.js` to return a fixed
-      `FrameworkConfig` with `mcpConfigPath: ".mcp.json"` — the helper's
-      contract is framework-agnostic so one framework is sufficient.
-- [x] 3c. Mock `node:fs/promises` (at minimum `readFile` and `access`/
-      `stat` — whichever the helper uses) with `vi.mock()` per the
-      testing playbook's "Module-level mocks" pattern.
-- [x] 3d. Use factory functions to build MCP config fixtures — e.g.
-      `makeMcpConfigWithObsidian(vaultPath: string)`,
-      `makeMcpConfigWithoutObsidian()`, and a malformed-JSON string
-      constant. Factories live in the test file (per testing playbook's
-      "Factory Functions" section).
-- [x] 3e. Cover every branch with one test each:
-      1. `readFile` rejects with ENOENT → result is
-         `{ status: 'no-mcp-entry', vaultPath: null }`.
-      2. `readFile` returns malformed JSON → result is
-         `{ status: 'no-mcp-entry', vaultPath: null }`.
-      3. `readFile` returns valid JSON with `mcpServers` but no
-         `"obsidian"` key → result is `{ status: 'no-mcp-entry',
-         vaultPath: null }`.
-      4. `readFile` returns valid JSON with an `"obsidian"` entry whose
-         `args` is missing / not an array / empty → result is
-         `{ status: 'no-mcp-entry', vaultPath: null }`.
-      5. `readFile` returns valid JSON with a valid obsidian entry and
-         `access` resolves for the extracted path → result is
-         `{ status: 'ok', vaultPath: <extractedPath> }`.
-      6. `readFile` returns valid JSON with a valid obsidian entry but
-         `access` rejects → result is `{ status: 'invalid-path',
-         vaultPath: <extractedPath> }` (the configured-but-unresolvable
-         path flows through to the result).
-- [x] 3f. Add one Windows-shape regression test: MCP config contains
-      `args: ["/c", "npx", "@bitbonsai/mcpvault", "/home/vault"]`. The
-      helper must still extract `"/home/vault"` as the last positional
-      element — confirms the "last positional arg" rule is platform-agnostic.
-- [x] 3g. `beforeEach(() => vi.resetAllMocks())` at the top of the
-      describe block; re-apply the default `detectFramework` mock return
-      value in `beforeEach` to avoid leakage between tests.
-
-### 4. Update orchestrator `index.ts` to compose brain state alongside staleness
-
-Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
-
-- [x] 4a. Add an import of `buildBrainState` from
-      `./buildBrainState/index.js` (relative, per folder-structure —
-      sibling-to-self imports stay relative; `@/` is reserved for
-      cross-directory imports).
-- [x] 4b. Replace the current single-return path with a composed flow.
-      Declarative shape:
-      1. Read `serverVersion` (unchanged helper).
-      2. Compute `outdated: string[]` via the existing staleness logic
-         (unchanged, including the silent empty-array fallback when local
-         `.aide/versions.json` is missing).
-      3. Compute `brain: BrainState` via `await buildBrainState(root)`.
-      4. Return `{ serverVersion, outdated, brain }`.
-      Staleness and brain-state resolution are independent — run them in
-      parallel with `Promise.all` if both are async. This is an
-      optimization-adjacent choice, not a correctness one: document the
-      parallelization (or its absence) in an inline comment.
-- [x] 4c. Refresh the orchestrator's multi-line JSDoc to describe BOTH
-      concerns (staleness + brain precondition) as independent top-level
-      fields the orchestrator returns — matches the updated `InfoResult`
-      contract. Inline step-by-step comments narrate the new pipeline.
-- [x] 4d. No signature change: `info(root: string): Promise<InfoResult>`
-      remains, with `InfoResult` now carrying the extra `brain` field.
-      The server dispatch in `src/index.ts` already JSON-serializes
-      `result`, so no wiring change is needed there.
-
-### 5. Update orchestrator tests to cover the new `brain` field
-
-Read: `coding-playbook/workflow/testing`
-
-- [x] 5a. In `src/tools/info/index.test.ts`, add a module-level mock for
-      `./buildBrainState/index.js` (matching the existing `vi.mock` style
-      already used for `@/tools/upgrade/buildVersionsMeta/index.js`).
-- [x] 5b. Default `beforeEach` mock return: `buildBrainState` resolves
-      to `{ status: 'ok', vaultPath: '/home/user/vault' }` so existing
-      staleness tests keep passing once they assert the full shape.
-- [x] 5c. Update every existing test's expectation to include the new
-      `brain` field on the result (either `expect(result.brain).toEqual(...)`
-      or full-result `toEqual` — whichever matches the existing style).
-- [x] 5d. Add new tests that assert the orchestrator passes through each
-      `BrainState` the helper can return: `ok`, `no-mcp-entry`, and
-      `invalid-path`. Each test stubs `buildBrainState` to return the
-      target shape and asserts `result.brain` equals that exact shape —
-      confirming the orchestrator forwards the helper's output verbatim
-      without reshaping or filtering.
-- [x] 5e. Add one regression test confirming that `outdated` and `brain`
-      are independent: stub `buildBrainState` to return `no-mcp-entry`
-      while the staleness path reports `outdated: ["commands/aide/aide"]`.
-      Assert `result.outdated` and `result.brain` are both populated
-      according to their independent sources — the spec's "two independent
-      top-level fields" invariant in test form.
-
-### 6. Refresh the `aide_info` tool description in `src/index.ts`
+### 1. Edit the `.aide` intent spec
 
 Read: `coding-playbook/foundations/conventions`
 
-- [x] 6a. The tool description shipped to MCP clients at handshake time
-      currently says "Returns which artifacts are outdated plus the
-      server version." Rewrite it so an agent reading only the tool list
-      learns that the response also includes a `brain` tagged union with
-      states `ok`, `no-mcp-entry`, and `invalid-path`, plus the configured
-      `vaultPath`. Keep the description self-contained — no "see docs"
-      references (parent `src/.aide` forbids that).
-- [x] 6b. Name both top-level fields (`outdated`, `brain`) in the
-      description and briefly explain their distinct severities (staleness
-      = soft notification; brain state = hard precondition gate). This is
-      the handshake-teaching surface the parent spec calls out as
-      load-bearing; the description must teach the concept before the
-      caller uses it.
-- [x] 6c. Do NOT edit the `CallToolRequestSchema` case for `aide_info` —
-      it already `JSON.stringify`s the `InfoResult`, which will now
-      include the new `brain` field automatically.
+- [x] Edit `src/tools/info/.aide`. Targeted edits, not a full rewrite —
+      the staleness-reporting half of the spec stays. Changes to the
+      brain-half:
+
+      - `intent` paragraph: replace the three-state vocabulary
+        (`ok`, `no-mcp-entry`, `invalid-path`) with the five-state
+        vocabulary (`ok`, `no-brain-aide`, `no-mcp-entry`,
+        `invalid-path`, `mcp-drift`). Replace the registry-dispatch
+        framing ("dispatches its command/args shape through the
+        brainBackends registry") with the brain.aide-driven framing
+        ("reads `.aide/brain.aide` via `parseBrainAide`, stats the
+        declared `rootPath`, compares its `mcpServerConfig` against
+        `.mcp.json`'s brain entry, and returns one of five
+        states").
+      - `outcomes.desired`: remove the bullet about `backend`
+        identification through the registry. Add a bullet for each
+        new state and what disk condition produces it. Add a bullet
+        explicitly stating `BrainState` carries no `backend` field
+        (the consumer surface is structured around the five
+        statuses, not a per-connector enum).
+      - `outcomes.undesired`: add tripwires for the new failure
+        modes — silent auto-sync of `.mcp.json` from this tool;
+        re-surfacing of the `backend` field; conflating
+        `no-brain-aide` with `no-mcp-entry` (the former means no
+        config file, the latter means config exists but isn't
+        wired); auto-fixing drift instead of surfacing it.
+      - Body sections (`## Context`, `## Strategy`, `## Good
+        examples`, `## Bad examples`) edited to match — the
+        Strategy paragraph that explained registry dispatch is
+        replaced by one explaining brain.aide-driven detection;
+        bad examples gain an entry showing a tool that auto-fixes
+        drift on boot.
+
+### 2. Verify the orchestrator forwards `BrainState` unchanged
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
+
+- [x] Open `src/tools/info/index.ts`. The function calls
+      `buildBrainState(root)` and returns the result on the `brain`
+      field of `InfoResult`. After Plan 3 lands, `BrainState` has the
+      new five-variant shape and no `backend` field; this orchestrator
+      should forward it unchanged.
+
+      Check:
+      - 2a. `info(root)` calls `buildBrainState(root)` and assigns the
+        result to `brain` in the returned object. No transformation,
+        no field rewrite, no compatibility shim. The forward is
+        verbatim.
+      - 2b. The `Promise.all` parallelizing `resolveOutdated` and
+        `buildBrainState` stays — independent reads, parallel
+        execution is a meaningful latency win on every boot.
+      - 2c. `InfoResult` in `src/types/index.ts` already declares
+        `brain: BrainState`; that field's type widens automatically
+        when Plan 3 redefines `BrainState`. No edit to `InfoResult`
+        needed beyond what Plan 3 already does.
+
+      If the orchestrator does any additional brain-shape massaging
+      (it shouldn't, but verify), strip it. The tool is passive: it
+      forwards detector output unchanged.
+
+### 3. Update tests
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] Update `src/tools/info/index.test.ts` to cover all five brain
+      states and assert the response shape contract.
+
+      Existing tests cover `ok`, `no-mcp-entry`, and `invalid-path`.
+      Add cases for `no-brain-aide` and `mcp-drift`. Use the same
+      pattern the existing tests use (temp dirs, real filesystem,
+      mocking only `resolveOutdated` if needed).
+
+      New / updated tests:
+
+      - 3a. **All five states surface in `result.brain.status`** —
+        five test cases, each setting up the disk state for one
+        state and asserting the resulting `result.brain.status`
+        matches. The disk-setup steps (which combination of
+        `brain.aide`, `rootPath` directory, `.mcp.json` produces
+        which state) follow Plan 3's test setup logic — duplicate
+        the helpers if needed, or extract them to a shared test
+        utility under `src/test/` if both test files would benefit.
+
+      - 3b. **`backend` field is absent from `result.brain`** — for
+        every state, assert
+        `expect(result.brain).not.toHaveProperty("backend")`. This
+        is the load-bearing test for the parent spec's
+        `outcomes.desired[7]` ("no `backend` field, no connector
+        label, no enum the server interprets").
+
+      - 3c. **Staleness reporting unchanged** — re-run the existing
+        outdated-array tests to confirm Plan 3's brain rewrite
+        didn't regress the staleness half. The `outdated` field
+        and `serverVersion` field behaviors are unchanged by this
+        plan.
+
+      - 3d. **Brain status and outdated are independent** — assert
+        that a state where `brain.status === "ok"` AND `outdated.length
+        > 0` returns both correctly without one hiding the other.
+        Same for the inverse (brain broken, no staleness). This
+        re-validates the parent spec's invariant that the two
+        concerns are independent fields, not a fused state.
+
+      - 3e. **Tool never throws on broken state** — explicit test
+        for: missing `.mcp.json`, malformed `.mcp.json`, missing
+        `brain.aide`, broken `brain.aide`. All resolve to structured
+        states. None throw. This is the never-throws contract from
+        the parent spec.
 
 ## Decisions
 
-**Tagged union over boolean for `BrainState`.** The spec explicitly forbids
-collapsing `no-mcp-entry` and `invalid-path` into a single boolean because
-the two states have different remediations: the former needs `/aide:init`
-to run the vault-path interview from scratch, while the latter needs the
-user to either restore the moved folder or update the existing entry's path.
-A boolean erases that distinction; the three-state union preserves it. This
-traces directly to the spec's undesired outcome forbidding the conflation.
-
-**Three failure modes collapse to `no-mcp-entry`.** Missing MCP config
-file, malformed JSON, and a valid config without the `"obsidian"` key
-all resolve to the same structured state because the user's next action
-is identical across them (run `/aide:init`). Separating them would create
-orchestrator branches with no behavioral difference. The helper therefore
-maps all three to `{ status: 'no-mcp-entry', vaultPath: null }` and never
-throws.
-
-**`invalid-path` stays distinct from `no-mcp-entry`.** When an obsidian
-entry exists but the configured vault directory does not resolve, the
-remediation is different: the user fixes the path in the existing entry,
-not a fresh init. Keeping this branch separate also lets the
-orchestrator surface the failing path to the user (which
-`no-mcp-entry` cannot — no path was configured in that case). The
-`vaultPath` field is populated for `invalid-path` precisely so the
-orchestrator's message can name the path that failed.
-
-**Configured-but-unparseable entry → `no-mcp-entry`, not `invalid-path`.**
-An obsidian entry whose `args` array is missing, empty, or malformed is
-treated as if the entry is not present. The spec's strategy section
-codifies this: `invalid-path` is reserved for a correctly-shaped entry
-whose stored path fails to resolve. An entry so broken we cannot extract
-a path at all is closer to "entry not configured" than "path broken".
-The user's remediation remains a full `/aide:init` run in that case.
-
-**Reuse `detectFramework` rather than duplicate `FRAMEWORK_CONFIGS`.**
-The init tree's `FRAMEWORK_CONFIGS` map is the single source of truth for
-per-framework MCP config paths. Duplicating the mapping inside the info
-tool creates a second source of truth that will silently drift when a
-new framework is added. Calling `detectFramework(root)` gives the info
-helper the same `mcpConfigPath` that `wireMcp` and `provisionBrain` use
-to write — so detection and provisioning agree by construction.
-
-**Single-key obsidian existence check (not dual-key).** `wireMcp` does a
-dual-key check (`"aide" in servers || "aidemd-mcp" in servers`) because
-there was a historical rename of the aide entry. `provisionBrain`'s
-obsidian check is single-key on `"obsidian"` — no historical rename.
-The info helper mirrors `provisionBrain`'s single-key check exactly so
-"present" means the same thing on both sides (detection on the info side,
-provisioning on the init side). A source comment in `buildBrainState`
-points at this alignment so a future maintainer adding a second obsidian
-key knows to update both sides at once.
-
-**Last-positional-arg rule for vault path extraction.** The obsidian
-entry constructed by `provisionBrain` always stores the vault path as
-the final positional argument (`[@bitbonsai/mcpvault, <path>]` on POSIX;
-`[/c, npx, @bitbonsai/mcpvault, <path>]` on Windows). Taking the last
-element of `args` is platform-agnostic — it works for both shapes without
-the info helper having to know the platform. The Windows-shape regression
-test in step 3f pins this invariant.
-
-**Staleness and brain state as two independent top-level fields.** The
-spec's strategy section is explicit: do not fuse them into a single
-status enum or collapse brain state into the `outdated` array. Each
-field carries a different severity (soft notification vs. hard gate)
-and the orchestrator applies a different policy to each. Returning them
-independently keeps the orchestrator's boot-branch logic narrow — it
-reads only the field it cares about on each branch.
-
-**`BrainState` lives in `src/types/index.ts`, not next to the helper.**
-The folder-structure playbook's "Types Organization" rule centralizes
-all shared types in `src/types/`. `BrainState` is exported as part of
-`InfoResult` and therefore shared across tool boundaries — it belongs
-in the central types file, not in a per-module types file.
-
-**Helper is a subfolder, not an inline function in the orchestrator.**
-Progressive disclosure's aggressive-modularization rule: every helper
-gets its own subfolder with `index.ts`, named after its default export.
-The `buildBrainState` pipeline has five decision branches and four
-failure modes; it is absolutely not a single-helper exception candidate.
-Keeping it in its own folder makes it independently testable (step 3)
-and keeps the orchestrator at a size where its inline pipeline
-narration is the full story.
-
-**Downstream orchestrator prompt update is out of scope but noted.**
-The `/aide` orchestrator at
-`.claude/commands/aide/aide.md` currently branches on `outdated` only;
-once this plan ships, it must also branch on `brain`: `status === 'ok'`
-continues boot, any other status hard-stops the pipeline and directs the
-user to `/aide:init`. That edit lives in a different module
-(`.claude/commands/aide/`) and is NOT in this plan's scope. The
-top-level orchestrator running this plan must schedule a follow-up to
-produce a separate `plan.aide` for that module after this plan is built.
-It is not a prerequisite (this plan does not depend on it existing);
-it is a dependent (that module will consume this plan's new response
-shape).
+- **This plan is small because Plan 3 does the heavy lifting.** The
+  brain detector lives in `buildBrainState`; this tool is a passive
+  forwarder. Most of what looks like work (the new vocabulary, the
+  removed `backend` field) flows through the type system from Plan 3.
+  The plan is here at all because (a) the `.aide` spec needs to
+  reflect the new contract for future audits, and (b) the tests need
+  to exercise the new states at this surface.
+- **No new helper subfolders.** The orchestrator pipeline today is
+  three steps (sync version read, parallel staleness + brain detection,
+  compose result). Plan 3 adds nothing to that shape — `buildBrainState`
+  hides the new pipeline behind its existing function signature. No
+  decomposition warranted.
+- **Tests prefer disk integration over mock layering.** The detector's
+  pipeline now reads three different files (`brain.aide`, `rootPath`
+  directory existence check, `.mcp.json`) and the boundary cases come
+  from the interactions between them. Mocking each of those individually
+  would test the mocks; using temp dirs (already the pattern in the
+  existing test) keeps the tests honest. Cross-reference Plan 3's test
+  helpers — extract shared setup into `src/test/` if both test files
+  benefit.
+- **`backend`-absence assertions are explicit, not implicit.** The
+  parent spec's `outcomes.desired[7]` rules out the `backend` field
+  by name. Asserting its absence (`not.toHaveProperty`) makes the
+  invariant testable, not just a type-system promise. A future
+  refactor that re-adds the field for "convenience" trips these tests
+  immediately.

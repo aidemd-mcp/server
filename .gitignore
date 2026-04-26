@@ -5,3 +5,4 @@ coverage/
 .mcp.json
 *.tsbuildinfo
 *.stackdump
+.aide/tools.md

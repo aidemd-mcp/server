@@ -21,6 +21,67 @@ misalignment:
 
 ## Issues
 
+### Active (alignment pass 2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+
+The root `.aide/intent.aide` was rewritten to move brain.aide to `.aide/config/brain.aide`, change the default launcher to `@bitbonsai/mcpvault`, collapse the frontmatter schema to exactly two fields (`name` + `mcpServerConfig.{command, args}`), rename `connector` to `name`, and remove `rootPath`, `entryFile`, `tools`, and the `invalid-path` boot state. This spec authored the canonical scaffold template and is the load-bearing producer of the post-handoff schema; nearly every paragraph drifts.
+
+- [x] `src/service/install/provisionBrain/.aide` description: "Plans vault directory scaffolding... brain config file scaffolding..."
+  Per the new root, brain config scaffolding writes to `.aide/config/brain.aide`, NOT `.aide/brain.aide`. The description should name the new path explicitly because the directory itself (`.aide/config/`) carries the user-owned scaffold-once contract.
+  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is the canonical home of user-owned configuration; files inside are scaffolded once at `aide_init` if absent, then belong to the user forever).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` intent paragraph: "...primary output is the scaffolded `.aide/brain.aide`..."
+  Stale path. The canonical location is `.aide/config/brain.aide`. The paragraph also names `parseBrainAide` as the derivation source — that's still correct in shape, but the parser's input file path moves with the brain.aide path.
+  Traces to: `.aide/intent.aide` outcomes.desired (canonical and only source of truth at `.aide/config/brain.aide`).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` outcomes.desired ("The brain config step plans creation of `.aide/brain.aide`..."): pins the file path to the legacy location.
+  Should read `.aide/config/brain.aide`. The "category: brain" label is correct for the install service plan.
+  Traces to: `.aide/intent.aide` outcomes.desired (path move).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` outcomes.desired ("the canonical Obsidian brain.aide bytes from obsidianBrainAideTemplate"): names the template helper as `obsidianBrainAideTemplate` and pins the launcher to "Obsidian template's launcher shape" with "command: cmd /c npx ..." and "command: npx ..." platform-branching examples.
+  Under the new root the default launcher is `@bitbonsai/mcpvault`, not `obsidian-mcp`. Either the template helper renames to reflect the new launcher, or the launcher choice becomes a user-owned decision the template no longer pins. The outcome that the template ships "the canonical Obsidian brain.aide bytes" needs to either name the new launcher invocation or reframe what "canonical Obsidian default" means under the new setup.
+  Traces to: `.aide/intent.aide` outcomes.desired ("scaffolds `.aide/config/brain.aide` pre-filled with a canonical Obsidian configuration that launches via `@bitbonsai/mcpvault`").
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` outcomes.undesired ("Scaffolding a brain.aide whose `connector` value the package later branches on"): names the frontmatter field as `connector`.
+  The field has been renamed to `name`. The undesired-outcome's structural rule (the package never branches on it) is unchanged and load-bearing, but the field name is stale. A scaffolded brain.aide with `connector:` in its frontmatter would now fail validation against the parser, which expects `name:`.
+  Traces to: `.aide/intent.aide` outcomes.desired (`name` is the only label field; the package never branches on it).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Good examples (Step 1 brain config example block): renders the canonical template content with frontmatter fields `connector: obsidian`, `rootPath: D:/notes/my-vault`, `entryFile: CLAUDE.md`, `mcpServerConfig` referencing `obsidian-mcp` and `${rootPath}`, and a `tools:` block with `read:` / `search:` keys.
+  Every one of those fields is removed or renamed in the new root: `connector` → `name`, `rootPath` removed (path inlined into args), `entryFile` removed, `tools` removed entirely. The new canonical template should show only `name` + `mcpServerConfig.{command, args}` with `@bitbonsai/mcpvault` and the path inlined byte-for-byte. The `${rootPath}` placeholder still works for advanced users but the default scaffold should not exercise it.
+  Traces to: `.aide/intent.aide` outcomes.desired (frontmatter contains exactly `name` + `mcpServerConfig.{command, args}` — no `connector`, no `rootPath`, no `entryFile`, no `tools`); ("The default scaffolded `brain.aide` makes no use of substitution: `mcpServerConfig.args` carries the path inline, byte-for-byte under user ownership"); ("scaffolds `.aide/config/brain.aide` pre-filled with a canonical Obsidian configuration that launches via `@bitbonsai/mcpvault`").
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Good examples (Step 5 — MCP config (brain)): "Prescription derived from the Step 1 content bytes: parseBrainAide parses the template string, interpolateArgs substitutes `${rootPath}`..."
+  The interpolation surface still exists for advanced users but the default scaffold no longer exercises `${rootPath}` (the path is byte-inline). The example should show the default-scaffold path: parser reads the file, sync writes `mcpServerConfig.args` through unchanged. Substitution becomes the opt-in path for advanced users who DRY a value across positions.
+  Traces to: `.aide/intent.aide` outcomes.desired (default scaffold makes no use of substitution; the parser still supports `${...}` for advanced users).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Bad examples ("A provisionBrain that hardcodes the Windows launcher shape in index.ts"): the inline counter-example shows `obsidian-mcp` as the launcher arg.
+  The shape of the bad example is still load-bearing (don't duplicate the launcher bytes outside the template), but the launcher string should be `@bitbonsai/mcpvault`.
+  Traces to: `.aide/intent.aide` outcomes.desired (default launcher).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Bad examples ("A brain.aide scaffolded with intent-spec frontmatter fields"): the counter-example block still includes `connector: obsidian` in the intended-non-conflicting fields after the rejected intent-spec fields.
+  Should be `name: obsidian` to reflect the rename. The structural lesson (no scope/intent/outcomes in brain.aide) is unchanged.
+  Traces to: `.aide/intent.aide` outcomes.desired (rename `connector` → `name`).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Strategy ("`obsidianBrainAideTemplate` lives in its own helper subfolder"): the template helper's identity is bound to the legacy `obsidian-mcp` launcher. With the launcher rename, either the helper is renamed or its responsibilities shift (it now ships the `@bitbonsai/mcpvault` default).
+  Traces to: `.aide/intent.aide` outcomes.desired (default launcher).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Strategy ("Signature takes `projectRoot`, not just `brainPath` and `mcpConfigPath`"): the signature is still correct but the rationale ("derive the brain.aide path at `.aide/brain.aide`") names the legacy path. With brain.aide moving to `.aide/config/brain.aide`, the path-derivation logic changes.
+  Traces to: `.aide/intent.aide` outcomes.desired (path move).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` outcomes.desired (seed-semantic idempotency for the brain config file): the seed-semantic invariant is correct in spirit and even reinforced by the new root's directory-level rule (`.aide/config/` is scaffolded once, owned by user forever, never overwritten by init or upgrade). The spec should restate the rule in directory-boundary terms — the install/upgrade tooling reads the path as the ownership signal, not a per-file allowlist — so future readers understand the invariant is now structural, not per-file.
+  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` boundary as ownership signal, no per-file allowlist).
+  Misalignment: spec-gap
+
 ### Active (alignment pass — fixed-`brain`-key drift)
 
 - [x] `src/service/install/provisionBrain/.aide` frontmatter description: "...and Obsidian MCP wiring as InitStep items"
@@ -99,6 +160,14 @@ misalignment:
   Strategy section.
 
 ## Retro
+
+### Active cycle (2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+
+This spec is the canonical author of the scaffolded brain.aide bytes. When the root revises the schema, the launcher, or the file path, this spec is the single point where the new shape lands in the install pipeline — and accordingly absorbs the most cascade. Five interlocking decisions in one root revision means five edits land here: the file path moves to `.aide/config/brain.aide`, the launcher in the canonical default becomes `@bitbonsai/mcpvault`, the frontmatter schema collapses to `name` + `mcpServerConfig.{command, args}` only, the `connector` field is renamed to `name`, and the `obsidianBrainAideTemplate` helper either renames or shifts identity to reflect the new launcher.
+
+The Good-examples block is the worst-affected section because it renders the canonical template content verbatim — every removed field is visible there, the launcher invocation is rendered with the wrong package name, and even the Bad-examples block carries `connector: obsidian` in its negative-counterexample shape. This is the narrative-section-escapes-rewrites pattern: a frontmatter-and-outcomes-scoped revision routinely leaves Good/Bad example blocks with stale references.
+
+What would have caught this earlier: a `/aide:align` pass at the moment the root settled the schema collapse. The cascade is mechanical and the affected references are localized to the rendered-template blocks; the structural rules (seed-semantic idempotency, no `would-overwrite` for user-owned config, derivation through parseBrainAide + interpolateArgs) are all unchanged.
 
 Two layers of drift in this spec:
 

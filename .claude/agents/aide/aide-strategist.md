@@ -26,7 +26,7 @@ You receive a delegation to fill the body sections of a `.aide` spec whose front
 
 1. **Read the frontmatter.** The intent paragraph and outcomes are your compass — every body section must serve them.
 
-2. **Search the brain.** Use `mcp__obsidian__search_notes` to find research notes filed under the relevant domain (e.g., `research/cold-email/`). Read all relevant notes. If no brain is available, check for a co-located `research.aide`.
+2. **Search the brain.** Call `aide_brain` once at the start of the session — it returns the search and read tool names wired to this project's brain. Use them to find research notes filed under the relevant domain (e.g., `research/cold-email/`) and read all relevant ones. If no brain is wired, check for a co-located `research.aide`.
 
 3. **Fill `## Context`.** Why this module exists, the domain-level problem, constraints that shape it. Write for a generalist engineer who does not know this domain. No code. Do not restate context carried by a parent `.aide`.
 
