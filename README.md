@@ -20,6 +20,7 @@ that architects plan from, implementors build from, and QA validates against.
 - **Health-check validation** via `aide_validate` — detects orphaned specs, missing descriptions, broken links, and naming conflicts before they cause drift
 - **Code introspection** via `aide_inspect` — returns JSDoc, signatures, and kind for named symbols without opening files, giving agents Tier 2 progressive disclosure for code
 - **Upgrade drift detection** via `aide_upgrade` — compares your project's AIDE methodology artifacts against canonical versions and writes updates per-category
+- **Runtime brain entry-point** via `aide_brain` — on-demand tool that returns ready-to-execute prose telling the agent which MCP tools to call and how to reach whatever brain backend is wired, without the agent knowing which backend it is
 
 ## Installation
 
@@ -34,7 +35,7 @@ npx @aidemd-mcp/server@latest init
 This command:
 
 - Merges the AIDE MCP server entry into `.mcp.json`
-- Merges a placeholder Obsidian MCP entry into `.mcp.json` (vault path filled in by `/aide`)
+- Merges a placeholder brain MCP entry into `.mcp.json` (vault path filled in by `/aide`)
 - Writes every pipeline slash command to `.claude/commands/aide/`
 - Installs 9 canonical pipeline agents to `.claude/agents/aide/`
 - Installs skills (`study-playbook`, `brain`) to `.claude/skills/`
@@ -191,7 +192,17 @@ Run a health check on `.aide` spec files in the project. Detects orphaned specs,
 
 ### aide_info
 
-Boot-time precondition reporter. Returns two independent fields the orchestrator branches on separately: `outdated` (an array of stale AIDE artifact keys, comparing the project's `versions.json` against the shipped manifest), and `brain` (a `{ status, vaultPath }` object reporting whether the project's Obsidian MCP entry is configured and its vault directory exists on disk).
+Boot-time precondition reporter. Returns two independent fields the orchestrator branches on separately: `outdated` (an array of stale AIDE artifact keys, comparing the project's `versions.json` against the shipped manifest), and `brain` (a `{ status, vaultPath, backend }` object reporting whether the project's brain MCP entry is configured and its vault directory exists on disk; `backend` is the wired backend identifier when `status` is `ok`, or `null` otherwise).
+
+**Inputs:**
+
+(none)
+
+### aide_brain
+
+On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every `/aide` boot. Boot-time brain precondition state is already reported by `aide_info.brain.status`; firing `aide_brain` at boot duplicates that work unnecessarily.
+
+Returns `{ status, backend, instructions }`. `status` mirrors `aide_info.brain.status` exactly (`ok`, `no-mcp-entry`, `invalid-path`). `backend` is the wired backend identifier (e.g. `"obsidian"`) when `status` is `ok`, `null` otherwise. `instructions` is always non-empty, ready-to-execute prose composed by the server — on `ok` it names the specific MCP tools to call and how to reach the brain's entry-point file; on error branches it carries remediation prose.
 
 **Inputs:**
 
