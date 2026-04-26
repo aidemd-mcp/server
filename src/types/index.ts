@@ -528,9 +528,13 @@ export type BrainAideConfig = {
  * The discriminant is `kind`. Consumers narrow on `kind` to handle each outcome:
  *
  * - `"ok"` — the file was found, frontmatter parsed cleanly, all required fields
- *   validated, and the `## Prose` body was located. `config` is the full parsed
- *   config; `prose` is the verbatim body text after the heading line, never
- *   interpolated.
+ *   validated, and the body contained exactly the three required sections
+ *   (`## Prose`, `## Playbook hub`, `## Research hub`) and no unknown headings.
+ *   `config` is the full parsed frontmatter; `prose`, `playbookHub`, and
+ *   `researchHub` each carry the verbatim bytes between their heading and the
+ *   next heading boundary (or end-of-file for the last section). No substitution
+ *   runs on any body field — all three are returned byte-identical to what the
+ *   user wrote.
  * - `"missing"` — `.aide/config/brain.aide` does not exist at the given root (or
  *   was unreachable due to an I/O error). Remediation: run `/aide` and complete
  *   the brain wiring interview.
@@ -540,13 +544,18 @@ export type BrainAideConfig = {
  *   (`connector`, `rootPath`, `entryFile`, `tools`) is present. `reason` names
  *   the exact field or parse error so the consumer can surface a targeted
  *   remediation message to the user.
- * - `"malformed-body"` — frontmatter is valid but the `## Prose` heading is
- *   absent. `reason` describes what is missing. Consumed by `buildBrainState`,
- *   the brain tool, `provisionBrain`, and `cli/sync` to compose branch-specific
+ * - `"malformed-body"` — frontmatter is valid but the body fails the
+ *   closed-vocabulary grammar: any required section (`## Prose`,
+ *   `## Playbook hub`, `## Research hub`) is absent, OR any unknown top-level
+ *   heading is present. `reason` names every missing section in a single
+ *   comma-separated listing (e.g. `"missing required sections: ## Playbook hub,
+ *   ## Research hub"`) OR names the first unknown heading encountered (e.g.
+ *   `"unknown heading: ## Notes"`). Consumed by `buildBrainState`, the brain
+ *   tool, `provisionBrain`, and `cli/sync` to compose branch-specific
  *   remediation prose.
  */
 export type ParseBrainAideResult =
-	| { kind: "ok"; config: BrainAideConfig; prose: string }
+	| { kind: "ok"; config: BrainAideConfig; prose: string; playbookHub: string; researchHub: string }
 	| { kind: "missing" }
 	| { kind: "malformed-frontmatter"; reason: string }
 	| { kind: "malformed-body"; reason: string };

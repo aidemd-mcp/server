@@ -11,10 +11,14 @@ intent: >
   phase, and any non-pipeline agents AIDE ships (read-only
   investigators) install alongside them. Each agent carries its own
   system prompt, tool allowlist, model assignment, and MCP server
-  declarations (including the brain MCP server for agents that need
-  brain access — declared by name reference as `mcpServers: [brain]`,
-  matching the fixed `brain` MCP key the host project wires under in
-  `.mcp.json`). Pipeline agents are the runtime identity of each
+  declarations. Agents that need brain access declare it as
+  `mcpServers: [brain]` — the literal `brain` is the fixed MCP key
+  every host project wires under in `.mcp.json`, no matter what `name`,
+  `command`, or `args` the user wrote in their `brain.aide`. That
+  fixed key is what makes installed agents portable across users with
+  different brain configurations: the agent never asks "which brain";
+  it asks the entry keyed `brain`, and the user's `brain.aide` decides
+  what answers. Pipeline agents are the runtime identity of each
   pipeline phase: the slash commands orchestrate, the agents execute.
   Existing agent files in the host project are never overwritten —
   customizations survive the install action.
@@ -31,13 +35,13 @@ outcomes:
     - Agent content is read through the initContent chokepoint — the same
       `readCanonicalDoc()` path used by methodology docs and commands. No
       agent content is hardcoded as template literals in this module.
-    - The brain MCP server is declared in `mcpServers` (as the literal
-      name `brain`) for every agent whose canonical definition needs
-      brain access — the per-agent access pattern is encoded in the
-      canonical file, not enumerated here. The declaration is portable
-      (server name reference under the fixed `brain` key, not inline
-      config) so the host project provides its own brain MCP wiring in
-      `.mcp.json` regardless of which backend driver sits under it.
+    - "Every agent whose canonical definition needs brain access
+      declares it as `mcpServers: [brain]` — a name reference under the
+      fixed `brain` MCP key, never inline connection config. The
+      declaration is unconditional and identical across users; what the
+      user wrote in their `brain.aide` decides what sits behind the key,
+      and this helper has no opinion about that. The per-agent access
+      pattern is encoded in the canonical file, not enumerated here."
     - A generic `study-playbook` skill template is installed to
       `.claude/skills/study-playbook/SKILL.md` in the host project. It
       teaches the hub-navigation pattern against the host's own
@@ -63,11 +67,11 @@ outcomes:
     - An install that overwrites a user's customized agent file
       because "the canonical version is newer." Customizations
       survive the install action; upgrades are aide_upgrade's job.
-    - Agent prompts that reference personal vault paths, specific user
-      brain locations, or non-portable MCP configurations. Agents are
-      opinionated about declaring the brain MCP server (under the fixed
-      `brain` key) but agnostic about which backend the host wired and
-      where the vault lives.
+    - Agent prompts that reference personal vault paths or hardcoded
+      brain locations. Agents are opinionated about declaring the
+      brain MCP server (`mcpServers: [brain]`) but say nothing about
+      where the vault lives or how it's reached — that is entirely
+      the user's `brain.aide` to decide.
     - Agent prompts that duplicate orchestration logic from the phase
       commands. The command says what to do; the agent knows how to do it.
     - A study-playbook skill that overwrites an existing user-defined one.
@@ -78,18 +82,27 @@ outcomes:
     - Agent content hardcoded as string literals in this module instead
       of read through initContent. That creates a second source of truth
       that drifts from the canonical agent files.
-    - An install that wires the brain MCP server inline in every
-      agent's mcpServers field with full connection config. The host
-      project wires the brain MCP server once under the fixed `brain`
-      key in `.mcp.json`; agents reference it by name.
-    - "Agent frontmatter that declares `mcpServers: [obsidian]` (or any
-      backend-specific name) instead of `mcpServers: [brain]`. The MCP
-      key is fixed at `brain` per the project-root settlement; backend
-      identity (obsidian, notion, etc.) lives in the command/args shape
-      under the `brain` key in `.mcp.json`, never in the agent's server
-      reference. Naming a backend in the agent's mcpServers list
-      couples the agent to one backend and breaks the abstraction the
-      brain layer exists to provide."
+    - "Agents that declare brain access with inline MCP connection
+      config (command, args, env) in their `mcpServers` field instead
+      of the bare name reference `brain`. The host project wires the
+      brain MCP server once in `.mcp.json` from their `brain.aide`;
+      agent files reference it by name only and stay portable across
+      every user's configuration."
+    - "Agent frontmatter that declares `mcpServers: [obsidian]`,
+      `mcpServers: [notion]`, or any other connector-flavored name
+      instead of `mcpServers: [brain]`. The MCP key is fixed at
+      `brain`; the user's `brain.aide` is the only place the connector
+      identity (its `command` and `args`) is named. An agent file that
+      names a specific connector silently re-introduces the
+      backend-coupling model the framework retired and breaks the
+      portability the fixed `brain` key exists to guarantee."
+    - "Any conditional logic in this helper that branches on which
+      brain a user configured — inspecting `brain.aide`, the MCP
+      command, or env to vary which agents install or how their
+      `mcpServers` list is written. Every user gets the same canonical
+      agent files with `mcpServers: [brain]`; configuration variance
+      lives entirely in the user's `brain.aide`, never in agent
+      content this helper writes."
 ---
 
 ## Context
@@ -115,11 +128,13 @@ The orchestrator delegates by naming the agent in the prompt or via
 
 AIDE is opinionated about the knowledge layer: the pipeline depends on
 a brain that persists research and retros, and certain agents declare
-brain access in their frontmatter. The brain layer is backend-agnostic
-— the host project wires whichever backend (Obsidian today, others
-tomorrow) under the fixed `brain` MCP key in `.mcp.json`, and agents
-reference the brain by that fixed key. Host projects bring their own
-vault — the agents teach the workflow pattern, not our content.
+brain access in their frontmatter. Brain configuration is user-owned —
+the host's `brain.aide` is the single editable source of truth, and the
+package never enumerates or branches on what's wired there. Agents
+reference the brain by the fixed `brain` MCP key regardless of how the
+user configured their `brain.aide`. Host projects bring their own vault
+and their own prose instructions; the agents teach the workflow
+pattern, not our content.
 
 ## Strategy
 
@@ -134,12 +149,15 @@ across phases without writing files.
 
 **Agents declare MCP servers by name reference, not inline config.** An
 agent that needs brain access declares `mcpServers: [brain]` — the
-literal `brain` is the fixed MCP key the host project wires under in
-`.mcp.json`, regardless of which backend (Obsidian today, others
-tomorrow) sits in the entry's command/args. This keeps agents portable
-across vaults *and* across backends: the agent never names a specific
-backend; the host project picks the backend by what they wire under the
-`brain` key.
+literal `brain` is the fixed MCP key every host project wires under in
+`.mcp.json`, populated from their `brain.aide`. The fixed key is what
+makes the agent files portable: the same agent file ships byte-faithful
+to every host, and each host's own `brain.aide` decides what sits
+behind the key. The agent never asks "which brain"; it asks the entry
+keyed `brain`, and the user's configuration answers. There is no
+package-side notion of "backend" the agent could name even if it wanted
+to — configuration variance lives entirely in the user's `brain.aide`,
+never in the agent file's frontmatter.
 
 **Model assignments optimize for task shape.** Opus for roles that require
 deep reasoning under ambiguity (spec-writer distilling intent, strategist
@@ -203,10 +221,16 @@ playbook via study-playbook, scanning the codebase, writing the plan.
 ## Bad examples
 
 An agent file that hardcodes `d:/Code/Me/my-brain` as the vault path,
-or names a specific backend (e.g., `mcpServers: [obsidian]`) instead
-of the fixed `brain` key. Both fail the same portability rule — the
-host project has a different vault and may wire a different backend
-under the `brain` key. The agent fails on first brain access.
+or names a connector-flavored MCP key (e.g., `mcpServers: [obsidian]`,
+`mcpServers: [notion]`) instead of the fixed `brain` key. Both
+violate the fixed-`brain`-key contract: the agent file is supposed to
+ship byte-faithful to every host and ask the entry keyed `brain` for
+brain access, with the host's own `brain.aide` deciding what answers.
+A connector-flavored name couples the agent file to whatever launcher
+this user happens to have wired today and breaks portability across
+users whose `brain.aide` files configure the brain differently. The
+agent fails on first brain access for any host whose `.mcp.json`
+doesn't happen to expose the same key.
 
 An agent prompt that includes the full study-playbook navigation
 instructions inline instead of referencing the skill. When the skill

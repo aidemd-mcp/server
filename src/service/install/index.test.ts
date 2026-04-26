@@ -109,7 +109,7 @@ describe("init — structured JSON result", () => {
 		// "Brain config (brain.aide)" is now the first of the five placeholder steps
 		// and also carries an empty filePath. The MCP config (brain) step retains a
 		// real filePath (the .mcp.json path) because the consumer still needs it.
-		const brainPlaceholders = new Set(["Brain config (brain.aide)", "Brain vault", "Playbook hub", "Vault CLAUDE.md"]);
+		const brainPlaceholders = new Set(["Brain config (brain.aide)", "Brain root directories", "Playbook hub", "Research hub"]);
 
 		for (const step of result.steps) {
 			if (brainPlaceholders.has(step.name)) {
@@ -218,7 +218,7 @@ describe("init — structured JSON result", () => {
 		expect(brainSteps.length).toBeGreaterThan(0);
 		// When no hints exist, brain vault step has empty filePath signaling
 		// the agent must interview the user before applying
-		const vaultStep = brainSteps.find((s) => s.name === "Brain vault");
+		const vaultStep = brainSteps.find((s) => s.name === "Brain root directories");
 		expect(vaultStep).toBeDefined();
 		expect(vaultStep?.status).toBe("would-create");
 		expect(vaultStep?.filePath).toBe("");
@@ -240,7 +240,7 @@ describe("init — structured JSON result", () => {
 		expect(envHints.length).toBeGreaterThan(0);
 
 		// Despite hints being present, vault step must have empty filePath
-		const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+		const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
 		expect(vaultStep).toBeDefined();
 		expect(vaultStep?.status).toBe("would-create");
 		expect(vaultStep?.filePath).toBe("");
@@ -260,7 +260,7 @@ describe("init — structured JSON result", () => {
 		const result = await init(isolated);
 
 		if (result.brainHints.length === 0) {
-			const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+			const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
 			expect(vaultStep).toBeDefined();
 			expect(vaultStep?.filePath).toBe("");
 			expect(vaultStep?.status).toBe("would-create");
@@ -272,7 +272,7 @@ describe("init — structured JSON result", () => {
 		const result = await init(tempDir, undefined, undefined, confirmedPath);
 
 		// The vault step must use the confirmed path
-		const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+		const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
 		expect(vaultStep).toBeDefined();
 		expect(vaultStep?.filePath).toBe(confirmedPath);
 
@@ -473,7 +473,7 @@ describe("init — apply mode (category call)", () => {
 		expect(brainSteps.length).toBeGreaterThan(0);
 
 		const applied = await applySteps(brainSteps);
-		const vaultStep = applied.find((s) => s.name === "Brain vault");
+		const vaultStep = applied.find((s) => s.name === "Brain root directories");
 
 		expect(vaultStep).toBeDefined();
 		expect(vaultStep?.status).toBe("created");
@@ -667,7 +667,7 @@ describe("init — sentinel brain path collision (issue 8)", () => {
 
 		const result = await init(isolated);
 
-		const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+		const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
 		expect(vaultStep).toBeDefined();
 		// The tool must NOT adopt the inner my-brain/ path silently.
 		// With no env var and the project root itself not having a sibling my-brain
@@ -692,7 +692,7 @@ describe("init — sentinel brain path collision (issue 8)", () => {
 
 		const result = await init(isolated);
 
-		const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+		const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
 		expect(vaultStep).toBeDefined();
 
 		// If no hints, the vault step must have empty filePath (not a fabricated path)

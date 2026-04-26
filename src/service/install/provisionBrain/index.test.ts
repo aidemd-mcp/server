@@ -5,6 +5,12 @@
  * will fail at compile time (TypeScript: "has no exported member 'obsidianMcpEntry'")
  * and at runtime (undefined). This comment is the spec-enforceable boundary: the
  * provisionBrain module must never re-export obsidianMcpEntry.
+ *
+ * invariant(this cycle): the inline constants `PLAYBOOK_HUB_TEMPLATE` and
+ * `VAULT_CLAUDE_MD_TEMPLATE` were removed from `./index.ts`. Hub artifact bytes now
+ * flow through `parseBrainAide` / `parseBrainAideFromString` from the scaffolded
+ * brain.aide's body sections. Any future attempt to re-introduce a hub-bytes constant
+ * in this module is a regression.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -37,12 +43,12 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 });
 
-/** Returns the project root for the current test (host project, not vault). */
+/** Returns the project root for the current test (host project, not brain). */
 function makeProjectRoot(): string {
 	return tempDir;
 }
 
-/** Returns the brain vault path for the current test. */
+/** Returns the brain root path for the current test. */
 function makeBrainPath(): string {
 	return join(tempDir, "brain");
 }
@@ -67,9 +73,9 @@ describe("provisionBrain", () => {
 		// Five steps returned in order.
 		expect(results).toHaveLength(5);
 		expect(results[0].name).toBe("Brain config (brain.aide)");
-		expect(results[1].name).toBe("Brain vault");
+		expect(results[1].name).toBe("Brain root directories");
 		expect(results[2].name).toBe("Playbook hub");
-		expect(results[3].name).toBe("Vault CLAUDE.md");
+		expect(results[3].name).toBe("Research hub");
 		expect(results[4].name).toBe("MCP config (brain)");
 
 		// Brain config step is would-create with content.
@@ -85,6 +91,203 @@ describe("provisionBrain", () => {
 	});
 
 	// -----------------------------------------------------------------------
+	// 4b. Cold-install: hub artifacts source content from scaffolded brain.aide
+	// -----------------------------------------------------------------------
+
+	describe("Cold-install: hub artifacts source content from scaffolded brain.aide", () => {
+		it("playbook hub content matches the ## Playbook hub section from the bundled template", async () => {
+			const projectRoot = makeProjectRoot();
+			const brainPath = makeBrainPath();
+			const mcpPath = makeMcpPath();
+
+			const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+			const playbookHubStep = results[2];
+
+			// Derive expected bytes from the bundled template — NOT from an inline constant.
+			const template = obsidianBrainAideTemplate(brainPath);
+			const parsed = parseBrainAideFromString(template);
+			expect(parsed.kind).toBe("ok");
+			if (parsed.kind !== "ok") return;
+			const expectedPlaybookHub = parsed.playbookHub;
+
+			expect(playbookHubStep.status).toBe("would-create");
+			expect(playbookHubStep.content).toBe(expectedPlaybookHub);
+
+			// The bytes have a non-trivial source — proves they flowed through the parser.
+			expect(playbookHubStep.content).toBeTruthy();
+		});
+
+		it("research hub content matches the ## Research hub section from the bundled template", async () => {
+			const projectRoot = makeProjectRoot();
+			const brainPath = makeBrainPath();
+			const mcpPath = makeMcpPath();
+
+			const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+			const researchHubStep = results[3];
+
+			// Derive expected bytes from the bundled template — NOT from an inline constant.
+			const template = obsidianBrainAideTemplate(brainPath);
+			const parsed = parseBrainAideFromString(template);
+			expect(parsed.kind).toBe("ok");
+			if (parsed.kind !== "ok") return;
+			const expectedResearchHub = parsed.researchHub;
+
+			expect(researchHubStep.status).toBe("would-create");
+			expect(researchHubStep.content).toBe(expectedResearchHub);
+
+			// The bytes have a non-trivial source — proves they flowed through the parser.
+			expect(researchHubStep.content).toBeTruthy();
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// 4c. Existing brain.aide: hub artifacts source from on-disk file
+	// -----------------------------------------------------------------------
+
+	describe("Existing brain.aide: hub artifacts source from on-disk file", () => {
+		it("playbook hub content reflects user's ## Playbook hub edits in brain.aide", async () => {
+			const projectRoot = makeProjectRoot();
+			const brainPath = makeBrainPath();
+			const mcpPath = makeMcpPath();
+
+			// Pre-write a brain.aide with custom sentinel strings in both hub sections.
+			const aideConfigDir = join(projectRoot, ".aide", "config");
+			await mkdir(aideConfigDir, { recursive: true });
+			const customContent = [
+				"---",
+				"name: obsidian",
+				"mcpServerConfig:",
+				"  command: npx",
+				"  args:",
+				`    - '@bitbonsai/mcpvault'`,
+				`    - '${brainPath}'`,
+				"---",
+				"",
+				"## Prose",
+				"",
+				"Prose content here.",
+				"",
+				"## Playbook hub",
+				"",
+				"# USER-EDITED-PLAYBOOK",
+				"",
+				"User customized this section.",
+				"",
+				"## Research hub",
+				"",
+				"# USER-EDITED-RESEARCH",
+				"",
+				"User customized this section.",
+			].join("\n");
+			await writeFile(join(aideConfigDir, "brain.aide"), customContent, "utf-8");
+
+			const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+			const playbookHubStep = results[2];
+
+			expect(playbookHubStep.status).toBe("would-create");
+			expect(playbookHubStep.content).toContain("USER-EDITED-PLAYBOOK");
+		});
+
+		it("research hub content reflects user's ## Research hub edits in brain.aide", async () => {
+			const projectRoot = makeProjectRoot();
+			const brainPath = makeBrainPath();
+			const mcpPath = makeMcpPath();
+
+			// Pre-write a brain.aide with custom sentinel strings in both hub sections.
+			const aideConfigDir = join(projectRoot, ".aide", "config");
+			await mkdir(aideConfigDir, { recursive: true });
+			const customContent = [
+				"---",
+				"name: obsidian",
+				"mcpServerConfig:",
+				"  command: npx",
+				"  args:",
+				`    - '@bitbonsai/mcpvault'`,
+				`    - '${brainPath}'`,
+				"---",
+				"",
+				"## Prose",
+				"",
+				"Prose content here.",
+				"",
+				"## Playbook hub",
+				"",
+				"# USER-EDITED-PLAYBOOK",
+				"",
+				"User customized this section.",
+				"",
+				"## Research hub",
+				"",
+				"# USER-EDITED-RESEARCH",
+				"",
+				"User customized this section.",
+			].join("\n");
+			await writeFile(join(aideConfigDir, "brain.aide"), customContent, "utf-8");
+
+			const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+			const researchHubStep = results[3];
+
+			expect(researchHubStep.status).toBe("would-create");
+			expect(researchHubStep.content).toContain("USER-EDITED-RESEARCH");
+		});
+	});
+
+	// -----------------------------------------------------------------------
+	// 4d. Malformed brain.aide: hub steps surface as would-skip
+	// -----------------------------------------------------------------------
+
+	describe("Malformed brain.aide: hub steps surface as would-skip", () => {
+		it("playbook hub and research hub surface would-skip when brain.aide body is missing the hub sections", async () => {
+			const projectRoot = makeProjectRoot();
+			const brainPath = makeBrainPath();
+			const mcpPath = makeMcpPath();
+
+			// Pre-write brain.aide with valid frontmatter but body missing ## Playbook hub
+			// and ## Research hub — only ## Prose. This triggers malformed-body from the parser.
+			const aideConfigDir = join(projectRoot, ".aide", "config");
+			await mkdir(aideConfigDir, { recursive: true });
+			const malformedContent = [
+				"---",
+				"name: obsidian",
+				"mcpServerConfig:",
+				"  command: npx",
+				"  args:",
+				`    - '@bitbonsai/mcpvault'`,
+				`    - '${brainPath}'`,
+				"---",
+				"",
+				"## Prose",
+				"",
+				"Only prose — hub sections are missing so the parser returns malformed-body.",
+			].join("\n");
+			await writeFile(join(aideConfigDir, "brain.aide"), malformedContent, "utf-8");
+
+			const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+			const playbookHubStep = results[2];
+			const researchHubStep = results[3];
+
+			// Hub steps must be would-skip when the body is malformed.
+			expect(playbookHubStep.status).toBe("would-skip");
+			expect(researchHubStep.status).toBe("would-skip");
+
+			// Both must carry an actionable instructions field.
+			expect(playbookHubStep.instructions).toBeTruthy();
+			expect(researchHubStep.instructions).toBeTruthy();
+
+			// brain.aide step: file is on disk, so the presence check passes.
+			// The brain config step does NOT validate body — only presence.
+			const brainAideStep = results[0];
+			expect(brainAideStep.status).toBe("exists");
+
+			// MCP step: frontmatter is still valid, so the prescription is derivable.
+			const mcpStep = results[4];
+			expect(mcpStep.name).toBe("MCP config (brain)");
+			expect(mcpStep.prescription).toBeDefined();
+		});
+	});
+
+	// -----------------------------------------------------------------------
 	// 5b. Existing brain.aide stays untouched
 	// -----------------------------------------------------------------------
 
@@ -94,6 +297,7 @@ describe("provisionBrain", () => {
 		const mcpPath = makeMcpPath();
 
 		// Pre-write a brain.aide so the step sees it on disk.
+		// Use the bundled template so the body carries all three sections.
 		const aideConfigDir = join(projectRoot, ".aide", "config");
 		await mkdir(aideConfigDir, { recursive: true });
 		await writeFile(
@@ -182,6 +386,7 @@ describe("provisionBrain", () => {
 		const mcpPath = makeMcpPath();
 
 		// User has customized their brain.aide with the new minimal schema.
+		// Fixture grows two new hub sections so the parser succeeds on the body.
 		const customBrainAide = [
 			"---",
 			"name: obsidian",
@@ -195,6 +400,14 @@ describe("provisionBrain", () => {
 			"## Prose",
 			"",
 			"Custom user prose.",
+			"",
+			"## Playbook hub",
+			"",
+			"# Custom Playbook",
+			"",
+			"## Research hub",
+			"",
+			"# Custom Research",
 		].join("\n");
 
 		const aideConfigDir = join(projectRoot, ".aide", "config");
@@ -256,7 +469,7 @@ describe("provisionBrain", () => {
 		await mkdir(aideConfigDir, { recursive: true });
 		await writeFile(join(aideConfigDir, "brain.aide"), brainAideContent, "utf-8");
 
-		// Vault: non-empty directory (has .obsidian/).
+		// Brain root: non-empty directory (has .obsidian/).
 		await mkdir(join(brainPath, ".obsidian"), { recursive: true });
 
 		// Playbook hub.
@@ -267,8 +480,13 @@ describe("provisionBrain", () => {
 			"utf-8",
 		);
 
-		// Vault CLAUDE.md.
-		await writeFile(join(brainPath, "CLAUDE.md"), "# Brain Vault\n", "utf-8");
+		// Research hub.
+		await mkdir(join(brainPath, "research"), { recursive: true });
+		await writeFile(
+			join(brainPath, "research", "research.md"),
+			"# Research\n",
+			"utf-8",
+		);
 
 		// .mcp.json with the derived brain entry.
 		const parsed = parseBrainAideFromString(brainAideContent);
@@ -288,9 +506,9 @@ describe("provisionBrain", () => {
 
 		expect(results).toHaveLength(5);
 		expect(results[0].status).toBe("exists"); // Brain config
-		expect(results[1].status).toBe("exists"); // Brain vault
+		expect(results[1].status).toBe("exists"); // Brain root directories
 		expect(results[2].status).toBe("exists"); // Playbook hub
-		expect(results[3].status).toBe("exists"); // Vault CLAUDE.md
+		expect(results[3].status).toBe("exists"); // Research hub
 		expect(results[4].status).toBe("exists"); // MCP config
 	});
 
@@ -328,6 +546,7 @@ describe("provisionBrain", () => {
 
 		// The raw template bytes also must not contain those keys anywhere in the frontmatter.
 		// Extract frontmatter block for a targeted check.
+		// The frontmatter is isolated by the first `---\n` open and the first `\n---\n` close.
 		const fenceStart = templateContent.indexOf("---\n");
 		const fenceEnd = templateContent.indexOf("\n---\n", fenceStart + 3);
 		const frontmatterBlock = templateContent.slice(fenceStart, fenceEnd);
@@ -353,24 +572,24 @@ describe("provisionBrain", () => {
 	// Regression: existing behaviours preserved from prior test suite
 	// -----------------------------------------------------------------------
 
-	it("vault would-create contains expected directory list", async () => {
+	it("brain root directories step is would-create with expected directory list", async () => {
 		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
 		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
-		const vaultStep = results[1];
-		expect(vaultStep.status).toBe("would-create");
-		expect(vaultStep.category).toBe("brain");
-		expect(vaultStep.content).toBeTruthy();
-		const dirs = JSON.parse(vaultStep.content!);
+		const brainRootStep = results[1];
+		expect(brainRootStep.status).toBe("would-create");
+		expect(brainRootStep.category).toBe("brain");
+		expect(brainRootStep.content).toBeTruthy();
+		const dirs = JSON.parse(brainRootStep.content!);
 		expect(Array.isArray(dirs)).toBe(true);
 		expect(dirs).toContain("research");
 		expect(dirs).toContain("coding-playbook");
 	});
 
-	it("vault exists when .obsidian dir is present", async () => {
+	it("brain root is fully populated when .obsidian dir is present", async () => {
 		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
@@ -382,7 +601,7 @@ describe("provisionBrain", () => {
 		expect(results[1].content).toBeUndefined();
 	});
 
-	it("vault exists when directory is non-empty", async () => {
+	it("brain root is fully populated when directory is non-empty", async () => {
 		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
@@ -394,7 +613,7 @@ describe("provisionBrain", () => {
 		expect(results[1].status).toBe("exists");
 	});
 
-	it("playbook hub is would-create with five-section Markdown content", async () => {
+	it("playbook hub is would-create with Markdown hub content", async () => {
 		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
@@ -405,11 +624,6 @@ describe("provisionBrain", () => {
 		expect(hubStep.name).toBe("Playbook hub");
 		expect(hubStep.status).toBe("would-create");
 		expect(hubStep.content).toBeTruthy();
-		expect(hubStep.content).toContain("## Task Routing");
-		expect(hubStep.content).toContain("## How to Use This Index");
-		expect(hubStep.content).toContain("## Always Read First");
-		expect(hubStep.content).toContain("## Sections");
-		expect(hubStep.content).toContain("## Contents");
 	});
 
 	it("playbook hub returns exists when file is present (seed-semantic — no byte comparison)", async () => {
@@ -429,28 +643,29 @@ describe("provisionBrain", () => {
 		expect(results[2].content).toBeUndefined();
 	});
 
-	it("vault CLAUDE.md is would-create with navigation content", async () => {
+	it("research hub is would-create with Markdown hub content", async () => {
 		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
 
 		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
-		const claudeStep = results[3];
+		const hubStep = results[3];
 
-		expect(claudeStep.name).toBe("Vault CLAUDE.md");
-		expect(claudeStep.status).toBe("would-create");
-		expect(claudeStep.content).toBeTruthy();
-		expect(claudeStep.content).toContain("Wikilink Crawling Protocol");
-		expect(claudeStep.content).toContain("Decision Protocol");
-		expect(claudeStep.content).toContain("Where to Find Things");
+		expect(hubStep.name).toBe("Research hub");
+		expect(hubStep.status).toBe("would-create");
+		expect(hubStep.content).toBeTruthy();
 	});
 
-	it("vault CLAUDE.md returns exists when file is present (seed-semantic)", async () => {
+	it("research hub returns exists when file is present (seed-semantic — no byte comparison)", async () => {
 		const projectRoot = makeProjectRoot();
 		const brainPath = makeBrainPath();
 		const mcpPath = makeMcpPath();
-		await mkdir(brainPath, { recursive: true });
-		await writeFile(join(brainPath, "CLAUDE.md"), "# User content\n", "utf-8");
+		await mkdir(join(brainPath, "research"), { recursive: true });
+		await writeFile(
+			join(brainPath, "research", "research.md"),
+			"# User's Research\n\nUser modified this.\n",
+			"utf-8",
+		);
 
 		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
 
@@ -469,6 +684,56 @@ describe("provisionBrain", () => {
 		const mcpStep = results[4];
 		expect(mcpStep.status).toBe("would-create");
 		expect(mcpStep.prescription?.key).toBe("brain");
+	});
+
+	// -----------------------------------------------------------------------
+	// 5g. Brain key present but entry differs (drift) — would-overwrite
+	// -----------------------------------------------------------------------
+
+	it("5g: brain key present with drifted entry — MCP step is would-overwrite with prescription matching brain.aide", async () => {
+		mockPlatform.mockReturnValue("linux");
+
+		const projectRoot = makeProjectRoot();
+		const brainPath = makeBrainPath();
+		const mcpPath = makeMcpPath();
+
+		// Pre-write a valid brain.aide using the bundled template.
+		const brainAideContent = obsidianBrainAideTemplate(brainPath);
+		const aideConfigDir = join(projectRoot, ".aide", "config");
+		await mkdir(aideConfigDir, { recursive: true });
+		await writeFile(join(aideConfigDir, "brain.aide"), brainAideContent, "utf-8");
+
+		// Pre-write a .mcp.json whose brain entry deliberately differs from what
+		// brain.aide derives — simulates a drift state (user edited brain.aide after
+		// the last install, so the on-disk MCP entry is stale).
+		const driftedEntry = { command: "node", args: ["/old/launcher.js", "/old/brain-path"] };
+		await writeFile(
+			mcpPath,
+			JSON.stringify({ mcpServers: { brain: driftedEntry } }),
+			"utf-8",
+		);
+
+		const results = await provisionBrain(projectRoot, brainPath, mcpPath);
+
+		const mcpStep = results[4];
+		expect(mcpStep.name).toBe("MCP config (brain)");
+		// Drift branch must return would-overwrite (not exists).
+		expect(mcpStep.status).toBe("would-overwrite");
+		expect(mcpStep.prescription?.key).toBe("brain");
+
+		// The prescription must match brain.aide's derived entry, NOT the on-disk drifted one.
+		const parsed = parseBrainAideFromString(brainAideContent);
+		expect(parsed.kind).toBe("ok");
+		if (parsed.kind !== "ok") return;
+		const expectedEntry = {
+			command: parsed.config.mcpServerConfig.command,
+			args: interpolateArgs(parsed.config),
+		};
+		expect(mcpStep.prescription?.entry).toEqual(expectedEntry);
+
+		// Sanity: the prescription must NOT equal the drifted on-disk entry.
+		expect(mcpStep.prescription?.entry.command).not.toBe(driftedEntry.command);
+		expect(mcpStep.prescription?.entry.args).not.toEqual(driftedEntry.args);
 	});
 
 	it("transitional install (both brain and obsidian keys) yields would-overwrite with key brain", async () => {
@@ -515,7 +780,7 @@ describe("provisionBrain", () => {
 		const { access } = await import("node:fs/promises");
 		await expect(access(brainPath)).rejects.toThrow();
 		await expect(access(join(brainPath, "coding-playbook", "coding-playbook.md"))).rejects.toThrow();
-		await expect(access(join(brainPath, "CLAUDE.md"))).rejects.toThrow();
+		await expect(access(join(brainPath, "research", "research.md"))).rejects.toThrow();
 		await expect(access(mcpPath)).rejects.toThrow();
 		// brain.aide must NOT be written either.
 		await expect(access(join(projectRoot, ".aide", "config", "brain.aide"))).rejects.toThrow();
@@ -541,7 +806,12 @@ describe("provisionBrain", () => {
 					"# My curated notes\n",
 					"utf-8",
 				);
-				await writeFile(join(brainPath, "CLAUDE.md"), "# My custom CLAUDE.md\n", "utf-8");
+				await mkdir(join(brainPath, "research"), { recursive: true });
+				await writeFile(
+					join(brainPath, "research", "research.md"),
+					"# My custom research\n",
+					"utf-8",
+				);
 			},
 		},
 	])(
@@ -558,7 +828,7 @@ describe("provisionBrain", () => {
 				expect(results[2].status).not.toBe("would-overwrite");
 			});
 
-			it("vault CLAUDE.md status is never would-overwrite", async () => {
+			it("research hub status is never would-overwrite", async () => {
 				const projectRoot = makeProjectRoot();
 				const brainPath = makeBrainPath();
 				const mcpPath = makeMcpPath();

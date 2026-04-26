@@ -26,6 +26,14 @@ mcpServerConfig:
 ## Prose
 
 Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
+
+## Playbook hub
+
+The coding-playbook hub lives here.
+
+## Research hub
+
+The research hub lives here.
 `;
 
 // The expected entry derived from VALID_BRAIN_AIDE — args are byte-for-byte
@@ -256,12 +264,15 @@ Some prose.
 });
 
 // ---------------------------------------------------------------------------
-// 3g. Missing prose body
+// 3g. Malformed body — hub sections absent (migration-failure path)
 // ---------------------------------------------------------------------------
 
-describe("3g — missing prose body", () => {
-	it("exits 1, stderr mentions '## Prose', .mcp.json unchanged", async () => {
-		const noProseBody = `---
+describe("3g — malformed body (hub sections absent)", () => {
+	it("exits 1, stderr contains parser reason naming missing hub sections, .mcp.json unchanged", async () => {
+		// Fixture: valid frontmatter + ## Prose body, but ## Playbook hub and
+		// ## Research hub are missing. This is the real migration-failure scenario
+		// users hit when they add ## Prose but forget the two hub sections.
+		const proseOnlyBody = `---
 name: obsidian
 mcpServerConfig:
   command: npx
@@ -270,9 +281,11 @@ mcpServerConfig:
     - '${TEST_VAULT_PATH}'
 ---
 
-This body has no Prose heading at all.
+## Prose
+
+Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
 `;
-		await writeBrainAide(tempDir, noProseBody);
+		await writeBrainAide(tempDir, proseOnlyBody);
 		await writeMcpJson(tempDir, { mcpServers: {} });
 		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 
@@ -280,7 +293,11 @@ This body has no Prose heading at all.
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
-		expect(errLines.join("\n")).toContain("## Prose");
+		// The parser's reason must name the missing hub sections, not "## Prose".
+		const stderr = errLines.join("\n");
+		expect(stderr).toContain("## Playbook hub");
+		expect(stderr).toContain("## Research hub");
+		expect(stderr).not.toContain("is missing the `## Prose` section");
 
 		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(after).toBe(before);
@@ -353,6 +370,14 @@ mcpServerConfig:
 ## Prose
 
 Prose body.
+
+## Playbook hub
+
+The coding-playbook hub lives here.
+
+## Research hub
+
+The research hub lives here.
 `;
 		await writeBrainAide(tempDir, noPlaceholderBrainAide);
 
@@ -386,6 +411,14 @@ mcpServerConfig:
 ## Prose
 
 Prose body.
+
+## Playbook hub
+
+The coding-playbook hub lives here.
+
+## Research hub
+
+The research hub lives here.
 `;
 		await writeBrainAide(tempDir, withNamePlaceholder);
 
@@ -423,6 +456,14 @@ mcpServerConfig:
 
 This prose body contains a literal \${rootPath} placeholder and also \${entryFile}.
 These should pass through verbatim — sync only interpolates mcpServerConfig.args.
+
+## Playbook hub
+
+The coding-playbook hub lives here.
+
+## Research hub
+
+The research hub lives here.
 `;
 		await writeBrainAide(tempDir, proseWithPlaceholder);
 

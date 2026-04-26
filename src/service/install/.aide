@@ -5,7 +5,9 @@ description: >
   Install service — the consumer-agnostic core that turns a cold project into an
   AIDE-ready project, shared by the `aide_init` MCP tool and the npx CLI. Writes
   non-existing files silently, only pausing on overwrites or inherently
-  interactive decisions (brain vault path, MCP config merge, IDE choice).
+  interactive decisions (brain vault path, MCP config merge, IDE choice). The
+  brain MCP entry's command/args are derived from the user-owned brain.aide via
+  parseBrainAide — the package never owns launcher bytes.
 intent: >
   The install service is the shared core that turns a cold project
   into an AIDE-ready project. It is consumer-agnostic: the same
@@ -35,12 +37,16 @@ intent: >
   definitions, pipeline skill templates, MCP server registration
   (aide), brain vault provisioning, MCP server registration
   (brain), and IDE configuration. The brain MCP entry is keyed
-  `brain` per the project-root settlement; the entry's command/args
-  shape identifies the wired backend (obsidian today, others tomorrow).
-  Each category still reports what it would do (create, overwrite,
-  skip, already exists), and the consumer only surfaces the category
-  to the user when an overwrite is pending or an inherent decision is
-  needed.
+  `brain` per the project-root settlement, and its command/args are
+  derived from the user-owned brain.aide via parseBrainAide — the
+  package does not own launcher bytes, does not infer backend
+  identity from MCP entries, and does not enumerate or dispatch on a
+  connector enum. The framework itself is backend-agnostic; the
+  install ships with an Obsidian-shaped brain.aide template as the
+  default, which the user gets unless they edit it. Each category
+  still reports what it would do (create, overwrite, skip, already
+  exists), and the consumer only surfaces the category to the user
+  when an overwrite is pending or an inherent decision is needed.
 
   The brain layer is not optional — AIDE is opinionated about this.
   The pipeline needs a brain to persist research and retros. But the
@@ -59,6 +65,14 @@ intent: >
   merge before it happens. This ensures the consumer has full
   visibility into what exists in the config and the user's other
   servers are never at risk, even when the config is malformed.
+
+  After first scaffold, `.aide/config/` is user-owned directory-wide.
+  The install service may create the directory and seed initial
+  contents on a cold start, but on every subsequent run no path
+  under `.aide/config/` is ever returned as `would-overwrite`,
+  patched, or migrated by the install pipeline — adding a new brain,
+  changing backend command/args, or editing brain.aide is a
+  user-side edit, never a code-level extension.
 outcomes:
   desired:
     - The install service returns a structured plan containing a
@@ -107,17 +121,28 @@ outcomes:
     - "Wiring the brain end-to-end from a resolved brainPath requires
       consumers to invoke the install service twice with distinct
       category values: once with \"category: mcp\" to apply the brain
-      MCP prescription to .mcp.json (under the fixed `brain` key, with
-      the resolved backend's command/args underneath), and once with
-      \"category: brain\" to scaffold vault directories and seed
-      content files. The split is intentional and load-bearing: the
-      mcp category is prescription-only (the consumer merges the
-      returned entry into .mcp.json because the install service
-      never writes that file directly), while the brain category is
-      direct filesystem work (the install service creates vault
-      directories and seeds content itself). Neither category alone
-      fully wires the brain — both must run for the brain to be
-      reachable by pipeline agents."
+      MCP prescription to .mcp.json (under the fixed `brain` key,
+      with command/args derived from the scaffolded brain.aide bytes
+      via parseBrainAide + interpolateArgs in provisionBrain — not
+      from a hardcoded launcher constant or a code-level backend
+      registry), and once with \"category: brain\" to scaffold vault
+      directories and seed content files. The split is intentional
+      and load-bearing: the mcp category is prescription-only (the
+      consumer merges the returned entry into .mcp.json because the
+      install service never writes that file directly), while the
+      brain category is direct filesystem work (the install service
+      creates vault directories and seeds content itself). Neither
+      category alone fully wires the brain — both must run for the
+      brain to be reachable by pipeline agents."
+    - "After the initial scaffold, `.aide/config/` is user-owned
+      directory-wide. The install pipeline may create the directory
+      and seed initial contents (e.g., the default brain.aide
+      template) on a cold start when the path does not exist, but on
+      every subsequent run no path under `.aide/config/` is ever
+      returned as `would-overwrite`, patched, or migrated by the
+      install service. Adding a new brain, changing the backend's
+      command/args, or editing brain.aide is a user-side edit; the
+      package never re-touches user-owned config bytes."
     - IDE configuration is presented as optional — the consumer asks
       whether the user wants Zed and/or VS Code configuration, and
       only applies what they confirm. IDE choice is an inherent
@@ -202,16 +227,27 @@ outcomes:
     - "A consumer invoking only \"category: brain\" with a resolved
       brainPath and declaring the brain fully wired. That single
       invocation scaffolds the vault directories and seeds content
-      but leaves the brain MCP prescription unapplied — the
-      .mcp.json vaultPath stays empty, pipeline agents that declare
-      mcpServers: [brain] cannot reach the vault, and aide_info
-      will still report \"brain.status: invalid-path\" even though
-      the vault exists on disk. The symmetric failure also applies:
-      a consumer invoking only \"category: mcp\" with a brainPath
-      patches .mcp.json but never scaffolds the vault, leaving the
-      brain MCP server pointed at an unprovisioned directory. Both
+      but leaves the brain MCP prescription unapplied — pipeline
+      agents that declare mcpServers: [brain] cannot reach the
+      vault, and the brain MCP server fails to launch when invoked
+      because no entry exists in .mcp.json (boot reporter surfaces
+      this as `no-mcp-entry` per the four-state vocabulary). The
+      symmetric failure also applies: a consumer invoking only
+      \"category: mcp\" with a brainPath patches .mcp.json but
+      never scaffolds the vault, leaving the brain MCP server
+      pointed at an unprovisioned directory whose required hubs
+      (the coding-playbook hub and the research hub) cannot be
+      probed for read rights — the brain is wired end-to-end but
+      the navigation surface the agents need is missing. Both
       categories must run; treating either alone as sufficient
       produces a half-wired brain."
+    - "Reintroducing the retired `invalid-path` brain status — under
+      that name or any rename — by stat-ing the vault path inside
+      the install service or the boot reporter. Path validity is the
+      launcher's job at MCP server startup, not a planner concern;
+      the four boot-reporter states are `ok`, `no-brain-aide`,
+      `no-mcp-entry`, and `mcp-drift`, and the install service must
+      not teach a consumer to expect a fifth."
     - An install that clobbers the MCP config when it encounters
       malformed JSON. The consumer handles this case by asking the
       user, not by overwriting.
@@ -340,20 +376,34 @@ actual content. Both land through the same silent-on-create path when
 nothing of the user's is at risk.
 
 The brain layer is the pipeline's shared memory. The research agent
-writes domain findings to `research/<domain>/`, QA promotes retros to
-`process/retro/`, and the coding playbook lives under
-`coding-playbook/`. Without a vault and a `brain` MCP server entry,
-agents that declare `mcpServers: [brain]` in their frontmatter
-silently lose brain access — their research vanishes, retros are
-never persisted, and the pipeline cannot learn across runs. The
-install action provisions this layer: it creates a minimal vault
-with the expected directory scaffolding when the user-chosen location
-is empty, and prescribes the brain MCP server entry (keyed `brain`,
-with the resolved backend's command/args underneath) for the consumer
-to merge into the project's MCP config alongside the aide server. The vault path is resolved through the consumer's interview
-with the user — never hardcoded, never silently defaulted — because
-the vault path is an inherent decision and the rule that covers it is
-"always prompt," not "apply silently when nothing is on disk."
+writes domain findings to the research hub, QA promotes retros to the
+brain, and the coding-playbook hub lives alongside it. The framework's
+brain contract is exactly two required hubs — a coding-playbook hub
+and a research hub — nothing else; both must be reachable for pipeline
+agents that declare `mcpServers: [brain]` to function. Without a vault,
+both required hubs, and a `brain` MCP server entry, those agents
+silently lose brain access — their research vanishes, retros are never
+persisted, and the pipeline cannot learn across runs. The install
+action provisions this layer in two pieces. First, it scaffolds
+`.aide/config/brain.aide` — the user-owned config file whose
+frontmatter (`name` + `mcpServerConfig.{command, args}`) declares how
+the brain MCP server launches and whose body carries the playbook-hub
+and research-hub artifact bytes the install service later seeds onto
+the brain root. Second, it prescribes the brain MCP server entry
+(keyed `brain`, with `command` and `args` derived from the scaffolded
+brain.aide via `parseBrainAide` + `interpolateArgs` — never owned by
+the package as inline launcher bytes) for the consumer to merge into
+the project's MCP config alongside the aide server. The vault path is
+resolved through the consumer's interview with the user — never
+hardcoded, never silently defaulted — because the vault path is an
+inherent decision and the rule that covers it is "always prompt," not
+"apply silently when nothing is on disk." Once `.aide/config/`
+contains a scaffolded brain.aide, the directory is user-owned
+forever: subsequent install runs never return `would-overwrite` for
+any path under `.aide/config/`, and changing the brain's launcher
+command, retargeting its path, or editing the agent-facing prose is a
+user-side edit followed by `npx aidemd-mcp sync`, not a package
+upgrade.
 
 ## Strategy
 
@@ -460,32 +510,63 @@ lines about clobbering MCP configs and writing MCP entries directly,
 and honors the parent spec's `src/.aide` invariant that the install
 service never touches MCP config.
 
-**The brain MCP key is fixed at `brain`; legacy `obsidian` keys
-migrate through `provisionBrain`.** The MCP entry the install service
-prescribes is always keyed `brain`, regardless of which backend's
-command/args the entry carries. Legacy installs that wrote the entry
-under the old `obsidian` key are migrated to `brain` exclusively
-through `provisionBrain.buildBrainMcpStep`, which emits a
-`would-overwrite` step on the next `/aide:upgrade` or `/aide:init`
-run. The CLI never silently rewrites a user's `obsidian` key, and no
-runtime fallback to the legacy key exists anywhere else in the
-codebase. See `src/service/install/provisionBrain/.aide` for the
-migration branches.
+**The brain MCP key is fixed at `brain` and its command/args are
+derived from the user-owned `brain.aide` via `parseBrainAide`.** The
+MCP entry the install service prescribes is always keyed `brain`,
+regardless of what launcher the entry carries underneath. The
+launcher bytes themselves — `command` and `args` — are not owned by
+this package: `provisionBrain` reads `.aide/config/brain.aide` (the
+in-memory template bytes for a cold install, the on-disk content for
+a re-run) through `parseBrainAide`, runs `interpolateArgs` over the
+parsed `mcpServerConfig.args`, and emits the resulting object as the
+prescription. The package never constructs a launcher inline, never
+introspects args to infer connector identity, never branches on the
+brain's `name` label, and never owns a backend registry, matcher
+table, or driver enum. Adding, retargeting, or replacing a brain is
+a user-side edit to `.aide/config/brain.aide` followed by
+`npx aidemd-mcp sync` — never a code-level extension to this
+package. Legacy installs that wrote the entry under the old
+`obsidian` key are migrated to `brain` exclusively through
+`provisionBrain.buildBrainMcpStep`, which emits a `would-overwrite`
+step on the next `/aide:upgrade` or `/aide:init` run. The CLI never
+silently rewrites a user's `obsidian` key, and no runtime fallback
+to the legacy key exists anywhere else in the codebase. See
+`src/service/install/provisionBrain/.aide` for the derivation
+pipeline and migration branches, and `src/service/parseBrainAide/.aide`
+for the single canonical reader contract.
 
 **Brain vault is required; location is inherent; scaffolding is
-silent-on-create.** AIDE is opinionated that the pipeline needs
-persistent memory. The consumer asks the user where their vault is,
-offering discovered hints (env var, sibling `my-brain/`, prior
-install) as suggestions the user can pick or override — the user
-cannot skip the vault, only choose where it lives. Once the path is
-resolved, the brain category's scaffolding plan follows the normal
-file-write branch: if the expected directories are absent, the
-install service creates them silently; if the vault exists and the
-scaffolding is intact, everything shows `exists` and no writes
-happen. The inherent prompt (where?) and the silent-on-create write
-(create the directories once the path is known) are cleanly
-separated. This closes the outcomes.undesired lines about skipping
-the brain and about silently adopting a sibling default.
+silent-on-create; `.aide/config/` is user-owned directory-wide.**
+AIDE is opinionated that the pipeline needs persistent memory. The
+consumer asks the user where their vault is, offering discovered
+hints (env var, sibling `my-brain/`, prior install) as suggestions
+the user can pick or override — the user cannot skip the vault, only
+choose where it lives. Once the path is resolved, the brain
+category's scaffolding plan covers exactly the surfaces the framework
+contract names: `.aide/config/brain.aide` (the launcher config and
+the source of the hub artifact bytes), the brain root directories,
+the coding-playbook hub artifact, and the research hub artifact —
+the two required hubs ship together because both must be present for
+agents to satisfy the brain contract. Each step follows the normal
+file-write branch: if the seed file or directory is absent, the
+install service creates it silently; if it is present, the step
+shows `exists` regardless of byte drift (these are seed-semantic, not
+canonical templates). The hub artifact bytes themselves come from
+named body sections of the scaffolded brain.aide via `parseBrainAide`
+— the package does not own playbook-hub or research-hub bytes as
+inline TypeScript constants. After the initial scaffold, every path
+under `.aide/config/` is user-owned forever: the install pipeline
+never returns `would-overwrite` for any file in that directory on
+subsequent runs, and the ownership boundary is structural
+(directory-level), not a per-file allowlist. Editing brain.aide to
+swap the launcher, retarget the inline path, or rewrite the
+agent-facing prose is a user-side edit; the package never re-touches
+those bytes. The inherent prompt (where is the vault?) and the
+silent-on-create write (seed the config and the two hubs once the
+path is known) are cleanly separated. This closes the
+outcomes.undesired lines about skipping the brain, about silently
+adopting a sibling default, and about the install pipeline mutating
+user-owned config bytes after first scaffold.
 
 **Framework detection is a read-only inspection whose result is
 always confirmed.** Framework choice is inherent — two frameworks
@@ -569,8 +650,10 @@ Then the inherent prompts:
 
 The user picks the env-var hint. The agent invokes the install
 service with `category: "brain"` and that path; the install service
-scaffolds the missing directories and returns `"created"` for each.
-Then:
+scaffolds `.aide/config/brain.aide` (the user-owned launcher
+config), the brain root directories, the coding-playbook hub
+artifact, and the research hub artifact, returning `"created"` for
+each. Then:
 
 > Your `.mcp.json` has `github` and `memory` configured. I'll add `aide` and `brain` alongside them. OK?
 
@@ -742,15 +825,37 @@ not in either consumer.
 ## References
 
 - `D:/Code/Me/aidemd-mcp/.aide/intent.aide` — Canonical parent: the
-  two delivery channels (handshake teaching + install action) and
-  the rule that no doctrine lives outside the canonical docs.
-  Anchors the "MCP is a renderer, docs are the source" framing used
-  in the Strategy.
+  two delivery channels (handshake teaching + install action), the
+  rule that no doctrine lives outside the canonical docs, the
+  collapsed `brain.aide` schema (`name` + `mcpServerConfig`), the
+  retired in-code backend registry, the `.aide/config/` user-owned
+  directory boundary, the four-state boot vocabulary (`ok`,
+  `no-brain-aide`, `no-mcp-entry`, `mcp-drift`), and `npx aidemd-mcp
+  sync` as the only mutation surface for `.mcp.json`. Source of every
+  brain-layer commitment the Strategy paragraphs about brain config,
+  MCP key derivation, and `.aide/config/` ownership cite without
+  restating.
 - `D:/Code/Me/aidemd-mcp/src/.aide` — Immediate parent: the client-
   parity, idempotency-as-invariant, and "tool never touches MCP
   config" rules the Strategy inherits without restating. Source of
   the per-category idempotency point and the MCP prescription
   contract.
+- `D:/Code/Me/aidemd-mcp/src/service/parseBrainAide/.aide` — Single
+  canonical reader for `.aide/config/brain.aide`. Source of the
+  contract that the install service derives the brain MCP entry's
+  `command` and `args` through `parseBrainAide` + `interpolateArgs`,
+  not from inline launcher constants — anchors the
+  "command/args-derived-from-brain.aide" half of the brain-key
+  Strategy paragraph.
+- `D:/Code/Me/aidemd-mcp/src/service/install/provisionBrain/.aide` —
+  Sibling planner that owns the brain-category steps (brain.aide,
+  brain root, playbook hub, research hub, brain MCP entry). Source
+  of the two-required-hubs contract, the `.aide/config/`
+  directory-wide ownership inheritance, the seed-semantic
+  idempotency for hub artifacts, the migration branches for the
+  fixed `brain` key, and the rule that hub artifact bytes come from
+  named body sections of the scaffolded brain.aide rather than
+  inline TypeScript constants.
 - `D:/Code/Me/aidemd-mcp/.aide/docs/aide-spec.md` — Canonical methodology.
   Source of the "intent governs, strategy is decisions with citations,
   no code in the body" rules that shape how this Strategy is written;

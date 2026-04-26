@@ -14,8 +14,19 @@ async function exists(path: string): Promise<boolean> {
 	}
 }
 
-/** Check if a vault already exists at brainPath (.obsidian/ dir present, or directory is non-empty). */
-async function vaultExists(brainPath: string): Promise<boolean> {
+/**
+ * Check if a brain root directory is already populated at brainPath.
+ *
+ * Heuristic (Obsidian-flavored): returns true if the `.obsidian` directory is
+ * present — that directory is a strong signal the path is an initialized
+ * Obsidian brain. For any other brain backend, the directory-non-empty fallback
+ * catches it: if the brain root contains any files or folders (placed there by
+ * the user's chosen storage), the brain is considered populated. The function
+ * does not dispatch on backend identity — it returns true when the directory is
+ * non-empty by any heuristic.
+ */
+async function brainRootExists(brainPath: string): Promise<boolean> {
+	// Obsidian-flavored heuristic: .obsidian/ directory signals an initialized brain.
 	if (await exists(join(brainPath, ".obsidian"))) return true;
 
 	try {
@@ -35,239 +46,46 @@ async function safeReadFile(path: string): Promise<string> {
 	}
 }
 
-/** The vault directories that init scaffolds into a fresh vault. */
-const VAULT_DIRS = ["research", "process/retro", "coding-playbook"] as const;
-
-/** Markdown template for the vault-root CLAUDE.md. Covers vault navigation only:
- * wikilink crawling protocol, decision protocol, where-to-find-things table, and
- * the brain's role in AIDE. Contains no project-specific instructions or user config. */
-const VAULT_CLAUDE_MD_TEMPLATE = `# Brain Vault Navigation
-
-## Brain's Role in AIDE
-
-The vault is the pipeline's durable memory. Research agents write domain findings into it, QA agents promote retros, and the coding playbook captures engineering conventions that survive across projects. Without the vault, agents cannot persist or retrieve knowledge across runs — each session starts from scratch.
-
-## Wikilink Crawling Protocol
-
-When reading any vault note, follow \`[[wikilinks]]\` that are relevant to your current task. The rules:
-
-- **Hub notes** (tagged \`hub\` or acting as section indexes) are navigation, not content. Read all wikilinks in their \`## Subnotes\` section to get the full context of that domain. Hubs do not count toward depth.
-- **Content notes** are where depth starts (depth 0). When reading a content note, look for \`[[wikilinks]]\` in the body. If a linked note looks relevant to the task, read it (depth 1). Check *that* note's links too — go at least 1–2 levels deep from the first content note in any direction where the information could apply.
-- **Never re-read.** If a note is already in your conversation context from a prior read, skip it. This applies across skill invocations and manual reads within the same session.
-- **Stay in scope.** Wikilinks that point outside the current domain of interest can be skipped. Follow links that deepen understanding of the task, not links that branch into unrelated topics.
-
-## Decision Protocol
-
-There are two lookup paths — use the right one:
-
-- **Coding conventions and patterns** → use the \`study-playbook\` skill. It navigates the coding playbook hub top-down (hub → section hub → content notes → wikilinks). Do NOT flat-search for playbook content with \`search_notes\` — the hub structure gives you the full picture; search gives you fragments.
-- **Everything else** (project context, journal logs, research, domain knowledge, tasks) → use \`mcp__brain__search_notes\` with query terms matching the domain.
-
-## Where to Find Things
-
-| What you need | Where to look |
-|---------------|---------------|
-| Coding conventions, patterns | \`study-playbook\` skill (not search) |
-| Domain research, reference material | \`research/\` (search by domain) |
-| QA retros, process learnings | \`process/retro/\` |
-`;
-
-/** Markdown template for the coding-playbook hub note. Contains the five-section
- * structure the study-playbook skill's crawling protocol expects — headings and
- * table skeleton are present, all content rows and entries are left empty. */
-const PLAYBOOK_HUB_TEMPLATE = `# Coding Playbook
-
-## Task Routing
-
-| Task domain | Section |
-|-------------|---------|
-
----
-
-## How to Use This Index
-
-Read this note first. Each section links to a **section hub** that lists its notes with keywords. Navigate to the section relevant to your task, then drill into the specific notes you need. Do not read all sections — only the ones whose keywords match the work.
-
----
-
-## Always Read First
-
-These notes are **required reading** for every task, regardless of which section you're working in:
-
-1. **[[your-conventions-note]]** — Add your naming, function ordering, and code hygiene conventions here.
-2. **[[your-folder-structure-note]]** — Add your folder layout and progressive disclosure conventions here.
-
----
-
-## Sections
-
----
-
-## Contents
-`;
+/** The brain root directories that init scaffolds into a fresh brain. */
+const BRAIN_ROOT_DIRS = ["research", "process/retro", "coding-playbook"] as const;
 
 /**
- * Return planning steps for brain.aide scaffolding, vault scaffolding, and brain MCP wiring.
+ * Resolve the hub-artifact body bytes from the brain.aide that would be in effect after this install.
  *
- * Requires a resolved `brainPath` (vault location) and `projectRoot` (host project root).
- * Returns five `InitStep` items in order:
+ * This helper is the SINGLE source of hub-artifact body bytes for the install pipeline.
+ * The package no longer owns hub bytes as inline TypeScript constants; brain.aide is the
+ * authoritative source. Both the in-memory cold-install path and the on-disk existing-file
+ * path round-trip through the same parser (`parseBrainAideFromString` / `parseBrainAide`),
+ * yielding the same field shape — the two paths are structurally identical.
  *
- * 1. Brain config (category `"brain"`): `would-create` with the canonical Obsidian
- *    brain.aide bytes when absent; `exists` when present. Written to `.aide/config/brain.aide`.
- *    Seed-semantic idempotency — never `would-overwrite` because the file is user-owned
- *    the moment it lands. The directory-level rule applies to every future inhabitant of
- *    `.aide/config/`: nothing under that directory may ever return `would-overwrite`.
- * 2. Vault scaffolding (category `"brain"`): `exists` if vault is already populated,
- *    `would-create` with the directories list as JSON content.
- * 3. Playbook hub (category `"brain"`): `exists` when the file is present at its
- *    expected path; `would-create` with `content` when absent. Seed-semantic.
- * 4. Vault CLAUDE.md (category `"brain"`): `exists` when present; `would-create` when
- *    absent. Seed-semantic.
- * 5. Brain MCP entry (category `"mcp"`): `exists` if the brain key is present with a
- *    matching entry (derived from the scaffolded brain.aide); `would-create` for cold
- *    installs; `would-overwrite` for legacy `obsidian`-keyed installs, transitional
- *    states, or entry drift. If the config file is malformed JSON, returns `would-create`
- *    with `configMalformed: true`. The MCP step prescription is ALWAYS derived from the
- *    scaffolded brain.aide bytes — never constructed inline.
+ * Dispatch logic:
+ * - `would-create` + `content` defined → cold-install path: parse the in-memory template
+ *   bytes via `parseBrainAideFromString` (no I/O; brain.aide has not hit disk yet).
+ * - Otherwise → on-disk path: brain.aide already exists; parse from the file via
+ *   `parseBrainAide(projectRoot)`.
  *
- * Two idempotency modes coexist: seed-semantic (presence-only) for user-owned
- * content (steps 1, 2, 3, 4); canonical-derived (entry comparison) for the MCP
- * prescription (step 5).
- *
- * No step writes to disk — this helper is a planner only.
- *
- * @param projectRoot - Host project root (where `.aide/config/brain.aide` lives).
- * @param brainPath - Resolved vault directory path.
- * @param mcpConfigPath - Absolute path to the host's `.mcp.json`.
+ * Returns `{ playbookHub, researchHub }` on a successful parse (`kind === "ok"`).
+ * Returns `null` on any non-ok result (`missing`, `malformed-frontmatter`, `malformed-body`).
+ * Hub-artifact step builders fall back to `would-skip` when this returns `null`, surfacing
+ * an actionable remediation message to the user.
  */
-export default async function provisionBrain(
+async function resolveBrainAideBody(
 	projectRoot: string,
-	brainPath: string,
-	mcpConfigPath: string,
-): Promise<InitStep[]> {
-	// Step 1: Plan the brain.aide config file. This step runs first so that steps
-	// downstream (especially the MCP step) can derive their prescription from it.
-	// This step writes under .aide/config/, which the install layer treats as user-owned
-	// the moment any file lands inside it — neither this step nor any future step that
-	// touches .aide/config/ may return would-overwrite.
-	const brainAideStep = await buildBrainAideStep(projectRoot, brainPath);
+	brainAideStep: InitStep,
+): Promise<{ playbookHub: string; researchHub: string } | null> {
+	let parseResult;
 
-	// Steps 2–4: Vault scaffolding, playbook hub, and vault CLAUDE.md.
-	const vaultStep = await buildVaultStep(brainPath);
-	const playbookHubStep = await buildPlaybookHubStep(brainPath);
-	const vaultClaudeMdStep = await buildVaultClaudeMdStep(brainPath);
-
-	// Step 5: MCP wiring — derived from the scaffolded brain.aide bytes.
-	// The content to parse comes from whichever path was resolved above:
-	//   - would-create: the in-memory template bytes (brainAideStep.content)
-	//   - exists: the on-disk bytes at the brain.aide path
-	const mcpStep = await buildBrainMcpStep(projectRoot, brainAideStep, mcpConfigPath);
-
-	return [brainAideStep, vaultStep, playbookHubStep, vaultClaudeMdStep, mcpStep];
-}
-
-/**
- * Build the brain.aide config file planning step.
- *
- * Presence-only (seed-semantic) idempotency — if the file exists at `.aide/config/brain.aide`
- * within the host project root, the step is `exists`. The file lives under `.aide/config/`,
- * the host's user-owned configuration directory established by the root spec. The
- * seed-semantic invariant (never `would-overwrite`) applies to every path under `.aide/config/`,
- * not just brain.aide — the directory boundary is the ownership signal, not a per-file
- * allowlist. provisionBrain never returns `would-overwrite` for any file under `.aide/config/`.
- */
-async function buildBrainAideStep(projectRoot: string, brainPath: string): Promise<InitStep> {
-	const filePath = join(projectRoot, ".aide", "config", "brain.aide");
-
-	if (await exists(filePath)) {
-		return {
-			name: "Brain config (brain.aide)",
-			status: "exists",
-			category: "brain",
-			filePath,
-		};
+	if (brainAideStep.status === "would-create" && brainAideStep.content !== undefined) {
+		// In-memory path: parse the template bytes directly without any I/O.
+		parseResult = parseBrainAideFromString(brainAideStep.content);
+	} else {
+		// On-disk path: brain.aide already exists — parse from the file.
+		parseResult = await parseBrainAide(projectRoot);
 	}
 
-	// Absent — scaffold the canonical Obsidian brain.aide bytes. The template
-	// is the single source of launcher bytes; the MCP step derives from it.
-	const content = obsidianBrainAideTemplate(brainPath);
-	return {
-		name: "Brain config (brain.aide)",
-		status: "would-create",
-		category: "brain",
-		filePath,
-		content,
-	};
-}
+	if (parseResult.kind !== "ok") return null;
 
-/** Build the vault scaffolding planning step. */
-async function buildVaultStep(brainPath: string): Promise<InitStep> {
-	if (await vaultExists(brainPath)) {
-		return {
-			name: "Brain vault",
-			status: "exists",
-			category: "brain",
-			filePath: brainPath,
-		};
-	}
-
-	return {
-		name: "Brain vault",
-		status: "would-create",
-		category: "brain",
-		filePath: brainPath,
-		content: JSON.stringify(VAULT_DIRS),
-	};
-}
-
-/**
- * Build the playbook hub template planning step.
- *
- * Presence-only check — if the file exists at its expected path, the step is
- * `exists` regardless of on-disk content. Once the user has the file, the bytes
- * belong to the user. See the spec's Strategy section ("Two different idempotency
- * semantics coexist in this module") for the rationale behind seed-semantic
- * idempotency vs. the canonical-derived check used by `buildBrainMcpStep`.
- */
-async function buildPlaybookHubStep(brainPath: string): Promise<InitStep> {
-	const filePath = join(brainPath, "coding-playbook", "coding-playbook.md");
-
-	if (await exists(filePath)) {
-		return { name: "Playbook hub", status: "exists", category: "brain", filePath };
-	}
-
-	return {
-		name: "Playbook hub",
-		status: "would-create",
-		category: "brain",
-		filePath,
-		content: PLAYBOOK_HUB_TEMPLATE,
-	};
-}
-
-/**
- * Build the vault-root CLAUDE.md planning step.
- *
- * Presence-only check — if the file exists at its expected path, the step is
- * `exists` regardless of on-disk content. Once the user has the file, the bytes
- * belong to the user. See the spec's Strategy section ("Two different idempotency
- * semantics coexist in this module") for the rationale behind seed-semantic
- * idempotency vs. the canonical-derived check used by `buildBrainMcpStep`.
- */
-async function buildVaultClaudeMdStep(brainPath: string): Promise<InitStep> {
-	const filePath = join(brainPath, "CLAUDE.md");
-
-	if (await exists(filePath)) {
-		return { name: "Vault CLAUDE.md", status: "exists", category: "brain", filePath };
-	}
-
-	return {
-		name: "Vault CLAUDE.md",
-		status: "would-create",
-		category: "brain",
-		filePath,
-		content: VAULT_CLAUDE_MD_TEMPLATE,
-	};
+	return { playbookHub: parseResult.playbookHub, researchHub: parseResult.researchHub };
 }
 
 /**
@@ -297,6 +115,229 @@ async function resolveBrainAideConfig(
 	return {
 		command: config.mcpServerConfig.command,
 		args: interpolateArgs(config),
+	};
+}
+
+/**
+ * Return planning steps for brain config scaffolding, brain root directory scaffolding,
+ * hub artifact scaffolding, and brain MCP wiring.
+ *
+ * Requires a resolved `brainPath` (brain root location) and `projectRoot` (host project root).
+ * Hub artifact bytes are sourced from brain.aide body sections via `parseBrainAide` /
+ * `parseBrainAideFromString`; this module never holds hub bytes as inline TypeScript constants.
+ * Returns five `InitStep` items in order:
+ *
+ * 1. Brain config (brain.aide) — `would-create` with bundled default bytes when absent;
+ *    `exists` when present. Written to `.aide/config/brain.aide`. Seed-semantic idempotency —
+ *    never `would-overwrite` because the file is user-owned the moment it lands. The
+ *    directory-level rule applies to every future inhabitant of `.aide/config/`: nothing
+ *    under that directory may ever return `would-overwrite`.
+ * 2. Brain root directories — `would-create` with the directories list as JSON content when
+ *    the brain root is empty; `exists` when populated.
+ * 3. Playbook hub artifact — `would-create` with content sourced from the scaffolded
+ *    brain.aide's `## Playbook hub` body section when absent; `exists` when present.
+ *    Seed-semantic idempotency.
+ * 4. Research hub artifact — `would-create` with content sourced from the scaffolded
+ *    brain.aide's `## Research hub` body section when absent; `exists` when present.
+ *    Seed-semantic idempotency.
+ * 5. Brain MCP entry — `would-create` for cold installs; `would-overwrite` for legacy
+ *    `obsidian`-keyed installs, transitional both-keys states, or entry drift; `exists`
+ *    if the brain key is present with a matching entry (derived from the scaffolded
+ *    brain.aide). If the config file is malformed JSON, returns `would-create` with
+ *    `configMalformed: true`. The MCP step prescription is ALWAYS derived from the
+ *    scaffolded brain.aide bytes — never constructed inline.
+ *
+ * Two idempotency modes coexist: seed-semantic (presence-only) for user-owned
+ * content (steps 1, 2, 3, 4); canonical-derived (entry comparison) for the MCP
+ * prescription (step 5).
+ *
+ * No step writes to disk — this helper is a planner only.
+ *
+ * @param projectRoot - Host project root (where `.aide/config/brain.aide` lives).
+ * @param brainPath - Resolved brain root directory path.
+ * @param mcpConfigPath - Absolute path to the host's `.mcp.json`.
+ */
+export default async function provisionBrain(
+	projectRoot: string,
+	brainPath: string,
+	mcpConfigPath: string,
+): Promise<InitStep[]> {
+	// Step 1: Plan the brain config file. Runs first so steps 3 and 4 can derive
+	// their content from the scaffolded bytes. Lives under .aide/config/, the
+	// user-owned configuration directory — never returns would-overwrite.
+	const brainAideStep = await buildBrainAideStep(projectRoot, brainPath);
+
+	// Step 2: Plan the brain root directory tree.
+	const brainRootStep = await buildBrainRootStep(brainPath);
+
+	// Step 3: Plan the playbook hub artifact. Content sourced from the
+	// scaffolded brain.aide's ## Playbook hub body section via parseBrainAide /
+	// parseBrainAideFromString. Presence-only idempotency (seed-semantic).
+	const playbookHubStep = await buildPlaybookHubStep(
+		projectRoot, brainPath, brainAideStep,
+	);
+
+	// Step 4: Plan the research hub artifact. Content sourced from the
+	// scaffolded brain.aide's ## Research hub body section via the same parser
+	// pass that powers step 3. Presence-only idempotency (seed-semantic).
+	const researchHubStep = await buildResearchHubStep(
+		projectRoot, brainPath, brainAideStep,
+	);
+
+	// Step 5: Plan the brain MCP entry. Prescription derived from the scaffolded
+	// brain.aide's frontmatter via parseBrainAide + interpolateArgs. Four
+	// migration branches: cold install, legacy obsidian-only, transitional
+	// both-keys, drift on the brain key.
+	const mcpStep = await buildBrainMcpStep(
+		projectRoot, brainAideStep, mcpConfigPath,
+	);
+
+	return [
+		brainAideStep, brainRootStep,
+		playbookHubStep, researchHubStep, mcpStep,
+	];
+}
+
+/**
+ * Build the brain.aide config file planning step.
+ *
+ * Presence-only (seed-semantic) idempotency — if the file exists at `.aide/config/brain.aide`
+ * within the host project root, the step is `exists`. The file lives under `.aide/config/`,
+ * the host's user-owned configuration directory established by the root spec. The
+ * seed-semantic invariant (never `would-overwrite`) applies to every path under `.aide/config/`,
+ * not just brain.aide — the directory boundary is the ownership signal, not a per-file
+ * allowlist. provisionBrain never returns `would-overwrite` for any file under `.aide/config/`.
+ */
+async function buildBrainAideStep(projectRoot: string, brainPath: string): Promise<InitStep> {
+	const filePath = join(projectRoot, ".aide", "config", "brain.aide");
+
+	if (await exists(filePath)) {
+		return {
+			name: "Brain config (brain.aide)",
+			status: "exists",
+			category: "brain",
+			filePath,
+		};
+	}
+
+	// Absent — scaffold the bundled default brain.aide bytes. The template
+	// is the single source of launcher bytes; the MCP step derives from it.
+	const content = obsidianBrainAideTemplate(brainPath);
+	return {
+		name: "Brain config (brain.aide)",
+		status: "would-create",
+		category: "brain",
+		filePath,
+		content,
+	};
+}
+
+/** Build the brain root directory scaffolding planning step. */
+async function buildBrainRootStep(brainPath: string): Promise<InitStep> {
+	if (await brainRootExists(brainPath)) {
+		return {
+			name: "Brain root directories",
+			status: "exists",
+			category: "brain",
+			filePath: brainPath,
+		};
+	}
+
+	return {
+		name: "Brain root directories",
+		status: "would-create",
+		category: "brain",
+		filePath: brainPath,
+		content: JSON.stringify(BRAIN_ROOT_DIRS),
+	};
+}
+
+/**
+ * Build the playbook hub artifact planning step.
+ *
+ * Presence-only check — if the file exists at its expected path, the step is
+ * `exists` regardless of on-disk content. Once the user has the file, the bytes
+ * belong to the user. See the spec's Strategy section ("Two different idempotency
+ * semantics coexist in this module") for the rationale behind seed-semantic
+ * idempotency vs. the canonical-derived check used by `buildBrainMcpStep`.
+ *
+ * The artifact's path (`coding-playbook/coding-playbook.md`) is a framework
+ * contract — the `study-playbook` skill navigates to this location regardless
+ * of which storage backend the user wires. Content is sourced from the
+ * scaffolded brain.aide's `## Playbook hub` body section via
+ * `resolveBrainAideBody`.
+ */
+async function buildPlaybookHubStep(
+	projectRoot: string,
+	brainPath: string,
+	brainAideStep: InitStep,
+): Promise<InitStep> {
+	const filePath = join(brainPath, "coding-playbook", "coding-playbook.md");
+
+	if (await exists(filePath)) {
+		return { name: "Playbook hub", status: "exists", category: "brain", filePath };
+	}
+
+	const body = await resolveBrainAideBody(projectRoot, brainAideStep);
+	if (body === null) {
+		return {
+			name: "Playbook hub",
+			status: "would-skip",
+			category: "brain",
+			filePath,
+			instructions: "Brain config (brain.aide) failed to parse — fix it and re-run.",
+		};
+	}
+
+	return {
+		name: "Playbook hub",
+		status: "would-create",
+		category: "brain",
+		filePath,
+		content: body.playbookHub,
+	};
+}
+
+/**
+ * Build the research hub artifact planning step.
+ *
+ * Presence-only check — if the file exists at its expected path, the step is
+ * `exists` regardless of on-disk content. Once the user has the file, the bytes
+ * belong to the user. Seed-semantic idempotency matches `buildPlaybookHubStep`.
+ *
+ * The artifact's path (`research/research.md`) is a framework contract — the
+ * framework's research hub lives here regardless of storage backend. Content is
+ * sourced from the scaffolded brain.aide's `## Research hub` body section via
+ * `resolveBrainAideBody`, the same parser pass that powers the playbook hub step.
+ */
+async function buildResearchHubStep(
+	projectRoot: string,
+	brainPath: string,
+	brainAideStep: InitStep,
+): Promise<InitStep> {
+	const filePath = join(brainPath, "research", "research.md");
+
+	if (await exists(filePath)) {
+		return { name: "Research hub", status: "exists", category: "brain", filePath };
+	}
+
+	const body = await resolveBrainAideBody(projectRoot, brainAideStep);
+	if (body === null) {
+		return {
+			name: "Research hub",
+			status: "would-skip",
+			category: "brain",
+			filePath,
+			instructions: "Brain config (brain.aide) failed to parse — fix it and re-run.",
+		};
+	}
+
+	return {
+		name: "Research hub",
+		status: "would-create",
+		category: "brain",
+		filePath,
+		content: body.researchHub,
 	};
 }
 

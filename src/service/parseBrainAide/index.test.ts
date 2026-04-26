@@ -6,7 +6,11 @@ import parseBrainAide, { parseBrainAideFromString, interpolateArgs } from "./ind
 import type { BrainAideConfig } from "@/types/index.js";
 
 // ---------------------------------------------------------------------------
-// 5a. Shared fixture: the canonical brain.aide from the spec's good example
+// 3a. Shared fixture: the canonical brain.aide with all three required sections.
+//
+// Each section carries non-trivial content to prove the walker only treats
+// `^## .+$` (exactly two hashes + space) as a section boundary — NOT `^# .+$`
+// (one hash) or `^### .+$` (three hashes).
 // ---------------------------------------------------------------------------
 
 const CANONICAL_BRAIN_AIDE = `---
@@ -25,8 +29,40 @@ files by their vault-relative path. Use \`mcp__brain__search_notes\`
 for keyword queries across every note in the vault. The vault's
 entry file is \`CLAUDE.md\` at the vault root — read that first; it
 carries wikilinks (\`[[note-name]]\`) you follow to deepen context.
+
+## Playbook hub
+
+# Coding playbook
+
+A hub for coding conventions, patterns, and architecture decisions.
+Read this index first, then drill into the section that matches your
+task.
+
+This is a second paragraph to exercise the slicer on multi-paragraph content.
+
+### Task routing
+
+| Task type | Read first |
+| --------- | ---------- |
+| Naming    | Foundations |
+| Testing   | Workflow |
+
+## Research hub
+
+# Research
+
+A hub for domain research notes. Each subdirectory holds notes for a
+single domain; read the domain hub before drilling into individual
+notes.
+
+This is a second paragraph in the research hub section.
+
+### Domains
+
+(Add domain hubs here as your research grows.)
 `;
 
+// 3b. CANONICAL_CONFIG — unchanged; frontmatter shape did not move.
 const CANONICAL_CONFIG: BrainAideConfig = {
 	name: "obsidian",
 	mcpServerConfig: {
@@ -36,12 +72,93 @@ const CANONICAL_CONFIG: BrainAideConfig = {
 };
 
 // ---------------------------------------------------------------------------
-// 5b. Helpers
+// Test helper: extract the verbatim bytes for a named section from the
+// CANONICAL_BRAIN_AIDE fixture.  This makes assertions resilient to small
+// body edits in 3a — the expected value is always derived from the fixture,
+// not from a hardcoded string that can drift.
+//
+// The body that the parser sees is everything after the closing `---\n`
+// fence, with a single leading `\n` stripped (that strip runs in
+// parseBrainAideFromString before extractBodySections is called).
+// Within extractBodySections, `prose` additionally strips its own single
+// leading newline.  This helper replicates the same logic so the expected
+// values match parser output exactly.
+// ---------------------------------------------------------------------------
+
+function extractCanonicalSection(name: "prose" | "playbookHub" | "researchHub"): string {
+	// Reconstruct the body the same way parseBrainAideFromString does:
+	// split off the frontmatter, drop the closing `---\n`, then strip one leading `\n`.
+	const afterOpen = CANONICAL_BRAIN_AIDE.trimStart().slice(3); // drop opening ---
+	const closeIndex = afterOpen.indexOf("\n---");
+	const rawBody = afterOpen.slice(closeIndex + 4).replace(/^\n/, ""); // drop one leading \n
+
+	const headingStrings: Record<string, string> = {
+		prose: "## Prose",
+		playbookHub: "## Playbook hub",
+		researchHub: "## Research hub",
+	};
+	const heading = headingStrings[name];
+
+	// Find all `^## .+$` headings and their start positions.
+	const headingRegex = /^## .+$/gm;
+	const sections: { heading: string; startIndex: number }[] = [];
+	let match: RegExpExecArray | null;
+	while ((match = headingRegex.exec(rawBody)) !== null) {
+		sections.push({
+			heading: match[0],
+			startIndex: match.index + match[0].length + 1,
+		});
+	}
+
+	const entry = sections.find((s) => s.heading === heading)!;
+	const entryIdx = sections.indexOf(entry);
+	const next = sections[entryIdx + 1];
+	const upper = next !== undefined ? next.startIndex - next.heading.length - 1 : rawBody.length;
+	const raw = rawBody.slice(entry.startIndex, upper);
+
+	// prose strips one additional leading newline (backward-compat strip in the parser).
+	return name === "prose" ? raw.replace(/^\n/, "") : raw;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
 // ---------------------------------------------------------------------------
 
 async function writeBrainAide(root: string, content: string): Promise<void> {
 	await mkdir(join(root, ".aide", "config"), { recursive: true });
 	await writeFile(join(root, ".aide", "config", "brain.aide"), content, "utf-8");
+}
+
+/** Build a minimal valid three-section brain.aide content string. */
+function makeCanonicalContent(overrides?: {
+	name?: string;
+	extraFrontmatterLines?: string[];
+	proseBody?: string;
+	playbookBody?: string;
+	researchBody?: string;
+}): string {
+	const name = overrides?.name ?? "obsidian";
+	const extra = overrides?.extraFrontmatterLines ?? [];
+	const prose = overrides?.proseBody ?? "Some prose body.\n";
+	const playbook = overrides?.playbookBody ?? "Some playbook body.\n";
+	const research = overrides?.researchBody ?? "Some research body.\n";
+
+	const frontmatterLines = [
+		`name: ${name}`,
+		"mcpServerConfig:",
+		"  command: npx",
+		'  args:',
+		'    - "@bitbonsai/mcpvault"',
+		'    - "D:/notes/my-vault"',
+		...extra,
+	];
+
+	return (
+		`---\n${frontmatterLines.join("\n")}\n---\n\n` +
+		`## Prose\n\n${prose}\n` +
+		`## Playbook hub\n\n${playbook}\n` +
+		`## Research hub\n\n${research}`
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -59,11 +176,11 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5c. 3a. Happy path
+// 3c. Happy path — asserts on all three body fields
 // ---------------------------------------------------------------------------
 
 describe("3a — happy path", () => {
-	it("returns ok with two-field config and prose starting with first sentence", async () => {
+	it("returns ok with two-field config and all three body sections", async () => {
 		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
 
 		const result = await parseBrainAide(tempDir);
@@ -74,21 +191,42 @@ describe("3a — happy path", () => {
 		expect(result.config.name).toBe("obsidian");
 		expect(result.config.mcpServerConfig.command).toBe("npx");
 		expect(result.config.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", "D:/notes/my-vault"]);
-		// Prose starts with the first sentence from the spec's good example.
-		// The blank line between the ## Prose heading and the body text is
-		// preserved — the implementation strips only the single newline immediately
-		// after the heading, not subsequent blank lines.
+
+		// 3c — prose: starts with the spec's sentinel phrase
 		expect(result.prose).toMatch(/Your brain is an Obsidian vault\./);
+
+		// 3c — playbookHub: verbatim bytes between ## Playbook hub heading and ## Research hub heading
+		expect(result.playbookHub).toBe(extractCanonicalSection("playbookHub"));
+
+		// 3c — researchHub: verbatim bytes between ## Research hub heading and end-of-file
+		expect(result.researchHub).toBe(extractCanonicalSection("researchHub"));
+	});
+
+	it("nested # and ### headings inside sections are NOT treated as section boundaries", async () => {
+		// The CANONICAL_BRAIN_AIDE fixture includes `# Coding playbook` (one hash) and
+		// `### Task routing` (three hashes) inside ## Playbook hub, and `# Research` and
+		// `### Domains` inside ## Research hub.  The parser must treat only `^## .+$` as a
+		// boundary — if it incorrectly matched `^# ` or `^### ` the section slices would
+		// be wrong and this test would fail.
+		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.playbookHub).toContain("# Coding playbook");
+		expect(result.playbookHub).toContain("### Task routing");
+		expect(result.researchHub).toContain("# Research");
+		expect(result.researchHub).toContain("### Domains");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 5d. 3b. Missing file
+// 3b. Missing file — unchanged in assertion; no body to update
 // ---------------------------------------------------------------------------
 
 describe("3b — missing file", () => {
 	it("returns missing when no .aide/config/brain.aide exists — never throws", async () => {
-		// tempDir exists but no .aide/config/brain.aide inside it
 		const result = await parseBrainAide(tempDir);
 
 		expect(result.kind).toBe("missing");
@@ -96,7 +234,7 @@ describe("3b — missing file", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5d. 3c. Malformed YAML
+// 3c. Malformed YAML — body updated to three sections
 // ---------------------------------------------------------------------------
 
 describe("3c — malformed YAML frontmatter", () => {
@@ -109,6 +247,14 @@ mcpServerConfig:
 ## Prose
 
 Some prose.
+
+## Playbook hub
+
+Some playbook.
+
+## Research hub
+
+Some research.
 `;
 		await writeBrainAide(tempDir, badYaml);
 
@@ -121,7 +267,7 @@ Some prose.
 });
 
 // ---------------------------------------------------------------------------
-// 5e. 3d. Missing required field (parameterized)
+// 3d. Missing required field (parameterized) — bodies updated to three sections
 // ---------------------------------------------------------------------------
 
 describe("3d — missing required field", () => {
@@ -129,7 +275,6 @@ describe("3d — missing required field", () => {
 		let frontmatterLines: string[];
 
 		if (field === "name") {
-			// Include mcpServerConfig but omit name
 			frontmatterLines = [
 				"mcpServerConfig:",
 				"  command: npx",
@@ -138,7 +283,6 @@ describe("3d — missing required field", () => {
 				'    - "D:/notes/my-vault"',
 			];
 		} else if (field === "mcpServerConfig.command") {
-			// Include mcpServerConfig but omit the command sub-key
 			frontmatterLines = [
 				"name: obsidian",
 				"mcpServerConfig:",
@@ -147,14 +291,12 @@ describe("3d — missing required field", () => {
 				'    - "D:/notes/my-vault"',
 			];
 		} else if (field === "mcpServerConfig.args") {
-			// Include mcpServerConfig but omit the args sub-key
 			frontmatterLines = [
 				"name: obsidian",
 				"mcpServerConfig:",
 				"  command: npx",
 			];
 		} else {
-			// Fallback: full valid frontmatter (should not be reached by test cases)
 			frontmatterLines = [
 				"name: obsidian",
 				"mcpServerConfig:",
@@ -165,7 +307,12 @@ describe("3d — missing required field", () => {
 			];
 		}
 
-		return `---\n${frontmatterLines.join("\n")}\n---\n\n## Prose\n\nSome prose body.\n`;
+		return (
+			`---\n${frontmatterLines.join("\n")}\n---\n\n` +
+			`## Prose\n\nSome prose body.\n\n` +
+			`## Playbook hub\n\nSome playbook body.\n\n` +
+			`## Research hub\n\nSome research body.\n`
+		);
 	}
 
 	it.each([
@@ -180,20 +327,15 @@ describe("3d — missing required field", () => {
 
 		expect(result.kind).toBe("malformed-frontmatter");
 		if (result.kind !== "malformed-frontmatter") return;
-		// The reason string must name exactly which field is wrong
 		expect(result.reason).toContain(field);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 5f. 3d'. Deprecated-field rejection (parameterized)
+// 3d'. Deprecated-field rejection (parameterized) — bodies updated to three sections
 // ---------------------------------------------------------------------------
 
 describe("3d' — deprecated field rejection", () => {
-	// Each test case: [description, yaml-frontmatter-lines, expected-reason]
-	// Every fixture includes valid required fields so the deprecated-field
-	// check is the failing branch — proves rejection fires AFTER required-field
-	// validation passes.
 	const cases: Array<[description: string, extraLines: string[], expectedReason: string]> = [
 		[
 			"single deprecated field: connector",
@@ -249,7 +391,12 @@ describe("3d' — deprecated field rejection", () => {
 			'    - "D:/notes/my-vault"',
 		];
 		const frontmatter = [...requiredLines, ...extraLines].join("\n");
-		const content = `---\n${frontmatter}\n---\n\n## Prose\n\nSome prose body.\n`;
+		const content = (
+			`---\n${frontmatter}\n---\n\n` +
+			`## Prose\n\nSome prose body.\n\n` +
+			`## Playbook hub\n\nSome playbook body.\n\n` +
+			`## Research hub\n\nSome research body.\n`
+		);
 
 		await writeBrainAide(tempDir, content);
 
@@ -262,47 +409,153 @@ describe("3d' — deprecated field rejection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5g. 3e. Missing prose body
+// 3f. Missing required sections (parameterized) — replaces old "missing prose body" test
 // ---------------------------------------------------------------------------
 
-describe("3e — missing prose body", () => {
-	it("returns malformed-body when valid frontmatter has no ## Prose heading", async () => {
-		const content = `---
-name: obsidian
-mcpServerConfig:
-  command: npx
-  args:
-    - "@bitbonsai/mcpvault"
-    - "D:/notes/my-vault"
----
+describe("3f — missing required sections (parameterized)", () => {
+	// Each case: [description, headingsToInclude, expectedReason]
+	// Fixtures have valid frontmatter and only the named sections present.
+	const cases: Array<[string, string[], string]> = [
+		[
+			"missing ## Prose only",
+			["## Playbook hub", "## Research hub"],
+			"missing required sections: ## Prose",
+		],
+		[
+			"missing ## Playbook hub only",
+			["## Prose", "## Research hub"],
+			"missing required sections: ## Playbook hub",
+		],
+		[
+			"missing ## Research hub only",
+			["## Prose", "## Playbook hub"],
+			"missing required sections: ## Research hub",
+		],
+		[
+			"missing ## Prose and ## Research hub",
+			["## Playbook hub"],
+			"missing required sections: ## Prose, ## Research hub",
+		],
+		[
+			"missing all three sections",
+			[],
+			"missing required sections: ## Prose, ## Playbook hub, ## Research hub",
+		],
+	];
 
-This is the body but there is no Prose heading here.
-`;
+	it.each(cases)("%s → malformed-body with correct reason", async (_description, headingsToInclude, expectedReason) => {
+		// Build a body containing only the headingsToInclude, each with a short body.
+		const bodyLines: string[] = [];
+		if (headingsToInclude.length === 0) {
+			bodyLines.push("This body has no required headings at all.");
+		} else {
+			for (const h of headingsToInclude) {
+				bodyLines.push(h);
+				bodyLines.push("");
+				bodyLines.push("Some content for this section.");
+				bodyLines.push("");
+			}
+		}
+
+		const content =
+			`---\nname: obsidian\nmcpServerConfig:\n  command: npx\n  args:\n    - "@bitbonsai/mcpvault"\n    - "D:/notes/my-vault"\n---\n\n` +
+			bodyLines.join("\n");
+
 		await writeBrainAide(tempDir, content);
 
 		const result = await parseBrainAide(tempDir);
 
 		expect(result.kind).toBe("malformed-body");
 		if (result.kind !== "malformed-body") return;
-		expect(result.reason).toContain("## Prose");
+		// Reason must list the missing sections in REQUIRED_BODY_HEADINGS order.
+		expect(result.reason).toBe(expectedReason);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 5g. 3f. Prose returned verbatim (no-substitution invariant)
+// 3g. Unknown heading rejection (parameterized)
 // ---------------------------------------------------------------------------
 
-describe("3f — prose returned verbatim", () => {
-	it("prose body containing literal ${name} and ${rootPath} passes through byte-identical", async () => {
-		// ${rootPath} is deprecated as a frontmatter field but a user might write it
-		// in their prose to describe something else — it must pass through unchanged.
-		const literalProseBody = `This is a prose body with a literal \${name} placeholder.
+describe("3g — unknown heading rejection", () => {
+	const validFrontmatter =
+		`---\nname: obsidian\nmcpServerConfig:\n  command: npx\n  args:\n    - "@bitbonsai/mcpvault"\n    - "D:/notes/my-vault"\n---\n\n`;
 
-It also has **markdown** and a [link](https://example.com) and a wikilink [[note-name]].
+	// Helper to build content with the three required sections plus an extra heading at a given position.
+	function withExtraHeading(position: "before" | "after" | "between", heading: string): string {
+		const prose = "## Prose\n\nProse content.\n\n";
+		const playbook = "## Playbook hub\n\nPlaybook content.\n\n";
+		const research = "## Research hub\n\nResearch content.\n";
+		const extra = `${heading}\n\nExtra content.\n\n`;
 
-The \${rootPath} value is also here for good measure.
-`;
-		const content = `---
+		if (position === "before") {
+			return validFrontmatter + extra + prose + playbook + research;
+		} else if (position === "between") {
+			// Insert between ## Playbook hub and ## Research hub
+			return validFrontmatter + prose + playbook + extra + research;
+		} else {
+			// after all three required sections
+			return validFrontmatter + prose + playbook + research + "\n" + extra;
+		}
+	}
+
+	it.each([
+		[
+			"all three required sections + ## Notes heading",
+			withExtraHeading("between", "## Notes"),
+			"unknown heading: ## Notes",
+		],
+		[
+			"unknown heading BEFORE all required headings — still rejected, names the first unknown",
+			withExtraHeading("before", "## Setup"),
+			"unknown heading: ## Setup",
+		],
+		[
+			"unknown heading AFTER all required headings — still rejected, names the first unknown",
+			withExtraHeading("after", "## Appendix"),
+			"unknown heading: ## Appendix",
+		],
+	])("%s → malformed-body", async (_description, content, expectedReason) => {
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("malformed-body");
+		if (result.kind !== "malformed-body") return;
+		expect(result.reason).toBe(expectedReason);
+	});
+
+	it("case sensitivity: ## prose (lowercase) is treated as an unknown heading", async () => {
+		// The body has `## prose` (lowercase p), which is NOT a case-insensitive match for `## Prose`.
+		// The walker scans left-to-right; `## prose` comes before any of the three required headings
+		// in this fixture, so the unknown-heading check fires first and names it.
+		// (Contract: unknown-heading rejection fires before missing-section rejection, and surfaces
+		// the first unknown heading encountered left-to-right.)
+		const content =
+			validFrontmatter +
+			`## prose\n\nLowercase heading.\n\n` +
+			`## Playbook hub\n\nPlaybook.\n\n` +
+			`## Research hub\n\nResearch.\n`;
+
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("malformed-body");
+		if (result.kind !== "malformed-body") return;
+		// The first unknown heading found left-to-right is `## prose`.
+		expect(result.reason).toBe("unknown heading: ## prose");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3h. Strict-failure migration: pre-widening prose-only brain.aide → malformed-body
+// ---------------------------------------------------------------------------
+
+describe("3h — strict-failure migration", () => {
+	it("a prose-only brain.aide (pre-widening shape) returns malformed-body naming both missing sections", async () => {
+		// This is a brain.aide from before the body was widened to three sections.
+		// Frontmatter is valid; body has only ## Prose — no ## Playbook hub, no ## Research hub.
+		const preWideningContent = `---
 name: obsidian
 mcpServerConfig:
   command: npx
@@ -313,46 +566,119 @@ mcpServerConfig:
 
 ## Prose
 
-${literalProseBody}`;
+Your brain is an Obsidian vault.
+`;
+		await writeBrainAide(tempDir, preWideningContent);
+
+		const result = await parseBrainAide(tempDir);
+
+		// The parser does NOT silently default the missing sections to empty strings.
+		// It surfaces a malformed-body result naming every absent section in REQUIRED_BODY_HEADINGS order.
+		expect(result.kind).toBe("malformed-body");
+		if (result.kind !== "malformed-body") return;
+		expect(result.reason).toBe("missing required sections: ## Playbook hub, ## Research hub");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3i. Verbatim invariant extends to all three body sections (no substitution)
+// ---------------------------------------------------------------------------
+
+describe("3i — all body sections returned verbatim (no-substitution invariant)", () => {
+	it("prose containing literal ${name} and ${rootPath} passes through byte-identical", async () => {
+		const literalProseBody = `This is a prose body with a literal \${name} placeholder.
+
+It also has **markdown** and a [link](https://example.com) and a wikilink [[note-name]].
+
+The \${rootPath} value is also here for good measure.
+`;
+		// NOTE: the file has `## Prose\n\n<body>\n## Playbook hub...`.
+		// The slicer sets startIndex just after the `## Prose\n` terminating newline, so the slice
+		// starts with `\n<body>`.  extractBodySections then strips the leading `\n` from prose only
+		// (backward-compat strip), leaving `<body>\n` — the extra `\n` is the blank-line separator
+		// before the next heading, which the slicer includes in the slice verbatim.
+		const content =
+			`---\nname: obsidian\nmcpServerConfig:\n  command: npx\n  args:\n    - "@bitbonsai/mcpvault"\n    - "D:/notes/my-vault"\n---\n\n` +
+			`## Prose\n\n${literalProseBody}\n` +
+			`## Playbook hub\n\nPlaybook content.\n\n` +
+			`## Research hub\n\nResearch content.\n`;
+
 		await writeBrainAide(tempDir, content);
 
 		const result = await parseBrainAide(tempDir);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
-		// The prose must contain the literal ${name} unchanged — no substitution
+		// The prose must contain the literal ${name} unchanged — no substitution.
 		expect(result.prose).toContain("${name}");
-		// ${rootPath} in prose is not a deprecated frontmatter field — it is just prose text
+		// ${rootPath} in prose is text, not a deprecated frontmatter field — passes through.
 		expect(result.prose).toContain("${rootPath}");
 		expect(result.prose).toContain("**markdown**");
 		expect(result.prose).toContain("[[note-name]]");
-		// Full byte-identity check: the prose equals the literal body string
-		// preceded by the blank line between the heading and the body
-		// (implementation strips the single \n after ## Prose but preserves
-		// any subsequent blank lines, so the blank separator line is part of prose).
-		expect(result.prose).toBe("\n" + literalProseBody);
+		// Full byte-identity: the prose starts with the body text (leading \n stripped) and ends
+		// with the blank-line separator before ## Playbook hub, which the slicer includes verbatim.
+		expect(result.prose).toBe(literalProseBody + "\n");
+	});
+
+	it("## Playbook hub containing literal ${name} passes through byte-identical", async () => {
+		const playbookBody = `This playbook section contains \${name} literally.
+
+The \${name} placeholder should not be substituted here.
+`;
+		const content =
+			`---\nname: my-vault\nmcpServerConfig:\n  command: npx\n  args:\n    - "@bitbonsai/mcpvault"\n    - "D:/notes/my-vault"\n---\n\n` +
+			`## Prose\n\nSome prose.\n\n` +
+			`## Playbook hub\n\n${playbookBody}\n` +
+			`## Research hub\n\nSome research.\n`;
+
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		// The playbook hub must contain the literal ${name} unchanged.
+		expect(result.playbookHub).toContain("${name}");
+		// Substitution only runs on mcpServerConfig.args — not on any body section.
+		expect(result.playbookHub).not.toContain("my-vault");
+	});
+
+	it("## Research hub containing literal ${name} passes through byte-identical", async () => {
+		const researchBody = `This research section contains \${name} literally.
+
+The \${name} placeholder should not be substituted here either.
+`;
+		const content =
+			`---\nname: my-vault\nmcpServerConfig:\n  command: npx\n  args:\n    - "@bitbonsai/mcpvault"\n    - "D:/notes/my-vault"\n---\n\n` +
+			`## Prose\n\nSome prose.\n\n` +
+			`## Playbook hub\n\nSome playbook.\n\n` +
+			`## Research hub\n\n${researchBody}`;
+
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		// The research hub must contain the literal ${name} unchanged.
+		expect(result.researchHub).toContain("${name}");
+		// Substitution only runs on mcpServerConfig.args — not on any body section.
+		expect(result.researchHub).not.toContain("my-vault");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 5g. 3g. Name is metadata, not dispatched on
+// 3j. Name is metadata, not dispatched on — fixtures updated to three sections
 // ---------------------------------------------------------------------------
 
-describe("3g — name is metadata, not dispatched on", () => {
+describe("3j — name is metadata, not dispatched on", () => {
 	function makeContentWithName(name: string): string {
-		return `---
-name: ${name}
-mcpServerConfig:
-  command: npx
-  args:
-    - "@bitbonsai/mcpvault"
-    - "D:/notes/my-vault"
----
-
-## Prose
-
-Prose body for ${name} brain.
-`;
+		return (
+			`---\nname: ${name}\nmcpServerConfig:\n  command: npx\n  args:\n    - "@bitbonsai/mcpvault"\n    - "D:/notes/my-vault"\n---\n\n` +
+			`## Prose\n\nProse body for ${name} brain.\n\n` +
+			`## Playbook hub\n\nPlaybook body for ${name} brain.\n\n` +
+			`## Research hub\n\nResearch body for ${name} brain.\n`
+		);
 	}
 
 	it("obsidian and notion names both parse identically — result.kind is ok for both", async () => {
@@ -371,17 +697,18 @@ Prose body for ${name} brain.
 
 			if (obsidianResult.kind !== "ok" || notionResult.kind !== "ok") return;
 
-			// Both have the same shape — only name value and prose differ
+			// Both have the same shape — only name value and body content differ.
 			expect(obsidianResult.config.name).toBe("obsidian");
 			expect(notionResult.config.name).toBe("notion");
 
-			// mcpServerConfig is identical — name did not influence it
+			// mcpServerConfig is identical — name did not influence it.
 			expect(obsidianResult.config.mcpServerConfig).toEqual(notionResult.config.mcpServerConfig);
 
 			// Both prose bodies pass through verbatim (no name-based rewriting).
-			// The blank line between ## Prose and the body text is preserved in prose.
-			expect(obsidianResult.prose).toBe("\nProse body for obsidian brain.\n");
-			expect(notionResult.prose).toBe("\nProse body for notion brain.\n");
+			// The slicer strips the single \n immediately after ## Prose, then preserves everything
+			// through the blank-line separator before ## Playbook hub (inclusive).
+			expect(obsidianResult.prose).toBe("Prose body for obsidian brain.\n\n");
+			expect(notionResult.prose).toBe("Prose body for notion brain.\n\n");
 		} finally {
 			await rm(obsidianDir, { recursive: true, force: true });
 			await rm(notionDir, { recursive: true, force: true });
@@ -390,10 +717,10 @@ Prose body for ${name} brain.
 });
 
 // ---------------------------------------------------------------------------
-// 5h. 3h. interpolateArgs — canonical config is a no-op
+// 3k. interpolateArgs — canonical config is a no-op
 // ---------------------------------------------------------------------------
 
-describe("3h — interpolateArgs canonical config is a no-op", () => {
+describe("3k — interpolateArgs canonical config is a no-op", () => {
 	it("canonical args have no placeholders — return is structurally equal to input args", () => {
 		const result = interpolateArgs(CANONICAL_CONFIG);
 
@@ -424,10 +751,10 @@ describe("3h — interpolateArgs canonical config is a no-op", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5h. 3i. interpolateArgs is positional (string replacement, not arg replacement)
+// 3k'. interpolateArgs is positional (string replacement, not arg replacement)
 // ---------------------------------------------------------------------------
 
-describe("3i — interpolateArgs is positional", () => {
+describe("3k' — interpolateArgs is positional", () => {
 	it("substitutes ${name} embedded within a larger string, not the whole arg", () => {
 		const config: BrainAideConfig = {
 			name: "my-brain",
@@ -458,11 +785,11 @@ describe("3i — interpolateArgs is positional", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5h. 3j. interpolateArgs does not touch the prose body
+// 3k''. interpolateArgs does not touch any body section
 // ---------------------------------------------------------------------------
 
-describe("3j — interpolateArgs does not touch the prose body", () => {
-	it("interpolateArgs takes only config — it has no path that receives prose", async () => {
+describe("3k'' — interpolateArgs does not touch the body sections", () => {
+	it("interpolateArgs takes only config — it has no path that receives any body section", async () => {
 		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
 		const parseResult = await parseBrainAide(tempDir);
 
@@ -470,23 +797,28 @@ describe("3j — interpolateArgs does not touch the prose body", () => {
 		if (parseResult.kind !== "ok") return;
 
 		const proseBeforeInterpolation = parseResult.prose;
+		const playbookBeforeInterpolation = parseResult.playbookHub;
+		const researchBeforeInterpolation = parseResult.researchHub;
 
-		// interpolateArgs only accepts config — prose is structurally excluded from its signature
+		// interpolateArgs only accepts config — body sections are structurally excluded from its signature.
 		const interpolated = interpolateArgs(parseResult.config);
 
-		// Calling interpolateArgs did not affect the prose string in any way
+		// Calling interpolateArgs did not affect any body string.
 		expect(parseResult.prose).toBe(proseBeforeInterpolation);
-		// The interpolated result is the args array — no prose string in the return value
+		expect(parseResult.playbookHub).toBe(playbookBeforeInterpolation);
+		expect(parseResult.researchHub).toBe(researchBeforeInterpolation);
+		// The interpolated result is the args array — no body strings in the return value.
 		expect(Array.isArray(interpolated)).toBe(true);
 		expect(interpolated).not.toContain(proseBeforeInterpolation);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 5i. 3k. parseBrainAideFromString parses bytes identically to parseBrainAide
+// 3l. parseBrainAideFromString parses bytes identically to parseBrainAide
+//     Fixtures updated to three-section bodies; noProseContent → noPlaybookHubContent
 // ---------------------------------------------------------------------------
 
-describe("3k — parseBrainAideFromString parses bytes identically to parseBrainAide from disk", () => {
+describe("3l — parseBrainAideFromString parses bytes identically to parseBrainAide from disk", () => {
 	it("ok result — canonical bytes from disk and from string are deep-equal", async () => {
 		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
 
@@ -512,6 +844,14 @@ mcpServerConfig:
 ## Prose
 
 Prose.
+
+## Playbook hub
+
+Playbook.
+
+## Research hub
+
+Research.
 `;
 		await writeBrainAide(tempDir, badYaml);
 
@@ -523,8 +863,11 @@ Prose.
 		expect(fromDisk).toEqual(fromString);
 	});
 
-	it("malformed-body — missing ## Prose heading parses identically via both paths", async () => {
-		const noProseContent = `---
+	it("malformed-body — missing ## Playbook hub heading parses identically via both paths", async () => {
+		// This replaces the legacy noProseContent fixture. The body has ## Prose and ## Research hub
+		// but is missing ## Playbook hub — proving that malformed-body reaches identically through
+		// the disk and string paths for any missing required section, not just ## Prose.
+		const noPlaybookHubContent = `---
 name: obsidian
 mcpServerConfig:
   command: npx
@@ -533,15 +876,24 @@ mcpServerConfig:
     - "D:/notes/my-vault"
 ---
 
-Body with no Prose heading.
+## Prose
+
+Some prose.
+
+## Research hub
+
+Some research.
 `;
-		await writeBrainAide(tempDir, noProseContent);
+		await writeBrainAide(tempDir, noPlaybookHubContent);
 
 		const fromDisk = await parseBrainAide(tempDir);
-		const fromString = parseBrainAideFromString(noProseContent);
+		const fromString = parseBrainAideFromString(noPlaybookHubContent);
 
 		expect(fromDisk.kind).toBe("malformed-body");
 		expect(fromString.kind).toBe("malformed-body");
+		if (fromDisk.kind !== "malformed-body" || fromString.kind !== "malformed-body") return;
+		// Both paths return the same reason naming the missing section.
+		expect(fromDisk.reason).toBe("missing required sections: ## Playbook hub");
 		expect(fromDisk).toEqual(fromString);
 	});
 
@@ -553,5 +905,33 @@ Body with no Prose heading.
 		// parseBrainAideFromString with empty input → malformed-frontmatter (missing is unreachable)
 		const fromString = parseBrainAideFromString("");
 		expect(fromString.kind).toBe("malformed-frontmatter");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3m. Per-section ownership: result.config does NOT contain prose, playbookHub, researchHub
+// ---------------------------------------------------------------------------
+
+describe("3m — per-section ownership: body fields are siblings of config, not properties of it", () => {
+	it("result.config does not contain prose, playbookHub, or researchHub", async () => {
+		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		// Documents the type boundary: body sections are siblings on the ok variant,
+		// NOT properties of config. A consumer that does `result.config.prose` is reaching
+		// into the wrong nesting level — this test makes that contract visible so a future
+		// refactor that moves body sections into config will fail visibly.
+		expect(Object.prototype.hasOwnProperty.call(result.config, "prose")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result.config, "playbookHub")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result.config, "researchHub")).toBe(false);
+
+		// Verify the body fields ARE present on result (siblings of config, not nested under it).
+		expect(typeof result.prose).toBe("string");
+		expect(typeof result.playbookHub).toBe("string");
+		expect(typeof result.researchHub).toBe("string");
 	});
 });

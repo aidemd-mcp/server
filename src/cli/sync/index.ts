@@ -48,7 +48,7 @@ export async function runSync(
 
 	if (result.kind === "malformed-body") {
 		writeErr(
-			`\`.aide/config/brain.aide\` is missing the \`## Prose\` section: ${result.reason}. Fix the file and re-run sync.`,
+			`\`.aide/config/brain.aide\` has a malformed body: ${result.reason}. Fix the file and re-run sync.`,
 		);
 		return 1;
 	}

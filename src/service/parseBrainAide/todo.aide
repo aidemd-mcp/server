@@ -1,15 +1,77 @@
 ---
 intent: >
-  Active drift after the root revision (2026-04-25): the spec defines the
-  parsed frontmatter type as carrying `connector`, `rootPath`, `entryFile`,
-  `mcpServerConfig`, and `tools` — but the new root collapses the schema
-  to exactly two top-level fields (`name` + `mcpServerConfig.{command,
-  args}`), removes `rootPath`/`entryFile`/`tools` entirely, and renames
-  `connector` to `name`. The malformed-frontmatter validation list is
-  similarly stale.
+  Active drift after body-widening implementation (2026-04-26): the
+  parseBrainAide module itself is correct and all 40 tests pass, but the
+  sync consumer's malformed-body error message is stale — it still names
+  "## Prose" as the only missing section regardless of which required
+  sections are actually absent from the file. The sync test suite covers
+  only the all-sections-absent case and does not surface the misleading
+  message for hub-section-only failures.
 misalignment:
-  - spec-gap
+  - implementation-drift
+  - test-gap
 ---
+
+## Issues
+
+### Active (QA pass 2026-04-26 — body-widening build)
+
+- [x] `src/cli/sync/index.ts` line 51: the `malformed-body` error message hard-codes
+  "missing the `## Prose` section" regardless of which sections are actually absent.
+  After the body grammar widened to three required sections, the reason from the
+  parser correctly names every absent section (e.g. `"missing required sections:
+  ## Playbook hub, ## Research hub"`), but the surrounding prose frame from sync
+  says `## Prose` is what's missing. A user whose file has `## Prose` but no hub
+  sections gets a message that contradicts the file they can see.
+  Traces to: desired outcome 4 ("Failure to read or parse the file collapses to a
+  structured tagged result") — the structured reason is correct, but sync re-wraps
+  it with a wrong static frame, defeating the user-actionable remediation invariant.
+  Misalignment: implementation-drift
+  Fixed 2026-04-26: replaced static "is missing the `## Prose` section: ..." frame
+  with "has a malformed body: ${result.reason}" — the parser's reason passes through
+  verbatim, naming every absent section correctly.
+
+- [x] `src/cli/sync/index.test.ts` line 267–295: the "3g — missing prose body" test
+  only covers the case where no required headings are present at all. It asserts
+  `errLines.join("\\n")).toContain("## Prose")` — which happens to pass for that
+  fixture but does not catch the misleading message when only `## Playbook hub` or
+  `## Research hub` is absent. There is no test case that verifies sync surfaces a
+  correct (non-`## Prose`) message when the prose section is present but hub sections
+  are missing.
+  Traces to: desired outcome 4 and the strict-failure migration outcome — the
+  migration policy guarantees the parser names every missing section; the sync verb
+  must pass that reason through, not substitute a hard-coded wrong section name.
+  Misalignment: test-gap
+  Fixed 2026-04-26: replaced test with "3g — malformed body (hub sections absent)"
+  fixture that has valid ## Prose but no hub sections; asserts stderr contains
+  "## Playbook hub" and "## Research hub" and does NOT contain the stale static frame.
+
+## Retro
+
+### QA cycle 2026-04-26 — body-widening build
+
+The parser module itself is fully aligned: all 40 tests pass, TypeScript compiles
+clean, the `REQUIRED_BODY_HEADINGS` constant is the single grammar source of truth,
+per-consumer section ownership is correct (brain tool reads `prose` only,
+provisionBrain reads `playbookHub` + `researchHub` only, sync and buildBrainState
+read frontmatter only), and the verbatim invariant is covered end-to-end.
+
+The drift is in a downstream consumer's error prose, not in the parser. The sync
+verb received the widened parser without updating its own `malformed-body` branch
+message. The test for that branch was written for the pre-widening world ("missing
+prose body") and its fixture was not updated to exercise the new failure modes
+(missing hub sections only).
+
+What would have caught this earlier: the sync module's own plan.aide should have
+called out that its `malformed-body` error branch references a specific section name
+and must be updated to use the parser's structured reason directly (rather than
+prepending a static section name). A plan step that reads "update malformed-body
+error message in sync to use `result.reason` without a hard-coded section name" would
+have blocked the downstream consumer from shipping with stale framing.
+
+---
+
+### Prior cycle resolution (2026-04-25 — spec edit pass)
 
 ## Issues
 

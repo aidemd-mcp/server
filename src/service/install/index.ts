@@ -92,9 +92,9 @@ export default async function init(
 		// orchestrator's /aide:brain config flow scaffolds brain.aide first.
 		brainSteps = [
 			{ name: "Brain config (brain.aide)", status: "would-create" as const, category: "brain" as const, filePath: "" },
-			{ name: "Brain vault", status: "would-create" as const, category: "brain" as const, filePath: "" },
+			{ name: "Brain root directories", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{ name: "Playbook hub", status: "would-create" as const, category: "brain" as const, filePath: "" },
-			{ name: "Vault CLAUDE.md", status: "would-create" as const, category: "brain" as const, filePath: "" },
+			{ name: "Research hub", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{
 				name: "MCP config (brain)",
 				status: "would-create" as const,

@@ -57,6 +57,14 @@ function makeBrainAideContent({
 		"## Prose",
 		"",
 		"This is the hand-written prose the agent receives verbatim.",
+		"",
+		"## Playbook hub",
+		"",
+		"The coding-playbook hub lives here.",
+		"",
+		"## Research hub",
+		"",
+		"The research hub lives here.",
 	].join("\n");
 }
 

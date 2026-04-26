@@ -1,25 +1,41 @@
 ---
 description: >
-  Three layers of drift in this spec. (1) Active fixed-`brain`-key drift —
-  every outcome and strategy paragraph names the obsidian MCP key as the
-  shipped name, but `.aide/handoff.aide` settles the key at `brain`.
-  (2) Active post-move drift — stale scope path and "init orchestrator"
-  references inherited from the previous parent identity. (3) Resolved —
-  prior cycle's seed-semantic-idempotency review.
+  Four layers of QA history. (1–3) Resolved — prior cycles covering
+  fixed-`brain`-key drift, post-move identity drift, and seed-semantic
+  idempotency. (4) Active — 2026-04-26 QA cycle finds two implementation
+  issues: stale CLAUDE.md reference in the bundled Prose body section
+  instructs agents to navigate to a file the framework no longer creates;
+  and the MCP step's drift-on-brain-key branch (brain key present but
+  entry differs) is implemented but untested.
 intent: >
-  Two active drifts: the fixed-`brain`-key invariant from `.aide/handoff.aide`
-  has not been applied to this spec's outcomes (which still name
-  `obsidian` as the MCP key prescribed), and the post-move identity
-  drift naming `src/tools/init/provisionBrain` and "the init
-  orchestrator's apply layer" persists. The handoff explicitly names this
-  module as the migration surface for the legacy `obsidian` key — but
-  the spec describes a world where `obsidian` is the canonical key, not
-  the legacy one being migrated away from.
+  Two active issues from the 2026-04-26 QA pass: (1) The ## Prose body
+  section in obsidianBrainAideTemplate/index.ts tells agents "The vault's
+  entry file is CLAUDE.md at the vault root — read that first," pointing
+  agents at a CLAUDE.md that provisionBrain no longer scaffolds. This is
+  a broken navigation pointer baked into a user-owned artifact — every
+  agent that reads this Prose section will start by looking for a file
+  that doesn't exist unless the user manually creates it. (2) The
+  buildBrainMcpStep implementation handles the "brain key present but
+  entry differs" state correctly, but no test covers this branch — the
+  drift-detection path is invisible to the test suite.
 misalignment:
-  - spec-gap
+  - implementation-drift
+  - test-gap
 ---
 
 ## Issues
+
+### Active (QA pass 2026-04-26 — 5-step pipeline post-implementation review)
+
+- [x] `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts` lines 55–57 (Prose body string literal)
+  The `## Prose` body section instructs agents: "The vault's entry file is `CLAUDE.md` at the vault root — read that first; it carries wikilinks..." CLAUDE.md is no longer scaffolded by provisionBrain. Every agent that reads this Prose after a cold install will follow a navigation pointer to a file that does not exist on disk. The framework's brain contract is exactly two required hubs (playbook + research); vault-root CLAUDE.md is retired. The Prose body needs to be updated to remove the CLAUDE.md navigation pointer and replace it with correct entry-point guidance (e.g., pointing agents to the playbook hub or research hub, or removing the entry-file reference entirely).
+  Traces to: `outcomes.undesired` — "Scaffolding a vault-root CLAUDE.md as part of the brain contract... reintroducing a CLAUDE.md scaffolding step under any name... is rejected." The Prose body doesn't scaffold a step but it does instruct agents to navigate to the retired artifact, which is the same class of failure — agents will find nothing.
+  Misalignment: implementation-drift
+
+- [x] `src/service/install/provisionBrain/index.test.ts` — missing test for MCP step drift-on-brain-key branch
+  `buildBrainMcpStep` handles six on-disk states. The "brain key present but entry differs" state (lines 407–432 of index.ts) is the drift-detection path: when the user's brain.aide has been edited and the derived entry no longer matches what's in `.mcp.json`, the step returns `would-overwrite`. This path is not covered by any test. The five states that ARE covered: cold (no file), cold (empty mcpServers), legacy obsidian-only, both-keys transitional, fully matching brain key (via the 5f idempotency test). The drift state is dead-code-equivalent from the test suite's perspective.
+  Traces to: `outcomes.desired` — "Three migration branches are emitted: cold install reports would-create; legacy obsidian-only install reports would-overwrite with key brain; both keys present reports would-overwrite with key brain. The step reports exists when the brain key is already present with an entry that matches the derived command and args." The fourth implicit state — brain key present with a non-matching entry — is named in the implementation JSDoc ("Brain present, entry differs → would-overwrite") but absent from the outcomes language AND the test suite.
+  Misalignment: test-gap
 
 ### Active (alignment pass 2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
 

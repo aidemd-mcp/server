@@ -1,27 +1,58 @@
 ---
 description: >
-  Two layers of drift in this spec. (1) Active fixed-`brain`-key drift —
-  every outcome, strategy paragraph, and worked example names "MCP server
-  registration (obsidian)" / "the obsidian MCP prescription" / "agents
-  that declare mcpServers: [obsidian]" as the canonical contract, but
-  `.aide/handoff.aide` settles the brain MCP key at `brain`. (2) Active
-  post-move identity drift inherited from prior cycle.
+  Three drift cycles documented. Cycles 1+2 (fixed-`brain`-key drift,
+  post-move identity drift) are resolved. Cycle 3 — post-schema-collapse
+  drift — is active. The schema-collapse refactor (Apr 24-26) retired
+  the in-code backend registry entirely, but this spec's intent
+  paragraph, outcomes, and Context still frame the install pipeline
+  in terms of "the resolved backend's command/args underneath" and
+  reference the retired `brain.status: invalid-path` state.
 intent: >
-  Two active drifts. The fixed-`brain`-key shift in the project-root
-  handoff has not yet propagated into the install service's contract:
-  outcomes still pin "obsidian" as the MCP server key being merged into
-  `.mcp.json`, the inline-recovery contract in outcomes.undesired
-  references `mcpServers: [obsidian]`, and the worked examples narrate
-  "I'll add aide and obsidian alongside them." The post-move identity
-  drift (spec frames the actor as "the bootstrap MCP tool" rather than
-  the shared install service) also persists.
+  The schema-collapse settlement in `.aide/intent.aide` retired backend
+  identity inference from the package: the in-code backend registry,
+  matchers, and drivers are gone; the user's brain.aide IS the source
+  of truth (no resolution step); the boot-state vocabulary collapsed
+  to four states (`ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`)
+  with `invalid-path` retired. This spec, stamped aligned in a prior
+  cycle, now carries fossilized backend-resolution language in its
+  intent paragraph (twice), outcomes.desired (once), outcomes.undesired
+  (the half-wired-brain failure mode references `brain.status:
+  invalid-path`), Context (once), and the parenthetical "obsidian
+  today, others tomorrow." Each site is informational against today's
+  contract but teaches a model the root spec has retired.
 misalignment:
   - spec-gap
 ---
 
 ## Issues
 
-### Active (alignment pass — fixed-`brain`-key drift)
+### Active (alignment pass — post-schema-collapse drift)
+
+- [ ] `src/service/install/.aide` intent paragraph (twice: "The brain MCP entry is keyed `brain` per the project-root settlement; the entry's command/args shape identifies the wired backend (obsidian today, others tomorrow)." and Context paragraph "with the resolved backend's command/args underneath"): the phrase "(obsidian today, others tomorrow)" and "the resolved backend's command/args underneath" both encode a backend-resolution model the root retired. Per `.aide/intent.aide` outcomes.desired[15] ("The in-code backend registry — matchers, drivers, identity inference — is fully retired. There is no module in this package whose job is to enumerate connectors, infer connector identity from MCP entries, or dispatch behavior on a connector enum.") the package no longer "resolves a backend"; the entry is derived from `parseBrainAide`-parsed `mcpServerConfig` bytes, byte-for-byte from the user's hand-written brain.aide. The intent should describe the entry as derived from the scaffolded brain.aide (per `provisionBrain/.aide`), not from a "resolved backend."
+  Traces to: `.aide/intent.aide` outcomes.desired[15], outcomes.undesired[5] ("Any code path in this package that branches on connector identity"), and Strategy ("Brain configuration is user-owned, not code-owned... There is no module in this package whose job is to enumerate brains, infer which one a host has wired, or dispatch behavior on a connector enum"); `src/service/parseBrainAide/.aide` (single canonical reader); `src/service/install/provisionBrain/.aide` (MCP entry derived via parseBrainAide + interpolateArgs).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` outcomes.desired[7] ("Wiring the brain end-to-end from a resolved brainPath requires consumers to invoke the install service twice with distinct category values: once with `category: \"mcp\"` to apply the brain MCP prescription to .mcp.json (under the fixed `brain` key, with the resolved backend's command/args underneath)"): "the resolved backend's command/args underneath" carries the same retired backend-resolution frame. The MCP step's prescription is computed from the parsed brain.aide bytes (via parseBrainAide + interpolateArgs in provisionBrain), not from a resolution step.
+  Traces to: `.aide/intent.aide` outcomes.desired[15] (registry retired); `src/service/install/provisionBrain/.aide` outcomes.desired ("The MCP step's prescription.entry is derived from the scaffolded brain.aide bytes via parseBrainAide + interpolateArgs, not from a hardcoded launcher constant").
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` outcomes.undesired (half-wired-brain failure mode: "...pipeline agents that declare mcpServers: [brain] cannot reach the vault, and aide_info will still report \"brain.status: invalid-path\" even though the vault exists on disk"): the `invalid-path` state was explicitly retired in the schema collapse. Per `.aide/intent.aide` outcomes.desired[10] ("Boot reporter brain status states are reduced to `ok`, `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` — the prior `invalid-path` state goes away with `rootPath`."), and per `src/service/buildBrainState/.aide` outcomes.undesired ("Reintroducing the retired `invalid-path` state — under that name or any rename. Path validity is the launcher's job at MCP server startup; the detector does not stat any path"). The bullet should describe a different observable symptom (e.g., the brain MCP server fails to launch when invoked because the path is missing — the launcher's failure surface, not a boot-reporter state), or be removed if no symptom in the new four-state vocabulary cleanly captures the half-wired condition.
+  Traces to: `.aide/intent.aide` outcomes.desired[10]; `src/service/buildBrainState/.aide` outcomes.desired (four-state vocabulary) and outcomes.undesired (no `invalid-path`).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` Context paragraph ("...prescribes the brain MCP server entry (keyed `brain`, with the resolved backend's command/args underneath) for the consumer to merge into the project's MCP config alongside the aide server"): same backend-resolution frame as outcomes.desired[7]. Should describe the entry as derived from brain.aide via parseBrainAide.
+  Traces to: `.aide/intent.aide` outcomes.desired[15] (registry retired); `src/service/install/provisionBrain/.aide` (MCP entry derivation pipeline).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` Strategy paragraph "The brain MCP key is fixed at `brain`; legacy `obsidian` keys migrate through `provisionBrain`": the paragraph correctly names provisionBrain as the migration surface, but it does not yet acknowledge the load-bearing detail that the entry's command/args themselves now derive from the user-owned brain.aide via parseBrainAide. After the schema collapse, "MCP key is fixed at brain" is half the contract; the other half is "and its command/args are read from brain.aide, not constructed inline." This omission lets a reader infer the package still owns launcher bytes — exactly the model the schema collapse retired. (Suggested fix: extend the paragraph to name brain.aide as the source of truth and parseBrainAide as the reader, or reference provisionBrain's spec for the full pipeline.)
+  Traces to: `.aide/intent.aide` outcomes.desired[5] (brain.aide is the canonical source); `src/service/parseBrainAide/.aide` (single canonical reader); `src/service/install/provisionBrain/.aide` (MCP entry derived via parseBrainAide).
+  Misalignment: spec-gap
+
+- [ ] `src/service/install/.aide` does not reference `.aide/config/` directory ownership. The root spec's outcomes.desired[8] establishes that `.aide/config/` is user-owned forever after first scaffold — `aide_init` and `aide_upgrade` must never overwrite, patch, or migrate any path inside it on subsequent runs. provisionBrain inherits this. The install service's own spec should cite this ownership boundary (or reference provisionBrain's spec for it) so consumers understand that the brain config category never returns `would-overwrite` for any path under `.aide/config/`. Not a contradiction with current outcomes — an omission of an inherited invariant the install service's contract depends on.
+  Traces to: `.aide/intent.aide` outcomes.desired[8] (`.aide/config/` is the canonical home of user-owned configuration; package-owned vs user-owned boundary is the directory path); `src/service/install/provisionBrain/.aide` outcomes.desired (directory-wide ownership invariant for `.aide/config/`).
+  Misalignment: spec-gap
+
+### Resolved (prior alignment pass — fixed-`brain`-key drift)
 
 - [x] `src/service/install/.aide` outcomes.desired ("The categories are: framework detection, methodology pointer stub, methodology doc hub, pipeline slash commands, pipeline agent definitions, pipeline skill templates, MCP server registration (aide), brain vault provisioning, MCP server registration (obsidian), and IDE configuration"): the category named "MCP server registration (obsidian)" is now "MCP server registration (brain)" per the fixed-key handoff. The category's purpose (write the brain-shaped entry, with obsidian-shaped command/args underneath) is unchanged; the canonical name of the category and the key it writes have changed.
   Traces to: `.aide/handoff.aide` (settled) -> "The brain MCP key is fixed at `brain`."
@@ -160,15 +191,31 @@ misalignment:
 
 ## Retro
 
-The cold-start install refactor — moving the module from `src/tools/init`
-to `src/service/install` and introducing `src/cli/init/` as a second
-consumer — is a positional and architectural shift that should have
-triggered a `/aide:spec` revision pass on this node *and* on the parent
-(`src/.aide`) *before* code landed. The pattern matches what
-`feedback_root_architectural_shifts.md` already records: a delivery-surface
-change accumulates as peer-level violations no single leaf carries on its
-own. The leaf-by-leaf todo here is informational; the resolution is at
-two levels:
+### Cycle 3 (post-schema-collapse)
+
+The schema-collapse refactor (Apr 24-26) was a multi-axis architectural
+shift — backend registry retired, brain.aide schema collapsed to two
+fields, `.aide/config/` directory ownership established, four-state boot
+vocabulary, `invalid-path` retired. The trunk (`.aide/intent.aide`) and
+the brain layer specs (`parseBrainAide`, `buildBrainState`,
+`provisionBrain`) all updated together. This install-service spec, one
+level above the brain layer, was not re-walked — its prior `aligned`
+stamp survived the refactor, and its intent paragraph and outcomes
+still teach the pre-collapse "resolve a backend" / "obsidian today,
+others tomorrow" / "invalid-path" model. The pattern matches
+`feedback_schema_collapse_amplifies_cascade.md`: multi-axis root
+revisions cause multiplicative drift, and every spec in scope of the
+shift needs re-walking even when its prior alignment was clean.
+
+The fix is a `/aide:spec` revision of this spec's intent paragraph,
+outcomes.desired[7], outcomes.undesired (the half-wired-brain bullet),
+Context, and the brain-key Strategy paragraph — replacing
+backend-resolution language with "derived from the user-owned
+brain.aide via parseBrainAide" framing, retiring the `invalid-path`
+reference, and citing the `.aide/config/` ownership boundary either
+inline or by reference to provisionBrain.
+
+### Cycle 2 (post-move)
 
 1. `src/.aide` ("two delivery channels — handshake teaching surface and
    aide_init bootstrap") needs to widen its claim. Either the CLI is a
