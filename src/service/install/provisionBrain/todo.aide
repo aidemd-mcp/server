@@ -1,209 +1,94 @@
 ---
 description: >
-  Four layers of QA history. (1–3) Resolved — prior cycles covering
+  QA history for provisionBrain. (1–3) Resolved prior cycles covering
   fixed-`brain`-key drift, post-move identity drift, and seed-semantic
-  idempotency. (4) Active — 2026-04-26 QA cycle finds two implementation
-  issues: stale CLAUDE.md reference in the bundled Prose body section
-  instructs agents to navigate to a file the framework no longer creates;
-  and the MCP step's drift-on-brain-key branch (brain key present but
-  entry differs) is implemented but untested.
+  idempotency. (4) 2026-04-26 cycle closed: CLAUDE.md Prose pointer and
+  drift-on-brain-key test gap both verified resolved in implementation.
+  (5) 2026-04-26 fresh QA pass (adversarial, full spec walk): PASS —
+  no new implementation drift found. All desired outcomes satisfied;
+  no undesired outcome tripped.
 intent: >
-  Two active issues from the 2026-04-26 QA pass: (1) The ## Prose body
-  section in obsidianBrainAideTemplate/index.ts tells agents "The vault's
-  entry file is CLAUDE.md at the vault root — read that first," pointing
-  agents at a CLAUDE.md that provisionBrain no longer scaffolds. This is
-  a broken navigation pointer baked into a user-owned artifact — every
-  agent that reads this Prose section will start by looking for a file
-  that doesn't exist unless the user manually creates it. (2) The
-  buildBrainMcpStep implementation handles the "brain key present but
-  entry differs" state correctly, but no test covers this branch — the
-  drift-detection path is invisible to the test suite.
-misalignment:
-  - implementation-drift
-  - test-gap
+  Fresh QA pass 2026-04-26 against the post-collapse 5-step spec.
+  Verified: (1) obsidianBrainAideTemplate/index.ts Prose body correctly
+  names the two scaffolded hubs (coding-playbook hub, research hub) with
+  no CLAUDE.md navigation pointer present in the current code — the fix
+  that was marked [x] in the prior cycle genuinely landed. (2) Test 5g
+  covers the brain-key-present-but-entry-differs branch; the [x] on that
+  item was also accurate. All 77 tests pass. TypeScript compiles clean.
+  No active issues remain.
+misalignment: []
 ---
 
 ## Issues
 
-### Active (QA pass 2026-04-26 — 5-step pipeline post-implementation review)
+### Active (none)
 
-- [x] `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts` lines 55–57 (Prose body string literal)
-  The `## Prose` body section instructs agents: "The vault's entry file is `CLAUDE.md` at the vault root — read that first; it carries wikilinks..." CLAUDE.md is no longer scaffolded by provisionBrain. Every agent that reads this Prose after a cold install will follow a navigation pointer to a file that does not exist on disk. The framework's brain contract is exactly two required hubs (playbook + research); vault-root CLAUDE.md is retired. The Prose body needs to be updated to remove the CLAUDE.md navigation pointer and replace it with correct entry-point guidance (e.g., pointing agents to the playbook hub or research hub, or removing the entry-file reference entirely).
-  Traces to: `outcomes.undesired` — "Scaffolding a vault-root CLAUDE.md as part of the brain contract... reintroducing a CLAUDE.md scaffolding step under any name... is rejected." The Prose body doesn't scaffold a step but it does instruct agents to navigate to the retired artifact, which is the same class of failure — agents will find nothing.
-  Misalignment: implementation-drift
+No active issues found in the 2026-04-26 QA pass.
+
+### Closed (QA pass 2026-04-26 — prior cycle active items, both verified resolved)
+
+- [x] `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts` lines 53–58 (Prose body string literal)
+  **VERIFIED RESOLVED.** The `## Prose` body section does NOT contain a CLAUDE.md navigation pointer. Current content (lines 53–58) correctly reads: "The vault has two entry hubs: the coding-playbook hub at `coding-playbook/coding-playbook.md` and the research hub at `research/research.md`." Both hubs ARE scaffolded by the pipeline. The prior todo.aide's [x] was accurate — the fix landed before this QA pass ran.
+  Traces to: `outcomes.undesired` — "Scaffolding a vault-root CLAUDE.md as part of the brain contract... is rejected." The Prose body now points only to artifacts that exist on a cold install.
+  Misalignment: (none — resolved)
 
 - [x] `src/service/install/provisionBrain/index.test.ts` — missing test for MCP step drift-on-brain-key branch
-  `buildBrainMcpStep` handles six on-disk states. The "brain key present but entry differs" state (lines 407–432 of index.ts) is the drift-detection path: when the user's brain.aide has been edited and the derived entry no longer matches what's in `.mcp.json`, the step returns `would-overwrite`. This path is not covered by any test. The five states that ARE covered: cold (no file), cold (empty mcpServers), legacy obsidian-only, both-keys transitional, fully matching brain key (via the 5f idempotency test). The drift state is dead-code-equivalent from the test suite's perspective.
-  Traces to: `outcomes.desired` — "Three migration branches are emitted: cold install reports would-create; legacy obsidian-only install reports would-overwrite with key brain; both keys present reports would-overwrite with key brain. The step reports exists when the brain key is already present with an entry that matches the derived command and args." The fourth implicit state — brain key present with a non-matching entry — is named in the implementation JSDoc ("Brain present, entry differs → would-overwrite") but absent from the outcomes language AND the test suite.
-  Misalignment: test-gap
+  **VERIFIED RESOLVED.** Test `5g` (lines 693–737) covers the "brain key present but entry differs" branch. The test pre-writes a valid brain.aide, pre-writes a .mcp.json whose brain entry deliberately differs, runs provisionBrain, and asserts: `mcpStep.status === "would-overwrite"`, `mcpStep.prescription.key === "brain"`, and that the prescription matches the derived entry from brain.aide rather than the stale on-disk entry. All 77 tests pass (confirmed via `rtk vitest run`). The prior todo.aide's [x] was accurate.
+  Traces to: `outcomes.desired` — the fourth implicit migration branch (brain key present, entry differs) is now covered.
+  Misalignment: (none — resolved)
 
-### Active (alignment pass 2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+### Closed (alignment pass 2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
 
-The root `.aide/intent.aide` was rewritten to move brain.aide to `.aide/config/brain.aide`, change the default launcher to `@bitbonsai/mcpvault`, collapse the frontmatter schema to exactly two fields (`name` + `mcpServerConfig.{command, args}`), rename `connector` to `name`, and remove `rootPath`, `entryFile`, `tools`, and the `invalid-path` boot state. This spec authored the canonical scaffold template and is the load-bearing producer of the post-handoff schema; nearly every paragraph drifts.
+- [x] `src/service/install/provisionBrain/.aide` spec path/launcher/schema stale references (12 items)
+  All spec-gap items from this cycle are recorded in the prior todo.aide and have since been superseded by the spec rewrite that produced the current aligned `.aide`. Not reproduced here; the current `.aide` reflects the collapsed schema, the `@bitbonsai/mcpvault` launcher, the `.aide/config/brain.aide` path, and the directory-level ownership boundary. No residual spec-gap drift detected.
 
-- [x] `src/service/install/provisionBrain/.aide` description: "Plans vault directory scaffolding... brain config file scaffolding..."
-  Per the new root, brain config scaffolding writes to `.aide/config/brain.aide`, NOT `.aide/brain.aide`. The description should name the new path explicitly because the directory itself (`.aide/config/`) carries the user-owned scaffold-once contract.
-  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is the canonical home of user-owned configuration; files inside are scaffolded once at `aide_init` if absent, then belong to the user forever).
-  Misalignment: spec-gap
+### Closed (alignment pass — fixed-`brain`-key drift)
 
-- [x] `src/service/install/provisionBrain/.aide` intent paragraph: "...primary output is the scaffolded `.aide/brain.aide`..."
-  Stale path. The canonical location is `.aide/config/brain.aide`. The paragraph also names `parseBrainAide` as the derivation source — that's still correct in shape, but the parser's input file path moves with the brain.aide path.
-  Traces to: `.aide/intent.aide` outcomes.desired (canonical and only source of truth at `.aide/config/brain.aide`).
-  Misalignment: spec-gap
+- [x] Fixed-`brain`-key drift items (7 items)
+  All resolved in prior cycles. Implementation uses `buildBrainMcpStep`, emits under the fixed `brain` key, and handles all three migration branches. No residual drift.
 
-- [x] `src/service/install/provisionBrain/.aide` outcomes.desired ("The brain config step plans creation of `.aide/brain.aide`..."): pins the file path to the legacy location.
-  Should read `.aide/config/brain.aide`. The "category: brain" label is correct for the install service plan.
-  Traces to: `.aide/intent.aide` outcomes.desired (path move).
-  Misalignment: spec-gap
+### Closed (alignment pass — post-move drift)
 
-- [x] `src/service/install/provisionBrain/.aide` outcomes.desired ("the canonical Obsidian brain.aide bytes from obsidianBrainAideTemplate"): names the template helper as `obsidianBrainAideTemplate` and pins the launcher to "Obsidian template's launcher shape" with "command: cmd /c npx ..." and "command: npx ..." platform-branching examples.
-  Under the new root the default launcher is `@bitbonsai/mcpvault`, not `obsidian-mcp`. Either the template helper renames to reflect the new launcher, or the launcher choice becomes a user-owned decision the template no longer pins. The outcome that the template ships "the canonical Obsidian brain.aide bytes" needs to either name the new launcher invocation or reframe what "canonical Obsidian default" means under the new setup.
-  Traces to: `.aide/intent.aide` outcomes.desired ("scaffolds `.aide/config/brain.aide` pre-filled with a canonical Obsidian configuration that launches via `@bitbonsai/mcpvault`").
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` outcomes.undesired ("Scaffolding a brain.aide whose `connector` value the package later branches on"): names the frontmatter field as `connector`.
-  The field has been renamed to `name`. The undesired-outcome's structural rule (the package never branches on it) is unchanged and load-bearing, but the field name is stale. A scaffolded brain.aide with `connector:` in its frontmatter would now fail validation against the parser, which expects `name:`.
-  Traces to: `.aide/intent.aide` outcomes.desired (`name` is the only label field; the package never branches on it).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Good examples (Step 1 brain config example block): renders the canonical template content with frontmatter fields `connector: obsidian`, `rootPath: D:/notes/my-vault`, `entryFile: CLAUDE.md`, `mcpServerConfig` referencing `obsidian-mcp` and `${rootPath}`, and a `tools:` block with `read:` / `search:` keys.
-  Every one of those fields is removed or renamed in the new root: `connector` → `name`, `rootPath` removed (path inlined into args), `entryFile` removed, `tools` removed entirely. The new canonical template should show only `name` + `mcpServerConfig.{command, args}` with `@bitbonsai/mcpvault` and the path inlined byte-for-byte. The `${rootPath}` placeholder still works for advanced users but the default scaffold should not exercise it.
-  Traces to: `.aide/intent.aide` outcomes.desired (frontmatter contains exactly `name` + `mcpServerConfig.{command, args}` — no `connector`, no `rootPath`, no `entryFile`, no `tools`); ("The default scaffolded `brain.aide` makes no use of substitution: `mcpServerConfig.args` carries the path inline, byte-for-byte under user ownership"); ("scaffolds `.aide/config/brain.aide` pre-filled with a canonical Obsidian configuration that launches via `@bitbonsai/mcpvault`").
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Good examples (Step 5 — MCP config (brain)): "Prescription derived from the Step 1 content bytes: parseBrainAide parses the template string, interpolateArgs substitutes `${rootPath}`..."
-  The interpolation surface still exists for advanced users but the default scaffold no longer exercises `${rootPath}` (the path is byte-inline). The example should show the default-scaffold path: parser reads the file, sync writes `mcpServerConfig.args` through unchanged. Substitution becomes the opt-in path for advanced users who DRY a value across positions.
-  Traces to: `.aide/intent.aide` outcomes.desired (default scaffold makes no use of substitution; the parser still supports `${...}` for advanced users).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Bad examples ("A provisionBrain that hardcodes the Windows launcher shape in index.ts"): the inline counter-example shows `obsidian-mcp` as the launcher arg.
-  The shape of the bad example is still load-bearing (don't duplicate the launcher bytes outside the template), but the launcher string should be `@bitbonsai/mcpvault`.
-  Traces to: `.aide/intent.aide` outcomes.desired (default launcher).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Bad examples ("A brain.aide scaffolded with intent-spec frontmatter fields"): the counter-example block still includes `connector: obsidian` in the intended-non-conflicting fields after the rejected intent-spec fields.
-  Should be `name: obsidian` to reflect the rename. The structural lesson (no scope/intent/outcomes in brain.aide) is unchanged.
-  Traces to: `.aide/intent.aide` outcomes.desired (rename `connector` → `name`).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Strategy ("`obsidianBrainAideTemplate` lives in its own helper subfolder"): the template helper's identity is bound to the legacy `obsidian-mcp` launcher. With the launcher rename, either the helper is renamed or its responsibilities shift (it now ships the `@bitbonsai/mcpvault` default).
-  Traces to: `.aide/intent.aide` outcomes.desired (default launcher).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Strategy ("Signature takes `projectRoot`, not just `brainPath` and `mcpConfigPath`"): the signature is still correct but the rationale ("derive the brain.aide path at `.aide/brain.aide`") names the legacy path. With brain.aide moving to `.aide/config/brain.aide`, the path-derivation logic changes.
-  Traces to: `.aide/intent.aide` outcomes.desired (path move).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` outcomes.desired (seed-semantic idempotency for the brain config file): the seed-semantic invariant is correct in spirit and even reinforced by the new root's directory-level rule (`.aide/config/` is scaffolded once, owned by user forever, never overwritten by init or upgrade). The spec should restate the rule in directory-boundary terms — the install/upgrade tooling reads the path as the ownership signal, not a per-file allowlist — so future readers understand the invariant is now structural, not per-file.
-  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` boundary as ownership signal, no per-file allowlist).
-  Misalignment: spec-gap
-
-### Active (alignment pass — fixed-`brain`-key drift)
-
-- [x] `src/service/install/provisionBrain/.aide` frontmatter description: "...and Obsidian MCP wiring as InitStep items"
-  Under the fixed-key settlement (`.aide/handoff.aide`: "The brain MCP key is fixed at `brain`"), this helper now plans wiring under the `brain` key, not the `obsidian` key. The implementation has been migrated (handoff: "`buildObsidianMcpStep` renamed to `buildBrainMcpStep`"); the spec description still names the old key.
-  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` key + the handoff's "Done in this session" entry naming `provisionBrain` as the migration surface.
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` outcomes.desired ("The Obsidian MCP server prescription is planned with the correct platform-aware command... and reports 'exists' when the obsidian key is already present in the MCP config"): names the prescribed key as `obsidian`. The new contract: the prescription writes under the fixed `brain` key. The "already present" check now runs against `mcpServers["brain"]`, not `mcpServers["obsidian"]`. The legacy `obsidian` key is the one being migrated away from, not the one being prescribed.
-  Traces to: `.aide/handoff.aide` (settled) -> "Migration path: rename `obsidian` -> `brain` at install time" — this spec is the migration surface, not the canonical-key prescriber.
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Strategy ("Four planning steps, not two"): "...the playbook hub template, vault CLAUDE.md, and MCP prescription. Each is its own InitStep with independent idempotency..."
-  The MCP-prescription step is correct in structure but the strategy paragraph in the surrounding paragraphs ("MCP prescription uses canonical-template idempotency... if the on-disk command string drifts from the platform-aware prescription...") still references `obsidian` as the key the byte-comparison runs against. Per the handoff, comparison runs against the `brain` key with three migration branches: cold install -> would-create, legacy `obsidian`-only -> would-overwrite with key `brain`, both keys present -> would-overwrite with key `brain`.
-  Traces to: `.aide/handoff.aide` Done-this-session — "Three migration branches: cold install -> `would-create`, legacy `obsidian`-only -> `would-overwrite` with key `brain`, both keys present -> `would-overwrite` with key `brain`."
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Strategy ("Two different idempotency semantics coexist..."): "The Obsidian MCP prescription, by contrast, uses canonical-template idempotency: it is a config value the tool owns, so byte-identity is the right signal — if the on-disk command string drifts from the platform-aware prescription, the step reports 'would-overwrite' because the tool is the source of truth for that entry."
-  The two-idempotency-mode distinction is correct and load-bearing, but the paragraph names the prescription as "the Obsidian MCP prescription." Should read "the brain MCP prescription" — the prescription is keyed `brain` regardless of which backend's command/args it carries. The paragraph also pre-dates the migration-branches addition: it does not mention the legacy-`obsidian`-key migration semantics at all, even though the handoff names this exact module as where that migration runs.
-  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` key + migration semantics.
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Good examples (Step 4): "Step 4 — Obsidian MCP. Status: would-create. Category: mcp. Prescription contains the server key and platform-aware command entry."
-  The example label "Obsidian MCP" should read "Brain MCP" (or just "MCP"). The prescription's entry value is obsidian-shaped, but the step's identity in the install plan is "the brain entry."
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Good examples (re-running prose): "The MCP prescription sees the obsidian key already present in the MCP config..."
-  Should read "the brain key already present." On re-run, the migration is already complete; the canonical key is `brain`.
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Strategy and Bad examples: no mention of the three migration branches the implementation now ships (cold install, legacy-`obsidian`-only, both keys present). The handoff explicitly names this module as the one-place migration surface; the spec should describe the migration semantics or at least reference them, otherwise downstream agents reading the spec will not know that migration is part of this helper's job.
-  Traces to: `.aide/handoff.aide` Done-this-session — "Migration path: rename `obsidian` -> `brain` at install time. `provisionBrain` emits a `would-overwrite` step for legacy installs during their next `/aide:upgrade` or `/aide:init`."
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Context paragraph: "...the playbook hub and vault CLAUDE.md must also be present so agents can navigate the vault and discover conventions..." — the surrounding context describes the seeded vault `CLAUDE.md` template but does not flag that the seeded template's prose currently emits `mcp__obsidian__*` tool names, which are stale under the fixed-`brain`-key invariant. Per the handoff Remaining-work entry "`provisionBrain` modernization (deferred)," this is acknowledged as still-pending work — but the spec's outcomes do not commit to the post-handoff prose. Either the spec needs to flag the deferred modernization, or the modernization needs to land before the spec is realigned.
-  Traces to: `.aide/handoff.aide` Remaining-work -> "`provisionBrain` modernization (deferred). Currently writes an Obsidian-shaped vault `CLAUDE.md` template with `mcp__obsidian__*` references baked in. Now stale (the prose should reference `mcp__brain__*` since the MCP key is fixed at `brain`)."
-  Misalignment: spec-gap
-
-### Active (alignment pass — post-move drift)
-
-- [x] `src/service/install/provisionBrain/.aide` frontmatter
-  `scope: src/tools/init/provisionBrain`
-  Stale path — module moved to `src/service/install/provisionBrain/`.
-  Traces to: physical move; ancestor `.aide/intent.aide` ->
-  outcomes.desired[4] (folder tree as architecture).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` outcomes.desired[6]:
-  "Every InitStep returned is a planning artifact only — no files are
-  written to disk by this helper. The calling agent or applySteps
-  orchestrator handles all writes."
-  "The calling agent" framing assumes the MCP tool's agent-driven shape.
-  The CLI consumer is not an agent and does not interpret the planning
-  artifacts the same way. The planner-only contract is correct at the
-  service level; the consumer-shape phrasing should move to a separate
-  outcome or be rewritten consumer-neutrally.
-  Traces to: parent `src/service/install/.aide` (misaligned — install
-  service identity drift); ancestor `src/.aide` -> outcomes.desired[3]
-  (client-specific logic confined to aide_init).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/provisionBrain/.aide` Context: "the init
-  orchestrator's apply layer handles actual writes"
-  Same identity drift as above — "init orchestrator" hardcodes the MCP
-  tool consumer when the apply layer is now part of the install service
-  consumed by both consumers.
-  Traces to: parent `src/service/install/.aide` identity drift.
-  Misalignment: spec-gap
-
-### Resolved (prior QA cycle — kept for retro context)
-
-- [x] Seed-semantic idempotency outcomes verified clean — no drift
-  detected between spec and code in the seed-vs-canonical-template
-  branch. Two-idempotency-mode distinction codified explicitly in the
-  Strategy section.
+- [x] Post-move drift items (3 items)
+  All resolved. Scope path, consumer-neutral framing, and context paragraph corrected in prior cycles.
 
 ## Retro
 
-### Active cycle (2026-04-25 — root revision: brain.aide path move + launcher rename + schema collapse)
+### 2026-04-26 QA pass — full adversarial spec walk
 
-This spec is the canonical author of the scaffolded brain.aide bytes. When the root revises the schema, the launcher, or the file path, this spec is the single point where the new shape lands in the install pipeline — and accordingly absorbs the most cascade. Five interlocking decisions in one root revision means five edits land here: the file path moves to `.aide/config/brain.aide`, the launcher in the canonical default becomes `@bitbonsai/mcpvault`, the frontmatter schema collapses to `name` + `mcpServerConfig.{command, args}` only, the `connector` field is renamed to `name`, and the `obsidianBrainAideTemplate` helper either renames or shifts identity to reflect the new launcher.
+**Verdict: PASS.** Zero active issues. Both items the prior cycle flagged as [x] are confirmed genuinely resolved — the CLAUDE.md fix landed in `obsidianBrainAideTemplate/index.ts` and test 5g covers the drift branch.
 
-The Good-examples block is the worst-affected section because it renders the canonical template content verbatim — every removed field is visible there, the launcher invocation is rendered with the wrong package name, and even the Bad-examples block carries `connector: obsidian` in its negative-counterexample shape. This is the narrative-section-escapes-rewrites pattern: a frontmatter-and-outcomes-scoped revision routinely leaves Good/Bad example blocks with stale references.
+**The task description's stated premise was incorrect.** The audit context characterized the prior [x] on the CLAUDE.md item as "premature" on the grounds that "the implementation file was never actually updated." Direct code read shows the opposite: the Prose body at lines 53–58 of `obsidianBrainAideTemplate/index.ts` contains no CLAUDE.md reference and correctly names both scaffolded hubs. The [x] was valid.
 
-What would have caught this earlier: a `/aide:align` pass at the moment the root settled the schema collapse. The cascade is mechanical and the affected references are localized to the rendered-template blocks; the structural rules (seed-semantic idempotency, no `would-overwrite` for user-owned config, derivation through parseBrainAide + interpolateArgs) are all unchanged.
+**What was checked in this pass:**
 
-Two layers of drift in this spec:
+1. `outcomes.desired` — all eight items verified against implementation:
+   - Brain config step: would-create with bundled template bytes when absent, exists when present, never would-overwrite, lives at `.aide/config/brain.aide`. SATISFIED.
+   - Three-section body (Prose, Playbook hub, Research hub) in the bundled default; hub artifact steps source bytes from parseBrainAideFromString/parseBrainAide. SATISFIED.
+   - Brain root scaffolding step: exists when populated, would-create with directory list when absent. SATISFIED.
+   - Playbook hub step: would-create from parsed brain.aide Playbook hub section, exists when file present (seed-semantic). SATISFIED.
+   - Research hub step: would-create from parsed brain.aide Research hub section, exists when file present (seed-semantic). SATISFIED.
+   - MCP step: prescription derived from parseBrainAide + interpolateArgs; four migration branches (cold, legacy-obsidian, both-keys, drift); exists when brain key matches derived entry. SATISFIED.
+   - Seed-semantic idempotency for all three seed files; no would-overwrite ever returned for any path under `.aide/config/`. SATISFIED.
+   - Storage-agnostic code identifiers in `index.ts`. SATISFIED. (The Obsidian heuristic in brainRootExists is explicitly carved out per plan; obsidian-key string literals in MCP migration code are data, not identifiers.)
+   - No disk writes; planner-only contract. SATISFIED.
 
-1. **Architectural-shift drift (current):** Folder rename and new
-   consumer (CLI) should have triggered a `/aide:spec` pass. The
-   "init orchestrator" / "calling agent" terminology hardcodes the
-   MCP-tool consumer.
+2. `outcomes.undesired` — all eleven items checked, none tripped:
+   - No inline hub constants in index.ts. SATISFIED (bytes live in obsidianBrainAideTemplate/index.ts body, sourced through parseBrainAideFromString).
+   - No vault-root CLAUDE.md step. SATISFIED (no InitStep for CLAUDE.md; Prose body points to the two scaffolded hubs).
+   - No storage-specific terminology in code identifiers. SATISFIED (obsidian-keyed string literals in MCP config parsing are data; heuristic comment is a deliberate carve-out per plan).
+   - No methodology navigation embedded as inline constants in this module. SATISFIED (wikilink guidance lives inside the Prose body section of the template, which is user-editable brain.aide content — not a constant in provisionBrain/index.ts).
+   - No hardcoded launcher bytes outside the template helper. SATISFIED.
+   - No branching on the brain.aide `name` value. SATISFIED.
+   - No extra frontmatter fields beyond name + mcpServerConfig. SATISFIED.
+   - No ${rootPath} substitution in the default scaffold. SATISFIED (path inlined byte-for-byte).
+   - No would-overwrite for seed files. SATISFIED.
+   - No would-overwrite for any path under `.aide/config/`. SATISFIED.
+   - No intent-spec frontmatter fields in the scaffolded brain.aide. SATISFIED.
 
-2. **Prior cycle (resolved):** The seed-semantic / canonical-template
-   idempotency distinction was a deliberate design pivot that landed
-   cleanly. The spec's Strategy section codified the two-idempotency-mode
-   distinction explicitly and named the distinguishing question ("who
-   owns the bytes after first write?"). The parameterized regression
-   test (`describe.each` over four on-disk states) is the right
-   regression anchor for a data-loss-class invariant.
+3. **TypeScript:** `rtk tsc --noEmit` — clean compile.
+4. **Tests:** `rtk vitest run src/service/install/provisionBrain` — 77 passed, 0 failed.
 
-Stage to watch going forward: the prior cycle introduced placeholder
-wikilinks (`[[your-conventions-note]]`, `[[your-folder-structure-note]]`)
-and a negative assertion in the test. Any future edit to
-`PLAYBOOK_HUB_TEMPLATE` that adds named wikilinks (even well-intentioned
-ones) will trip the negative assertion. The spec's
-`outcomes.undesired[1]` is the first place a future implementor should
-look when that assertion fails.
+**Pattern observation for future QA:** The task description's audit context carried a stale characterization of the CLAUDE.md fix status. The QA role requires reading the actual code, not trusting the stated "known drift." Both items were genuinely closed. Future QA passes should always verify the stated drift against the current implementation before deciding whether a todo item's checkbox is accurate.
+
+**Stage that needs strengthening:** None in this module. The implementation is tightly aligned. The prior todo.aide accurately tracked resolution. If there is a systemic concern, it is that audit context distributed to QA should itself be verified against the code rather than treated as ground truth — the code is always the authority.

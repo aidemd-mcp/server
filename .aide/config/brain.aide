@@ -13,8 +13,51 @@ mcpServerConfig:
 
 Your brain is an Obsidian vault. Use `mcp__brain__read_note` to open files by
 their vault-relative path. Use `mcp__brain__search_notes` for keyword queries
-across every note in the vault. The vault's entry file is `CLAUDE.md` at the
-vault root — read that first; it carries wikilinks (`[[note-name]]`) you follow
-to deepen context. When a wikilink looks relevant to your task, read it (depth 1)
-and check that note's links too. Stay in scope; don't follow links into unrelated
-topics.
+across every note in the vault. The vault has two entry hubs: the coding-playbook
+hub at `coding-playbook/coding-playbook.md` and the research hub at
+`research/research.md`. Start from the relevant hub for your task, follow
+wikilinks (`[[note-name]]`) to deepen context, and check those notes' links too.
+Stay in scope; don't follow links into unrelated topics.
+
+## Playbook hub
+
+# Coding Playbook
+
+### Task Routing
+
+| Task domain | Section |
+|-------------|---------|
+
+### How to Use This Index
+
+Read this note first. Each section links to a **section hub** that lists its notes with keywords. Navigate to the section relevant to your task, then drill into the specific notes you need. Do not read all sections — only the ones whose keywords match the work.
+
+### Always Read First
+
+These notes are **required reading** for every task, regardless of which section you're working in:
+
+1. **[[your-conventions-note]]** — Add your naming, function ordering, and code hygiene conventions here.
+2. **[[your-folder-structure-note]]** — Add your folder layout and progressive disclosure conventions here.
+
+### Sections
+
+### Contents
+
+## Research hub
+
+# Research
+
+### Domains
+
+| Domain | Notes |
+|--------|-------|
+
+### How to Use This Index
+
+Research notes are filed by domain. Each subdirectory holds notes for a single domain; read the domain hub before drilling into individual notes. Do not flat-search across every domain — the structure is the navigation.
+
+### Domain Hubs
+
+Add domain hubs here as your research grows. Each hub lives at `<domain>/<domain>.md` and lists its child notes with keywords.
+
+### Contents

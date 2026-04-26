@@ -12,86 +12,118 @@ intent: >
 
 ### A. Canonical agent files (content layer)
 
-- [ ] **Create `.claude/agents/aide/aide-spec-writer.md`** — YAML frontmatter: `name: aide-spec-writer`, `description` (when to delegate: writing .aide frontmatter from user interview), `model: opus`, `color: purple`, `memory: user`. Markdown body is the agent's system prompt. The prompt covers: role (planner that captures intent), input expectations (user interview or orchestrator delegation), the checklist from the spec phase command distilled into behavioral instructions, return format, what it does NOT do (no body sections, no code, no delegation). Reference the study-playbook skill by name for playbook consultation. Do NOT include Obsidian MCP in `mcpServers` — the spec-writer interviews the user, it does not access the brain.
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules`
+- [ ] **Create `.claude/agents/aide/aide-spec-writer.md`** — YAML frontmatter: `name: aide-spec-writer`, `description` (when to delegate: writing .aide frontmatter from user interview), `model: opus`, `color: purple`, `memory: user`. Markdown body is the agent's system prompt. The prompt covers: role (planner that captures intent), input expectations (user interview or orchestrator delegation), the checklist from the spec phase command distilled into behavioral instructions, return format, what it does NOT do (no body sections, no code, no delegation). Reference the study-playbook skill by name for playbook consultation. Do NOT declare the brain entry in `mcpServers` — the spec-writer interviews the user, it does not access the brain.
 
-- [ ] **Create `.claude/agents/aide/aide-researcher.md`** — Frontmatter: `name: aide-researcher`, `description` (when to delegate: filling the brain with domain research), `model: sonnet`, `color: cyan`, `memory: user`, `mcpServers: [obsidian]`. Body: role (volume researcher that writes to the brain), research process (search brain first, then external), persistence rules (file by domain not project), stop criteria (sufficient for synthesizer), return format. The researcher is write-heavy on the brain — its prompt teaches the vault filing conventions but does NOT hardcode vault paths. It references Obsidian MCP by name; the host's `.mcp.json` provides the actual config.
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules`
+- [ ] **Create `.claude/agents/aide/aide-researcher.md`** — Frontmatter: `name: aide-researcher`, `description` (when to delegate: filling the brain with domain research), `model: sonnet`, `color: cyan`, `memory: user`, `mcpServers: [brain]`. Body: role (volume researcher that writes to the brain), research process (search brain first, then external), persistence rules (file by domain not project), stop criteria (sufficient for synthesizer), return format. The researcher is write-heavy on the brain — its prompt teaches the vault filing conventions but does NOT hardcode vault paths or connector identity. It references the brain by the fixed `brain` MCP key only; the host's `.mcp.json` (synced from their `brain.aide`) provides the actual launcher config.
 
-- [ ] **Create `.claude/agents/aide/aide-domain-expert.md`** — Frontmatter: `name: aide-domain-expert`, `description` (when to delegate: synthesizing research into .aide body sections), `model: opus`, `color: purple`, `memory: user`, `mcpServers: [obsidian]`. Body: role (synthesizer that reads brain research and fills Context, Strategy, Good/Bad examples), input expectations (frontmatter must be complete, brain must have research), the synthesize checklist distilled into behavioral instructions, return format. Read-heavy on the brain. Reference study-playbook skill for playbook consultation.
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules`
+- [ ] **Create `.claude/agents/aide/aide-domain-expert.md`** — Frontmatter: `name: aide-domain-expert`, `description` (when to delegate: synthesizing research into .aide body sections), `model: opus`, `color: purple`, `memory: user`, `mcpServers: [brain]`. Body: role (synthesizer that reads brain research and fills Context, Strategy, Good/Bad examples), input expectations (frontmatter must be complete, brain must have research), the synthesize checklist distilled into behavioral instructions, return format. Read-heavy on the brain via the fixed `brain` MCP key. Reference study-playbook skill for playbook consultation.
 
-- [ ] **Create `.claude/agents/aide/aide-architect.md`** — Frontmatter: `name: aide-architect`, `description` (when to delegate: producing plan.aide from a complete .aide spec), `model: opus`, `color: red`, `memory: user`, `skills: [study-playbook]`, `mcpServers: [obsidian]`. Body: role (systems architect that produces plan.aide), mandatory playbook consultation protocol (invoke study-playbook skill before planning), codebase analysis instructions, plan output format (matches plan-aide.md spec: frontmatter with intent, ## Plan with checkboxes, ## Decisions), principles (playbook is law, no scope creep, no ambiguity, order matters), what it does NOT do (no code, no delegation). The architect is the primary consumer of the study-playbook skill.
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules`
+- [ ] **Create `.claude/agents/aide/aide-architect.md`** — Frontmatter: `name: aide-architect`, `description` (when to delegate: producing plan.aide from a complete .aide spec), `model: opus`, `color: red`, `memory: user`, `skills: [study-playbook]`, `mcpServers: [brain]`. Body: role (systems architect that produces plan.aide), mandatory playbook consultation protocol (invoke study-playbook skill before planning), codebase analysis instructions, plan output format (matches plan-aide.md spec: frontmatter with intent, ## Plan with checkboxes, ## Decisions), principles (playbook is law, no scope creep, no ambiguity, order matters), what it does NOT do (no code, no delegation). The architect is the primary consumer of the study-playbook skill.
 
-- [ ] **Create `.claude/agents/aide/aide-implementor.md`** — Frontmatter: `name: aide-implementor`, `description` (when to delegate: executing plan.aide into working code, or fixing one todo.aide item), `model: sonnet`, `color: pink`, `memory: user`. Body: role (executor that translates plans into code), input expectations (plan.aide for build mode, todo.aide for fix mode), execution protocol (read plan completely, sequence by dependency, implement one unit at a time, match existing patterns, run verification), return format (files created/modified/deleted, test results, plan deviations), what it does NOT do (no redesign, no scope expansion, no delegation). No Obsidian MCP — the implementor works from the plan file, not the brain.
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules`
+- [ ] **Create `.claude/agents/aide/aide-implementor.md`** — Frontmatter: `name: aide-implementor`, `description` (when to delegate: executing plan.aide into working code, or fixing one todo.aide item), `model: sonnet`, `color: pink`, `memory: user`. Body: role (executor that translates plans into code), input expectations (plan.aide for build mode, todo.aide for fix mode), execution protocol (read plan completely, sequence by dependency, implement one unit at a time, match existing patterns, run verification), return format (files created/modified/deleted, test results, plan deviations), what it does NOT do (no redesign, no scope expansion, no delegation). Do not declare the brain entry in `mcpServers` — the implementor works from the plan file, not the brain.
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules`
 - [ ] **Create `.claude/agents/aide/aide-qa.md`** — Frontmatter: `name: aide-qa`, `description` (when to delegate: verifying implementation against .aide outcomes), `model: sonnet`, `color: orange`, `memory: user`. Body: role (QA engineer that compares actual output against spec outcomes), verification process (read spec, walk .aide chain with aide_discover, check outcomes.desired satisfaction, check outcomes.undesired violations), todo.aide output format (matches todo-aide.md spec), verdict categories, what it does NOT do (no solutions, no delegation).
 
-- [ ] **Create `.claude/skills/study-playbook/SKILL.md`** — A portable version of the user's personal study-playbook skill. Same hub-navigation pattern (Step 1: read playbook hub, Step 2: read relevant section hubs, Step 3: read specific child notes) and same navigation rules (use hub link structure not search, read top-down, follow wikilinks 1-2 levels deep, never re-read, invoke incrementally). Key difference from the personal version: it references `coding-playbook/coding-playbook.md` as the hub path generically via Obsidian MCP (mcp__obsidian__read_note), without hardcoding any vault base path. The skill file uses the same YAML frontmatter format as the personal version (name, description).
+Read: `coding-playbook/agentic/command-modules/substrates`, `coding-playbook/agentic/command-modules`
+- [ ] **Create `.claude/skills/study-playbook/SKILL.md`** — A portable version of the user's personal study-playbook skill. Same hub-navigation pattern (Step 1: read playbook hub, Step 2: read relevant section hubs, Step 3: read specific child notes) and same navigation rules (use hub link structure not search, read top-down, follow wikilinks 1-2 levels deep, never re-read, invoke incrementally). Key difference from the personal version: it references `coding-playbook/coding-playbook.md` as the hub path generically, and resolves the brain read tool name dynamically by calling `aide_brain` once at the start of the skill (the response names the read tool wired to this project's brain), without hardcoding any connector-specific tool name (no `mcp__obsidian__*`, no `mcp__notion__*`) and without hardcoding any vault base path. The skill file uses the same YAML frontmatter format as the personal version (name, description).
 
 ### B. initContent chokepoint updates
 
+Read: `coding-playbook/architecture/module-patterns`, `coding-playbook/workflow/type-system`
 - [ ] **Modify `src/tools/init/initContent/index.ts`** — Add all six agent files and the skill file to the `DOC_PATHS` registry. New keys follow the pattern `agents/aide/<name>` mapping to `.claude/agents/aide/<name>.md`, and `skills/study-playbook` mapping to `.claude/skills/study-playbook/SKILL.md`. The `CanonicalDocName` type auto-derives from DOC_PATHS keys, so no separate type change is needed.
 
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 - [ ] **Add `AgentDocEntry` interface** to `initContent/index.ts` — Mirrors `MethodologyDocEntry`: `{ readonly canonical: CanonicalDocName; readonly hostFilename: string; }`. The `hostFilename` is the path relative to the host's agent directory (e.g., `aide/aide-spec-writer.md`).
 
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 - [ ] **Add `SkillDocEntry` interface** to `initContent/index.ts` — Same shape: `{ readonly canonical: CanonicalDocName; readonly hostPath: string; }`. The `hostPath` is the path relative to the host's skills directory (e.g., `study-playbook/SKILL.md`).
 
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 - [ ] **Add `AGENT_DOCS` constant array** to `initContent/index.ts` — Typed as `readonly AgentDocEntry[]`. Six entries, one per agent, each mapping its canonical name to its host filename. Ordering is pipeline order: spec-writer, researcher, domain-expert, architect, implementor, qa.
 
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 - [ ] **Add `SKILL_DOCS` constant array** to `initContent/index.ts` — Typed as `readonly SkillDocEntry[]`. One entry for study-playbook.
 
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/module-patterns`
 - [ ] **Add `listAgents()` function** to `initContent/index.ts` — Returns `readonly AgentDocEntry[]`. Same pattern as `listMethodologyDocs()`. Exported.
 
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/module-patterns`
 - [ ] **Add `listSkills()` function** to `initContent/index.ts` — Returns `readonly SkillDocEntry[]`. Same pattern as `listMethodologyDocs()`. Exported.
 
 ### C. installAgents helper
 
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/services/service-layer`, `coding-playbook/foundations/conventions`
 - [ ] **Create `src/tools/init/installAgents/index.ts`** — Default export: `async function installAgents(agentDir: string, displayPrefix?: string): Promise<InitStepResult[]>`. Follows the exact same pattern as `installMethodologyDocs`: create target directory, iterate `listAgents()`, for each entry check if file exists (report `exists`), read content via `readCanonicalDoc` (report `skipped` on failure), write file and report `created`. The `agentDir` is the host's `.claude/agents` directory (absolute path). The `displayPrefix` defaults to `"agents"` for display names like `agents/aide/aide-spec-writer`. Each agent file is written to `join(agentDir, entry.hostFilename)` — the `aide/` subfolder is part of the `hostFilename`, so `mkdir` must be called with `{ recursive: true }` on the dirname of each target path to ensure the `aide/` subfolder exists.
 
 ### D. installSkills helper
 
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/services/service-layer`, `coding-playbook/foundations/conventions`
 - [ ] **Create `src/tools/init/installSkills/index.ts`** — Default export: `async function installSkills(skillDir: string, displayPrefix?: string): Promise<InitStepResult[]>`. Same pattern as installAgents. The `skillDir` is the host's `.claude/skills` directory (absolute path). Iterates `listSkills()`, writes each to `join(skillDir, entry.hostPath)`. Display prefix defaults to `"skills"`.
 
 ### E. FrameworkConfig update
 
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 - [ ] **Modify `src/types/index.ts`** — Add `agentDir: string` and `skillDir: string` fields to `FrameworkConfig`. These are relative to the project root, same as `commandDir` and `docHubDir`. Add JSDoc to each field explaining its purpose.
 
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/architecture/folder-structure`
 - [ ] **Modify `src/tools/init/detectFramework/index.ts`** — Add `agentDir` and `skillDir` to each entry in `FRAMEWORK_CONFIGS`. For Claude Code: `agentDir: ".claude/agents"`, `skillDir: ".claude/skills"`. For Cursor: `agentDir: ".cursor/agents"`, `skillDir: ".cursor/skills"`. For Windsurf: `agentDir: ".windsurf/agents"`, `skillDir: ".windsurf/skills"`. For Copilot: `agentDir: ".github/agents"`, `skillDir: ".github/skills"`. (Note: verify actual framework conventions for agents/skills directories. Claude Code uses `.claude/agents/` per the agent-file-format research. Other frameworks may differ — if unclear, default to the same pattern under the framework's dot-directory.)
 
 ### F. Init orchestrator update
 
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/foundations/conventions`
 - [ ] **Modify `src/tools/init/index.ts`** — Import `installAgents` and `installSkills`. Add two new steps between `commandResults` and `mcpResult` (or after mcpResult, before IDE — ordering is not load-bearing for idempotency but agents should install after commands since commands reference agents by name): `const agentResults = await installAgents(join(projectRoot, config.agentDir));` and `const skillResults = await installSkills(join(projectRoot, config.skillDir));`. Merge results into `allResults` array: `[methodologyResult, ...docResults, ...commandResults, ...agentResults, ...skillResults, mcpResult, ...ideResults]`. The summary output formatting already handles any `InitStepResult[]` — no format changes needed.
 
 ### G. Phase command updates
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules/substrates`
 - [ ] **Modify `.claude/commands/aide.md`** — Update each stage's delegation instruction to name the agent explicitly. Stage 1: "Delegate to the `aide-spec-writer` agent" (replace "Spin up a **Planner agent**"). Stage 2: "Delegate to the `aide-researcher` agent" (replace "Spin up a **Domain Expert agent**"). Stage 3: "Delegate to the `aide-domain-expert` agent" (replace "Spin up a **Domain Expert agent** (fresh context, new instance)"). Stage 4: "Delegate to the `aide-architect` agent" (replace "Spin up an **Architect agent**"). Stage 5: "Delegate to the `aide-implementor` agent" (replace "Spin up an **Implementor agent**"). Stage 6: "Delegate to the `aide-qa` agent" (replace "Spin up a **QA agent**"). Stage 7 fix loop: "Delegate to the `aide-implementor` agent" and "Delegate to the `aide-qa` agent" (replace the generic references).
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules/substrates`
 - [ ] **Modify `.claude/commands/aide/spec.md`** — Add a note at the top: "This command is executed by the `aide-spec-writer` agent." No other content changes — the checklist is already correct.
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules/substrates`
 - [ ] **Modify `.claude/commands/aide/research.md`** — Add a note at the top: "This command is executed by the `aide-researcher` agent."
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules/substrates`
 - [ ] **Modify `.claude/commands/aide/synthesize.md`** — Add a note at the top: "This command is executed by the `aide-domain-expert` agent."
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules/substrates`
 - [ ] **Modify `.claude/commands/aide/plan.md`** — Add a note at the top: "This command is executed by the `aide-architect` agent." Also update the checklist item "Pull the coding playbook from the brain" to reference the study-playbook skill: "Pull the coding playbook from the brain using the `study-playbook` skill".
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules/substrates`
 - [ ] **Modify `.claude/commands/aide/build.md`** — Add a note at the top: "This command is executed by the `aide-implementor` agent."
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules/substrates`
 - [ ] **Modify `.claude/commands/aide/qa.md`** — Add a note at the top: "This command is executed by the `aide-qa` agent."
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules/substrates`
 - [ ] **Modify `.claude/commands/aide/fix.md`** — Add a note at the top: "This command is executed by the `aide-implementor` agent."
 
 ### H. Methodology doc update
 
+Read: `coding-playbook/agentic/command-modules/multi-agent-pipelines`, `coding-playbook/agentic/command-modules`
 - [ ] **Modify `.aide/docs/index.md`** — Add a new section "## Pipeline Agents" listing the six canonical agents with their name, model, and phase mapping. This is the authoritative reference for which agents the pipeline uses. Format: a simple table with columns Name, Model, Phase(s). Also add "## Skills" listing the study-playbook skill.
 
 ### I. Upgrade support
 
+Read: `coding-playbook/architecture/folder-structure`, `coding-playbook/foundations/conventions`, `coding-playbook/services/service-layer`
 - [ ] **Modify `src/tools/upgrade/index.ts`** — Import `listAgents` and `listSkills` from initContent. Add a new section between commands and MCP config (section c.5 and c.6): iterate `listAgents()`, for each entry resolve the host path as `join(agentDirAbsolute, entry.hostFilename)`, read canonical via `readCanonicalDoc(entry.canonical)`, call `compareFile(hostPath, canonical, confirm)`, push result with display name `agents/aide/<name>`. Same pattern for `listSkills()`. Add `agentDirAbsolute` and `skillDirAbsolute` derivations from `config.agentDir` and `config.skillDir` alongside the existing `docHubAbsolute` and `commandDirAbsolute`. Add `"agents"` and `"skills"` to the `affectedCategories` detection block for the dry-run warning.
 
 ### J. Tests
 
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 - [ ] **Create `src/tools/init/installAgents/index.test.ts`** — Test the installAgents function. Cases: (1) fresh install writes all six agent files and reports `created`, (2) re-run with all files present reports `exists` for all, (3) partial presence creates missing and reports existing, (4) content is byte-faithful to canonical. Use a temp directory. Follow existing test patterns from `installMethodologyDocs` or `scaffoldCommands` tests if they exist.
 
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 - [ ] **Create `src/tools/init/installSkills/index.test.ts`** — Same test pattern for installSkills. Cases: (1) fresh install writes skill file and reports `created`, (2) re-run reports `exists`, (3) content is byte-faithful.
 
+Read: `coding-playbook/workflow/testing`, `coding-playbook/workflow/type-system`
 - [ ] **Add agent and skill entries to `src/tools/init/doctrineLiterals.test.ts`** — This test file likely validates that all DOC_PATHS entries resolve to readable files. Add assertions for the six new agent canonical names and the one skill canonical name.
 
 ## Decisions
@@ -102,11 +134,11 @@ intent: >
 
 **Agent prompts are standalone, not composition of command content.** The commands define *what* to do (checklists). The agent prompts define *how to think* (role, constraints, return format). They are complementary, not duplicative. The command is the task contract; the agent is the executor identity. This avoids the drift risk of composing agent content from command content at build time.
 
-**study-playbook skill is generic.** It teaches the hub-navigation pattern without referencing personal vault paths. The host project configures their Obsidian MCP connection in `.mcp.json`; the skill just teaches the navigation protocol against whatever vault is connected. This is the portable version of the user's personal `C:/Users/bestb/.claude/skills/study-playbook/SKILL.md`.
+**study-playbook skill is generic.** It teaches the hub-navigation pattern without referencing personal vault paths or connector-specific tool names. The host project configures their brain in `.aide/config/brain.aide`, which sync writes into `.mcp.json` under the fixed `brain` key; the skill calls `aide_brain` once to discover the read tool name wired to that brain, then teaches the navigation protocol against whatever store is connected. This is the portable version of the user's personal `C:/Users/bestb/.claude/skills/study-playbook/SKILL.md`.
 
 **installAgents and installSkills are separate helpers, not combined.** They follow the same pattern as the existing helpers (installMethodologyDocs, scaffoldCommands) — each owns one category of artifacts. This keeps each helper's scope narrow and its tests focused. The init orchestrator composes them.
 
-**Obsidian MCP declared by name reference, not inline config.** Agents that need the brain declare `mcpServers: [obsidian]` in frontmatter. The host project provides the actual server config in `.mcp.json`. This keeps agents portable across vaults. Three agents declare it: researcher (write), domain-expert (read), architect (read). The spec-writer, implementor, and QA agent do not access the brain.
+**Brain MCP declared under the fixed `brain` key, never connector-flavored, never inline config.** Agents that need the brain declare `mcpServers: [brain]` in frontmatter — the literal `brain` is the fixed MCP key every host project wires under in `.mcp.json`, populated by sync from the user-owned `brain.aide`. The package never owns launcher bytes, and the agent file never names a connector (no `[obsidian]`, no `[notion]`, no project-flavored variant). The fixed key is what makes installed agents portable across users with different brain configurations: the same agent file ships byte-faithful everywhere, asks the entry keyed `brain`, and the user's `brain.aide` decides what answers. Three agents declare it: researcher (write), domain-expert (read), architect (read). The spec-writer, implementor, and QA agent do not access the brain.
 
 **Model assignments.** Opus for deep-reasoning roles (spec-writer distilling intent under ambiguity, domain-expert synthesizing research, architect making structural decisions). Sonnet for throughput roles (researcher doing volume research, implementor executing plans, QA doing systematic checking). This matches the intent spec's strategy section.
 

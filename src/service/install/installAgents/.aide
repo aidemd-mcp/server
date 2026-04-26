@@ -67,11 +67,11 @@ outcomes:
     - An install that overwrites a user's customized agent file
       because "the canonical version is newer." Customizations
       survive the install action; upgrades are aide_upgrade's job.
-    - Agent prompts that reference personal vault paths or hardcoded
+    - "Agent prompts that reference personal vault paths or hardcoded
       brain locations. Agents are opinionated about declaring the
       brain MCP server (`mcpServers: [brain]`) but say nothing about
       where the vault lives or how it's reached — that is entirely
-      the user's `brain.aide` to decide.
+      the user's `brain.aide` to decide."
     - Agent prompts that duplicate orchestration logic from the phase
       commands. The command says what to do; the agent knows how to do it.
     - A study-playbook skill that overwrites an existing user-defined one.
@@ -88,14 +88,16 @@ outcomes:
       brain MCP server once in `.mcp.json` from their `brain.aide`;
       agent files reference it by name only and stay portable across
       every user's configuration."
-    - "Agent frontmatter that declares `mcpServers: [obsidian]`,
-      `mcpServers: [notion]`, or any other connector-flavored name
-      instead of `mcpServers: [brain]`. The MCP key is fixed at
-      `brain`; the user's `brain.aide` is the only place the connector
-      identity (its `command` and `args`) is named. An agent file that
-      names a specific connector silently re-introduces the
-      backend-coupling model the framework retired and breaks the
-      portability the fixed `brain` key exists to guarantee."
+    - "Agent frontmatter that declares the brain MCP entry under any
+      key other than the literal `brain` — connector-flavored names
+      (`mcpServers: [<vault-app>]`, `mcpServers: [<knowledge-tool>]`),
+      project-flavored names, or anything derived from what the user
+      happens to have wired today. The MCP key is fixed at `brain`;
+      the user's `brain.aide` is the only place the connector identity
+      (its `command` and `args`) is named. An agent file that names a
+      specific connector silently re-introduces the backend-coupling
+      model the framework retired and breaks the portability the
+      fixed `brain` key exists to guarantee."
     - "Any conditional logic in this helper that branches on which
       brain a user configured — inspecting `brain.aide`, the MCP
       command, or env to vary which agents install or how their
@@ -220,17 +222,18 @@ playbook via study-playbook, scanning the codebase, writing the plan.
 
 ## Bad examples
 
-An agent file that hardcodes `d:/Code/Me/my-brain` as the vault path,
-or names a connector-flavored MCP key (e.g., `mcpServers: [obsidian]`,
-`mcpServers: [notion]`) instead of the fixed `brain` key. Both
-violate the fixed-`brain`-key contract: the agent file is supposed to
-ship byte-faithful to every host and ask the entry keyed `brain` for
-brain access, with the host's own `brain.aide` deciding what answers.
-A connector-flavored name couples the agent file to whatever launcher
-this user happens to have wired today and breaks portability across
-users whose `brain.aide` files configure the brain differently. The
-agent fails on first brain access for any host whose `.mcp.json`
-doesn't happen to expose the same key.
+An agent file that hardcodes a personal vault path, or names the brain
+MCP entry under any key other than the literal `brain` (a
+connector-flavored or project-flavored key derived from whatever the
+user happens to have wired today) instead of the fixed `brain` key.
+Both violate the fixed-`brain`-key contract: the agent file is
+supposed to ship byte-faithful to every host and ask the entry keyed
+`brain` for brain access, with the host's own `brain.aide` deciding
+what answers. A connector-flavored name couples the agent file to
+whatever launcher this user happens to have wired today and breaks
+portability across users whose `brain.aide` files configure the brain
+differently. The agent fails on first brain access for any host whose
+`.mcp.json` doesn't happen to expose the same key.
 
 An agent prompt that includes the full study-playbook navigation
 instructions inline instead of referencing the skill. When the skill

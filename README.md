@@ -212,7 +212,7 @@ Run a health check on `.aide` spec files in the project. Detects orphaned specs,
 
 ### aide_info
 
-Boot-time precondition reporter. Returns two independent fields the orchestrator branches on separately: `outdated` (an array of stale AIDE artifact keys, comparing the project's `versions.json` against the shipped manifest), and `brain` (a `{ status, vaultPath, backend }` object reporting whether the project's brain MCP entry is configured and its vault directory exists on disk; `backend` is the wired backend identifier when `status` is `ok`, or `null` otherwise).
+Boot-time precondition reporter. Returns two independent fields the orchestrator branches on separately: `outdated` (an array of stale AIDE artifact keys, comparing the project's `versions.json` against the shipped manifest), and `brain` (a `{ status, name?, hints }` object reporting whether the project's `brain.aide` config is wired into `.mcp.json`). `brain.status` is the four-state union `ok | no-brain-aide | no-mcp-entry | mcp-drift`, derived by comparing `.aide/config/brain.aide` against `.mcp.json` — no disk path validation. `name` is the user-declared label from `brain.aide` (only present on non-`no-brain-aide` states). `hints` is an array of candidate vault locations the orchestrator can surface during recovery.
 
 **Inputs:**
 
@@ -222,7 +222,7 @@ Boot-time precondition reporter. Returns two independent fields the orchestrator
 
 On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every `/aide` boot. Boot-time brain precondition state is already reported by `aide_info.brain.status`; firing `aide_brain` at boot duplicates that work unnecessarily.
 
-Returns `{ status, backend, instructions }`. `status` mirrors `aide_info.brain.status` exactly (`ok`, `no-mcp-entry`, `invalid-path`). `backend` is the wired backend identifier (e.g. `"obsidian"`) when `status` is `ok`, `null` otherwise. `instructions` is always non-empty, ready-to-execute prose composed by the server — on `ok` it names the specific MCP tools to call and how to reach the brain's entry-point file; on error branches it carries remediation prose.
+Returns `{ status, instructions }` — exactly two fields. No `backend`, no `connector`, no `name`. `status` mirrors `aide_info.brain.status` (`ok | no-brain-aide | no-mcp-entry | mcp-drift`). `instructions` is always non-empty: on `ok` it is the verbatim `## Prose` body from the user's `.aide/config/brain.aide` (no server substitution); on the failure states it carries fixed remediation prose naming the right CLI recovery command (`npx aidemd-mcp init` for `no-brain-aide`, `npx aidemd-mcp sync` for `no-mcp-entry` and `mcp-drift`).
 
 **Inputs:**
 

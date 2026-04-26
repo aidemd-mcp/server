@@ -37,6 +37,21 @@ outcomes:
     - Output is a single human-readable tree the agent can scan visually,
       with type tags, inline summaries only when present, and misalignment
       flags only when set.
+    - "The MCP tool description registered for `aide_discover` at server-registration
+       time is an auditable contract surface, not commentary. It accurately teaches
+       the path-as-switch two-mode behavior (no path = shallow project-wide map of
+       locations and types only; with path = ancestor-chain-then-subtree deep
+       response), the ancestor chain shape (each ancestor showing description plus
+       alignment status when set), the file-type vocabulary (`.aide`, `intent.aide`,
+       `research.aide`, `plan.aide`, `todo.aide`) and the `.aide`-vs-`intent.aide`
+       never-coexist rule, and the no-content-read invariant of shallow mode — so an
+       agent that reads only the description forms the same expectations it would
+       form by reading this spec. The description, the handler's runtime output
+       shape, and the rest of this spec stay in lockstep; drift between any two of
+       them is a falsifiable QA failure traceable to this outcome. Because this
+       tool's description is *itself* the teaching surface for the cascading-intent
+       protocol, description drift is unusually load-bearing — it does not just
+       misroute calls, it misteaches the entire convention."
   undesired:
     - A shallow call that reads any file contents. The whole point of the
       shallow mode is being cheap enough to call speculatively; reading
@@ -58,6 +73,19 @@ outcomes:
     - Misalignment flags that block the pipeline or require immediate action.
       The flag is informational — it surfaces drift for the agent to report
       or act on at its discretion.
+    - "A registered MCP tool description for `aide_discover` that teaches a mode,
+       output shape, file type, or behavioral guarantee the handler does not
+       implement or this spec does not define — for example: claiming the shallow
+       mode reads file content or returns summaries, omitting the ancestor chain
+       from the path-scoped response shape, naming a file type the parser does not
+       classify, allowing both `.aide` and `intent.aide` to coexist, claiming
+       misalignment is a blocking error, or omitting one of the five recognized
+       file types. Agents read this description at tool-discovery time and call
+       the tool with the mental model it teaches; because this tool is the teaching
+       surface for the entire AIDE convention, drift here propagates to every
+       agent that ever reads the description. Description-vs-handler drift,
+       description-vs-spec drift, and silently-stale description text after a
+       contract change are all the same falsifiable failure."
 ---
 
 ## Context

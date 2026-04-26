@@ -19,11 +19,12 @@ import compareBytes from "./shared/compareBytes/index.js";
 /**
  * Input schema for aide_init.
  *
- * `brainPath` and `skipIde` are removed: the brain path is always resolved
- * through agent-user conversation (not a silent tool parameter), and IDE
- * configuration is presented per-category during the agent interview.
+ * `skipIde` was removed: IDE configuration is presented per-category during
+ * the agent interview rather than suppressed via a flag.
  * `framework` remains so the agent can re-call after user confirms or
- * overrides framework detection.
+ * overrides framework detection. `brainPath` is the user-confirmed vault path
+ * forwarded to `provisionBrain` — the agent provides this after interviewing
+ * the user.
  */
 export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
@@ -73,9 +74,8 @@ export default async function init(
 	// Brain steps require a confirmed vault path. When brainPath is explicitly
 	// provided (agent-confirmed), delegate fully to provisionBrain. When absent,
 	// return placeholder steps with empty filePaths so the agent knows to interview
-	// the user first — the brain MCP entry prescription is written with an empty
-	// vault path (obsidianMcpEntry("")) so the orchestrator's inline-recovery flow
-	// detects the invalid-path state and prompts the user to supply the real path.
+	// the user first — the brain MCP entry prescription is omitted because without
+	// a confirmed brain.aide there is no source of truth to derive an entry from.
 	// brainHints are interview material for the agent; they are NEVER used as a
 	// planner-side default to avoid silently baking a hint into the prescription
 	// before the user has confirmed the path.

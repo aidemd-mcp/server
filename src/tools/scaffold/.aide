@@ -38,6 +38,19 @@ outcomes:
     - Every action the tool takes — create, rename, skip — is reported
       back as a plain-English line the agent can read and paste into a
       commit message.
+    - "The MCP tool description registered for `aide_scaffold` at server-registration
+       time is an auditable contract surface, not commentary. It accurately
+       enumerates the five `type` values (`intent`, `research`, `both`, `todo`,
+       `plan`), states the auto-rename rule (`type=research` renames an existing
+       `.aide` to `intent.aide` in the same call, and `type=intent` produces
+       `intent.aide` instead of `.aide` when `research.aide` exists), names the
+       never-coexist invariant between `.aide` and `intent.aide`, names the
+       skip-existing-files safety property, and notes that `todo.aide` and
+       `plan.aide` are orthogonal to the intent/research naming machinery — so an
+       agent that reads only the description forms the same expectations it would
+       form by reading this spec. The description, the handler's runtime behavior,
+       and the rest of this spec stay in lockstep; drift between any two of them
+       is a falsifiable QA failure traceable to this outcome."
   undesired:
     - "A scaffold call that creates `.aide` next to an existing
       `research.aide`. This is the single worst outcome: the folder
@@ -59,6 +72,21 @@ outcomes:
     - A scaffold that returns a serialized status object instead of a
       line-per-action log. The agent reads the actions to confirm
       what happened; a JSON envelope buries that signal.
+    - "A registered MCP tool description for `aide_scaffold` that teaches a
+       `type` value, naming rule, or behavioral guarantee the handler does not
+       implement or this spec does not define — for example: enumerating a sixth
+       `type` value, omitting one of the five (`intent`, `research`, `both`,
+       `todo`, `plan`), claiming `type=research` does not auto-rename existing
+       `.aide`, claiming the tool overwrites existing files, claiming `todo.aide`
+       or `plan.aide` participate in the rename machinery, or describing the
+       output as a JSON envelope instead of plain-English action lines. Agents
+       read this description at tool-discovery time and decide which `type` to
+       call with and what folder state to expect afterward; teaching the wrong
+       contract there silently corrupts the spec layout the tool exists to
+       protect, regardless of how correct the handler is.
+       Description-vs-handler drift, description-vs-spec drift, and
+       silently-stale description text after a contract change are all the same
+       falsifiable failure."
 ---
 
 ## Context
