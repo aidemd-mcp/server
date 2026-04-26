@@ -1,187 +1,268 @@
 ---
 intent: >
-  Update aide_info so its `brain` field reflects the new five-state
-  vocabulary returned by buildBrainState. The detector itself does the
-  heavy lifting; this plan ensures the tool's response shape, type, and
-  tests carry the new states (`no-brain-aide`, `mcp-drift`) and that the
-  `backend` field is removed from the response. The tool stays passive —
-  detection only, no mutation.
+  Update aide_info's response shape and tests to match the four-state brain
+  vocabulary (`ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`). The tool is
+  a passive forwarder of `buildBrainState(root)`; the orchestrator code
+  itself stays a verbatim forward. The work is concentrated in test fixtures
+  and assertions: drop every reference to the retired `invalid-path` state
+  and the retired `rootPath` field, replace `connector` with `name`, and
+  verify the four-state vocabulary surfaces unchanged through the tool.
 ---
 
 ## Project Structure
 
 ```
 src/tools/info/
-├── .aide               ← [needs spec edit — see step 1]
+├── .aide               ← [unchanged] spec was rewritten to the four-state contract
 ├── plan.aide           ← [this file]
-├── index.ts            ← [edit] forwards `buildBrainState` output unchanged;
-│                          shape adapts via the BrainState type rewrite from Plan 3.
+├── todo.aide           ← [unchanged] historical alignment trail
+├── index.ts            ← [verify, edit only if drift] passive forwarder
 │                          signature unchanged: default async function
 │                            info(root: string): Promise<InfoResult>
-├── index.test.ts       ← [edit] update tests to assert the new five-state
-│                          vocabulary and the absence of the `backend` field
-└── todo.aide           ← [existing, untouched]
+│                          composes { serverVersion, outdated, brain } where
+│                          `brain` is the verbatim BrainState from
+│                          `buildBrainState(root)` — no transformation.
+└── index.test.ts       ← [rewrite test fixtures + cases] update fixtures
+                          to the four-state vocabulary; drop invalid-path
+                          fixtures and assertions; replace `connector` with
+                          `name`; drop `rootPath` from fixture shapes;
+                          assert `name` is forwarded into result.brain on
+                          states that carry it.
 ```
 
-This module does very little direct work in this plan — most of the change
-lands in Plan 3 (the `BrainState` type and the detector that produces it).
-What this plan does:
-
-1. Update the `.aide` to teach the new vocabulary and tripwires.
-2. Verify (and edit if necessary) that `index.ts` forwards the state
-   unchanged — no transformation, no field stripping, no field addition.
-3. Update the tests to cover all five states and verify the `backend`
-   field is absent from the response.
+The orchestrator file (`index.ts`) does not need behavioral changes — it
+already forwards `buildBrainState`'s output verbatim into `result.brain`.
+Once the prerequisite plan lands and the `BrainState` type is the
+four-variant union with `name` instead of `connector` and no `rootPath`,
+the orchestrator's existing forward picks up the new shape automatically.
+This plan exists to (a) verify the orchestrator stays a verbatim forward
+under the new shape, (b) refresh the test fixtures and assertions to the
+new vocabulary so the suite continues to enforce the contract.
 
 ## Prerequisites
 
-**Plan 3 (`src/service/buildBrainState/plan.aide`)** must complete first:
-- The `BrainState` type rewrite (five states, no `backend` field) lands in
-  Plan 3. This plan inherits that change.
-- This plan's tests assert the new states; without Plan 3's detector
-  rewrite, those assertions would fail because the detector still
-  returns the old vocabulary.
+**`src/service/buildBrainState/`** must complete its rewrite to the new
+four-state contract before this plan runs.
+
+The contract this plan consumes:
+
+- `BrainState` in `@/types/index.js` is a four-variant tagged union:
+  `ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`. No `invalid-path`
+  variant.
+- `BrainState` carries no `rootPath` field on any variant. It carries no
+  `connector` field. The `ok`, `no-mcp-entry`, and `mcp-drift` variants
+  carry `name: string` (the user-declared descriptive label from
+  brain.aide). The `no-brain-aide` variant carries only `hints`. Every
+  variant carries `hints: BrainHint[]`.
+- `buildBrainState(root: string): Promise<BrainState>` returns one of
+  these four variants and never throws.
+
+The implementor of this plan will hit TypeScript errors in
+`src/tools/info/index.test.ts` if the prerequisite has not landed —
+specifically, the existing test fixtures reference `rootPath`, `connector`,
+and the `invalid-path` status, none of which exist in the new union. That
+is the expected signal to wait for the prerequisite. No coordination
+work in this plan beyond declaring the dependency.
 
 ## Plan
 
-### 1. Edit the `.aide` intent spec
-
-Read: `coding-playbook/foundations/conventions`
-
-- [x] Edit `src/tools/info/.aide`. Targeted edits, not a full rewrite —
-      the staleness-reporting half of the spec stays. Changes to the
-      brain-half:
-
-      - `intent` paragraph: replace the three-state vocabulary
-        (`ok`, `no-mcp-entry`, `invalid-path`) with the five-state
-        vocabulary (`ok`, `no-brain-aide`, `no-mcp-entry`,
-        `invalid-path`, `mcp-drift`). Replace the registry-dispatch
-        framing ("dispatches its command/args shape through the
-        brainBackends registry") with the brain.aide-driven framing
-        ("reads `.aide/brain.aide` via `parseBrainAide`, stats the
-        declared `rootPath`, compares its `mcpServerConfig` against
-        `.mcp.json`'s brain entry, and returns one of five
-        states").
-      - `outcomes.desired`: remove the bullet about `backend`
-        identification through the registry. Add a bullet for each
-        new state and what disk condition produces it. Add a bullet
-        explicitly stating `BrainState` carries no `backend` field
-        (the consumer surface is structured around the five
-        statuses, not a per-connector enum).
-      - `outcomes.undesired`: add tripwires for the new failure
-        modes — silent auto-sync of `.mcp.json` from this tool;
-        re-surfacing of the `backend` field; conflating
-        `no-brain-aide` with `no-mcp-entry` (the former means no
-        config file, the latter means config exists but isn't
-        wired); auto-fixing drift instead of surfacing it.
-      - Body sections (`## Context`, `## Strategy`, `## Good
-        examples`, `## Bad examples`) edited to match — the
-        Strategy paragraph that explained registry dispatch is
-        replaced by one explaining brain.aide-driven detection;
-        bad examples gain an entry showing a tool that auto-fixes
-        drift on boot.
-
-### 2. Verify the orchestrator forwards `BrainState` unchanged
+### 1. Verify `index.ts` is a verbatim forward under the new shape
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
 
-- [x] Open `src/tools/info/index.ts`. The function calls
-      `buildBrainState(root)` and returns the result on the `brain`
-      field of `InfoResult`. After Plan 3 lands, `BrainState` has the
-      new five-variant shape and no `backend` field; this orchestrator
-      should forward it unchanged.
+- [ ] 1a. Open `src/tools/info/index.ts` and confirm the orchestrator
+      already forwards `buildBrainState(root)`'s return value unchanged
+      into the `brain` field of the returned `InfoResult`. The expected
+      shape — already in place — is:
+      - `serverVersion: readServerVersion()` (sync read of bundled
+        `package.json`).
+      - `outdated: await resolveOutdated(root)` (existing helper that
+        reads `.aide/versions.json` and compares against canonical).
+      - `brain: await buildBrainState(root)` (verbatim forward).
+      - The two async reads run in parallel via `Promise.all`.
+- [ ] 1b. If the orchestrator does ANY transformation of `brain` between
+      receiving it from `buildBrainState` and returning it (field
+      stripping, field rewrite, compatibility shim, defaulting,
+      shape massaging), strip that code. The contract is verbatim
+      forward — the consumer of `aide_info` reads the same plain-data
+      `BrainState` the detector returned. If no transformation exists
+      (the expected state), this sub-step is a no-op.
+- [ ] 1c. Update the orchestrator's JSDoc summary if it still references
+      the five-state vocabulary or the retired `invalid-path` state.
+      The current JSDoc (lines 29-47) reads "the orchestrator must halt
+      and direct the user to run `/aide` when `brain.status` is anything
+      other than `"ok"`" — that statement is correct under the new
+      vocabulary and may stay. Any prose that enumerates specific states
+      must enumerate the four current states only.
+- [ ] 1d. Run `npx tsc --noEmit` after the verify-edits land. The
+      orchestrator must compile cleanly against the new `BrainState`
+      union from the prerequisite plan. If it does not, the
+      orchestrator is doing more than forwarding and must be reduced
+      until it does.
 
-      Check:
-      - 2a. `info(root)` calls `buildBrainState(root)` and assigns the
-        result to `brain` in the returned object. No transformation,
-        no field rewrite, no compatibility shim. The forward is
-        verbatim.
-      - 2b. The `Promise.all` parallelizing `resolveOutdated` and
-        `buildBrainState` stays — independent reads, parallel
-        execution is a meaningful latency win on every boot.
-      - 2c. `InfoResult` in `src/types/index.ts` already declares
-        `brain: BrainState`; that field's type widens automatically
-        when Plan 3 redefines `BrainState`. No edit to `InfoResult`
-        needed beyond what Plan 3 already does.
+### 2. Rewrite test fixtures to the four-state vocabulary
 
-      If the orchestrator does any additional brain-shape massaging
-      (it shouldn't, but verify), strip it. The tool is passive: it
-      forwards detector output unchanged.
+Read: `coding-playbook/workflow/testing`, `coding-playbook/workflow/type-system`
 
-### 3. Update tests
+- [ ] 2a. Open `src/tools/info/index.test.ts`. The fixture block at
+      lines 40-77 currently declares five `BrainState` constants
+      (`BRAIN_OK`, `BRAIN_NO_BRAIN_AIDE`, `BRAIN_INVALID_PATH`,
+      `BRAIN_NO_MCP_ENTRY`, `BRAIN_MCP_DRIFT`). Rewrite them to match
+      the new four-variant union:
+      - `BRAIN_OK`: `{ status: "ok", name: "obsidian", hints: [] }`.
+        No `rootPath`. No `connector`. The label field is `name`.
+      - `BRAIN_NO_BRAIN_AIDE`: `{ status: "no-brain-aide", hints: [] }`.
+        No `name`, no path — without a usable brain.aide there is no
+        descriptive label to thread through.
+      - `BRAIN_NO_MCP_ENTRY`: `{ status: "no-mcp-entry", name: "obsidian",
+        hints: [] }`. No `rootPath`. The `name` is from brain.aide so the
+        orchestrator can name the wired brand in remediation prose.
+      - `BRAIN_MCP_DRIFT`: `{ status: "mcp-drift", name: "obsidian",
+        hints: [] }`. Same shape as `no-mcp-entry`.
+      - **Delete `BRAIN_INVALID_PATH` entirely.** The state is retired.
+- [ ] 2b. Use `"obsidian"` as the canonical fixture `name` value to
+      mirror the example responses in the spec body (`.aide` lines
+      210-274). It is descriptive metadata only — the package never
+      branches on this value.
+- [ ] 2c. Confirm fixtures type-check against `BrainState` from
+      `@/types/index.js` (run `npx tsc --noEmit`). Each fixture is
+      annotated `: BrainState` already; if the prerequisite plan has
+      landed correctly, these constants compile cleanly. If not, the
+      compile error is the dependency signal — wait for the prerequisite.
+
+### 3. Update brain-state test cases to the four-state vocabulary
 
 Read: `coding-playbook/workflow/testing`
 
-- [x] Update `src/tools/info/index.test.ts` to cover all five brain
-      states and assert the response shape contract.
+- [ ] 3a. In the `describe("info — all five brain states (3a)", ...)`
+      block (currently lines 199-239), rename to `"info — all four
+      brain states"` and reduce to four cases — one per variant. Delete
+      the `it("surfaces invalid-path status when buildBrainState
+      returns invalid-path", ...)` test entirely. The remaining four
+      cases (one per variant) assert `result.brain.status` matches the
+      mocked return value's status discriminant.
+- [ ] 3b. In the `describe("info — backend field absent from
+      result.brain (3b)", ...)` block (currently lines 247-287),
+      keep the structural assertion (`expect(result.brain).not.toHaveProperty
+      ("backend")`) but reduce to four test cases — one per variant.
+      Delete the `invalid-path` case. Add a parallel assertion in each
+      case: `expect(result.brain).not.toHaveProperty("rootPath")`.
+      The `rootPath` field is also retired from `BrainState`; testing
+      its absence prevents a future refactor from re-adding it under
+      any name. Add a third assertion in each case where the variant
+      carries `name`: `expect(result.brain).not.toHaveProperty
+      ("connector")`. The renamed field stays in absentia too.
+- [ ] 3c. In the `describe("info — brain state and outdated
+      independence (3d)", ...)` block (currently lines 295-354),
+      rewrite the four cases that pin `BRAIN_INVALID_PATH` (none
+      currently — none use that fixture in this block, but verify) and
+      delete any reference to `invalid-path` if it appears. The
+      independence assertion (brain non-ok does not suppress outdated;
+      outdated empty does not suppress brain status) remains
+      structurally identical with one fewer state.
+- [ ] 3d. In the `describe("info — never throws on broken brain state
+      (3e)", ...)` block (currently lines 366-411), drop the
+      `it("resolves without throwing when brain state is invalid-path
+      (vault deleted)", ...)` case. The remaining four cases
+      (no-brain-aide, no-mcp-entry, mcp-drift, no-brain-aide with
+      hints) cover the never-throws contract for every valid
+      `BrainState` variant. The hints fixture in the last case
+      (`brokenWithHints`) already uses the `no-brain-aide` shape with
+      no `name` or `rootPath` — that fixture is already aligned with
+      the new union and stays.
+- [ ] 3e. In the `describe("info — brain pass-through (verbatim
+      forwarding)", ...)` block (currently lines 419-469), drop the
+      `it("forwards BrainState invalid-path verbatim ...")` case.
+      The remaining four cases assert `expect(result.brain).toEqual
+      (BRAIN_X)` for each variant — the verbatim-forward contract.
+      Update the trailing test (`it("forwards hints in BrainState
+      verbatim ...")`, currently line 460) so its inline `withHints`
+      fixture uses the new shape: `{ status: "no-mcp-entry", name:
+      "obsidian", hints }` (no `rootPath`, no `connector`).
 
-      Existing tests cover `ok`, `no-mcp-entry`, and `invalid-path`.
-      Add cases for `no-brain-aide` and `mcp-drift`. Use the same
-      pattern the existing tests use (temp dirs, real filesystem,
-      mocking only `resolveOutdated` if needed).
+### 4. Add `name` forwarding assertions
 
-      New / updated tests:
+Read: `coding-playbook/workflow/testing`
 
-      - 3a. **All five states surface in `result.brain.status`** —
-        five test cases, each setting up the disk state for one
-        state and asserting the resulting `result.brain.status`
-        matches. The disk-setup steps (which combination of
-        `brain.aide`, `rootPath` directory, `.mcp.json` produces
-        which state) follow Plan 3's test setup logic — duplicate
-        the helpers if needed, or extract them to a shared test
-        utility under `src/test/` if both test files would benefit.
+- [ ] 4a. Add a new `describe("info — name field forwarding", ...)`
+      block. The block contains three test cases, one per variant
+      that carries `name` (`ok`, `no-mcp-entry`, `mcp-drift`). Each
+      case mocks `buildBrainState` to return the corresponding
+      fixture and asserts `expect(result.brain).toHaveProperty("name",
+      "obsidian")`. This is the load-bearing test for the new
+      contract: the orchestrator's verbatim forward must carry the
+      user's descriptive label through to the response so the
+      orchestrator can compose targeted remediation prose ("your
+      Obsidian brain is wired but ...").
+- [ ] 4b. Add one negative case in the same block: a test that mocks
+      `buildBrainState` to return `BRAIN_NO_BRAIN_AIDE` and asserts
+      `expect(result.brain).not.toHaveProperty("name")`. The
+      `no-brain-aide` variant carries no `name` because there is no
+      usable brain.aide to read it from; verifying its absence
+      prevents a regression where the forwarder defaults to a
+      placeholder.
 
-      - 3b. **`backend` field is absent from `result.brain`** — for
-        every state, assert
-        `expect(result.brain).not.toHaveProperty("backend")`. This
-        is the load-bearing test for the parent spec's
-        `outcomes.desired[7]` ("no `backend` field, no connector
-        label, no enum the server interprets").
+### 5. Final verify
 
-      - 3c. **Staleness reporting unchanged** — re-run the existing
-        outdated-array tests to confirm Plan 3's brain rewrite
-        didn't regress the staleness half. The `outdated` field
-        and `serverVersion` field behaviors are unchanged by this
-        plan.
+Read: `coding-playbook/workflow/testing`
 
-      - 3d. **Brain status and outdated are independent** — assert
-        that a state where `brain.status === "ok"` AND `outdated.length
-        > 0` returns both correctly without one hiding the other.
-        Same for the inverse (brain broken, no staleness). This
-        re-validates the parent spec's invariant that the two
-        concerns are independent fields, not a fused state.
-
-      - 3e. **Tool never throws on broken state** — explicit test
-        for: missing `.mcp.json`, malformed `.mcp.json`, missing
-        `brain.aide`, broken `brain.aide`. All resolve to structured
-        states. None throw. This is the never-throws contract from
-        the parent spec.
+- [ ] 5a. Run `npm test -- tools/info` (or the project's equivalent
+      Vitest invocation scoped to this module). All tests pass.
+- [ ] 5b. Run `npx tsc --noEmit`. No type errors. The orchestrator
+      and tests compile against the prerequisite-plan's new
+      `BrainState` union.
+- [ ] 5c. Spot-check the response shape against the spec's `## Good
+      examples` block (`.aide` lines 200-281). The shapes the tests
+      assert — `{ status: "ok", name: "obsidian", hints: [] }`,
+      `{ status: "no-brain-aide", hints: [] }`, etc. — must match
+      the example response objects byte-for-byte (modulo `hints`
+      contents). This is the spec-to-code parity check.
 
 ## Decisions
 
-- **This plan is small because Plan 3 does the heavy lifting.** The
-  brain detector lives in `buildBrainState`; this tool is a passive
-  forwarder. Most of what looks like work (the new vocabulary, the
-  removed `backend` field) flows through the type system from Plan 3.
-  The plan is here at all because (a) the `.aide` spec needs to
-  reflect the new contract for future audits, and (b) the tests need
-  to exercise the new states at this surface.
-- **No new helper subfolders.** The orchestrator pipeline today is
-  three steps (sync version read, parallel staleness + brain detection,
-  compose result). Plan 3 adds nothing to that shape — `buildBrainState`
-  hides the new pipeline behind its existing function signature. No
-  decomposition warranted.
-- **Tests prefer disk integration over mock layering.** The detector's
-  pipeline now reads three different files (`brain.aide`, `rootPath`
-  directory existence check, `.mcp.json`) and the boundary cases come
-  from the interactions between them. Mocking each of those individually
-  would test the mocks; using temp dirs (already the pattern in the
-  existing test) keeps the tests honest. Cross-reference Plan 3's test
-  helpers — extract shared setup into `src/test/` if both test files
-  benefit.
-- **`backend`-absence assertions are explicit, not implicit.** The
-  parent spec's `outcomes.desired[7]` rules out the `backend` field
-  by name. Asserting its absence (`not.toHaveProperty`) makes the
-  invariant testable, not just a type-system promise. A future
-  refactor that re-adds the field for "convenience" trips these tests
-  immediately.
+- **This plan is small because the heavy lifting is in the
+  prerequisite.** The brain detector (`buildBrainState`) owns the
+  vocabulary collapse from five states to four, the rename from
+  `connector` to `name`, and the removal of `rootPath`. This tool is
+  a verbatim forwarder — once the upstream type changes, the
+  forwarder's response shape adapts automatically through the type
+  system. The plan exists at all because (a) the test fixtures
+  hardcode the old shape and need explicit updates, (b) the
+  `name`-forwarding contract needs explicit test coverage at this
+  surface, and (c) the spec calls out specific tripwires
+  (`rootPath`, `connector`, `invalid-path` re-introduction) that
+  warrant explicit `not.toHaveProperty` assertions to keep the
+  invariant testable.
+- **`not.toHaveProperty` for retired fields, not just type-system
+  absence.** The spec's `outcomes.undesired` explicitly forbids
+  re-introducing `rootPath`, `connector`, and `invalid-path` under
+  any name. Type-system absence enforces the contract at compile
+  time; `not.toHaveProperty` enforces it at runtime so a future
+  refactor that loosens a type (e.g. adds a passthrough field) trips
+  the test immediately. The redundancy is deliberate — the cost of
+  one extra assertion per test is small; the cost of a regression
+  going undetected is large.
+- **Fixtures live inline in the test file, not in a shared utility.**
+  The buildBrainState plan suggested extracting fixtures to
+  `src/test/` if both files would benefit. This plan keeps fixtures
+  inline because (a) the four `BrainState` shapes are small and
+  trivial to declare, (b) no other test file imports them, (c) the
+  existing pattern in this file is inline declaration. Extract only
+  when the duplication actually exists across files; pre-extracting
+  for hypothetical reuse is dead-on-arrival abstraction.
+- **`name: "obsidian"` as the canonical fixture value.** Mirrors the
+  spec's example response objects (`.aide` lines 209-273) so anyone
+  reading the tests sees the same brand label the spec showcases. The
+  package never branches on this value, so the choice is purely
+  cosmetic — using the spec's value keeps tests, spec, and
+  documentation in lockstep. A second test that uses a different
+  `name` (e.g. `"notion"`) is unnecessary at this layer because
+  detection-uniformity-across-names is a property of the detector
+  (verified in `buildBrainState/index.test.ts`), not this passive
+  forwarder.
+- **The orchestrator file changes are minimal-or-none.** The
+  existing `info()` function already forwards `buildBrainState`'s
+  output unchanged into `result.brain`. Step 1 verifies this stays
+  true under the new contract; the only foreseeable edits are JSDoc
+  prose if it enumerates state names that no longer exist. No
+  pipeline reshaping, no helper extraction, no new imports.

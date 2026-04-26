@@ -1,277 +1,365 @@
 ---
 intent: >
-  Rewrite the runtime brain tool so its response is `{ status, instructions }`
-  with the prose body returned verbatim from `.aide/brain.aide`. The `backend`
-  field is removed. The `composeInstructions` helper is deleted — there is no
-  per-driver dispatch, no registry lookup, and no server-side template
-  rendering. The tool returns the user's hand-written prose untouched on `ok`,
-  and backend-agnostic remediation prose on every non-ok branch.
+  Refactor the runtime brain tool to the four-state contract: collapse the
+  status union from 5 to 4 by removing `invalid-path`, delete the
+  INVALID_PATH_PROSE constant, update NO_BRAIN_AIDE_PROSE to point at
+  `.aide/config/brain.aide`, retarget the defensive fallback (parse-non-ok
+  despite buildBrainState ok) to NO_BRAIN_AIDE_PROSE, and rewrite the tests
+  so they cover the 4 status branches plus the new fallback target while
+  asserting the response shape never carries `name`, `backend`, or
+  `connector`.
 ---
 
 ## Project Structure
 
 ```
 src/tools/brain/
-├── .aide                       ← [needs spec rewrite — see step 1]
-├── plan.aide                   ← [this file]
-├── index.ts                    ← [rewrite] runtime tool: returns prose verbatim on ok
-│                                  signature unchanged: default async function
-│                                    brain(root: string): Promise<BrainToolResult>
-│                                  imports parseBrainAide for the prose body
-│                                  imports buildBrainState for the status
-├── index.test.ts               ← [rewrite] tests covering all five status branches
-│                                  and the verbatim-prose invariant
-└── todo.aide                   ← [existing, untouched]
-
-DELETED FILES (this plan removes them):
-src/tools/brain/composeInstructions/
-├── index.ts                    ← [delete] no per-driver dispatch needed
-└── index.test.ts               ← [delete]
+├── .aide                ← [existing, aligned] intent spec for the runtime brain tool
+├── plan.aide            ← [this file]
+├── todo.aide            ← [existing, untouched] alignment cycle log
+├── index.ts             ← [edit] orchestrator: brain(root: string): Promise<BrainToolResult>
+│                          imports buildBrainState (4-state union) and parseBrainAide
+│                          three top-of-file remediation prose constants:
+│                            NO_BRAIN_AIDE_PROSE (path now `.aide/config/brain.aide`)
+│                            NO_MCP_ENTRY_PROSE  (unchanged text)
+│                            MCP_DRIFT_PROSE     (unchanged text)
+│                          INVALID_PATH_PROSE: DELETED
+│                          branches: no-brain-aide | no-mcp-entry | mcp-drift | ok
+│                          ok branch: parseBrainAide → return { status: "ok", instructions: prose }
+│                          defensive fallback (parse non-ok despite ok state):
+│                            return { status: "no-brain-aide", instructions: NO_BRAIN_AIDE_PROSE }
+│                          response shape: { status, instructions } only — never name/backend/connector
+└── index.test.ts        ← [rewrite] 4-state branch tests + defensive fallback to no-brain-aide
+                           verifies response shape has no `name`, no `backend`, no `connector`
+                           verifies verbatim-prose invariant on ok branch
+                           verifies instructions never empty on every branch + fallback
+                           drops every reference to `invalid-path` and INVALID_PATH_PROSE
 ```
 
-The `composeInstructions/` helper subfolder is deleted entirely. Its job was
-to dispatch through the brainBackends registry; with the registry retired
-and prose owned by the user's `brain.aide`, there is no per-state composition
-work that warrants its own helper. The four non-ok prose strings (each a
-short, fixed sentence) live as constants at the top of `index.ts`.
+This plan is module-scoped. The `BrainToolResult` type lives in
+`src/types/index.ts` (outside this scope) and the four-state `BrainState`
+lives in the same shared types module. Both type changes are listed under
+Prerequisites.
 
 ## Prerequisites
 
-**Plan 2 (`src/service/parseBrainAide/plan.aide`)** must complete first:
-- This plan imports `parseBrainAide` for the prose body on the `ok`
-  branch.
+This plan depends on two upstream contracts being in place before it can
+type-check or run.
 
-**Plan 3 (`src/service/buildBrainState/plan.aide`)** must complete first:
-- This plan imports `buildBrainState` and consumes the new five-state
-  `BrainState` union.
-- The new `BrainToolResult` type (without the `backend` field) must
-  exist in `src/types/index.ts`.
+- **`src/types/index.ts` must export `BrainState` as a four-variant tagged
+  union** with `status` membership exactly `"ok" | "no-brain-aide" |
+  "no-mcp-entry" | "mcp-drift"`. The `"invalid-path"` variant (and any
+  field references that imply `rootPath` validation, e.g. the
+  `invalid-path` shape's `rootPath` carry) must be gone. `BrainToolResult`
+  must remain typed as `{ status: BrainState["status"]; instructions:
+  string }` — once `BrainState` shrinks, `BrainToolResult["status"]`
+  inherits the four-state union automatically. Without this change, the
+  removal of the `if (state.status === "invalid-path")` branch in this
+  plan's step 2 produces a TS2367 (comparison appears unintentional) on
+  the now-impossible discriminant value, and the new defensive-fallback
+  return literal `{ status: "no-brain-aide", ... }` would be
+  type-checked against a union that still includes `"invalid-path"`.
+
+- **`src/service/buildBrainState/index.ts` must be refactored to never
+  return `{ status: "invalid-path" }`.** The detector's pipeline must
+  drop the `stat(config.rootPath)` step and the two return sites that
+  emit `invalid-path`. After refactor, the function's return shape
+  matches the new four-variant `BrainState`. Without this change, the
+  type-system will still allow `state.status === "invalid-path"` to
+  resolve as a defined case at runtime, even if the type union forbids
+  it at compile time — and any code path in this tool that no longer
+  handles it would route to the defensive fallback unintentionally.
+
+- **`src/service/buildBrainState/.aide` already declares the four-state
+  contract** (status: aligned, post-schema-collapse pivot). No spec
+  change is required there; only its code refactor is the prerequisite.
+
+These prerequisites are external to this plan's scope directory. The
+orchestrator executes their plans (the type-shrink in `src/types/` and
+the detector refactor in `src/service/buildBrainState/`) before this
+plan's steps begin. This plan does NOT modify those files.
 
 ## Plan
 
-### 1. Rewrite the `.aide` intent spec
-
-Read: `coding-playbook/foundations/conventions`
-
-- [x] Rewrite `src/tools/brain/.aide` to reflect the new runtime
-      contract. The current spec describes a tool that dispatches through
-      `composeInstructions` and a registry; the rewrite must:
-
-      - Frontmatter `description` and `intent` paragraphs describe the
-        new shape: returns `{ status, instructions }`. On `ok`, the
-        `instructions` field is the verbatim prose body from
-        `.aide/brain.aide`. On non-ok branches, it's a short backend-
-        agnostic remediation sentence directing the user to fix the
-        underlying state.
-      - `outcomes.desired` enumerates the five-status response and the
-        verbatim-prose invariant. Add: the tool reads brain.aide once
-        per call (via `parseBrainAide`) on the `ok` branch; on non-ok
-        branches it does not need to re-read because the status alone
-        determines the remediation prose.
-      - `outcomes.undesired` adds tripwires for every regression path:
-        the tool dispatching to a registry, the tool running any
-        substitution pass over the prose body, the tool returning the
-        old `backend` field, the tool composing per-connector prose
-        from package-side templates, the tool re-implementing
-        brain.aide parsing.
-      - Body sections rewritten in decision form. `## Strategy`
-        explains why prose-from-disk-not-template is load-bearing
-        (the user owns the words), why the helper folder is gone
-        (no dispatch left), why each non-ok branch ships a fixed
-        sentence (uniform remediation across all unrecognized
-        wirings).
-      - `## Good examples` shows a real `ok` response: the prose
-        field contains the canonical Obsidian sample sentences from
-        the parent spec's good example. Show one non-ok response
-        with the exact remediation text. `## Bad examples` shows
-        a tool that re-runs templating on the prose body, a tool
-        that composes prose from `connector`-keyed strings inside
-        the package, a tool that returns the deleted `backend`
-        field.
-      - `## References` lists the parent intent spec, parseBrainAide
-        spec, buildBrainState spec.
-
-### 2. Implement the new runtime tool
+### 1. Refactor `index.ts` to the four-state branch set
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error-handling`
 
-- [x] Rewrite `src/tools/brain/index.ts`. The function signature is
-      unchanged: `default async function brain(root: string):
-      Promise<BrainToolResult>`. The `BrainInput` Zod schema stays
-      `z.object({})`.
+- [ ] 1a. Delete the `INVALID_PATH_PROSE` constant declaration entirely
+  (the string literal and its surrounding documentation comment, if the
+  comment refers only to that constant). Leave the
+  `NO_BRAIN_AIDE_PROSE`, `NO_MCP_ENTRY_PROSE`, and `MCP_DRIFT_PROSE`
+  constants in place.
 
-      Four top-of-file constants for non-ok remediation prose. Each is
-      a single short paragraph of agent-facing instructions. Names
-      and exact text are decisions, not implementation details — the
-      implementor uses these strings verbatim:
+- [ ] 1b. Update the `NO_BRAIN_AIDE_PROSE` constant's text. The path
+  reference inside the prose currently reads `.aide/brain.aide`; change
+  it to `.aide/config/brain.aide`. Every other word of the prose stays
+  byte-identical — the load-bearing phrases (the npx command name, the
+  `/aide:brain config` slash command pointer, the "do not proceed" clause)
+  are unchanged. The exact target text:
 
-      - `NO_BRAIN_AIDE_PROSE` — "No `.aide/brain.aide` is present in
-        this project. Tell the user to run `npx aidemd-mcp init` to
-        scaffold the brain config file, or `/aide:brain config` if
-        they want to be walked through it. Do not proceed with this
-        task as if the brain were available — the file must exist
-        before brain-dependent work continues."
-      - `NO_MCP_ENTRY_PROSE` — "A brain config exists at
-        `.aide/brain.aide`, but no `brain` MCP entry is wired in
-        `.mcp.json`. Tell the user to run `npx aidemd-mcp sync` to
-        apply the config to `.mcp.json`, then restart Claude Code.
-        Do not proceed with this task as if the brain were
-        available."
-      - `INVALID_PATH_PROSE` — "The `rootPath` declared in
-        `.aide/brain.aide` does not resolve on disk. Tell the user
-        which path is broken (it appears in the boot reporter's
-        diagnostic) and ask them to either correct `rootPath` or
-        create the directory. Do not proceed with this task as if
-        the brain were available."
-      - `MCP_DRIFT_PROSE` — "`.aide/brain.aide` and `.mcp.json`
-        disagree about the brain entry. Tell the user to run
-        `npx aidemd-mcp sync` in their terminal — that is the only
-        command that mutates `.mcp.json` from `brain.aide`. Then
-        restart Claude Code. Do not attempt to patch `.mcp.json`
-        from this session."
+  > "No `.aide/config/brain.aide` is present in this project. Tell the
+  > user to run `npx aidemd-mcp init` to scaffold the brain config file,
+  > or `/aide:brain config` if they want to be walked through it. Do
+  > not proceed with this task as if the brain were available — the
+  > file must exist before brain-dependent work continues."
 
-      Pipeline (Tier 3 inline-narrated):
+  This is the only path-string change in the file. `NO_MCP_ENTRY_PROSE`
+  and `MCP_DRIFT_PROSE` already reference `.aide/brain.aide`; per the
+  spec context the path is the only mention to update for the
+  `no-brain-aide` constant. (Audit `NO_MCP_ENTRY_PROSE` and
+  `MCP_DRIFT_PROSE` while you are in the file — if either references a
+  `brain.aide` path, update it to `.aide/config/brain.aide` for
+  consistency. Each reference is the same load-bearing path-disclosure
+  that `aide_init` writes, so they should match the new canonical
+  location.)
 
-      1. Call `buildBrainState(root)`. The state's `status`
-         determines which branch fires.
-      2. Branch on `state.status`:
-         - `"no-brain-aide"` → return `{ status, instructions:
-           NO_BRAIN_AIDE_PROSE }`.
-         - `"no-mcp-entry"` → return `{ status, instructions:
-           NO_MCP_ENTRY_PROSE }`.
-         - `"invalid-path"` → return `{ status, instructions:
-           INVALID_PATH_PROSE }`.
-         - `"mcp-drift"` → return `{ status, instructions:
-           MCP_DRIFT_PROSE }`.
-         - `"ok"` → continue.
-      3. On `ok`, call `parseBrainAide(root)` to retrieve the prose
-         body. The brain-state already validated the file is parseable;
-         this call must return `kind: "ok"` (defensive contract).
-         Return `{ status: "ok", instructions: result.prose }`. The
-         prose is byte-identical to what the user wrote.
-      4. Defensive clause: if step 3's `parseBrainAide` returns a
-         non-`ok` kind (state machine should make this impossible —
-         `buildBrainState` already validated the file), fall through
-         to `INVALID_PATH_PROSE` with `status: "invalid-path"`. This
-         defends the "instructions never empty" invariant against an
-         upstream contract violation, just as the previous
-         `composeInstructions` did.
+- [ ] 1c. Delete the `if (state.status === "invalid-path") return { ... }`
+  branch entirely (the `if` head and the return statement). This branch
+  is no longer reachable once the prerequisite type-shrink lands —
+  TypeScript will surface the now-unreachable comparison as TS2367 if
+  left in place. After deletion, the branch ladder is exactly three
+  non-ok branches: `no-brain-aide`, `no-mcp-entry`, `mcp-drift`.
 
-      JSDoc on the orchestrator names the verbatim-prose invariant on
-      `ok` and the never-throws contract. Tier 3 inline comments
-      narrate each step.
+- [ ] 1d. Retarget the defensive fallback (the final `return` after the
+  `parseResult.kind === "ok"` check). The current fallback returns
+  `{ status: "invalid-path", instructions: INVALID_PATH_PROSE }`; the
+  new fallback returns `{ status: "no-brain-aide", instructions:
+  NO_BRAIN_AIDE_PROSE }`. The rationale is in the spec's Strategy
+  paragraph "A defensive fallback guards the 'instructions never
+  empty' invariant" — the upstream-contract-violation pattern this
+  fallback exists for is "buildBrainState says ok but parser says
+  missing/broken file," which is the missing-or-broken-file shape that
+  `no-brain-aide` is the natural remediation for.
 
-### 3. Delete `composeInstructions/`
+- [ ] 1e. Update the orchestrator's JSDoc and the inline comment above
+  the defensive-fallback `return` to reflect the new vocabulary. The
+  JSDoc bullet that enumerated `invalid-path` should be removed; the
+  inline comment above the defensive fallback should name
+  `NO_BRAIN_AIDE_PROSE` (not `INVALID_PATH_PROSE`) as the fallback
+  target and cite the same upstream-contract-violation reasoning. Do
+  not enumerate the count of statuses inline — the spec deliberately
+  avoids pinning a count, so the JSDoc should describe the contract
+  in terms of the `BrainState` vocabulary rather than naming "four
+  states."
 
-Read: `coding-playbook/foundations/conventions`
+- [ ] 1f. Confirm the orchestrator's response literals never include a
+  `name`, `backend`, or `connector` field. Each return statement should
+  be exactly `{ status: <status>, instructions: <prose> }`. This is the
+  no-discriminant-leakage invariant from the spec's outcomes.desired —
+  any extra field re-introduces the registry-dispatch temptation on the
+  consumer side. The current code already complies; verify nothing was
+  reintroduced during the constant cleanup.
 
-- [x] Delete `src/tools/brain/composeInstructions/index.ts` and
-      `src/tools/brain/composeInstructions/index.test.ts`. Remove the
-      `composeInstructions/` directory. The helper has no remaining
-      consumer — `src/tools/brain/index.ts` no longer imports from it
-      after step 2.
+### 2. Rewrite `index.test.ts` to the four-state contract
 
-      Verify no other file in the codebase imports from
-      `composeInstructions`. Run a search across `src/`; expected
-      result: zero hits. If hits surface, they belong in the
-      orchestrator pipeline instead — escalate back to the architect.
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-### 4. Rewrite the tests
+- [ ] 2a. Update the file-header invariant comment. The current header
+  says "five-status branching"; change it to describe the new contract
+  in terms of the `BrainState` vocabulary without pinning a count
+  (mirroring the spec's enumeration-drift guidance). Keep the existing
+  invariant comment forbidding imports from `@/service/brainBackends`.
 
-Read: `coding-playbook/workflow/testing`
+- [ ] 2b. Update the `MINIMAL_CONFIG` fixture to match the new
+  `BrainAideConfig` shape that lives in `src/types/index.ts`. The
+  current fixture carries `connector`, `rootPath`, `entryFile`, `tools`
+  — those are removed from the schema. The new fixture carries `name`
+  and `mcpServerConfig` only, e.g.:
 
-- [x] Rewrite `src/tools/brain/index.test.ts` to cover all five status
-      branches and the verbatim-prose invariant. Mock `buildBrainState`
-      and `parseBrainAide` (they are imported helpers; mocking gives
-      this test a focused surface). Use `vi.mock("@/service/...")` per
-      the playbook's testing pattern.
+  ```ts
+  const MINIMAL_CONFIG = {
+    name: "obsidian",
+    mcpServerConfig: {
+      command: "npx",
+      args: ["@bitbonsai/mcpvault", "/x"],
+    },
+  };
+  ```
 
-      Test cases:
+  The exact field values are not under test; only the shape needs to
+  satisfy the type. If the prerequisite parser/type refactor has
+  already collapsed `BrainAideConfig` to two fields, this fixture
+  must match that collapse. If the parser still carries the old
+  fields at the time this test is rewritten, escalate — the
+  prerequisites have not landed.
 
-      - 4a. **`ok` returns the prose body verbatim** — mock
-        `buildBrainState` to return `{ status: "ok", rootPath: "/x",
-        connector: "obsidian", hints: [] }`. Mock `parseBrainAide` to
-        return `{ kind: "ok", config: <minimal>, prose: "exact prose
-        with literal ${rootPath} characters and a [[wikilink]] and
-        markdown" }`. Assert `result.instructions === <that exact
-        string>`. This is the load-bearing test for the
-        no-substitution invariant.
+- [ ] 2c. Update the `makeOkState` helper and every inline state
+  fixture in the file to match the new four-variant `BrainState`. The
+  current `makeOkState` returns `{ status: "ok", rootPath, connector,
+  hints }`; the new shape carries `{ status: "ok", name, hints }` (the
+  `connector` field renamed to `name` per the parent root spec; no
+  `rootPath` because the detector no longer stats a path). Every
+  inline state literal in the test body (the `no-mcp-entry` fixture,
+  the `mcp-drift` fixture, the parameterized fixtures in the
+  `it.each` block) must use the same field set. If `BrainState`'s
+  shape after refactor differs from this expectation, conform to the
+  shipped type. Drop every fixture that carries `connector` and
+  every fixture that carries `rootPath` on a state that no longer
+  declares it.
 
-      - 4b. **`ok` does NOT include a `backend` field** — assert
-        `result` has no `backend` key. Use
-        `expect(result).not.toHaveProperty("backend")`.
+- [ ] 2d. Delete the entire `describe("brain — invalid-path:
+  remediation prose (4e)", ...)` block. The branch is gone; tests
+  for it are dead code. Renumber surrounding describe-block labels
+  if your project's convention does so (the existing labels are
+  4a–4j with 4e on `invalid-path` and the defensive fallback at
+  4g — adjust the label letters if needed, or leave the labels
+  static and accept the gap; either is acceptable, just be
+  consistent within the file).
 
-      - 4c. **`no-brain-aide` returns the canonical remediation
-        prose** — mock state, assert `result.status ===
-        "no-brain-aide"`, `result.instructions ===
-        NO_BRAIN_AIDE_PROSE` (import the constant or assert the
-        prose contains the load-bearing phrase "npx aidemd-mcp
-        init").
+- [ ] 2e. Remove the `invalid-path` row from the `it.each([...])`
+  parameterization in the "instructions always non-empty" describe
+  block. The remaining rows are `no-brain-aide`, `no-mcp-entry`,
+  `mcp-drift`. Each row's state fixture must conform to the new
+  `BrainState` shape (field set per step 2c).
 
-      - 4d. **`no-mcp-entry` returns the canonical remediation
-        prose** — assert prose contains "npx aidemd-mcp sync".
+- [ ] 2f. Rewrite the defensive-fallback describe block (currently
+  asserting `result.status === "invalid-path"` when `parseBrainAide`
+  returns non-ok despite `buildBrainState` ok). The new assertions:
+  - `result.status === "no-brain-aide"` (not `"invalid-path"`)
+  - `result.instructions.length > 0` (unchanged invariant)
+  - `result.instructions === NO_BRAIN_AIDE_PROSE` if the test
+    chooses to import the constant; otherwise assert
+    `result.instructions.includes("npx aidemd-mcp init")` (the
+    load-bearing recovery phrase). Either is acceptable; the
+    constant-import form is more precise but couples the test to
+    the constant's name.
 
-      - 4e. **`invalid-path` returns the canonical remediation
-        prose** — assert prose mentions correcting `rootPath`.
+  Cover both the `parseBrainAide` returning `{ kind: "missing" }`
+  case and at least one malformed sub-case (e.g.
+  `{ kind: "malformed-frontmatter", reason: "..." }`) — both must
+  route to the same `no-brain-aide` fallback.
 
-      - 4f. **`mcp-drift` returns the canonical remediation prose** —
-        assert prose contains "npx aidemd-mcp sync" and mentions
-        drift.
+- [ ] 2g. Update the "instructions is non-empty on the defensive
+  fallback branch" test (currently asserting fallback returns a
+  non-empty `instructions`). Keep the invariant assertion; update
+  the surrounding mock setup if any field of the fixture changed
+  with `BrainState`'s collapse. The status assertion (if any) must
+  read `"no-brain-aide"`, not `"invalid-path"`.
 
-      - 4g. **`ok` with `parseBrainAide` returning `missing` falls
-        through to `INVALID_PATH_PROSE`** — defensive clause. Mock
-        state as `ok` but parseBrainAide as `{ kind: "missing" }`.
-        Assert `result.status === "invalid-path"`,
-        `result.instructions` is non-empty.
+- [ ] 2h. Add a new test (or augment an existing describe block)
+  asserting the response shape never includes `name`, `backend`,
+  or `connector`. Use `expect(result).not.toHaveProperty("name")`,
+  `expect(result).not.toHaveProperty("backend")`,
+  `expect(result).not.toHaveProperty("connector")`. Run this
+  assertion across at least the `ok` branch and one non-ok branch.
+  Co-locate with the existing "no backend field" describe block
+  (4b) and rename the block to cover the broader no-discriminant
+  invariant ("no name, backend, or connector field"). This test
+  enforces the spec's load-bearing outcome that the response carries
+  `status` + `instructions` only.
 
-      - 4h. **No registry imports** — by absence: the test file does
-        NOT import from `@/service/brainBackends`. Add a comment
-        naming the invariant.
+- [ ] 2i. Verify the no-connector-dispatch test (currently 4j) still
+  passes after the fixture rename. The test's purpose — identical
+  prose input must produce identical instructions output — does
+  not change; only the fixture field names need to update from
+  `connector` to `name`. Update both the `makeOkState("obsidian")`
+  / `makeOkState("notion")` calls (or whatever the new helper
+  signature is) and the `MINIMAL_CONFIG` overrides.
 
-      - 4i. **`instructions` is never empty** — across all five
-        branches plus the defensive clause, assert `result.instructions
-        .length > 0`. This invariant is load-bearing for the parent
-        spec's `outcomes.desired[7]` ("instructions is always non-
-        empty").
+- [ ] 2j. Run the test suite for this file: `npx vitest run
+  src/tools/brain/index.test.ts`. Expect every test to pass. If a
+  test fails because a prerequisite type or function shape differs
+  from the spec, escalate to the architect rather than patching
+  the test to absorb the difference.
 
-      - 4j. **No connector dispatch** — for the `ok` branch, run two
-        cases with `connector === "obsidian"` and `connector ===
-        "notion"` (mock state with each, mock parser with the same
-        prose). Assert the returned `instructions` are byte-identical
-        in both cases for identical prose input. This enforces that
-        the tool does not branch on connector to vary output.
+### 3. Final verification
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [ ] 3a. Run `npx tsc --noEmit` from the project root. Expect zero
+  errors in `src/tools/brain/`. If the prerequisite type-shrink in
+  `src/types/index.ts` and the prerequisite detector refactor in
+  `src/service/buildBrainState/` have landed, the compile passes
+  cleanly. If errors surface in those files, the prerequisites
+  have not landed and this plan should not have been executed
+  yet — escalate.
+
+- [ ] 3b. Run `npm test -- tools/brain` (or
+  `npx vitest run src/tools/brain/`). Expect every test to pass.
+
+- [ ] 3c. Run the full project test suite once
+  (`npm test` or `npx vitest run`) to confirm no other consumer
+  regresses. The brain tool's response shape has not changed
+  (`{ status, instructions }` was already the contract); the only
+  behavioral changes are the removal of one branch and the retarget
+  of the defensive fallback. Consumers that branch on
+  `result.status` for `"invalid-path"` would surface as failing
+  tests outside this plan's scope — none should exist after the
+  prerequisite refactor lands, but a regression here means a
+  consumer was missed and the architect should be told.
 
 ## Decisions
 
-- **`composeInstructions` helper folder is deleted, not refactored.**
-  Its only job was registry dispatch; with no registry, the helper has
-  no purpose. Four short non-ok prose constants live in the orchestrator
-  file because they are part of the orchestrator's branching logic,
-  not separable behavior. The single-helper exception in the
-  progressive-disclosure note applies — splitting them into a sibling
-  subfolder for four `if` branches and four constant strings would add
+- **The `INVALID_PATH_PROSE` constant deletes outright; no
+  rename, no archive comment.** The schema collapse retired the
+  `rootPath` field from `brain.aide`; the package no longer
+  validates a path; there is no `invalid-path` `BrainState`
+  variant; therefore there is no remediation surface for this
+  prose to address. Keeping the constant as dead text invites
+  future contributors to try wiring it back in. The spec's bad
+  example explicitly forbids re-introducing both the branch and
+  the constant.
+
+- **Defensive fallback retargets to `NO_BRAIN_AIDE_PROSE`, not
+  to `MCP_DRIFT_PROSE` or `NO_MCP_ENTRY_PROSE`.** The
+  upstream-contract-violation pattern this fallback exists for
+  is "`buildBrainState` reports `ok` but `parseBrainAide` says
+  `missing` / `malformed-frontmatter` / `malformed-body`" — a
+  missing-or-broken-file shape. `no-brain-aide` is the natural
+  remediation for that shape (it tells the user to run init,
+  which scaffolds the file). Routing to `mcp-drift` or
+  `no-mcp-entry` would tell the user to run sync, which has
+  nothing to read from if the file is missing or malformed.
+  The spec's Strategy paragraph documents this reasoning
+  verbatim; the choice is non-negotiable.
+
+- **No `name`, no `backend`, no `connector` on the wire,
+  enforced by an explicit test.** The spec's
+  `outcomes.desired[0]` is unambiguous: the response carries
+  `status` + `instructions` only. The new "no name, backend, or
+  connector field" assertion (step 2h) is an invariant test —
+  it does not test a behavior, it tests an absence. Adding any
+  one of those fields back, even as a "harmless" diagnostic,
+  re-creates the registry-dispatch temptation on the consumer
+  side and should fail this test by construction.
+
+- **The `NO_BRAIN_AIDE_PROSE` text-update is the only path-
+  string change in the file.** Of the three remaining
+  remediation prose constants, only `NO_BRAIN_AIDE_PROSE`
+  carries the `.aide/brain.aide` path string in its body. (The
+  audit step in 1b says to verify this; if `NO_MCP_ENTRY_PROSE`
+  or `MCP_DRIFT_PROSE` carry the path string, update them too —
+  they should all reflect the new canonical location.) The
+  load-bearing phrases (the `npx aidemd-mcp` commands, the
+  `/aide:brain config` shortcut, the "do not proceed" clauses)
+  are unchanged; the test assertions for those phrases continue
+  to hold.
+
+- **Tests do not pin a status count.** The test file's existing
+  header described "five-status branching"; the rewrite (step
+  2a) describes the contract in terms of the `BrainState`
+  vocabulary instead. This avoids the enumeration-drift pattern
+  that the original spec drift exemplified — pinning a count
+  guarantees the test header rots the next time the parent
+  vocabulary changes. The test bodies enumerate the actual
+  branches they cover (one describe block per branch), which is
+  the registry-as-source-of-truth equivalent at the test layer.
+
+- **Prerequisites are flagged, not absorbed.** The type-shrink
+  (`src/types/index.ts`) and the detector refactor
+  (`src/service/buildBrainState/`) are explicit prerequisites.
+  This plan does NOT modify those files; doing so would expand
+  the plan's scope past its module boundary and tangle three
+  refactors into one. The orchestrator executes those plans
+  first; this plan executes only after both have landed and
+  type-checked clean.
+
+- **No helper-folder extraction.** The orchestrator stays
+  single-file. The four (now three) remediation prose constants
+  and the four-branch ladder fit comfortably within the
+  progressive-disclosure single-helper exception in the parent
+  spec's Context section. A `composeInstructions/` helper
+  folder is what was deleted in the prior plan; recreating it
+  for three constants and three `if` branches would re-add
   ceremony without payoff.
-- **Prose is returned verbatim from `parseBrainAide`, not from a
-  module-internal cache.** The brain tool calls `parseBrainAide`
-  exactly once per request on the `ok` branch. There is no
-  pre-fetching or caching across calls — `parseBrainAide` itself
-  decides whether to cache; this tool just composes its output. This
-  keeps the tool's surface deterministic per request.
-- **The defensive clause stays.** The previous `composeInstructions`
-  carried a defensive clause for the "buildBrainState says ok but
-  driver is null" case; the same shape applies here: "buildBrainState
-  says ok but parseBrainAide returns non-ok." Both are upstream
-  contract violations, and both must be defended at this layer with a
-  fallback that satisfies the never-empty-instructions invariant.
-- **All four non-ok branches return short, fixed prose.** The parent
-  spec's good example includes a worked `ok` response (the verbatim
-  prose body) and is silent on the exact wording of non-ok branches.
-  Choosing short, action-naming sentences (always pointing at a
-  specific terminal command or file edit) is a load-bearing decision
-  for orchestrator integration: the orchestrator's HALT messaging
-  reads these strings directly, so they must be self-contained.
-- **Status vocabulary mirrors `buildBrainState` exactly.** The tool
-  forwards the state's `status` unchanged. Any new state added to
-  `BrainState` flows through automatically; this tool only needs to
-  add a branch when the parent intent adds new vocabulary. Today,
-  five states.

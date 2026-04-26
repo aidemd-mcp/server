@@ -1,327 +1,473 @@
 ---
 intent: >
-  Ship the parseBrainAide service — a single canonical reader for
-  `.aide/brain.aide` that returns a tagged-result union (ok | missing |
-  malformed-frontmatter | malformed-body) plus an opt-in `interpolateArgs`
-  helper that substitutes `${rootPath}` placeholders inside
-  `mcpServerConfig.args`. Four downstream consumers (`buildBrainState`, the
-  brain tool, `provisionBrain`, and the new `cli/sync` verb) all import
-  from here.
+  Collapse the parseBrainAide implementation to the new two-field schema:
+  shrink `BrainAideConfig` to `{ name, mcpServerConfig: { command, args } }`,
+  move the read path to `.aide/config/brain.aide`, drop validation for the
+  retired fields (`connector`, `rootPath`, `entryFile`, `tools`), reject any
+  of those fields explicitly with a `malformed-frontmatter` reason naming
+  every stale field found, generalize `interpolateArgs` to substitute any
+  top-level frontmatter field (with `${name}` the only resolvable key today),
+  and rewrite the test suite around the new schema.
 ---
 
 ## Project Structure
 
-This is a new module. Greenfield install. The `.aide` spec already exists
-(authored alongside this plan); this plan ships the code beneath it.
+This is an additive/edit plan against an existing module. No new files; no
+new exports. The module's external surface is unchanged: `parseBrainAide`
+(default), `parseBrainAideFromString`, and `interpolateArgs` all stay
+exported with the same names and same signatures. What changes is the
+shape of the `BrainAideConfig` type they trade in, the file path the
+default export reads, and the validation rules the parser enforces.
 
 ```
 src/service/parseBrainAide/
-├── .aide                        ← [existing] intent spec (authored with this plan)
-├── plan.aide                    ← [this file]
-├── index.ts                     ← [new] orchestrator + interpolation helper
-│                                   exports:
-│                                     default async function parseBrainAide(root: string): Promise<ParseBrainAideResult>
-│                                     export function parseBrainAideFromString(content: string): ParseBrainAideResult
-│                                     export function interpolateArgs(config: BrainAideConfig): string[]
-└── index.test.ts                ← [new] co-located tests covering all four
-                                    tagged-result branches and interpolateArgs
-
-src/types/index.ts               ← [edit] add BrainAideConfig, ParseBrainAideResult,
-                                    BrainAideToolMapping (and re-affirm the new
-                                    BrainState contract; that lands in Plan 3)
+├── .aide                         ← [existing, aligned] intent spec — already
+│                                    rewritten for the two-field schema
+├── plan.aide                     ← [this file]
+├── todo.aide                     ← [existing, all 16 items resolved] alignment record
+├── index.ts                      ← [edit] orchestrator + helpers
+│                                    exports unchanged in name and arity:
+│                                      default async function parseBrainAide(root: string): Promise<ParseBrainAideResult>
+│                                      export function parseBrainAideFromString(content: string): ParseBrainAideResult
+│                                      export function interpolateArgs(config: BrainAideConfig): string[]
+│                                    behavior changes:
+│                                      - reads `.aide/config/brain.aide` (not `.aide/brain.aide`)
+│                                      - validates only `name` + `mcpServerConfig.{command, args}`
+│                                      - rejects deprecated fields (`connector`, `rootPath`,
+│                                        `entryFile`, `tools`) with malformed-frontmatter
+│                                      - interpolation walks any top-level frontmatter field;
+│                                        substitution map shrinks to `{ name }`
+└── index.test.ts                 ← [rewrite] new fixtures + new validation tests +
+                                     deprecated-field rejection tests
 ```
 
-The single-helper exception applies. `interpolateArgs` is small enough that
-splitting it into a sibling subfolder would add ceremony without payoff.
-It lives above the default export per the function-ordering rule. When the
-substitution engine grows past ~50 lines (e.g. supporting other frontmatter
-keys, environment-variable expansion), factor it into
-`src/service/parseBrainAide/interpolateArgs/index.ts`.
+External edit (called out for the implementor; the change is small but the
+file is shared with many other modules):
 
-The parser uses `js-yaml` for frontmatter parsing — already a transitive
-dependency through other tools in the package; verify in step 1 and add
-explicitly to `package.json` if not direct.
+```
+src/types/index.ts                ← [edit] collapse BrainAideConfig to the
+                                     two-field shape; delete BrainAideToolMapping
+                                     (no remaining consumers); delete
+                                     BrainAideMcpServerConfig if it has no
+                                     other consumers, OR keep it as the
+                                     `mcpServerConfig` field's type. The
+                                     `ParseBrainAideResult.ok` variant
+                                     references the collapsed BrainAideConfig
+                                     so its surface narrows automatically.
+```
+
+The single-file layout from the prior plan still applies. Both
+`interpolateArgs` and the `parseBrainAideFromString` / `parseBrainAide`
+pair fit comfortably in one `index.ts` and stay there. `interpolateArgs`
+remains defined ABOVE the default export per the function-ordering rule.
 
 ## Prerequisites
 
-**Plan 1 (`src/service/install/initContent/plan.aide`)** must complete first:
-- The new methodology doc `.aide/docs/brain-aide.md` defines the file
-  schema this parser implements. Without the doc, every type and validation
-  decision in this plan would be a free invention.
-- The doc names the required frontmatter fields (`connector`, `rootPath`,
-  `entryFile`, `mcpServerConfig`, `tools`) and the body shape (`## Prose`)
-  this parser must validate against.
+This plan has no external module prerequisites. Every type and constant it
+touches lives in files this plan edits directly (`src/service/parseBrainAide/`
+and `src/types/index.ts`). The intent spec at `src/service/parseBrainAide/.aide`
+is already aligned to the new schema (status: aligned).
 
-The schema this plan implements is also fully specified in
-`src/service/parseBrainAide/.aide` (Strategy and Good examples). When
-Plan 1 lands, the `.aide` and the canonical doc agree by construction —
-the doc is the canonical statement, the spec is its concrete reflection
-in this module.
+**Downstream-breakage notice (not a prerequisite — informational):** Tightening
+`BrainAideConfig` will break compilation in four consumers that still read
+`config.connector` / `config.rootPath` / `config.entryFile` / `config.tools`:
+`src/service/buildBrainState/index.ts`, `src/cli/init/writeMcpEntry/index.ts`,
+`src/service/install/provisionBrain/index.ts`, and tests under
+`src/service/install/provisionBrain/obsidianBrainAideTemplate/`. Those modules
+have their own plan.aide files for the rename/refactor work; this plan does
+not modify them. Step 6 (the verify step) runs `npx tsc --noEmit` and is
+expected to surface those downstream errors. The implementor records the
+list of failing files but does NOT fix them inside this plan — fixing them
+is the next plan in the orchestrator's dependency chain.
 
 ## Plan
 
-### 1. Add shared types to `src/types/index.ts`
+### 1. Collapse the shared types in `src/types/index.ts`
 
 Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 
-- [x] Add the following types to `src/types/index.ts`. These are the
-      shared definitions every consumer references — no module-private
-      copies elsewhere.
+- [ ] Edit `src/types/index.ts` to collapse the brain.aide-related types.
+      The new shape is exactly what the spec's frontmatter declares — every
+      retired field is removed from the type so consumers cannot reach for
+      it without a TypeScript error.
 
-      **`BrainAideToolMapping`** — `Record<string, string>` describing the
-      semantic-action → MCP-tool-call mapping. Two keys are required by
-      contract (`read`, `search`); additional keys are allowed. Type as
-      `Record<string, string>` because the user may add arbitrary action
-      names, but document in JSDoc that `read` and `search` are the floor.
-
-      **`BrainAideMcpServerConfig`** — object with `{ command: string;
-      args: string[] }`. Mirrors the `McpServerEntry` shape today but
-      stays a separate type so the brain.aide-side semantics (args may
-      contain `${rootPath}` placeholders pre-interpolation) are visible
-      at the type boundary.
-
-      **`BrainAideConfig`** — the full parsed frontmatter:
+      **`BrainAideConfig`** — narrow to the two-field shape:
       ```
       {
-        connector: string;             // descriptive label, never dispatched on
-        rootPath: string;              // absolute path to the knowledge store
-        entryFile: string;             // path relative to rootPath
-        mcpServerConfig: BrainAideMcpServerConfig;
-        tools: BrainAideToolMapping;
+        name: string;
+        mcpServerConfig: BrainAideMcpServerConfig;  // or inline { command, args }
       }
       ```
+      Remove the `connector`, `rootPath`, `entryFile`, and `tools` fields.
+      Update the type's JSDoc to reflect the new minimum schema and to point
+      at the canonical doc (`.aide/docs/brain-aide.md`) as the format
+      reference. The JSDoc must explicitly state that `name` is descriptive
+      metadata never branched on, mirroring the spec's load-bearing rule.
 
-      **`ParseBrainAideResult`** — discriminated union:
-      ```
-      | { kind: "ok"; config: BrainAideConfig; prose: string }
-      | { kind: "missing" }
-      | { kind: "malformed-frontmatter"; reason: string }
-      | { kind: "malformed-body"; reason: string }
-      ```
+      **`BrainAideMcpServerConfig`** — keep as-is (`{ command: string;
+      args: string[] }`). Its JSDoc still notes that `args` may carry
+      `${fieldName}` placeholders pre-interpolation; update the example
+      reference from `${rootPath}` to `${name}` since `name` is the only
+      resolvable field today.
 
-      JSDoc each type with one paragraph describing what it represents and
-      where it's consumed. The discriminant is `kind`. Reason strings on
-      malformed branches are human-readable, used by consumers when
-      composing remediation prose for the user.
+      **`BrainAideToolMapping`** — delete. Its only consumer was
+      `BrainAideConfig.tools`, which is also being deleted. Removing the
+      type prevents any future caller from accidentally re-introducing a
+      `tools` field by importing a type that hints at its existence.
 
-### 2. Implement the parser
+      **`ParseBrainAideResult`** — no shape change at the union level; the
+      `ok` variant's `config` field automatically narrows because it
+      references `BrainAideConfig`. Update the union's JSDoc to mention
+      that `malformed-frontmatter` covers deprecated-field rejection in
+      addition to missing-required-field validation.
 
-Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`, `coding-playbook/services/error-handling`
+      Do NOT touch `BrainState` here — its `connector` / `rootPath` fields
+      are owned by `buildBrainState`'s separate plan.
 
-- [x] Create `src/service/parseBrainAide/index.ts`. Two exported functions
-      live here.
-
-      - 2a. **`interpolateArgs(config: BrainAideConfig): string[]`** —
-        defined ABOVE the default export per function-ordering rule.
-        Takes the parsed config, returns a copy of
-        `config.mcpServerConfig.args` where every `${rootPath}` substring
-        is replaced with the literal value of `config.rootPath`. Future
-        frontmatter keys (e.g. `${entryFile}`) follow the same rule —
-        for now `rootPath` is the only supported key, but the
-        implementation walks each arg looking for any `${<key>}` pattern
-        and substitutes from a small map `{ rootPath, entryFile }`. JSDoc
-        names the install-time-only audience (this is the
-        `.mcp.json`-writer surface, never the agent-facing surface) and
-        the load-bearing rule that this is the ONLY substitution surface
-        in the package.
-
-      - 2b. **`parseBrainAide(root: string): Promise<ParseBrainAideResult>`**
-        — the default export. Takes the host project's root path and
-        derives the brain.aide path as `join(root, ".aide", "brain.aide")`.
-        JSDoc summarizes the four tagged-result branches and names the
-        load-bearing invariants: never throws, never interpolates the
-        prose body, never branches on `connector`.
-
-      - 2bʹ. **`parseBrainAideFromString(content: string):
-        ParseBrainAideResult`** — small adjunct export that parses
-        brain.aide bytes already in memory (no I/O). Used by
-        `provisionBrain` (Plan 6) to derive an MCP entry from a
-        scaffolded but not-yet-written brain.aide template. The
-        implementation factors out steps 2–6 of the parser pipeline
-        (the parts that operate on the file content); `parseBrainAide`
-        becomes a thin wrapper that reads the file then delegates to
-        `parseBrainAideFromString`. This refactor keeps the validation
-        logic in one place. Returns the same `ParseBrainAideResult`
-        union; the `"missing"` variant is unreachable here (the input
-        is bytes, not a path), so empty input returns `{ kind:
-        "malformed-frontmatter", reason: "frontmatter is required" }`
-        — same as a missing-fence file.
-
-        The orchestrator pipeline (inline-narrated per Tier 3 — this is
-        an orchestrator, even though small):
-        1. Read the file. ENOENT → `{ kind: "missing" }`. Other I/O
-           failures collapse to the same `missing` branch (the file is
-           unreachable; remediation is the same).
-        2. Split on the first `^---\n` opening fence — content before
-           is empty/skipped, content between fences is YAML frontmatter,
-           content after is the body.
-        3. Parse frontmatter via `js-yaml.load`. Parse failure or non-
-           object result → `{ kind: "malformed-frontmatter", reason:
-           "YAML parse error" }` (or the parser's error message).
-        4. Validate required fields by name:
-           - `connector` is non-empty string
-           - `rootPath` is non-empty string
-           - `entryFile` is non-empty string
-           - `mcpServerConfig.command` is non-empty string
-           - `mcpServerConfig.args` is `string[]`
-           - `tools` is an object with at minimum `read` and `search`
-             both non-empty strings
-           Any missing/wrong-typed field → `{ kind:
-           "malformed-frontmatter", reason: "<field> is required" }` (or
-           `"<field> must be a non-empty string"` etc.). The reason
-           string names exactly which field is wrong so the consumer can
-           tell the user.
-        5. Extract the prose body. Find the first occurrence of
-           `^## Prose` (case-sensitive) in the body section. Everything
-           after that heading line, through end-of-file, is the prose
-           — byte-identical, no trimming. Heading not found →
-           `{ kind: "malformed-body", reason: "## Prose section is
-           required" }`.
-        6. Return `{ kind: "ok", config, prose }`.
-
-      JSDoc on both functions explains why each exists and what role it
-      plays. Inline step-by-step comments narrate the orchestrator
-      pipeline per Tier 3.
-
-### 3. Co-located tests
-
-Read: `coding-playbook/workflow/testing`
-
-- [x] Create `src/service/parseBrainAide/index.test.ts` covering each
-      tagged-result branch plus interpolation. Use Vitest with co-located
-      tests per the project's standard. Use temporary directories
-      (`mkdtemp` from `node:fs/promises`) to write fake `brain.aide`
-      files and pass the temp root to the parser. No mocking of `fs` —
-      the parser's I/O surface is small enough that real filesystem
-      operations against a temp dir keep tests honest.
-
-      Test cases (each in a `describe` block):
-
-      - 3a. **Happy path** — write the canonical Obsidian `brain.aide`
-        from the spec's Good examples (frontmatter + `## Prose` body
-        with the sample sentences). Assert `result.kind === "ok"`,
-        `config.connector === "obsidian"`, `config.rootPath ===
-        "D:/notes/my-vault"`, `config.mcpServerConfig.args` equals
-        `["-y", "obsidian-mcp", "${rootPath}"]` (placeholder PRE-
-        interpolation), `config.tools.read === "mcp__brain__read_note"`,
-        `prose` starts with the first sentence of the example body.
-
-      - 3b. **Missing file** — pass a temp root with no `.aide/brain.aide`.
-        Assert `result.kind === "missing"`. Never throws.
-
-      - 3c. **Malformed YAML** — write `brain.aide` whose frontmatter
-        contains invalid YAML (e.g. unclosed bracket). Assert
-        `result.kind === "malformed-frontmatter"`, `result.reason`
-        is non-empty.
-
-      - 3d. **Missing required field** — write valid YAML missing
-        `rootPath`. Assert `result.kind === "malformed-frontmatter"`,
-        `result.reason` mentions `rootPath`. Repeat for each required
-        field (`entryFile`, `mcpServerConfig.command`, `tools.read`,
-        `tools.search`) using `it.each` per the playbook's
-        parameterized-tests pattern.
-
-      - 3e. **Missing prose body** — write valid frontmatter but no
-        `## Prose` heading. Assert `result.kind === "malformed-body"`,
-        `result.reason` mentions `## Prose`.
-
-      - 3f. **Prose returned verbatim** — write a brain.aide whose
-        prose body contains literal `${rootPath}` characters and other
-        markdown. Assert `result.prose` contains those characters
-        unchanged. This is the load-bearing test for the no-substitution-
-        on-prose invariant.
-
-      - 3g. **Connector is metadata, not dispatched on** — write two
-        valid brain.aide files with different `connector` values
-        (`obsidian` and `notion`); assert both parse identically (same
-        result kind, same shape) and both prose bodies pass through
-        verbatim. This test enforces by example that the parser does
-        not branch on connector.
-
-      - 3h. **`interpolateArgs` substitutes `${rootPath}`** — given a
-        parsed config from 3a, assert
-        `interpolateArgs(config) === ["-y", "obsidian-mcp",
-        "D:/notes/my-vault"]`. The original `config.mcpServerConfig.args`
-        is unchanged (immutability — the helper returns a copy).
-
-      - 3i. **`interpolateArgs` is positional** — args containing
-        `"some-prefix-${rootPath}-suffix"` substitute to
-        `"some-prefix-<actual path>-suffix"`. Substitution is string
-        replacement, not arg replacement.
-
-      - 3j. **`interpolateArgs` does not touch the prose body** —
-        verify that calling `interpolateArgs` on a config does not
-        mutate the prose string returned alongside it. (This test is
-        partially structural — `interpolateArgs` takes the config only,
-        not prose — but assert it explicitly so a future refactor that
-        widens the signature to take both fields fails the test.)
-
-      - 3k. **`parseBrainAideFromString` parses bytes identically to
-        `parseBrainAide` reading the same bytes from disk** — write
-        the canonical brain.aide bytes to a temp file, parse via
-        both functions, assert results are deep-equal. Cover all four
-        result kinds the same way (an empty string returns
-        `malformed-frontmatter`, valid bytes return `ok`, etc.).
-
-### 4. Verify dependency on `js-yaml`
+### 2. Update the read path constant in `parseBrainAide`
 
 Read: `coding-playbook/foundations/conventions`
 
-- [x] Check `package.json` for `js-yaml` as a direct dependency. The
-      package already uses YAML elsewhere (see `aide_read` and
-      `aide_validate` for `.aide` frontmatter parsing); confirm those
-      imports come from a direct dependency. If not, add `js-yaml` and
-      `@types/js-yaml` as direct deps. Run `npm install` to verify
-      lockfile updates cleanly.
+- [ ] Edit `src/service/parseBrainAide/index.ts`. In the default export
+      `parseBrainAide(root)`, change the `brainAidePath` derivation from
+      `join(root, ".aide", "brain.aide")` to
+      `join(root, ".aide", "config", "brain.aide")`. Update the function's
+      JSDoc summary to read `.aide/config/brain.aide` everywhere it
+      currently reads `.aide/brain.aide`. No other behavioral change in
+      this step.
 
-      If the project uses a different YAML library (e.g. `yaml`),
-      use the same one as the existing `.aide` parser so the codebase
-      has one YAML dependency, not two. Inspect with
-      `aide_inspect name="parseFrontmatter"` or grep for YAML imports
-      under `src/` first.
+### 3. Rewrite the frontmatter validation block in `parseBrainAideFromString`
+
+Read: `coding-playbook/services/error-handling`, `coding-playbook/foundations/conventions`
+
+- [ ] Edit `src/service/parseBrainAide/index.ts`. Replace the existing
+      "Step 4: Validate required fields" block of `parseBrainAideFromString`
+      with the new two-field validation. The block lives between the
+      successful YAML parse and the prose-extraction step.
+
+      - 3a. **Validate the required fields** in this exact order. Each
+            failure returns `{ kind: "malformed-frontmatter", reason: <message> }`
+            and short-circuits the rest of the function:
+            1. `name` is a non-empty string.
+            2. `mcpServerConfig` is a plain object (non-null, non-array).
+            3. `mcpServerConfig.command` is a non-empty string.
+            4. `mcpServerConfig.args` is an array AND every element is a
+               string.
+            The reason strings must NAME the failing field (matching the
+            existing pattern: `"name is required and must be a non-empty
+            string"`, `"mcpServerConfig.args is required and must be an
+            array of strings"`, etc.) so consumers can quote them in
+            remediation prose without re-parsing the message.
+
+      - 3b. **Reject deprecated fields** AFTER the required-field
+            validation passes. Build a list of deprecated keys present in
+            the parsed frontmatter by intersecting the parsed object's
+            top-level keys with the fixed deprecated set:
+            `["connector", "rootPath", "entryFile", "tools"]`. If the
+            intersection is non-empty, return
+            `{ kind: "malformed-frontmatter", reason: "deprecated fields:
+            <comma-separated list, in the deprecated-set order>" }`. The
+            reason string names every stale field found in a single
+            response so the user fixes them all in one edit. Examples:
+            - one stale field: `"deprecated fields: tools"`
+            - multiple: `"deprecated fields: rootPath, tools"`
+
+            Order the listed fields by the deprecated-set order
+            (`connector, rootPath, entryFile, tools`), not by the order
+            they appeared in the user's file — deterministic output keeps
+            tests and remediation messages stable across YAML key-ordering.
+
+            Place rejection AFTER required-field validation (not before)
+            so a user whose file is missing both `name` AND carries a
+            stale `connector` sees the missing-`name` error first; once
+            they add `name`, the next parse surfaces the deprecated
+            field. This matches the existing one-error-per-parse pattern.
+
+      - 3c. **Rebuild the validated config object** with only the two
+            top-level fields. Drop the `connector`, `rootPath`, `entryFile`,
+            and `tools` lines from the constructed `config` literal:
+            ```
+            const config: BrainAideConfig = {
+              name: fm["name"],
+              mcpServerConfig: {
+                command: mcpServerConfig["command"],
+                args: mcpServerConfig["args"] as string[],
+              },
+            };
+            ```
+            No other field appears.
+
+      Update the function's JSDoc to mention deprecated-field rejection
+      as a `malformed-frontmatter` sub-case alongside missing-required-
+      field validation.
+
+### 4. Rewrite `interpolateArgs` to substitute against the collapsed frontmatter
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
+
+- [ ] Edit `src/service/parseBrainAide/index.ts`. Replace the
+      `interpolateArgs` body. The contract is unchanged at the signature
+      level (`(config: BrainAideConfig) => string[]`), but the substitution
+      map shrinks to a single key.
+
+      - 4a. **Shrink the substitution map** to `{ name: config.name }`.
+            The previous implementation referenced `config.rootPath` and
+            `config.entryFile`; both are gone from the type, so referencing
+            them is a compile error and a lingering reference is the bug
+            this step prevents.
+
+      - 4b. **Keep the walk loop unchanged.** The existing
+            `arg.replace(/\$\{(\w+)\}/g, ...)` pattern is correct — it
+            already generalizes over any `${<key>}` placeholder by
+            consulting the substitution map. Unknown keys (any
+            `${something-not-in-the-map}`) pass through verbatim, which
+            is the desired behavior: a `${rootPath}` placeholder left
+            over from a pre-collapse brain.aide fails the deprecated-
+            field check at parse time, so it never reaches the
+            interpolator.
+
+      - 4c. **Update the function's JSDoc** to reflect the new audience
+            framing: substitution is "any `${fieldName}` against the
+            top-level frontmatter fields", with `${name}` named as the
+            only field the current schema resolves. Note that the default
+            scaffold contains no placeholders and the helper is a no-op
+            for the canonical install. Keep the load-bearing rule that
+            this is the ONLY substitution surface in the package.
+
+### 5. Rewrite the test suite for the new schema
+
+Read: `coding-playbook/workflow/testing`
+
+- [ ] Replace `src/service/parseBrainAide/index.test.ts`. The structure
+      stays the same (per-branch `describe` blocks, real-tempdir fixtures,
+      `it.each` for parameterized validation), but every fixture and
+      assertion needs to swap to the two-field schema. The test file is a
+      full rewrite, not a per-block patch — too many fixtures depend on
+      the legacy YAML.
+
+      - 5a. **Update the canonical fixture.** Replace the `CANONICAL_BRAIN_AIDE`
+            string with the two-field shape from the spec's good example:
+            ```
+            ---
+            name: obsidian
+            mcpServerConfig:
+              command: npx
+              args:
+                - "@bitbonsai/mcpvault"
+                - "D:/notes/my-vault"
+            ---
+
+            ## Prose
+
+            Your brain is an Obsidian vault. ...
+            ```
+            Update `CANONICAL_CONFIG` to the new `BrainAideConfig` shape:
+            `{ name: "obsidian", mcpServerConfig: { command: "npx", args:
+            ["@bitbonsai/mcpvault", "D:/notes/my-vault"] } }`.
+
+      - 5b. **Update the `writeBrainAide` helper** to write to
+            `.aide/config/brain.aide` (matching the new read path). The
+            helper must `mkdir` `.aide/config/` recursively before
+            writing.
+
+      - 5c. **Rewrite the happy-path test (3a)** to assert on the new
+            shape: `config.name === "obsidian"`,
+            `config.mcpServerConfig.command === "npx"`,
+            `config.mcpServerConfig.args` deep-equals
+            `["@bitbonsai/mcpvault", "D:/notes/my-vault"]`. Drop every
+            assertion against `connector`, `rootPath`, `entryFile`,
+            `tools`. The prose assertion stays.
+
+      - 5d. **Keep the missing-file test (3b) and malformed-YAML test (3c)
+            unchanged in structure**, but swap the malformed-YAML fixture
+            to use only fields that exist in the new schema (e.g.
+            `mcpServerConfig:\n  args: [unclosed bracket`).
+
+      - 5e. **Rewrite the missing-required-field test (3d)** as an
+            `it.each` over the new required fields:
+            ```
+            ["name", "mcpServerConfig.command", "mcpServerConfig.args"]
+            ```
+            For each entry, the helper builds a fixture missing exactly
+            that field; the test asserts `result.kind ===
+            "malformed-frontmatter"` and `result.reason` contains the
+            field name. Drop the legacy `rootPath`, `entryFile`,
+            `tools.read`, `tools.search` cases.
+
+      - 5f. **Add a new deprecated-field rejection test (3d')** as an
+            `it.each` parameterized over both single-field and multi-field
+            cases. Cover at minimum:
+            - single deprecated field present: each of `connector`,
+              `rootPath`, `entryFile`, `tools` individually.
+            - multiple deprecated fields present together (e.g.
+              `rootPath` + `tools`): the reason names BOTH in
+              deprecated-set order.
+            For each fixture, assert `result.kind ===
+            "malformed-frontmatter"` and `result.reason` matches the
+            expected `"deprecated fields: <list>"` shape, with the list
+            in the deprecated-set order, not the file's key order. A
+            file may also include the new required fields (`name`,
+            `mcpServerConfig`) so the deprecated-field check is the
+            failing branch — proves the rejection fires AFTER required-
+            field validation passes.
+
+      - 5g. **Keep the missing-prose test (3e), the verbatim-prose test
+            (3f), and the metadata-not-dispatched-on test (3g)
+            structurally**, but rewrite their fixtures to the two-field
+            shape. The verbatim-prose test (3f) stays the most
+            load-bearing test: prose containing literal `${name}` (and
+            `${rootPath}` for good measure — even though `rootPath` is
+            now deprecated, a user might write it in prose to describe
+            something else) must pass through byte-identical. Rename
+            test 3g from "connector is metadata" to "name is metadata" —
+            two fixtures with `name: obsidian` and `name: notion`,
+            assert both parse identically.
+
+      - 5h. **Rewrite the interpolation tests (3h, 3i, 3j)** for the new
+            substitution surface.
+            - 3h: assert `interpolateArgs(CANONICAL_CONFIG)` is a no-op
+              — the canonical args contain no placeholders, so the
+              return is structurally equal to the input
+              (`["@bitbonsai/mcpvault", "D:/notes/my-vault"]`).
+            - Add a new advanced-user case: a config with `name:
+              "my-vault"` and args `["some-launcher", "--profile",
+              "${name}"]` interpolates to `["some-launcher",
+              "--profile", "my-vault"]`. This is the spec's
+              advanced-user example — proves `${name}` substitution
+              works.
+            - 3i (positional substitution): keep but switch the
+              placeholder under test from `${rootPath}` to `${name}`,
+              and use a config whose `name` is a value that's
+              recognizable inside a longer string (e.g.
+              `"prefix-${name}-suffix"` → `"prefix-<name>-suffix"`).
+            - 3j (interpolation does not touch prose): keep
+              structurally; uses the new canonical fixture.
+
+      - 5i. **Keep test 3k (`parseBrainAideFromString` parses bytes
+            identically to `parseBrainAide`)** structurally. Rewrite all
+            fixtures to the two-field shape. The `noProseContent`
+            fixture in particular must drop its legacy frontmatter
+            fields. The "missing variant only via parseBrainAide" test
+            stays unchanged.
+
+### 6. Verify the parser in isolation, then surface downstream breakage
+
+Read: `coding-playbook/workflow/testing`
+
+- [ ] Run the verification commands and record the results. Two distinct
+      checks: the parser's own test suite (must pass cleanly) and the
+      project-wide type check (expected to surface downstream consumer
+      breakage; that breakage is OUT OF SCOPE for this plan).
+
+      - 6a. Run `npm test -- parseBrainAide` (or the equivalent vitest
+            filter that scopes to this module's test file). Every test
+            in `src/service/parseBrainAide/index.test.ts` must pass. If
+            any fails, fix the parser code (not the test) and re-run —
+            the spec is the contract; the tests assert the contract;
+            failing tests mean the implementation drifted from the
+            spec. Do NOT relax assertions to make tests pass.
+
+      - 6b. Run `npx tsc --noEmit` from the project root. The parser's
+            own files must compile cleanly. Downstream consumers
+            (`buildBrainState`, `cli/init/writeMcpEntry`, `provisionBrain`,
+            and the `obsidianBrainAideTemplate` tests) WILL fail to
+            compile because they still read `config.connector` /
+            `config.rootPath` / `config.entryFile` / `config.tools` —
+            those fields no longer exist on the collapsed
+            `BrainAideConfig`. Record the list of failing files in the
+            implementor's hand-off message; do NOT modify those files.
+            They are governed by their own plan.aide files (the
+            orchestrator runs them next in the dependency chain).
+
+            If `tsc` reports errors in any file inside
+            `src/service/parseBrainAide/` itself, fix them — that is in
+            scope. If it reports errors in any file that imports
+            `BrainAideToolMapping` directly (from when the type still
+            existed), record those too; those imports get cleaned up in
+            the same pass that updates the consumer's field reads.
 
 ## Decisions
 
-- **Module is a peer service, not a helper of any single consumer.** Four
-  consumers in three different folder trees (`src/service/buildBrainState`,
-  `src/service/install/provisionBrain`, `src/tools/brain`,
-  `src/cli/sync`) all depend on parsing the same file. Per the playbook's
-  horizontal-isolation rule, the parser cannot live under any one of
-  them. A peer-level service at `src/service/parseBrainAide/` is the
-  right shape — same architectural slot the retired `brainBackends`
-  module occupied, and the same slot `buildBrainState` already uses.
-- **Tagged-result return shape mirrors `BrainState`.** Both modules
-  participate in the boot-time diagnostic surface and both must return
-  states the orchestrator can speak about. Mirroring the discriminator
-  pattern (`kind` here, `status` in `BrainState`) means the boot reporter
-  can compose its tagged union from this parser's output mechanically.
-- **Interpolation is a separate helper, not folded into `parseBrainAide`.**
-  The parent `.aide`'s Strategy paragraph "splitting the interpolation
-  into an opt-in helper" is load-bearing: a consumer that doesn't import
-  `interpolateArgs` cannot accidentally apply substitution to something
-  it shouldn't. The brain tool returning prose, in particular, has no
-  path through this module's exports that would interpolate the prose.
-- **Required fields are validated; defaults are not injected.** The
-  parent spec's bad example "package-side defaults silently fill in
-  values the user didn't write" rules this out. A missing field is a
-  structured failure the user resolves by editing. The reason strings
-  on malformed branches name exactly which field is wrong so the user
-  knows what to fix.
-- **Single-file layout per progressive-disclosure single-helper
-  exception.** Both functions fit comfortably in one file today. The
-  parent `.aide`'s Strategy names ~50 lines per helper as the threshold
-  for splitting; today neither helper approaches that. Once
-  `interpolateArgs` grows past the threshold, factor it into a sibling
-  subfolder. Today, inline.
-- **Tests use real filesystem temp dirs, not `fs` mocking.** The
-  parser's I/O surface is one `readFile` call; mocking it would test
-  the mock more than the parser. Temp dirs cost ~5ms per test and
-  ensure the parser's filesystem error handling matches real Node
-  semantics. This matches how `provisionBrain.index.test.ts` already
-  tests against real temp dirs.
-- **`connector` is a freeform string, not a string literal union.** The
-  parent `.aide`'s `outcomes.undesired[0]` rules out any module
-  enumerating connector identities. Typing `connector` as `string` is
-  the structural enforcement that the package does not know which
-  brains exist; the user owns the value, the package surfaces it
-  unchanged.
+- **Validation order: required fields first, then deprecated rejection.**
+  A user editing brain.aide post-collapse who removed the wrong line
+  (deleted `name` instead of `tools`) sees the more-actionable error
+  first ("name is required") rather than the more-cryptic deprecated-
+  field error. Once they add `name` back, the deprecated-field check
+  surfaces on the next parse. This matches the existing one-error-per-
+  parse pattern (the parser short-circuits on the first failure) and
+  keeps the user moving forward through one structured failure at a
+  time.
+
+- **Deprecated fields listed in fixed order, not user-file order.**
+  Returning `"deprecated fields: rootPath, tools"` in deprecated-set
+  order (`connector, rootPath, entryFile, tools`) gives deterministic
+  output regardless of which order the user wrote them in their YAML.
+  Tests can assert on the exact reason string; remediation prose can
+  quote it without surprises. The user's file ordering is not load-
+  bearing here — what matters is which fields are present, not where.
+
+- **All deprecated fields named in one reason, not first-found.** The
+  reason string lists every stale field found, not just the first one.
+  Surfacing them all in one parse means the user fixes them all in one
+  edit and re-runs the parser once, rather than the dance of "remove
+  rootPath, re-parse, remove tools, re-parse, remove entryFile". This
+  costs one set-intersection at parse time and saves multiple round-
+  trips at edit time. The spec's good-example for the rejection branch
+  explicitly shows multi-field output (`"deprecated fields: rootPath,
+  tools"`), confirming this is the intended UX.
+
+- **`BrainAideToolMapping` is deleted, not retained for future use.**
+  The type's only consumer is the deleted `tools` field. Keeping it
+  exported as "future-proofing" violates the parent intent spec's
+  "schema must justify each field by naming a real runtime consumer"
+  rule by analogy — a type with no consumer is type-system theater.
+  When (if) tools-mapping returns, the type can be re-introduced
+  alongside the field that needs it. Today: delete.
+
+- **`BrainAideMcpServerConfig` survives.** Unlike `BrainAideToolMapping`,
+  it has a current consumer (`BrainAideConfig.mcpServerConfig`). Keeping
+  it as a named alias rather than inlining `{ command, args }` preserves
+  the JSDoc-documented semantic detail that `args` may contain
+  pre-interpolation placeholders — that comment lives on the type, not
+  on every site that reads `mcpServerConfig`.
+
+- **`parseBrainAideFromString` stays, with no signature change.** Four
+  consumers import it (`writeMcpEntry`, `provisionBrain`,
+  `obsidianBrainAideTemplate` tests, and the parser's own tests).
+  Removing it would expand this plan into a four-module refactor; the
+  spec doesn't ask for that. The byte-input variant continues to share
+  the validation block with the disk-reading default export — the
+  refactor that hoisted steps 2-6 into the shared helper still applies.
+
+- **The interpolation engine stays generic.** Even though `${name}` is
+  the only resolvable key today, the substitution map is built from
+  the parsed frontmatter object (one entry: `{ name }`), not hard-coded.
+  When the schema grows a new top-level field, adding it to the
+  substitution map is a one-line edit. This matches the parent spec's
+  "the engine generalizes naturally if the schema ever grows — no
+  field-specific privilege" rule.
+
+- **The read-path move is a one-line constant change, not a
+  configurable parameter.** The parser hard-codes
+  `.aide/config/brain.aide` because the canonical doc declares it as
+  the contractual location. Making it configurable would re-introduce
+  the same multi-source-of-truth problem the user-owned-`.aide/config/`
+  decision was meant to eliminate. If a future host needs a different
+  location, that's a methodology change at the doc level first, then
+  a parser change — never a runtime knob.
+
+- **Test rewrites do not preserve legacy fixtures.** A test rewrite
+  rather than a per-block patch keeps the file readable: every fixture
+  in the file matches the current schema, so a future reader doesn't
+  have to guess which tests are testing legacy behavior versus current.
+  Keeping legacy fixtures around as "regression tests" against an
+  unsupported schema would be exactly the validation theater the spec
+  rejects.
+
+- **Step 6 records but does not fix downstream breakage.** The four
+  downstream modules (`buildBrainState`, `writeMcpEntry`,
+  `provisionBrain`, `obsidianBrainAideTemplate`) each have their own
+  `.aide` and (eventually) `plan.aide` for the schema-collapse cascade.
+  Fixing them inside this plan would expand this plan's scope past
+  the single-module scoping rule. The verify step's job is to make
+  the breakage visible — the orchestrator picks up those plans next.

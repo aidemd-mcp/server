@@ -26,13 +26,24 @@ shape, `obsidianBrainAideTemplate` still emits the old launcher and
 field set, `provisionBrain` still scaffolds at the legacy path, and the
 boot reporter still stats a path it should no longer touch.
 
-**The methodology doc rewrite is in flight in parallel.**
-`.aide/docs/brain-aide.md` is being rewritten right now to teach the
-new schema; it is the canonical-doctrine surface every host project
-receives via `aide_init`, so it has to land alongside the code change.
+**The methodology doc rewrite is DONE.** `.aide/docs/brain-aide.md` was
+rewritten end-to-end against the new schema in commit `ed84d94`. It is
+the canonical-doctrine surface every host project receives via
+`aide_init` and now teaches the 2-field schema, the `@bitbonsai/mcpvault`
+launcher default, the `.aide/config/brain.aide` path, the four-state
+boot vocabulary, and the user-owned scaffold-once contract.
 
-If you're picking up cold, the next pipeline phase is **plan + build,
-per child spec**, to bring the code in line with the aligned specs.
+**All 7 child `plan.aide` files are DONE.** Each of the affected modules
+(`parseBrainAide`, `buildBrainState`, `tools/info`, `tools/brain`,
+`provisionBrain`, `cli/init`, `cli/sync`) has a checkboxed `plan.aide`
+sitting next to its `.aide` spec, ready for the implementor. Total: ~36
+numbered steps across the 7 plans. Each plan declares its prerequisites
+explicitly — the implementor halts and escalates if a prerequisite is
+missing, never patches around it.
+
+If you're picking up cold, the next pipeline phase is **build, per
+child spec, one fresh implementor per numbered plan step**, to bring
+the code in line with the aligned specs.
 
 ---
 
@@ -146,32 +157,54 @@ build work waiting on plan + implement.
 
 ---
 
-## What's next: plan + build per child spec
+## What's next: build per child spec
 
-The pipeline phase is `/aide:plan` followed by `/aide:build` for each
-of the 7 aligned child specs. Each child gets its own `plan.aide` that
-decomposes its slice of the implementation gap into ordered steps,
-then a fresh implementor agent per step (per the
-`feedback_build_one_agent_per_step.md` memory: never one agent for the
-whole plan).
+Plans are written. The pipeline phase is `/aide:build` for each of the
+7 aligned child specs, one fresh implementor agent per numbered step
+(per the `feedback_build_one_agent_per_step.md` memory: never one
+agent for the whole plan; never one agent across plans).
 
-Suggested ordering (dependency-first):
+Build dependency chain (run plans in this order; do NOT parallelize
+plans whose steps touch `src/types/index.ts` because three of them
+collide on that file):
 
-1. `src/types/index.ts` — types are upstream of everything.
-2. `src/service/parseBrainAide/` — every consumer reads through the
-   parser, so the parser's new schema enforcement lands first.
-3. `src/service/buildBrainState/` — consumes the parser; emits the
-   4-state vocabulary.
-4. `src/service/install/provisionBrain/` — scaffolds the new file at
-   the new path with the new template.
-5. `src/service/install/` (initContent, install orchestrator) —
-   honors the `.aide/config/` ownership boundary.
-6. `src/tools/brain/` and `src/tools/info/` — surface the new
-   4-state shape and the `name` field.
-7. `src/cli/init/` and `src/cli/sync/` — read/write at the new path.
+1. **`src/service/parseBrainAide/plan.aide`** (6 numbered steps) —
+   foundation: collapses `BrainAideConfig` and `ParseBrainAideResult`,
+   moves the read path to `.aide/config/brain.aide`, adds deprecated-
+   field rejection, shrinks the `interpolateArgs` substitution map.
+   Step 6 is the verify step and is EXPECTED to surface compile
+   errors in 4 downstream files (`buildBrainState`, `writeMcpEntry`,
+   `provisionBrain`, `obsidianBrainAideTemplate` tests). Record those
+   failures and proceed; the next plan absorbs them.
+2. **`src/service/buildBrainState/plan.aide`** (4 steps) —
+   consumes the parser; redefines `BrainState` as the 4-state union;
+   drops the `stat` step from the pipeline.
+3. **`src/tools/brain/plan.aide`** (3 steps, 19 checkboxes) —
+   consumes `BrainState`; deletes `INVALID_PATH_PROSE`; updates the
+   `NO_BRAIN_AIDE_PROSE` path; retargets the defensive fallback.
+4. **`src/tools/info/plan.aide`** (5 steps, 16 checkboxes) —
+   forwards the new 4-state shape; adds `not.toHaveProperty`
+   assertions for retired fields.
+5. **`src/service/install/provisionBrain/plan.aide`** (4 steps) —
+   rewrites the template (minimal frontmatter, `@bitbonsai/mcpvault`
+   launcher); moves the scaffold path to `.aide/config/brain.aide`;
+   codifies the no-overwrite invariant in JSDoc + Tier 3 comment.
+6. **`src/cli/sync/plan.aide`** (5 steps) —
+   updates path strings; rewrites the interpolation test for the
+   default-no-op shape.
+7. **`src/cli/init/plan.aide`** (9 steps) —
+   path constants, brain-wiring prose collapse, ownership-boundary
+   regression test. Last because it consumes most of the rest.
 
-The methodology doc rewrite at `.aide/docs/brain-aide.md` is on its
-own track and lands when its rewrite agent finishes.
+After each plan completes, run `/aide:qa` against the module's `.aide`
+spec to verify code matches intent. Commit + push between plans (one
+commit per child after its plan + build + qa cycle is green) — keeps
+the dependency chain visible in git history and gives natural
+checkpoints if a build phase needs to be re-attempted.
+
+The plans collectively touch `src/types/index.ts` from three modules
+(parseBrainAide, buildBrainState, tools/brain). Strictly serializing
+the plans avoids races on that shared file.
 
 ---
 
@@ -234,12 +267,14 @@ other.
 3. Read `.aide/intent.aide` outcomes (the 11 brain-layer decisions
    above all live there) and the 7 aligned child `.aide` files for
    their slices of the contract.
-4. Pick up at `/aide:plan` for the next child in the dependency
-   ordering above (or whichever child the user prioritizes).
-5. After planning, `/aide:build` with one fresh implementor agent per
-   plan step, then `/aide:qa` per child.
+4. Pick up at `/aide:build` against the next plan in the dependency
+   ordering above. Start with `src/service/parseBrainAide/plan.aide`
+   step 1 (the types collapse in `src/types/index.ts`). One fresh
+   implementor agent per numbered step.
+5. After each plan completes, run `/aide:qa` against that module's
+   `.aide`. Commit + push between plans.
 
 If the user asks "what's the state?" — answer: intent layer aligned
-across root + 7 child specs, methodology doc rewrite in flight, code
-not yet aligned, next phase is plan + build per child along the
-dependency chain.
+across root + 7 child specs, methodology doc rewritten, all 7 child
+plans written, code not yet refactored, next phase is build per child
+along the dependency chain (parseBrainAide first).

@@ -1,317 +1,632 @@
+# plan spec
+
 ---
 intent: >
-  Adapt the cold-start CLI to the brain.aide-as-source-of-truth world.
-  When `--vault-path` is supplied (or any path is resolved at install
-  time), the CLI scaffolds `.aide/brain.aide` from the canonical Obsidian
-  template and writes the brain MCP entry into `.mcp.json` by deriving
-  it from the scaffolded file. The legacy `obsidianMcpEntry()` import
-  is removed; both entries (`aide` and `brain`) flow through the new
-  shared `writeMcpEntry` helper from Plan 7. Deferred-categories messaging
-  routes the user to `npx aidemd-mcp sync` for post-install brain edits.
+  Re-align the cold-start CLI to the new root contract: brain.aide moves to
+  `.aide/config/brain.aide` under the user-owned `.aide/config/` ownership
+  boundary (scaffold-once-never-overwritten), the default scaffolded launcher
+  becomes `@bitbonsai/mcpvault`, the brain.aide schema collapses to `name` +
+  `mcpServerConfig.{command, args}`, the boot reporter's brain status drops
+  `invalid-path` (four states only: `ok`, `no-brain-aide`, `no-mcp-entry`,
+  `mcp-drift`), and the warning's deferred-categories collapse brain wiring
+  into a single combined item. No structural reshuffle — the orchestrator
+  pipeline shape stays the same; every change is a path constant, a prose
+  string, a test fixture, or an annotation tightening the user-owned
+  scaffold-once invariant.
 ---
 
 ## Project Structure
 
 ```
 src/cli/init/
-├── .aide                       ← [needs spec edit — see step 1]
+├── .aide                       ← [aligned — no edit] intent spec already
+│                                  rewritten against the new root contract
 ├── plan.aide                   ← [this file]
-├── index.ts                    ← [edit] runInit pipeline scaffolds brain.aide
-│                                  before computing the MCP entry; deferred
-│                                  categories messaging mentions sync
-├── index.test.ts               ← [edit] tests cover brain.aide scaffold and
-│                                  MCP-entry-derived-from-brain.aide invariant
-├── writeMcpEntry/              ← [rewrite as thin wrapper]
-│   ├── index.ts                ← [rewrite] delegates to src/cli/shared/writeMcpEntry
-│   │                              after deriving brain entry from scaffolded
-│   │                              brain.aide via parseBrainAideFromString +
-│   │                              interpolateArgs
-│   └── index.test.ts           ← [rewrite or merge into shared helper's tests]
-├── renderWarning/              ← [edit] no structural change; messaging tweaks
-│   ├── index.ts                ← [edit] deferred-category strings updated
-│   └── index.test.ts           ← [edit] cover new strings
-├── types/                      ← [unchanged]
-└── todo.aide                   ← [existing — supersede or retire]
+├── todo.aide                   ← [existing — supersede on completion]
+├── index.ts                    ← [edit] runInit pipeline
+│                                  - brain.aide host path constant flips to
+│                                    `.aide/config/brain.aide`
+│                                  - parent dir constant `.aide/config/` is
+│                                    the scaffold-once-never-overwritten
+│                                    ownership boundary (single source of
+│                                    truth for the new directory)
+│                                  - deferred-categories collapses brain
+│                                    config + brain MCP entry into ONE
+│                                    "Brain wiring" entry naming
+│                                    `.aide/config/brain.aide` and the
+│                                    /aide → sync recovery route
+│                                  - per-file log uses
+│                                    `.aide/config/brain.aide` displayPath
+│                                  - JSDoc + Tier-3 inline comments updated
+│                                    to mention the four-state vocabulary
+│                                    and `.aide/config/` ownership boundary
+│                                  - `--help` text references
+│                                    `.aide/config/brain.aide` and
+│                                    `@bitbonsai/mcpvault`
+│                                  signature unchanged:
+│                                    export async function runInit(
+│                                      cwd: string,
+│                                      write?: (line: string) => void,
+│                                      options?: { vaultPath?: string },
+│                                    ): Promise<number>
+├── index.test.ts               ← [edit] unit tests
+│                                  - DEFERRED_CATEGORIES collapses to TWO
+│                                    entries (Brain wiring + IDE) when
+│                                    vaultPath is absent
+│                                  - DEFERRED_CATEGORIES_WITH_VAULT stays
+│                                    one (IDE) — unchanged in shape, only
+│                                    string content audited
+│                                  - mocked brain.aide path moves from
+│                                    `.aide/brain.aide` to
+│                                    `.aide/config/brain.aide`
+│                                  - 3b assertions retire stale
+│                                    "Brain MCP entry" / "Brain config
+│                                    (.aide/brain.aide)" strings, replace
+│                                    with "Brain wiring (.aide/config/...)"
+│                                  - new test: re-run with vaultPath supplied
+│                                    after user scaffolded brain.aide via
+│                                    a different surface (sync, hand-edit)
+│                                    keeps the file untouched (regression
+│                                    guard for the `.aide/config/` boundary)
+├── index.integration.test.ts   ← [edit] real-FS end-to-end tests
+│                                  - host path moves to
+│                                    `.aide/config/brain.aide`
+│                                  - 5a assertions collapse to two-field
+│                                    schema (name + mcpServerConfig);
+│                                    no rootPath/entryFile/tools assertions
+│                                  - 5b: brain entry's args contain the
+│                                    inline vault path byte-for-byte (no
+│                                    `${rootPath}` to substitute in the
+│                                    default scaffold)
+│                                  - 5c: warning prose names "Brain wiring"
+│                                    and the new path; stale "Brain config"
+│                                    / "Brain MCP entry" assertions removed
+│                                  - launcher assertions update from
+│                                    `obsidian-mcp` to `@bitbonsai/mcpvault`
+├── writeMcpEntry/              ← [edit, no signature change] init wrapper
+│   ├── index.ts                ← [edit] thin wrapper
+│   │                              - brain.aide host path flips to
+│   │                                `.aide/config/brain.aide`
+│   │                              - JSDoc updated to reference the new
+│   │                                path and the user-owned scaffold
+│   │                                contract
+│   │                              - delegates to shared writeMcpEntry
+│   │                                unchanged; entry derivation via
+│   │                                parseBrainAideFromString +
+│   │                                interpolateArgs unchanged
+│   │                              - error prose ("could not be parsed",
+│   │                                "Fix the file and re-run") names the
+│   │                                new path
+│   │                              signature unchanged:
+│   │                                export default async function
+│   │                                  writeMcpEntry(
+│   │                                    projectRoot: string,
+│   │                                    vaultPath?: string,
+│   │                                  ): Promise<WriteMcpEntryResult>
+│   └── index.test.ts           ← [edit] real-FS tests
+│                                  - all writes/reads of brain.aide use
+│                                    `.aide/config/brain.aide`
+│                                  - 2e legacy obsidian-key migration
+│                                    fixture's pre-existing entry uses the
+│                                    new launcher (`@bitbonsai/mcpvault`)
+│                                  - 2a/2b assertions on derived `brain`
+│                                    entry use the two-field schema's
+│                                    output (no rootPath substitution
+│                                    expected; vault path inline)
+├── renderWarning/              ← [edit, no structural change]
+│   ├── index.ts                ← [edit] JSDoc only
+│   │                              - update doc comment about deferred
+│   │                                categories so the example string set
+│   │                                no longer references "Brain config" /
+│   │                                "Brain MCP entry" as separate items
+│   │                              signature unchanged:
+│   │                                export default function renderWarning(
+│   │                                  input: {
+│   │                                    skipped: readonly InstallResult[];
+│   │                                    failed: readonly InstallResult[];
+│   │                                    deferredCategories: readonly string[];
+│   │                                  },
+│   │                                ): string
+│   └── index.test.ts           ← [edit] string fixtures only
+│                                  - "Brain config (.aide/brain.aide)" /
+│                                    "Brain MCP entry" strings replaced
+│                                    with the new combined "Brain wiring"
+│                                    string the orchestrator now emits
+│                                  - test list lengths flip from 3 to 2
+│                                    where `deferred-only` and `full block`
+│                                    fixtures previously contained both
+│                                    brain entries
+└── types/                      ← [unchanged]
 ```
 
-The new orchestration order (cold install with `--vault-path`):
-1. Scaffold `.aide/brain.aide` (via the canonical Obsidian template
-   from Plan 6's `obsidianBrainAideTemplate`).
-2. Parse the just-written (or existing) `brain.aide`.
-3. Derive the brain MCP entry from the parsed config + `interpolateArgs`.
-4. Compute the aide MCP entry from the existing `mcpEntry()` helper.
-5. Pass both entries to the shared `writeMcpEntry` helper.
+The pipeline shape is unchanged — every edit is a path constant, a prose
+string, a test fixture, or a JSDoc annotation. No new helpers, no new files,
+no signature changes. The orchestrator order stays:
 
-When `--vault-path` is absent, the CLI does NOT scaffold brain.aide
-(the user hasn't told it where the vault lives), and the brain MCP
-entry write is deferred — handled by the orchestrator's
-`/aide:brain config` flow which prompts and then directs the user to
-run `npx aidemd-mcp sync`.
+1. Scaffold `.aide/config/brain.aide` (only when `vaultPath` is supplied
+   and the file is absent on disk).
+2. Compute MCP entries via `writeMcpEntry/index.ts` (which now reads the
+   file from the new path).
+3. Run framework detection + planning helpers.
+4. Apply only `would-create` planning steps.
+5. Emit per-file log + warning block.
 
 ## Prerequisites
 
-**Plan 2 (`src/service/parseBrainAide/plan.aide`)** must complete first:
-- Imports `parseBrainAide`, `parseBrainAideFromString`, `interpolateArgs`.
+The following modules — already aligned at the spec layer per
+`.aide/handoff.aide` — must complete their own `plan.aide` + build cycles
+BEFORE this plan's steps execute. The cli/init orchestrator imports their
+exports; their internal pipeline changes ripple through this CLI.
 
-**Plan 6 (`src/service/install/provisionBrain/plan.aide`)** must complete
-first:
-- Imports `obsidianBrainAideTemplate` from
-  `@/service/install/provisionBrain/obsidianBrainAideTemplate`.
+- `src/types/index.ts` must export the collapsed `BrainAideConfig`
+  (`{ name: string; mcpServerConfig: { command: string; args: string[] } }`)
+  and the four-variant `BrainState` union (`ok | no-brain-aide |
+  no-mcp-entry | mcp-drift`). Without these the writeMcpEntry wrapper
+  cannot derive the brain entry from the new schema.
+- `src/service/parseBrainAide/index.ts` must export
+  `parseBrainAideFromString` validating the two-field schema (rejecting
+  `connector` / `rootPath` / `entryFile` / `tools` as
+  `malformed-frontmatter`) and `interpolateArgs` generalized over
+  frontmatter top-level keys (so the default scaffold's no-placeholder
+  args pass through untouched).
+- `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts`
+  must emit the `@bitbonsai/mcpvault` launcher with the two-field
+  frontmatter shape (`name: obsidian` + `mcpServerConfig.{command, args}`),
+  with the supplied vault path inlined byte-for-byte in args. The
+  function signature stays `(vaultPath: string) => string`; the
+  parameter name may change from `rootPath` to `vaultPath` in that
+  module — this plan refers to it as `vaultPath` throughout to match
+  the CLI's internal naming.
+- `src/service/install/provisionBrain/index.ts` must scaffold at
+  `.aide/config/brain.aide` (not `.aide/brain.aide`). This plan honors
+  the same path for the CLI's own scaffold call.
+- `src/cli/shared/writeMcpEntry/index.ts` is unchanged in contract by
+  this revision — the shared helper's signature (`projectRoot, entries`)
+  and behavior (read-parse-merge-write, throw on malformed JSON, no-op
+  on already-in-sync) carry forward as-is. This plan documents it as a
+  prerequisite only because the init wrapper continues to delegate to it.
 
-**Plan 7 (`src/cli/sync/plan.aide`)** must complete first:
-- Imports the shared `writeMcpEntry` from `@/cli/shared/writeMcpEntry`.
-
-The dependency chain: Plans 2 → 6 → 7 → this plan.
+If any prerequisite has not landed, this plan's build phase will fail at
+typecheck (new `BrainAideConfig` shape) or at runtime (template still emits
+old fields). The orchestrator is responsible for sequencing prerequisite
+plans first.
 
 ## Plan
 
-### 1. Edit the `.aide` intent spec
-
-Read: `coding-playbook/foundations/conventions`
-
-- [x] Edit `src/cli/init/.aide`. Targeted edits, not a full rewrite.
-      Changes:
-
-      - `intent` paragraph: the brain MCP entry is now scaffolded by
-        first writing `.aide/brain.aide` (when `--vault-path` is
-        supplied) and deriving the MCP entry from that file. Legacy
-        framing about "obsidian-shaped command/args underneath the
-        brain key" stays factually accurate (the canonical template
-        still produces the same launcher) but the source-of-truth
-        framing changes — the launcher comes from the scaffolded
-        file, not from a constant inlined in the CLI.
-      - `outcomes.desired`: keep the existing bullets; add one
-        bullet stating that when `--vault-path` is supplied, the CLI
-        scaffolds `.aide/brain.aide` (via the canonical Obsidian
-        template) before computing the MCP entry. Add a bullet that
-        post-install brain edits propagate via `npx aidemd-mcp sync`,
-        not by re-running init.
-      - `outcomes.undesired`: add tripwires for the new failure
-        paths — CLI bypassing `brain.aide` to write the MCP entry
-        directly from a hardcoded launcher constant (the
-        canonical-source-of-truth violation); CLI prompting the user
-        for input (it's still non-interactive); CLI writing
-        `.mcp.json` outside the shared `writeMcpEntry` helper.
-      - The deferred-categories prose: when `--vault-path` is absent,
-        `.aide/brain.aide` is also deferred (the CLI cannot scaffold
-        the file without knowing `rootPath`). The orchestrator's
-        inline-recovery flow handles both — the prose is updated to
-        say "open Claude Code and run `/aide`; the orchestrator
-        prompts for the vault path, scaffolds `brain.aide`, and tells
-        you to run `npx aidemd-mcp sync`."
-
-### 2. Rewrite `writeMcpEntry/` to delegate to the shared helper
+### 1. Move the brain.aide host path constant in `runInit`
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
 
-- [x] Rewrite `src/cli/init/writeMcpEntry/index.ts`. The signature is
-      adjusted to take an optional `vaultPath`:
+- [ ] Edit `src/cli/init/index.ts`. Two coupled changes:
+      - 1a. Replace the `join(cwd, ".aide", "brain.aide")` literal in
+        `runInit`'s brain-scaffold step (currently around line 107) with
+        `join(cwd, ".aide", "config", "brain.aide")`. Use a single named
+        local constant at the top of the function (e.g. `brainAidePath`)
+        so the path appears once in the function body. The dirname of
+        this path is `.aide/config/`, which is the user-owned ownership
+        boundary; the existing `mkdir(dirname(brainAidePath), { recursive:
+        true })` call already creates the parent directory tree, so no
+        explicit `.aide/config/` `mkdir` step is needed.
+      - 1b. Update the per-file log line emitted by the `else`-branch of
+        the scaffold check so `displayPath` is `.aide/config/brain.aide`
+        (it derives from the path constant; verify the assignment after
+        the path change). The `[exists]` branch's `displayPath` likewise
+        flips to `.aide/config/brain.aide`. The `message` strings
+        (`"Brain config (Obsidian default)"` and `"already present"`) stay
+        verbatim — they describe what the file IS, not where it lives.
 
-      ```
-      export default async function writeMcpEntry(
-        projectRoot: string,
-        vaultPath?: string,
-      ): Promise<WriteMcpEntryResult>
-      ```
+      Verify after the edit: a grep across `src/cli/init/index.ts` for
+      the literal string `".aide/brain.aide"` returns zero hits.
 
-      Pipeline:
-      1. Compute the aide MCP entry: `aideEntry = mcpEntry()` (existing
-         helper from `@/service/install/wireMcp`).
-      2. Build the entries map for the shared helper.
-         - Always include `aide: aideEntry`.
-         - If `vaultPath` is supplied:
-           - 2a. Compute `brainAideContent = obsidianBrainAideTemplate(
-             vaultPath)`.
-           - 2b. Determine the brain.aide host path
-             (`join(projectRoot, ".aide", "brain.aide")`). If the file
-             exists on disk, read it; otherwise use the in-memory
-             template content. (This handles "user re-runs init after
-             hand-editing brain.aide" — the CLI respects the user's
-             edits over the canonical template.)
-           - 2c. Parse via `parseBrainAideFromString(content)`. On
-             `kind === "ok"`, derive
-             `brainEntry = { command: config.mcpServerConfig.command,
-                              args: interpolateArgs(config) }`.
-             On any non-ok kind, throw — the template should always
-             parse, and a hand-edited brain.aide that doesn't parse is
-             a user error to surface.
-           - 2d. Add `brain: brainEntry` to the entries map.
-           - 2e. Add `obsidian: "delete"` to migrate any legacy key
-             (uniform with sync's behavior).
-         - If `vaultPath` is absent: do NOT include `brain` in the
-           entries map (the CLI cannot derive it without a path); the
-           caller's deferred-categories messaging handles the followup.
-      3. Call `writeMcpEntry(projectRoot, entries)` (the shared helper
-         from Plan 7's step 1).
-      4. Map the helper's return to the `WriteMcpEntryResult` shape
-         this CLI already exposes (`{ status: "created" | "exists",
-         message: string }`):
-         - `unchanged: true` AND no entries marked for write →
-           `{ status: "exists", message: "aide and brain MCP server
-           entries already configured" }`.
-         - Otherwise → `{ status: "created", message: <composed from
-           written + deleted> }` mirroring the existing message
-           formatting (preserving the "merged with N existing
-           server(s)" suffix).
-      5. The malformed-JSON throw bubbles up unchanged — the IIFE in
-         `index.ts` already catches it, prints to stderr, and exits 1.
+      Tier-3 inline comments at the top of the brain-scaffold block
+      narrate the new boundary: "Files inside `.aide/config/` are
+      user-owned per the root spec — this scaffold runs once on first
+      cold start where the file is absent and never touches the file
+      again on any subsequent run, regardless of byte drift from the
+      canonical default."
 
-      Also: scaffold `.aide/brain.aide` to disk when `vaultPath` is
-      supplied AND the file doesn't already exist. **Decision:** the
-      brain.aide write is a separate filesystem operation that lives
-      in `runInit`'s pipeline (step 3 below), not in `writeMcpEntry`.
-      `writeMcpEntry` reads brain.aide content (from disk if present,
-      from template if absent) but does not WRITE the file — that's
-      `runInit`'s `applySteps`-equivalent code path. This keeps
-      `writeMcpEntry` focused on `.mcp.json` mutation.
-
-      JSDoc updated to reflect the new pipeline.
-
-      Tests rewritten to cover:
-      - 2a. `vaultPath` supplied + no existing brain.aide → reads
-        the in-memory template, derives entry, writes to `.mcp.json`.
-      - 2b. `vaultPath` supplied + existing user-edited brain.aide
-        → reads the existing file, derives entry from user's
-        config, writes to `.mcp.json`. Verifies the user's edit is
-        respected over the template.
-      - 2c. `vaultPath` absent → only `aide` is written, `brain` is
-        not.
-      - 2d. Idempotent re-run → returns `exists`.
-      - 2e. Legacy `obsidian` key migration via the shared helper.
-
-### 3. Update `runInit` orchestrator pipeline
-
-Read: `coding-playbook/foundations/conventions`, `coding-playbook/agentic/command-modules`
-
-- [x] Edit `src/cli/init/index.ts`. The new pipeline order:
-
-      1. Scaffold `.aide/brain.aide` if `vaultPath` is supplied AND
-         the file doesn't already exist on disk. Use
-         `obsidianBrainAideTemplate(vaultPath)` to compute the bytes;
-         write via `node:fs/promises.writeFile`. If the file exists,
-         skip (seed-semantic — once the user has the file, the bytes
-         belong to the user). Log a per-file line: `[created]
-         .aide/brain.aide — Brain config (Obsidian default)` or
-         `[exists] .aide/brain.aide — already present`.
-
-         **This step happens BEFORE `writeMcpEntry`** — `writeMcpEntry`
-         reads brain.aide from disk to derive the brain entry, so the
-         file must exist first when `vaultPath` is supplied.
-
-      2. Call `writeMcpEntry(cwd, vaultPath)` per step 2 above. The
-         result becomes the first entry in the per-file log.
-
-      3. Continue with the existing planning helpers
-         (`writeMethodology`, `installMethodologyDocs`,
-         `scaffoldCommands`, …) unchanged.
-
-      4. Update `deferredCategories(vaultPath)`:
-         - When `vaultPath` IS supplied: keep just `IDE configuration —
-           re-run: npx aidemd-mcp init --ide <choice>`.
-         - When `vaultPath` is absent: replace the existing two
-           brain-related strings with two updated ones:
-           - `Brain config (.aide/brain.aide) — open Claude Code and
-             run /aide; the orchestrator will prompt for the vault
-             path, scaffold the file, and tell you to run sync`
-           - `Brain MCP entry — applied by npx aidemd-mcp sync after
-             brain.aide is scaffolded`
-           - Keep the IDE entry.
-
-         The existing `Vault path` and `Brain vault scaffolding` lines
-         are replaced; the new lines speak the brain.aide vocabulary
-         and name sync as the followup.
-
-      5. Update `--help` text to mention `npx aidemd-mcp sync` as the
-         post-install command for applying brain.aide changes to
-         `.mcp.json`.
-
-      Tests updated to verify:
-      - 3a. With `vaultPath` supplied, `.aide/brain.aide` is created
-        with the canonical Obsidian content and the brain MCP entry in
-        `.mcp.json` matches.
-      - 3b. With `vaultPath` absent, no `.aide/brain.aide` is created
-        and the warning block lists the new deferred-category strings.
-      - 3c. Re-running init with `vaultPath` supplied a second time
-        is fully idempotent — brain.aide is `exists`, MCP entry
-        unchanged, exit 0.
-      - 3d. Re-running init when the user has hand-edited their
-        brain.aide between runs respects the user's edits — the MCP
-        entry derived in the second run reflects the user's edits,
-        not the canonical template.
-
-### 4. Update `renderWarning/`
+### 2. Mirror the path move in the `writeMcpEntry/` init wrapper
 
 Read: `coding-playbook/foundations/conventions`
 
-- [x] Edit `src/cli/init/renderWarning/index.ts` and its tests if
-      needed. The renderer takes deferred-category strings as input,
-      so the wording change in step 3 flows through automatically.
-      Verify the tests assert against the new strings (or update them
-      to the new strings).
+- [ ] Edit `src/cli/init/writeMcpEntry/index.ts`. The wrapper reads
+      brain.aide from disk (when present) to derive the brain MCP entry;
+      the read path must move from `.aide/brain.aide` to
+      `.aide/config/brain.aide`. Coupled changes:
+      - 2a. In the `if (vaultPath !== undefined)` branch, replace
+        `join(projectRoot, ".aide", "brain.aide")` with
+        `join(projectRoot, ".aide", "config", "brain.aide")`. Use a
+        single local constant for the path so the literal appears once.
+      - 2b. Update the error thrown when `parseBrainAideFromString`
+        returns a non-`ok` kind so the message names the new path:
+        `` `.aide/config/brain.aide could not be parsed: ${reason}. Fix the file and re-run.` ``
+        Both the legacy "missing" sub-case and the validation-failure
+        sub-case route through this same throw, mirroring today's
+        behavior.
+      - 2c. Update the JSDoc comment block. The pipeline-step description
+        references "If `.aide/brain.aide` exists on disk, reads it" —
+        flip that to "If `.aide/config/brain.aide` exists on disk, reads
+        it". Add a sentence noting the file lives inside the user-owned
+        `.aide/config/` directory and that the wrapper never writes to
+        that path; only the orchestrator's seed-semantic scaffold step
+        (Step 1) writes it.
 
-### 5. Smoke-test the full CLI flow end-to-end
+      The wrapper's contract with the shared `cli/shared/writeMcpEntry`
+      helper is unchanged: still passes
+      `{ aide: aideEntry, brain: brainEntry, obsidian: "delete" }` when
+      `vaultPath` is supplied; still passes `{ aide: aideEntry }` alone
+      when it isn't. The shared helper handles the merge + delete
+      semantics; this wrapper only changes WHERE it reads the brain.aide
+      bytes from.
+
+      The `WriteMcpEntryResult.message` composition is unchanged: the
+      managed-keys set (`aide`, `aidemd-mcp`, `brain`, `obsidian`) and
+      the "merged with N existing server(s)" suffix logic stay as-is.
+
+### 3. Collapse deferred-categories into a single Brain-wiring entry
+
+Read: `coding-playbook/foundations/conventions`
+
+- [ ] Edit `src/cli/init/index.ts`'s `deferredCategories(vaultPath)`
+      function. Today it returns three strings when `vaultPath` is absent
+      — one for `Brain config`, one for `Brain MCP entry`, one for
+      `IDE configuration`. The aligned spec collapses brain config + MCP
+      entry into ONE combined "Brain wiring" item because both halves
+      descend from the same user-owned `.aide/config/brain.aide` decision.
+
+      New return shape when `vaultPath` is absent (TWO strings, in this
+      order):
+      ```
+      [
+        "Brain wiring (.aide/config/brain.aide + derived brain MCP entry) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold .aide/config/brain.aide, and tell you to run npx aidemd-mcp sync",
+        "IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
+      ]
+      ```
+
+      When `vaultPath` IS supplied, the return shape is unchanged
+      (single IDE entry):
+      ```
+      [
+        "IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
+      ]
+      ```
+
+      Update the function's JSDoc to reflect the new vocabulary:
+      - replace "Brain config and brain MCP entry (absent when ...)"
+        framing with "Brain wiring (combined brain.aide + derived MCP
+        entry, absent when ...)";
+      - reference `.aide/config/brain.aide` in the explanatory prose;
+      - keep the IDE description verbatim;
+      - keep the "single source of truth: passed as data to renderWarning"
+        framing — that decision is unchanged.
+
+      The combined string is verbatim user-facing copy. It must trace
+      EXACTLY to the spec's good example block (the
+      `Deferred (each item names how to finish it):` entry that names
+      brain wiring as one item). Treat the string as a stable contract
+      — tests assert against it byte-for-byte.
+
+### 4. Update `renderWarning/`'s JSDoc and test fixtures
+
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/workflow/testing`
+
+- [ ] Edit `src/cli/init/renderWarning/index.ts` and
+      `src/cli/init/renderWarning/index.test.ts`. The renderer's runtime
+      behavior is unchanged — it takes whatever strings the caller passes
+      in. Only the JSDoc example list and the test fixtures need to
+      update. Coupled changes:
+      - 4a. `index.ts` JSDoc: in the "Deferred-categories subsection"
+        paragraph, the inline example list mentions deferred items by
+        category. Update the example to reference "Brain wiring (combined
+        brain.aide + MCP entry)" instead of separate "Brain config" /
+        "Brain MCP entry" items, matching the orchestrator's new output.
+      - 4b. `index.test.ts` fixtures: every test that hardcodes a
+        `deferred` array containing the strings
+        `"Brain config (.aide/brain.aide) — open Claude Code and run /aide; ..."`
+        and `"Brain MCP entry — applied by npx aidemd-mcp sync ..."`
+        replaces them with the single new "Brain wiring (.aide/config/...)"
+        string from Step 3. The expected-output blocks (numbered list
+        text) update accordingly: a `deferred-only` test that previously
+        expected three numbered lines now expects two (Brain wiring,
+        then whatever else the test passed in); a `full block` test that
+        previously expected two brain-related deferred lines now expects
+        one. The numbering shifts where applicable.
+      - 4c. The structural tests (border characters, suppression rule
+        when all three lists are empty, section ordering) require no
+        changes — those invariants are independent of the deferred-list
+        contents.
+
+### 5. Update `index.test.ts` — orchestrator unit tests
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [ ] Edit `src/cli/init/index.test.ts`. The test file currently uses
+      a `DEFERRED_CATEGORIES` constant with three strings (Brain config,
+      Brain MCP entry, IDE) and a `DEFERRED_CATEGORIES_WITH_VAULT`
+      constant with one (IDE). Coupled changes:
+      - 5a. Replace `DEFERRED_CATEGORIES` with the new two-string shape
+        from Step 3 (Brain wiring combined string + IDE string).
+        `DEFERRED_CATEGORIES_WITH_VAULT` stays a single-string array
+        (only its IDE string is audited; verbiage unchanged).
+      - 5b. The `mockAccess`-based tests that simulate brain.aide
+        existing/not-existing on disk operate on the path
+        `.aide/brain.aide` today (mocks accept any path string but the
+        assertions log/verify the displayPath). Update every assertion
+        that names `.aide/brain.aide` (path matchers, log-line regex,
+        substring checks) to `.aide/config/brain.aide`. Examples:
+        the `3a` test's "logs `[created] .aide/brain.aide`" regex flips
+        to `[created] .aide/config/brain.aide`; the `3c`/`3d` log-line
+        substring matchers do the same.
+      - 5c. The `3b` describe block (`vaultPath absent: no brain.aide
+        scaffold, new deferred-category strings`) currently asserts
+        the presence of THREE specific deferred strings (Brain config,
+        Brain MCP entry, IDE). Replace those three assertions with TWO:
+        the new combined Brain-wiring string and the IDE string. The
+        "deferred categories no longer reference stale 'Vault path' or
+        'Brain vault scaffolding' strings" guard stays — it's still a
+        valid regression guard against the prior cycle's vocabulary.
+        Add a NEW guard for the current cycle: "deferred categories no
+        longer split brain config and brain MCP entry into two separate
+        items" — assert that no string in `deferredCategories` starts
+        with `"Brain config"` AND no string starts with `"Brain MCP entry"`.
+      - 5d. The `3d` describe block (`user-edited brain.aide`) operates
+        on the new path; nothing about its structure changes beyond the
+        path string. The "calls writeMcpEntry with the same vaultPath"
+        assertion stays — the wrapper still takes `vaultPath` as its
+        second arg, regardless of where the file lives.
+      - 5e. Add a new test under `3d` (or as a sibling describe block):
+        "user has scaffolded `.aide/config/brain.aide` via sync or hand-
+        edit before init runs". Pre-set `mockAccess` to resolve (file
+        present); call `runInit` with `vaultPath` supplied; assert
+        `writeFile` is NOT called for brain.aide AND
+        `mockObsidianBrainAideTemplate` is NOT called (the existing-
+        file branch must NOT compute the template content as a fallback).
+        This is the regression guard for the `.aide/config/` ownership
+        boundary — once the file exists, the CLI never recomputes or
+        rewrites the template, even when supplied a different `vaultPath`.
+
+      The "happy path" / "idempotent re-run" / "mixed run" / "abort path"
+      / "invocation ordering" / "coverage gap closure" describe blocks
+      need only path-string updates (any reference to `.aide/brain.aide`
+      flips to `.aide/config/brain.aide`); their structural assertions
+      are unaffected.
+
+### 6. Update `index.integration.test.ts` — real-FS end-to-end tests
 
 Read: `coding-playbook/workflow/testing`
 
-- [x] In `index.test.ts`, add an integration-style test (still inside
-      Vitest, using temp dirs) that runs `runInit(<temp dir>, write,
-      { vaultPath: "/some/vault" })` against a fresh project and
-      verifies:
+- [ ] Edit `src/cli/init/index.integration.test.ts`. This file uses real
+      filesystem temp dirs and exercises the full pipeline. Coupled
+      changes:
+      - 6a. Every `join(tempDir, ".aide", "brain.aide")` becomes
+        `join(tempDir, ".aide", "config", "brain.aide")`. Use a single
+        named constant per test (e.g. `brainAidePath`) so the literal
+        appears once per scope.
+      - 6b. The `5a` test currently asserts on the legacy five-field
+        schema (`config.connector === "obsidian"`, `config.rootPath ===
+        vaultPath`, `config.entryFile === "CLAUDE.md"`,
+        `config.tools.read === "mcp__brain__read_note"`,
+        `config.tools.search === "mcp__brain__search_notes"`). Replace
+        these with the new two-field schema:
+        - `config.name === "obsidian"` (the user-facing label;
+          intentionally still `"obsidian"` because that is the canonical
+          Obsidian template's `name` value);
+        - `config.mcpServerConfig.command === "npx"` (POSIX) or
+          `"cmd"` (win32) — branch on `os.platform()` per the existing
+          test pattern;
+        - `config.mcpServerConfig.args` includes the literal `vaultPath`
+          string byte-for-byte (no `${rootPath}` placeholder remains in
+          the default scaffold).
+        Drop every assertion against `connector`, `rootPath`, `entryFile`,
+        `tools.read`, `tools.search` — those fields no longer exist on
+        the parsed config and reading them would now be a typecheck
+        error.
+      - 6c. The `5b` test asserts the brain entry's args. Update the
+        launcher checks: instead of asserting that `args` contains
+        `"obsidian-mcp"`, assert it contains `"@bitbonsai/mcpvault"`.
+        The "no `${rootPath}` placeholder remains" check stays valid
+        as a regression guard (the default scaffold inlines the path
+        byte-for-byte; no substitution should appear). The "vaultPath
+        appears as an exact element of args" check stays.
+      - 6d. The `5c` test's negative assertions ("warning block must
+        not contain the brain-config or brain-MCP deferred strings")
+        update: the strings under test were
+        `"Brain config (.aide/brain.aide)"` and `"Brain MCP entry"`.
+        Replace with negative assertions against ANY string starting
+        with `"Brain config"` or `"Brain MCP entry"` (these are the
+        retired separate items), AND a positive assertion that the
+        warning block does NOT include any deferred Brain content at
+        all when `vaultPath` is supplied (only IDE remains). The "log
+        line for brain.aide appears before .mcp.json log line" check
+        stays.
+      - 6e. The `5d` idempotency test asserts the second runInit call
+        produces no `[created]` lines. Update the brain.aide bytes
+        comparison: `obsidianBrainAideTemplate(vaultPath)` is the
+        canonical template; the on-disk content must match those bytes.
+        After the prerequisite plan rewrites the template to the new
+        schema, this comparison naturally validates the new shape.
 
-      - 5a. `.aide/brain.aide` exists with the canonical Obsidian
-        content. Parse it via `parseBrainAide` and assert the parsed
-        config matches what the template produces.
-      - 5b. `.mcp.json` exists with `mcpServers.aide` AND
-        `mcpServers.brain`. The `brain` entry's `args` array has the
-        actual `vaultPath` value substituted (no literal
-        `${rootPath}` remains).
-      - 5c. The captured stdout includes both the brain.aide line
-        and the MCP entry line; the warning block is empty (or
-        contains only the IDE deferred entry).
-      - 5d. A second `runInit` call against the same temp dir reports
-        every step as `exists` and writes nothing — full idempotency
-        end-to-end.
+### 7. Update `--help` text in the orchestrator IIFE
+
+Read: `coding-playbook/foundations/conventions`
+
+- [ ] Edit `src/cli/init/index.ts`'s `--help` branch (the `process.argv.
+      includes("--help")` block at the bottom of the file). Three coupled
+      string updates:
+      - 7a. In the install-footprint summary (the "Full cold-start
+        installer for AIDE..." paragraph), `.aide/brain.aide` becomes
+        `.aide/config/brain.aide`.
+      - 7b. The `--vault-path` flag description's "scaffolds .aide/
+        brain.aide from the canonical Obsidian template" line flips to
+        "scaffolds .aide/config/brain.aide from the canonical Obsidian
+        template (using the @bitbonsai/mcpvault launcher with the supplied
+        vault path inlined byte-for-byte in mcpServerConfig.args)".
+      - 7c. The "When --vault-path is not provided, brain config and
+        brain MCP entry defer to /aide" paragraph collapses to "When
+        --vault-path is not provided, brain wiring (.aide/config/brain.
+        aide plus the derived brain MCP entry, treated as one
+        decision) defers to /aide", matching the deferred-categories
+        single-item shape.
+      - 7d. The "Post-install brain edits (retargeting rootPath,
+        customizing the launcher) propagate to .mcp.json via: npx
+        aidemd-mcp sync" line updates: `rootPath` is gone from the
+        schema. Replace with "Post-install brain edits (retargeting the
+        vault path inline in mcpServerConfig.args, swapping the
+        launcher command, renaming the brain via the name field) propagate
+        to .mcp.json via: npx aidemd-mcp sync".
+
+      Verify the final `--help` text after edits names ONLY currently-
+      shipped surfaces: `/aide` (orchestrator), `npx aidemd-mcp init
+      --ide <choice>`, `npx aidemd-mcp sync`, `/aide:upgrade`. No
+      reference to the retired `/aide:init` slash command. No reference
+      to `obsidian-mcp` as a launcher (the only launcher mentioned in
+      help text should be `@bitbonsai/mcpvault`).
+
+### 8. Update `writeMcpEntry/index.test.ts` fixtures
+
+Read: `coding-playbook/workflow/testing`
+
+- [ ] Edit `src/cli/init/writeMcpEntry/index.test.ts`. This file uses
+      real filesystem temp dirs and exercises the wrapper end-to-end.
+      Coupled changes:
+      - 8a. Every `join(brainAideDir, "brain.aide")` /
+        `join(tempDir, ".aide", "brain.aide")` literal becomes
+        `join(tempDir, ".aide", "config", "brain.aide")`. The
+        `brainAideDir` constant inside `2b` tests becomes
+        `join(tempDir, ".aide", "config")`. The `mkdir({ recursive:
+        true })` calls keep working — they create parent directories
+        as needed.
+      - 8b. The `2e` legacy obsidian-key migration fixture pre-writes
+        an `.mcp.json` containing
+        `{ command: "npx", args: ["@bitbonsai/mcpvault", "/old/vault"] }`
+        as the `mcpServers.obsidian` value. (Today's fixture already
+        uses `@bitbonsai/mcpvault` — verify and keep as-is. If it still
+        references `obsidian-mcp` anywhere, flip to `@bitbonsai/mcpvault`.)
+      - 8c. The `2a` and `2b` assertions that derive expected entry
+        shape via `expectedBrainEntry(vaultPath)` continue to work —
+        the helper calls `obsidianBrainAideTemplate` then
+        `parseBrainAideFromString` then `interpolateArgs`. After the
+        prerequisite plans land, the template emits the new schema and
+        the parser validates it; the helper transparently produces the
+        new-shape entry. The brain entry's `args` will contain
+        `["-y", "@bitbonsai/mcpvault", vaultPath]` (POSIX) or
+        `["/c", "npx", "-y", "@bitbonsai/mcpvault", vaultPath]` (win32).
+        Verify the final assertions match the new shape after the
+        prerequisite template rewrite.
+      - 8d. The "throws on malformed JSON" test stays valid — the shared
+        `cli/shared/writeMcpEntry` helper still throws the same error
+        message; this wrapper still bubbles it up unchanged.
+      - 8e. Add a regression test: when called with `vaultPath` supplied
+        and a pre-existing `.aide/config/brain.aide` whose frontmatter
+        contains a deprecated field (e.g. `connector: obsidian` left
+        from a pre-migration install), `writeMcpEntry` throws via the
+        `parseBrainAideFromString` `malformed-frontmatter` branch with
+        an error message naming `.aide/config/brain.aide` and the
+        deprecated field. This is the regression guard for the parent
+        spec's "rejects deprecated fields" invariant flowing through
+        the CLI.
+
+### 9. Final cross-file verification
+
+Read: `coding-playbook/workflow/testing`
+
+- [ ] Run two verification commands and resolve any failures by
+      narrowing back to the steps above:
+      - 9a. `rtk grep -nF ".aide/brain.aide" src/cli/init/` — must
+        return zero hits. Any remaining literal is a missed path
+        update from steps 1, 2, 5, 6, 7, or 8.
+      - 9b. `rtk grep -nFi "obsidian-mcp" src/cli/init/` — must return
+        zero hits in source files (test fixtures referencing the
+        prior-cycle launcher are gone after step 8b's audit; help text
+        after step 7 names only `@bitbonsai/mcpvault`).
+      - 9c. `rtk npm test -- cli/init` — every test file under
+        `src/cli/init/` passes against the prerequisite-aligned
+        codebase. Failures here either indicate (i) a missed string
+        update in this plan's scope, or (ii) a prerequisite plan that
+        hasn't landed; the fix is to either complete the missed update
+        OR escalate the prerequisite gap back to the orchestrator (do
+        NOT shim the CLI to compensate for a missing prerequisite).
+      - 9d. `rtk npx tsc --noEmit` — clean typecheck against the new
+        `BrainAideConfig` shape and the new `BrainState` four-variant
+        union. Any typecheck error in cli/init scope traces back to a
+        path constant or an inferred-from-prerequisite-shape mismatch
+        the steps above did not catch; resolve by adjusting the local
+        edit, never by widening prerequisite types.
+
+      A non-zero exit on any of these commands is a hard halt — do not
+      mark the plan complete. Capture the failing output and return it
+      to the orchestrator.
 
 ## Decisions
 
-- **Brain.aide scaffold lives in `runInit`, not in `writeMcpEntry`.**
-  Separation of concerns: `runInit` is the orchestrator that decides
-  what to write to disk; `writeMcpEntry` is the helper that mutates
-  `.mcp.json` and reads brain.aide as input. Bundling the scaffold
-  into `writeMcpEntry` would make that helper a multi-file writer
-  with mixed responsibilities. Today it mutates one file; keeping it
-  that way preserves the testability and shape that Plan 7's shared
-  helper inherits.
-- **`writeMcpEntry` becomes a thin wrapper that delegates to the
-  shared helper from Plan 7.** Both CLI verbs (init and sync) need
-  the same `.mcp.json` mutation pipeline; per the playbook's "shared
-  submodules within a domain" rule, the lift point is `src/cli/
-  shared/writeMcpEntry/`. The CLI-specific local file becomes the
-  wrapper that adds CLI-specific concerns (the `WriteMcpEntryResult`
-  shape, the message composition).
-- **The user's hand-edited brain.aide wins over the canonical
-  template.** Step 2c's "if the file exists, read it" is load-bearing.
-  A user who customized their brain.aide between init runs (added
-  extra `tools` entries, tweaked `mcpServerConfig.args` for a
-  different launcher) keeps their edits — the second `init` derives
-  the MCP entry from their edits, not from the canonical default.
-  This is the source-of-truth invariant: brain.aide is authoritative,
-  the CLI is the propagator.
-- **Deferred-category strings change to mention sync.** Today's
-  strings tell the user to "open Claude Code and run /aide" —
-  appropriate for the orchestrator-led recovery. The new strings
-  preserve that route AND name sync as the followup verb so users
-  who want to do everything from the terminal have a clear path.
-- **Brain.aide is seed-semantic, never `would-overwrite`.** Once the
-  CLI scaffolds the file, the bytes belong to the user. Even on a
-  re-run with `--vault-path` pointing at a different vault, the CLI
-  must not overwrite a user-edited brain.aide. The user re-points
-  by editing the file and running sync, not by re-running init with
-  a different `--vault-path`. This matches how the playbook hub and
-  vault CLAUDE.md are already handled in `provisionBrain`.
-- **No `obsidianMcpEntry` references remain in `src/cli/init/` after
-  this plan.** Plan 6 removed the export; this plan removes the last
-  consumer (this CLI). A grep for `obsidianMcpEntry` across `src/`
-  should return zero hits after this plan lands. (If hits remain,
-  they're in test fixtures referencing the migration story; those
-  test fixtures get updated to use the new template-driven shape.)
+- **Brain wiring becomes ONE deferred item, not two.** The aligned spec
+  treats `.aide/config/brain.aide` and the derived MCP entry as two
+  halves of one user-owned decision: the user owns the file, sync derives
+  the entry. Splitting them in the warning duplicates the contract
+  surface and forces the user to mentally re-couple two items the spec
+  has explicitly fused. The combined string preserves both halves in a
+  single line ("brain.aide + derived brain MCP entry") so the user still
+  sees what gets installed when they finish the wiring, but treats the
+  followup as one decision routed through one surface.
+- **Path constants live ONCE per file.** Each edited file (orchestrator,
+  init wrapper, two test files) declares the brain.aide host path as a
+  single named local constant and references it from every other line.
+  The literal string `.aide/config/brain.aide` should appear at most
+  once per file as a definition; subsequent uses go through the constant.
+  This kills the regression class where one of N call sites gets a path
+  update and the others don't.
+- **The `.aide/config/` parent directory is the ownership signal — no
+  per-file allowlist.** The orchestrator's existing `mkdir(dirname,
+  { recursive: true })` call creates `.aide/config/` if absent on the
+  first scaffold; subsequent runs find the file present and skip. The
+  cli/init code does not maintain a list of "user-owned filenames" — the
+  invariant flows from the directory path itself. Step 5e's regression
+  test enforces this at the CLI boundary: any file inside `.aide/config/`
+  that the CLI finds present is hands-off, regardless of how it got
+  there (sync wrote it, the user hand-edited it, a prior init scaffolded
+  it). This matches the root spec's "directory path is the ownership
+  signal" framing.
+- **`writeMcpEntry/` stays a thin wrapper, not absorbed into the shared
+  helper.** Today the wrapper composes the entries map (aide entry from
+  `mcpEntry()`, brain entry derived from on-disk brain.aide via the
+  parser, legacy obsidian deletion) and maps the shared helper's result
+  to the CLI's `WriteMcpEntryResult` shape. The aligned spec does not
+  change either responsibility; the wrapper continues to live as the
+  CLI-specific composition layer. Plan 7 (cli/sync) already extracted
+  the read-parse-merge-write primitive into `cli/shared/`; this wrapper
+  is the right home for "I am the cold-start CLI with `--vault-path`
+  semantics, here are the entries you should write" knowledge.
+- **No new helpers, no new files.** The structural refactor lifting
+  shared logic into `cli/shared/` already happened in Plan 7. This plan
+  is a path-and-prose alignment, not an architectural change. Adding
+  new helpers here would be scope creep against a spec that explicitly
+  did not change the orchestrator's pipeline shape.
+- **Prerequisite plans drive shape changes; this plan only follows.**
+  The brain.aide schema collapse (`name` + `mcpServerConfig` only) and
+  the boot reporter's four-state shape are owned by `parseBrainAide`,
+  `provisionBrain`, and `buildBrainState` plans respectively. This plan
+  consumes the new shapes through their existing exports — it never
+  reshapes types, never duplicates validation logic, never short-circuits
+  the parser. If a prerequisite plan reshapes a type the CLI consumes in
+  a way the steps above didn't anticipate, the response is to escalate
+  back to the orchestrator and re-plan, not to absorb the change locally.
+- **Legacy "Vault path" / "Brain vault scaffolding" guards stay.** The
+  prior-cycle test guards (5c) that assert the deferred-categories
+  array does NOT contain those legacy strings remain in place as a
+  retro-regression guard. The new cycle adds a parallel guard against
+  the just-retired "Brain config" / "Brain MCP entry" split. Stacking
+  these guards keeps the test file as a record of every vocabulary
+  shift the CLI has navigated; deleting the prior-cycle guards would
+  let the same string drift back in silently if a future revert happened.
+- **Verification is a step, not a side-task.** Step 9's grep + test +
+  typecheck commands are an explicit step because path/prose
+  refactors are exactly the class of change where one missed reference
+  yields a green test suite and a broken cold-start install. Treating
+  the verification commands as plan steps means a fresh implementor
+  agent runs them and reports results to the orchestrator; the
+  orchestrator decides whether to mark the plan complete or escalate.
+
+
+---
+Siblings: src/cli/init/.aide, src/cli/init/todo.aide
+Links: none

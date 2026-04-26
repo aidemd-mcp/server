@@ -1,436 +1,504 @@
 ---
 intent: >
-  Rewrite buildBrainState so it consumes `.aide/brain.aide` (via
-  parseBrainAide), stats the declared `rootPath`, compares the parsed
-  `mcpServerConfig` against the host's `.mcp.json` brain entry, and
-  returns a five-state tagged union — `ok`, `no-brain-aide`,
-  `no-mcp-entry`, `invalid-path`, `mcp-drift` — with the `backend` field
-  removed entirely. The detector no longer dispatches to the brain
-  backend registry; identity is the user's `connector` string carried
-  through unchanged when needed.
+  Refactor buildBrainState to the four-state vocabulary contract: drop the
+  `invalid-path` variant entirely, remove all `stat()` work, shrink the
+  remaining variants to `name` + `hints` (no `rootPath`/`connector`/`entryFile`/
+  `tools`), and keep the structural drift comparison against the host's
+  `.mcp.json` brain entry. Detector becomes a two-read pipeline (parse
+  brain.aide → read .mcp.json → compare) returning `ok | no-brain-aide |
+  no-mcp-entry | mcp-drift`.
 ---
 
 ## Project Structure
 
-The detector remains a single-file orchestrator at this scope. The new
-pipeline is: read `brain.aide` → if missing, return `no-brain-aide` →
-stat the declared `rootPath` → if invalid, return `invalid-path` → read
-`.mcp.json` and look up the `brain` entry → if absent, return
-`no-mcp-entry` → compare expected (interpolated `mcpServerConfig`)
-against actual entry → if differ, return `mcp-drift` → otherwise `ok`.
-No registry dispatch, no `backend` field.
+The detector remains a single-file orchestrator at this scope. Helper
+subfolders are not warranted — the new pipeline has fewer steps than the
+prior one (one fewer read, no stat) and every step is a 5–10 line
+operation. If a single step's logic ever crosses the ~30-line threshold
+named in the spec's Strategy (e.g. drift comparison gains a structurally
+complex partial-equality rule), factor that step into a sibling subfolder
+at that point.
 
 ```
 src/service/buildBrainState/
-├── .aide                ← [needs spec rewrite — see step 1] intent spec
+├── .aide                ← [existing, aligned] intent spec — read first
 ├── plan.aide            ← [this file]
+├── todo.aide            ← [existing, aligned] all spec-alignment items checked
 ├── index.ts             ← [rewrite] orchestrator implementing the new pipeline
-│                           signature unchanged: default async function
-│                             buildBrainState(root: string): Promise<BrainState>
-└── index.test.ts        ← [rewrite] co-located tests covering all five states
-
-src/types/index.ts       ← [edit] redefine BrainState as the new five-variant
-                            tagged union; drop `backend` field
+│                           default export signature unchanged:
+│                             default async function buildBrainState(
+│                               root: string
+│                             ): Promise<BrainState>
+└── index.test.ts        ← [rewrite] co-located tests covering all four states
+                            plus boundary cases; uses real temp dirs
 ```
 
-The detector stays a single orchestrator file (no helper subfolders). The
-new pipeline has more steps than the old one, but every step is a 5–10
-line operation; splitting into sub-helpers would create folders for what
-amount to single-statement comparisons. If a single step's logic grows
-past ~30 lines in the implementation (e.g. the drift comparison
-becomes structurally complex), factor that step into a sibling subfolder
-(`src/service/buildBrainState/<step-name>/index.ts`) at that point.
+The default export stays a single positional `(root: string)` per the
+spec's single-input rule. JSDoc on the export summarizes all four states.
+Tier 3 inline comments narrate each pipeline step inside the orchestrator.
 
 ## Prerequisites
 
-**Plan 2 (`src/service/parseBrainAide/plan.aide`)** must complete first:
-- This plan imports `parseBrainAide` and `interpolateArgs` from
-  `@/service/parseBrainAide`.
-- The shared types (`BrainAideConfig`, `ParseBrainAideResult`) must
-  exist in `src/types/index.ts` so this plan can import them.
+This plan sits in the middle of the brain-layer dependency chain laid out
+in `.aide/handoff.aide`. Two upstream modules must complete their refactors
+first; this plan's contract names exactly what it consumes from each.
 
-The retirement of `src/service/brainBackends/` (Plan 9) does NOT need to
-land before this plan — this plan is what makes `brainBackends`
-obsolete, by removing `buildBrainState`'s import of it. Plan 9 deletes
-the now-unreferenced module after this plan and Plan 4 land.
+**`src/types/index.ts`** — types are upstream of every consumer. Before this
+plan runs, the central types module must export:
+
+- `BrainAideConfig` collapsed to `{ name: string; mcpServerConfig: { command:
+  string; args: string[] } }`. No `connector`, no `rootPath`, no
+  `entryFile`, no `tools`.
+- `ParseBrainAideResult` unchanged in shape (the four-variant tagged union:
+  `ok | missing | malformed-frontmatter | malformed-body`); the `config`
+  payload on the `ok` variant carries the new `BrainAideConfig`.
+- `BrainState` REPLACED with the new four-variant union (this plan owns
+  the redefinition — see Step 1). The old five-variant shape with
+  `rootPath` / `connector` / `invalid-path` is gone.
+- `BrainToolResult` retains `{ status: BrainState["status"]; instructions:
+  string }`; the status union widens to the new four values automatically.
+
+**`src/service/parseBrainAide/`** — the parser must accept the new
+two-field schema before this detector can consume its `ok` payload. The
+contract this plan depends on:
+
+- `parseBrainAide(root: string): Promise<ParseBrainAideResult>` — default
+  export. On `ok`, the returned `config` matches the new `BrainAideConfig`
+  (only `name` and `mcpServerConfig`). On any malformed-frontmatter case
+  (including the parser actively rejecting deprecated fields like
+  `rootPath`), the result is `{ kind: "malformed-frontmatter", reason }`.
+  Never throws.
+- `interpolateArgs(config: BrainAideConfig): string[]` — named export. Returns
+  a copy of `config.mcpServerConfig.args` with every `${<key>}` substituted
+  against the matching top-level frontmatter field. With the schema
+  collapsed to `name` + `mcpServerConfig`, `${name}` is the only resolvable
+  placeholder; the default scaffold contains no placeholders, so the call
+  is a no-op for default installs. The detector calls this unconditionally
+  per the spec's "always interpolate, then compare" contract.
+
+If either upstream module has not landed when this plan starts, halt and
+escalate — this plan cannot be partially executed against the old
+`BrainAideConfig` shape.
 
 ## Plan
 
-### 1. Rewrite the `.aide` intent spec
+### 1. Replace the `BrainState` union in `src/types/index.ts`
 
-Read: `coding-playbook/foundations/conventions`
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 
-- [x] Rewrite `src/service/buildBrainState/.aide` to reflect the new
-      contract. The current spec describes a registry-dispatching
-      detector with three statuses (`ok`, `no-mcp-entry`, `invalid-path`)
-      and a `backend` field on `BrainState`. The rewrite must:
-
-      - Frontmatter `description` and `intent` paragraphs describe the
-        new five-state output and the brain.aide-as-source-of-truth
-        contract. No `backend` field. No registry dispatch.
-      - `outcomes.desired` enumerates the five states (one bullet per
-        state) with the disk conditions that produce each. Add the
-        explicit drift-detection invariant: the detector compares the
-        parsed `brain.aide`'s interpolated `mcpServerConfig` against
-        the host's `.mcp.json` brain entry; any structural difference
-        is `mcp-drift`. Add the explicit no-registry invariant: the
-        detector never imports from `brainBackends` and never branches
-        on `connector`.
-      - `outcomes.undesired` adds tripwires for the new failure modes:
-        a detector that calls `resolveBackend` (or any registry dispatch);
-        a detector that branches on `connector` to vary detection logic;
-        a detector that re-implements brain.aide parsing instead of
-        calling `parseBrainAide`; a detector that returns the old
-        three-state vocabulary or carries the old `backend` field; a
-        detector that auto-syncs (writes `.mcp.json`) when it detects
-        drift.
-      - Body sections (`## Context`, `## Strategy`, `## Good examples`,
-        `## Bad examples`) rewritten in decision form per the AIDE
-        spec template. Strategy explains the new pipeline order, why
-        drift detection is structural-comparison-not-deep-equality
-        (the package owns the canonical structure; bytes-not-equal in
-        a way that doesn't change semantic structure should NOT trigger
-        drift), why `connector` is metadata-not-dispatch, why the
-        `backend` field was removed.
-      - `## References` lists this plan, `parseBrainAide/.aide`, and
-        `.aide/intent.aide` as the load-bearing sources.
-
-      The rewritten spec is the contract every other step in this plan
-      traces to. Author it first so the implementor reads it before
-      step 2.
-
-### 2. Update `BrainState` in `src/types/index.ts`
-
-Read: `coding-playbook/workflow/type-system`
-
-- [x] Replace the existing `BrainState` definition with the new five-state
-      tagged union. Drop the `backend` field. Drop the import of
-      `BackendDriver`. The new type:
+- [ ] Replace the existing five-variant `BrainState` definition with the
+      new four-variant tagged union. The new shape, per the spec's
+      `outcomes.desired[12]` and Good examples:
 
       ```
       type BrainState =
-        | { status: "ok"; rootPath: string; connector: string; hints: BrainHint[] }
+        | { status: "ok"; name: string; hints: BrainHint[] }
         | { status: "no-brain-aide"; hints: BrainHint[] }
-        | { status: "no-mcp-entry"; rootPath: string; connector: string; hints: BrainHint[] }
-        | { status: "invalid-path"; rootPath: string; connector: string; hints: BrainHint[] }
-        | { status: "mcp-drift"; rootPath: string; connector: string; hints: BrainHint[] }
+        | { status: "no-mcp-entry"; name: string; hints: BrainHint[] }
+        | { status: "mcp-drift"; name: string; hints: BrainHint[] }
       ```
 
-      JSDoc the new states. Discriminant invariants in the JSDoc:
-      - `ok` carries the resolved `rootPath` (validated to exist on
-        disk) and the user-declared `connector` label (descriptive
-        only, never dispatched on).
-      - `no-brain-aide` carries no path/connector — the file doesn't
-        exist, nothing to report.
-      - `no-mcp-entry`, `invalid-path`, `mcp-drift` all carry
-        `rootPath` and `connector` from the parsed brain.aide so the
-        orchestrator can name them in its remediation message. (For
-        `no-mcp-entry` and `mcp-drift` the rootPath is from
-        brain.aide; for `invalid-path` it's the configured-but-
-        unresolvable path.)
-      - `hints` stays present on every state — the orchestrator may
-        offer remediation suggestions on any non-ok state, regardless
-        of branch.
+      Discriminant invariants (encode in JSDoc on the union and on each
+      variant's `name`/`hints` fields):
 
-      Also update `BrainToolResult` in the same file to drop the
-      `backend` field. The new shape:
+      - `ok` carries the user-declared `name` label from brain.aide
+        (descriptive only, never dispatched on by any code) and `hints`.
+        No `rootPath`, no `connector`, no `entryFile`, no `tools`, no
+        `backend` — all five fields are gone from the contract.
+      - `no-brain-aide` carries only `hints`. No `name` — the file is
+        unusable (missing or malformed) and there is nothing to read a
+        label from.
+      - `no-mcp-entry` carries `name` (from the parsed brain.aide) and
+        `hints`. The orchestrator names the wired brand in remediation
+        prose.
+      - `mcp-drift` carries `name` and `hints`. The user's brain.aide
+        and `.mcp.json` disagree on `command` or `args`; remediation
+        is `npx aidemd-mcp sync`.
+      - `hints` is populated unconditionally on every variant.
+      - The retired `invalid-path` variant must not appear under that
+        name or any rename. Path validity is the launcher's problem.
 
-      ```
-      type BrainToolResult = {
-        status: BrainState["status"];
-        instructions: string;
-      }
-      ```
+      Drop the `import type { BackendDriver }` if it still exists; no
+      variant carries a backend driver. Remove every JSDoc reference to
+      `rootPath`, `connector`, `entryFile`, `tools`, `backend`, or
+      `invalid-path` from the `BrainState` block.
 
-      Update `InfoResult.brain` type via the existing
-      `brain: BrainState` declaration — that field already references
-      `BrainState` so it picks up the new shape automatically.
+      Verify `BrainToolResult` still reads `{ status: BrainState["status"];
+      instructions: string }` — the status union widens automatically to
+      the new four values. No `backend` field on `BrainToolResult` either.
 
-### 3. Implement the new detector
+      Verify `InfoResult.brain: BrainState` — the field's type widens
+      automatically. No edit beyond the `BrainState` redefinition.
+
+      Run `npx tsc --noEmit` after the edit; expect compile errors in
+      consumer files (`src/tools/info`, `src/tools/brain`,
+      `src/service/buildBrainState`). Those are dependency-contract
+      failures owned by the consumers' own plans (this plan resolves the
+      `buildBrainState` errors in Steps 2 and 3; the `tools/*` errors are
+      addressed by their respective plans).
+
+### 2. Rewrite the detector orchestrator in `src/service/buildBrainState/index.ts`
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`, `coding-playbook/services/error-handling`
 
-- [x] Rewrite `src/service/buildBrainState/index.ts` to implement the
-      new pipeline. The function signature is unchanged:
+- [ ] Rewrite `src/service/buildBrainState/index.ts` to implement the new
+      four-state pipeline. The default export signature is unchanged:
       `default async function buildBrainState(root: string):
       Promise<BrainState>`.
 
-      The orchestrator pipeline (Tier 3 inline-narrated):
+      Drop the `stat` import from `node:fs/promises` — the detector no
+      longer stats any path. Keep `readFile` for `.mcp.json`. Keep the
+      imports of `parseBrainAide`, `interpolateArgs`, `detectFramework`,
+      `resolveBrainHints`. Drop any retired-backend-registry imports if
+      any remain.
 
-      1. Resolve framework config via `detectFramework(root)` (unchanged).
-         The `mcpConfigPath` is derived as `join(root,
-         frameworkConfig.mcpConfigPath)`.
-      2. Resolve hints via `resolveBrainHints(root)` (unchanged).
-         Populated unconditionally so they appear on every returned
-         state.
+      The orchestrator pipeline (Tier 3 inline-narrated, top-to-bottom):
+
+      1. Resolve framework config via `detectFramework(root)`. Compute
+         `mcpConfigPath = join(root, frameworkConfig.mcpConfigPath)`.
+         Unchanged from the prior pipeline.
+      2. Resolve hints via `resolveBrainHints(root)`. Populate
+         unconditionally so `hints` appears on every returned state
+         regardless of which branch fires.
       3. Call `parseBrainAide(root)`. Branch on `result.kind`:
          - `"missing"` → return `{ status: "no-brain-aide", hints }`.
-         - `"malformed-frontmatter"` → return `{ status:
-           "no-brain-aide", hints }`. Treat malformed brain.aide as
-           "no usable file" — the user must fix the file before any
-           further state can be derived. (Reason: every downstream
-           state needs `rootPath` and `connector`; without them, the
-           detector cannot compose `invalid-path` or `mcp-drift`.)
-         - `"malformed-body"` → same as malformed-frontmatter; return
-           `no-brain-aide`. The prose body is required for the brain
-           tool's runtime contract; without it, the user must repair
-           the file.
-         - `"ok"` → continue.
-      4. Stat the parsed `config.rootPath`. If stat fails or target
-         is not a directory, return `{ status: "invalid-path",
-         rootPath: config.rootPath, connector: config.connector,
-         hints }`. The path lives in `brain.aide` but doesn't resolve
-         on disk — the user must fix the path or create the directory.
-      5. Read `.mcp.json` at `mcpConfigPath`. ENOENT or any I/O
-         failure → return `{ status: "no-mcp-entry", rootPath:
-         config.rootPath, connector: config.connector, hints }`. The
-         user has a `brain.aide` but no `.mcp.json` to write into yet
-         — they need to run `npx aidemd-mcp sync`.
-      6. Parse `.mcp.json` JSON. Parse failure → same as I/O failure
-         → `no-mcp-entry`.
-      7. Look up `mcpServers.brain`. Absent → `no-mcp-entry`.
-      8. Compute the expected entry from `brain.aide`:
-         `expectedEntry = { command: config.mcpServerConfig.command,
-                            args: interpolateArgs(config) }`.
-         Compare against the actual entry's `command` and `args`. If
-         either differs (string equality on command;
-         element-by-element equality on args), return `{ status:
-         "mcp-drift", rootPath: config.rootPath, connector:
-         config.connector, hints }`. Drift is structural — the parsed
-         brain.aide produces a deterministic expected entry, and any
-         deviation (different command, different arg count, different
-         arg value at any position) is drift.
-      9. Otherwise return `{ status: "ok", rootPath: config.rootPath,
-         connector: config.connector, hints }`.
+         - `"malformed-frontmatter"` → return `{ status: "no-brain-aide",
+           hints }`. (All malformed-frontmatter sub-cases — including
+           the parser's rejection of deprecated fields — collapse to
+           the same status; the file is unusable until the user fixes
+           it. The granular `reason` lives on the parser's result and
+           is consumed by other surfaces, not by this detector.)
+         - `"malformed-body"` → return `{ status: "no-brain-aide",
+           hints }`. Same rationale.
+         - `"ok"` → continue with `const { config } = result;`.
+      4. Read `.mcp.json` at `mcpConfigPath` via `readFile`. Wrap the
+         call in try/catch. On ENOENT or any I/O failure, return
+         `{ status: "no-mcp-entry", name: config.name, hints }`. Threading
+         the parsed `name` through is required by the new shape so the
+         orchestrator can name the wired brand in remediation prose.
+      5. Parse the `.mcp.json` contents via `JSON.parse`. Wrap in
+         try/catch. On parse failure, return `{ status: "no-mcp-entry",
+         name: config.name, hints }`. Same remediation as I/O failure.
+      6. Look up `mcpServers.brain` on the parsed object. Use the same
+         defensive narrowing pattern as the prior implementation
+         (object-shape checks + `"brain" in servers`); on any structural
+         miss — `mcpServers` absent, `mcpServers` not an object, `brain`
+         key absent, `brain` value not an object, `command` not a string,
+         `args` not an array — return `{ status: "no-mcp-entry", name:
+         config.name, hints }`. No fallback to a legacy `obsidian` key
+         under any circumstance. Capture the actual `command` and `args`
+         into local variables for the next step.
+      7. Compute the expected entry from the parsed brain.aide:
+         `expectedCommand = config.mcpServerConfig.command`
+         `expectedArgs = interpolateArgs(config)`
+         The `interpolateArgs` call is unconditional per the spec's
+         "always interpolate, then compare" contract — in the default
+         flow it returns args unchanged because no placeholders are
+         present.
+      8. Structural drift comparison:
+         - `commandMatches = actualCommand === expectedCommand` (string
+           equality)
+         - `argsMatch = actualArgs.length === expectedArgs.length &&
+           expectedArgs.every((expected, i) => actualArgs[i] === expected)`
+           (length-then-element-by-element string equality)
+         If either check fails, return `{ status: "mcp-drift", name:
+         config.name, hints }`.
+      9. Happy path — everything agrees → return `{ status: "ok", name:
+         config.name, hints }`.
 
-      The detector NEVER throws. Every failure mode collapses to a
-      structured state. The detector NEVER calls `resolveBackend` or
-      any function from `brainBackends` — that import is removed
-      entirely. The detector NEVER branches on `connector`.
+      Hard invariants (encode as orchestrator JSDoc plus a few inline
+      comments where the rule is non-obvious):
 
-      JSDoc on the default export summarizes all five states. Tier 3
-      inline comments narrate each pipeline step.
+      - The detector NEVER throws. Every failure mode collapses to a
+        structured `BrainState` value.
+      - The detector NEVER stats any path. No `stat`, no `existsSync`,
+        no `lstat`, not even as a "courtesy" check on a string extracted
+        from args.
+      - The detector NEVER imports from any retired backend registry
+        (`brainBackends/`, `resolveBackend`, `getDriverById`, etc.).
+      - The detector NEVER branches on `config.name` or any value derived
+        from it.
+      - The detector NEVER auto-syncs `.mcp.json` on drift. No writes
+        to `.mcp.json` from this module under any circumstance.
+      - The detector NEVER falls back to a legacy `mcpServers.obsidian`
+        key.
+      - The detector NEVER introspects `mcpServerConfig.args` beyond
+        element-by-element equality comparison.
+      - Pipeline order is fixed: brain.aide first, then `.mcp.json`.
+        Reading `.mcp.json` first would invert the source-of-truth
+        direction.
 
-### 4. Rewrite the tests
+### 3. Rewrite the co-located tests in `src/service/buildBrainState/index.test.ts`
 
-Read: `coding-playbook/workflow/testing`
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [x] Rewrite `src/service/buildBrainState/index.test.ts` to cover all
-      five states plus the boundary cases. Use temp dirs (`mkdtemp`)
-      to create real `.aide/brain.aide` files and real `.mcp.json`
-      files; no fs mocking. Mock `detectFramework` and
-      `resolveBrainHints` only — those are existing helpers whose
-      output the detector consumes structurally; mocking them keeps
-      the tests focused on this orchestrator's logic.
+- [ ] Rewrite `src/service/buildBrainState/index.test.ts` to cover the
+      new four-state vocabulary. Keep the existing test infrastructure
+      shape — temp dirs via `mkdtemp`, real `parseBrainAide` against real
+      brain.aide files, real `readFile` against real `.mcp.json` files,
+      mocking only `detectFramework` and `resolveBrainHints` (the two
+      orthogonal helpers whose output the detector consumes structurally).
 
-      Test cases by state:
+      The fixture helper `makeBrainAideContent` must be REWRITTEN against
+      the new two-field schema. The new helper signature and shape:
 
-      - 4a. **`ok`** — write a valid `brain.aide` whose `rootPath`
-        points at an existing temp directory, write a `.mcp.json`
-        whose `mcpServers.brain` matches the parsed/interpolated
-        config exactly. Assert `result.status === "ok"`,
-        `result.rootPath === <temp dir>`,
-        `result.connector === "obsidian"`. Assert the result has NO
-        `backend` field (use `expect(result).not.toHaveProperty
-        ("backend")`).
+      ```
+      makeBrainAideContent({
+        name = "obsidian",
+        command = "npx",
+        args = ["@bitbonsai/mcpvault", "<vault-path>"],
+      }: { name?: string; command?: string; args?: string[] })
+      ```
 
-      - 4b. **`no-brain-aide` (file missing)** — temp root has no
+      The emitted YAML must contain ONLY `name` and `mcpServerConfig`
+      (with `command` and `args` underneath). No `connector`, no
+      `rootPath`, no `entryFile`, no `tools`. Body must include the
+      `## Prose` heading followed by at least one line of text so the
+      parser returns `kind: "ok"`. Default args mirror the canonical
+      scaffold from the spec's Good examples (`@bitbonsai/mcpvault`
+      launcher, inline path, no `${...}` placeholders).
+
+      The `makeMcpJson` helper stays the same shape (it serializes a
+      `{ command, args }` entry under `mcpServers.brain`).
+
+      Test cases — each in its own `describe` block, named with the
+      step letter for traceability:
+
+      - 3a. **`ok` — brain.aide parses, .mcp.json matches exactly.**
+        Write a brain.aide with default args (inline path, no
+        placeholders). Write a `.mcp.json` whose `mcpServers.brain`
+        carries the same `command` and `args`. Assert
+        `result.status === "ok"`. Narrow on status and assert
+        `result.name === "obsidian"` and `result.hints` is the empty
+        array (matching the mock). Assert the result has NO `rootPath`,
+        NO `connector`, NO `entryFile`, NO `tools`, NO `backend`
+        properties (use `expect(result).not.toHaveProperty(...)` for
+        each).
+
+      - 3b. **`no-brain-aide` (file missing).** Temp root has no
         `.aide/brain.aide`. Assert `result.status === "no-brain-aide"`.
-        No `rootPath` or `connector` fields.
+        Assert no `name`, `rootPath`, `connector`, or `backend`
+        properties on the result.
 
-      - 4c. **`no-brain-aide` (frontmatter malformed)** — write a
-        `brain.aide` with broken YAML. Assert `result.status ===
-        "no-brain-aide"`. Same remediation as 4b.
+      - 3c. **`no-brain-aide` (frontmatter malformed).** Write a
+        brain.aide whose YAML is broken (e.g. unclosed bracket). Assert
+        `result.status === "no-brain-aide"`. Same shape assertions as
+        3b — only `status` and `hints`.
 
-      - 4d. **`no-brain-aide` (body malformed)** — write a
-        `brain.aide` with valid frontmatter but no `## Prose`
-        heading. Assert `result.status === "no-brain-aide"`.
+      - 3d. **`no-brain-aide` (body malformed — no `## Prose` heading).**
+        Write a brain.aide with valid two-field frontmatter but no
+        `## Prose` heading in the body. Assert `result.status ===
+        "no-brain-aide"`. Same shape assertions as 3b.
 
-      - 4e. **`invalid-path` (rootPath does not exist)** — write a
-        valid `brain.aide` whose `rootPath` points at a non-existent
-        directory. Assert `result.status === "invalid-path"`,
-        `result.rootPath` is the configured (broken) path,
-        `result.connector` is the user's label.
+      - 3e. **`no-brain-aide` (parser rejects deprecated field).** Write
+        a brain.aide whose frontmatter still carries a deprecated field
+        (`rootPath: D:/notes/something` alongside `name` and
+        `mcpServerConfig`). The parser rejects this with
+        `malformed-frontmatter`; the detector collapses it to
+        `no-brain-aide`. Assert `result.status === "no-brain-aide"`.
+        This case anchors the contract that all `malformed-frontmatter`
+        sub-cases — including deprecated-field rejection — flow through
+        the same branch.
 
-      - 4f. **`invalid-path` (rootPath is a file, not a directory)**
-        — write a valid `brain.aide` whose `rootPath` points at a
-        file. Assert `result.status === "invalid-path"`. Same shape
-        as 4e.
+      - 3f. **`no-mcp-entry` (no `.mcp.json`).** Valid two-field
+        brain.aide, no `.mcp.json` written. Assert `result.status ===
+        "no-mcp-entry"`. Narrow on status and assert
+        `result.name === "obsidian"`. No `rootPath`, no `connector`, no
+        `backend`.
 
-      - 4g. **`no-mcp-entry` (no `.mcp.json`)** — valid `brain.aide`,
-        `rootPath` exists, no `.mcp.json`. Assert `result.status ===
-        "no-mcp-entry"`, `result.rootPath` matches the brain.aide's
-        rootPath, `result.connector` matches the user's label.
+      - 3g. **`no-mcp-entry` (malformed `.mcp.json`).** Valid brain.aide,
+        `.mcp.json` contains broken JSON (e.g. `"{ not valid json }"`).
+        Assert `result.status === "no-mcp-entry"`. Same shape as 3f.
 
-      - 4h. **`no-mcp-entry` (malformed `.mcp.json`)** — valid
-        `brain.aide`, valid path, `.mcp.json` contains broken JSON.
-        Assert `result.status === "no-mcp-entry"`.
-
-      - 4i. **`no-mcp-entry` (no `brain` key)** — valid brain.aide,
-        valid path, `.mcp.json` exists with `mcpServers.aide` but no
+      - 3h. **`no-mcp-entry` (no `brain` key in `.mcp.json`).** Valid
+        brain.aide, `.mcp.json` has `mcpServers.aide` but no
         `mcpServers.brain`. Assert `result.status === "no-mcp-entry"`.
 
-      - 4j. **`mcp-drift` (different command)** — valid brain.aide
-        whose `mcpServerConfig.command === "npx"`, `.mcp.json` brain
-        entry has `command: "node"`. Assert `result.status ===
-        "mcp-drift"`.
+      - 3i. **`mcp-drift` (command mismatch).** Brain.aide declares
+        `command: "npx"`; `.mcp.json` carries `command: "node"`. Same
+        args on both sides. Assert `result.status === "mcp-drift"`.
+        Narrow on status and assert `result.name === "obsidian"`.
 
-      - 4k. **`mcp-drift` (different args)** — valid brain.aide,
-        `.mcp.json` brain entry has different number of args, or
-        same length but different value at some position (most
-        importantly: the rootPath in args is different — the user
-        edited brain.aide but didn't run sync). Assert
-        `result.status === "mcp-drift"`. Use `it.each` to cover
-        several drift shapes.
+      - 3j. **`mcp-drift` (args mismatch — multiple shapes via
+        `it.each`).** Mirror the prior test's parameterized coverage,
+        rewritten against the new schema. Each row drives one drift
+        scenario; in every row the brain.aide args use inline paths
+        (no `${rootPath}` placeholders — that field is gone). Suggested
+        rows:
+        - `extra arg appended to .mcp.json entry`: brain.aide args are
+          `["@bitbonsai/mcpvault", "/x/vault"]`; mcp.json args are
+          `["@bitbonsai/mcpvault", "/x/vault", "--extra-flag"]`.
+        - `vault path differs (user retargeted brain.aide, forgot
+          sync)`: brain.aide args are `["@bitbonsai/mcpvault",
+          "/x/new-vault"]`; mcp.json args are
+          `["@bitbonsai/mcpvault", "/x/old-vault"]`.
+        - `arg count shorter than expected`: brain.aide args are
+          `["@bitbonsai/mcpvault", "/x/vault"]`; mcp.json args are
+          `["@bitbonsai/mcpvault"]`.
+        - `package name differs at middle position`: brain.aide args
+          are `["@bitbonsai/mcpvault", "/x/vault"]`; mcp.json args
+          are `["different-package", "/x/vault"]`.
+        For each row, assert `result.status === "mcp-drift"`.
 
-      - 4l. **No registry dispatch** — verify by absence: the test
-        file does not import from `@/service/brainBackends`. Add an
-        explicit comment in the test file naming this invariant so
-        a future contributor adding a registry import notices it
-        violates the spec.
+      - 3k. **No `name` dispatch — detection identical across labels.**
+        Run two `ok` cases with different `name` values (`"obsidian"`,
+        `"notion"`), each with a matching `.mcp.json`. Assert both
+        return `status: "ok"`. Assert the two results' object-key sets
+        are identical (same fields present); only the `name` value
+        differs. This enforces by example that detection logic does
+        not branch on `name`.
 
-      - 4m. **No connector dispatch** — write two `ok` cases with
-        different `connector` values (`obsidian`, `notion`); the
-        result shape must be identical except for the `connector`
-        field's value. This enforces by example that detection is
-        connector-agnostic.
+      - 3l. **Drift comparison is structural, not byte-equal.** Write a
+        brain.aide and a `.mcp.json` whose JSON contains the same
+        `command` and `args` semantically but different whitespace /
+        key ordering / trailing newlines (e.g. `JSON.stringify` with
+        2-space indent on one side and pretty-printed differently on
+        the other). Assert `result.status === "ok"`. This anchors the
+        spec's `outcomes.desired[5]` ("structural-equality on the
+        in-memory entry shape, not byte-equality on serialized JSON").
 
-### 5. Update consumers (compile-time only — no behavior change here)
+      - 3m. **Hints propagate to every state.** Configure
+        `mockResolveBrainHints` to return a non-empty hints array
+        (e.g. `[{ source: "env", path: "/candidate/vault" }]`). Drive
+        each of the four states once and assert `result.hints` carries
+        the configured array. This anchors the unconditional-hints
+        invariant.
 
-Read: `coding-playbook/foundations/conventions`
+      - 3n. **No registry import — by absence.** Carry forward the
+        prior file-level comment naming the invariant: this test file
+        MUST NOT import from any retired `brainBackends` module. No
+        runtime assertion is possible for an absent import; the
+        invariant lives in the comment plus the spec's undesired
+        outcomes.
 
-- [x] Compile the project. The tests in this plan exercise the new
-      contract directly; consumers (`src/tools/info/index.ts`,
-      `src/tools/brain/index.ts`) still reference the old
-      `BrainState` shape and the old `backend` field. Their
-      rewrites are Plans 4 and 5; this step's job is to verify that
-      the type changes in Plan 3.2 cause the consumers' source files
-      to fail TypeScript compilation in known ways.
+      - 3o. **Detector never throws.** For every state-producing setup
+        above (missing brain.aide, malformed brain.aide, missing
+        `.mcp.json`, malformed `.mcp.json`, drift, ok), wrap the call
+        in `expect(...).resolves.toMatchObject({ status: <expected> })`
+        or assert no throw via the natural absence of a `rejects`
+        matcher. Every branch must produce a structured value, not an
+        exception.
 
-      Run `npm run typecheck` (or `tsc --noEmit`). Expected failures:
-      - `src/tools/info/index.ts` — references to `BrainState`'s old
-        shape if any (none expected — the consumer just forwards the
-        state).
-      - `src/tools/brain/index.ts` — references to `BrainToolResult`'s
-        `backend` field. Plan 4 fixes this.
-      - `src/tools/brain/composeInstructions/index.ts` — references
-        to `state.backend` and `getDriverById`. Plan 4 deletes this
-        helper entirely.
-      - `src/cli/init/writeMcpEntry/index.ts` — references to
-        `obsidianMcpEntry`. Plan 6/8 rewrite this.
+      Drop these obsolete cases from the prior test file:
+      - All `invalid-path` tests (the entire `4e` and `4f` blocks).
+        The state no longer exists.
+      - Any test that depends on `rootPath` being a real directory on
+        disk (the detector no longer stats anything; `rootPath`-as-real-
+        dir is no longer load-bearing for any branch).
+      - Any assertion that reads `result.rootPath`, `result.connector`,
+        `result.entryFile`, `result.tools`, or `result.backend` as a
+        present field — those fields are gone.
 
-      List the expected failures in the plan execution log so the
-      orchestrator can verify Plans 4–8 resolve them. **Do not patch
-      the failures in this step** — Plan 3 is the buildBrainState
-      module's plan only. The fail-list is the dependency contract for
-      downstream plans.
+      Update `beforeEach` if needed so the temp root no longer needs to
+      double as a "valid vault path" — there is no path being validated,
+      so the temp root just needs to exist as the host project root for
+      `.aide/brain.aide` and `.mcp.json` to live inside.
+
+### 4. Final verification
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+- [ ] Run `npm test -- buildBrainState` (or `rtk vitest run
+      src/service/buildBrainState`). All tests in the rewritten file
+      must pass. If any case fails, diagnose the root cause — do not
+      patch the test to match a buggy implementation. The test is the
+      contract.
+
+- [ ] Run `npx tsc --noEmit`. Expected outcome: this module compiles
+      cleanly. Errors in OTHER files (`src/tools/info`, `src/tools/brain`,
+      `src/cli/sync`) are dependency-contract failures owned by their
+      respective plans (`src/tools/info/plan.aide`,
+      `src/tools/brain/plan.aide`, `src/cli/sync/plan.aide`) — those
+      consumers must adapt to the new four-state union. List the
+      external errors in the execution log so the orchestrator can
+      verify downstream plans resolve them. Do NOT patch the
+      consumers in this plan; this plan's scope is buildBrainState's
+      module only.
+
+- [ ] Sanity grep: confirm `src/service/buildBrainState/` contains no
+      references to `stat`, `existsSync`, `lstat`, `invalid-path`,
+      `connector`, `rootPath`, `entryFile`, `tools` (as a brain.aide
+      field), `backend`, `resolveBackend`, `brainBackends`, or
+      `getDriverById`. Each is a regression tripwire from the spec's
+      undesired outcomes. Any hit is a contract violation.
 
 ## Decisions
 
-- **Five states, not four.** The parent intent spec's `outcomes.desired[10]`
-  explicitly enumerates the new states: `no-brain-aide` and `mcp-drift`
-  in addition to the preexisting `ok`, `no-mcp-entry`, `invalid-path`.
-  Without explicit states, the orchestrator cannot tell the user what
-  to do — every diagnostic reduces to "something is broken, run sync
-  and pray."
-- **`brain.aide` is the source of truth; `.mcp.json` is the derived
-  artifact.** The detection order — read `brain.aide` first, then check
-  if `.mcp.json` agrees — encodes which file is canonical. Reversing
-  the order would treat `.mcp.json` as authoritative and `brain.aide`
-  as a derived view, which is the opposite of the parent spec's
-  Strategy paragraph.
-- **Malformed brain.aide collapses to `no-brain-aide`.** A malformed
-  file is no usable source of truth; downstream branches that need
-  `rootPath` or `connector` can't fire without those values. Treating
-  malformed-frontmatter and malformed-body as "no brain.aide" is the
-  smallest vocabulary that still names the user's recovery path
-  ("fix or recreate the file").
-- **`backend` field removed entirely from `BrainState`.** The parent
-  spec's `outcomes.desired[7]` is explicit: the `backend` field drops
-  from the response shape. The detector no longer knows which brand of
-  brain is wired; it knows whether the wiring agrees with the user's
-  declared config. `connector` carries through as descriptive metadata
-  only — the user can read it in `aide_info` output, but no code
-  branches on it.
-- **Drift is structural-equality, not byte-equality, on the entry
-  shape.** Two args lists are equal if they have the same length and
-  every position has the same string value. Object-key order in the
-  serialized `.mcp.json` is not part of the comparison — the comparison
-  is between the parsed `brain.aide`'s expected entry and the parsed
-  `.mcp.json` actual entry, both as in-memory objects. This avoids
-  spurious drift on `.mcp.json` files the user reformatted.
-- **Hints populated on every state.** The orchestrator may want to
-  surface candidate vault locations on `no-brain-aide` (where the user
-  is choosing a fresh path) just as much as on `invalid-path` (where
-  the user is repointing). Carrying hints unconditionally keeps the
-  consumer's logic uniform — no special-casing per state.
-- **Single-orchestrator file, no helper subfolders today.** The new
-  pipeline is more steps than the old one but each step is small. The
-  parent `.aide`'s Strategy section lists the threshold for splitting
-  (~30 lines per step). At the threshold, factor steps into sibling
-  subfolders. Today, inline.
+- **Four states, not five — `invalid-path` is gone.** The spec's
+  `outcomes.desired[1]` and the parent intent's `outcomes.desired[10]`
+  both retire the `invalid-path` state. With `rootPath` removed from
+  the brain.aide schema there is no path the package owns to validate.
+  Path validity becomes the launcher's problem at MCP server startup;
+  reintroducing a stat — even a "courtesy" `existsSync` — re-creates
+  the retired state and shifts a load-bearing contract surface back
+  into the package.
 
-## Execution log — Step 5
+- **Variants shrink to `name` + `hints`.** The `ok`, `no-mcp-entry`,
+  and `mcp-drift` shapes carry only the user-declared `name` label and
+  `hints`; `no-brain-aide` carries only `hints`. Every other field
+  (`rootPath`, `connector`, `entryFile`, `tools`, `backend`) is gone.
+  Consumers branch on `status` alone, and the wired brain is described
+  by `name` (descriptive only) on the states that carry it. The
+  brain's interface contract — which MCP tools to call — lives in the
+  prose body the runtime brain tool returns verbatim, not in any
+  frontmatter declaration the detector reports.
 
-Ran `npx tsc --noEmit` (via `rtk tsc --noEmit`). Result: **10 errors in 4 files**. All errors are expected dependency-contract failures introduced by Plan 3's type changes. No errors were introduced by bugs in Plan 3.
+- **`name` is metadata, not dispatch.** The detector reads `name` from
+  parsed brain.aide and threads it through unchanged. No code path in
+  this detector branches on its value. This is the renamed enforcement
+  of the prior `connector`-not-dispatched-on contract; the rule is
+  unchanged, only the field name moves.
 
-### Actual errors observed
+- **Malformed brain.aide collapses to `no-brain-aide`.** All three
+  parser-failure variants (`missing`, `malformed-frontmatter`,
+  `malformed-body`) — including the new case where the parser actively
+  rejects deprecated fields — flow through the same status. The user's
+  remediation is identical across all three ("fix or recreate the
+  file"); a separate status per sub-case would force every consumer to
+  learn three branches for one fix path. The granular `reason` lives
+  on the parser's result for surfaces that want it.
 
-| File | Count | Owning plan | Nature |
-|---|---|---|---|
-| `src/tools/brain/composeInstructions/index.ts` | 5 | Plan 4 | TS2339: references to `state.vaultPath` (×2) and `state.backend` (×3) — fields removed from `BrainState["ok"]` in Plan 3 Step 2 |
-| `src/tools/brain/composeInstructions/index.test.ts` | 3 | Plan 4 | TS2353: test fixture objects include `vaultPath` (ok), `vaultPath` (no-mcp-entry), `vaultPath` (invalid-path) — all removed from the new union |
-| `src/tools/brain/index.ts` | 1 | Plan 4 | TS2353: return literal includes `backend` field dropped from `BrainToolResult` |
-| `src/service/brainBackends/index.ts` | 1 | Plan 9 | TS2305: module imports `BackendDriver` from `@/types/index.js` — type removed in Plan 3 Step 2 |
+- **Pipeline shrinks to two reads.** Old pipeline: parse brain.aide →
+  stat rootPath → read `.mcp.json` → compare. New pipeline: parse
+  brain.aide → read `.mcp.json` → compare. The stat step is gone with
+  `rootPath`; the source-of-truth direction (brain.aide canonical,
+  `.mcp.json` derived) is unchanged.
 
-### Expected vs. actual — reconciliation
+- **Drift is structural-equality on the in-memory entry shape.** Two
+  args lists are equal if they have the same length and every position
+  has the same string value; commands are compared with `===`. Object
+  key order, whitespace, and trailing newlines in serialized
+  `.mcp.json` are not part of the comparison because both sides are
+  parsed in-memory before comparing. This avoids spurious drift on
+  `.mcp.json` files the user reformatted.
 
-The plan body (lines 310–326) listed four expected failure sites:
+- **`interpolateArgs` is called unconditionally.** The spec's
+  `outcomes.desired[5]` makes this load-bearing: "the call is the
+  contract." In the default scaffold (no placeholders) it returns args
+  unchanged; advanced users who DRY a value via `${name}` rely on the
+  call running. Skipping it when no placeholders are present would
+  fork the code path for the advanced case.
 
-1. `src/tools/info/index.ts` — **did NOT error**. The consumer forwards
-   `BrainState` opaquely without touching any discriminant fields, so no
-   compile error results. This is consistent with the plan's parenthetical
-   "(none expected — the consumer just forwards the state)".
+- **Single-orchestrator file, no helper subfolders today.** The spec's
+  Strategy paragraph names ~30 lines per step as the threshold for
+  splitting. The new pipeline's largest step (the .mcp.json defensive
+  narrowing into actualCommand/actualArgs) sits well below that
+  threshold. If drift comparison ever grows structurally complex
+  (e.g. a future schema adds optional fields requiring deep
+  partial-equality), factor that step into a sibling subfolder at
+  that point.
 
-2. `src/tools/brain/index.ts` — **errored** (1 error, L50: `backend` field
-   on `BrainToolResult` return). Owned by Plan 4. Confirmed.
+- **Tests use real temp dirs and real brain.aide / .mcp.json files,
+  not fs mocks.** The detector's I/O surface is two `readFile` calls
+  (one inside `parseBrainAide`, one for `.mcp.json`); mocking either
+  would test the mock more than the detector. Temp dirs cost ~5ms per
+  test and ensure the parser-driven failure modes match real Node
+  semantics. The pattern matches the prior test file and the project's
+  existing convention (see parseBrainAide's tests).
 
-3. `src/tools/brain/composeInstructions/index.ts` — **errored** (5 errors:
-   `vaultPath` ×2, `backend` ×3). Plan 4 deletes this helper entirely.
-   Confirmed.
-
-4. `src/cli/init/writeMcpEntry/index.ts` — **did NOT error**. The directory
-   exists (`index.ts` + `index.test.ts` are present) but it does not
-   reference `obsidianMcpEntry` or any symbol removed in Plan 3. The plan's
-   expected failure for this file anticipates a Plan 6/8 rewrite; the
-   file's current shape does not conflict with the new types.
-
-The `src/tools/brain/composeInstructions/index.test.ts` errors (3 errors,
-Plan 4) were observed but not listed individually in the plan body's
-expected-failure table. They were logged in `handoff.aide` table and are
-accounted for in the total count of 10.
-
-The `src/service/brainBackends/index.ts` error (1 error, Plan 9) was
-observed and matches the handoff table.
-
-### Test suite
-
-Ran `rtk vitest run`. Result: **698 pass / 0 fail**. Tests in files that
-compile cleanly run successfully. The compile errors in
-`composeInstructions/index.test.ts` do not prevent Vitest from running the
-remainder of the suite because Vitest transpiles independently of tsc
-type-checking — the test runner operates on the JS AST, not the type graph.
-All 698 existing tests pass. This is the expected state until Plans 4 and 9
-land.
-
-### Summary
-
-All 10 tsc errors are expected. They form the dependency contract for
-downstream plans:
-
-- **Plan 4** owns 9 of 10 errors (all `composeInstructions/` + `brain/index.ts`)
-- **Plan 9** owns 1 of 10 errors (`brainBackends/index.ts`)
-
-No errors map to unplanned work. No errors were introduced outside Plan 3's
-declared scope. The fail-list in `handoff.aide` (written after Plan 3
-Step 3) matches the live tsc output exactly.
+- **Plan scope is buildBrainState's module only.** Compile errors in
+  consumers (`src/tools/info`, `src/tools/brain`, `src/cli/sync`)
+  triggered by the `BrainState` type collapse are dependency-contract
+  failures owned by those modules' own plans. This plan logs them in
+  Step 4 but does not patch them — patching would conflate scopes and
+  hide the dependency chain the handoff documents.
