@@ -18,7 +18,7 @@ This is your only first call. No `Read`, no `aide_discover`, no other tool.
 
 The brain is the pipeline's durable memory. If it isn't wired, the pipeline can't run.
 
-`aide_info` returns one of five `brain.status` values. Branch on them exactly:
+`aide_info` returns one of four `brain.status` values. Branch on them exactly:
 
 - **`ok`** — continue to Step 3.
 
@@ -44,19 +44,19 @@ The brain is the pipeline's durable memory. If it isn't wired, the pipeline can'
   Skill(skill="aide:brain", args="config")
   ```
 
-  For cold projects (no `brain.aide` either): run `npx aidemd-mcp init` followed by `npx aidemd-mcp sync`. For warm projects (brain.aide exists): `npx aidemd-mcp sync` is sufficient. After the skill returns, halt — the user re-runs `/aide` once sync is done.
-
-- **`invalid-path`** — `brain.aide` exists but the `rootPath` it declares does not resolve on disk. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line — e.g.:
-
-  > The brain path in `brain.aide` doesn't exist on disk — please fix `rootPath` and re-run `/aide`.
-
-  Do NOT invoke the config flow and do NOT run sync — sync copies the broken path into `.mcp.json`; it won't fix it. The user must edit `brain.aide` directly to correct `rootPath`, then re-run `/aide`.
+  After the skill returns, halt — the skill itself handles the sync and asks the user to restart.
 
 - **`mcp-drift`** — `brain.aide` and `.mcp.json` disagree about the brain entry. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line — e.g.:
 
-  > Brain config is out of sync — run `npx aidemd-mcp sync` in your terminal, then re-run `/aide`.
+  > Brain config is out of sync — let's fix that first.
 
-  Do NOT attempt to patch `.mcp.json` yourself. Drift is a hard halt, not a self-repair event. The orchestrator NEVER fixes `.mcp.json`.
+  Then invoke the config flow:
+
+  ```
+  Skill(skill="aide:brain", args="config")
+  ```
+
+  After the skill returns, halt — the skill itself handles the sync and asks the user to restart.
 
 ### Step 3 — Outdated artifacts (passive notification)
 

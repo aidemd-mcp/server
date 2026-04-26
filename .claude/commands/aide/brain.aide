@@ -1,0 +1,463 @@
+---
+scope: .claude/commands/aide/brain.md
+description: Brain command skill — general brain interface plus the config flow that runs on first install or re-point, aligned with the post-collapse brain.aide contract and the agent-driven sync UX.
+intent: >
+  The `/aide:brain` slash command is the single source for both general brain
+  interaction and brain wiring. Its config flow is what runs when an agent in
+  a fresh project hits a brain that is not yet wired (or when the user wants
+  to point at a different vault). The command must speak the post-collapse
+  brain contract end-to-end — the four boot states the package actually
+  reports, the user-owned config path the package actually scaffolds, and the
+  schema the package actually parses — and must close the wiring loop with
+  the minimum manual ceremony the architecture allows: the agent itself
+  invokes sync via Bash using the launcher already declared in `.mcp.json`,
+  leaving the user with a single restart as the only remaining manual step.
+  The MCP server stays the only process that reads `.mcp.json`; the CLI
+  binary stays the only process that writes it; the agent simply executes
+  the user-sanctioned mutation command on the user's behalf inside the
+  pipeline they invoked.
+outcomes:
+  desired:
+    - >-
+      "Step 1 — Gather state" reads the BrainState fields the package actually
+      returns from `aide_info`: `brain.status`, `brain.name`, and `brain.hints`.
+      No reference to any field the post-collapse `BrainState` does not carry.
+    - >-
+      The status branch table covers exactly the four states the boot reporter
+      surfaces — `ok`, `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` — with
+      one branch per state, each branch naming the remediation the architecture
+      actually requires for that state.
+    - >-
+      Every reference to the brain config file's path uses the canonical
+      `.aide/config/brain.aide` location. The retired `.aide/brain.aide` path
+      appears nowhere in the command prompt.
+    - >-
+      When scaffolding is needed (the `no-brain-aide` branch), the prompt drives
+      a single `aide_init` call against the package's user-owned-config contract
+      and treats the result as both scaffold-and-done — no separate "seed the
+      vault directories" step, no second `aide_init` call, no follow-up phase
+      that the post-collapse `provisionBrain` pipeline already handles
+      internally.
+    - >-
+      When sync is required (after scaffolding, or on `mcp-drift`), the agent
+      itself runs sync via the Bash tool. It reads the host's
+      `.mcp.json["mcpServers"]["aide"]` to recover the launcher's `command` and
+      `args`, then invokes that exact command with `"sync"` appended as the
+      final argument. This works uniformly for prod installs (`cmd /c npx
+      @aidemd-mcp/server sync`) and local-dev installs (`node
+      D:/path/to/dist/index.js sync`).
+    - >-
+      After the agent runs sync successfully, the prompt reduces the user's
+      remaining work to one step: restart Claude Code so the brain MCP server
+      relaunches with the freshly-written `.mcp.json` brain entry. The prompt
+      explains why the restart is necessary (Claude Code reads `.mcp.json` only
+      at session startup; the brain MCP server in the current session was
+      launched without the brain entry) so the user understands the constraint
+      rather than treating it as ritual.
+    - >-
+      The `mcp-drift` branch is handled identically to the post-scaffold path:
+      the agent runs sync via Bash, then asks the user to restart Claude Code.
+      It does not punt to "go run sync in your terminal" prose.
+    - >-
+      The general-interaction mode (Mode 1) remains untouched in spirit — call
+      `aide_brain`, defer to the entry-point file's navigation rules, never
+      hardcode a backend tool name. Any edits to Mode 1 are scoped to keeping
+      its prose consistent with the post-collapse contract (e.g. terminology
+      that aligns with the four-state model), not to changing its behavior.
+    - >-
+      Every state branch ends with an unambiguous STOP after surfacing its
+      remediation, except the `ok` (re-point with new path) branch, which
+      continues to scaffold-and-sync. The prompt never re-calls `aide_info` in
+      the same session after sync, because the in-session brain MCP server is
+      still launched without the brain entry — disk state and live-server state
+      diverge until restart.
+  undesired:
+    - >-
+      Promoting `aide_sync` to an MCP tool, or routing `.mcp.json` mutation
+      through any MCP-resident code path. Sync stays a CLI verb; the agent
+      invokes the CLI binary via Bash. Putting `.mcp.json` mutation back inside
+      the MCP runtime would re-create the silent-rewrite class of failure the
+      `npx aidemd-mcp sync` boundary exists to prevent (root intent #14).
+    - >-
+      Any code path the prompt instructs the agent to follow that mutates
+      `.mcp.json` outside the sync CLI — direct file writes, MCP-tool wrappers
+      that "fix" drift, in-session JSON merges. The sync binary remains the
+      sole mutation surface; the agent's job is to invoke that binary, never to
+      replace it.
+    - >-
+      "References to retired BrainState fields or states: `vaultPath`,
+      `invalid-path`, `rootPath`, `connector`, `entryFile`, `tools`, or any
+      branch that says `status: invalid-path`. Any of these appearing in the
+      prompt teaches the agent the pre-collapse model and silently re-creates
+      the bug class the schema collapse retired."
+    - >-
+      Any reference to the retired `.aide/brain.aide` path. The current
+      canonical location is `.aide/config/brain.aide`; the retired path
+      appearing anywhere — branch prose, blockquotes, error messages, examples
+      — teaches the agent to look at a file the package no longer scaffolds.
+    - >-
+      A "Step 4 — Seed the vault directories" or any equivalent that issues a
+      second `aide_init` call to seed brain content. The post-collapse
+      `provisionBrain` pipeline sources hub artifacts from `brain.aide` body
+      sections in a single planning pass; a separate seeding step both
+      duplicates work and re-invents a seam the schema collapse intentionally
+      removed.
+    - >-
+      Telling the user to "go to your terminal and run `npx aidemd-mcp sync`"
+      after scaffolding or on `mcp-drift`. The user already invoked `/aide`;
+      forcing a context switch to a separate terminal for a mutation the agent
+      can perform on their behalf — through the same CLI binary the sync
+      contract sanctions — is gratuitous friction without any contract
+      protection in return. The sanctioned mutation surface is the binary, not
+      the human typing it.
+    - >-
+      A two-step manual remediation ("run sync, then restart") that lands as
+      the prompt's final user-facing instruction. After this revision, the only
+      manual step the user is told to take is the restart, because the restart
+      is the one step the agent genuinely cannot perform on their behalf —
+      Claude Code re-reads `.mcp.json` only at session boot, not on file
+      changes.
+    - >-
+      A branch that omits `no-mcp-entry` from its state table, or that
+      conflates `no-mcp-entry` with `mcp-drift`. They are distinct post-collapse
+      states with distinct remediations: `no-mcp-entry` means `.mcp.json` has
+      no `brain` key at all (sync writes a fresh entry), `mcp-drift` means the
+      `brain` key exists but its `command`/`args` differ from the
+      `mcpServerConfig` in `brain.aide` (sync overwrites it). Both happen to
+      route through the same agent-invoked sync call, but they reach it through
+      branches the prompt names by their distinct state values, not by
+      collapsing them into one generic "out of sync" branch.
+    - >-
+      "Continuing the user's original request in the same Claude Code session
+      after the agent runs sync. The brain MCP server in the running session
+      was launched before the brain entry existed; mutating `.mcp.json` mid-
+      session updates disk state but leaves the live brain server unwired. Any
+      branch that re-calls `aide_info` after sync and treats `brain.status:
+      ok` as permission to continue produces false confidence (the check
+      reports disk state, not live-server state)."
+    - >-
+      Hardcoding the launcher invocation for sync inline in the prompt (e.g.
+      `cmd /c npx @aidemd-mcp/server sync` or `node dist/index.js sync`). The
+      launcher must be recovered from `.mcp.json["mcpServers"]["aide"]` at
+      runtime so the same instructions work for prod installs (npm-published
+      binary) and local-dev installs (a `node <path>/dist/index.js` invocation
+      pointing at a working tree).
+---
+
+## Context
+
+This skill is the single touchpoint between a host-project agent and the brain
+layer. It plays two roles in one prompt: a general-purpose interface for
+brain reads/writes during normal work, and a wiring flow that runs the first
+time the brain is hit in a fresh project (or when the user repoints at a
+different vault). The `/aide` orchestrator does not duplicate any wiring
+logic — when the boot reporter says the brain is unwired or drifted, the
+orchestrator routes here. Anything this prompt teaches the agent to do is
+canonical; anything it omits or contradicts is canonical too, by negation.
+
+The package recently underwent two cascading refactors that the prompt has
+not yet absorbed: a frontmatter schema collapse (down to just `name` and
+`mcpServerConfig`), and a hub-artifact sourcing change (artifact bytes now
+flow from `brain.aide` body sections, not from inline TypeScript constants).
+Three concrete contracts changed under the prompt as a result. The
+`BrainState` shape returned by the boot reporter no longer carries
+`vaultPath`, `rootPath`, `connector`, `entryFile`, or `tools` — only
+`status`, `name`, and `hints`. The `brain.aide` file now lives at
+`.aide/config/brain.aide`, in a user-owned directory the install/upgrade
+tooling treats as immutable after first scaffold; the legacy `.aide/brain.aide`
+location is gone. And the boot status set is now exactly four states — `ok`,
+`no-brain-aide`, `no-mcp-entry`, `mcp-drift` — with the previous
+`invalid-path` state retired alongside `rootPath`. Any prose that still
+references the pre-collapse model teaches the agent to look at fields,
+files, and states the package no longer exposes.
+
+The wiring flow is shaped by a single architectural tension. The MCP server
+must remain read-only against `.mcp.json` — silent rewrites by anything
+running inside the MCP runtime are the regression class the visible-command
+boundary exists to prevent (root intent #14). At the same time, forcing the
+user to leave the conversation and type a sync command in a separate terminal
+is gratuitous friction without any contract protection in return: the
+sanctioned mutation surface is the sync binary itself, not the human typing
+it. The resolution is to have the agent invoke the sync CLI through the Bash
+tool. The CLI binary stays the only mutation surface; the MCP server still
+never writes `.mcp.json`; the user's pipeline is not interrupted by a
+context switch. The launcher invocation for sync is recovered from
+`.mcp.json` at runtime so the same instructions work uniformly for prod
+installs (`cmd /c npx @aidemd-mcp/server sync`) and local-dev installs
+(`node <path>/dist/index.js sync`).
+
+One manual step remains and cannot be eliminated. Claude Code reads
+`.mcp.json` only at session startup; the brain MCP server in the running
+session was launched before any brain entry existed, and nothing the agent
+does mid-session can hot-reload it. After the agent runs sync, the user must
+restart Claude Code so the brain MCP server relaunches with the freshly-
+written `.mcp.json` brain entry. The prompt's job is to tell the user this
+once, explain why, and then stop — not to keep checking state in a session
+where the live brain server is provably stale.
+
+## Strategy
+
+**Read only the fields the post-collapse `BrainState` actually carries.**
+The boot reporter's tagged union exposes `status`, `name`, and `hints` — and
+nothing else. Every other field that previously existed on this type
+(`vaultPath`, `rootPath`, `connector`, `entryFile`, `tools`) was deleted in
+the collapse refactor (handoff intent #11 + retired-fields list). The Step 1
+"Gather state" prose must name those three fields and stop. Naming any
+retired field teaches the agent the pre-collapse model, which silently
+recreates the path-validation regression the schema collapse removed; the
+parser will not even populate those fields, so the agent will read undefined
+and branch wrong.
+
+**Branch on exactly four states, one branch per state, with no merging.**
+The boot reporter surfaces `ok`, `no-brain-aide`, `no-mcp-entry`, and
+`mcp-drift` (handoff intent #12). The retired `invalid-path` state went
+away with `rootPath` — there is no path the package validates anymore.
+`no-mcp-entry` and `mcp-drift` happen to route through the same agent-
+invoked sync call, but they are distinct states with distinct meanings:
+`no-mcp-entry` means `.mcp.json` has no brain key at all (sync writes a
+fresh one), `mcp-drift` means the brain key exists but its `command`/`args`
+disagree with `mcpServerConfig` in `brain.aide` (sync overwrites it). The
+state table must name both by their distinct values rather than collapsing
+them into one generic "out of sync" branch — the user-facing prose can
+explain what each state means in terms the user can act on.
+
+**The brain config path is `.aide/config/brain.aide`, everywhere.** This
+location is the user-owned-config contract (handoff intent #1 plus the
+`.aide/config/` ownership boundary in root intent). The pre-collapse
+`.aide/brain.aide` path is gone and the package no longer scaffolds it.
+Any prose that references the retired path — branch text, error messages,
+example blocks — points the agent at a file the package will never write
+or read, and the user-owned-config invariant cannot be honored against a
+location that does not exist.
+
+**Scaffolding is one `aide_init` call, treated as both scaffold and done.**
+The post-collapse `provisionBrain` pipeline is a single planning pass that
+sources hub artifacts from `brain.aide` body sections (handoff intent #6)
+and runs the five steps internally (config → root dirs → playbook hub →
+research hub → MCP entry). The previous "Step 4 — Seed the vault directories"
+phase issued a second `aide_init` call to seed brain content from a separate
+template; that seam was deliberately removed by the hub-artifact sourcing
+refactor. The prompt must drive exactly one `aide_init` call on the
+`no-brain-aide` branch and not chain a follow-up seeding step.
+
+**Sync is invoked from the agent's Bash tool, with the launcher recovered
+from `.mcp.json` at runtime.** The recipe is uniform: read
+`.mcp.json["mcpServers"]["aide"]` to recover the launcher's `command` and
+`args` (this is the launcher Claude Code itself uses to start the AIDE MCP
+server in the current session, so it is guaranteed to exist and to work),
+append `"sync"` as the final argument, and run via Bash. This works
+byte-identically for prod installs (where the recovered launcher is
+something like `cmd /c npx @aidemd-mcp/server`) and local-dev installs
+(where it is `node D:/.../dist/index.js`). Hardcoding either invocation
+inline in the prompt breaks the other case, and breaks any custom binary
+path a user might have. The launcher is recovered, never named.
+
+**Sync stays a CLI verb; promoting it to an MCP tool is forbidden.** The
+sync binary is the only sanctioned mutation surface for `.mcp.json` (root
+intent invariant + handoff intent #14). Adding an `aide_sync` MCP tool
+would route mutation through the MCP runtime, which is exactly the
+silent-rewrite class of failure the visible-command boundary exists to
+prevent. The agent invoking the binary via Bash preserves the boundary —
+the mutation still runs through the binary, with output the user can see
+in the conversation transcript. Direct `.mcp.json` writes from the agent,
+in-session JSON merges, MCP-tool wrappers that "fix" drift — all carry
+the same regression and are out.
+
+**After sync, ask the user to restart Claude Code, explain why, and STOP.**
+Claude Code re-reads `.mcp.json` only at session boot (a hard property of
+the host, not a package decision); the brain MCP server in the running
+session was launched without the brain entry, so disk state and live-server
+state diverge until the host relaunches. The prompt names the constraint —
+this is the one step the agent genuinely cannot do on the user's behalf —
+so the user understands it as a host limit rather than a ritual. The
+prompt then stops. It does not re-call `aide_info` to "confirm" `ok`,
+because the in-session brain MCP wasn't reloaded and the check would
+report disk state, not live-server state, producing false confidence.
+Continuation happens on the next `/aide` invocation after restart.
+
+**`mcp-drift` is handled identically to the post-scaffold path.** The disk
+state is correct, just `.mcp.json` is behind, so the agent runs sync via
+Bash and asks for restart. The prompt does not punt to "go run sync in
+your terminal" prose — the user already invoked `/aide`, the agent is
+holding the same binary the user would invoke, and forcing the context
+switch buys no contract protection (the sanctioned surface is the binary,
+not the human typing it). The two-step "run sync, then restart" manual
+remediation is reduced to one step: the restart, the only step the agent
+can't perform.
+
+**Mode 1 (general brain interaction) is preserved unchanged in spirit.**
+The skill remains the general-purpose brain interface — `aide_brain` first,
+defer to the entry-point file's navigation rules, never hardcode a backend
+tool name. Edits to Mode 1 are scoped to keeping its prose consistent with
+the post-collapse contract (terminology aligned with the four-state model,
+references to `.aide/config/brain.aide` rather than the legacy path), not
+to changing its behavior. The `BrainToolResult` shape returned by
+`aide_brain` is just `status` and `instructions` — the prompt's Mode 1
+instructions to "execute those instructions verbatim" remain correct as
+written.
+
+## Good examples
+
+A correct "Step 1 — Gather state" passage names exactly the fields the
+post-collapse `BrainState` actually returns:
+
+> Call `aide_info` to read `brain.status`, `brain.name`, and `brain.hints`.
+> Branch on `brain.status`. The four states the boot reporter can return
+> are `ok`, `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` — handle each
+> in its own branch below.
+
+A correct status branch table covers the four states with one branch each
+and routes the two sync-required states through the same agent-driven
+recipe:
+
+> - **`ok`** — brain is wired and `.mcp.json` is in sync. Tell the user
+>   there's nothing to do. If `$ARGUMENTS` carries a path different from
+>   the configured one, treat that as a re-point and continue to Step 2.
+>   Otherwise **STOP**.
+>
+> - **`no-brain-aide`** — `.aide/config/brain.aide` does not exist.
+>   Continue to Step 2 to scaffold it.
+>
+> - **`no-mcp-entry`** — `.aide/config/brain.aide` exists but `.mcp.json`
+>   has no `brain` key. Skip scaffolding and run sync from Step 4.
+>
+> - **`mcp-drift`** — `.aide/config/brain.aide` exists and `.mcp.json` has
+>   a `brain` key, but its `command`/`args` disagree with
+>   `mcpServerConfig` in `brain.aide`. Skip scaffolding and run sync from
+>   Step 4.
+
+A correct sync invocation passage recovers the launcher rather than
+hardcoding it:
+
+> Read `.mcp.json` and find the `mcpServers["aide"]` entry — that's the
+> launcher Claude Code itself uses to start the AIDE MCP server in this
+> session, so it is guaranteed to exist. Take its `command` and `args`,
+> append the literal string `"sync"` as a final argument, and run the
+> resulting command via the Bash tool. For a typical prod install this
+> will look like `cmd /c npx @aidemd-mcp/server sync`; for a local-dev
+> install it will look like `node D:/path/to/dist/index.js sync`. The
+> recipe is the same — recover the launcher, append `"sync"`, run.
+
+A correct post-sync user message names the constraint the user is being
+asked to honor and stops cleanly:
+
+> Sync wrote the brain entry into `.mcp.json` successfully.
+>
+> Restart Claude Code so the brain MCP server picks up the new entry.
+> Claude Code only reads `.mcp.json` at session startup — the brain MCP
+> server in the current session was launched before the entry existed, so
+> it can't be hot-reloaded mid-session. After the restart, re-run
+> `/aide` and we'll continue where we left off.
+
+Then the prompt **STOPS**. It does not call `aide_info` again. It does
+not continue the user's original request.
+
+## Bad examples
+
+A "Step 1 — Gather state" passage that names retired fields:
+
+> Call `aide_info` to read `brain.status`, `brain.vaultPath`, and
+> `brain.hints`. Branch on `brain.status`...
+
+`brain.vaultPath` does not exist on the post-collapse `BrainState` — that
+field went away with `rootPath` and the `invalid-path` state. The agent
+will read undefined and either branch on garbage or hit the
+non-existent-state branch. The same pattern with `brain.connector`,
+`brain.entryFile`, or `brain.tools` fails identically.
+
+A status branch table that includes `invalid-path`:
+
+> - **`invalid-path`** — `brain.aide` exists but `rootPath` is empty or
+>   doesn't resolve on disk. Tell the user to fix the path and re-run...
+
+The `invalid-path` state was retired alongside `rootPath` in the schema
+collapse — there is no path the package validates anymore (path
+validation is the launcher's problem at MCP server startup). A branch
+matching this state will never fire, and its presence teaches the agent
+the pre-collapse model.
+
+A status branch table that punts `mcp-drift` to a separate terminal:
+
+> - **`mcp-drift`** — `brain.aide` is configured correctly but
+>   `.mcp.json` is out of sync. Run `npx aidemd-mcp sync` in your
+>   terminal to apply the config, then restart Claude Code and re-run
+>   `/aide`.
+
+This is the regression that triggered this whole spec. The agent has
+Bash and the same binary the user would invoke; forcing the user to
+context-switch buys no contract protection (the sanctioned mutation
+surface is the binary, not the human typing it).
+
+A "Step 4 — Seed the vault directories" that issues a second `aide_init`:
+
+> Call `aide_init({ category: "brain", brainPath: <brainPath> })` to seed
+> vault directories. Brain steps are seed-semantic — `"would-create"`
+> (applied silently by the tool) or `"exists"` (already present). The
+> tool writes directories and seed files itself.
+
+This duplicates work the post-collapse `provisionBrain` pipeline already
+handles in a single planning pass that sources hub artifacts from
+`brain.aide` body sections. The seam this step lived in was deliberately
+removed by the hub-artifact-sourcing refactor; reintroducing it
+re-creates exactly the duplication the refactor eliminated.
+
+A reference to the legacy `.aide/brain.aide` path:
+
+> Open `.aide/brain.aide`, correct `rootPath` to an absolute path that
+> exists on disk, save the file, then re-run `/aide`.
+
+The current canonical location is `.aide/config/brain.aide` — the
+package no longer scaffolds, reads, or writes the legacy path. Pointing
+the user at the wrong file fails silently (they edit a file the package
+will never read).
+
+A proposal to add `aide_sync` as an MCP tool:
+
+> Add an `aide_sync` MCP tool the agent can call directly to update
+> `.mcp.json` without shelling out.
+
+Routes `.mcp.json` mutation through the MCP runtime, which is exactly
+the silent-rewrite class of failure the visible-command boundary exists
+to prevent (root intent #14). The CLI binary remains the only sanctioned
+mutation surface; the agent invokes it via Bash.
+
+An agent that reads `brain.aide` directly and writes `.mcp.json` itself:
+
+> Read `.aide/config/brain.aide`, parse the `mcpServerConfig`, merge it
+> into `.mcp.json["mcpServers"]["brain"]`, and write the file back.
+
+Same regression as the previous example — the agent is now the mutation
+surface, not the sanctioned binary. The interpolation, idempotency, and
+legacy-key-removal logic that lives inside the sync CLI is reinvented
+(badly) by the agent and drifts from the canonical implementation.
+
+A re-call of `aide_info` after sync:
+
+> Sync completed. Call `aide_info` again to confirm `brain.status` is
+> now `ok` before continuing.
+
+Trap. The brain MCP server in the running session was launched without
+the brain entry; mutating `.mcp.json` mid-session updates disk state but
+leaves the live brain server unwired. `aide_info` in the same session
+reports disk state, not live-server state, and `status: ok` here is
+false confidence — continuing the user's original request will hit a
+brain server that is still operationally broken.
+
+A hardcoded sync invocation:
+
+> After scaffolding, run `cmd /c npx @aidemd-mcp/server sync` via Bash.
+
+Breaks for local-dev installs (where the launcher is something like
+`node D:/path/to/dist/index.js`) and for any custom binary path the
+user has. The launcher must be recovered from
+`.mcp.json["mcpServers"]["aide"]` at runtime so the same instructions
+work uniformly across install shapes.
+
+## References
+
+- `.aide/handoff.aide` -- post-collapse architecture snapshot. Drew from intent #1 (canonical `.aide/config/brain.aide` path, user-owned-config boundary), intent #6 (hub-artifact bytes flow from `brain.aide` body sections, retired `*_TEMPLATE` constants — justifies dropping the second `aide_init` seeding step), intent #11 (no introspection of `mcpServerConfig.args` — anchors the no-retired-fields rule), intent #12 (four-state boot status set, `invalid-path` retired with `rootPath`), and intent #14 (MCP server never silently rewrites `.mcp.json`; sync CLI is the only mutation surface — anchors the agent-via-Bash recipe and the rejection of an `aide_sync` MCP tool).
+- `.aide/intent.aide` -- root spec for the project. Drew from the `outcomes.desired` block defining `mcp-drift` as a hard halt, the `outcomes.undesired` rejection of MCP-runtime mutation of `.mcp.json` (justifies why the agent must invoke the binary rather than write the file directly), and the `.aide/config/` ownership-boundary outcome (path is the ownership signal, no per-file allowlist).
+- `src/types/index.ts` (BrainState definition) -- authoritative tagged union for the four post-collapse boot states. Drew the exact field set (`status`, `name`, `hints`) the prompt's "gather state" passage must name, and confirmed that no state carries `vaultPath`/`rootPath`/`connector`/`entryFile`/`tools`.
+- `src/types/index.ts` (BrainToolResult definition) -- authoritative shape returned by `aide_brain`. Confirmed Mode 1's "execute the instructions verbatim" prose remains correct: the result is just `status` + `instructions`, with no schema change forced on the prompt.
+- `src/cli/sync/index.ts` -- authoritative sync CLI behavior. Drew the contract that sync reads `.aide/config/brain.aide`, writes the `brain` key in `.mcp.json` (and removes the legacy `obsidian` key), is idempotent, and is the only mutation surface — anchors the agent-invokes-the-binary recipe and confirms that the same binary handles both `no-mcp-entry` (fresh write) and `mcp-drift` (overwrite).
+- `.claude/commands/aide/brain.md` -- current (stale, pre-collapse) skill prose. Used as the diff target — the bad-examples section names the exact phrasings in the current prompt that violate the post-collapse contract (the `invalid-path` branch, the `vaultPath` field reference, the legacy `.aide/brain.aide` path reference, the "run sync in your terminal" prose, the "Step 4 — Seed the vault directories" second `aide_init` call).

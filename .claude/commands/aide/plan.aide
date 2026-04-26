@@ -1,0 +1,372 @@
+---
+intent: >
+  Rewrite `.claude/commands/aide/brain.md` so the Mode 2 (config) flow speaks
+  the post-collapse `BrainState` contract — four states, no retired fields,
+  `.aide/config/brain.aide` everywhere — and so it closes the wiring loop by
+  having the agent invoke sync via Bash (launcher recovered from
+  `.mcp.json["mcpServers"]["aide"]`) instead of punting the user to a
+  separate terminal. Mode 1 (general brain interaction) is preserved unchanged
+  in spirit; only its prose touches Mode 2 terminology where they overlap.
+---
+
+## Project Structure
+
+This plan rewrites a single command-prompt file. The scope directory is
+`.claude/commands/aide/`. Every file inside the scope directory after this
+plan executes:
+
+```
+.claude/commands/aide/
+├── brain.aide                       ← (existing) intent spec governing brain.md
+├── brain.md                         ← (modified) command prompt — Mode 1 preserved, Mode 2 rewritten to the four-state contract + agent-invoked sync
+└── plan.aide                        ← (new, this file) implementation plan for the brain.md rewrite
+```
+
+No new files inside this directory; no deletions. The siblings in
+`.claude/commands/aide/` (other command prompts, e.g. `align.md`, `build.md`,
+`fix.md`, `plan.md`, `qa.md`, `refactor.md`, `research.md`, `spec.md`,
+`synthesize.md`, `update-playbook.md`, `upgrade.md`, the orchestrator `aide.md`)
+are out of scope and untouched. Files outside `.claude/commands/aide/` (the
+sync CLI under `src/cli/sync/`, the MCP tool descriptions in `src/index.ts`,
+the methodology doc at `.aide/docs/brain-aide.md`) are tracked separately and
+explicitly NOT planned here.
+
+## Plan
+
+### 1. Rewrite Mode 2 Step 1 — gather state on the four-state model
+
+Read: `.aide/handoff.aide` (intents #11, #12), `src/types/index.ts:391-417`
+(`BrainState` tagged union)
+
+- [x] 1a. Replace the current "Step 1 — Gather state" body in
+  `.claude/commands/aide/brain.md` (lines 50–68 of the current file) with prose
+  that calls `aide_info` and reads exactly three fields off `brain`:
+  `brain.status`, `brain.name`, and `brain.hints`. The prose must NOT name
+  `brain.vaultPath`, `brain.rootPath`, `brain.connector`, `brain.entryFile`,
+  or `brain.tools` — those fields no longer exist on `BrainState`.
+- [x] 1b. Note in the prose that `brain.name` is absent on the `no-brain-aide`
+  branch (the variant carries only `status` + `hints`); the other three
+  variants (`ok`, `no-mcp-entry`, `mcp-drift`) all carry `name`. The prose
+  should read `name` only when the branch is one of those three.
+- [x] 1c. Replace the branch table with exactly four branches, one per
+  `BrainState` status value, in this order: `ok`, `no-brain-aide`,
+  `no-mcp-entry`, `mcp-drift`. Each branch must:
+  - Name the state by its literal status string (the same string the type
+    uses, in backticks).
+  - Describe in one short sentence what that state means in user-facing terms
+    (e.g. "`.aide/config/brain.aide` exists but `.mcp.json` has no `brain`
+    key" for `no-mcp-entry`).
+  - Name the remediation route by step number (the rewritten Step 2 / Step 3
+    / Step 4 from the steps below) — do NOT inline the remediation prose
+    inside Step 1.
+  - End with `**STOP.**` for any branch whose remediation completes inside
+    Step 1 itself (only the `ok` no-repoint case ends here).
+- [x] 1d. The `ok` branch retains its existing repoint behavior: if
+  `$ARGUMENTS` carries a path different from the configured one, treat that
+  as a re-point and continue to Step 2; otherwise tell the user there is
+  nothing to do and STOP. The configured-path comparison is conceptual only —
+  the prompt does not introspect `mcpServerConfig.args` (handoff invariant
+  #11); the comparison is between `$ARGUMENTS` and what the user originally
+  scaffolded, surfaced via `name` plus the prose body. Keep the language
+  loose enough to honor "no introspection of args" while still letting the
+  agent recognize a deliberate re-point request.
+- [x] 1e. The `no-brain-aide` branch routes to Step 2 (resolve the vault
+  path) and then Step 3 (scaffold), then Step 4 (run sync), then Step 5
+  (post-sync user message).
+- [x] 1f. The `no-mcp-entry` branch SKIPS Step 2 and Step 3 (the file
+  already exists; nothing to scaffold) and routes directly to Step 4 (run
+  sync) and Step 5 (post-sync user message).
+- [x] 1g. The `mcp-drift` branch behaves identically to `no-mcp-entry`:
+  skip Step 2 and Step 3, route to Step 4 then Step 5. Do NOT punt to
+  "go run `npx aidemd-mcp sync` in your terminal." The branch description
+  should explain what `mcp-drift` means (the brain key exists in
+  `.mcp.json` but its `command`/`args` disagree with `mcpServerConfig` in
+  `brain.aide`) and that sync overwrites the entry to bring it back into
+  alignment.
+- [x] 1h. Do NOT include an `invalid-path` branch. That state was retired
+  with `rootPath`. Its presence anywhere in the prompt is a regression.
+
+### 2. Preserve Mode 2 Step 2 — vault path resolution (terminology sweep only)
+
+Read: `.aide/intent.aide` (`.aide/config/` ownership-boundary outcome)
+
+- [x] 2a. Keep Step 2 of Mode 2 (vault path resolution via
+  `$ARGUMENTS` / `brain.hints` / `AskUserQuestion`) structurally intact —
+  the `AskUserQuestion` schema, the "Different location" final entry, the
+  3-hint cap, the inline-ask fallback all remain.
+- [x] 2b. Sweep the closing sentence of Step 2 that currently says "The
+  resolved `<brainPath>` populates `rootPath` in the scaffolded
+  `brain.aide` — it does NOT get written into `.mcp.json` directly." The
+  post-collapse `brain.aide` has no `rootPath` field. Replace it with prose
+  that says the resolved path is passed to `aide_init` as `brainPath` and
+  `aide_init` lands it inline inside `mcpServerConfig.args` in the
+  scaffolded `.aide/config/brain.aide`. Do NOT name `rootPath` anywhere.
+
+### 3. Rewrite Mode 2 Step 3 — scaffold at `.aide/config/brain.aide`, no inline sync punt
+
+Read: `.aide/handoff.aide` (intent #1 — `.aide/config/brain.aide` ownership;
+intent #6 — single planning pass sources hub bytes from body sections)
+
+- [x] 3a. In Step 3 of Mode 2, replace every reference to the path
+  `.aide/brain.aide` with `.aide/config/brain.aide`. This includes the
+  step's own description prose, the user-facing message after scaffolding,
+  the failure-handling fallback, and any other path mention in Step 3.
+- [x] 3b. The single `aide_init({ category: "brain", brainPath: <brainPath> })`
+  call stays — the post-collapse `provisionBrain` pipeline runs its full
+  five-step plan internally on this one call. Do NOT add a second
+  `aide_init` call. Do NOT chain a "seed the vault directories" follow-up.
+- [x] 3c. DELETE the user-facing message currently emitted after
+  scaffolding (the block reading "Run `npx aidemd-mcp sync` in your
+  terminal to apply the config to `.mcp.json`. Then restart Claude Code…").
+  The post-scaffold path no longer punts the user to a terminal — Step 4
+  runs sync via Bash on the agent's behalf, and Step 5 then asks for the
+  restart. Remove this message entirely from Step 3 and remove the trailing
+  `**STOP**` that currently closes Step 3 — execution must continue into
+  the rewritten Step 4.
+- [x] 3d. Keep the rationale prose that explains why `aide_init` does not
+  itself mutate `.mcp.json` (visible-command boundary). The prose stays
+  technically correct under the new flow: the agent's Bash call in Step 4
+  is the visible command boundary the user sees in transcript.
+
+### 4. New Step 4 — agent invokes sync via Bash, launcher recovered from `.mcp.json`
+
+Read: `.aide/handoff.aide` (intent #14 — sync is the only mutation surface),
+`src/cli/sync/index.ts` (sync CLI contract, exit codes, behavior)
+
+- [x] 4a. Add a new "Step 4 — Run sync via Bash" between the rewritten
+  Step 3 (scaffold) and the rewritten Step 5 (post-sync user message). This
+  step runs unconditionally on the `no-brain-aide`, `no-mcp-entry`, and
+  `mcp-drift` paths.
+- [x] 4b. The step's prose tells the agent to read the host project's
+  `.mcp.json` and locate the `mcpServers["aide"]` entry. The prompt must
+  state explicitly that this entry is the launcher Claude Code itself uses
+  to run the AIDE MCP server in the current session, so it is guaranteed
+  to exist whenever this prompt is running — no defensive fallback prose
+  is needed.
+- [x] 4c. The step's prose tells the agent to take the entry's `command`
+  and `args` exactly as written, append the literal string `"sync"` as the
+  final argument, and run the resulting command via the Bash tool. The
+  prose names two illustrative shapes the recovered command can take so
+  the agent recognizes both — a prod install
+  (`cmd /c npx @aidemd-mcp/server sync`) and a local-dev install
+  (`node D:/path/to/dist/index.js sync`) — and explicitly says these are
+  examples, not literal invocations the prompt is hardcoding.
+- [x] 4d. The step's prose must NOT hardcode the sync invocation inline.
+  Any literal `cmd /c npx @aidemd-mcp/server sync` or
+  `node dist/index.js sync` outside an explicitly-marked example block is
+  a regression. The launcher is recovered, never named.
+- [x] 4e. The step's prose must NOT propose any of: an `aide_sync` MCP
+  tool, an in-session JSON-merge of `mcp.json`, a direct file write to
+  `.mcp.json` from the agent, or any code path that mutates `.mcp.json`
+  outside the sync CLI binary. Sync stays a CLI verb; the agent invokes
+  the binary.
+- [x] 4f. Failure handling for the Bash sync call: if sync exits non-zero,
+  the agent surfaces the captured stderr to the user verbatim, does NOT
+  retry, and does NOT continue to Step 5. The fallback message tells the
+  user to run `npx aidemd-mcp sync` in their terminal manually so they can
+  see the full output, then restart Claude Code and re-run `/aide`. This
+  mirrors the existing Step 3 failure-handling shape but is gated to the
+  Bash-sync error case.
+
+### 5. Rewrite Mode 2 Step 5 — single-step user message, restart-only ask
+
+Read: `.aide/intent.aide` (`mcp-drift` is a hard halt outcome; brain
+status states are reduced to four)
+
+- [x] 5a. Replace the current "Step 5 — Tell the user to sync and restart,
+  then STOP" body. The new Step 5 runs only after Step 4 returned exit
+  code 0. Its single user-facing message must:
+  - Acknowledge sync wrote the brain entry into `.mcp.json` successfully
+    (one sentence).
+  - Ask the user to restart Claude Code (one sentence).
+  - Explain why in one short sentence: Claude Code reads `.mcp.json` only
+    at session startup, so the brain MCP server in the running session
+    was launched before the brain entry existed and cannot be hot-reloaded
+    mid-session.
+  - Tell the user that after the restart, re-running `/aide` will pick up
+    where they left off (one sentence).
+- [x] 5b. The post-sync prose must NOT be a two-step instruction
+  ("run sync, then restart"). The agent already ran sync. The user's
+  remaining work is exactly one step: the restart. The prose names that
+  one step and stops.
+- [x] 5c. After emitting the user message, the prompt **STOPS**. It must
+  NOT call `aide_info` again to "confirm" `brain.status: ok`. The brain
+  MCP server in the running session was launched without the brain entry;
+  `aide_info` would report disk state, not live-server state, and the
+  resulting `ok` would be false confidence. The prompt must say this
+  explicitly — a one-sentence note that re-checking state in the same
+  session is a trap, so continuation always happens on the next `/aide`
+  invocation after the restart.
+- [x] 5d. The prompt must NOT continue the user's original request after
+  Step 5. Same reasoning as 5c: the live brain server is provably stale,
+  and any work that touches it would hit an unwired backend.
+
+### 6. Delete the old Mode 2 "Step 4 — Seed the vault directories"
+
+Read: `.aide/handoff.aide` (intent #6 — hub artifacts source from
+`brain.aide` body sections, no second `aide_init` call)
+
+- [x] 6a. Delete the existing "### Step 4 — Seed the vault directories"
+  section from `.claude/commands/aide/brain.md` (currently lines 109–111
+  of the file). The post-collapse `provisionBrain` pipeline already
+  handles seeding internally via the single planning pass that sources
+  hub bytes from `brain.aide` body sections; a second `aide_init` call
+  is redundant and re-creates a seam the schema collapse retired.
+- [x] 6b. After this deletion plus the renumbering implied by the new
+  Step 4 (Bash sync) and Step 5 (post-sync user message), confirm the
+  Mode 2 step sequence reads cleanly: Step 1 (gather state) → Step 2
+  (resolve path) → Step 3 (scaffold via `aide_init`) → Step 4 (run sync
+  via Bash) → Step 5 (post-sync user message + STOP). No "Step 4 —
+  Seed" remains; no orphan numbering remains.
+
+### 7. Update Mode 2 Failure handling block
+
+Read: `src/cli/sync/index.ts` (sync's own user-facing error messages)
+
+- [x] 7a. Update the "### Failure handling" block at the bottom of Mode 2
+  so its scope is explicitly the Step 3 `aide_init` call (scaffolding).
+  The Bash-sync failure case from Step 4f is its own gate and should not
+  be folded into this block.
+- [x] 7b. In the Step 3 failure message, replace the fallback path
+  reference from `.aide/brain.aide` to `.aide/config/brain.aide` if
+  present. The fallback text already tells the user to run
+  `npx aidemd-mcp init` to retry with full per-file logging, then restart
+  and re-run `/aide` — that recipe stays; the only change is the path
+  reference (and keeping the message technically correct in the
+  post-collapse world).
+
+### 8. Verify Mode 1 stays unchanged in spirit; sweep terminology only
+
+Read: `src/types/index.ts:432-435` (`BrainToolResult` shape)
+
+- [x] 8a. Read Mode 1 of the rewritten file end-to-end (the section
+  currently spanning lines 18–40 of the original file plus its rules block).
+  Confirm Mode 1 still: calls `aide_brain` first; defers to the entry-point
+  file's navigation rules; never hardcodes a backend tool name. The
+  `BrainToolResult` shape (`status` + `instructions`) is unchanged by the
+  schema collapse, so Mode 1's "execute those instructions verbatim" prose
+  remains technically correct as written.
+- [x] 8b. If Mode 1 prose mentions any retired terminology (`vaultPath`,
+  `rootPath`, `connector`, `entryFile`, `tools`, `invalid-path`), or the
+  legacy `.aide/brain.aide` path, sweep those references. Do NOT
+  restructure Mode 1's behavior — only its terminology where it overlaps
+  with Mode 2's contract. If Mode 1 is already clean of these terms, this
+  sub-step is a no-op confirmation.
+
+### 9. Final readback against spec outcomes
+
+Read: `.claude/commands/aide/brain.aide` (the spec — frontmatter
+outcomes blocks)
+
+- [x] 9a. Read the rewritten `.claude/commands/aide/brain.md` end-to-end.
+  For each entry in the spec's `outcomes.desired` block, confirm the
+  rewritten file satisfies it. There are eight desired outcomes covering:
+  Step 1 reading the right `BrainState` fields; the four-state branch
+  table; the canonical `.aide/config/brain.aide` path everywhere;
+  scaffolding as a single `aide_init` call; agent-invoked Bash sync with
+  launcher recovery; one-step post-sync user message with restart
+  rationale; `mcp-drift` handled identically to post-scaffold; Mode 1
+  preserved in spirit.
+- [x] 9b. For each entry in the spec's `outcomes.undesired` block,
+  grep-style scan the rewritten file for any phrasing that re-introduces
+  the regression. Specifically search for: `vaultPath`, `rootPath`,
+  `connector`, `entryFile`, `tools` (used as a brain field), the literal
+  state string `invalid-path`, the path `.aide/brain.aide` (without
+  `/config/`), the phrase "in your terminal" coupled to a sync
+  instruction, the phrase "Step 4 — Seed", a second `aide_init` call,
+  any proposal of `aide_sync` as an MCP tool, any hardcoded
+  `cmd /c npx @aidemd-mcp/server sync` or `node dist/index.js sync`
+  invocation outside an explicitly-marked example block, and any
+  re-call of `aide_info` after sync completes. Each hit is a regression
+  to fix before the rewrite is considered complete.
+- [x] 9c. Confirm the Mode 2 step sequence reads as Step 1 → Step 2 →
+  Step 3 → Step 4 → Step 5 with no gaps and no orphan numbering. Confirm
+  the `## Arguments` block at the bottom of the file remains correct
+  (`config`, `config <path>`, default).
+
+## Decisions
+
+**Why an explicit "## Project Structure" section for a one-file rewrite.**
+The plan-aide.md format is unconditional: every plan, regardless of size,
+includes the complete annotated tree of its scope directory. The benefit
+even for a single-file rewrite is that the implementor sees at a glance
+that no other files in the scope directory move or get added — the
+rewrite is surgically scoped. Skipping the section because "it's just
+one file" would be a malformed plan.
+
+**Why Mode 1 gets a dedicated step (Step 8) instead of being implicit.**
+The spec's desired #8 says Mode 1 must remain "untouched in spirit." The
+verb is preservation, not edit. A dedicated verification step makes it
+explicit that an implementor reading top-to-bottom should NOT touch
+Mode 1's behavior, and only sweep terminology where it overlaps with
+Mode 2's contract. Without a step naming Mode 1, an implementor doing a
+file-wide sweep might inadvertently restructure it.
+
+**Why the Bash-sync step gets its own number (Step 4) rather than being
+folded into Step 3.** Two reasons. First, Step 4 runs unconditionally on
+THREE state branches (`no-brain-aide` after scaffolding, `no-mcp-entry`,
+`mcp-drift`), but Step 3 (scaffolding) only runs on one of those
+(`no-brain-aide`). Folding sync into Step 3 would force the Step 1
+branch table to either restate the sync recipe twice (once for
+`no-mcp-entry`, once for `mcp-drift`) or to point those branches at "the
+sync part of Step 3," which is awkward. Separating the steps lets the
+branch table point cleanly at Step 4 from three different branches.
+Second, Step 4 has its own failure-handling gate (Bash sync exited
+non-zero) which is structurally distinct from Step 3's failure
+(`aide_init` threw); separating them keeps the failure-handling prose
+clean.
+
+**Why Step 5's post-sync message is a single user-facing message, not a
+two-step manual remediation.** This is the central architectural shift
+the spec encodes (desired #6, undesired #7). The agent runs sync; the
+user's remaining work is exactly the restart, because the restart is
+the one step the agent genuinely cannot do on the user's behalf
+(Claude Code reads `.mcp.json` only at session startup). Splitting the
+message into "run sync (which I just did), then restart" would leak the
+agent's prior step into the user's todo list and add gratuitous friction.
+
+**Why the prompt must NOT re-call `aide_info` after sync.** The brain
+MCP server in the running session was launched before the brain entry
+existed; no amount of disk mutation hot-reloads it. `aide_info` reports
+the boot reporter's view of disk state, which after sync IS `ok` — but
+that report does not reflect the live server's wiring, which is still
+unwired. A re-check that returns `ok` here is false confidence; an
+agent that "confirmed" before continuing would hit a brain server that
+is operationally broken for the rest of the session. The spec encodes
+this trap explicitly (desired #6, undesired #9); the prompt names it
+explicitly so a future maintainer reading the prompt understands why
+the STOP is load-bearing rather than ritualistic.
+
+**Why the launcher is recovered from `.mcp.json` rather than hardcoded
+in prose.** The prompt must work uniformly for prod installs (where the
+launcher is `cmd /c npx @aidemd-mcp/server`), local-dev installs (where
+it's `node D:/path/to/dist/index.js`), and any custom binary path a
+user might have. Hardcoding either invocation breaks the others.
+Recovering the launcher from `.mcp.json["mcpServers"]["aide"]` is
+guaranteed to work in every install shape because the recovered entry
+IS the entry Claude Code itself used to start the AIDE MCP server in
+the current session — its existence is provable from the fact that the
+prompt is running.
+
+**Why path validation prose is removed entirely (no `invalid-path`
+replacement).** The schema collapse retired `rootPath` AND its
+validation. Path validation is the launcher's job at MCP server
+startup, not the package's. The prompt has nothing useful to say about
+"the path doesn't resolve" because the package doesn't validate paths
+anymore — and re-introducing language about "fix the path in
+`brain.aide`" would teach the agent to mutate fields that no longer
+exist (the path lives inline in `mcpServerConfig.args`, and
+introspecting args is a hard regression per handoff invariant #11).
+The four-state model has no fifth state because the package has no
+fifth source of failure to surface.
+
+**Why the spec's body outcome about `mcp-drift` matching the
+post-scaffold path drives folding both branches into Steps 4 + 5
+rather than each having its own remediation block.** The disk state on
+`mcp-drift` is correct; the only thing wrong is `.mcp.json`. The
+remediation is exactly the same as the post-scaffold case: run sync,
+ask for restart. Maintaining two prose blocks for the same recipe
+would invite drift between them. Step 1's branch table names both
+states distinctly (so the user's understanding of WHY they got there
+is preserved), but their REMEDIATION routes through one shared pair
+of steps.

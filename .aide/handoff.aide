@@ -11,43 +11,62 @@ annotated.
 ## Cold-start protocol (do this first if you're picking up cold)
 
 **The brain layer is fully aligned at every level.** Intent, plans,
-code, and tests are all coherent across the cascading tree. The two
-multi-module refactors that were in flight (brain.aide schema collapse
-+ hub-artifact sourcing from brain.aide body sections) are both
-complete. `aide_discover` reports no `status: misaligned` anywhere
-under `src/service/`.
+code, tests, and the agent-readable surface (orchestrator prompt,
+brain config skill) are all coherent across the cascading tree.
+Three multi-module cycles are complete: (1) the brain.aide schema
+collapse, (2) hub-artifact sourcing from brain.aide body sections,
+and (3) the agent-invokes-sync wiring loop that closes the broken-
+state recovery flow without any terminal context-switching.
+`aide_discover` reports no `status: misaligned` anywhere under
+`src/service/`.
 
-**What just landed (this most recent cycle, on top of the schema
-collapse):** the brain layer no longer holds hub-artifact bytes as
-inline TypeScript constants. The bundled `brain.aide` body grew from
-one section (`## Prose`) to three (`## Prose`, `## Playbook hub`,
-`## Research hub`). The install service sources playbook-hub and
-research-hub artifact bytes from those sections via `parseBrainAide`,
-not from `*_TEMPLATE` constants. The vault-root `CLAUDE.md` scaffold
-step was retired entirely — the framework's brain contract is now
-exactly two required hubs: **coding-playbook hub** + **research hub**.
-A new `Research hub` artifact (at `<brain-root>/research/research.md`)
-ships for the first time. Storage-specific identifiers in
-`provisionBrain/index.ts` were swept (`vaultExists` →
-`brainRootExists`, `VAULT_DIRS` → `BRAIN_ROOT_DIRS`,
-`buildVaultStep` → `buildBrainRootStep`, etc.); the `obsidian` token
-remains only where it names content (the `obsidianBrainAideTemplate`
-helper folder, the `.obsidian` directory heuristic comment) or the
-legacy MCP key being migrated away from.
+**What just landed (this most recent cycle):** the brain config flow
+no longer punts the user to a terminal for `npx aidemd-mcp sync`. The
+canonical orchestrator command (`.claude/commands/aide.md`) and the
+brain config skill (`.claude/commands/aide/brain.md`) were both
+rewritten so the agent invokes sync via Bash on the user's behalf.
+All three broken-state branches (`no-brain-aide`, `no-mcp-entry`,
+`mcp-drift`) now route uniformly: orchestrator delegates to the brain
+config skill; the skill detects which state, scaffolds via
+`aide_init` when needed (no-brain-aide only), then runs sync via Bash
+by recovering the launcher from `.mcp.json["mcpServers"]["aide"]`,
+then asks the user to restart Claude Code as the single remaining
+manual step. The same cycle swept retired vocabulary that was leaking
+into agent prose: the `invalid-path` boot state branch (retired with
+`rootPath` in the schema collapse) is gone from the orchestrator,
+and `rootPath` references in the README and orchestrator are gone.
+Verified end-to-end via integration test in `D:/Code/Me/aide-fresh`
+against all three broken states — agent successfully ran sync via
+Bash on each, no terminal context-switching required.
+
+**The cycle before that** (commits `1fa1d3e`, `888df56`, `ed84d94`)
+was the brain.aide schema collapse: hub-artifact bytes flow from
+brain.aide body sections via `parseBrainAide` rather than inline
+TypeScript constants; the `## Prose`-only body grew to three sections
+(`## Prose`, `## Playbook hub`, `## Research hub`); the vault-root
+`CLAUDE.md` scaffold was retired entirely; the framework's brain
+contract is now exactly two required hubs (coding-playbook + research);
+storage-specific identifiers in `provisionBrain/index.ts` were swept
+(`vaultExists` → `brainRootExists`, `VAULT_DIRS` → `BRAIN_ROOT_DIRS`,
+etc.). The `obsidian` token remains only where it names content
+(the `obsidianBrainAideTemplate` helper folder, the `.obsidian`
+directory heuristic comment) or the legacy MCP key being migrated
+away from.
 
 **Tests: 824/824 passing. tsc: clean.**
 
 If you're picking up cold, the next pipeline phase is whatever the
 user wants — there's no in-flight build work waiting to land. The
-small open items below are independent followups, not blockers.
+followup items below are independent, not blockers.
 
 ---
 
 ## The architectural intent (what the specs now say)
 
 The brain layer is governed by these decisions, all of which live in
-`.aide/intent.aide` outcomes and cascade into the affected child
-specs. Read them in the root before drilling into any child.
+`.aide/intent.aide` outcomes (intents #1–#16) plus the agent-readable
+surface spec (`.claude/commands/aide/brain.aide` for intent #17).
+Read them in the root before drilling into any child.
 
 1. **`brain.aide` lives at `.aide/config/brain.aide`.** The
    `.aide/config/` directory is user-owned: scaffolded once at
@@ -145,10 +164,11 @@ specs. Read them in the root before drilling into any child.
     time — NEVER in any body section at agent time.
 
 14. **The MCP server never silently rewrites `.mcp.json`.** Mutation
-    of the host's MCP wiring is always an explicit user action through
-    `npx aidemd-mcp sync`. Drift between `brain.aide` and `.mcp.json`
-    is a hard halt — the boot reporter surfaces `mcp-drift` and the
-    pipeline refuses to advance until the user runs sync.
+    of the host's MCP wiring runs through one CLI binary surface
+    (`<launcher> sync`). Sync is the only mutation surface; the MCP
+    runtime never writes `.mcp.json` itself. The agent may invoke the
+    sync CLI on the user's behalf via Bash (see intent #17), but the
+    binary is unchanged — only the trigger differs.
 
 15. **Storage-agnostic identifiers in code.** No "vault", "obsidian"
     (other than the `obsidianBrainAideTemplate` helper folder name and
@@ -165,17 +185,45 @@ specs. Read them in the root before drilling into any child.
     `aide_upgrade` carve-out (yet — could be added later if it turns
     out users need it).
 
+17. **Agent-invokes-sync for the wiring loop, not user-invokes-sync.**
+    When the brain config flow needs to mutate `.mcp.json` (after a
+    cold scaffold, when `.mcp.json` has no brain entry, or when the
+    brain entry has drifted from `brain.aide`'s `mcpServerConfig`),
+    the agent invokes the sync CLI binary via Bash on the user's
+    behalf rather than punting the user to their terminal. The
+    launcher is recovered from `.mcp.json["mcpServers"]["aide"]` —
+    the same entry Claude Code used to start the AIDE MCP server in
+    the current session, so its existence is provable from the fact
+    that the prompt is running. Recovering the launcher this way
+    lets the recipe work uniformly for prod (`cmd /c npx
+    @aidemd-mcp/server sync`), local-dev (`node /path/to/dist/index.js
+    sync`), and any custom binary path. The CLI binary remains the
+    only `.mcp.json` mutation surface (intent #14 holds — sync stays
+    a CLI verb, never an MCP tool); only the trigger changed from
+    "user types it" to "agent runs it on user's behalf via the same
+    binary." The user's only remaining manual step is restarting
+    Claude Code so the new MCP wiring is picked up at session
+    startup. The brain MCP server in the running session was launched
+    without the brain entry and cannot be hot-reloaded; restart is
+    the one step the agent genuinely cannot do for the user. All
+    three broken brain states (`no-brain-aide`, `no-mcp-entry`,
+    `mcp-drift`) route through this single pattern; the orchestrator
+    and the brain config skill share the same delegation contract.
+
 ---
 
 ## The implementation gap (what the code does NOT yet do)
 
-Everything in the brain layer is aligned. The remaining gap items are
+Everything in the brain layer's runtime, intent tree, agent skill
+prompts, and orchestrator is aligned. The remaining gap items are
 small followups, not blockers:
 
 | Item | Current state | Needed |
 |---|---|---|
 | `.aide/docs/brain-aide.md` | Documents the 2-field frontmatter and the single `## Prose` body section. | Update the body section to document the 3-section body schema (`## Prose`, `## Playbook hub`, `## Research hub`), the closed-vocabulary parser rule, and the per-consumer ownership pattern. |
 | `src/cli/sync/index.ts` IIFE | Top-level auto-exec calls `process.exit(1)` on error during module import, which vitest surfaces as an "Error: 1 error" line during test runs. All tests still pass; the noise is purely test-harness teardown. | Extract the body of the IIFE into an exported function and gate the auto-exec on an `import.meta.main`-style check (or equivalent) so importing the module for testing doesn't trigger business logic. Small structural refactor; not blocking. |
+| `src/index.ts` MCP tool descriptions | The advertised schemas for `aide_info`, `aide_brain`, and `aide_init` describe the pre-collapse API. `aide_info`'s description names a three-state union (`ok` / `no-mcp-entry` / `invalid-path`) and a `vaultPath` field that don't exist on `BrainState`. `aide_brain`'s description names a `backend` field in the response that doesn't exist on `BrainToolResult`. `aide_init`'s description uses "vault path" terminology and a `brainPath` parameter description that conflict with the post-collapse `brain.aide`-as-source-of-truth model. The actual return types in `src/types/index.ts` are correct; only the advertised descriptions lie. | Sweep the descriptions to match the post-collapse types: `aide_info.brain.status` is one of four states (`ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`), no `vaultPath`; `aide_brain` returns `{ status, instructions }` (no `backend`); `aide_init` describes brain wiring in terms of `brain.aide` as the source of truth. Higher-impact than it looks because the orchestrator and downstream agents read these descriptions at boot and pull terminology into their improvisations (the prior cycle's integration test caught the agent emitting "edit `rootPath`" advice that traced back to here). |
+| `README.md` line ~225 (`aide_brain` reference section) | Still names `invalid-path` as one of the brain status values the tool can return. | Sweep to the four-state model. Same class as the `src/index.ts` cleanup; could be rolled into the same followup. |
 
 ---
 
@@ -205,7 +253,8 @@ them, even if a quick path through a ticket looks like it could:
   sections return verbatim. Substitution lives only in
   `mcpServerConfig.args` at install/sync time.
 - **No silent `.mcp.json` mutation.** The MCP server reads `.mcp.json`;
-  it never rewrites it. Sync is the only mutation surface.
+  it never rewrites it. Sync (whether user-invoked at terminal or
+  agent-invoked via Bash) is the only mutation surface.
 - **No overwrite of files under `.aide/config/` on subsequent
   `aide_init` / `aide_upgrade` runs.** Scaffolded once if absent;
   user-owned forever after.
@@ -235,6 +284,35 @@ them, even if a quick path through a ticket looks like it could:
   must not read `playbookHub` or `researchHub`. `provisionBrain` must
   not read `prose`. Cross-section reads violate the per-consumer
   ownership contract.
+- **No hardcoded sync invocation in any skill or command prompt.**
+  When the brain config flow runs sync via Bash on the user's behalf,
+  the launcher MUST be recovered from
+  `.mcp.json["mcpServers"]["aide"]` and never named inline. Literal
+  invocations like `npx aidemd-mcp sync`, `cmd /c npx
+  @aidemd-mcp/server sync`, or `node dist/index.js sync` outside
+  explicitly-marked example blocks are a regression — they break the
+  recipe for any install shape (local-dev, custom binary path) other
+  than the prod one being hardcoded.
+- **No terminal-punt prose on the success path of any broken brain
+  state.** `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` all route
+  through the brain config skill, which applies the fix on the user's
+  behalf via Bash. The orchestrator and the skill must NOT instruct
+  the user to "go run `npx aidemd-mcp sync` in your terminal" or
+  similar as a manual step on the success path. The user's only
+  manual step is restarting Claude Code so the new MCP wiring is
+  picked up. The Step 4 failure-handler fallback in the brain config
+  skill (when `Bash sync` exits non-zero) is the ONE place terminal-
+  punt prose is permitted, because the agent has already attempted
+  and failed in-session.
+- **No re-call of `aide_info` (or any boot state read) after sync
+  completes in the same session.** The brain MCP server in the
+  running session was launched without the brain entry; sync mutates
+  disk state but cannot hot-reload the live server. `aide_info` would
+  report disk state (now `ok`) which would not reflect the live
+  server's wiring (still unwired) — false confidence that would lead
+  the agent to continue with an operationally broken brain. The
+  remediation always halts and routes through restart + new `/aide`
+  invocation; never tries to "verify" inside the same session.
 
 ---
 
@@ -244,8 +322,9 @@ After the most recent cycle, the working tree is clean post-commit.
 The package publishes via `node scripts/publish.mjs <patch|minor|major>`
 which bumps versions, syncs `server.json`, tags, and lets CI handle
 the npm + MCP Registry publish. Safe to publish once the methodology
-doc update lands; without it, a publish would ship code and a doc that
-disagree on the body schema.
+doc + tool description followups land; without them, a publish would
+ship code and docs/descriptions that disagree on the post-collapse
+contract.
 
 ---
 
@@ -254,14 +333,18 @@ disagree on the body schema.
 1. Run `/aide` — orchestrator boots, runs `aide_info`, reads docs +
    intent tree.
 2. Read this handoff to confirm the state above is still current.
-3. If picking a followup from the gap table above: that work is small
-   and self-contained. Either go straight to `/aide:spec` (for the
-   methodology doc) or `/aide:plan` (for the cli/sync IIFE refactor).
+3. If picking a followup from the gap table above: those items are
+   small and self-contained. Either go straight to `/aide:spec` (for
+   the methodology doc, the tool description sweep, or the README
+   sweep) or `/aide:plan` (for the cli/sync IIFE refactor).
 4. If starting a new feature: standard `/aide` flow — interview,
    spec, research-or-skip, synthesize, plan, build, qa.
 
 If the user asks "what's the state?" — answer: brain layer fully
-aligned end-to-end (intent + plans + code + tests), tests green,
-two small followups open (methodology doc one revision behind on the
-body schema; cli/sync top-level IIFE causes test-harness noise),
-otherwise no in-flight work.
+aligned end-to-end (intent + plans + code + tests + skill prompts +
+orchestrator), tests green, broken-state recovery flow now agent-
+driven (no terminal context-switching), four small followups open
+(methodology doc body schema, cli/sync IIFE noise, src/index.ts MCP
+tool descriptions advertise pre-collapse API, README aide_brain
+reference section still names invalid-path), otherwise no in-flight
+work.

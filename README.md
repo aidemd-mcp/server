@@ -51,15 +51,15 @@ After running, open Claude Code and run `/aide` — the orchestrator will prompt
 
 ### Syncing brain.aide to .mcp.json
 
-Run this after editing `.aide/brain.aide` — for example, when you change `rootPath` to point at a different vault or update `mcpServerConfig.args`:
+Run this after editing `.aide/config/brain.aide` — for example, when you update the vault path argument in `mcpServerConfig.args` or rename the brain in the `name` field:
 
 ```bash
 npx aidemd-mcp sync
 ```
 
-`sync` reads `.aide/brain.aide`, derives the brain MCP entry by interpolating `${rootPath}` into `mcpServerConfig.args`, and writes the result into `.mcp.json` under the fixed `brain` key. Every other key in `mcpServers` (including your `aide` entry and any personal MCP integrations) is left byte-identical. If a legacy `obsidian` key is present it is removed in the same write. The command is idempotent — running it twice produces the same `.mcp.json` bytes, and the second invocation prints `already in sync` without touching the file. Exit code is `0` on success (including the no-change case), `1` on a missing or malformed `brain.aide` or invalid `.mcp.json`, and `2` on `--help`.
+`sync` reads `.aide/config/brain.aide`, copies `mcpServerConfig` verbatim into `.mcp.json` under the fixed `brain` key, and writes the `name` field as the server label. Every other key in `mcpServers` (including your `aide` entry and any personal MCP integrations) is left byte-identical. If a legacy `obsidian` key is present it is removed in the same write. The command is idempotent — running it twice produces the same `.mcp.json` bytes, and the second invocation prints `already in sync` without touching the file. Exit code is `0` on success (including the no-change case), `1` on a missing or malformed `brain.aide` or invalid `.mcp.json`, and `2` on `--help`.
 
-Example output after changing `rootPath`:
+Example output after updating the vault path in `mcpServerConfig.args`:
 
 ```
 Read .aide/brain.aide
