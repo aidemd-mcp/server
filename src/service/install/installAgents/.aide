@@ -2,41 +2,54 @@
 scope: src/service/install/installAgents
 status: aligned
 description: >
-  Installs the eight canonical AIDE pipeline agent files and the generic
+  Installs the canonical AIDE pipeline agent files (and any non-pipeline
+  read-only investigators that ship alongside them) plus the generic
   study-playbook skill into the host project's .claude/agents/ directory.
 intent: >
-  Install the canonical AIDE pipeline agent files into the host project's
-  `.claude/agents/` directory. Each agent maps to one pipeline phase —
-  spec-writer, domain-expert, strategist, architect, implementor, QA,
-  aligner, auditor — and carries its own system prompt, tool allowlist,
-  model assignment, and MCP server declarations (including Obsidian MCP
-  for brain access). Agents are the runtime identity of each pipeline
-  phase: the slash commands orchestrate, the agents execute. Existing
-  agent files in the host project are never overwritten — customizations
-  survive the install action.
+  Install the canonical AIDE agent files into the host project's
+  `.claude/agents/` directory. Each pipeline agent maps to one pipeline
+  phase, and any non-pipeline agents AIDE ships (read-only
+  investigators) install alongside them. Each agent carries its own
+  system prompt, tool allowlist, model assignment, and MCP server
+  declarations (including the brain MCP server for agents that need
+  brain access — declared by name reference as `mcpServers: [brain]`,
+  matching the fixed `brain` MCP key the host project wires under in
+  `.mcp.json`). Pipeline agents are the runtime identity of each
+  pipeline phase: the slash commands orchestrate, the agents execute.
+  Existing agent files in the host project are never overwritten —
+  customizations survive the install action.
 outcomes:
   desired:
-    - "Eight agent files are installed to `.claude/agents/aide/`:
-      aide-spec-writer, aide-domain-expert, aide-strategist,
-      aide-architect, aide-implementor, aide-qa, aide-aligner,
-      aide-auditor. Each has YAML frontmatter (name, description, tools,
+    - "Every canonical agent file enumerated by the install service's
+      content registry is installed to `.claude/agents/aide/`. The
+      registry is the single source of truth for which agents ship —
+      installAgents iterates it and writes one file per registered
+      agent. Each has YAML frontmatter (name, description, tools,
       model, mcpServers, color) and a Markdown body that serves as the
-      agent's system prompt."
+      agent's system prompt. Adding a new canonical agent is a single
+      registry entry; this helper picks it up automatically."
     - Agent content is read through the initContent chokepoint — the same
       `readCanonicalDoc()` path used by methodology docs and commands. No
       agent content is hardcoded as template literals in this module.
-    - Obsidian MCP is declared in `mcpServers` for agents that need brain
-      access — domain-expert (write), strategist (read), architect (read),
-      auditor (read). The declaration is portable (server name reference,
-      not inline config) so the host project provides its own Obsidian MCP
-      wiring.
+    - The brain MCP server is declared in `mcpServers` (as the literal
+      name `brain`) for every agent whose canonical definition needs
+      brain access — the per-agent access pattern is encoded in the
+      canonical file, not enumerated here. The declaration is portable
+      (server name reference under the fixed `brain` key, not inline
+      config) so the host project provides its own brain MCP wiring in
+      `.mcp.json` regardless of which backend driver sits under it.
     - A generic `study-playbook` skill template is installed to
       `.claude/skills/study-playbook/SKILL.md` in the host project. It
       teaches the hub-navigation pattern against the host's own
       coding-playbook vault path. Existing skills are not overwritten.
-    - Model assignments match task demands — opus for deep reasoning
-      (spec-writer, strategist, architect, aligner, auditor), sonnet for
-      throughput (domain-expert, implementor, QA).
+    - Model assignments match task demands — opus for roles that
+      require deep reasoning under ambiguity (spec-writing, synthesis,
+      structural planning, alignment, refactor evaluation), sonnet for
+      roles that require throughput and pattern-matching (volume
+      research, plan execution, systematic checking, read-only
+      investigation). The per-agent assignment lives in each canonical
+      agent file; this helper installs whatever the canonical file
+      declares.
     - The AIDE methodology docs specify the canonical agent list so that
       any reader of the docs knows which agents exist and which phases
       invoke them.
@@ -52,8 +65,9 @@ outcomes:
       survive the install action; upgrades are aide_upgrade's job.
     - Agent prompts that reference personal vault paths, specific user
       brain locations, or non-portable MCP configurations. Agents are
-      opinionated about Obsidian MCP but agnostic about where the vault
-      lives.
+      opinionated about declaring the brain MCP server (under the fixed
+      `brain` key) but agnostic about which backend the host wired and
+      where the vault lives.
     - Agent prompts that duplicate orchestration logic from the phase
       commands. The command says what to do; the agent knows how to do it.
     - A study-playbook skill that overwrites an existing user-defined one.
@@ -64,21 +78,33 @@ outcomes:
     - Agent content hardcoded as string literals in this module instead
       of read through initContent. That creates a second source of truth
       that drifts from the canonical agent files.
-    - An install that wires Obsidian MCP inline in every agent's
-      mcpServers field with full connection config. The host project
-      should wire Obsidian MCP once in `.mcp.json`; agents reference
-      it by name.
+    - An install that wires the brain MCP server inline in every
+      agent's mcpServers field with full connection config. The host
+      project wires the brain MCP server once under the fixed `brain`
+      key in `.mcp.json`; agents reference it by name.
+    - "Agent frontmatter that declares `mcpServers: [obsidian]` (or any
+      backend-specific name) instead of `mcpServers: [brain]`. The MCP
+      key is fixed at `brain` per the project-root settlement; backend
+      identity (obsidian, notion, etc.) lives in the command/args shape
+      under the `brain` key in `.mcp.json`, never in the agent's server
+      reference. Naming a backend in the agent's mcpServers list
+      couples the agent to one backend and breaks the abstraction the
+      brain layer exists to provide."
 ---
 
 ## Context
 
-The AIDE pipeline currently defines eight phases (spec, research, synthesize,
-plan, build, QA/fix, align, refactor), each described by a slash command that
-tells the orchestrating agent what to do. But the commands have no agents to
-delegate to — they say "spin up a Planner agent" without shipping one. Users
-must define their own agents or rely on the orchestrator to inline the work,
-which defeats the fresh-context-per-phase architecture that makes the
-pipeline reliable.
+The AIDE pipeline defines a sequence of phases (spec, research,
+synthesize, plan, build, QA/fix, align, refactor), each described by a
+slash command that tells the orchestrating agent what to do. But the
+commands have no agents to delegate to — they say "spin up a Planner
+agent" without shipping one. Users must define their own agents or
+rely on the orchestrator to inline the work, which defeats the
+fresh-context-per-phase architecture that makes the pipeline reliable.
+AIDE also ships read-only investigator agents that are not bound to a
+phase but support the same pipeline (e.g., codebase exploration,
+intent-tree navigation); these install alongside the pipeline agents
+because they share the canonical-agent delivery shape.
 
 Claude Code agents are `.md` files in `.claude/agents/` with YAML
 frontmatter (name, description, tools, model, mcpServers, color, etc.)
@@ -87,32 +113,42 @@ nest — they return results to the caller. Up to 10 can run simultaneously.
 The orchestrator delegates by naming the agent in the prompt or via
 `@agent-<name>` mention.
 
-AIDE is opinionated about the knowledge layer: Obsidian MCP is the brain.
-The domain expert writes to it, the strategist reads from it, the architect
-and auditor read the coding playbook from it. Host projects bring their own
+AIDE is opinionated about the knowledge layer: the pipeline depends on
+a brain that persists research and retros, and certain agents declare
+brain access in their frontmatter. The brain layer is backend-agnostic
+— the host project wires whichever backend (Obsidian today, others
+tomorrow) under the fixed `brain` MCP key in `.mcp.json`, and agents
+reference the brain by that fixed key. Host projects bring their own
 vault — the agents teach the workflow pattern, not our content.
 
 ## Strategy
 
-**One agent per pipeline role, not per phase.** Eight agents map to the eight
-distinct roles the pipeline needs. The implementor serves both build and
-fix phases — same role, same prompt, different inputs. The domain expert and
-strategist are separate agents because their brain-access patterns differ
-(write-heavy vs read-heavy) and their reasoning demands differ (volume
-research vs deep synthesis).
+**One agent per pipeline role, not per phase.** Each canonical pipeline
+agent maps to a distinct role; the implementor serves both build and
+fix phases — same role, same prompt, different inputs. The domain expert
+and strategist are separate agents because their brain-access patterns
+differ (write-heavy vs read-heavy) and their reasoning demands differ
+(volume research vs deep synthesis). Read-only investigators (e.g., the
+explorer) are not bound to a single phase — they support the pipeline
+across phases without writing files.
 
 **Agents declare MCP servers by name reference, not inline config.** An
-agent that needs Obsidian declares `mcpServers: [obsidian]`. The host
-project's `.mcp.json` provides the actual Obsidian server config (vault
-path, connection details). This keeps agents portable across vaults while
-being opinionated that Obsidian is the brain layer.
+agent that needs brain access declares `mcpServers: [brain]` — the
+literal `brain` is the fixed MCP key the host project wires under in
+`.mcp.json`, regardless of which backend (Obsidian today, others
+tomorrow) sits in the entry's command/args. This keeps agents portable
+across vaults *and* across backends: the agent never names a specific
+backend; the host project picks the backend by what they wire under the
+`brain` key.
 
 **Model assignments optimize for task shape.** Opus for roles that require
 deep reasoning under ambiguity (spec-writer distilling intent, strategist
 synthesizing research, architect making structural decisions, aligner
 resolving drift, auditor evaluating refactor targets). Sonnet for roles
 that require throughput and pattern-matching (domain-expert doing volume
-web research, implementor executing plans, QA doing systematic checking).
+web research, implementor executing plans, QA doing systematic checking,
+read-only investigators doing trace-and-report work). The per-agent
+assignment lives in each canonical agent file's frontmatter.
 
 **The study-playbook skill ships as a generic template.** It teaches the
 hub-navigation pattern (read index → identify sections → drill into child
@@ -135,7 +171,8 @@ pattern. The command owns the what; the agent owns the how.
 ## Good examples
 
 A fresh install run — through either the `aide_init` MCP tool or
-the npx CLI — reports agents alongside everything else:
+the npx CLI — reports each canonical agent file from the registry
+alongside everything else:
 
 > ✓ aide-spec-writer: Created
 > ✓ aide-domain-expert: Created
@@ -145,6 +182,7 @@ the npx CLI — reports agents alongside everything else:
 > ✓ aide-qa: Created
 > ✓ aide-aligner: Created
 > ✓ aide-auditor: Created
+> ✓ aide-explorer: Created
 > ✓ study-playbook skill: Created
 
 A re-run on the same project:
@@ -164,9 +202,11 @@ playbook via study-playbook, scanning the codebase, writing the plan.
 
 ## Bad examples
 
-An agent file that hardcodes `d:/Code/Me/my-brain` as the vault path.
-The host project has a different vault. The agent fails on first brain
-access.
+An agent file that hardcodes `d:/Code/Me/my-brain` as the vault path,
+or names a specific backend (e.g., `mcpServers: [obsidian]`) instead
+of the fixed `brain` key. Both fail the same portability rule — the
+host project has a different vault and may wire a different backend
+under the `brain` key. The agent fails on first brain access.
 
 An agent prompt that includes the full study-playbook navigation
 instructions inline instead of referencing the skill. When the skill

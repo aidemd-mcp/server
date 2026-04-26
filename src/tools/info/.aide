@@ -1,7 +1,8 @@
 ---
 scope: src/tools/info
+status: aligned
 description: >
-  Lightweight boot-time tool that reports both AIDE artifact staleness (local versions vs. shipped manifest) and brain precondition state (whether an obsidian MCP entry is configured and its vault directory exists) so the orchestrator can branch on each.
+  Lightweight boot-time tool that reports both AIDE artifact staleness (local versions vs. shipped manifest) and brain precondition state (whether a `brain` MCP entry is configured and its vault directory exists) so the orchestrator can branch on each.
 intent: >
   aide_info is the passive boot-time precondition reporter the orchestrator
   calls once during its boot sequence. It surfaces two independent concerns
@@ -11,12 +12,15 @@ intent: >
   the npm package, and returns which artifacts are outdated plus the
   server's npm version. Second, the brain-precondition concern: it reads
   the host's framework-specific MCP config (the same config path used by
-  wireMcp during init), looks for an obsidian-style server entry, and if
-  one exists resolves its configured vault path and stats the directory.
-  The brain state is returned as a tagged union — status "ok" when an
-  entry exists and the vault directory resolves, "no-mcp-entry" when no
-  obsidian entry is present (or the MCP config file itself is missing or
-  malformed), and "invalid-path" when an entry exists but the configured
+  wireMcp during init), looks up the fixed `brain` server key, and if
+  the entry exists dispatches its command/args shape through the
+  brainBackends registry to resolve the backend driver and the configured
+  vault path, then stats the directory. The brain state is returned as a
+  tagged union — status "ok" when a `brain` entry exists, the registry
+  recognizes its shape, and the vault directory resolves; "no-mcp-entry"
+  when no `brain` entry is present (or the MCP config file itself is
+  missing or malformed, or the registry does not recognize the entry's
+  shape); and "invalid-path" when the entry exists but the configured
   vault directory does not exist on disk — alongside the configured
   vaultPath (or null) so the orchestrator can compose a precise message.
   The tool stays passive: it reports state, it never blocks, warns, or
@@ -33,21 +37,21 @@ outcomes:
     - The response is small enough to add negligible cost to every orchestrator boot sequence. Only the list of outdated artifact keys, the server version, the brain-state object, and nothing else.
     - "The tool returns structured JSON, not a pre-formatted message. The orchestrator composes its own user-facing notification from the data."
     - "When the local .aide/versions.json is missing or unreadable, the tool returns `outdated: []` silently — it does not error or warn. Old installs that predate version tracking are handled gracefully."
-    - "Reads the host's framework-specific MCP config file and reports whether an obsidian-style MCP server entry is configured, returning the result as part of a structured brain-state object."
-    - "When an obsidian MCP entry is configured, extracts the vault directory path from the entry and stats it, reporting whether the directory exists on disk alongside the configured path."
+    - "Reads the host's framework-specific MCP config file and reports whether a `brain` MCP server entry is configured (and recognized by the brainBackends registry), returning the result as part of a structured brain-state object."
+    - "When a `brain` MCP entry is configured and the registry recognizes its command/args shape, extracts the vault directory path from the resolved driver and stats it, reporting whether the directory exists on disk alongside the configured path."
     - "Returns brain state as a tagged union the orchestrator can branch on — shape `{ status: 'ok' | 'no-mcp-entry' | 'invalid-path', vaultPath: string | null }` — not as a pre-formatted message."
-    - "Missing MCP config file, malformed MCP config, and a missing obsidian entry all resolve to `status: 'no-mcp-entry'` with `vaultPath: null` — structured states, never thrown errors."
-    - "An obsidian entry whose configured vault path does not resolve to an existing directory resolves to `status: 'invalid-path'` with `vaultPath` set to the configured path so the orchestrator can tell the user exactly which path failed."
+    - "Missing MCP config file, malformed MCP config, a missing `brain` entry, and a `brain` entry the registry does not recognize all resolve to `status: 'no-mcp-entry'` with `vaultPath: null` — structured states, never thrown errors."
+    - "A `brain` entry whose registry-resolved vault path does not resolve to an existing directory resolves to `status: 'invalid-path'` with `vaultPath` set to the configured path so the orchestrator can tell the user exactly which path failed."
     - "Brain state and staleness are returned as two independent top-level fields in the response. The orchestrator can read and branch on each without them interfering."
   undesired:
     - A tool that requires the agent to read the local versions file and pass it in. The tool has the project root and reads the file itself.
     - A tool that triggers or recommends an upgrade. This is a passive notification surface; the orchestrator decides what to say.
     - A response that includes the full versions manifest. Only the outdated keys, server version, and brain-state object are needed.
-    - A tool that throws or errors when the brain is simply not configured. Missing MCP config, missing obsidian entry, and missing vault directory are all normal pre-init states and must resolve to structured brain-state values, not exceptions.
+    - A tool that throws or errors when the brain is simply not configured. Missing MCP config, missing `brain` entry, an unrecognized `brain` entry shape, and a missing vault directory are all normal pre-init states and must resolve to structured brain-state values, not exceptions.
     - A tool that returns a pre-formatted "brain missing" message instead of structured state. Message composition belongs to the orchestrator, not this tool.
     - "A tool that attempts to provision the brain, scaffold a vault, or write to the host's MCP config file. This tool is strictly read-only — detection and reporting only, no mutation."
     - "A tool that surfaces brain state as part of the `outdated` array. Staleness is a soft notification and brain state is a hard precondition gate — they are distinct concerns and must be returned as distinct fields."
-    - "A tool that conflates 'no obsidian entry configured' with 'obsidian entry configured but vault path missing'. The orchestrator needs to distinguish these to pick the right remediation — run npx aidemd-mcp init to set one up vs. fix the path in the existing entry."
+    - "A tool that conflates 'no `brain` entry configured' with '`brain` entry configured but vault path missing'. The orchestrator needs to distinguish these to pick the right remediation — run npx aidemd-mcp init to set one up vs. fix the path in the existing entry."
 ---
 
 ## Context
@@ -59,8 +63,9 @@ and they are structurally different. Staleness — whether the host's
 installed AIDE artifacts (docs, commands, agents, skills) match the
 canonical manifest shipped with this npm package — is a soft signal: if
 something drifted, the user should know, but the pipeline can still run.
-Brain availability — whether the host has an obsidian-style MCP server
-configured and whether its vault directory exists on disk — is a hard
+Brain availability — whether the host has a `brain` MCP server entry
+configured (with a command/args shape the brainBackends registry
+recognizes) and whether its vault directory exists on disk — is a hard
 gate: the research and QA phases persist domain findings and retros into
 that vault, and without a resolvable vault those phases silently lose
 their outputs. The orchestrator must branch differently on each: notify
@@ -77,8 +82,8 @@ separately on each, because the data is returned as two independent
 fields, not fused into a single verdict.
 
 Passive is the load-bearing word. Missing MCP config, malformed MCP
-config, missing obsidian entry, and missing vault directory are all
-normal pre-init states — the tool gets called on cold projects before
+config, missing `brain` entry, an unrecognized `brain` entry shape,
+and a missing vault directory are all normal pre-init states — the tool gets called on cold projects before
 `npx aidemd-mcp init` has ever run. A detector that throws on these states would
 turn every first-ever orchestrator boot into an error. A detector that
 auto-provisions them would violate the init surface's contract that
@@ -112,43 +117,47 @@ has nothing to compare — and surfacing a phantom warning would train
 the user to ignore the notification.
 
 **Brain detection reuses `detectFramework` from
-`src/tools/init/detectFramework/` to resolve the framework-specific MCP
-config path.** The init tree already encodes the per-framework mapping
-(`.mcp.json` for Claude Code, `.cursor/mcp.json` for Cursor, etc.) in
-`FRAMEWORK_CONFIGS`. Duplicating that mapping inside the info tool
-creates a second source of truth that will silently drift when a new
-framework is added. Calling `detectFramework` once at the top of the
-info flow gives the tool the same `mcpConfigPath` that `wireMcp` and
-`provisionBrain` write into — so detection and provisioning agree by
-construction.
+`src/service/install/detectFramework/` to resolve the framework-specific
+MCP config path.** The install service already encodes the
+per-framework mapping (`.mcp.json` for Claude Code, `.cursor/mcp.json`
+for Cursor, etc.) in `FRAMEWORK_CONFIGS`. Duplicating that mapping
+inside the info tool creates a second source of truth that will
+silently drift when a new framework is added. Calling `detectFramework`
+once at the top of the info flow gives the tool the same
+`mcpConfigPath` that `wireMcp` and `provisionBrain` write into — so
+detection and provisioning agree by construction.
 
 **Brain state is returned as a tagged union — `{ status: 'ok' |
 'no-mcp-entry' | 'invalid-path', vaultPath: string | null }` — not a
 boolean.** A boolean collapses two cases the orchestrator must handle
-differently: "no obsidian entry configured at all" remediates with
-`npx aidemd-mcp init` (which runs the vault-path interview and adds a fresh
-entry), while "obsidian entry configured but vault path does not
-resolve" remediates by fixing the path in the existing entry (the user
-moved or deleted the folder). The tagged union preserves the
+differently: "no `brain` entry configured at all" (or `brain` entry
+present but command/args shape unrecognized by the registry)
+remediates with `npx aidemd-mcp init` (which runs the vault-path
+interview and adds a fresh entry), while "`brain` entry configured
+but vault path does not resolve" remediates by fixing the path in the
+existing entry (the user moved or deleted the folder). The tagged union preserves the
 remediation signal the orchestrator needs. This traces to the undesired
 outcome that forbids conflating these two cases.
 
-**Missing MCP config, malformed MCP config, and missing obsidian entry
-all collapse to `status: 'no-mcp-entry'` with `vaultPath: null`.** All
-three conditions share the same remediation path: run `npx aidemd-mcp init` to
-configure the brain end-to-end. The orchestrator does not need separate
-branches for "the JSON was bad" vs "the key was missing" because the
-user's next action is identical. Collapsing them to one tagged state
-keeps the orchestrator's boot-branch logic narrow and guarantees the
-tool never throws — malformed JSON is caught and mapped, not rethrown.
-This traces to the desired outcome that these three cases all resolve
-to `no-mcp-entry` as structured states, never thrown errors.
+**Missing MCP config, malformed MCP config, missing `brain` entry,
+and an unrecognized `brain` entry shape all collapse to `status:
+'no-mcp-entry'` with `vaultPath: null`.** All these conditions share
+the same remediation path: run `npx aidemd-mcp init` to configure the
+brain end-to-end. The orchestrator does not need separate branches for
+"the JSON was bad" vs "the key was missing" vs "the registry did not
+recognize the entry" because the user's next action is identical.
+Collapsing them to one tagged state keeps the orchestrator's
+boot-branch logic narrow and guarantees the tool never throws —
+malformed JSON is caught and mapped, not rethrown. This traces to the
+desired outcome that these cases all resolve to `no-mcp-entry` as
+structured states, never thrown errors.
 
 **`status: 'invalid-path'` stays distinct from `no-mcp-entry` precisely
-because the remediation diverges.** When an obsidian entry exists but
-the configured vault directory does not resolve on disk, the user does
-not need a fresh `npx aidemd-mcp init` interview — they need to either restore
-the folder or point the existing entry at its new location.
+because the remediation diverges.** When a `brain` entry exists, the
+registry recognizes its shape, but the configured vault directory does
+not resolve on disk, the user does not need a fresh
+`npx aidemd-mcp init` interview — they need to either restore the
+folder or point the existing entry at its new location.
 Distinguishing this case lets the orchestrator compose a message that
 names the exact configured path that failed, which a generic
 "brain missing" message cannot do. The tagged union's `vaultPath` field
@@ -164,31 +173,34 @@ branch is already the right behavior for the init flow — reusing it
 here means the info tool inherits the same "cold project" semantics
 without a second code path.
 
-**Brain-entry detection mirrors the dual-key existence check from
-`wireMcp`.** `wireMcp` uses `"aide" in servers || "aidemd-mcp" in
-servers` for the aide entry; the obsidian equivalent here is the
-`"obsidian"` key check used in `provisionBrain`. Matching those exact
-key checks guarantees the info tool sees an entry as present if and
-only if `provisionBrain` would skip creating one — so the orchestrator
-cannot be told "brain is configured" for an entry that `aide_init`
-would turn around and add a duplicate of. This traces to the desired
-outcome that an entry is considered configured when and only when
-`provisionBrain`'s dual-key check would consider it present.
+**Brain-entry detection runs through the fixed `brain` MCP key and
+the brainBackends registry.** The info tool reads
+`mcpServers["brain"]` from the host's MCP config — the brain MCP key
+is fixed at `brain` regardless of which backend's command/args sit
+under it (per the project-root handoff settlement). The entry value
+is handed to the brainBackends registry, whose matchers inspect the
+command/args shape and either return a resolved driver (with the
+extracted vault path) or `null` if no matcher fires. The info tool
+sees an entry as configured when and only when the registry resolves
+a driver — so the orchestrator cannot be told "brain is configured"
+for an entry the registry does not understand. A `brain` entry that
+exists but has a shape no driver matches collapses to `no-mcp-entry`
+along with the cases where the entry itself is absent.
 
-**Vault path extraction reads from the obsidian entry's `args` array.**
-The obsidian entry constructed by `provisionBrain` stores the vault
-path as the final positional argument (after the `@bitbonsai/mcpvault`
-package name, plus the `cmd /c` and `npx` prefix on Windows). The
-detector pulls the last element of `args` as the candidate path. If
-the entry is missing, malformed, the path element is absent, or its
-last element is not a string, the tool returns `no-mcp-entry` — the
-entry shape is broken and the only remediation is to re-run
-`npx aidemd-mcp init`. One case is treated differently: if the last
-element is an empty string, the tool returns `invalid-path` with
+**Vault path extraction is delegated to the registry-resolved
+driver.** The driver's matcher predicate inspects command/args shape
+and returns the vault path the entry encodes (for the obsidian
+driver, that path is the final positional argument after the
+`@bitbonsai/mcpvault` package name plus the `cmd /c` and `npx` prefix
+on Windows). The detector reads the path off whatever the matcher
+returned. If the entry is missing, malformed, or the registry does
+not recognize the shape, the tool returns `no-mcp-entry` — the
+remediation is to re-run `npx aidemd-mcp init`. One case is treated differently: if the registry-resolved vault path
+is an empty string, the tool returns `invalid-path` with
 `vaultPath: ""`. This is the deliberate cold-install state written by
-the CLI — the entry shell is correctly shaped but the vault path has
-not been filled in yet, and the orchestrator's inline-recovery flow
-(`AskUserQuestion`) is what prompts the user to supply it. Routing the
+the CLI — the `brain` entry shell is correctly shaped but the vault
+path has not been filled in yet, and the orchestrator's inline-recovery
+flow (`AskUserQuestion`) is what prompts the user to supply it. Routing the
 empty-string case to `no-mcp-entry` would send the user back to
 `npx aidemd-mcp init` (which they just ran), creating a loop.
 `invalid-path` with an empty `vaultPath` is the signal the orchestrator
@@ -196,7 +208,7 @@ keys on to fire the inline-recovery branch instead.
 
 **Vault-directory existence is checked with a single `stat`/`access`
 call.** The tool is passive: it does not walk the vault, inspect its
-contents, verify the `.obsidian/` marker, or validate the AIDE
+contents, verify any backend-specific marker, or validate the AIDE
 directory scaffolding. A single "does this directory exist on disk"
 check is the minimum signal that distinguishes `ok` from
 `invalid-path`, and any richer check creates more cases the tool has
@@ -259,7 +271,8 @@ unconfigured:
 
 A project that was fully initialized months ago, but the user moved
 their vault directory to a new disk and never updated the MCP config
-— obsidian entry still present, configured path no longer resolves:
+— `brain` entry still present and recognized by the registry,
+configured path no longer resolves:
 
 ```json
 {
@@ -342,8 +355,8 @@ branch. Two fields at the top level avoids this.
 A tool that repairs what it finds:
 
 ```
-aide_info called → detected missing obsidian entry →
-merged obsidian entry into .mcp.json → returned brain: { status: 'ok' }
+aide_info called → detected missing brain entry →
+merged brain entry into .mcp.json → returned brain: { status: 'ok' }
 ```
 
 The tool is supposed to be read-only. Writing to `.mcp.json` as a side
@@ -360,26 +373,31 @@ mode the init spec's "no silent fallback" rule exists to prevent.
   comparison against the canonical manifest, and silent-empty-array
   fallback when the file is missing — inherited unchanged by the new
   response shape.
-- `src/tools/init/detectFramework/index.ts` -- `FRAMEWORK_CONFIGS` map
-  provides the per-framework `mcpConfigPath` (`.mcp.json` for Claude
-  Code, `.cursor/mcp.json` for Cursor, etc.) the brain detector needs
-  to locate the config file, and the default-to-Claude branch defines
-  the cold-project behavior.
-- `src/tools/init/wireMcp/index.ts` -- dual-key existence check
+- `src/service/install/detectFramework/index.ts` -- `FRAMEWORK_CONFIGS`
+  map provides the per-framework `mcpConfigPath` (`.mcp.json` for
+  Claude Code, `.cursor/mcp.json` for Cursor, etc.) the brain
+  detector needs to locate the config file, and the default-to-Claude
+  branch defines the cold-project behavior.
+- `src/service/install/wireMcp/index.ts` -- dual-key existence check
   (`"aide" in servers || "aidemd-mcp" in servers`) establishes the
-  entry-presence contract the obsidian detector mirrors with
-  `"obsidian" in servers`; malformed-JSON branch demonstrates the
+  entry-presence pattern; malformed-JSON branch demonstrates the
   pattern of mapping parse failures to a structured state rather than
   throwing.
-- `src/tools/init/provisionBrain/index.ts` -- `buildObsidianMcpStep`
-  defines the exact obsidian key (`"obsidian"`) and entry shape
-  (positional vault-path arg in `args`) the detector must recognize;
-  aligns the info-side detection with the init-side provisioning so
-  the two sides agree on what "entry present" means.
-- `src/tools/init/.aide` -- establishes that brain-vault location is
-  an inherent user decision always resolved through the `npx aidemd-mcp init`
-  interview; confirms the info tool must not silently default or
-  fallback to a vault path, only report whether one is configured.
+- `src/service/install/provisionBrain/index.ts` -- `buildBrainMcpStep`
+  defines how the fixed `brain` key is written into `.mcp.json` with
+  the obsidian-shaped command/args underneath; aligns the info-side
+  detection with the install-side provisioning so the two sides agree
+  on what "entry present" means.
+- `src/service/brainBackends/index.ts` -- the backend driver registry
+  the info tool dispatches the `brain` entry's command/args through to
+  resolve backend identity and extract the vault path; the registry's
+  matcher table is the single source of truth for which entry shapes
+  are recognized.
+- `src/service/install/.aide` -- establishes that brain-vault location
+  is an inherent user decision always resolved through the
+  `npx aidemd-mcp init` interview; confirms the info tool must not
+  silently default or fallback to a vault path, only report whether one
+  is configured.
 - `src/cli/init/.aide` -- confirms that the CLI defers brain-vault
   provisioning entirely to the `npx aidemd-mcp init` run, so a
   project bootstrapped via `npx` lands in `no-mcp-entry` state and

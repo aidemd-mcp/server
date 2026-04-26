@@ -1,31 +1,75 @@
 ---
 description: >
-  Alignment drift after the cold-start install refactor: stale scope path
-  and "init orchestrator" references inherited from the previous parent
-  identity. Prior cycle's seed-semantic-idempotency review preserved below
-  for retro context.
+  Three layers of drift in this spec. (1) Active fixed-`brain`-key drift —
+  every outcome and strategy paragraph names the obsidian MCP key as the
+  shipped name, but `.aide/handoff.aide` settles the key at `brain`.
+  (2) Active post-move drift — stale scope path and "init orchestrator"
+  references inherited from the previous parent identity. (3) Resolved —
+  prior cycle's seed-semantic-idempotency review.
 intent: >
-  provisionBrain's scope still names src/tools/init/provisionBrain. The
-  intent and outcomes reference "the init orchestrator's apply layer" and
-  "the calling agent" framing that hardcodes the MCP-tool consumer; under
-  the install-service-with-two-consumers shape, the helper is consumer-
-  agnostic and the spec should describe its contract at the service level.
+  Two active drifts: the fixed-`brain`-key invariant from `.aide/handoff.aide`
+  has not been applied to this spec's outcomes (which still name
+  `obsidian` as the MCP key prescribed), and the post-move identity
+  drift naming `src/tools/init/provisionBrain` and "the init
+  orchestrator's apply layer" persists. The handoff explicitly names this
+  module as the migration surface for the legacy `obsidian` key — but
+  the spec describes a world where `obsidian` is the canonical key, not
+  the legacy one being migrated away from.
 misalignment:
   - spec-gap
 ---
 
 ## Issues
 
+### Active (alignment pass — fixed-`brain`-key drift)
+
+- [x] `src/service/install/provisionBrain/.aide` frontmatter description: "...and Obsidian MCP wiring as InitStep items"
+  Under the fixed-key settlement (`.aide/handoff.aide`: "The brain MCP key is fixed at `brain`"), this helper now plans wiring under the `brain` key, not the `obsidian` key. The implementation has been migrated (handoff: "`buildObsidianMcpStep` renamed to `buildBrainMcpStep`"); the spec description still names the old key.
+  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` key + the handoff's "Done in this session" entry naming `provisionBrain` as the migration surface.
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` outcomes.desired ("The Obsidian MCP server prescription is planned with the correct platform-aware command... and reports 'exists' when the obsidian key is already present in the MCP config"): names the prescribed key as `obsidian`. The new contract: the prescription writes under the fixed `brain` key. The "already present" check now runs against `mcpServers["brain"]`, not `mcpServers["obsidian"]`. The legacy `obsidian` key is the one being migrated away from, not the one being prescribed.
+  Traces to: `.aide/handoff.aide` (settled) -> "Migration path: rename `obsidian` -> `brain` at install time" — this spec is the migration surface, not the canonical-key prescriber.
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Strategy ("Four planning steps, not two"): "...the playbook hub template, vault CLAUDE.md, and MCP prescription. Each is its own InitStep with independent idempotency..."
+  The MCP-prescription step is correct in structure but the strategy paragraph in the surrounding paragraphs ("MCP prescription uses canonical-template idempotency... if the on-disk command string drifts from the platform-aware prescription...") still references `obsidian` as the key the byte-comparison runs against. Per the handoff, comparison runs against the `brain` key with three migration branches: cold install -> would-create, legacy `obsidian`-only -> would-overwrite with key `brain`, both keys present -> would-overwrite with key `brain`.
+  Traces to: `.aide/handoff.aide` Done-this-session — "Three migration branches: cold install -> `would-create`, legacy `obsidian`-only -> `would-overwrite` with key `brain`, both keys present -> `would-overwrite` with key `brain`."
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Strategy ("Two different idempotency semantics coexist..."): "The Obsidian MCP prescription, by contrast, uses canonical-template idempotency: it is a config value the tool owns, so byte-identity is the right signal — if the on-disk command string drifts from the platform-aware prescription, the step reports 'would-overwrite' because the tool is the source of truth for that entry."
+  The two-idempotency-mode distinction is correct and load-bearing, but the paragraph names the prescription as "the Obsidian MCP prescription." Should read "the brain MCP prescription" — the prescription is keyed `brain` regardless of which backend's command/args it carries. The paragraph also pre-dates the migration-branches addition: it does not mention the legacy-`obsidian`-key migration semantics at all, even though the handoff names this exact module as where that migration runs.
+  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` key + migration semantics.
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Good examples (Step 4): "Step 4 — Obsidian MCP. Status: would-create. Category: mcp. Prescription contains the server key and platform-aware command entry."
+  The example label "Obsidian MCP" should read "Brain MCP" (or just "MCP"). The prescription's entry value is obsidian-shaped, but the step's identity in the install plan is "the brain entry."
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Good examples (re-running prose): "The MCP prescription sees the obsidian key already present in the MCP config..."
+  Should read "the brain key already present." On re-run, the migration is already complete; the canonical key is `brain`.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Strategy and Bad examples: no mention of the three migration branches the implementation now ships (cold install, legacy-`obsidian`-only, both keys present). The handoff explicitly names this module as the one-place migration surface; the spec should describe the migration semantics or at least reference them, otherwise downstream agents reading the spec will not know that migration is part of this helper's job.
+  Traces to: `.aide/handoff.aide` Done-this-session — "Migration path: rename `obsidian` -> `brain` at install time. `provisionBrain` emits a `would-overwrite` step for legacy installs during their next `/aide:upgrade` or `/aide:init`."
+  Misalignment: spec-gap
+
+- [x] `src/service/install/provisionBrain/.aide` Context paragraph: "...the playbook hub and vault CLAUDE.md must also be present so agents can navigate the vault and discover conventions..." — the surrounding context describes the seeded vault `CLAUDE.md` template but does not flag that the seeded template's prose currently emits `mcp__obsidian__*` tool names, which are stale under the fixed-`brain`-key invariant. Per the handoff Remaining-work entry "`provisionBrain` modernization (deferred)," this is acknowledged as still-pending work — but the spec's outcomes do not commit to the post-handoff prose. Either the spec needs to flag the deferred modernization, or the modernization needs to land before the spec is realigned.
+  Traces to: `.aide/handoff.aide` Remaining-work -> "`provisionBrain` modernization (deferred). Currently writes an Obsidian-shaped vault `CLAUDE.md` template with `mcp__obsidian__*` references baked in. Now stale (the prose should reference `mcp__brain__*` since the MCP key is fixed at `brain`)."
+  Misalignment: spec-gap
+
 ### Active (alignment pass — post-move drift)
 
-- [ ] `src/service/install/provisionBrain/.aide` frontmatter
+- [x] `src/service/install/provisionBrain/.aide` frontmatter
   `scope: src/tools/init/provisionBrain`
   Stale path — module moved to `src/service/install/provisionBrain/`.
   Traces to: physical move; ancestor `.aide/intent.aide` ->
   outcomes.desired[4] (folder tree as architecture).
   Misalignment: spec-gap
 
-- [ ] `src/service/install/provisionBrain/.aide` outcomes.desired[6]:
+- [x] `src/service/install/provisionBrain/.aide` outcomes.desired[6]:
   "Every InitStep returned is a planning artifact only — no files are
   written to disk by this helper. The calling agent or applySteps
   orchestrator handles all writes."
@@ -39,7 +83,7 @@ misalignment:
   (client-specific logic confined to aide_init).
   Misalignment: spec-gap
 
-- [ ] `src/service/install/provisionBrain/.aide` Context: "the init
+- [x] `src/service/install/provisionBrain/.aide` Context: "the init
   orchestrator's apply layer handles actual writes"
   Same identity drift as above — "init orchestrator" hardcodes the MCP
   tool consumer when the apply layer is now part of the install service

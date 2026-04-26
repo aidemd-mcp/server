@@ -1,5 +1,6 @@
 ---
 scope: src/tools/brain
+status: aligned
 description: >
   Runtime brain entry-point tool — when an agent reaches for the brain mid-task,
   returns ready-to-execute usage prose telling the agent which MCP tools to use
@@ -106,12 +107,14 @@ own response without coupling to boot semantics.
 
 ## Strategy
 
-**Backend detection mirrors `buildBrainState` exactly — same MCP-key
-scan, same tagged-union vocabulary.** The tool reads the host's
-framework-specific MCP config the same way `aide_info` does (via
-`detectFramework` to resolve the config path), then probes a single
-known key per backend (today `"obsidian"`). The status field carries
-`ok | no-mcp-entry | invalid-path` — identical to `aide_info.brain.status`.
+**Backend detection mirrors `buildBrainState` exactly — same fixed
+MCP-key scan, same registry dispatch, same tagged-union vocabulary.**
+The tool reads the host's framework-specific MCP config the same way
+`aide_info` does (via `detectFramework` to resolve the config path),
+looks up the fixed `brain` server key, and dispatches the entry's
+command/args shape through the brainBackends registry to resolve the
+backend driver. The status field carries `ok | no-mcp-entry |
+invalid-path` — identical to `aide_info.brain.status`.
 Reusing the existing detection pattern means the tool inherits all the
 edge cases `buildBrainState` already handles (missing config, malformed
 JSON, missing entry, empty path, broken path) without re-deriving them.
@@ -212,17 +215,17 @@ disk:
 {
   "status": "ok",
   "backend": "obsidian",
-  "instructions": "Use mcp__obsidian__read_note to read CLAUDE.md at the vault root. That file is the brain's navigation contract — folder structure, search protocol, decision protocol, and where-to-find-things. Once you have read it, follow the rules it defines for the rest of your task; the brain takes over from there and this server has no further role in your navigation."
+  "instructions": "Use mcp__brain__read_note to read CLAUDE.md at the vault root. That file is the brain's navigation contract — folder structure, search protocol, decision protocol, and where-to-find-things. Once you have read it, follow the rules it defines for the rest of your task; the brain takes over from there and this server has no further role in your navigation."
 }
 ```
 
-The agent acts on the prose directly: it calls `mcp__obsidian__read_note`
+The agent acts on the prose directly: it calls `mcp__brain__read_note`
 on `CLAUDE.md`, reads the seeded navigation contract, and proceeds.
 The shim that called `aide_brain` reduces to "follow the `instructions`
 field" — no Obsidian-specific prose anywhere in the shim, and no
 backend awareness leaked into the agent definitions.
 
-A project that has never run `/aide:brain config` — no obsidian entry
+A project that has never run `/aide:brain config` — no `brain` entry
 in the MCP config:
 
 ```json
@@ -237,8 +240,8 @@ The agent surfaces a wiring prompt to the user and stops. `backend` is
 `null` so the shim can branch programmatically without parsing prose.
 `instructions` is non-empty and carries the remediation directly.
 
-A project where the obsidian entry exists but the configured vault path
-no longer resolves on disk:
+A project where the `brain` entry exists with an obsidian-shaped
+command/args but the configured vault path no longer resolves on disk:
 
 ```json
 {
@@ -263,17 +266,20 @@ non-obsidian backend is wired:
 {
   "status": "ok",
   "backend": "notion",
-  "instructions": "Use mcp__obsidian__read_note to read CLAUDE.md at the vault root..."
+  "instructions": "Use mcp__brain__read_note to read CLAUDE.md at the vault root..."
 }
 ```
 
 Violates the desired outcome that the agent gets ready-to-execute
-prose for whatever backend is wired. The agent will call a tool that
-either doesn't exist in this project or operates on the wrong backend,
-and fails immediately. The registry's per-backend prose template is
-the single mechanism that prevents this — a hardcoded obsidian path
-through the dispatcher would silently produce this output for every
-non-obsidian backend.
+prose for whatever backend is wired. The `mcp__brain__*` tool name
+shape is correct in form (since the brain MCP key is fixed at
+`brain`), but the prose was composed from the obsidian driver's
+template instead of the notion driver's — so it tells the agent to
+read `CLAUDE.md at the vault root`, which is the obsidian entry-point
+shape and may not be the notion entry-point shape. The registry's
+per-backend prose template is the single mechanism that prevents
+this: a hardcoded obsidian-driver path through the dispatcher would
+silently produce this output for every non-obsidian backend.
 
 A bare-reference response that gives the agent a pointer instead of
 usage prose:
@@ -316,7 +322,7 @@ already owns:
 {
   "status": "ok",
   "backend": "obsidian",
-  "instructions": "Use mcp__obsidian__read_note to read CLAUDE.md at the vault root. Then follow the wikilink crawling protocol: hub notes are navigation, content notes are depth 0, never re-read, stay in scope. Coding conventions go through the study-playbook skill; everything else uses mcp__obsidian__search_notes scoped to the right directory. Research lives under research/, retros under process/retro/, the playbook under coding-playbook/..."
+  "instructions": "Use mcp__brain__read_note to read CLAUDE.md at the vault root. Then follow the wikilink crawling protocol: hub notes are navigation, content notes are depth 0, never re-read, stay in scope. Coding conventions go through the study-playbook skill; everything else uses mcp__brain__search_notes scoped to the right directory. Research lives under research/, retros under process/retro/, the playbook under coding-playbook/..."
 }
 ```
 
@@ -363,17 +369,20 @@ backend's native tools," not "intermediate every call."
   union vocabulary (`ok | no-mcp-entry | invalid-path`) this tool
   reuses verbatim and the structured-state-not-prose contract that
   shapes the `backend === null` parallel-not-redundant decision.
-- `src/tools/info/buildBrainState/index.ts` -- canonical detection
-  implementation; established the single-key MCP probe (`"obsidian"`),
-  the `detectFramework`-then-read-MCP-config flow, and every edge case
-  (missing config, malformed JSON, broken args, empty vault path)
-  this tool inherits by reusing the same detection helper.
+- `src/service/buildBrainState/index.ts` -- canonical detection
+  implementation; established the fixed `brain` MCP-key probe,
+  the `detectFramework`-then-read-MCP-config flow, registry-dispatched
+  backend identity, and every edge case (missing config, malformed
+  JSON, broken args, empty vault path) this tool inherits by reusing
+  the same detection helper.
 - `src/service/install/provisionBrain/index.ts` -- defines what gets
   seeded into the brain at install time; confirms the entry-point
   file is `CLAUDE.md` at the vault root, that the seeded file owns
   folder structure / search protocol / decision protocol, and that
-  `mcp__obsidian__read_note` and `mcp__obsidian__search_notes` are
-  the obsidian-side tools the entry-point reach prose names.
+  `mcp__brain__read_note` and `mcp__brain__search_notes` are the
+  tool names emitted in the obsidian driver's entry-point reach prose
+  (the MCP key is fixed at `brain`, so tool names are always
+  `mcp__brain__*` regardless of which backend is wired).
 - `src/tools/discover/.aide` -- sibling tool spec; reference for the
   shape and depth of "decision-form" Strategy paragraphs and the
   pattern of citing parent specs inline.

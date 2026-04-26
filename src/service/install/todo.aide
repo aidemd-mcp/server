@@ -1,26 +1,59 @@
 ---
 description: >
-  Alignment drift after the cold-start install refactor (npx CLI + runtime
-  recovery): this spec still describes itself as "the bootstrap MCP tool"
-  rather than the shared install service consumed by both the aide_init MCP
-  tool and the npx CLI installer. Scope path is also stale post-move.
+  Two layers of drift in this spec. (1) Active fixed-`brain`-key drift —
+  every outcome, strategy paragraph, and worked example names "MCP server
+  registration (obsidian)" / "the obsidian MCP prescription" / "agents
+  that declare mcpServers: [obsidian]" as the canonical contract, but
+  `.aide/handoff.aide` settles the brain MCP key at `brain`. (2) Active
+  post-move identity drift inherited from prior cycle.
 intent: >
-  Identity drift introduced by the src/tools/init -> src/service/install move
-  and the addition of src/cli/init/ as a second consumer of this service.
-  The spec's intent paragraph, outcomes, context, strategy, examples, and
-  references all frame the actor as "aide_init" (the MCP tool) and "the
-  tool" rather than as a shared install service. The scope frontmatter
-  still names the old path. The "two delivery channels" claim inherited
-  from the parent (src/.aide) is now contradicted by the existence of the
-  CLI surface this service feeds — the parent itself needs revision; this
-  leaf surfaces the contradiction.
+  Two active drifts. The fixed-`brain`-key shift in the project-root
+  handoff has not yet propagated into the install service's contract:
+  outcomes still pin "obsidian" as the MCP server key being merged into
+  `.mcp.json`, the inline-recovery contract in outcomes.undesired
+  references `mcpServers: [obsidian]`, and the worked examples narrate
+  "I'll add aide and obsidian alongside them." The post-move identity
+  drift (spec frames the actor as "the bootstrap MCP tool" rather than
+  the shared install service) also persists.
 misalignment:
   - spec-gap
 ---
 
 ## Issues
 
-- [ ] `src/service/install/.aide` frontmatter `scope: src/tools/init`
+### Active (alignment pass — fixed-`brain`-key drift)
+
+- [x] `src/service/install/.aide` outcomes.desired ("The categories are: framework detection, methodology pointer stub, methodology doc hub, pipeline slash commands, pipeline agent definitions, pipeline skill templates, MCP server registration (aide), brain vault provisioning, MCP server registration (obsidian), and IDE configuration"): the category named "MCP server registration (obsidian)" is now "MCP server registration (brain)" per the fixed-key handoff. The category's purpose (write the brain-shaped entry, with obsidian-shaped command/args underneath) is unchanged; the canonical name of the category and the key it writes have changed.
+  Traces to: `.aide/handoff.aide` (settled) -> "The brain MCP key is fixed at `brain`."
+  Misalignment: spec-gap
+
+- [x] `src/service/install/.aide` outcomes.desired ("Wiring the brain end-to-end from a resolved brainPath requires consumers to invoke the install service twice with distinct category values: once with `category: \"mcp\"` to apply the obsidian MCP prescription to .mcp.json, and once with `category: \"brain\"` to scaffold vault directories..."): "the obsidian MCP prescription" pins the wrong key. The prescription is keyed `brain`, not `obsidian`. The two-call contract is otherwise still load-bearing.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/.aide` outcomes.undesired ("A consumer invoking only `category: \"brain\"` with a resolved brainPath and declaring the brain fully wired. That single invocation scaffolds the vault directories and seeds content but leaves the obsidian MCP prescription unapplied — the .mcp.json vaultPath stays empty, pipeline agents that declare mcpServers: [obsidian] cannot reach the vault, and aide_info will still report 'brain.status: invalid-path' even though the vault exists on disk..."): the failure mode is correctly described but the labels "obsidian MCP prescription" and "mcpServers: [obsidian]" are stale. Should read "brain MCP prescription" and "mcpServers: [brain]" per the handoff.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/.aide` Context paragraph ("...without a vault and an Obsidian MCP server entry, agents that declare `mcpServers: [obsidian]` in their frontmatter silently lose brain access..."): same key-name and frontmatter-declaration drift. The post-handoff Agent frontmatter is `mcpServers: [brain]`.
+  Traces to: `.aide/handoff.aide` (settled) — agent frontmatter sweep is in Remaining-work but the canonical contract is already settled.
+  Misalignment: spec-gap
+
+- [x] `src/service/install/.aide` Context paragraph ("...prescribes the Obsidian MCP server entry for the consumer to merge into the project's MCP config alongside the aide server"): "the Obsidian MCP server entry" is the wrong canonical name — under the fixed-key invariant the entry is keyed `brain`.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/service/install/.aide` Strategy ("Brain vault is required; location is inherent; scaffolding is silent-on-create"): the paragraph itself is correct in structure, but the surrounding strategy section never reflects the fixed-key migration semantics — that the install service's `provisionBrain` helper now emits a `would-overwrite` step for legacy `obsidian`-keyed installs to migrate them to `brain`. The handoff explicitly names this as a one-place migration surface; the install-service spec should describe it (or at least reference `provisionBrain`'s todo for it) so consumers know migration is part of the install contract.
+  Traces to: `.aide/handoff.aide` Done-this-session — three migration branches in `provisionBrain.buildBrainMcpStep`.
+  Misalignment: spec-gap
+
+- [x] `src/service/install/.aide` Good example ("Cold start on a fresh project via the MCP-tool consumer"): "Your `.mcp.json` has `github` and `memory` configured. I'll add `aide` and `obsidian` alongside them. OK?" — the agent's user-facing prompt names the wrong key. Under the fixed-key world the prompt should read "I'll add `aide` and `brain` alongside them."
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+### Active (alignment pass — post-move drift)
+
+- [x] `src/service/install/.aide` frontmatter `scope: src/tools/init`
   Stale path — the module moved to `src/service/install/`. The scope field
   is a load-bearing identity claim about where this spec lives.
   Traces to: physical move (rename in git status from `src/tools/init/.aide`
@@ -30,7 +63,7 @@ misalignment:
   specs next to orchestrators").
   Misalignment: spec-gap
 
-- [ ] `src/service/install/.aide` intent paragraph: "aide_init is the
+- [x] `src/service/install/.aide` intent paragraph: "aide_init is the
   bootstrap — the one command that turns a cold project into an AIDE-ready
   project."
   Identity drift — this module is no longer the MCP tool itself. It is the
@@ -46,7 +79,7 @@ misalignment:
   invariant needs the install service to be *not* aide_init.
   Misalignment: spec-gap
 
-- [ ] `src/service/install/.aide` outcomes.desired throughout: "The tool
+- [x] `src/service/install/.aide` outcomes.desired throughout: "The tool
   returns a structured JSON response...", "Re-running init on a fully
   initialized project...", "The tool's response is structured data the
   agent interprets..."
@@ -61,7 +94,7 @@ misalignment:
   delivery shape, but is now under-specified).
   Misalignment: spec-gap
 
-- [ ] `src/service/install/.aide` outcomes.desired bullet "When called with
+- [x] `src/service/install/.aide` outcomes.desired bullet "When called with
   a `category` parameter, the tool writes all `would-create` files
   directly to disk itself..." and the surrounding bullets about "the agent
   never sees file content"
@@ -79,7 +112,7 @@ misalignment:
   the spec must say so explicitly.
   Misalignment: spec-gap
 
-- [ ] `src/service/install/.aide` Bad examples section: "**Cold start on a
+- [x] `src/service/install/.aide` Bad examples section: "**Cold start on a
   fresh project**" example narrates "The agent calls `aide_init` with no
   category... The user runs `npx aidemd-mcp init` a week later..."
   The Good examples mix the MCP-tool agent shape and the CLI command shape
@@ -95,7 +128,7 @@ misalignment:
   the bad-example test stays meaningful.
   Misalignment: spec-gap
 
-- [ ] `src/service/install/.aide` References section: every path is
+- [x] `src/service/install/.aide` References section: every path is
   `D:/Code/Me/aidemd-mcp/src/tools/init/...`
   Stale paths after the move. References are hints not contracts, but
   every entry in this list points at a file that no longer exists at the
@@ -110,7 +143,7 @@ misalignment:
   files describe a topology that no longer exists.
   Misalignment: spec-gap
 
-- [ ] `src/service/install/.aide` outcomes.undesired[15]: "An init that
+- [x] `src/service/install/.aide` outcomes.undesired[15]: "An init that
   appends the pointer stub on every run, fails the whole run on a single
   step failure, hardcodes vault paths, or reaches for the network. **All
   prior undesired outcomes from the original spec still apply.**"

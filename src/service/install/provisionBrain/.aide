@@ -3,19 +3,24 @@ scope: src/service/install/provisionBrain
 status: aligned
 description: >
   Plans vault directory scaffolding, playbook hub template, vault CLAUDE.md, and
-  Obsidian MCP wiring as InitStep items — writes nothing to disk directly.
+  the `brain` MCP server entry as InitStep items — writes nothing to disk
+  directly. Migrates legacy `obsidian`-keyed installs to the fixed `brain` key.
 intent: >
   provisionBrain scaffolds the brain vault layer that AIDE's pipeline
   agents depend on for persistent memory. Given a resolved vault path,
   it plans the creation of vault directories, content templates that
-  make the vault immediately useful to agents, and the Obsidian MCP
-  server wiring — returning InitStep items the install service's
-  consumer applies. A new vault must be structurally complete on
-  first run: directory scaffolding alone is not enough — the
-  coding-playbook hub and a vault-root CLAUDE.md must also be present
-  so agents can navigate the vault and discover conventions without
-  the user having to manually seed content first. Existing vaults are
-  never overwritten.
+  make the vault immediately useful to agents, and the `brain` MCP
+  server entry (under the fixed `brain` key with an obsidian-shaped
+  command/args underneath) — returning InitStep items the install
+  service's consumer applies. provisionBrain is also the one-place
+  migration surface for legacy installs that wrote the entry under the
+  old `obsidian` key: it emits a `would-overwrite` step that moves the
+  entry to the fixed `brain` key during the next `/aide:upgrade` or
+  `/aide:init`. A new vault must be structurally complete on first run:
+  directory scaffolding alone is not enough — the coding-playbook hub
+  and a vault-root CLAUDE.md must also be present so agents can navigate
+  the vault and discover conventions without the user having to manually
+  seed content first. Existing vaults are never overwritten.
 outcomes:
   desired:
     - The vault scaffolding step plans creation of all expected
@@ -34,10 +39,7 @@ outcomes:
       things" table, and the brain's role in AIDE — enough for any
       agent reading the vault to know how to navigate it without prior
       knowledge.
-    - The Obsidian MCP server prescription is planned with the correct
-      platform-aware command (cmd /c wrapper on Windows, direct npx
-      otherwise), and reports "exists" when the obsidian key is
-      already present in the MCP config.
+    - "The brain MCP server prescription is planned under the fixed `brain` key, with the correct platform-aware command (cmd /c wrapper on Windows, direct npx otherwise) and obsidian-shaped command/args underneath. Three migration branches are emitted: cold install (no `brain` and no `obsidian` key) reports `would-create`; legacy `obsidian`-only install reports `would-overwrite` with key `brain` (the entry moves from `obsidian` to `brain`); both keys present reports `would-overwrite` with key `brain`. The step reports `exists` when the `brain` key is already present in the MCP config with a matching command entry."
     - "The coding-playbook hub and vault-root CLAUDE.md are treated as
       one-time seeds, not canonical templates. When either file exists
       on disk at its expected path, the corresponding InitStep is
@@ -45,9 +47,10 @@ outcomes:
       the bundled template. Once the user has the file, it is theirs
       forever — provisionBrain never proposes replacing it."
     - Every InitStep returned is a planning artifact only — no files
-      are written to disk by this helper. The install service's
-      consumer (agent in the MCP-tool path, terminal driver in the
-      CLI path) or the applySteps orchestrator handles all writes.
+      are written to disk by this helper. The install service's apply
+      layer handles all writes; whichever consumer (agent-driven or
+      CLI) drives the apply layer is consumer-shape detail, not part
+      of this helper's contract.
   undesired:
     - A vault that has directories but no playbook hub template. Agents
       invoking the study-playbook skill will find an empty
@@ -89,8 +92,8 @@ outcomes:
 The brain vault is the pipeline's durable memory — research agents write
 domain findings into it, QA agents promote retros, and the coding playbook
 captures engineering conventions that survive across projects. Without it,
-agents that declare Obsidian MCP access silently lose the ability to persist
-or retrieve knowledge, and the pipeline cannot learn across runs.
+agents that declare `mcpServers: [brain]` silently lose the ability to
+persist or retrieve knowledge, and the pipeline cannot learn across runs.
 
 The original provisionBrain created directories and wired the MCP server,
 but left the vault content-empty. This meant a new user's first
@@ -111,11 +114,23 @@ created yet.
 The planner-only constraint is load-bearing. provisionBrain returns
 InitStep items describing what to create; the install service's apply
 layer handles actual writes. This separation means provisionBrain never
-touches the filesystem, the consumer has full visibility into what will
-be created, and the user confirms before anything is written. Content
-templates are just InitStep items with a content field — they flow
-through the same planning and apply pipeline as directory scaffolding,
-regardless of which entry point invoked the install service.
+touches the filesystem, the apply layer has full visibility into what
+will be created, and the consumer (whichever shape — agent-driven or
+CLI) confirms before anything is written. Content templates are just
+InitStep items with a content field — they flow through the same
+planning and apply pipeline as directory scaffolding, regardless of
+which entry point invoked the install service.
+
+provisionBrain is also the one-place migration surface for the fixed
+`brain` MCP key. The brain MCP key is fixed at `brain` per the
+project-root settlement; legacy installs that wrote the entry under
+the old `obsidian` key are migrated to `brain` here, not anywhere else.
+The migration runs as part of the normal MCP-prescription planning:
+when a legacy `obsidian`-only entry is present, the step reports
+`would-overwrite` with key `brain`, so the next `/aide:upgrade` or
+`/aide:init` moves the entry. There is no runtime fallback to the
+legacy key elsewhere in the codebase — this helper is the single
+migration boundary.
 
 ## Strategy
 
@@ -168,14 +183,19 @@ template. These files are scaffolds the user evolves the moment the vault
 comes alive; the playbook hub gains routing entries and wikilinks, the
 vault CLAUDE.md may pick up project-specific navigation notes. Once the
 user has the file, the bytes belong to the user and are out of scope for
-comparison. The Obsidian MCP prescription, by contrast, uses
-**canonical-template idempotency**: it is a config value the tool owns,
-so byte-identity is the right signal — if the on-disk command string
-drifts from the platform-aware prescription, the step reports
+comparison. The brain MCP prescription, by contrast, uses
+**canonical-template idempotency**: the entry is keyed `brain` per the
+fixed-key settlement and the command/args is a config value the tool
+owns, so byte-identity is the right signal — if the on-disk command
+string drifts from the platform-aware prescription, the step reports
 "would-overwrite" because the tool is the source of truth for that
-entry. The distinguishing question is *who owns the bytes after first
-write*: for user-curated content, presence is enough; for
-tool-prescribed config, identity matters. Getting this wrong is not a
+entry. The same canonical-template path also runs the legacy-`obsidian`
+migration: a `would-overwrite` with key `brain` fires whenever the
+on-disk state is a legacy-`obsidian`-only entry or both keys present,
+so the next apply moves the entry to the fixed key. The distinguishing
+question is *who owns the bytes after first write*: for user-curated
+content, presence is enough; for tool-prescribed config, identity
+matters. Getting this wrong is not a
 cosmetic bug — a would-overwrite status on the playbook hub is one
 Enter-press away from wiping the user's curated conventions and
 replacing them with an empty scaffold.
@@ -205,16 +225,24 @@ points to CLAUDE.md at the vault root. Content covers crawling protocol,
 decision protocol, where-to-find-things table, and AIDE brain role. No
 project-specific instructions appear.
 
-Step 4 — Obsidian MCP. Status: would-create. Category: mcp. Prescription
-contains the server key and platform-aware command entry.
+Step 4 — Brain MCP. Status: would-create. Category: mcp. Prescription
+contains the fixed `brain` server key and the platform-aware
+command/args entry (obsidian-shaped underneath, but keyed `brain`).
 
-Re-running on the same vault returns all four steps as "exists." The
-directory step sees the expected folders. The playbook hub and vault
-CLAUDE.md are detected by a presence check at their expected paths —
-their on-disk bytes are never compared to the bundled templates. The MCP
-prescription sees the obsidian key already present in the MCP config
-with a matching command entry. No content is regenerated, no files are
-touched.
+Re-running on the same vault returns all of the planned steps as
+"exists." The directory step sees the expected folders. The playbook
+hub and vault CLAUDE.md are detected by a presence check at their
+expected paths — their on-disk bytes are never compared to the bundled
+templates. The MCP prescription sees the `brain` key already present
+in the MCP config with a matching command entry. No content is
+regenerated, no files are touched.
+
+A migration run on a legacy install (the entry was previously written
+under the `obsidian` key, before the fixed-key settlement) returns
+the MCP prescription as "would-overwrite" with key `brain`, while
+the playbook hub, vault CLAUDE.md, and directory steps run their
+normal idempotency checks. After apply, the legacy `obsidian` key is
+replaced by the canonical `brain` key.
 
 Running on a vault where the user has evolved the playbook hub — added
 routing entries, wikilinked several real playbook notes, customized the
@@ -224,7 +252,8 @@ opinion on what the file contains beyond the fact that it is there.
 
 Running on a vault that exists but is missing the playbook hub (perhaps
 the user deleted it) returns: directories as "exists," playbook hub as
-"would-create," CLAUDE.md as "exists," MCP as "exists." Only the missing
+"would-create," CLAUDE.md as "exists," MCP as "exists" (the `brain`
+key is present and matches the canonical command). Only the missing
 piece is re-planned.
 
 ## Bad examples

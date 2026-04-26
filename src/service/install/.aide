@@ -34,10 +34,13 @@ intent: >
   methodology doc hub, pipeline slash commands, pipeline agent
   definitions, pipeline skill templates, MCP server registration
   (aide), brain vault provisioning, MCP server registration
-  (obsidian), and IDE configuration. Each category still reports what
-  it would do (create, overwrite, skip, already exists), and the
-  consumer only surfaces the category to the user when an overwrite
-  is pending or an inherent decision is needed.
+  (brain), and IDE configuration. The brain MCP entry is keyed
+  `brain` per the project-root settlement; the entry's command/args
+  shape identifies the wired backend (obsidian today, others tomorrow).
+  Each category still reports what it would do (create, overwrite,
+  skip, already exists), and the consumer only surfaces the category
+  to the user when an overwrite is pending or an inherent decision is
+  needed.
 
   The brain layer is not optional — AIDE is opinionated about this.
   The pipeline needs a brain to persist research and retros. But the
@@ -103,8 +106,9 @@ outcomes:
       consumer applies it."
     - "Wiring the brain end-to-end from a resolved brainPath requires
       consumers to invoke the install service twice with distinct
-      category values: once with \"category: mcp\" to apply the
-      obsidian MCP prescription to .mcp.json, and once with
+      category values: once with \"category: mcp\" to apply the brain
+      MCP prescription to .mcp.json (under the fixed `brain` key, with
+      the resolved backend's command/args underneath), and once with
       \"category: brain\" to scaffold vault directories and seed
       content files. The split is intentional and load-bearing: the
       mcp category is prescription-only (the consumer merges the
@@ -198,14 +202,14 @@ outcomes:
     - "A consumer invoking only \"category: brain\" with a resolved
       brainPath and declaring the brain fully wired. That single
       invocation scaffolds the vault directories and seeds content
-      but leaves the obsidian MCP prescription unapplied — the
+      but leaves the brain MCP prescription unapplied — the
       .mcp.json vaultPath stays empty, pipeline agents that declare
-      mcpServers: [obsidian] cannot reach the vault, and aide_info
+      mcpServers: [brain] cannot reach the vault, and aide_info
       will still report \"brain.status: invalid-path\" even though
       the vault exists on disk. The symmetric failure also applies:
       a consumer invoking only \"category: mcp\" with a brainPath
       patches .mcp.json but never scaffolds the vault, leaving the
-      obsidian server pointed at an unprovisioned directory. Both
+      brain MCP server pointed at an unprovisioned directory. Both
       categories must run; treating either alone as sufficient
       produces a half-wired brain."
     - An install that clobbers the MCP config when it encounters
@@ -338,15 +342,15 @@ nothing of the user's is at risk.
 The brain layer is the pipeline's shared memory. The research agent
 writes domain findings to `research/<domain>/`, QA promotes retros to
 `process/retro/`, and the coding playbook lives under
-`coding-playbook/`. Without a vault and an Obsidian MCP server entry,
-agents that declare `mcpServers: [obsidian]` in their frontmatter
+`coding-playbook/`. Without a vault and a `brain` MCP server entry,
+agents that declare `mcpServers: [brain]` in their frontmatter
 silently lose brain access — their research vanishes, retros are
 never persisted, and the pipeline cannot learn across runs. The
 install action provisions this layer: it creates a minimal vault
 with the expected directory scaffolding when the user-chosen location
-is empty, and prescribes the Obsidian MCP server entry for the
-consumer to merge into the project's MCP config alongside the aide
-server. The vault path is resolved through the consumer's interview
+is empty, and prescribes the brain MCP server entry (keyed `brain`,
+with the resolved backend's command/args underneath) for the consumer
+to merge into the project's MCP config alongside the aide server. The vault path is resolved through the consumer's interview
 with the user — never hardcoded, never silently defaulted — because
 the vault path is an inherent decision and the rule that covers it is
 "always prompt," not "apply silently when nothing is on disk."
@@ -456,6 +460,18 @@ lines about clobbering MCP configs and writing MCP entries directly,
 and honors the parent spec's `src/.aide` invariant that the install
 service never touches MCP config.
 
+**The brain MCP key is fixed at `brain`; legacy `obsidian` keys
+migrate through `provisionBrain`.** The MCP entry the install service
+prescribes is always keyed `brain`, regardless of which backend's
+command/args the entry carries. Legacy installs that wrote the entry
+under the old `obsidian` key are migrated to `brain` exclusively
+through `provisionBrain.buildBrainMcpStep`, which emits a
+`would-overwrite` step on the next `/aide:upgrade` or `/aide:init`
+run. The CLI never silently rewrites a user's `obsidian` key, and no
+runtime fallback to the legacy key exists anywhere else in the
+codebase. See `src/service/install/provisionBrain/.aide` for the
+migration branches.
+
 **Brain vault is required; location is inherent; scaffolding is
 silent-on-create.** AIDE is opinionated that the pipeline needs
 persistent memory. The consumer asks the user where their vault is,
@@ -541,9 +557,9 @@ category is pure `would-create`, applies methodology, commands,
 agents, skills, and `.aide/` tree one after another without another
 prompt, reporting briefly after each:
 
-> Installed methodology — 9 files under `.aide/docs/` and a pointer stub in `CLAUDE.md`.
-> Installed 12 slash commands under `.claude/commands/aide/`.
-> Installed 6 pipeline agent definitions under `.claude/agents/aide/`.
+> Installed methodology — canonical docs under `.aide/docs/` and a pointer stub in `CLAUDE.md`.
+> Installed pipeline slash commands under `.claude/commands/aide/`.
+> Installed pipeline agent definitions under `.claude/agents/aide/`.
 > Installed study-playbook skill under `.claude/skills/`.
 > Scaffolded `.aide/intent.aide` for the project root.
 
@@ -556,7 +572,7 @@ service with `category: "brain"` and that path; the install service
 scaffolds the missing directories and returns `"created"` for each.
 Then:
 
-> Your `.mcp.json` has `github` and `memory` configured. I'll add `aide` and `obsidian` alongside them. OK?
+> Your `.mcp.json` has `github` and `memory` configured. I'll add `aide` and `brain` alongside them. OK?
 
 The user confirms; the agent merges and writes. Then:
 
@@ -588,7 +604,7 @@ consumer.** A week later the developer re-invokes the install
 action — could be the agent calling `aide_init`, could be `npx
 aidemd-mcp@latest init` from the terminal. Every file category comes
 back entirely as `exists`. The MCP config already contains the aide
-and obsidian servers. The brain scaffold is intact. The consumer
+and brain servers. The brain scaffold is intact. The consumer
 reports once and stops:
 
 > This project is already fully initialized — methodology, commands, agents, skills, `.aide` tree, MCP servers, brain vault, and Zed preview all present. Nothing to change.
@@ -600,15 +616,16 @@ prompt in the CLI path) because the plan showed nothing to decide.
 The developer has edited `.claude/commands/aide/research.md` to add
 a line of their own instructions. A release later they re-invoke
 the install action. The plan comes back with the `commands`
-category mixed: eleven `would-skip` steps (canonical bytes match),
-one `would-overwrite` step for `research.md`. Every other category
-is pure `would-create` or pure `exists`.
+category mixed: every other slash command lands as `would-skip`
+(canonical bytes match), and `research.md` lands as
+`would-overwrite`. Every other category is pure `would-create` or
+pure `exists`.
 
 The consumer applies methodology silently (all `would-create`),
 applies agents silently, applies skills silently. At commands it
 pauses:
 
-> The `commands` category has one file that would overwrite your existing version: `.claude/commands/aide/research.md`. Eleven other slash commands are either already current or missing and would be freshly installed. Overwrite your modified `research.md`?
+> The `commands` category has one file that would overwrite your existing version: `.claude/commands/aide/research.md`. The other slash commands are either already current or missing and would be freshly installed. Overwrite your modified `research.md`?
 
 Options: "Overwrite it" / "Keep my version and install the others" /
 "Skip the whole category." The MCP-tool consumer surfaces these via
@@ -620,7 +637,7 @@ the install service writes only the `would-create` steps, returns
 the `would-overwrite` step with status unchanged, and the consumer
 reports:
 
-> Installed 11 new slash commands under `.claude/commands/aide/`. Kept your modified `research.md` as-is.
+> Installed the other slash commands under `.claude/commands/aide/`. Kept your modified `research.md` as-is.
 
 One prompt, surgically scoped to the one file that actually needed a
 decision — same outcome regardless of which consumer drove the run.
@@ -630,17 +647,17 @@ decision — same outcome regardless of which consumer drove the run.
 **Prompting on pure-create categories.** Cold start, fresh project,
 and the consumer asks:
 
-> Methodology — this will create the CLAUDE.md pointer stub and 9 docs in `.aide/docs/`. Want me to set this up?
+> Methodology — this will create the CLAUDE.md pointer stub and the canonical methodology docs in `.aide/docs/`. Want me to set this up?
 
 Then:
 
-> Commands — this will create 12 slash commands in `.claude/commands/aide/`. Want me to set these up?
+> Commands — this will create the pipeline slash commands in `.claude/commands/aide/`. Want me to set these up?
 
 Then:
 
-> Agents — this will create 6 pipeline agents in `.claude/agents/aide/`. Want me to set these up?
+> Agents — this will create the pipeline agent definitions in `.claude/agents/aide/`. Want me to set these up?
 
-The user hits "yes" seven times in a row for files that do not yet
+The user hits "yes" repeatedly in a row for files that do not yet
 exist, staring at a wizard that is asking permission to do the thing
 they invoked it to do. This is the exact friction the confirmation
 model removes; the category-by-category pause belongs to overwrites,
@@ -652,9 +669,9 @@ asked anyway.
 **Silent overwrite because "most of the category is new."** A
 developer has a customized `research.md` from the previous example.
 The consumer heuristically decides the `commands` category is
-"mostly creates (eleven new, one overwrite)" and applies the whole
-category without pausing, overwriting the user's modifications. The
-consumer reports "installed 12 slash commands" and the user
+"mostly creates (the rest are new, one overwrite)" and applies the
+whole category without pausing, overwriting the user's modifications.
+The consumer reports "installed the slash commands" and the user
 discovers tomorrow that their custom instructions are gone. The
 rule is strict: even one `would-overwrite` step in a category tips
 the category into the prompt branch.
@@ -680,7 +697,7 @@ always prompt, in every consumer.
 **One summary table, one blanket confirmation, zero granularity.**
 The consumer returns:
 
-> Here's the full plan: methodology (9 creates), commands (12 creates), agents (6 creates), skills (1 create), MCP (1 prescription), brain (pending vault path), IDE (2 creates). Apply all?
+> Here's the full plan: methodology (creates pending), commands (creates pending), agents (creates pending), skills (create pending), MCP (1 prescription), brain (pending vault path), IDE (creates pending). Apply all?
 
 The user says yes and loses their modified `research.md` to a silent
 overwrite they had no way to see in the table. The per-category
@@ -701,15 +718,15 @@ match. Both consumers have native structured-prompt mechanisms; the
 install service's invariant is that the consumer uses them.
 
 **Reporting that does not distinguish created from overwritten.**
-After an apply call that wrote six new files and overwrote one, the
-consumer reports:
+After an apply call that wrote several new files and overwrote one,
+the consumer reports:
 
-> Done — installed 7 files.
+> Done — installed all files.
 
 The user has no way to know which file was theirs and got replaced.
-The manifest statuses exist so the consumer can say "created 6,
-overwrote 1: research.md" — using them as a single undifferentiated
-count defeats the purpose of the status enum.
+The manifest statuses exist so the consumer can say "created N,
+overwrote 1: research.md" — collapsing them into a single
+undifferentiated count defeats the purpose of the status enum.
 
 **A consumer that inlines install logic instead of going through
 the service.** A maintainer adds a "post-install hook" feature to

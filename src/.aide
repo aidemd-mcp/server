@@ -201,11 +201,11 @@ A new agent connects to aidemd-mcp for the first time and, before
 touching a single file, reasons:
 
 > There are .aide spec files next to orchestrator code that I should
-> read before I read the code. Five types exist: `.aide` is the default
-> intent spec; `intent.aide` is the same thing renamed when a
-> `research.aide` sits alongside; `research.aide` holds raw research;
-> `plan.aide` is the architect's checkboxed implementation plan;
-> `todo.aide` is a QA re-alignment document. I must never see both `.aide` and
+> read before I read the code. The canonical file types are: `.aide`,
+> the default intent spec; `intent.aide`, the same thing renamed when
+> a `research.aide` sits alongside; `research.aide`, raw research;
+> `plan.aide`, the architect's checkboxed implementation plan;
+> `todo.aide`, a QA re-alignment document. I must never see both `.aide` and
 > `intent.aide` in the same folder. My workflow is: call `aide_discover`
 > with no path for the project map, then drill into the relevant subtree
 > with a path, then `aide_read` specific specs as needed.
@@ -220,8 +220,8 @@ terminal — and gets back a summary like:
 
 > Detected framework: Claude Code.
 > Created CLAUDE.md with AIDE pointer stub naming the doc hub at .aide/.
-> Installed .aide/ doc hub with seven canonical methodology docs and a hub index.
-> Created slash commands for research, spec, synthesize, plan, build, QA, and fix phases.
+> Installed .aide/ doc hub with the canonical methodology docs and a hub index.
+> Created slash commands for the pipeline phases.
 > Wired aidemd-mcp into .mcp.json.
 > Configured .zed/settings.json to render .aide as Markdown.
 > Skipped VS Code extension — `code` CLI not on PATH.

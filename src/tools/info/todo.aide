@@ -1,13 +1,69 @@
 ---
 intent: >
-  buildBrainState returns invalid-path (with vaultPath: "") for obsidian entries
-  whose args field is absent, non-array, or empty — the spec mandates no-mcp-entry
-  with vaultPath: null for these cases. Three tests fail, confirming the divergence.
+  Two layers of drift in this spec. First (resolved): buildBrainState's
+  args-handling code-vs-spec divergence. Second (active, after the
+  fixed-`brain`-key refactor): every outcome in this spec pins the MCP key
+  as `obsidian`, but `.aide/handoff.aide` settles the brain MCP key at
+  the literal `brain`. The detection logic now reads `mcpServers["brain"]`
+  and dispatches the entry shape to the `brainBackends` registry — the
+  spec still describes the pre-fixed-key world.
 misalignment:
   - implementation-drift
+  - spec-gap
 ---
 
 ## Issues
+
+### Active (alignment pass — fixed-`brain`-key drift)
+
+- [x] `src/tools/info/.aide` description and intent paragraph: "...whether an obsidian MCP entry is configured...", "looks for an obsidian-style server entry"
+  Under the fixed-key settlement (`.aide/handoff.aide` Key architectural decisions: "The brain MCP key is fixed at `brain`"), the detector reads `mcpServers["brain"]` and resolves backend identity through the `brainBackends` registry. The spec still pins detection to "the obsidian key" — a contract that contradicts the upstream invariant. The `obsidian` token is a backend driver id, not the MCP key.
+  Traces to: `.aide/handoff.aide` (settled) -> "Backend detection: one fixed MCP key (`brain`), backend identified by command/args shape."
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` outcomes.desired: "Reads the host's framework-specific MCP config file and reports whether an obsidian-style MCP server entry is configured...", "When an obsidian MCP entry is configured, extracts the vault directory path..."
+  Both desired outcomes pin the MCP key as `obsidian`. The new contract reads the fixed `brain` key and dispatches to the registry; backend identity is inferred from command/args shape, not from the key.
+  Traces to: `.aide/handoff.aide` (settled) -> fixed `brain` key + registry-dispatched identity.
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` outcomes.desired: "Missing MCP config file, malformed MCP config, and a missing obsidian entry all resolve to `status: 'no-mcp-entry'` with `vaultPath: null`"
+  The collapse rule is correct but the key name is stale — should read "missing `brain` entry" or just "missing brain entry." The new spec at `src/service/buildBrainState/.aide` already restates this rule in fixed-key form; this spec needs to follow.
+  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` key.
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` outcomes.undesired: "A tool that conflates 'no obsidian entry configured' with 'obsidian entry configured but vault path missing'."
+  The discriminant is still load-bearing, but the "obsidian entry" labels should be "brain entry" under the fixed-key invariant.
+  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` key.
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` Strategy ("Brain detection reuses `detectFramework`..."): "...the same `mcpConfigPath` that `wireMcp` and `provisionBrain` write into..."
+  The strategy is structurally correct but the helpers it names live in `src/service/install/` now (post-install-service refactor), and `provisionBrain.buildObsidianMcpStep` was renamed to `buildBrainMcpStep` per the handoff. The strategy paragraph is double-stale: wrong path AND wrong helper name.
+  Traces to: `.aide/handoff.aide` Done-this-session ("`buildObsidianMcpStep` renamed to `buildBrainMcpStep`") and the prior install-service lift.
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` Strategy ("Brain-entry detection mirrors the dual-key existence check from `wireMcp`..."): names the obsidian key check `"obsidian" in servers` as the canonical contract.
+  The new contract is a single fixed-key lookup — no dual-key alternation, no `obsidian`-key check. Detection runs through the registry on whatever entry sits under `mcpServers["brain"]`.
+  Traces to: `.aide/handoff.aide` (settled) — single fixed-key lookup.
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` Strategy ("Vault path extraction reads from the obsidian entry's `args` array..."): again pins detection to the obsidian entry shape, not the registry-dispatched driver.
+  The new contract: the registry's matcher predicate inspects command/args shape and returns a driver; the driver's matcher already extracts the vault path from the entry. The detector reads the path off whatever the matcher returned.
+  Traces to: `.aide/handoff.aide` (settled) — registry-dispatched identity.
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` Good examples: every example response object documents the resulting shape, but the surrounding prose still describes the input as "the obsidian entry." Even when the output is correct, the prose teaches the wrong invariant.
+  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` key as the canonical input.
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` Bad examples: same pattern — example outputs are correct, surrounding narrative still pins "the obsidian entry" as the canonical input shape.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/tools/info/.aide` References section: lists `src/tools/init/wireMcp/index.ts`, `src/tools/init/provisionBrain/index.ts`, `src/tools/init/.aide`, and `src/tools/init/detectFramework/index.ts`. None of these paths exist — every helper moved to `src/service/install/` during the install-service refactor.
+  Traces to: physical move; ancestor `.aide/intent.aide` -> outcomes.undesired[3] (no canonical doc may describe behavior the server does not deliver — paths that no longer exist describe a topology that is gone).
+  Misalignment: spec-gap
+
+### Resolved (prior QA cycle — kept for retro context)
 
 - [x] `src/tools/info/buildBrainState/index.ts:106-113` — When `args` is missing,
   not an array, or empty, the implementation returns `{ status: 'invalid-path',
@@ -29,6 +85,16 @@ misalignment:
   `Misalignment:` implementation-drift
 
 ## Retro
+
+### Active cycle (fixed-`brain`-key drift)
+
+The fixed-`brain`-key shift in `.aide/handoff.aide` is a project-root-level architectural commitment that touches every spec downstream that previously named `obsidian` as the MCP key. This spec is one of the load-bearing leaves in that cascade — its detection contract was authored when "the obsidian entry" was the canonical shape, and the entire desired/undesired roster, the Strategy paragraphs, and the Bad-example narratives all pin that shape.
+
+The fix is the same shape as the brain-tool spec's: replace "obsidian" with "brain" everywhere it refers to the MCP key, leave "obsidian" intact wherever it refers to the backend driver id (e.g., when the example output shows `backend: "obsidian"` on `status: "ok"`), and refresh the References block to point at the new module paths under `src/service/install/` and `src/service/buildBrainState/`.
+
+What would have caught this earlier: a `/aide:align` pass at the moment `.aide/handoff.aide` settled the fixed-key invariant. The handoff itself names this spec as a downstream consumer of the lifted `buildBrainState`; the implementor's session updated the implementation but not this spec body.
+
+### Prior cycle (resolved — implementation-drift)
 
 The spec is explicit that `invalid-path` is reserved for a correctly-shaped entry
 whose stored path does not resolve on disk, and that unparseable or absent args fall

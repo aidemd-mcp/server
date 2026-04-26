@@ -1,5 +1,6 @@
 ---
 scope: src/service/buildBrainState
+status: aligned
 description: >
   Read-only brain-state detector — reads the host's framework-specific MCP config,
   looks up the fixed `brain` key, dispatches the entry to the `brainBackends`

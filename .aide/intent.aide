@@ -192,17 +192,18 @@ touches no specs, and proceeds with the feature work carrying only a
 handful of lines of AIDE context. An hour later, the same agent picks
 up a task that does touch a `.aide` file; it follows the stub's
 pointer into the hub, reads the hub index, drills into `aide-spec.md`
-and `aide-template.md`, and leaves the three canonical docs its task
-does not need unread. The delivery layer practiced the same
+and `aide-template.md`, and leaves the rest of the canonical docs its
+task does not need unread. The delivery layer practiced the same
 progressive disclosure the methodology teaches — exactly the way the
 user's global `study-playbook` skill crawls the brain on demand
 instead of hoisting it into every session.
 
 A contributor adds a new tool to the MCP server. They read `/.aide`,
 narrow to `src/.aide`, narrow to their new submodule spec, and know
-exactly which invariants their addition must honor: five-tool cap, client
-parity, idempotency, progressive disclosure in the code, cascading intent
-in the spec. Three reads, full contract, no source files opened.
+exactly which invariants their addition must honor: one-to-one mapping
+between methodology phases and tools, client parity, idempotency,
+progressive disclosure in the code, cascading intent in the spec.
+A small number of reads, full contract, no source files opened.
 
 ## Bad examples
 
@@ -238,12 +239,12 @@ lands on a missing directory. The two sides were coincident string
 literals instead of a single shared path source, and the refactor
 shipped with its most load-bearing invariant broken at compile time.
 
-A proposal for `aide_explain`, a sixth tool that "walks an agent through
-the methodology interactively." The teaching surface now has three
-channels — handshake, init, explain — and an agent calling explain is an
-agent the tool descriptions failed to teach. The correct response is to
-fix the tool descriptions, not to add a channel that papers over their
-weakness.
+A proposal for `aide_explain`, a new tool that "walks an agent through
+the methodology interactively." The teaching surface now gains a third
+delivery channel — handshake, install action, and now explain — and an
+agent calling explain is an agent the tool descriptions failed to teach.
+The correct response is to fix the tool descriptions, not to add a
+channel that papers over their weakness.
 
 A canonical doc that introduces a new pipeline phase — say, "review" —
 without aide_init scaffolding an `/aide:review` slash command to match.

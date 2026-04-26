@@ -43,7 +43,7 @@ outcomes:
     - "When `aide_info` reports `brain.status: invalid-path` with an empty
       `vaultPath`, the `/aide` orchestrator recovers inline by issuing two
       `aide_init` calls in sequence against the user-supplied vault path.
-      Call one uses `category: \"mcp\"` and applies the returned obsidian
+      Call one uses `category: \"mcp\"` and applies the returned brain
       prescription to `.mcp.json` (the MCP prescription is always agent-
       applied, never written directly by the tool, because `.mcp.json`
       merges with the user's other MCP entries). Call two uses
@@ -53,10 +53,10 @@ outcomes:
       calls succeed, the orchestrator emits a user-facing message naming
       the wired `<brainPath>`, stating that `.mcp.json` was patched and
       the vault was scaffolded, and instructing the user to restart
-      Claude Code so the obsidian MCP server loads the new config. The
+      Claude Code so the brain MCP server loads the new config. The
       orchestrator then STOPS — it does not re-call `aide_info` in the
-      same session (the running obsidian MCP was never launched, so a
-      same-session check would report success against disk state while
+      same session (the running brain MCP server was never launched, so
+      a same-session check would report success against disk state while
       the live server remains unwired) and does not continue the user's
       original request. Continuation happens on the next `/aide`
       invocation after restart, via the normal boot sequence. The
@@ -91,7 +91,7 @@ outcomes:
       command for a one-field recovery is gratuitous friction — the
       orchestrator owns the interview and should close the loop inline."
     - "Inline-recovery logic that silently overwrites a non-empty but
-      broken `vaultPath`, or that fabricates an obsidian MCP entry when
+      broken `vaultPath`, or that fabricates a brain MCP entry when
       `brain.status` is `no-mcp-entry`. The inline-recovery contract
       covers only the empty-`vaultPath` case where user intent is
       unambiguous; other failure modes route to `npx aidemd-mcp init`
@@ -99,9 +99,9 @@ outcomes:
       brought into scope."
     - "Inline recovery that issues a single `aide_init` call and
       declares success. Calling `aide_init({ category: \"brain\",
-      brainPath })` alone applies the three brain-category steps
-      (vault dirs, playbook hub, vault CLAUDE.md) but filters out the
-      mcp-category step that prescribes the obsidian entry for
+      brainPath })` alone applies the brain-category steps (vault
+      dirs, playbook hub, vault CLAUDE.md) but filters out the
+      mcp-category step that prescribes the brain entry for
       `.mcp.json` — so `brain.status` stays `invalid-path` even though
       the orchestrator reports the vault as wired up. The sequence
       must issue both the mcp call and the brain call; one call is
@@ -119,16 +119,17 @@ outcomes:
       after the two-call inline recovery (mcp + brain), before the
       user has restarted Claude Code. `.mcp.json` is read at Claude
       Code startup; patching it mid-session updates disk state but
-      leaves the already-running obsidian MCP server launched with
+      leaves the already-running brain MCP server launched with
       the empty `vaultPath` it booted with. Downstream pipeline
-      agents that need a live obsidian MCP will fail — silently or
-      loudly — because the server is still unwired even though the
-      config file is correct. Equally wrong is re-calling `aide_info`
-      in the same session and treating `brain.status === \"ok\"` as
-      permission to continue: that check reports disk state, not
-      live-server state, and yields false confidence. The recovery's
-      terminal state is a user-facing restart instruction plus a
-      hard STOP, not a verification-and-continue loop."
+      agents that need a live brain MCP server will fail — silently
+      or loudly — because the server is still unwired even though
+      the config file is correct. Equally wrong is re-calling
+      `aide_info` in the same session and treating
+      `brain.status === \"ok\"` as permission to continue: that check
+      reports disk state, not live-server state, and yields false
+      confidence. The recovery's terminal state is a user-facing
+      restart instruction plus a hard STOP, not a
+      verification-and-continue loop."
 ---
 
 ## Context
@@ -152,7 +153,7 @@ everyone's side job and no one's primary job.
 The harness also lacks a canonical doc explaining how alignment works,
 what the status field means, and how misalignment flows through the
 pipeline. Without that doc, every new agent or contributor re-derives
-the protocol from scattered instructions across six agent definitions.
+the protocol from scattered instructions across the agent definitions.
 
 ## Strategy
 
@@ -206,8 +207,8 @@ spec edit touches outcomes, but the user decides when to invoke it.
 about it.** The current agent definitions each contain a one-line
 "walk the intent tree" instruction. While these are not the
 multi-paragraph instructions the spec warns against, they represent
-duplicated responsibility that belongs in the tool, not in six agent
-files. The discover tool's enhanced output — ancestor chain with
+duplicated responsibility that belongs in the tool, not in every agent
+file. The discover tool's enhanced output — ancestor chain with
 descriptions, misalignment flags — should teach the protocol directly.
 Agents should still report misalignment flags they encounter in
 discover output, but the instruction to do so should be minimal:

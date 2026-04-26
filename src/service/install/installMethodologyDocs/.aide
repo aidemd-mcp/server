@@ -103,7 +103,7 @@ outcomes:
 
 ## Context
 
-The AIDE methodology is a doc set — seven canonical files under `docs/`
+The AIDE methodology is a doc set — the canonical files under `docs/`
 — and before this helper existed, the only delivery mechanism for those
 files was to concatenate them into a single block inside the host's
 config file. That worked while the methodology was small, but the
@@ -205,11 +205,12 @@ canonical methodology docs, receives eight names (index plus seven
 methodology docs), and iterates them. For each name it asks
 initContent for the doc's bytes, writes those bytes to the
 corresponding host-side file under the shared doc-hub path, and
-reports `created`. The install summary shows eight `created` lines
-for this step alongside the methodology stub, the scaffolded slash
-commands, and the MCP wiring. The developer opens the host-side hub
-folder and sees eight files whose contents are byte-identical to the
-docs the maintainer edits in `.aide/docs/`.
+reports `created`. The install summary shows a `created` line per
+canonical doc for this step alongside the methodology stub, the
+scaffolded slash commands, and the MCP wiring. The developer opens
+the host-side hub folder and sees the canonical doc set whose
+contents are byte-identical to the docs the maintainer edits in
+`.aide/docs/`.
 
 A developer re-runs the install action on an already-initialized
 project — through either entry point. Every doc install checks the

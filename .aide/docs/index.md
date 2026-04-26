@@ -11,7 +11,7 @@
 
 ## Pipeline Agents
 
-AIDE ships nine canonical agents that `aide_init` installs to `.claude/agents/aide/`. Eight map to pipeline phases; one is a read-only investigator:
+AIDE ships the canonical pipeline agents that `aide_init` installs to `.claude/agents/aide/`. Most map to pipeline phases; the explorer is a read-only investigator:
 
 | Agent | Model | Phase(s) | Brain Access |
 |---|---|---|---|

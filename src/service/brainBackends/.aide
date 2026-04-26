@@ -1,5 +1,6 @@
 ---
 scope: src/service/brainBackends
+status: aligned
 description: >
   Backend driver registry for the brain layer — owns per-backend identity inference
   from MCP entry shapes and the server-assembled entry-point reach prose each

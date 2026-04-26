@@ -78,14 +78,14 @@ installations get "command not found" errors that are never explained in
 most MCP server READMEs. These are the documented friction points the
 README must address head-on.
 
-The server currently ships eight tools (`aide_discover`, `aide_read`,
-`aide_scaffold`, `aide_validate`, `aide_inspect`, `aide_info`,
-`aide_init`, `aide_upgrade`) plus the `plan.aide` and `todo.aide` file
-types. With eight tools, full parameter documentation is feasible and
-preferred over a summary list — the tool count is small enough that
-every parameter can be documented without the README becoming unwieldy.
-This is the recommendation from the tool documentation research for
-servers with ten or fewer tools.
+The server currently ships a small set of tools (`aide_discover`,
+`aide_read`, `aide_scaffold`, `aide_validate`, `aide_inspect`,
+`aide_info`, `aide_init`, `aide_upgrade`, `aide_brain`) plus the
+`plan.aide` and `todo.aide` file types. The roster is small enough that
+full parameter documentation is feasible and preferred over a summary
+list — every parameter can be documented without the README becoming
+unwieldy. This is the recommendation from the tool documentation
+research for servers with a small tool surface.
 
 ## Strategy
 
@@ -161,7 +161,7 @@ prevents it (mcp-readme-config-blocks research, reload requirement finding).
 **Document every tool with full parameters in the canonical format.** Use
 H3 per tool inside a Tools H2. Each tool gets an imperative one-sentence
 description and an Inputs bullet list with backtick name, (type, optional)
-markers, and a description. Six tools is well within the feasibility
+markers, and a description. The tool roster is well within the feasibility
 threshold for full documentation. Group by lifecycle phase if it helps
 scanning: discover and read (navigation), scaffold and validate
 (authoring), init and upgrade (project setup). Include the `plan.aide`

@@ -1,19 +1,67 @@
 ---
 description: >
-  QA re-validation for .claude/.aide after the STOP-and-restart redesign of the
-  inline-recovery branch. The prior issue log (brainVaultPath vs brainPath) is
-  superseded by this run. All in-scope outcomes from this session — desired #8
-  (revised inline-recovery flow) and undesired #6–#10 (revised or new) — are
-  re-verified against the rewritten empty-vaultPath sub-branch in aide.md.
-intent: All in-scope outcomes pass. No issues remain.
-misalignment: []
+  Active fixed-`brain`-key drift in the inline-recovery outcome. Prior QA
+  cycle (STOP-and-restart redesign) preserved below for retro context;
+  every in-scope outcome from that session passed at the time, but the
+  fixed-key shift in `.aide/handoff.aide` has since invalidated the
+  outcome's "obsidian prescription" label.
+intent: >
+  The `.claude` harness spec's outcomes.desired #8 (the inline-recovery
+  flow) and outcomes.undesired #6 (no obsidian fabrication) name the
+  prescription as "the returned obsidian prescription" / "obsidian MCP
+  entry." Under `.aide/handoff.aide`'s fixed-`brain`-key settlement,
+  the prescription is keyed `brain`, not `obsidian`. The recovery flow's
+  shape (two calls, mcp first then brain, restart instruction, hard
+  STOP) is otherwise unchanged.
+misalignment:
+  - spec-gap
 ---
 
 ## Issues
 
-*(none)*
+### Active (alignment pass — fixed-`brain`-key drift)
+
+- [x] `.claude/.aide` outcomes.desired #8 (inline-recovery flow): "Call one uses `category: \"mcp\"` and applies the returned obsidian prescription to `.mcp.json` (the MCP prescription is always agent-applied, never written directly by the tool, because `.mcp.json` merges with the user's other MCP entries)."
+  "the returned obsidian prescription" pins the wrong key name. The prescription returned by the install service is keyed `brain` per `.aide/handoff.aide`. The flow's shape (mcp call -> agent merges -> brain call -> restart message -> STOP) is unchanged, only the label of the prescription is stale.
+  Traces to: `.aide/handoff.aide` (settled) -> "The brain MCP key is fixed at `brain`."
+  Misalignment: spec-gap
+
+- [x] `.claude/.aide` outcomes.undesired #6 (silent fabrication ban): "...fabricates an obsidian MCP entry when `brain.status` is `no-mcp-entry`."
+  The undesired outcome is structurally correct but names the entry as "obsidian MCP entry" — under the fixed-key invariant the entry is "the brain MCP entry." The ban on fabrication is unchanged; the label is.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `.claude/.aide` outcomes.desired #8 (per-paragraph): the long inline-recovery paragraph also references "the running obsidian MCP server" twice — "the running obsidian MCP was never launched" and "the live server remains unwired." The post-handoff naming is "the brain MCP server." The mechanical concern (running MCP server cannot pick up a mid-session config patch) is unchanged; the server's name has changed.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `.claude/.aide` outcomes.undesired #9 (one-call vs two-call contract): "Calling `aide_init({ category: \"brain\", brainPath })` alone applies the three brain-category steps (vault dirs, playbook hub, vault CLAUDE.md) but filters out the mcp-category step that prescribes the obsidian entry for `.mcp.json`..."
+  "the obsidian entry" is stale — should read "the brain entry" since the MCP key is `brain`.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `.claude/.aide` outcomes.undesired #10 (no continuation in same session): "Continuing the user's original request in the same session after the two-call inline recovery (mcp + brain), before the user has restarted Claude Code... the already-running obsidian MCP server launched with the empty `vaultPath` it booted with. Downstream pipeline agents that need a live obsidian MCP will fail..."
+  Three references to "obsidian MCP server" / "live obsidian MCP" — should read "brain MCP server" / "live brain MCP." The continuation-ban is unchanged; the server's name is stale.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+### Resolved (prior QA cycle — kept for retro context)
+
+- [x] STOP-and-restart inline-recovery redesign re-validation. All in-scope outcomes from that session passed at the time — desired #8, undesired #6-#10. The pivot from re-verify-and-continue to STOP-and-restart was correct, and the implementation in `.claude/commands/aide.md` cleanly mirrors the redesigned outcomes.
+
+  **NOTE (post-handoff):** the implementation file `aide.md` may also carry the same `obsidian`-keyed labels as the spec — a follow-up sweep through the `.claude/commands/aide/*` files (separate from this alignment pass, per `.aide/handoff.aide` Remaining-work entry "/aide:brain Mode 2 shim refactor") will confirm and propagate the rename.
 
 ## Retro
+
+### Active cycle (fixed-`brain`-key drift)
+
+The STOP-and-restart inline-recovery redesign that the prior cycle resolved is structurally untouched by the fixed-`brain`-key shift — every load-bearing decision (two-call sequence, agent-applied MCP merge, hard STOP, restart message) still holds. What the fixed-key shift invalidates is the *labels* the outcomes use: "obsidian prescription" / "obsidian MCP entry" / "obsidian MCP server" all need to read "brain prescription" / "brain MCP entry" / "brain MCP server" respectively.
+
+The handoff explicitly names the `/aide:brain` Mode 2 shim refactor and the agent frontmatter sweep as Remaining work — those land alongside this spec realignment. The harness spec (this file's parent) cannot be re-stamped `aligned` until those touches propagate, because the spec's outcomes will continue to reference "obsidian" in user-visible prompts and the implementation will need to follow.
+
+What would have caught this earlier: any `/aide:align` pass scoped to `.claude/.aide` after the handoff settled `brain` as the fixed key. The handoff is at the project root, the harness spec is one level down, and the cascade pattern is direct.
+
+### Prior cycle (resolved — STOP-and-restart redesign re-validation)
 
 This was a clean re-validation of the STOP-and-restart inline-recovery redesign.
 Every in-scope outcome passes. Specific findings per checkpoint:

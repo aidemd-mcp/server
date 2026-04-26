@@ -1,13 +1,14 @@
 ---
 intent: >
-  Four misalignments against outcomes.desired and outcomes.undesired:
-  (1) --vault-path flag introduced without spec sanction — spec's undesired
-  outcome forbids flags beyond --help; (2) deferredCategories() varies by
-  vaultPath — spec's desired outcome requires the three categories are
-  always deferred; (3) exists (byte-identical) entries excluded from the
-  warning — spec's good examples include them in the Skipped files section;
-  (4) 9 test failures caused by deferred-category string mismatch between
-  the test constant and the implementation.
+  Two layers of drift in this spec. First (prior cycle): four misalignments
+  against outcomes.desired and outcomes.undesired around the --vault-path
+  flag, the deferredCategories shape, the warning's coverage of exists
+  files, and a downstream test-string mismatch. Second (active, after the
+  fixed-`brain`-key refactor): every outcome in this spec that names the
+  obsidian MCP server entry as a key written into .mcp.json is stale —
+  the handoff at the project root settles the brain MCP key as `brain`,
+  not `obsidian`. The "obsidian" token survives only as the backend
+  driver id, never as the MCP config key.
 misalignment:
   - spec-gap
   - strategy-gap
@@ -16,6 +17,44 @@ misalignment:
 ---
 
 ## Issues
+
+### Active (alignment pass — fixed-`brain`-key drift)
+
+- [x] `src/cli/init/.aide` outcomes.desired (cold-start install enumeration): "...the `obsidian` MCP server entry (additively merged into `.mcp.json`, with a real path when `--vault-path` was supplied and a placeholder empty path slot otherwise)..."
+  Under the fixed-key settlement (`.aide/handoff.aide`: "The brain MCP key is fixed at `brain`"), the entry is keyed `brain` in `.mcp.json`, not `obsidian`. The CLI writes `mcpServers.brain`, never `mcpServers.obsidian`. The desired outcome pins the wrong key.
+  Traces to: `.aide/handoff.aide` (settled) -> "Migration path: rename `obsidian` -> `brain` at install time."
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` outcomes.desired ("The `obsidian` MCP server entry is always written into `.mcp.json` by the CLI..."): the entire bullet repeats the wrong key shape — "obsidian MCP server entry" should read "brain MCP server entry" (with the entry value carrying an obsidian-shaped command/args that the registry will identify as the `obsidian` driver).
+  Traces to: `.aide/handoff.aide` (settled) — fixed `brain` MCP key.
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` outcomes.undesired ("The CLI fails to write the `obsidian` MCP server entry on a run where `--vault-path` was not supplied..."): same key-name drift. The undesired outcome is structurally still load-bearing (the entry must always be written) but the key it names is stale.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` outcomes.undesired ("The CLI invents or guesses a vault path to fill the `obsidian` entry's path slot..."): refers to "the `obsidian` entry" — should read "the `brain` entry" since the MCP config key is `brain`.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` Strategy ("the `obsidian` MCP entry shell is always written by the CLI"): same key-name drift in the strategy paragraph that codifies the load-bearing decision.
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` Good examples (first deferred-category warning): "Vault path — the obsidian MCP entry shell is written but the vault path is empty..."
+  The warning's user-facing copy names the wrong key. Even taken as illustrative prose, this is the user-visible string the spec is committing to — agents and humans reading this spec will reproduce the wrong key in tests, in build verification, and in user-facing logs.
+  Traces to: `.aide/handoff.aide` (settled) — `brain` MCP key as the shipped name.
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` Good examples (second mid-install log block): the per-file log line `[created] .mcp.json — aide MCP server entry (merged with 1 existing server)` is correct under the dual-key setup the prior version envisioned, but the two later worked examples explicitly mention "aide and obsidian MCP server entries" — under the fixed-key world the CLI writes only the `aide` and `brain` keys (the brain entry's value is obsidian-shaped, but the key is `brain`).
+  Traces to: `.aide/handoff.aide` (settled).
+  Misalignment: spec-gap
+
+- [x] `src/cli/init/.aide` Bad examples ("The CLI silently replaces the user's existing `.mcp.json`"): the example narrative "had `github`, `obsidian`, and two custom MCP servers configured. All four are gone..." Under the fixed-key world the user might have a legacy `obsidian` key from a pre-migration install — the CLI's responsibility around it is to leave it alone (the install service's `provisionBrain` is the migration surface, per `.aide/handoff.aide`). The example is still illustrative of the failure shape but the inventory of pre-existing MCP servers should reflect the post-handoff world.
+  Traces to: `.aide/handoff.aide` (settled) — install service handles the `obsidian` -> `brain` rename, never the CLI silently.
+  Misalignment: spec-gap
+
+### Prior cycle (resolved — pre-handoff cycle, see Retro)
 
 - [ ] **src/cli/init/index.ts:237-249 (parseVaultPath) and :276** — `--vault-path` is introduced as a recognized flag but the spec's undesired outcome explicitly states "The only recognized flag is `--help`." No desired outcome in the spec sanctions this flag or the behavior it enables.
       Traces to: `outcomes.undesired[12]` ("Prompting the user interactively on the happy path — `y/N` gates, conversational questions, or any flag beyond `--help`") | Misalignment: `strategy-gap`
@@ -30,6 +69,12 @@ misalignment:
       Traces to: `outcomes.desired[9]` (idempotent re-run behavior) | Misalignment: `test-gap`
 
 ## Retro
+
+### Active cycle (fixed-`brain`-key drift)
+
+The fixed-key shift in `.aide/handoff.aide` reaches into every spec that names the obsidian MCP server entry as a config key. This spec was written with the `obsidian`-keyed worldview baked into both outcomes and worked examples — the contract correctly anticipates that the CLI must always write the entry (with a placeholder path when `--vault-path` is absent) but pins the key to the wrong name throughout. The fix is mechanical: replace "obsidian MCP server entry" / "obsidian MCP entry" with "brain MCP server entry" / "brain MCP entry" everywhere it refers to the `.mcp.json` key, but leave the obsidian-shaped command/args content of the entry value alone. The Bad-examples narrative also needs a refresh so the inventory of pre-existing MCP servers reflects the post-handoff world (legacy `obsidian` keys are migrated by `provisionBrain`, not silently overwritten by the CLI).
+
+### Prior cycle (pre-handoff)
 
 Issues 1 and 2 share a single root: the `--vault-path` flag and its downstream effects (the variable deferred list, the new obsidian-entry-with-empty-path behavior) were designed in at the strategy/plan layer without checking whether they were permitted by the spec. The spec's "only `--help`" and "always defer three categories" invariants are explicit and hard — they should have been cross-checked before the flag was introduced. The plan's "Decisions" section documents the planner-reuse rationale in detail but does not mention the flag or justify the deferred-categories reduction against the spec's always-defer contract. A plan-time check against the spec's undesired outcomes would have caught both.
 
