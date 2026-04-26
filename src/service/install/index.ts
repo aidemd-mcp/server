@@ -12,7 +12,7 @@ import installAgents from "./installAgents/index.js";
 import installSkills from "./installSkills/index.js";
 import installAideTree from "./installAideTree/index.js";
 import wireMcp from "./wireMcp/index.js";
-import provisionBrain from "./provisionBrain/index.js";
+import provisionBrain, { obsidianMcpEntry } from "./provisionBrain/index.js";
 import scaffoldReadme from "./scaffoldReadme/index.js";
 import compareBytes from "./shared/compareBytes/index.js";
 
@@ -71,23 +71,33 @@ export default async function init(
 	const mcpStep = await wireMcp(join(projectRoot, config.mcpConfigPath));
 
 	// Brain steps require a confirmed vault path. When brainPath is explicitly
-	// provided (agent-confirmed), use it directly. When hints exist, use the
-	// first hint to check existing state. When neither is available, return
-	// placeholder steps so the agent knows to interview the user first.
+	// provided (agent-confirmed), delegate fully to provisionBrain. When absent,
+	// return placeholder steps with empty filePaths so the agent knows to interview
+	// the user first — the brain MCP entry prescription is written with an empty
+	// vault path (obsidianMcpEntry("")) so the orchestrator's inline-recovery flow
+	// detects the invalid-path state and prompts the user to supply the real path.
+	// brainHints are interview material for the agent; they are NEVER used as a
+	// planner-side default to avoid silently baking a hint into the prescription
+	// before the user has confirmed the path.
 	const brainMcpPath = join(projectRoot, config.mcpConfigPath);
-	let brainSteps: import("@/types/index.js").InitStep[];
-	const resolvedBrainPath = brainPath ?? (brainHints.length > 0 ? brainHints[0].path : undefined);
-	if (resolvedBrainPath) {
-		brainSteps = await provisionBrain(resolvedBrainPath, brainMcpPath);
+	let brainSteps: InitStep[];
+	if (brainPath !== undefined) {
+		brainSteps = await provisionBrain(brainPath, brainMcpPath);
 	} else {
-		// No hints discovered and no explicit brainPath — the agent must ask the
-		// user for a path. Return would-create steps with empty filePaths so the
-		// agent knows brain provisioning is pending user input, not silently resolved.
+		// No explicit brainPath — the agent must ask the user. Return placeholder
+		// steps with empty filePaths. The MCP entry prescription uses an empty
+		// vault path so the orchestrator's recovery flow can route correctly.
 		brainSteps = [
 			{ name: "Brain vault", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{ name: "Playbook hub", status: "would-create" as const, category: "brain" as const, filePath: "" },
 			{ name: "Vault CLAUDE.md", status: "would-create" as const, category: "brain" as const, filePath: "" },
-			{ name: "MCP config (obsidian)", status: "would-create" as const, category: "mcp" as const, filePath: brainMcpPath },
+			{
+				name: "MCP config (brain)",
+				status: "would-create" as const,
+				category: "mcp" as const,
+				filePath: brainMcpPath,
+				prescription: { key: "brain", entry: obsidianMcpEntry("") },
+			},
 		];
 	}
 

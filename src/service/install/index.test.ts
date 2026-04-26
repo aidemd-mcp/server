@@ -84,7 +84,8 @@ describe("init — structured JSON result", () => {
 			if (step.status === "would-create") {
 				// MCP steps carry prescription; file steps carry content
 				if (step.category === "mcp") {
-					// Obsidian MCP step may lack prescription when no brain hints (placeholder)
+					// MCP steps carry a prescription when the agent has confirmed a path;
+					// the brain MCP step always carries a prescription (even with empty path).
 					if (step.prescription) {
 						expect(step.prescription.key).toBeTruthy();
 						expect(step.prescription.entry.command).toBeTruthy();
@@ -100,14 +101,16 @@ describe("init — structured JSON result", () => {
 		}
 	});
 
-	it("fresh project: every step has a filePath (brain placeholder steps may be empty when no hints)", async () => {
+	it("fresh project: every step has a filePath (brain placeholder steps have empty filePath when no brainPath supplied)", async () => {
 		const result = await init(tempDir);
 
-		// Brain placeholder steps have empty filePath when no hints — signals agent must ask user
+		// When no explicit brainPath is supplied, brain placeholder steps have empty
+		// filePaths — this signals the agent must interview the user before applying.
 		const brainPlaceholders = new Set(["Brain vault", "Playbook hub", "Vault CLAUDE.md"]);
 
 		for (const step of result.steps) {
-			if (brainPlaceholders.has(step.name) && result.brainHints.length === 0) {
+			if (brainPlaceholders.has(step.name)) {
+				// Placeholder brain steps always have empty filePath when no brainPath supplied
 				expect(step.filePath).toBe("");
 			} else if (step.category === "readme" && step.status === "would-create" && step.filePath !== "") {
 				// README step on a fresh project: would-create with a real filePath (creates README.md)
@@ -216,6 +219,70 @@ describe("init — structured JSON result", () => {
 		expect(vaultStep).toBeDefined();
 		expect(vaultStep?.status).toBe("would-create");
 		expect(vaultStep?.filePath).toBe("");
+	});
+
+	it("no brainPath + hints non-empty: vault step has empty-string filePath (hint NOT used as default)", async () => {
+		// Create a real vault directory so resolveBrainHints returns a hint via env
+		const hintVault = join(tempDir, "hint-vault");
+		await mkdir(hintVault);
+		process.env.AIDE_BRAIN_PATH = hintVault;
+
+		const isolated = join(tempDir, "project");
+		await mkdir(isolated);
+		// Call without brainPath — the hint must NOT be baked in
+		const result = await init(isolated);
+
+		// Hints should be non-empty (the env hint exists)
+		const envHints = result.brainHints.filter((h) => h.source === "env");
+		expect(envHints.length).toBeGreaterThan(0);
+
+		// Despite hints being present, vault step must have empty filePath
+		const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+		expect(vaultStep).toBeDefined();
+		expect(vaultStep?.status).toBe("would-create");
+		expect(vaultStep?.filePath).toBe("");
+
+		// Brain MCP entry prescription must also use empty vault path
+		const brainMcpStep = result.steps.find((s) => s.name === "MCP config (brain)");
+		expect(brainMcpStep).toBeDefined();
+		expect(brainMcpStep?.prescription).toBeDefined();
+		const lastArg = brainMcpStep?.prescription?.entry.args?.at(-1);
+		expect(lastArg).toBe("");
+	});
+
+	it("no brainPath + hints empty: vault step has empty-string filePath", async () => {
+		delete process.env.AIDE_BRAIN_PATH;
+		const isolated = join(tempDir, "deeply", "nested", "project");
+		await mkdir(isolated, { recursive: true });
+
+		const result = await init(isolated);
+
+		if (result.brainHints.length === 0) {
+			const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+			expect(vaultStep).toBeDefined();
+			expect(vaultStep?.filePath).toBe("");
+			expect(vaultStep?.status).toBe("would-create");
+		}
+	});
+
+	it("explicit brainPath: vault step has that path, brainHints still returned", async () => {
+		const confirmedPath = join(tempDir, "confirmed-vault");
+		const result = await init(tempDir, undefined, undefined, confirmedPath);
+
+		// The vault step must use the confirmed path
+		const vaultStep = result.steps.find((s) => s.name === "Brain vault");
+		expect(vaultStep).toBeDefined();
+		expect(vaultStep?.filePath).toBe(confirmedPath);
+
+		// brainHints still present at top level (agent interview material)
+		expect(result).toHaveProperty("brainHints");
+		expect(Array.isArray(result.brainHints)).toBe(true);
+
+		// Brain MCP prescription uses the confirmed path
+		const brainMcpStep = result.steps.find((s) => s.name === "MCP config (brain)");
+		expect(brainMcpStep?.prescription).toBeDefined();
+		const lastArg = brainMcpStep?.prescription?.entry.args?.at(-1);
+		expect(lastArg).toBe(confirmedPath);
 	});
 
 	it("idempotency — re-running on initialized content returns exists steps", async () => {
