@@ -1,3 +1,5 @@
+# intent spec
+
 # AIDE HANDOFF
 
 Cold-start protocol for agents reorienting on this project. This is a
@@ -8,111 +10,276 @@ annotated.
 
 ---
 
-## Cold-start protocol (do this first if you're picking up cold)
+## ⚠ STOP — REVIEW IN PROGRESS (set 2026-04-26, updated 2026-04-26)
 
-**The brain layer is fully aligned at every level.** Intent, plans,
-code, tests, and the agent-readable surface (orchestrator prompt,
-brain config skill) are all coherent across the cascading tree.
-Four multi-module cycles are complete: (1) the brain.aide schema
-collapse, (2) hub-artifact sourcing from brain.aide body sections,
-(3) the agent-invokes-sync wiring loop that closes the broken-state
-recovery flow without any terminal context-switching, and (4) the
-post-collapse leftover sweep that closed schema-drift bugs in shipped
-agent-facing surfaces (tool descriptions, public docs, install-time
-specs, harness recovery contract). `aide_discover` reports no
-`status: misaligned` anywhere under `src/service/` or `.claude/`.
+The structural-followup cycle from earlier on 2026-04-26 was halted
+by the user because of bugs. A review session on the same date made
+**partial progress** and surfaced a major architectural decision that
+queues a substantial new pipeline cycle. This banner stays until ALL
+surfaces are reviewed and signed off AND the queued work has landed.
 
-**What just landed (this most recent cycle):** an end-to-end audit
-+ cleanup of leftovers from the post-collapse refactor. The runtime
-was correct, but several agent-facing surfaces still taught the
-pre-collapse contract. Scope:
+**Hard rule established this session — encode permanently:**
 
-- **Spec corrections.** `src/service/install/installAgents/.aide`
-  rewritten to use `mcpServers: [brain]` (was `[obsidian]`), with a
-  YAML parse error fixed at the same time. `installAgents/plan.aide`
-  re-architected to match (4 connector-flavored MCP-key references
-  swept). `.claude/.aide` had its retired `vaultPath` / `invalid-path`
-  vocabulary swept across 6 outcome bullets, then was paired back in
-  a second pass to retire the harness-level recovery contract entirely
-  (Option B): the harness now commits only to interface-level routing
-  (`Skill(skill: "aide:brain", args: "config")` + halt), and
-  `.claude/commands/aide/brain.aide` carries the authoritative recovery
-  contract. The aligner replaced the harness's stale recovery outcomes
-  with two falsifiable bullets that forbid the harness from
-  re-acquiring mechanism-level commitments.
-- **Read-list backfill.** All 32 numbered steps in
-  `installAgents/plan.aide` got the required `Read:` lines (10 unique
-  playbook notes cited) — the plan predated the Read-list convention.
-- **Tool description fixes.** `aide_info` and `aide_brain`
-  descriptions in `src/index.ts` rewritten to match the post-collapse
-  return shapes. `aide_info` description now teaches the four-state
-  union and `{ status, name?, hints }` shape (was three-state union
-  with retired `vaultPath`). `aide_brain` description now teaches
-  `{ status, instructions }` only (was `{ status, backend, instructions }`
-  with a `backend` field that doesn't exist on the wire). Recovery
-  commands in the description now match what each branch actually
-  surfaces (`npx aidemd-mcp init` for `no-brain-aide`,
-  `npx aidemd-mcp sync` for `no-mcp-entry` + `mcp-drift`).
-- **Description-as-contract outcomes.** A spec gap was closed: the
-  prior schema lies in tool descriptions survived three refactor
-  passes because no spec outcome made the registered description a
-  falsifiable surface. A pair of outcomes (one desired, one undesired)
-  was added to all 8 tool specs (`info`, `brain`, `discover`,
-  `inspect`, `read`, `scaffold`, `upgrade`, `validate`), each tailored
-  to that tool's invariants. Future drift between description and
-  handler/spec is now traceable to a specific outcome.
-- **Stale-comment + JSDoc fixes.** `src/service/install/index.ts:77`
-  comment about `obsidianMcpEntry("")` and `invalid-path` (both
-  retired) rewritten to current vocabulary. `InitInput` JSDoc at line
-  22 corrected — it falsely claimed `brainPath` was removed (only
-  `skipIde` was; `brainPath` is load-bearing on lines 32 and 87).
-- **Public docs.** `.aide/tools.md` (4 sections) and `README.md` (2
-  tool descriptions) updated to match the post-collapse schema —
-  examples no longer show `vaultPath` / `backend` / `invalid-path`.
+> The AIDE pipeline is for CODE ONLY. Never for `.claude/agents/`,
+> `.claude/commands/`, or `.claude/skills/`. Those are canonical
+> agent / command / skill prompts and ARE the contract. Wrapping
+> them in `.aide` specs and re-deriving them through the
+> spec-writer → strategist → architect → implementor pipeline is
+> the inversion that produced the broken cycle. Direct edits only
+> on those surfaces.
 
-Tests stayed at 824/824 throughout. tsc clean. The `obsidian` token
-remains only as legitimate user-config (e.g. `name: obsidian` in
-the user's own `brain.aide`), default-shipped template flavoring
-(`obsidianBrainAideTemplate` helper folder), legacy-key migration
-prose, or anti-examples in specs that explicitly forbid it.
+This rule must be encoded into the orchestrator command
+(`.claude/commands/aide.md`) as a permanent guardrail. It applies to
+every host project that installs AIDE, not just this repo.
 
-**The cycle before that:** the brain config flow no longer punts the
-user to a terminal for `npx aidemd-mcp sync`. The canonical
-orchestrator command (`.claude/commands/aide.md`) and the brain
-config skill (`.claude/commands/aide/brain.md`) were both rewritten
-so the agent invokes sync via Bash on the user's behalf. All three
-broken-state branches (`no-brain-aide`, `no-mcp-entry`, `mcp-drift`)
-now route uniformly: orchestrator delegates to the brain config
-skill; the skill detects which state, scaffolds via `aide_init` when
-needed (no-brain-aide only), then runs sync via Bash by recovering
-the launcher from `.mcp.json["mcpServers"]["aide"]`, then asks the
-user to restart Claude Code as the single remaining manual step.
+### What this review session resolved
 
-**The cycle before that** (commits `1fa1d3e`, `888df56`, `ed84d94`)
-was the brain.aide schema collapse: hub-artifact bytes flow from
-brain.aide body sections via `parseBrainAide` rather than inline
-TypeScript constants; the `## Prose`-only body grew to three sections
-(`## Prose`, `## Playbook hub`, `## Research hub`); the vault-root
-`CLAUDE.md` scaffold was retired entirely; the framework's brain
-contract is now exactly two required hubs (coding-playbook + research);
-storage-specific identifiers in `provisionBrain/index.ts` were swept
-(`vaultExists` → `brainRootExists`, `VAULT_DIRS` → `BRAIN_ROOT_DIRS`,
-etc.).
+1. **Architect + Auditor agent files reverted.** The cycle's
+   "Brain-First Invariant" additions on
+   `.claude/agents/aide/aide-architect.md` and
+   `.claude/agents/aide/aide-auditor.md` were wrong-headed — they
+   forced brain-before-code, which contradicts the architect's
+   correct workflow (read existing code first to understand context,
+   then consult the playbook before planning). Both files are back
+   at HEAD via `git checkout`. The original instructions were
+   structurally correct; the underlying behavioral bug (architect
+   reading playbook files from disk via `Read` instead of invoking
+   the `study-playbook` skill) is something the queued work will
+   address indirectly by tightening the skill's path.
 
-**Tests: 824/824 passing. tsc: clean.**
+2. **`study-playbook` skill architecture clarified — change queued.**
+   The user's multi-month-tested skill content has the right
+   structure. The bug: backend-specific prose (wikilinks,
+   hub-and-spoke navigation, depth-counting example) currently
+   lives inside the package-shipped skill, which must be
+   backend-agnostic. The fix is the queued work below.
 
-If you're picking up cold, the next pipeline phase is whatever the
-user wants — there's no in-flight build work waiting to land. The
-followup items below are independent, not blockers.
+3. **In-progress edits from this session reverted.** Two earlier
+   attempts (stripping the skill, absorbing skill prose into the
+   playbook hub section of the obsidian template) were rolled back
+   via `git checkout`. The pipeline will redo this work properly
+   from scratch.
+
+### Major code refactor queued — MUST run through the AIDE pipeline
+
+The architectural decision below has been signed off by the user
+and is the contract the next pipeline cycle works from.
+
+**Architectural decision (final, signed off):**
+
+- `brain.aide` body schema gains a fourth marker-bounded section.
+  Section order, prose-then-playbook-then-study-playbook-then-research:
+  - `<!-- aide-prose-start -->` / `<!-- aide-prose-end -->` (existing —
+    basic brain access; teaches that the MCP labeled `brain` is the
+    project's brain MCP and the basics of how to use it)
+  - `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`
+    (existing — coding-playbook hub seed; trims back to pure
+    conventions, NO skill prose)
+  - **NEW: `<!-- aide-study-playbook-start -->` /
+    `<!-- aide-study-playbook-end -->`** — dedicated to the
+    backend-specific `study-playbook` navigation prose (Step 1/2/3
+    process, Navigation Rules with depth example, `[[wikilink]]`
+    semantics, hub tagging, etc. — the multi-month-tested content
+    currently in `.claude/skills/study-playbook/SKILL.md`).
+  - `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
+    (existing)
+
+- Required entry-point artifacts at install time = THREE (was two):
+  - `coding-playbook/coding-playbook.md` ← from `playbook` section
+    (existing). Stays focused on coding conventions: Task Routing
+    table, Always Read First, Sections, Contents.
+  - **NEW: `coding-playbook/study-playbook.md`** ← from
+    `study-playbook` section. Holds the navigation rules the skill
+    used to ship inline.
+  - `research/research.md` ← from `research` section (existing).
+
+- Skill becomes minimal:
+  > Call `aide_brain` once. Following the brain access instructions
+  > it returns, read `coding-playbook/study-playbook.md` and follow
+  > the navigation it describes.
+
+  That's the entire skill body. No process steps, no rules, no
+  examples — those move to `coding-playbook/study-playbook.md`.
+
+**Code surfaces to update (all pipeline-appropriate):**
+
+- `src/types/index.ts` — add `studyPlaybook: string` to
+  `ParseBrainAideResult.ok`. JSDoc updates.
+- `src/service/parseBrainAide/index.ts` — extend `MARKER_PAIRS`
+  with the new pair; update `extractMarkerSections` return shape
+  and section-order check; update result construction in
+  `parseBrainAideFromString`. JSDoc throughout.
+- `src/service/parseBrainAide/index.test.ts` — add tests for the
+  new section (presence, ordering, missing-pair, malformed,
+  unmatched, nested, slicing); update existing tests that
+  enumerate body sections.
+- `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts` —
+  emit a four-section body in the new order. Trim the `playbook`
+  section back to pure conventions. Move all the
+  multi-month-tested skill navigation prose into the new
+  `study-playbook` section verbatim — Step 1/2/3 process AND the
+  full Navigation Rules block with the depth-counting example.
+- `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.test.ts` —
+  add assertions for the new section's content + presence;
+  update playbook section assertions to reflect the trimmed
+  content (the `### How to Use This Index` paragraph stays;
+  navigation rules don't appear there anymore).
+- `src/service/install/provisionBrain/index.ts` — add a
+  `buildStudyPlaybookStep` builder (parallel to
+  `buildPlaybookStep` and `buildResearchStep`); update
+  `resolveBrainAideBody` to return
+  `{ playbook, studyPlaybook, research }`; update the step list
+  returned by `provisionBrain` from 5 to 6 entries with the new
+  step inserted between playbook and research.
+- `src/service/install/provisionBrain/index.test.ts` — add
+  tests for the new step; update step-count assertions.
+- `src/service/install/provisionBrain/.aide` — outcomes that
+  reference the five-step pipeline now reference six; outcomes
+  that reference the two-artifact contract now reference three.
+- `src/cli/init/...` — verify any artifact-list references stay
+  in sync.
+- `src/index.ts` — update any MCP tool descriptions that
+  enumerate body sections or entry-point artifacts.
+
+**Methodology + intent surfaces to update (also pipeline-appropriate
+because they describe code contracts):**
+
+- `.aide/docs/brain-aide.md` — update from "exactly three
+  marker-bounded sections in fixed order" to four; document the
+  new section's purpose, ownership (study-playbook skill),
+  per-consumer ownership pattern, and strict-failure migration
+  policy.
+- `.aide/intent.aide` — update outcomes that reference the
+  three-section grammar (intent #4) and the two-artifact
+  contract (intent #7). Update the related anti-regression
+  invariants in this handoff.
+- `.aide/config/brain.aide` (this project's own runtime config)
+  — regenerate from the updated template so it round-trips
+  cleanly under the new four-section parser.
+
+**Direct-edit surface (NOT pipelined per the hard rule above):**
+
+- `.claude/skills/study-playbook/SKILL.md` — strip to the minimal
+  pointer described above. Apply this AFTER the code refactor
+  has landed and `coding-playbook/study-playbook.md` is a real
+  scaffolded artifact path. Direct edit, no pipeline.
+
+### Other unverified surfaces from the original cycle (NOT yet addressed)
+
+These still need decisions in the review pass:
+
+- **`.claude/commands/aide/aide.aide`** (untracked, ~290 lines).
+  Pipeline-created meta-spec for the `/aide` command — exactly the
+  inversion the new "pipeline = code only" rule forbids.
+  Recommendation: delete. The orchestrator's contract belongs in
+  `.claude/commands/aide.md` itself, not in a sibling `.aide`
+  spec. The user should confirm before deletion.
+- **`.claude/.aide`** (the harness spec). Trimmed by the cycle to
+  reference per-command specs (`aide.aide` and `brain.aide`).
+  Now that the per-command-spec pattern is rejected (because it
+  pipelines command/skill prose), `.claude/.aide` likely needs
+  to revert to its pre-cycle outcomes. Review with user before
+  acting.
+- **`.aide/handoff.aide`** — this file. Will be in a final state
+  once all the queued work lands and the user signs off.
+
+### Process discipline reminders for the next session
+
+The cycle that produced the original mess **bypassed both
+methodology-mandated pause-for-approval points** (after spec
+frontmatter in Stage 1, after plan in Stage 4). The orchestrator's
+contract treats those pauses as unconditional regardless of mode.
+Auto mode is "execute reasonable assumptions on routine work,"
+NOT "skip the human checkpoints the methodology guarantees."
+
+For the queued work specifically:
+
+- After `aide-spec-writer` returns frontmatter for the
+  schema-extension spec → present to user, wait for explicit
+  approval before delegating synthesis.
+- After `aide-architect` returns `plan.aide` for each affected
+  module → present each to the user, wait for explicit approval
+  before delegating to the implementor.
+- One implementor per numbered plan step, fresh context each
+  time. Do NOT reuse a single implementor across steps.
+- Run the full test suite after every plan completes; do not
+  advance to the next module's plan until the current module is
+  green.
+
+### Resume order when picking up cold
+
+1. Read this banner. Do not act on the cycle's old "DONE" labels —
+   they describe execution, not correctness.
+2. Open a conversation with the user. Confirm the queued work is
+   still the right scope. The user may have refined the
+   architectural decision since this handoff was written.
+3. Once confirmed, route through `/aide:spec` against
+   `src/service/parseBrainAide/.aide` (the parser is the
+   foundation — every other module depends on its result type).
+   The spec-writer should capture the four-section grammar in the
+   parser's outcomes; the architect plans the parser changes
+   first; once the parser lands, the template, install service,
+   and tests follow.
+4. The methodology-doc and intent updates are part of the same
+   pipeline cycle, not a separate phase.
+5. The skill direct-edit happens AFTER the code lands, as a small
+   manual edit by the orchestrator.
 
 ---
 
-## The architectural intent (what the specs now say)
+## Cold-start protocol (do this first if you're picking up cold)
 
-The brain layer is governed by these decisions, all of which live in
-`.aide/intent.aide` outcomes (intents #1–#16) plus the agent-readable
-surface spec (`.claude/commands/aide/brain.aide` for intent #17).
-Read them in the root before drilling into any child.
+**The brain template marker-pair refactor is COMPLETE.** The
+three-section marker-bounded body grammar is live end-to-end:
+parser, scaffold, runtime tool, methodology doc, MCP tool
+descriptions, and this project's own `brain.aide` all conform.
+Tests are 847 green project-wide; `tsc --noEmit` is exit 0.
+
+**The structural-followup cycle that ran 2026-04-26 was UNVERIFIED
+and is being reviewed.** Two surfaces are resolved (architect +
+auditor reverted to HEAD). One major architectural change is
+queued for the next pipeline cycle (four-section brain.aide schema +
+new study-playbook entry-point artifact). Three surfaces remain
+unverified (`.claude/commands/aide/aide.aide`, `.claude/.aide`,
+this handoff).
+
+**What the live runtime currently enforces** (will change with the
+queued work — see the "Major code refactor queued" subsection above):
+
+- `brain.aide` body = three marker-bounded sections in fixed order
+  (`prose`, `playbook`, `research`) delimited by paired
+  HTML-comment markers, lowercase, case-sensitive, byte-exact form.
+  *Queued change: four sections, with `study-playbook` inserted
+  between `playbook` and `research`.*
+- `parseBrainAide`'s `ParseBrainAideResult.ok` carries fields
+  `prose`, `playbook`, `research`. *Queued change: add
+  `studyPlaybook`.*
+- The bundled `obsidianBrainAideTemplate` emits the marker-pair
+  body. *Queued change: emit four sections; trim `playbook` to
+  pure conventions; move skill navigation prose to
+  `study-playbook`.*
+- `provisionBrain` is a 5-step pipeline. *Queued change: 6 steps
+  (insert `buildStudyPlaybookStep` between playbook and research).*
+- The framework's brain contract = exactly two required
+  entry-point artifacts (playbook + research). *Queued change:
+  three (add `coding-playbook/study-playbook.md`).*
+
+**`aide_info`'s outdated flag is meaningless in this repo.** This
+package is the canonical source for every artifact under
+`.claude/agents/`, `.claude/commands/`, `.claude/skills/`, and
+`.aide/docs/`. The `outdated` array compares the host's
+`.aide/versions.json` against the manifest shipped with the npm
+package — but in THIS repo, the local files ARE what ships next.
+Any post-publish edit shows as "outdated" even though it is the
+new source of truth. Ignore the outdated array when working in
+this repo.
+
+---
+
+## The architectural intent (what the specs say)
+
+The brain layer is governed by the decisions below. Two of them
+(intents #4 and #7) will be amended by the queued work.
 
 1. **`brain.aide` lives at `.aide/config/brain.aide`.** The
    `.aide/config/` directory is user-owned: scaffolded once at
@@ -123,279 +290,224 @@ Read them in the root before drilling into any child.
 
 2. **The default scaffolded launcher is `@bitbonsai/mcpvault`.** The
    bundled `obsidianBrainAideTemplate` helper emits `npx
-   @bitbonsai/mcpvault <vault-path>`. Hosts that want a different
+   @bitbonsai/mcpvault <brain-root-path>`. Hosts that want a different
    brain edit one file and run `npx aidemd-mcp sync`.
 
 3. **Frontmatter schema = exactly two top-level fields:** `name` (a
    human-readable label the package never branches on) and
    `mcpServerConfig` (`command` + `args` that sync writes verbatim
-   into `.mcp.json` under `mcpServers["brain"]`). Final shape:
+   into `.mcp.json` under `mcpServers["brain"]`).
 
-   ```yaml
-   ---
-   name: obsidian
-   mcpServerConfig:
-     command: npx
-     args:
-       - "@bitbonsai/mcpvault"
-       - "D:/notes/my-vault"
-   ---
-   ```
+4. **Body schema = exactly three marker-bounded sections** (current).
+   Sections in fixed order: `prose`, `playbook`, `research`.
+   *Queued amendment: four sections with `study-playbook` inserted
+   between `playbook` and `research`.* See the "Major code refactor
+   queued" subsection at the top of this file for the full new
+   contract.
 
-4. **Body schema = exactly three named sections:** `## Prose`,
-   `## Playbook hub`, `## Research hub`. The closed-vocabulary parser
-   rejects unknown top-level `## ` headings as `malformed-body` and
-   rejects missing required sections by name. Nested headings inside
-   any section MUST use `### ` or deeper — the walker treats every
-   `^## .+$` line as a section-boundary candidate.
+5. **Each consumer reads only its owned section:**
+   - `tools/brain` (runtime brain entry-point tool) reads `prose`
+     only, returns it byte-identical to callers.
+   - `provisionBrain` reads `playbook` and `research` to scaffold
+     the entry-point artifacts on cold install. *Queued addition:
+     also reads `study-playbook` for the new entry-point artifact.*
+   - `cli/sync` and `buildBrainState` read frontmatter only.
 
-5. **Each consumer reads only its owned sections:**
-   - `tools/brain` (runtime brain entry-point tool) reads `prose` only,
-     returns it byte-identical to callers
-   - `provisionBrain` reads `playbookHub` and `researchHub` to scaffold
-     the hub artifacts on cold install
-   - `cli/sync` and `buildBrainState` read frontmatter only; body
-     sections are irrelevant to them
+6. **Entry-point artifact bytes flow from `brain.aide`, never from
+   inline TypeScript constants.**
 
-6. **Hub artifact bytes flow from `brain.aide`, never from inline
-   TypeScript constants.** `PLAYBOOK_HUB_TEMPLATE` and
-   `VAULT_CLAUDE_MD_TEMPLATE` are deleted; the bytes that used to
-   live in those constants are now in the bundled template's
-   `## Playbook hub` body section. The user can edit them like any
-   other content in their `brain.aide`.
+7. **The framework's brain contract = exactly two required
+   entry-point artifacts** (current): coding-playbook artifact at
+   `coding-playbook/coding-playbook.md`, research artifact at
+   `research/research.md`. *Queued amendment: three required
+   artifacts; add `coding-playbook/study-playbook.md` from the new
+   `study-playbook` body section.*
 
-7. **The framework's brain contract = exactly two required hubs.**
-   Coding-playbook hub at `coding-playbook/coding-playbook.md`,
-   research hub at `research/research.md`. Anything else in the brain
-   (CLAUDE.md, journal, kanban, identity) is the user's choice, not
-   part of the AIDE contract. The retired vault-root CLAUDE.md is
-   GONE, not deprecated — its scaffolding step, its template constant,
-   and its tests are all deleted.
-
-8. **`provisionBrain` is a 5-step pipeline, in this order:**
-   (1) Brain config (brain.aide) → (2) Brain root directories →
-   (3) Playbook hub → (4) Research hub → (5) Brain MCP entry. Steps
-   3 and 4 source content from the brain.aide planned by step 1 via
-   `parseBrainAide` / `parseBrainAideFromString`. Step 1 lives under
-   `.aide/config/`; subsequent runs treat it as user-owned and never
-   would-overwrite. Hub steps surface `would-skip` (with
-   `instructions`) when brain.aide is malformed — no silent empty
-   scaffolding.
+8. **`provisionBrain` is a 5-step pipeline** (current). *Queued
+   amendment: 6-step pipeline with `buildStudyPlaybookStep` inserted
+   between playbook and research.*
 
 9. **Removed frontmatter fields:** `connector`, `rootPath`,
-   `entryFile`, `tools`. The parser actively rejects these (returns
-   `malformed-frontmatter` naming every stale field it found) so users
-   migrate cleanly rather than carrying dead fields forward.
+   `entryFile`, `tools`. The parser actively rejects these.
 
-10. **No code path branches on `name`.** It's a label for the user
-    and the agent, never a dispatcher. Different brains may share
-    names without affecting code behavior.
+10. **No code path branches on `name`.** It's a label.
 
 11. **No introspection of `mcpServerConfig.args` for any purpose.**
-    Don't extract a vault path, don't infer connector identity, don't
-    stat any derived path. Reading args for any purpose other than
-    passing them through to `.mcp.json` is the same regression as a
-    `rootPath` field in different clothing.
 
 12. **Boot reporter brain status states = four:** `ok`,
-    `no-brain-aide`, `no-mcp-entry`, `mcp-drift`. The prior
-    `invalid-path` state is gone with `rootPath` — there is no path
-    for the package to validate anymore.
+    `no-brain-aide`, `no-mcp-entry`, `mcp-drift`.
 
 13. **`${...}` interpolation of frontmatter values into
-    `mcpServerConfig.args` is supported** for advanced users who want
-    to DRY a value across argument positions. The default scaffold
-    does NOT exercise this surface (the path is inline, byte-for-byte).
-    Substitution lives ONLY in `mcpServerConfig.args` at install/sync
-    time — NEVER in any body section at agent time.
+    `mcpServerConfig.args` is supported** for advanced users. The
+    default scaffold does NOT exercise this surface. Substitution
+    lives ONLY in `mcpServerConfig.args` at install/sync time —
+    NEVER in any body section at agent time.
 
-14. **The MCP server never silently rewrites `.mcp.json`.** Mutation
-    of the host's MCP wiring runs through one CLI binary surface
-    (`<launcher> sync`). Sync is the only mutation surface; the MCP
-    runtime never writes `.mcp.json` itself. The agent may invoke the
-    sync CLI on the user's behalf via Bash (see intent #17), but the
-    binary is unchanged — only the trigger differs.
+14. **The MCP server never silently rewrites `.mcp.json`.** Sync is
+    the only mutation surface.
 
-15. **Storage-agnostic identifiers in code.** No "vault", "obsidian"
-    (other than the `obsidianBrainAideTemplate` helper folder name and
-    legacy-key migration prose), "hub note", "wikilink", or "note"
-    (used as a synonym for "file") in TypeScript identifiers,
-    comments, or string constants in `provisionBrain/index.ts` and
-    sibling code. Methodology guidance about how to navigate the brain
-    lives in pipeline prompts, never in code constants.
+15. **Storage-agnostic vocabulary across every surface this package
+    authors.** The forbidden-token list — `vault`, `obsidian`,
+    `note` (used as a synonym for "file"), `wikilink`, `hub note`,
+    and `hub` — must not appear in any user-facing prose surface
+    NOR in code identifiers, comments, or string constants
+    project-wide. Three exceptions: `obsidianBrainAideTemplate`
+    folder name, `.obsidian` directory heuristic comment in
+    `brainRootExists`, legacy `obsidian` MCP key in migration
+    branches. Anti-example occurrences inside undesired-outcome
+    blocks are also allowed.
 
-16. **Strict-failure migration for body schema changes.** A
-    pre-widening prose-only `brain.aide` returns `malformed-body`
-    naming the missing sections; the parser does not silently default
-    them. Users hand-edit their file to add the new sections. No
-    `aide_upgrade` carve-out (yet — could be added later if it turns
-    out users need it).
+    **Carve-out for the new study-playbook section** (queued): the
+    new `<!-- aide-study-playbook-start -->` body section is NOT
+    a surface this package authors prose for in the
+    backend-agnostic sense — its bytes flow from
+    `obsidianBrainAideTemplate`, which is the bundled
+    obsidian-flavored default. Wikilinks, hub references, and
+    obsidian-style navigation patterns are EXPECTED inside that
+    section's bytes because the bundled template ships obsidian.
+    Hosts that pick a different brain edit the section in their
+    own `brain.aide`. The skill code that READS that section stays
+    storage-agnostic; the bytes themselves are user-owned.
+
+16. **Strict-failure migration for body schema changes.** *Queued:
+    when the four-section schema lands, three-section files
+    return `malformed-body` naming the missing
+    `aide-study-playbook-*` markers. Users hand-edit. No
+    `aide_upgrade` carve-out auto-migrates the body.*
 
 17. **Agent-invokes-sync for the wiring loop, not user-invokes-sync.**
-    When the brain config flow needs to mutate `.mcp.json` (after a
-    cold scaffold, when `.mcp.json` has no brain entry, or when the
-    brain entry has drifted from `brain.aide`'s `mcpServerConfig`),
-    the agent invokes the sync CLI binary via Bash on the user's
-    behalf rather than punting the user to their terminal. The
-    launcher is recovered from `.mcp.json["mcpServers"]["aide"]` —
-    the same entry Claude Code used to start the AIDE MCP server in
-    the current session, so its existence is provable from the fact
-    that the prompt is running. Recovering the launcher this way
-    lets the recipe work uniformly for prod (`cmd /c npx
-    @aidemd-mcp/server sync`), local-dev (`node /path/to/dist/index.js
-    sync`), and any custom binary path. The CLI binary remains the
-    only `.mcp.json` mutation surface (intent #14 holds — sync stays
-    a CLI verb, never an MCP tool); only the trigger changed from
-    "user types it" to "agent runs it on user's behalf via the same
-    binary." The user's only remaining manual step is restarting
-    Claude Code so the new MCP wiring is picked up at session
-    startup. The brain MCP server in the running session was launched
-    without the brain entry and cannot be hot-reloaded; restart is
-    the one step the agent genuinely cannot do for the user. All
-    three broken brain states (`no-brain-aide`, `no-mcp-entry`,
-    `mcp-drift`) route through this single pattern; the orchestrator
-    and the brain config skill share the same delegation contract.
+
+18. **Per-command `.aide` specs own command-specific contracts.**
+    *REJECTED — see the hard rule at the top of this file. The
+    pipeline does not run against `.claude/commands/`. Per-command
+    `.aide` specs are an anti-pattern; command contracts live in
+    the command file itself (e.g. `.claude/commands/aide.md`).
+    `.claude/commands/aide/aide.aide` from the prior cycle is
+    queued for deletion. `.claude/.aide` is queued for revert.*
 
 ---
 
-## The implementation gap (what the code does NOT yet do)
-
-Everything in the brain layer's runtime, intent tree, agent skill
-prompts, and orchestrator is aligned. The remaining gap items are
-small followups, not blockers:
-
-| Item | Current state | Needed |
-|---|---|---|
-| `.aide/docs/brain-aide.md` | Documents the 2-field frontmatter and the single `## Prose` body section. | Update the body section to document the 3-section body schema (`## Prose`, `## Playbook hub`, `## Research hub`), the closed-vocabulary parser rule, and the per-consumer ownership pattern. The actual default scaffold at `.aide/config/brain.aide` already carries all three sections; only the methodology doc lags. |
-| `src/cli/sync/index.ts` IIFE | Top-level auto-exec calls `process.exit(1)` on error during module import, which vitest surfaces as an "Error: 1 error" line during test runs. All tests still pass; the noise is purely test-harness teardown. | Extract the body of the IIFE into an exported function and gate the auto-exec on an `import.meta.main`-style check (or equivalent) so importing the module for testing doesn't trigger business logic. Small structural refactor; not blocking. |
-| `src/index.ts` `aide_init` description | Uses "vault path" / "vault scaffold directories" terminology in the prose body of the description and frames `brainPath` as a parameter the agent collects rather than a value derived from `brain.aide` as the source of truth. Not a schema lie (the parameter exists, the call shape is correct), but the framing predates the post-collapse "brain.aide owns brain identity" model and leaks "vault" vocabulary into agent prose. The `aide_info` and `aide_brain` description sweeps already landed; `aide_init` is the remaining sibling. | Sweep the description to talk about `brain.aide` as the source of truth, replace "vault path" with "brain path" or "user-confirmed brain location" where it's prose-level, and align the parameter framing with the post-collapse model. Lower urgency than the `aide_info`/`aide_brain` sweeps were, because there's no schema lie that would silently misroute calls — only vocabulary drift. |
-
----
-
-## Anti-regression invariants the next build phase must hold
+## Anti-regression invariants future build phases must hold
 
 These are the hard rules from `.aide/intent.aide` outcomes.undesired
-plus the post-cycle additions. Any future build phase must not violate
-them, even if a quick path through a ticket looks like it could:
+plus the cycle-specific additions. The queued work amends some of
+them; amendments are noted inline.
 
-- **No code path branches on `name`.** `name` is metadata. If a future
-  consumer wants per-brain behavior, push it back into the user's
-  prose — never into a registry.
-- **No introspection of `mcpServerConfig.args`.** Don't extract a
-  vault path, don't infer connector identity, don't stat any derived
-  path.
+- **Body schema is marker-bounded, not heading-bounded.** No code
+  path may walk `^## .+$` boundaries to extract any body section.
+- **No tolerant matching of marker variants.** Uppercase,
+  mixed-case, stray-whitespace, missing-`aide-`-prefix variants
+  are ALL rejected as malformed.
+- **Bytes outside marker pairs are silently ignored.**
+- **No transitional read path for pre-pivot files.**
+- **No silent acceptance of marker-layout violations.**
+- **Field-name regression class.** No `Hub` suffix on
+  `prose`/`playbook`/`research` field names. *Queued amendment:
+  add `studyPlaybook` (camelCase, no suffix).*
+- **No `hub` token in code or prose surfaces** (with the documented
+  carve-outs and the anti-example carve-out, plus the new
+  carve-out in intent #15 above for the study-playbook section's
+  user-owned bytes).
+- **`aide_info`'s outdated flag is not actionable in this repo.**
+- **No code path branches on `name`.**
+- **No introspection of `mcpServerConfig.args`.**
 - **No silent acceptance of deprecated frontmatter fields.**
-  `connector` / `rootPath` / `entryFile` / `tools` must be REJECTED
-  with a `malformed-frontmatter` reason, not stripped on the floor.
-- **No silent acceptance of unknown body section headings.** Any
-  top-level `## <heading>` not in `REQUIRED_BODY_HEADINGS` returns
-  `malformed-body` naming the unknown heading. The required set is
-  exactly three: `## Prose`, `## Playbook hub`, `## Research hub`.
-- **No silent default-filling of missing body sections.** A
-  pre-widening prose-only `brain.aide` returns `malformed-body`; users
-  hand-edit. No `aide_upgrade` carve-out auto-migrates body schema.
-- **No server-side substitution in any body section.** All three body
-  sections return verbatim. Substitution lives only in
-  `mcpServerConfig.args` at install/sync time.
-- **No silent `.mcp.json` mutation.** The MCP server reads `.mcp.json`;
-  it never rewrites it. Sync (whether user-invoked at terminal or
-  agent-invoked via Bash) is the only mutation surface.
-- **No overwrite of files under `.aide/config/` on subsequent
-  `aide_init` / `aide_upgrade` runs.** Scaffolded once if absent;
-  user-owned forever after.
-- **No new frontmatter field whose only consumer is the parser's own
-  validation.** Every field must name a real runtime consumer.
-- **No inline TypeScript constants for hub-artifact bytes.**
-  `PLAYBOOK_HUB_TEMPLATE` and `VAULT_CLAUDE_MD_TEMPLATE` were deleted
-  for a reason. Hub bytes flow from brain.aide body sections via
-  `parseBrainAide`, full stop.
-- **No CLAUDE.md scaffolding step under any name.** "Vault CLAUDE.md",
-  "brain CLAUDE.md", "navigation hub" — all rejected. The framework's
-  brain contract is exactly the two hubs (playbook + research). Users
-  who want a CLAUDE.md add their own.
+- **No server-side substitution in any body section.**
+- **No silent `.mcp.json` mutation.**
+- **No overwrite of files under `.aide/config/`** on subsequent
+  `aide_init` / `aide_upgrade` runs.
+- **No new frontmatter field whose only consumer is the parser's
+  own validation.**
+- **No inline TypeScript constants for entry-point artifact
+  bytes.** *Queued: applies to the new `coding-playbook/study-playbook.md`
+  artifact too — bytes flow from `brain.aide`, not from a
+  TypeScript constant.*
+- **No CLAUDE.md scaffolding step under any name.**
 - **No backend-driver dispatch, no connector registry, no
-  matcher-by-shape.** Brain identity is whatever the user wrote in
-  their `brain.aide`. Adding a new brain is a user-side edit, never
-  a code-level extension.
-- **No "vault" / "obsidian" (outside allowed exceptions) /
-  "wikilink" / "hub note" / "note" tokens in code identifiers,
-  comments, or string constants in install-service modules.** The
-  allowed exceptions are: the `obsidianBrainAideTemplate` helper folder
-  name (describes content, not a code branch), the `.obsidian`
-  directory heuristic comment in `brainRootExists` (an
-  honestly-labeled implementation detail), and the legacy `obsidian`
-  MCP key in migration branches (the key being migrated away from).
-- **No reading another consumer's owned body section.** `tools/brain`
-  must not read `playbookHub` or `researchHub`. `provisionBrain` must
-  not read `prose`. Cross-section reads violate the per-consumer
-  ownership contract.
+  matcher-by-shape.**
+- **No reading another consumer's owned body section.** *Queued:
+  also `tools/brain` must not read `study-playbook`; the skill
+  reads `coding-playbook/study-playbook.md` (the on-disk artifact),
+  not the brain.aide body section directly.*
 - **No hardcoded sync invocation in any skill or command prompt.**
-  When the brain config flow runs sync via Bash on the user's behalf,
-  the launcher MUST be recovered from
-  `.mcp.json["mcpServers"]["aide"]` and never named inline. Literal
-  invocations like `npx aidemd-mcp sync`, `cmd /c npx
-  @aidemd-mcp/server sync`, or `node dist/index.js sync` outside
-  explicitly-marked example blocks are a regression — they break the
-  recipe for any install shape (local-dev, custom binary path) other
-  than the prod one being hardcoded.
 - **No terminal-punt prose on the success path of any broken brain
-  state.** `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` all route
-  through the brain config skill, which applies the fix on the user's
-  behalf via Bash. The orchestrator and the skill must NOT instruct
-  the user to "go run `npx aidemd-mcp sync` in your terminal" or
-  similar as a manual step on the success path. The user's only
-  manual step is restarting Claude Code so the new MCP wiring is
-  picked up. The Step 4 failure-handler fallback in the brain config
-  skill (when `Bash sync` exits non-zero) is the ONE place terminal-
-  punt prose is permitted, because the agent has already attempted
-  and failed in-session.
+  state.**
 - **No re-call of `aide_info` (or any boot state read) after sync
-  completes in the same session.** The brain MCP server in the
-  running session was launched without the brain entry; sync mutates
-  disk state but cannot hot-reload the live server. `aide_info` would
-  report disk state (now `ok`) which would not reflect the live
-  server's wiring (still unwired) — false confidence that would lead
-  the agent to continue with an operationally broken brain. The
-  remediation always halts and routes through restart + new `/aide`
-  invocation; never tries to "verify" inside the same session.
-
----
-
-## Working tree state
-
-After the most recent cycle, the working tree is clean post-commit.
-The package publishes via `node scripts/publish.mjs <patch|minor|major>`
-which bumps versions, syncs `server.json`, tags, and lets CI handle
-the npm + MCP Registry publish. Safe to publish once the methodology
-doc + tool description followups land; without them, a publish would
-ship code and docs/descriptions that disagree on the post-collapse
-contract.
+  completes in the same session.**
+- **The AIDE pipeline is for code only.** `.claude/agents/`,
+  `.claude/commands/`, and `.claude/skills/` are never pipelined.
+  Per-command `.aide` specs are an anti-pattern. (NEW invariant,
+  encoded in the orchestrator command as part of the queued work.)
 
 ---
 
 ## Resume protocol for next session
 
-1. Run `/aide` — orchestrator boots, runs `aide_info`, reads docs +
-   intent tree.
-2. Read this handoff to confirm the state above is still current.
-3. If picking a followup from the gap table above: those items are
-   small and self-contained. Either go straight to `/aide:spec` (for
-   the methodology doc, the tool description sweep, or the README
-   sweep) or `/aide:plan` (for the cli/sync IIFE refactor).
-4. If starting a new feature: standard `/aide` flow — interview,
-   spec, research-or-skip, synthesize, plan, build, qa.
+**The session was halted by the user with "we need to stop and review
+all thats been changed. there are bugs."** The next session continues
+the review pass. Two surfaces are resolved; one major refactor is
+queued for the AIDE pipeline; three surfaces remain unverified.
 
-If the user asks "what's the state?" — answer: brain layer fully
-aligned end-to-end (intent + plans + code + tests + skill prompts +
-orchestrator + harness + tool descriptions + public docs), tests
-green, broken-state recovery flow agent-driven (no terminal
-context-switching), schema-drift in tool descriptions and shipped
-docs swept, description-as-contract outcomes added across every
-tool spec so future drift is falsifiable. Three small followups
-open (methodology doc body schema, `aide_init` description vocab
-sweep, cli/sync IIFE noise), plus two deferred items in kanban
-(`configureVscode` dead code at p2-Todo: never called from install
-orchestrator, VS Code IDE config silently dropped; per-command
-`.aide` specs under `.claude/commands/aide/` at p2-Backlog: lift
-boot-routing outcome out of the harness spec and into a
-per-command spec). Otherwise no in-flight work.
+### Review checklist (do these in order)
+
+1. **Confirm the queued architectural decision with the user.**
+   The four-section schema + new entry-point artifact decision was
+   signed off in the prior session, but read this handoff back to
+   the user before kicking off the pipeline — they may want to
+   refine the scope or sequencing.
+
+2. **Decide the three remaining unverified surfaces:**
+   - Delete `.claude/commands/aide/aide.aide` (untracked)?
+   - Revert `.claude/.aide` to its pre-cycle state?
+   - Update this handoff once the queued work lands.
+
+   The user should confirm each before action.
+
+3. **Once the queued work is confirmed, kick off the AIDE pipeline:**
+   - `/aide:spec` against `src/service/parseBrainAide/.aide` first
+     (parser foundation). Spec-writer captures the four-section
+     grammar in the parser's outcomes.
+   - **PAUSE for user approval after frontmatter.**
+   - `/aide:synthesize` if the strategist needs to fill body
+     sections (the parser spec already has body sections; check
+     if updates are needed).
+   - `/aide:plan` against the parser. Architect produces
+     `plan.aide`.
+   - **PAUSE for user approval after plan.**
+   - `/aide:build` — one implementor per numbered step, fresh
+     context.
+   - `/aide:qa` against the parser.
+   - Once parser is green, repeat the spec → plan → build → QA
+     cycle for the template, then provisionBrain, then the
+     methodology doc + intent updates.
+   - Finally, direct-edit the skill (`.claude/skills/study-playbook/SKILL.md`)
+     to point at the new artifact.
+
+4. **After all queued work lands and tests are 847+ green:** strip
+   the STOP banner from this handoff, update the architectural
+   intent section to reflect the new four-section / three-artifact
+   contract, and remove the "Queued amendment" annotations.
+
+5. **Promote the retro to `process/retro/` in the brain.** This
+   session's process retro:
+   - Auto mode is not a license to skip pause-for-approval.
+   - The pipeline is for code only; never for command/agent/skill
+     prompts.
+   - Direct edits to canonical agent/command/skill files are the
+     RIGHT path for behavioral fixes that ship to all host projects.
+
+### State summary for cold-start agents
+
+If the user asks "what's the state?" — answer: marker-pair
+brain-config cycle complete and verified at three sections; today's
+review session resolved architect + auditor (reverted) and clarified
+the study-playbook architecture; a four-section schema extension is
+queued for the next pipeline cycle and is the largest piece of
+remaining work; three other surfaces remain unverified
+(`.claude/commands/aide/aide.aide`, `.claude/.aide`, this handoff);
+project `tsc` exit 0 and 847 tests passing project-wide.
+
+
+---
+Siblings: .aide/intent.aide, .aide/plan.aide, .aide/readme.aide, .aide/todo.aide
+Links: [[wikilink]], [[reference]]
