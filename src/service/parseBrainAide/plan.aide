@@ -1,80 +1,113 @@
 ---
 intent: >
-  Widen parseBrainAide from extracting one body section (`## Prose`) to
-  extracting three named body sections (`## Prose`, `## Playbook hub`,
-  `## Research hub`) with a strict closed vocabulary. Add `playbookHub`
-  and `researchHub` fields to `ParseBrainAideResult`'s `ok` variant
-  alongside `prose`. Update `BrainAideConfig` JSDoc to point at the
-  three-section format. Reject unknown headings and missing required
-  sections as `malformed-body`. Apply a strict-failure migration: a
-  pre-widening prose-only `brain.aide` returns `malformed-body` naming
-  the two missing sections rather than silently defaulting them.
+  Refactor parseBrainAide from heading-based body extraction
+  (`## Prose` / `## Playbook hub` / `## Research hub`) to paired
+  HTML-comment marker extraction (`<!-- aide-prose-start -->` …
+  `<!-- aide-prose-end -->`, etc.). Replace heading-walking with
+  marker-pair detection over a closed lowercase grammar; surface
+  every marker-layout violation class as `malformed-body` naming
+  the offending marker; silently ignore bytes outside any pair;
+  rename the parsed-result fields `playbookHub` → `playbook` and
+  `researchHub` → `research` (in `src/types/index.ts` and every
+  consumer/test); replace heading-based fixtures with marker-based
+  fixtures and add tests for each violation class, the bytes-
+  outside-pairs case, and the pre-pivot heading-only migration
+  rejection; sweep this module's TypeScript for forbidden-vocabulary
+  drift (`hub`, `vault`, `obsidian` outside the three carve-outs,
+  `note` as synonym, `wikilink`, `hub note`); update orchestrator
+  JSDoc and step-by-step inline narration to reflect the marker
+  schema.
 ---
 
 ## Project Structure
 
-This is an additive/edit plan against an existing module. The module's
-external surface stays the same in name and arity — `parseBrainAide`
-(default), `parseBrainAideFromString`, and `interpolateArgs` keep their
-signatures. What changes is the shape of `ParseBrainAideResult.ok` (gains
-`playbookHub` and `researchHub` fields next to `prose`) and the body
-grammar the parser enforces (closed vocabulary, exactly three required
-sections).
+This is a refactor of an existing module. The orchestrator's external
+surface keeps the same names and arities — `parseBrainAide` (default
+export), `parseBrainAideFromString`, and `interpolateArgs` retain
+their signatures. What changes:
+
+- Body extraction switches from heading walking to marker-pair walking.
+- The `ok` variant fields rename: `playbookHub` → `playbook`,
+  `researchHub` → `research` (the `prose` field name does not change).
+- The body-extraction helper renames from `extractBodySections` to
+  `extractMarkerSections` to track the new grammar.
+- The `REQUIRED_BODY_HEADINGS` module-level constant retires; the
+  marker grammar replaces it with a `MARKER_PAIRS` constant carrying
+  the six exact marker tokens grouped by section in required order.
+- Test fixtures replace heading-based bodies with marker-based bodies;
+  vocabulary purge scrubs the test file's prose of `vault`, `obsidian`,
+  `wikilink`, and the `hub` field-name suffix.
 
 ```
 src/service/parseBrainAide/
-├── .aide                         ← [existing, aligned] intent spec — already
-│                                    rewritten for the three-section body
-├── plan.aide                     ← [this file, REPLACES the prior 6/6-done plan]
+├── .aide                         ← [existing, aligned] intent spec —
+│                                    rewritten for the marker-pair body
+├── plan.aide                     ← [this file, REPLACES the prior 5/5-done plan]
 ├── todo.aide                     ← [existing] alignment record (untouched)
 ├── index.ts                      ← [edit] orchestrator + helpers
 │                                    exports unchanged in name and signature:
 │                                      default async function parseBrainAide(root: string): Promise<ParseBrainAideResult>
 │                                      export function parseBrainAideFromString(content: string): ParseBrainAideResult
 │                                      export function interpolateArgs(config: BrainAideConfig): string[]
+│                                    private helper renames:
+│                                      function extractBodySections   →   function extractMarkerSections
+│                                      signature:
+│                                        function extractMarkerSections(body: string):
+│                                          | { kind: "ok"; prose: string; playbook: string; research: string }
+│                                          | { kind: "malformed-body"; reason: string }
 │                                    behavior changes:
-│                                      - body extraction grows from one section
-│                                        (`## Prose`) to three (`## Prose`,
-│                                        `## Playbook hub`, `## Research hub`)
-│                                      - body grammar is closed: unknown
-│                                        top-level headings → malformed-body;
-│                                        missing required sections →
-│                                        malformed-body naming every absent
-│                                        section
-│                                      - the `ok` result gains `playbookHub`
-│                                        and `researchHub` fields next to
-│                                        `prose`; all three return verbatim
-│                                        (byte-identical between heading and
-│                                        next-heading-or-EOF, no trimming)
-└── index.test.ts                 ← [edit] new tests for the three-section
-                                     body, closed-vocabulary rejection,
-                                     migration path; existing prose tests
-                                     extend to cover the new fields
+│                                      - body extraction walks paired HTML-comment
+│                                        markers (six exact byte sequences, lowercase,
+│                                        case-sensitive, in fixed prose-then-playbook-
+│                                        then-research order)
+│                                      - body grammar is closed: every marker-layout
+│                                        violation class (missing pair, malformed/typo'd
+│                                        marker, unmatched closer, unmatched opener,
+│                                        wrong section order, nested markers) returns
+│                                        malformed-body naming the offending marker
+│                                      - bytes outside any marker pair are silently
+│                                        ignored
+│                                      - the `ok` result carries `prose`, `playbook`,
+│                                        and `research` (renamed from `playbookHub`/
+│                                        `researchHub`); all three return verbatim
+│                                        (byte-identical between an opener and its
+│                                        matching closer, no trimming)
+└── index.test.ts                 ← [edit] fixtures rebuilt with marker pairs;
+                                     new test groups for each violation class,
+                                     for bytes-outside-pairs silent-ignore,
+                                     for the pre-pivot heading-based migration
+                                     rejection, and for the renamed-field
+                                     assertions; vocabulary purge scrubs
+                                     `vault`/`obsidian`/`wikilink`/`note`
+                                     drift from prose and fixture content
 ```
 
-External edits in another file (called out for the implementor; the
-`src/types/` change must land in the same step that widens the parser
-because the parser's `ok` result references the central type):
+External edit in another file (called out for the implementor; the
+`src/types/` change must land in the same step that switches the
+parser to markers because the parser's `ok` result references the
+central type):
 
 ```
-src/types/index.ts                ← [edit] widen ParseBrainAideResult.ok
-                                     to carry `playbookHub: string` and
-                                     `researchHub: string` next to
-                                     `prose: string`. Update the union's
-                                     JSDoc to describe the closed body
-                                     vocabulary and the three-section
-                                     extraction. BrainAideConfig and
-                                     BrainAideMcpServerConfig are
+src/types/index.ts                ← [edit] rename ParseBrainAideResult.ok
+                                     fields `playbookHub` → `playbook`
+                                     and `researchHub` → `research`.
+                                     Update the union's JSDoc to describe
+                                     the marker-pair body grammar (six
+                                     exact marker tokens, lowercase, case-
+                                     sensitive, in required order) and
+                                     enumerate the marker-layout violation
+                                     classes that surface as malformed-body.
+                                     `BrainAideConfig` and
+                                     `BrainAideMcpServerConfig` are
                                      unchanged.
 ```
 
-Single-helper layout from the prior plan still applies:
-`interpolateArgs` and the `parseBrainAideFromString` / `parseBrainAide`
-pair fit comfortably in one `index.ts` and stay there.
-`interpolateArgs` remains defined ABOVE the default export per the
-function-ordering rule. The body-section extraction logic lives inside
-`parseBrainAideFromString` (or a private helper at the top of the file
-above `interpolateArgs`); no new sub-helper folder.
+Single-helper file layout from prior cycles still applies:
+`extractMarkerSections`, `interpolateArgs`, and the
+`parseBrainAideFromString` / `parseBrainAide` pair fit comfortably in
+one `index.ts`. `extractMarkerSections` and `interpolateArgs` remain
+defined ABOVE the default export per the function-ordering rule. No
+new sub-helper folder.
 
 ## Prerequisites
 
@@ -82,459 +115,837 @@ This plan has no external module prerequisites. Every type and constant
 it touches lives in files this plan edits directly
 (`src/service/parseBrainAide/` and `src/types/index.ts`). The intent
 spec at `src/service/parseBrainAide/.aide` is already aligned to the
-three-section schema (`status: aligned`).
+marker-pair schema.
 
 **Downstream-breakage notice (not a prerequisite — informational):**
-Widening the `ok` variant to carry `playbookHub` and `researchHub` does
-NOT break existing consumers — they read `prose` only and TypeScript
-allows reading a subset of fields from an object type. Tightening the
-body grammar to require three sections WILL break any existing
-on-disk `brain.aide` that has only `## Prose` (the pre-widening shape):
-those files now return `malformed-body`. That behavior is intentional
-(strict-failure migration) and is the spec's load-bearing decision.
-The downstream consumer that actually reads the new fields
+
+- Renaming `playbookHub` → `playbook` and `researchHub` → `research` on
+  the `ok` variant is a breaking change for consumers reading those
+  fields. The known consumers per the spec's "per-consumer section
+  ownership" outcome:
+  - `provisionBrain` reads the playbook and research bodies — will fail
+    to compile until updated. Governed by its own `plan.aide`.
+  - The brain tool (`src/tools/brain/`) reads `prose` only — no change
+    required.
+  - `cli/sync` reads frontmatter only — no change required.
+  - `buildBrainState` reads frontmatter only — no change required.
+  Tightening the body grammar to require markers WILL also break any
+  existing on-disk `brain.aide` that still uses the heading-based body
+  (no marker pairs present). Those files now return `malformed-body`
+  naming all six missing markers. That behavior is the spec's
+  load-bearing strict-failure migration policy.
+
+The downstream consumer that actually reads the renamed fields
 (`provisionBrain`) is governed by its own `plan.aide` and depends on
 this plan landing first.
 
 ## Plan
 
-### 1. Widen `ParseBrainAideResult.ok` in shared types
+### 1. Rename `ParseBrainAideResult.ok` body fields and update the union JSDoc
 
 Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 
-- [x] Edit `src/types/index.ts`. Update the `ParseBrainAideResult` union
-      so the `ok` variant carries three body fields instead of one. The
-      shape becomes:
+- [x] Edit `src/types/index.ts`. In `ParseBrainAideResult`, rename two
+      fields on the `ok` variant: `playbookHub` → `playbook`, and
+      `researchHub` → `research`. The `prose` field name does not
+      change. After this edit, the union shape is:
 
       ```
       | { kind: "ok"; config: BrainAideConfig; prose: string;
-          playbookHub: string; researchHub: string }
+          playbook: string; research: string }
       | { kind: "missing" }
       | { kind: "malformed-frontmatter"; reason: string }
       | { kind: "malformed-body"; reason: string }
       ```
 
-      Keep `BrainAideConfig` and `BrainAideMcpServerConfig` exactly as
-      they are — frontmatter shape does not change in this refactor.
+      Keep `BrainAideConfig` and `BrainAideMcpServerConfig` unchanged —
+      frontmatter shape is not part of this refactor.
 
-      Update the union's JSDoc to describe the new body grammar:
+      Rewrite the union's JSDoc to describe the marker-pair body grammar
+      and enumerate the marker-layout violation classes:
 
-      - `"ok"` — the file was found, frontmatter parsed cleanly, all
-        required fields validated, and the body contained exactly the
-        three required sections (`## Prose`, `## Playbook hub`,
-        `## Research hub`) and no unknown headings. Each body field
-        carries the verbatim bytes between its heading and the next
-        heading boundary (or end-of-file for the last section). No
-        substitution runs on any body field.
-      - `"malformed-body"` — frontmatter is valid but the body fails
-        the closed-vocabulary grammar: any required section
-        (`## Prose`, `## Playbook hub`, `## Research hub`) is absent,
-        OR any unknown top-level heading is present. `reason` names
-        every missing section in deprecated-style listing OR names the
-        unknown heading.
+      - On `"ok"`: each body field carries the verbatim bytes between
+        its opening marker and its matching closing marker. The three
+        recognized marker pairs, in required order, are:
+        - `<!-- aide-prose-start -->` / `<!-- aide-prose-end -->`
+        - `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`
+        - `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
+        Marker tokens are lowercase, case-sensitive, with the literal
+        shape `<!-- <token>-start -->` / `<!-- <token>-end -->` exactly.
+      - On `"malformed-body"`: the body fails the closed marker-pair
+        grammar. Document each violation class with an example reason
+        format (the implementor cross-references the format strings
+        from the helper in step 2):
+        - missing pair → `"missing markers: <opener>, <closer>"`
+          (lists every absent marker, in fixed prose-then-playbook-
+          then-research scan order).
+        - malformed/typo'd marker token (any deviation from the literal
+          shape — uppercase, mixed-case, missing internal spaces,
+          extra internal whitespace) → `"unknown marker: <as-written>"`.
+        - closing marker without a prior matching opener →
+          `"unmatched closing marker: <closer> appeared without a
+          prior <matching-opener>"`.
+        - opening marker without a closer →
+          `"unmatched opening marker: <opener> has no matching
+          <expected-closer>"`.
+        - wrong section order →
+          `"marker order violation: <out-of-order-opener> appeared
+          before <expected-prior-opener>"`.
+        - nested markers (any marker found inside another pair's
+          opener-closer span) →
+          `"nested marker: <inner-opener> appeared inside the
+          <outer-token> section"`.
 
-      Do not introduce per-section result subtypes. The three fields
-      are siblings on the same `ok` variant; consumers read only the
-      ones they own (per-consumer section ownership is enforced by the
-      consumer's `.aide` spec, not by the parser's type shape).
+      Confirm by grep that no consumer in `src/` references the old
+      field names `playbookHub`/`researchHub` outside the parser module
+      itself; all such references will be repointed by step 2 and step 3
+      (and the `provisionBrain` plan picks up its own consumer-side
+      rename in its own plan, not this one).
 
-      Confirm by grep that no consumer in `src/` currently destructures
-      `ParseBrainAideResult.ok` in a way that breaks under field
-      additions (e.g. `const { kind, config, prose } = result;` is
-      additively safe; `const { ...rest } = result;` would over-collect
-      but is not used anywhere — verify).
+### 2. Replace the heading walker with a marker-pair walker, rename the helper, propagate the field rename through the orchestrator
 
-### 2. Add a body-grammar helper inside `parseBrainAideFromString`
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`, `coding-playbook/foundations/anti-patterns`
 
-Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
+- [x] 2a. Edit `src/service/parseBrainAide/index.ts`. Retire the
+      `REQUIRED_BODY_HEADINGS` module-level constant and the
+      `extractBodySections` helper. Introduce a new module-level
+      constant `MARKER_PAIRS` declared above all helpers, capturing the
+      three marker pairs in required order:
 
-- [x] Edit `src/service/parseBrainAide/index.ts`. Replace Step 5 of
-      `parseBrainAideFromString` (the current single-heading
-      extraction) with a closed-vocabulary three-section walker. The
-      walker is a private helper named `extractBodySections` declared
-      ABOVE `interpolateArgs` and the default export, per the
+      ```
+      const MARKER_PAIRS = [
+        { token: "prose",    open: "<!-- aide-prose-start -->",    close: "<!-- aide-prose-end -->" },
+        { token: "playbook", open: "<!-- aide-playbook-start -->", close: "<!-- aide-playbook-end -->" },
+        { token: "research", open: "<!-- aide-research-start -->", close: "<!-- aide-research-end -->" },
+      ] as const;
+      ```
+
+      `as const` preserves the literal types so `token`'s union narrows
+      to `"prose" | "playbook" | "research"`. The three `token` values
+      are also the destination field names on the `ok` result — the
+      user-facing marker base name and the typed-object key are
+      visibly the same word.
+
+- [x] 2b. Add a new private helper `extractMarkerSections` declared
+      ABOVE `interpolateArgs` and the default export per the
       function-ordering rule. Signature:
 
       ```
-      function extractBodySections(body: string):
-        | { kind: "ok"; prose: string; playbookHub: string; researchHub: string }
+      function extractMarkerSections(body: string):
+        | { kind: "ok"; prose: string; playbook: string; research: string }
         | { kind: "malformed-body"; reason: string }
       ```
 
-      Behavior:
+      Behavior — declarative pipeline the implementor walks once
+      through the body. Each step short-circuits to a typed
+      `malformed-body` reason. The implementor does NOT reuse the
+      heading-regex algorithm; the marker grammar is a different
+      shape (paired tokens, not single-line headings).
 
-      - **Required headings (closed set, exactly three):**
-        `## Prose`, `## Playbook hub`, `## Research hub`. The
-        canonical heading strings are kept as a module-level constant
-        (`REQUIRED_BODY_HEADINGS = ["## Prose", "## Playbook hub",
-        "## Research hub"] as const`) declared above the walker.
+      - **Locate every recognized marker.** Scan the body for every
+        occurrence of any of the six exact byte sequences in
+        `MARKER_PAIRS` (three openers + three closers). Use literal
+        substring matching, not regex with character classes — the
+        grammar is closed and case-sensitive, so the cheapest and
+        most auditable check is `body.indexOf(<exact-token>)`
+        repeated, or a single linear scan that matches each candidate
+        position against the literal byte sequences. Build an ordered
+        list of `{ tokenKind: "open"|"close"; sectionToken:
+        "prose"|"playbook"|"research"; index: number }` entries in
+        document order.
 
-      - **Walk strategy.** Scan the body for every line that matches
-        `^## .+$` (any top-level heading). Each match is a candidate
-        section boundary. Build a list of `{ heading, startIndex }`
-        entries in document order, where `startIndex` is the byte
-        offset immediately after the heading line's terminating
-        newline.
+      - **Detect malformed/typo'd marker tokens.** Beyond the six
+        recognized sequences, scan for any HTML-comment that LOOKS
+        like a marker but is not one of the six exact bytes — i.e.
+        any `<!--…aide…-->` substring whose contents are not exactly
+        the lowercase recognized form. The detection set the
+        implementor must catch, drawn from the spec's "Bad examples"
+        and "undesired outcomes" lists:
+        - uppercase variants (e.g. `<!-- AIDE-PROSE-START -->`)
+        - mixed-case variants (e.g. `<!-- Aide-prose-start -->`)
+        - no surrounding spaces (e.g. `<!--aide-prose-start-->`)
+        - extra internal whitespace (e.g. `<!-- aide-prose-start  -->`,
+          `<!--  aide-prose-start -->`)
+        - typos (e.g. `<!-- aide-prose-strart -->`,
+          `<!-- aide-playboook-end -->`)
+        - missing the `aide-` prefix (e.g. `<!-- prose-start -->`)
+        Any such occurrence returns
+        `{ kind: "malformed-body", reason: "unknown marker: <as-
+        written>" }` naming the FIRST malformed marker encountered
+        left-to-right. Use a permissive HTML-comment regex (e.g.
+        `/<!--[^>]*aide[^>]*-->/gi`) to enumerate candidate marker-
+        like spans, then filter out the six exact recognized
+        sequences; what remains is the malformed set, and the first
+        one in document order is the reason. Document this strategy
+        in an inline comment per the orchestrator inline-narration
+        rule (this is non-obvious detail, not just narration).
 
-      - **Closed-vocabulary rejection.** If any candidate heading is
-        not in the required set, return `{ kind: "malformed-body",
-        reason: "unknown heading: <heading-as-written>" }`. The reason
-        names the FIRST unknown heading found (left-to-right). Do not
-        list multiple unknown headings in the same response — the
-        parser surfaces one error per parse, and the user fixes it
-        and re-runs.
+      - **Required-pair presence check.** If any of the six
+        recognized markers is absent, return
+        `{ kind: "malformed-body", reason: "missing markers:
+        <comma-separated list of every absent marker, in fixed
+        prose-then-playbook-then-research order: open of section N
+        before close of section N>" }`. List every missing marker
+        in one response so the user fixes them all in one edit
+        (matches the spec's good example for the pre-pivot heading-
+        based file: all six missing markers listed). Format examples:
+        - one missing pair (research only):
+          `"missing markers: <!-- aide-research-start -->,
+          <!-- aide-research-end -->"`
+        - all six missing (pre-pivot heading-based file):
+          `"missing markers: <!-- aide-prose-start -->,
+          <!-- aide-prose-end -->, <!-- aide-playbook-start -->,
+          <!-- aide-playbook-end -->, <!-- aide-research-start -->,
+          <!-- aide-research-end -->"`
 
-      - **Required-section presence check.** After walking, if any
-        required heading is missing, return
-        `{ kind: "malformed-body", reason: "missing required
-        sections: <comma-separated list, in REQUIRED_BODY_HEADINGS
-        order>" }`. List every missing section in one response so the
-        user fixes them all in one edit. Format examples:
-        - one missing: `"missing required sections: ## Research hub"`
-        - two missing: `"missing required sections: ## Playbook hub,
-          ## Research hub"`
-        - all three: `"missing required sections: ## Prose,
-          ## Playbook hub, ## Research hub"`
+      - **Unmatched-closer check.** Walking the marker list in
+        document order, if a `close` marker for some section
+        appears before its matching `open` marker, return
+        `{ kind: "malformed-body", reason: "unmatched closing
+        marker: <closer> appeared without a prior <matching-
+        opener>" }`. The reason names the offending closer and
+        the opener it would have paired with.
 
-      - **Section slicing.** For each required heading found, slice
-        from `startIndex` (the byte after the heading's newline) to
-        the start of the next heading line — or to end-of-file if the
-        section is last in document order. The slice is byte-identical
-        to what the user wrote between those bounds; no trimming, no
-        normalization. The single-newline strip immediately after the
-        heading line that the legacy extractor applied should be
-        preserved for backward-compatible test assertions on `prose`
-        (the prior tests assert `expect(result.prose).toBe("\n" +
-        body)` — review and decide whether to keep the strip or
-        change it; if changed, update those tests in step 3).
+      - **Unmatched-opener check.** Walking in document order, if
+        an `open` marker has no later matching `close` (the section
+        runs to end-of-file with no closer), return
+        `{ kind: "malformed-body", reason: "unmatched opening
+        marker: <opener> has no matching <expected-closer>" }`.
+        The parser does NOT silently treat end-of-file as an
+        implicit closer (per the spec's bad example calling out
+        exactly that recovery).
 
-      - **Order independence.** The three required sections may
-        appear in any order in the file; the walker assigns each
-        slice to its named field regardless of document position.
-        (The default scaffold ships them in declaration order
-        `Prose → Playbook hub → Research hub` for readability, but
-        the parser does not enforce ordering.)
+      - **Section-order check.** Walking in document order, if the
+        `open` markers do not appear in prose-then-playbook-then-
+        research order, return
+        `{ kind: "malformed-body", reason: "marker order violation:
+        <out-of-order-opener> appeared before <expected-prior-
+        opener>" }`. The required order is fixed: prose first,
+        playbook second, research third. No exceptions, no auto-
+        reorder. Note: this check fires only after presence and
+        matching pass — if a section's pair is missing, the
+        missing-markers reason fires first.
 
-      Then update `parseBrainAideFromString`'s Step 5 (the part after
-      successful frontmatter validation) to call `extractBodySections`
-      and merge its result into the final return:
+      - **Nesting check.** For each matched pair `(open_i, close_i)`,
+        if any other recognized marker (open or close, of any
+        section) appears at a byte offset strictly between
+        `open_i.index + open_i.length` and `close_i.index`, return
+        `{ kind: "malformed-body", reason: "nested marker:
+        <inner-token> appeared inside the <outer-section-token>
+        section" }`. The three sections are siblings, never parent-
+        child. Spec's "Bad examples" calls out this exact failure
+        mode — a forgiving stack-based grammar would silently accept
+        the nesting; the parser must not.
 
-      - On `extractBodySections` returning `malformed-body`, return
-        that result directly.
-      - On `extractBodySections` returning `ok`, return
-        `{ kind: "ok", config, prose, playbookHub, researchHub }`
-        — the three section fields carry through unchanged from the
-        helper's return.
+      - **Section slicing.** When all checks pass, slice each
+        section as the bytes between
+        `open.index + open.length` and `close.index`. The slice is
+        byte-identical to what the user wrote between those bounds;
+        no trimming, no normalization, no leading-newline strip
+        (the prior heading-based extractor's strip-one-newline
+        backward-compat carve-out goes away with the heading shape;
+        marker boundaries are bytes, not lines, so there is no
+        analogous behavior to preserve).
 
-      Update the function's JSDoc to describe the new body grammar and
-      mention the strict closed vocabulary.
+      - **Bytes outside any pair are silently ignored by
+        construction.** The slicer never reads the regions between
+        `header-end` and `prose-open`, between `prose-close` and
+        `playbook-open`, between `playbook-close` and `research-
+        open`, or between `research-close` and end-of-file. The
+        parser's job is to extract the three named sections, not
+        to police the rest of the file.
 
-### 3. Rewrite the test suite for the three-section body
+      Add a JSDoc block above the helper summarizing the pipeline in
+      the order above (presence → match → order → nesting → slice).
+      JSDoc names the helper's role: "single closed-grammar walker
+      over the body's marker pairs; every marker-layout violation
+      class returns malformed-body naming the offending marker."
 
-Read: `coding-playbook/workflow/testing`
+- [x] 2c. Update `parseBrainAideFromString`. The function's pipeline
+      stays the same (frontmatter parse → required fields → deprecated
+      fields → body extraction → ok); only the body-extraction step
+      and the `ok` field names change. After successful frontmatter
+      validation:
 
-- [x] Edit `src/service/parseBrainAide/index.test.ts`. The structure
-      stays the same (per-branch `describe` blocks, real-tempdir
-      fixtures, `it.each` for parameterized cases), but every fixture
-      that wrote a single-section body needs to grow to three sections,
-      and new test groups land for the closed-vocabulary rejection and
-      the strict-failure migration path.
+      - Call `extractMarkerSections(body)` instead of
+        `extractBodySections(body)`.
+      - On `malformed-body`, return that result directly.
+      - On `ok`, return
+        `{ kind: "ok", config, prose, playbook, research }` —
+        destructure the helper's return into the renamed fields.
 
-      - 3a. **Update `CANONICAL_BRAIN_AIDE`** to carry the three
-            required sections. Use the spec's good example as the
-            byte-level reference:
+      Update the function's JSDoc to describe the marker-pair body
+      grammar (replacing the old heading-based description). The
+      "Validation order" block keeps the same three-step shape; only
+      step 3's prose changes to "Body grammar — the closed-vocabulary
+      marker walker (`extractMarkerSections`) checks that every
+      required marker pair is present and well-formed; every
+      marker-layout violation class returns `malformed-body` naming
+      the offending marker."
 
-            ```
-            ---
-            name: obsidian
-            mcpServerConfig:
-              command: npx
-              args:
-                - "@bitbonsai/mcpvault"
-                - "D:/notes/my-vault"
-            ---
+      Update the inline step-by-step comments inside
+      `parseBrainAideFromString` (per the progressive-disclosure
+      tier-3 contract for orchestrators). The comments currently
+      say "Step 5: Extract the three required named body sections
+      via the closed-vocabulary walker. Unknown headings and
+      missing required sections both surface as malformed-body."
+      Rewrite to describe the marker walker and the violation
+      classes it surfaces.
 
-            ## Prose
+- [x] 2d. Update `parseBrainAide` (the default export) JSDoc. The
+      "Result branches" block currently says `"ok"` requires the
+      three `## Prose` / `## Playbook hub` / `## Research hub`
+      sections; rewrite to describe the marker pairs.
+      "Load-bearing invariants" block: rename `playbookHub` →
+      `playbook` and `researchHub` → `research` in the prose
+      describing which fields are returned verbatim.
 
-            <existing prose body — keep unchanged>
+- [x] 2e. Vocabulary sweep across `index.ts`. Confirm no remaining
+      occurrences of forbidden tokens in identifiers, JSDoc, inline
+      comments, or string constants:
 
-            ## Playbook hub
+      - `hub` (anywhere — field names, comments, string constants,
+        JSDoc) — should be zero occurrences after this step. The
+        retired heading strings `## Playbook hub` and `## Research
+        hub` go away entirely.
+      - `vault` — zero occurrences; the parser describes its body
+        in terms of `prose` / `playbook` / `research` and the
+        `brain.aide` file path.
+      - `obsidian` — zero occurrences. Note the carve-out: the spec's
+        forbidden-token list applies to identifiers, comments, and
+        string constants in this module; user-facing example fixture
+        bytes that travel through the parser as test fixtures are
+        not part of the parser module's source vocabulary.
+      - `note` used as a synonym for "file" — zero occurrences.
+      - `wikilink` — zero occurrences.
+      - `hub note` — zero occurrences.
 
-            <a non-trivial multi-line body that exercises the slicer>
+      Use the spec's anti-example carve-out exactly once if needed:
+      naming a forbidden token inside a JSDoc that explicitly
+      forbids it (no occurrence is currently expected).
 
-            ## Research hub
+### 3. Rebuild the test suite for the marker-pair body, and add tests for each violation class plus the migration rejection
 
-            <a non-trivial multi-line body that exercises the slicer>
-            ```
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-            The non-trivial body content for `## Playbook hub` and
-            `## Research hub` should each include at least: a `#` H1
-            heading inside the section (which the closed-vocabulary
-            check must NOT mistake for a top-level `## ` heading),
-            multiple paragraphs, and at least one nested `### `
-            sub-heading. This proves the walker only treats `^## .+$`
-            (exactly two leading hashes) as a section boundary, not
-            `^# .+$` (one) or `^### .+$` (three).
+- [x] 3a. Edit `src/service/parseBrainAide/index.test.ts`. Replace
+      `CANONICAL_BRAIN_AIDE` with a marker-bounded fixture that
+      mirrors the spec's "Good examples" block. The fixture must
+      exercise:
 
-      - 3b. **Update `CANONICAL_CONFIG`** — unchanged from the prior
-            plan; frontmatter shape did not move.
+      - All three required marker pairs in fixed order (prose,
+        playbook, research).
+      - At least one byte sequence outside any marker pair (a
+        "note-to-self above the first opener" between the
+        frontmatter and `<!-- aide-prose-start -->`) so the
+        bytes-outside-pairs silent-ignore is observed end-to-end
+        on the happy path.
+      - Non-trivial multi-paragraph content inside each section,
+        including markdown features the parser must NOT interpret
+        (literal `#` H1 inside the playbook section, literal `##`
+        and `###` headings, literal `${name}`-shaped placeholders).
+        This proves the marker walker matches only the six exact
+        byte sequences and treats every other byte as content.
 
-      - 3c. **Extend the happy-path test (3a)** to assert on all three
-            body fields:
-            - `result.prose` matches `/Your brain is an Obsidian
-              vault\./`
-            - `result.playbookHub` equals the verbatim bytes between
-              the `## Playbook hub` heading line and the
-              `## Research hub` heading line (the slicer's natural
-              boundary)
-            - `result.researchHub` equals the verbatim bytes between
-              the `## Research hub` heading line and end-of-file
+      Vocabulary purge applies to the test fixture's prose:
+      forbidden tokens (`vault`, `obsidian`, `wikilink`, `hub`,
+      `note`-as-synonym) are scrubbed from the parser-module's test
+      file. The spec's "Good examples" block uses storage-agnostic
+      framing ("Your brain is an external knowledge store",
+      "brain-root-relative path", "the brain's entry file is
+      `CLAUDE.md` at the brain root") — adopt that framing
+      verbatim for the canonical fixture body.
 
-            Compute these expected slices from the `CANONICAL_BRAIN_AIDE`
-            constant rather than hardcoding them — a `extractCanonicalSection(name)`
-            test-helper makes the assertions resilient to small body
-            edits in 3a's fixture.
+      Update `CANONICAL_CONFIG`. The frontmatter shape is unchanged
+      (`name: string`, `mcpServerConfig: { command, args }`); the
+      `name` value should also lose any forbidden-token coupling
+      (e.g. rename `"obsidian"` → `"my-brain"` to match the spec's
+      good-example fixture; the test asserts that `name` is
+      metadata, not dispatched on, so the value is incidental).
+      The `args` byte-inline path should also lose
+      forbidden-token drift in its prose representation.
 
-      - 3d. **Keep the missing-file test (3b) and malformed-YAML test
-            (3c) unchanged.**
+      Replace the `extractCanonicalSection` test helper. The new
+      helper rebuilds the same logic for the marker grammar:
+      reconstruct the body the same way `parseBrainAideFromString`
+      does (split off frontmatter, take everything after the
+      closing `---`), then for each named section locate its
+      opener and closer in the canonical fixture and slice the
+      bytes between them. The helper accepts
+      `name: "prose" | "playbook" | "research"` (the renamed
+      union), so callers writing
+      `extractCanonicalSection("playbook")` get the section
+      between `<!-- aide-playbook-start -->` and `<!-- aide-
+      playbook-end -->` byte-identical.
 
-      - 3e. **Keep the missing-required-frontmatter-field test (3d)
-            and the deprecated-field rejection test (3d') unchanged.**
-            Their fixtures already include the canonical body; update
-            those bodies to carry all three sections in step 3a's
-            same fashion.
+- [x] 3b. Update the happy-path test (the "3a" describe block in
+      the existing file). Assertions:
 
-      - 3f. **Rename test 3e from "missing prose body" to "missing
-            required sections (parameterized)"** and replace it with a
-            parameterized `it.each` over the three required headings
-            and combinations:
+      - `result.kind === "ok"`.
+      - `result.config.name`, `result.config.mcpServerConfig.command`,
+        `result.config.mcpServerConfig.args` match the canonical
+        config.
+      - `result.prose` matches the canonical fixture's verbatim
+        bytes between `<!-- aide-prose-start -->` and
+        `<!-- aide-prose-end -->` (use the new
+        `extractCanonicalSection("prose")` helper).
+      - `result.playbook` (renamed from `result.playbookHub`)
+        matches the verbatim bytes between
+        `<!-- aide-playbook-start -->` and `<!-- aide-playbook-
+        end -->`.
+      - `result.research` (renamed from `result.researchHub`)
+        matches the verbatim bytes between
+        `<!-- aide-research-start -->` and
+        `<!-- aide-research-end -->`.
 
-            - missing `## Prose` only → reason matches
-              `"missing required sections: ## Prose"`
-            - missing `## Playbook hub` only → reason matches
-              `"missing required sections: ## Playbook hub"`
-            - missing `## Research hub` only → reason matches
-              `"missing required sections: ## Research hub"`
-            - missing two (e.g. Prose + Research hub) → reason lists
-              both in `REQUIRED_BODY_HEADINGS` order
-            - missing all three → reason lists all three in order
+      Also update the "nested # and ### headings inside sections
+      are NOT treated as section boundaries" sub-test to assert
+      that literal `#` H1 and literal `##` lines inside any
+      section pass through verbatim — the marker grammar is bytes,
+      not lines, so this becomes even cleaner: the slicer simply
+      slices between marker offsets and never inspects line
+      structure.
 
-            For each case, the fixture has valid frontmatter and a
-            body that contains only the non-missing sections (plus an
-            optional sentence of body text). All cases assert
-            `result.kind === "malformed-body"` and the `reason`
-            string matches the expected list literally — anchor on
-            `REQUIRED_BODY_HEADINGS` order, not file order.
+- [x] 3c. Keep the missing-file test (the "3b" group) and the
+      malformed-YAML test (the "3c" group) structurally unchanged.
+      Update their fixture bodies to use marker pairs instead of
+      headings.
 
-      - 3g. **Add a new test group: "unknown heading rejection".**
-            Parameterized `it.each` covering:
-            - body has all three required sections AND an unknown
-              `## Notes` heading → `reason === "unknown heading:
-              ## Notes"`
-            - unknown heading appears BEFORE all required headings
-              → still rejected, names the first unknown
-            - unknown heading appears AFTER all required headings
-              → still rejected, names the first unknown
-            - case sensitivity: `## prose` (lowercase) is treated as
-              an unknown heading (NOT a case-insensitive match for
-              `## Prose`); `reason === "unknown heading: ## prose"`
-              and the user's actual `## Prose` section is therefore
-              also missing — assert ONE error fires (whichever the
-              walker reaches first per its scan strategy; document
-              the contract in the test assertion comment).
+- [x] 3d. Keep the missing-required-frontmatter-field test
+      (the "3d" group) and the deprecated-field rejection test
+      (the "3d'" group) structurally unchanged. Update every
+      fixture's body to carry all three marker pairs (currently
+      they carry the three retired heading strings).
 
-      - 3h. **Add a new test group: "strict-failure migration".** A
-            single test that asserts the load-bearing migration
-            policy:
-            - Fixture: a pre-widening `brain.aide` with valid
-              frontmatter and a body containing only `## Prose`
-              (no `## Playbook hub`, no `## Research hub`).
-            - Assertion: `result.kind === "malformed-body"` and
-              `result.reason ===  "missing required sections:
-              ## Playbook hub, ## Research hub"`. The parser does
-              NOT silently default the missing sections to empty
-              strings.
+- [x] 3e. Replace the missing-required-sections test (the "3f"
+      group) with `it.each` cases for every missing-pair
+      combination, matching the spec's good-example reasons:
 
-      - 3i. **Keep the verbatim-prose test (3f) structurally** but
-            extend it to cover all three body fields:
-            - prose containing literal `${name}` and `${rootPath}` →
-              passes through byte-identical (existing assertion)
-            - `## Playbook hub` containing literal `${name}` → passes
-              through byte-identical
-            - `## Research hub` containing literal `${name}` → passes
-              through byte-identical
+      - missing prose pair only → reason matches
+        `"missing markers: <!-- aide-prose-start -->,
+        <!-- aide-prose-end -->"`
+      - missing playbook pair only → reason names both playbook
+        markers
+      - missing research pair only → reason names both research
+        markers
+      - missing two pairs → reason lists all four absent markers
+        in fixed scan order
+      - missing all three pairs (the pre-pivot heading-based
+        scenario covered in step 3i below)
 
-            This is the load-bearing per-section verbatim invariant.
-            The interpolation surface is `mcpServerConfig.args` only;
-            no body field ever runs through substitution.
+      Include cases where ONE marker of a pair is present but
+      the other is missing (e.g. opener present, closer missing
+      → unmatched-opener reason; closer present, opener missing
+      → unmatched-closer reason). Each case asserts
+      `result.kind === "malformed-body"` and `result.reason`
+      equals the expected reason string literally.
 
-      - 3j. **Keep the name-is-metadata test (3g) unchanged in
-            behavior** but update fixtures to carry all three body
-            sections.
+- [x] 3f. Add a new test group: "malformed/typo'd marker
+      rejection". Parameterized `it.each` over the case set the
+      spec's "Bad examples" block enumerates:
 
-      - 3k. **Keep the interpolation tests (3h, 3i, 3j) unchanged.**
-            These exercise `mcpServerConfig.args` substitution; the
-            body grammar widening does not affect them.
+      - uppercase `<!-- AIDE-PROSE-START -->` → reason matches
+        `"unknown marker: <!-- AIDE-PROSE-START -->"`
+      - mixed-case `<!-- Aide-prose-start -->` → reason matches
+        `"unknown marker: <!-- Aide-prose-start -->"`
+      - no surrounding spaces `<!--aide-prose-start-->` →
+        reason matches `"unknown marker: <!--aide-prose-start-->"`
+      - extra internal whitespace `<!-- aide-prose-start  -->` →
+        reason matches with the as-written form
+      - missing `aide-` prefix `<!-- prose-start -->` →
+        reason matches `"unknown marker: <!-- prose-start -->"`
+      - typo `<!-- aide-prose-strart -->` →
+        reason matches `"unknown marker: <!-- aide-prose-
+        strart -->"`
 
-      - 3l. **Update the `parseBrainAideFromString` tests (3k group)**
-            so all fixtures carry the three-section body. The
-            `noProseContent` legacy fixture (which proves
-            `malformed-body` reaches identically through the disk and
-            string paths) becomes a `noPlaybookHubContent` fixture (or
-            equivalent) — assert `result.kind === "malformed-body"`
-            and the reason names the missing section.
+      Each fixture has valid frontmatter and a body containing a
+      malformed marker substituted in for one of the recognized
+      ones (with the other five recognized markers correctly
+      present and paired). Each case asserts
+      `result.kind === "malformed-body"` and the reason equals
+      the expected string literally.
 
-      - 3m. **Add a per-section ownership documentation test (new):**
-            assert that `result.config` does NOT contain `prose`,
-            `playbookHub`, or `researchHub` (those are siblings of
-            `config` on the result, not properties of `config`).
-            Documents the type boundary visibly so a future consumer
-            does not reach into the wrong nesting level.
+      Also include a left-to-right ordering case: a body with
+      TWO malformed markers — assert the reason names the FIRST
+      malformed marker encountered (per the helper's contract
+      that it surfaces one error per parse).
+
+- [x] 3g. Add a new test group: "marker order violation". A
+      parameterized case set covering every wrong order:
+
+      - playbook before prose → reason matches
+        `"marker order violation:
+        <!-- aide-playbook-start --> appeared before
+        <!-- aide-prose-start -->"`
+      - research before playbook (with prose first, correctly) →
+        reason matches the analogous string for research-before-
+        playbook
+      - research first → reason matches research-before-prose
+
+      Each fixture has all three pairs present and correctly
+      matched, only the ORDER is wrong. Asserts
+      `result.kind === "malformed-body"` and the reason equals
+      the expected string literally.
+
+- [x] 3h. Add a new test group: "nested marker rejection". A
+      parameterized case set covering each nesting class:
+
+      - playbook pair nested inside prose pair (i.e.
+        `<!-- aide-playbook-start --> ... <!-- aide-playbook-
+        end -->` appears between `<!-- aide-prose-start -->`
+        and `<!-- aide-prose-end -->`) → reason matches
+        `"nested marker: <!-- aide-playbook-start --> appeared
+        inside the prose section"`
+      - research pair nested inside playbook pair → reason names
+        the inner research opener and the outer playbook section
+      - any pair nested inside research pair → reason analogous
+      - a SINGLE inner marker (no full pair, just one stray
+        opener or closer of another section) inside a pair →
+        reason names the inner marker
+
+      Each fixture has all six recognized marker tokens present
+      and well-formed in document order; only the BYTE OFFSETS
+      put one pair inside another. Asserts
+      `result.kind === "malformed-body"` and the reason equals
+      the expected string literally.
+
+- [x] 3i. Add a new test group: "strict-failure migration: pre-
+      pivot heading-based body". A single test asserting the
+      load-bearing migration policy from the spec's
+      "outcomes.desired" #7:
+
+      - Fixture: a `brain.aide` whose frontmatter is valid
+        (the two-field shape is unchanged) and whose body uses
+        the OLD heading-based schema — `## Prose` / `## Playbook
+        hub` / `## Research hub` lines with no marker pairs
+        anywhere. Use the spec's "Good examples" block migration
+        case as the byte-level reference.
+      - Assertion: `result.kind === "malformed-body"` and
+        `result.reason ===
+        "missing markers: <!-- aide-prose-start -->,
+        <!-- aide-prose-end -->, <!-- aide-playbook-start -->,
+        <!-- aide-playbook-end -->, <!-- aide-research-start -->,
+        <!-- aide-research-end -->"`. The parser does NOT auto-
+        detect the old heading-based shape; it does NOT auto-
+        rewrite; it does NOT silently default the missing
+        sections. The user hand-edits their file.
+
+      A test comment quotes the spec's bad-example block on
+      auto-fill ("A parser that auto-fills missing required body
+      sections from package defaults") and ties this assertion to
+      preventing that regression.
+
+- [x] 3j. Add a new test group: "bytes outside marker pairs are
+      silently ignored". Parameterized cases:
+
+      - notes-to-self between frontmatter and the prose opener
+        (the canonical fixture from step 3a already exercises
+        this at the happy-path level; this group exercises it
+        as the explicit contract).
+      - scratch text between the prose closer and the playbook
+        opener.
+      - scratch text between the playbook closer and the research
+        opener.
+      - trailing comments after the research closer.
+      - all four positions populated simultaneously.
+      - bytes outside containing a malformed marker-LIKE pattern
+        (e.g. `<!-- aide-misc -->` between two pairs) — this
+        contradicts the simple "bytes outside are silently
+        ignored" rule because the malformed-marker scan in step
+        2b walks the WHOLE body. Document the contract decision
+        in the test: the malformed-marker scan respects pair
+        boundaries — only marker-shaped tokens INSIDE no recognized
+        pair are scanned for malformed-token rejection; tokens
+        outside any pair AND not matching a recognized form are
+        treated as plain bytes (per the spec's "Bytes outside
+        any marker pair are silently ignored" rule, which the
+        spec calls out as the parser's concern boundary).
+
+      For each case, the fixture has all three recognized pairs
+      present and well-formed; the OUTSIDE bytes are non-marker
+      content. Each case asserts `result.kind === "ok"` and that
+      the three body fields slice ONLY the bytes between their
+      markers (none of the outside text leaks into any section).
+
+- [x] 3k. Update the verbatim-invariant test (the "3i" group in
+      the existing file). Keep the load-bearing per-section
+      verbatim invariant (no substitution on any body field)
+      with three sub-tests, one per renamed field:
+
+      - prose containing literal `${name}` and `${rootPath}` →
+        passes through byte-identical.
+      - playbook containing literal `${name}` → passes through
+        byte-identical.
+      - research containing literal `${name}` → passes through
+        byte-identical.
+
+      Field names in assertions update from `result.playbookHub`
+      → `result.playbook`, `result.researchHub` →
+      `result.research`.
+
+- [x] 3l. Update the name-is-metadata test (the "3j" group)
+      structurally unchanged in behavior; rebuild fixtures to
+      use marker pairs and rename the body-field assertions
+      (`result.prose`, `result.playbook`, `result.research`).
+
+- [x] 3m. Keep the interpolation tests (the "3k", "3k'", "3k''"
+      groups) structurally unchanged in behavior. The interpolation
+      surface is `mcpServerConfig.args`-only and is not affected by
+      the body grammar change. Update the "3k''" group's body-
+      field assertions to use the renamed fields.
+
+- [x] 3n. Update the `parseBrainAideFromString` parity tests (the
+      "3l" group). Rebuild fixtures with marker pairs; rename
+      the `noPlaybookHubContent` fixture and similar helper
+      identifiers to track the renamed fields. The
+      `malformed-body` parity sub-test asserts that disk and
+      string paths produce the same reason for a missing pair
+      (e.g. missing playbook pair → both paths return the same
+      `"missing markers: <!-- aide-playbook-start -->,
+      <!-- aide-playbook-end -->"` reason).
+
+- [x] 3o. Update the per-section ownership documentation test
+      (the "3m" group). Rename field-presence assertions:
+
+      - `result.config` does NOT contain `prose`.
+      - `result.config` does NOT contain `playbook` (renamed from
+        `playbookHub`).
+      - `result.config` does NOT contain `research` (renamed from
+        `researchHub`).
+      - `result.prose`, `result.playbook`, `result.research` are
+        all `string`-typed siblings of `result.config`.
+
+- [x] 3p. Vocabulary sweep across the test file. After all
+      fixture rebuilds and renames in steps 3a–3o, confirm the
+      test file's prose, fixture content, and identifier names
+      do not contain forbidden tokens:
+
+      - identifier names like `playbookHub` / `researchHub`
+        (renamed in 3a–3o) — zero remaining.
+      - test prose / describe-block titles / it-block titles
+        mentioning `hub` (e.g. legacy "missing prose body",
+        "playbookHub", "## Playbook hub") — zero remaining.
+      - test prose using `vault`, `obsidian`, `wikilink`,
+        `note`-as-synonym — zero remaining (storage-agnostic
+        framing only).
+      - the spec's anti-example carve-out is NOT used in test
+        files (it applies only to undesired-outcome blocks in
+        spec frontmatter, not to source code or tests).
+
+      The test file is the noisiest source of forbidden-token
+      drift in the module today — this sweep is the load-bearing
+      cleanup for outcome #17 (vocabulary purge) at the parser
+      module's surface.
 
 ### 4. Verify the parser in isolation, then surface downstream breakage
 
 Read: `coding-playbook/workflow/testing`
 
-- [x] 4a. Run `npm test -- parseBrainAide` (or the equivalent vitest
+- [x] 4a. Run the parser-module test suite (e.g.
+      `npm test -- parseBrainAide` or the equivalent vitest
       filter scoped to this module's test file). Every test in
-      `src/service/parseBrainAide/index.test.ts` must pass. If any
-      fails, fix the parser code (not the test) — the spec is the
-      contract; the tests assert the contract; failing tests mean
-      the implementation drifted from the spec. Do NOT relax
-      assertions to make tests pass.
+      `src/service/parseBrainAide/index.test.ts` must pass. If
+      any fails, fix the parser code (not the test) — the spec
+      is the contract; the tests assert the contract; failing
+      tests mean the implementation drifted from the spec. Do
+      NOT relax assertions to make tests pass.
 
       Likely failure modes:
-      - The slicer mishandles a body where one of the required
-        headings is the LAST section (no successor heading to
-        bound the slice). The slice should run to end-of-file,
-        not return empty. Fix: when computing the upper bound,
-        fall back to `body.length` when the candidate is the last
-        in document order.
-      - The walker treats `^# ` or `^### ` as a section boundary.
-        Fix: tighten the regex to `^## .+$` (exactly two hashes
-        followed by space and at least one character).
-      - The `## Prose` body sentinel-phrase test fails because
-        the body's strip-newline behavior changed. Either restore
-        the prior single-newline strip, OR update the test
-        expectation; document the choice in the Decisions section
-        of this plan if the strip behavior changes.
+      - The marker-pair walker mishandles end-of-file when the
+        research pair is the last content in the file with no
+        trailing newline. Fix: the slice upper bound for any
+        section is the close marker's `index`, NEVER `body.length`
+        unless the close marker is missing (in which case the
+        unmatched-opener check should have fired earlier — if
+        it did not, the check is wrong).
+      - The malformed-marker scan misses a case because the
+        permissive HTML-comment regex is too narrow. Tighten the
+        regex to match any `<!--…-->` whose contents contain
+        `aide` (case-insensitive on the substring check, then
+        case-sensitive on the literal-form filter).
+      - The nesting check fires false positives when a recognized
+        marker appears in body text outside any pair (e.g. the
+        bytes-outside-pairs-with-marker-shaped-content edge case
+        in step 3j). Fix: the nesting check considers only
+        markers that are PART of a recognized matched pair; the
+        bytes-outside scan is independent.
+      - A test asserting on a literal reason string fails because
+        the helper's reason-format string drifts from the type's
+        JSDoc enumeration. Fix: pick one canonical string format
+        per violation class, document it in the helper's JSDoc
+        AND in the type's JSDoc, and write the tests to that
+        format. Drift between helper and type docs is itself a
+        bug to fix in this step.
 
-- [x] 4b. Run `npx tsc --noEmit` from the project root. The parser's
-      own files must compile cleanly. Downstream consumers
-      (`provisionBrain` and the `obsidianBrainAideTemplate` tests)
-      WILL fail to compile or run because they have not yet been
-      updated to (a) source body bytes from the new `playbookHub`
-      and `researchHub` fields, and (b) carry the new sections in
-      the bundled template. Record the list of failing files in
-      the implementor's hand-off message; do NOT modify those
-      files. They are governed by their own plan.aide files (the
+- [x] 4b. Run `npx tsc --noEmit` from the project root. The
+      parser's own files must compile cleanly. Downstream
+      consumers (`provisionBrain`, `obsidianBrainAideTemplate`,
+      and any consumer that read the renamed fields) WILL fail to
+      compile because they reference the old `playbookHub` /
+      `researchHub` field names. Record the list of failing files
+      in the implementor's hand-off message; do NOT modify those
+      files. They are governed by their own `plan.aide` files (the
       orchestrator runs them next in the dependency chain).
 
-      The only file inside this plan's scope that may surface
-      `tsc` errors is `src/service/parseBrainAide/index.ts` itself
-      (or its test file). Both must compile; if not, the type
-      widening in step 1 or the helper in step 2 needs another
-      pass.
+      The only files inside this plan's scope that may surface
+      `tsc` errors are `src/service/parseBrainAide/index.ts`,
+      `src/service/parseBrainAide/index.test.ts`, and
+      `src/types/index.ts`. All three must compile; if not, the
+      type rename in step 1, the helper rewrite in step 2, or the
+      test rewrites in step 3 need another pass.
 
 ## Decisions
 
-- **Body fields are siblings on the `ok` variant, not nested under
-  `config`.** The parsed `BrainAideConfig` is the typed frontmatter
-  only; body sections are a separate concern with separate semantics
-  (verbatim, never interpolated, per-consumer ownership). Putting
-  them on `config` would conflate "things sync writes to .mcp.json"
-  with "things the install service scaffolds to disk", which is
-  exactly the conflation the named-section shape exists to prevent.
-  A consumer reading `result.config.mcpServerConfig` cannot
-  accidentally see playbook-hub bytes; a consumer reading
-  `result.playbookHub` cannot accidentally see frontmatter. The
-  field-name boundary is the per-consumer ownership contract,
-  visible in every consumer's import line.
+- **Marker detection is literal-substring + permissive-comment
+  rejection, not a single grammar walk.** The closed lowercase
+  case-sensitive grammar admits exactly six byte sequences as
+  recognized markers; everything else that looks like an HTML
+  comment containing "aide" is malformed. A naive single-pass
+  state machine would conflate "this is a recognized marker" and
+  "this is content" — and would silently miss the
+  uppercase/mixed-case/typo cases the spec explicitly rules out
+  in its "Bad examples". The two-phase approach (recognize-or-
+  reject, then walk recognized markers for layout violations) is
+  the cheapest shape that catches every violation class the spec
+  enumerates without adding a stack-based parser. Keep both phases
+  in the same `extractMarkerSections` helper — they share state
+  and a single body string, and splitting them would force two
+  passes over the same bytes for no clarity gain.
 
-- **The body grammar is closed and the rejection lists every missing
-  section in one error.** The spec's good examples explicitly show
-  `"missing required sections: ## Playbook hub, ## Research hub"`
-  as a single response listing both stale fields, and the parser
-  surfaces them all in one parse so the user fixes them all in one
-  edit. This matches the deprecated-frontmatter-field pattern from
-  the prior cycle (`"deprecated fields: rootPath, tools"`) — same
-  one-pass-many-failures shape, applied to the body grammar.
-  Unknown headings, by contrast, surface one-at-a-time because the
-  unknown-heading scan halts at the first violation (the user
-  removes it and re-runs); listing multiple unknowns would invite
-  the parser to keep walking past a failed grammar check, which
-  the closed-vocabulary rule rejects.
+- **Reason-format strings are documented in two places: the
+  helper's JSDoc and the union's JSDoc.** Tests assert literal
+  reason strings, and a drift between the helper and the type
+  declaration would surface as confusing test failures. The
+  helper's JSDoc is the source of truth (it produces the strings);
+  the type's JSDoc mirrors it for consumers reading the central
+  type. Both documents update together — a future change to one
+  reason format requires the same change in both places. The
+  format strings themselves come from the spec's "Good examples"
+  block, which uses the canonical phrasings (`"missing markers:
+  …"`, `"unknown marker: …"`, `"unmatched closing marker: …
+  appeared without a prior …"`, `"unmatched opening marker: …
+  has no matching …"`, `"marker order violation: … appeared
+  before …"`, `"nested marker: … appeared inside the … section"`).
 
-- **Required headings live in a module-level constant, not a magic
-  string.** `REQUIRED_BODY_HEADINGS = ["## Prose", "## Playbook
-  hub", "## Research hub"] as const` is the single source of truth.
-  The walker iterates it; the missing-section reason builder
-  iterates it; tests assert against it. Any future change (a new
-  required section, a heading-text rename) is a one-line edit.
-  Hardcoding the strings inline at every call site would
-  decentralize exactly the grammar this module exists to centralize.
+- **Field rename `playbookHub` → `playbook` and `researchHub` →
+  `research` propagates through `src/types/index.ts`, the parser
+  module, and every test in this module. The `prose` field name
+  is unchanged.** The retired `hub` suffix is the spec's outcome
+  #17 carve-out — `playbookHub` and `researchHub` are explicitly
+  named in the parser spec's "undesired" block as "the same
+  regression in different clothing" relative to the broader
+  vocabulary purge. The storage-agnostic field names are exactly
+  the marker token base names: `prose`, `playbook`, `research`.
+  Downstream consumers that read these fields (`provisionBrain`)
+  fail to compile after the rename and pick up the rename in
+  their own `plan.aide`. The brain tool, sync, and buildBrainState
+  do not touch the renamed fields and are unaffected.
 
-- **Section ordering is not enforced.** The walker matches by
-  heading text, not document position. A user who reorders their
-  sections (e.g. puts `## Research hub` first because they edited
-  that section last) gets a clean parse. The default scaffold
-  ships them in declaration order for readability, but ordering
-  is a content-author convention, not a parser constraint. This
-  matches the spec's "the parser walks the body once after
-  frontmatter validation, locates each heading at the start of a
-  line, and slices each section from its heading boundary..."
-  language — extraction is by heading lookup, not by index.
+- **`MARKER_PAIRS` is a module-level `as const` constant
+  carrying open/close pairs together.** The walker iterates it for
+  every check (presence, order, nesting); the missing-marker
+  reason builder iterates it; the type's JSDoc references it as
+  the canonical grammar source. A future change (a new pair, a
+  marker rename, a tightening of the grammar) is a one-line edit
+  to this constant. The `as const` keyword preserves the literal
+  string and discriminant types, so the section-token field
+  narrows to `"prose" | "playbook" | "research"` and TypeScript
+  catches a typo in the destructure of the helper's return.
 
-- **No content-validation on body sections.** The parser checks
-  that each required section is present and that no unknown
-  headings appear; it does NOT check that `## Playbook hub`
-  contains a table or that `## Research hub` contains specific
-  text. Body content is the user's domain; the parser's domain is
-  body-section-presence and closed-vocabulary enforcement. This
-  is the section-level analogue of the schema-minimum-equals-
-  maximum frontmatter rule.
+- **Bytes outside any marker pair are silently ignored, INCLUDING
+  marker-shaped content.** The spec's outcome #6 is unambiguous:
+  notes-to-self, scratch text, comments outside the recognized
+  pairs are not the parser's concern. The malformed-marker scan
+  consequently must be bounded — it scans only positions that
+  are NOT inside any recognized matched pair, and it reports a
+  malformed marker only when the marker-shaped content is in a
+  position where a recognized marker would be valid. This
+  decision is the parser's concern boundary: the parser extracts
+  three named sections; it does not police the rest of the file.
+  A user who legitimately writes `<!-- aide-misc -->` in a
+  scratch region between two pairs gets a clean parse.
 
-- **No new sub-helper folder for the body walker.** The
-  `extractBodySections` private helper plus the existing
-  `parseBrainAideFromString` / `parseBrainAide` / `interpolateArgs`
-  trio still fit comfortably under ~250 lines. The progressive-
-  disclosure single-helper exception still applies. If a future
-  refactor adds environment-variable expansion to the
-  interpolation engine, factor each responsibility into its own
-  subfolder at that point — not preemptively.
+- **Section-order check fires only after presence and matching
+  pass.** A user who has written all six markers but in the
+  wrong order returns `marker order violation`; a user who has
+  also forgotten one pair returns `missing markers` first. The
+  order is: presence → match → order → nesting → slice. This
+  matches the spec's "halts the pipeline; the parser does not
+  attempt recovery" invariant — each check produces one
+  malformed-body reason, and the user fixes that one issue and
+  re-runs.
 
-- **The strict-failure migration is intentional and tested
-  explicitly.** A pre-widening `brain.aide` (one section, prose
-  only) returns `malformed-body` naming the two missing sections.
-  No silent default fills them in; no `aide_upgrade` carve-out
-  auto-migrates. The user hand-edits their file to add the
-  sections, copying the new defaults from the bundled scaffold.
-  This matches the spec's load-bearing decision and prevents the
-  package from authoring content the user is supposed to own. A
-  dedicated test in step 3h asserts this behavior so a future
-  refactor that introduces silent defaults will fail visibly.
+- **Nesting check considers only markers that are part of a
+  recognized matched pair.** A stray opener or closer that is
+  itself unmatched is caught by the unmatched-opener or
+  unmatched-closer check; the nesting check is the LAST
+  layout check before slicing because its precondition is
+  "every recognized marker has a matched partner, and we know
+  which spans they bound." Running it earlier would either
+  duplicate the unmatched-marker checks or false-positive on
+  bytes-outside-pairs marker-shaped content.
 
-- **Type widening lands in the same plan as the parser change.**
-  The `ParseBrainAideResult` shape lives in `src/types/index.ts`,
-  one layer above the parser, but the parser is the only writer
-  of the new fields. Splitting the type widening into a separate
-  plan would force the parser to either (a) reference the legacy
-  type and break, or (b) reference the new type before it lands
-  and break. Co-locating the type widening with the parser
-  rewrite means both land atomically and the parser's tests
-  exercise the new shape immediately. The widening is additive
-  (new optional-by-construction fields on a discriminated union
-  variant), so consumers that read only `prose` continue to
-  compile.
+- **No new sub-helper folder for the marker walker.** The
+  `extractMarkerSections` private helper plus the existing
+  `parseBrainAideFromString` / `parseBrainAide` /
+  `interpolateArgs` trio still fit comfortably under ~300 lines.
+  The progressive-disclosure single-helper exception still
+  applies. The marker walker is grammatically more involved
+  than the heading walker it replaces, but it is one
+  responsibility (extract three named sections from a closed
+  marker grammar); splitting it across multiple sub-helpers
+  would fragment the violation-detection state without making
+  any single helper simpler.
+
+- **No backward-compat strip on `prose`.** The heading-based
+  extractor stripped a single leading newline from `prose` for
+  test assertions written against the pre-widening shape. The
+  marker-pair extractor has no analogous concern: marker
+  boundaries are bytes, not lines, so the slicer reads exactly
+  the bytes between `open.index + open.length` and
+  `close.index`. Tests assert against those exact bytes via the
+  rebuilt `extractCanonicalSection` helper, so there is no
+  drift to absorb. This is a deliberate cleanup: the strip was
+  a transitional carve-out that has no place in the closed
+  marker grammar.
+
+- **Field rename and grammar switch land atomically in one
+  cycle.** Splitting the rename into one cycle and the grammar
+  switch into another would force the parser to either (a)
+  reference the old type with the new grammar, or (b) reference
+  the new type with the old grammar — both states are broken
+  and require coordinated fixes across consumers. Co-locating
+  both changes here means the parser, its tests, and the
+  central type land at the same shape. The widening is breaking
+  for the field-name consumers (`provisionBrain`), and that
+  breakage is intentional and tracked through the cascade
+  in those modules' own plans.
+
+- **Strict-failure migration is intentional and tested
+  explicitly.** A pre-pivot heading-based `brain.aide` returns
+  `malformed-body` naming all six missing markers. No silent
+  default fills them in; no `aide_upgrade` carve-out auto-
+  migrates. The user hand-edits their file to add the markers
+  (or copies the new defaults from the bundled scaffold). This
+  matches the spec's outcome #7 ("Strict-failure migration: a
+  pre-pivot `brain.aide` using the old heading-based body
+  schema returns `malformed-body` with a reason naming the
+  missing markers") and prevents the package from authoring
+  content the user is supposed to own. A dedicated test in
+  step 3i asserts this behavior so a future refactor that
+  introduces silent defaults will fail visibly.
 
 - **The disk read path is unchanged.** `parseBrainAide(root)`
-  still reads `.aide/config/brain.aide` — the path move from the
-  prior cycle is preserved. This plan does not touch the file
-  location, only the body grammar inside it.
+  still reads `.aide/config/brain.aide` — the path move from
+  earlier cycles is preserved. This plan touches only the body
+  grammar (heading → markers) and the body field names
+  (`playbookHub` → `playbook`, `researchHub` → `research`).
+  Sync, which reads frontmatter only, is unaffected by both.
 
 - **Step 4b records but does not fix downstream breakage.** The
-  two downstream modules (`provisionBrain`, `obsidianBrainAideTemplate`)
-  each have their own `plan.aide` for the body-widening cascade.
-  Fixing them inside this plan would expand its scope past the
-  single-module rule. The verify step's job is to make the
-  breakage visible — the orchestrator picks up those plans next.
+  downstream module that reads the renamed fields
+  (`provisionBrain` and its `obsidianBrainAideTemplate` helper)
+  has its own `plan.aide` for the marker-grammar cascade. Fixing
+  it inside this plan would expand its scope past the single-
+  module rule. The verify step's job is to make the breakage
+  visible — the orchestrator picks up that plan next.

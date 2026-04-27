@@ -80,7 +80,7 @@ beforeEach(() => {
 		// package.json
 		return JSON.stringify({ version: "1.2.3" });
 	});
-	// Default brain state: healthy vault so staleness tests are not affected by brain.
+	// Default brain state: healthy brain so staleness tests are not affected by brain.
 	mockBuildBrainState.mockResolvedValue(BRAIN_OK);
 });
 

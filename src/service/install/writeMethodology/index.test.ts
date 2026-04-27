@@ -32,7 +32,7 @@ describe("writeMethodology", () => {
 		expect(result.name).toBe("Methodology pointer");
 	});
 
-	it("would-create content contains the marker and hub path", async () => {
+	it("would-create content contains the marker and doc directory path", async () => {
 		const configPath = join(tempDir, "CLAUDE.md");
 
 		const result = await writeMethodology(configPath, HUB_DIR);

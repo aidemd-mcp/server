@@ -14,7 +14,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * Discover all candidate brain vault locations and return them as hints.
+ * Discover all candidate brain root locations and return them as hints.
  *
  * Checks three sources in order:
  * 1. AIDE_BRAIN_PATH environment variable

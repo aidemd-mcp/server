@@ -2,7 +2,7 @@
 
 `brain.aide` is the host project's brain configuration. It declares which MCP server to launch as the brain layer and carries the hand-written agent-facing instructions that explain how to use it. It lives at `.aide/config/brain.aide` and is the single source of truth for the host's brain wiring.
 
-`brain.aide` is a config file, not an intent spec. Its frontmatter is a typed config object; its body is hand-written prose the agent reads verbatim. The explicit divergence from the intent-spec family (`intent.aide`, `plan.aide`, `todo.aide`, `research.aide`) is load-bearing — see `## Divergence from intent specs` below.
+`brain.aide` is a config file, not an intent spec. Its frontmatter is a typed config object; its body is hand-written content the agent and install service read. The explicit divergence from the intent-spec family (`intent.aide`, `plan.aide`, `todo.aide`, `research.aide`) is load-bearing — see `## Divergence from intent specs` below.
 
 ## Format
 
@@ -16,11 +16,23 @@ mcpServerConfig:
     - "D:/notes/my-vault"
 ---
 
-## Prose
-
+<!-- aide-prose-start -->
 Hand-written agent-facing instructions. Returned verbatim by `aide_brain`.
-The agent reads this body and follows it. Nothing in this package interprets
-or transforms these sentences.
+The agent reads this section and follows it. Nothing in this package
+interprets or transforms these sentences.
+<!-- aide-prose-end -->
+
+<!-- aide-playbook-start -->
+Seed content for the coding-playbook entry-point artifact. The install
+service reads this section and writes it verbatim to
+`coding-playbook/coding-playbook.md` in the host project.
+<!-- aide-playbook-end -->
+
+<!-- aide-research-start -->
+Seed content for the research entry-point artifact. The install service
+reads this section and writes it verbatim to `research/research.md` in
+the host project.
+<!-- aide-research-end -->
 ```
 
 ### Frontmatter fields
@@ -33,15 +45,40 @@ The schema is the minimum that still has real runtime consumers. Both fields are
   - **`command`** — `string`. The executable to launch (e.g. `"npx"`, `"node"`, `"uvx"`).
   - **`args`** — `string[]`. Arguments passed to `command`. Carries the launcher invocation and the path or identifier inline. The default scaffold writes the path as a literal string in this list — no interpolation, no derived value.
 
-That is the complete schema. There are no other top-level fields. A `connector`, `rootPath`, `entryFile`, or `tools` field — all of which the prior schema required — is now rejected by the parser as `malformed-frontmatter`. Each retired field was validation theater: it existed for the parser to check, with no code path that consumed its value at runtime. Anything an agent needs at runtime now lives in the prose body, where the agent actually reads it.
+That is the complete schema. There are no other top-level fields. A `connector`, `rootPath`, `entryFile`, or `tools` field — all of which the prior schema required — is now rejected by the parser as `malformed-frontmatter`. Each retired field was validation theater: it existed for the parser to check, with no code path that consumed its value at runtime. Anything an agent needs at runtime now lives in the prose body section, where the agent actually reads it.
 
 ### Body shape
 
-The body is a `## Prose` section containing hand-written agent-facing instructions. The user owns and authors this content entirely. The methodology doc does not prescribe its structure, length, or voice — what the user writes is what the agent reads.
+The body is THREE marker-bounded sections in fixed order:
 
-`aide_brain` returns the body verbatim. No rendering pass. No template engine. No variable substitution. The literal characters on disk are the literal characters in the response.
+1. `<!-- aide-prose-start -->` ... `<!-- aide-prose-end -->`
+2. `<!-- aide-playbook-start -->` ... `<!-- aide-playbook-end -->`
+3. `<!-- aide-research-start -->` ... `<!-- aide-research-end -->`
 
-The body is the brain's interface contract. It is where the user names which MCP tools the agent should call to read notes, search the store, follow links, and navigate. The schema does not enumerate any of this; the prose does. This places the binding cost in one place (the prose) instead of forcing the user to keep frontmatter declarations and prose in sync. Failure is fast and specific: if the prose names a tool the host's MCP session does not expose, the agent surfaces that on the first call rather than passing a parser check that lied.
+**Marker grammar.** Six markers total, three open/close pairs. Markers are lowercase, case-sensitive, with single ASCII spaces around the token — `<!-- aide-prose-start -->` is valid; `<!--aide-prose-start-->`, `<!-- Aide-Prose-Start -->`, and `<!-- prose-start -->` are not. The fixed order is `prose` then `playbook` then `research`; any other order is a violation. Bytes outside any marker pair are silently ignored — note-to-self comments or blank lines between sections are fine and do not affect parsing.
+
+**Per-consumer section ownership.** Each section has a single designated consumer:
+
+- `prose` — owned by the runtime brain tool (`aide_brain`). Returns the content verbatim to the agent at session start. This is where the user writes agent-facing usage instructions: which MCP tools to call, how to navigate the knowledge store, what conventions to follow.
+- `playbook` — owned by the install service's brain provisioner. Read once at install time and written verbatim as the coding-playbook entry-point artifact (`coding-playbook/coding-playbook.md`).
+- `research` — owned by the install service's brain provisioner. Read once at install time and written verbatim as the research entry-point artifact (`research/research.md`).
+
+The sync verb and boot reporter read frontmatter only; all three body sections are irrelevant to them.
+
+Cross-section reads violate the contract. `aide_brain` does not read `playbook` or `research`. The install service does not read `prose`. Each consumer reads exactly its own section, nothing more.
+
+**Closed grammar — strict failure on layout violations.** The parser returns `malformed-body` for any of the following:
+
+- Missing pair — `"missing markers: <comma-separated list>"` naming all absent markers.
+- Malformed or typo'd marker (uppercase, mixed-case, missing `aide-` prefix, extra whitespace) — `"unknown marker: <as-written>"`.
+- Unmatched closer without a preceding opener — `"unmatched closing marker: ..."`.
+- Unmatched opener without a following closer — `"unmatched opening marker: ..."`.
+- Wrong section order — `"marker order violation: ..."`.
+- Nested markers — `"nested marker: ..."`.
+
+**Strict-failure migration policy.** There is no transitional read path. Pre-pivot files whose body used heading-based organization (`## Prose`, `## Playbook hub`, `## Research hub`) return `malformed-body` naming all six missing markers. Migration is a hand-edit: the user opens the file and adds the six markers in the correct positions, or copies the bundled scaffold and pastes their content into the appropriate sections. The parser never guesses intent from headings.
+
+**Entry-point artifact bytes flow from the body sections.** The `playbook` and `research` sections are the source of truth for the entry-point artifacts the install service writes. The package does not hold these bytes as inline TypeScript constants — they live in `brain.aide` where the user can see, edit, and own them.
 
 ## Substitution surface
 
@@ -49,7 +86,7 @@ The parser supports `${...}` interpolation of frontmatter field names inside `mc
 
 In the current schema, `name` is the only top-level field that resolves as a substitution source, so the surface is essentially dormant. The default scaffold makes no use of it — the path lives inline as a literal string. The interpolation surface remains for advanced users who want to DRY a value across positions, but it is not a feature the standard install exercises and most users will never touch it.
 
-The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.args`. It runs only at sync time. It NEVER applies to the prose body. A brain whose prose legitimately documents a templating language — for example, prose that explains a knowledge store whose own syntax uses `${variable}` placeholders — can write those characters in the body without fear that the package will interpret or strip them.
+The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.args`. It runs only at sync time. It NEVER applies to any body section. All three body sections (`prose`, `playbook`, `research`) return verbatim, byte-identical to what the user wrote between the recognized markers. A brain whose prose section legitimately documents a templating language — for example, content that explains a knowledge store whose own syntax uses `${variable}` placeholders — can write those characters in the body without fear that the package will interpret or strip them.
 
 ## The `.aide/config/` directory contract
 
@@ -59,15 +96,15 @@ The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.arg
 - **Never overwritten.** After the first write, the file belongs to the user forever. Neither `aide_init` nor `aide_upgrade` overwrites, patches, migrates, or otherwise mutates anything under `.aide/config/` on subsequent runs.
 - **Boundary is the path.** The install/upgrade tooling reads the directory path itself as the ownership signal — there is no per-file allowlist. Any file the user puts under `.aide/config/` is safe from the package's install/upgrade machinery.
 
-Files outside `.aide/config/` (the methodology doc hub at `.aide/docs/`, pipeline command templates, agent definitions, skills, every other artifact the package ships) are package-owned and re-installed on every init/upgrade. New defaults reach existing hosts only through the sync verb or a deliberate user edit, never through the install or upgrade path.
+Files outside `.aide/config/` (the methodology docs at `.aide/docs/`, pipeline command templates, agent definitions, skills, every other artifact the package ships) are package-owned and re-installed on every init/upgrade. New defaults reach existing hosts only through the sync verb or a deliberate user edit, never through the install or upgrade path.
 
 `brain.aide` is the current inhabitant of `.aide/config/`; the convention is forward-compatible with future user-owned config files.
 
 ## Lifecycle
 
-1. **Scaffolded** by `aide_init` on a cold install. The installer writes `.aide/config/brain.aide` pre-filled with the canonical Obsidian default — `name: obsidian`, an `mcpServerConfig` that launches `@bitbonsai/mcpvault` against the user's resolved vault path, and a ready-to-use prose body. A host that never edits this file gets a working brain UX out of the box.
+1. **Scaffolded** by `aide_init` on a cold install. The installer writes `.aide/config/brain.aide` pre-filled with the canonical Obsidian default — `name: obsidian`, an `mcpServerConfig` that launches `@bitbonsai/mcpvault` against the user's resolved knowledge-store path, and three pre-filled body sections: a prose section with agent usage instructions, a playbook section seeding the coding-playbook entry-point artifact, and a research section seeding the research entry-point artifact. A host that never edits this file gets a working brain UX out of the box.
 
-2. **Edited** by the user directly. The file is the user's configuration surface; no CLI wraps edits. Retargeting the vault path, switching brains, swapping the MCP launcher, or rewriting the prose body are all hand-edits to this one file. After the initial scaffold, `aide_init` and `aide_upgrade` will never touch it.
+2. **Edited** by the user directly. The file is the user's configuration surface; no CLI wraps edits. Retargeting the knowledge-store path, switching brains, swapping the MCP launcher, or rewriting any body section are all hand-edits to this one file. After the initial scaffold, `aide_init` and `aide_upgrade` will never touch it.
 
 3. **Propagated** to `.mcp.json` by `npx aidemd-mcp sync`. The user runs this after editing `brain.aide`. Sync reads the frontmatter, expands any `${...}` interpolations in `mcpServerConfig.args` (the default scaffold has none), and writes the resulting object into `.mcp.json` under the fixed `brain` key. This is the only mechanism that mutates `.mcp.json`'s brain entry; the MCP server never silently rewrites the host's MCP wiring.
 
@@ -103,11 +140,13 @@ The boot reporter surfaces exactly four brain status states. The orchestrator re
 
 ## Rules
 
-- **Prose body returned verbatim.** `aide_brain` returns the `## Prose` body exactly as written. No server-side templating, no rendering pass, no variable substitution. The agent reads the user's words, not a transformed version of them.
+- **All three body sections returned verbatim.** Each consumer reads its own owned section and receives the bytes exactly as written. `aide_brain` returns the prose section byte-identical to disk. The install service reads the playbook and research sections byte-identical to disk. No server-side templating, no rendering pass, no variable substitution applies to any body section.
 
-- **`mcpServerConfig.args` interpolation runs only at sync time.** Any `${fieldName}` references in `args` are expanded by `npx aidemd-mcp sync` against the frontmatter and written into `.mcp.json`. They are never expanded at read time, at server startup, or inside the prose body.
+- **Per-consumer section ownership is exclusive.** `aide_brain` reads `prose` only. The install service reads `playbook` and `research` only. The sync verb and boot reporter read frontmatter only. Cross-section reads — for example, `aide_brain` reading `playbook`, or the install service reading `prose` — violate the contract.
 
-- **The brain's interface contract is the prose, not the schema.** The frontmatter does not declare expected MCP tool names, expected operations, or expected entry-point paths. The agent reads the prose verbatim, calls whatever MCP tools it names, and surfaces failures fast. A frontmatter field whose only consumer is the parser's own validation is rejected.
+- **`mcpServerConfig.args` interpolation runs only at sync time.** Any `${fieldName}` references in `args` are expanded by `npx aidemd-mcp sync` against the frontmatter and written into `.mcp.json`. They are never expanded at read time, at server startup, or inside any body section.
+
+- **The brain's interface contract is the prose section, not the schema.** The frontmatter does not declare expected MCP tool names, expected operations, or expected entry-point paths. The agent reads the prose section verbatim, calls whatever MCP tools it names, and surfaces failures fast. A frontmatter field whose only consumer is the parser's own validation is rejected.
 
 - **`name` is descriptive metadata, never dispatched on.** No code in this package branches on the value of `name`. The field exists so a human reading the file immediately knows what kind of brain is wired and so the agent can narrate its connection in conversation. Introducing any code path that switches on `name` re-introduces the in-code backend registry this architecture rejects.
 
@@ -120,6 +159,8 @@ The boot reporter surfaces exactly four brain status states. The orchestrator re
 - **`.aide/config/` is user-owned forever.** After the first scaffold, neither `aide_init` nor `aide_upgrade` touches anything under `.aide/config/`. New defaults reach existing hosts only through sync or a deliberate user edit.
 
 - **One file, one source of truth.** `brain.aide` is the single source of truth for brain configuration. The host's `.mcp.json` brain entry is a derived artifact — it must match `brain.aide` and is only updated by sync.
+
+- **Strict-failure migration: no transitional read path.** Pre-pivot files whose body used heading-based organization (`## Prose`, `## Playbook hub`, `## Research hub`) return `malformed-body` naming all six missing markers. The parser never guesses intent from headings. Migration is a hand-edit: open the file, add the six markers in the correct positions (or copy from the bundled scaffold), and paste existing content into the appropriate sections.
 
 ## Placement
 

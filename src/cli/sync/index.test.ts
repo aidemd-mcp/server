@@ -8,11 +8,11 @@ import { runSync } from "./index.js";
 // Shared fixture: a hand-crafted brain.aide using the two-field schema.
 // Using a literal fixture (not obsidianBrainAideTemplate) keeps tests
 // platform-independent — the template emits platform-specific command/args.
-// The vault path used here is a stable test sentinel embedded inline in args.
+// The brain root path used here is a stable test sentinel embedded inline in args.
 // YAML args scalars use single quotes to avoid backslash-escape on Windows paths.
 // ---------------------------------------------------------------------------
 
-const TEST_VAULT_PATH = "/test/vault";
+const TEST_BRAIN_PATH = "/test/vault";
 
 const VALID_BRAIN_AIDE = `---
 name: obsidian
@@ -20,27 +20,27 @@ mcpServerConfig:
   command: npx
   args:
     - '@bitbonsai/mcpvault'
-    - '${TEST_VAULT_PATH}'
+    - '${TEST_BRAIN_PATH}'
 ---
 
-## Prose
-
+<!-- aide-prose-start -->
 Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
+<!-- aide-prose-end -->
 
-## Playbook hub
+<!-- aide-playbook-start -->
+The coding-playbook section lives here.
+<!-- aide-playbook-end -->
 
-The coding-playbook hub lives here.
-
-## Research hub
-
-The research hub lives here.
+<!-- aide-research-start -->
+The research section lives here.
+<!-- aide-research-end -->
 `;
 
 // The expected entry derived from VALID_BRAIN_AIDE — args are byte-for-byte
 // from mcpServerConfig; no interpolation occurs on the default scaffold.
 const EXPECTED_BRAIN_ENTRY = {
 	command: "npx",
-	args: ["@bitbonsai/mcpvault", TEST_VAULT_PATH],
+	args: ["@bitbonsai/mcpvault", TEST_BRAIN_PATH],
 };
 
 // ---------------------------------------------------------------------------
@@ -268,22 +268,22 @@ Some prose.
 // ---------------------------------------------------------------------------
 
 describe("3g — malformed body (hub sections absent)", () => {
-	it("exits 1, stderr contains parser reason naming missing hub sections, .mcp.json unchanged", async () => {
-		// Fixture: valid frontmatter + ## Prose body, but ## Playbook hub and
-		// ## Research hub are missing. This is the real migration-failure scenario
-		// users hit when they add ## Prose but forget the two hub sections.
+	it("exits 1, stderr contains parser reason naming missing markers, .mcp.json unchanged", async () => {
+		// Fixture: valid frontmatter + prose-only body (prose markers present, but
+		// playbook and research markers absent). This is the migration-failure scenario
+		// users hit when they only add prose markers but forget the other two sections.
 		const proseOnlyBody = `---
 name: obsidian
 mcpServerConfig:
   command: npx
   args:
     - '@bitbonsai/mcpvault'
-    - '${TEST_VAULT_PATH}'
+    - '${TEST_BRAIN_PATH}'
 ---
 
-## Prose
-
+<!-- aide-prose-start -->
 Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
+<!-- aide-prose-end -->
 `;
 		await writeBrainAide(tempDir, proseOnlyBody);
 		await writeMcpJson(tempDir, { mcpServers: {} });
@@ -293,11 +293,11 @@ Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
-		// The parser's reason must name the missing hub sections, not "## Prose".
+		// The parser's reason must name the missing marker pairs, not a heading name.
 		const stderr = errLines.join("\n");
-		expect(stderr).toContain("## Playbook hub");
-		expect(stderr).toContain("## Research hub");
-		expect(stderr).not.toContain("is missing the `## Prose` section");
+		expect(stderr).toContain("<!-- aide-playbook-start -->");
+		expect(stderr).toContain("<!-- aide-research-start -->");
+		expect(stderr).not.toContain("## Prose");
 
 		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(after).toBe(before);
@@ -367,17 +367,17 @@ mcpServerConfig:
     - '/literal/inline/path'
 ---
 
-## Prose
-
+<!-- aide-prose-start -->
 Prose body.
+<!-- aide-prose-end -->
 
-## Playbook hub
+<!-- aide-playbook-start -->
+The coding-playbook section lives here.
+<!-- aide-playbook-end -->
 
-The coding-playbook hub lives here.
-
-## Research hub
-
-The research hub lives here.
+<!-- aide-research-start -->
+The research section lives here.
+<!-- aide-research-end -->
 `;
 		await writeBrainAide(tempDir, noPlaceholderBrainAide);
 
@@ -408,17 +408,17 @@ mcpServerConfig:
     - '\${name}'
 ---
 
-## Prose
-
+<!-- aide-prose-start -->
 Prose body.
+<!-- aide-prose-end -->
 
-## Playbook hub
+<!-- aide-playbook-start -->
+The coding-playbook section lives here.
+<!-- aide-playbook-end -->
 
-The coding-playbook hub lives here.
-
-## Research hub
-
-The research hub lives here.
+<!-- aide-research-start -->
+The research section lives here.
+<!-- aide-research-end -->
 `;
 		await writeBrainAide(tempDir, withNamePlaceholder);
 
@@ -449,21 +449,21 @@ mcpServerConfig:
   command: npx
   args:
     - '@bitbonsai/mcpvault'
-    - '${TEST_VAULT_PATH}'
+    - '${TEST_BRAIN_PATH}'
 ---
 
-## Prose
-
+<!-- aide-prose-start -->
 This prose body contains a literal \${rootPath} placeholder and also \${entryFile}.
 These should pass through verbatim — sync only interpolates mcpServerConfig.args.
+<!-- aide-prose-end -->
 
-## Playbook hub
+<!-- aide-playbook-start -->
+The coding-playbook section lives here.
+<!-- aide-playbook-end -->
 
-The coding-playbook hub lives here.
-
-## Research hub
-
-The research hub lives here.
+<!-- aide-research-start -->
+The research section lives here.
+<!-- aide-research-end -->
 `;
 		await writeBrainAide(tempDir, proseWithPlaceholder);
 

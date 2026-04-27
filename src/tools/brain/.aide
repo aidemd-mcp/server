@@ -1,6 +1,5 @@
 ---
 scope: src/tools/brain
-status: aligned
 description: >
   Runtime brain entry-point tool — when an agent reaches for the brain mid-task,
   returns the verbatim prose body from the host's `.aide/config/brain.aide`
@@ -26,10 +25,14 @@ outcomes:
        user's `name` label lives inside `brain.aide` for the human reader; it is
        NOT threaded into the agent-facing tool result. Consumers branch on
        `status` alone."
-    - "On `status: ok`, `instructions` contains the verbatim `## Prose` body from
-       `.aide/config/brain.aide`, byte-identical to what the user wrote. No
-       trimming, no normalization, no template rendering, no `${...}` substitution
-       of any kind."
+    - "On `status: ok`, `instructions` contains the verbatim prose section from
+       `.aide/config/brain.aide`, sourced from `parseBrainAide`'s `prose` field
+       (the bytes the parser already extracted from between the marker pair),
+       byte-identical to what the user wrote. No trimming, no normalization, no
+       template rendering, no `${...}` substitution of any kind. This tool does
+       NOT itself parse markers, walk headings, or otherwise re-extract the prose
+       region — `parseBrainAide` owns that extraction and this tool consumes its
+       output."
     - "On `status: no-brain-aide`, `instructions` is a fixed remediation sentence
        directing the user to run `npx aidemd-mcp init` to scaffold the brain
        config file at `.aide/config/brain.aide`. The agent surfaces this and
@@ -60,6 +63,15 @@ outcomes:
        reading this spec. The description, the handler's runtime return shape, and
        the rest of this spec stay in lockstep; drift between any two of them is a
        falsifiable QA failure traceable to this outcome."
+    - "Storage-agnostic vocabulary across this spec and the tool's code, per root
+       outcome #17. The forbidden-token list — `vault`, `obsidian`, `note` (used
+       as a synonym for \"file\"), `wikilink`, `hub note`, and `hub` — does not
+       appear in this spec's prose, outcomes, or references, nor in the tool
+       module's identifiers, comments, or string constants. The brain layer is
+       described to agents in storage-agnostic terms (`brain`, the brain's prose
+       section). The anti-example carve-out applies: naming a forbidden token
+       inside an undesired-outcome block to forbid it is the mechanism, not a
+       violation."
   undesired:
     - "The tool dispatching through a backend registry — calling `resolveBackend`,
        `getDriverById`, importing from `brainBackends`, or any equivalent lookup
@@ -109,6 +121,20 @@ outcomes:
        regardless of how correct the handler is. Description-vs-handler drift,
        description-vs-spec drift, and silently-stale description text after a
        contract change are all the same falsifiable failure."
+    - "Forbidden-token leakage in this spec or in the tool's code. The tokens
+       `vault`, `obsidian`, `note` (used as a synonym for \"file\"), `wikilink`,
+       `hub note`, and `hub` must not appear in this spec's prose, outcomes, or
+       references, nor in the tool module's identifiers, comments, registered
+       MCP description string, or remediation-prose constants. The remediation
+       sentences for `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` use
+       storage-agnostic phrasing — they name the file path
+       (`.aide/config/brain.aide`), the launcher command (`npx aidemd-mcp init`,
+       `npx aidemd-mcp sync`), and `.mcp.json` directly, never the connector
+       brand. Naming a forbidden token inside an undesired-outcome block to
+       forbid it (this bullet) is the carve-out, not a violation. Re-introducing
+       a forbidden token under a renamed identifier — `vaultPath`, `noteRef`,
+       `obsidianBackend` in the tool's code — is the same regression in
+       different clothing."
 ---
 
 ## Context
@@ -122,13 +148,15 @@ agent-facing words — the user had no way to change what the agent was told abo
 their brain without modifying the package's source.
 
 The refactor settles a sharper architectural boundary: the user owns the brain
-instructions. They are written verbatim in the hand-edited `## Prose` body of
-`.aide/config/brain.aide`, a config file the host owns. The package's runtime job is
-to deliver those words unchanged — not to compose, render, or interpret them. The
-server's control flow reaches only as far as deciding which branch fired (the
-`BrainState` statuses from `buildBrainState`); beyond that, it either reads the file
-or names a recovery command. The backend registry is retired entirely — no code in
-this package may infer connector identity or dispatch on a connector enum.
+instructions. They are written verbatim in the hand-edited prose section of
+`.aide/config/brain.aide` — the bytes between the `<!-- aide-prose-start -->` and
+`<!-- aide-prose-end -->` markers — a config file the host owns. The package's
+runtime job is to deliver those words unchanged — not to compose, render, or
+interpret them. The server's control flow reaches only as far as deciding which
+branch fired (the `BrainState` statuses from `buildBrainState`); beyond that, it
+either reads the file via `parseBrainAide` or names a recovery command. The
+backend registry is retired entirely — no code in this package may infer connector
+identity or dispatch on a connector enum.
 
 The `composeInstructions/` helper subfolder is gone because there is no
 per-connector composition to do. The non-ok remediation strings are short, fixed
@@ -142,8 +170,9 @@ The `brain.aide` schema collapsed alongside the registry retirement. The user-ow
 file's frontmatter now carries exactly `name` (a human-readable label) and
 `mcpServerConfig.{command, args}` (consumed by sync). Removed fields — `connector`,
 `rootPath`, `entryFile`, `tools` — are not part of any consumer's contract. This
-tool's `ok`-branch consumer of `parseBrainAide` cares about exactly one slice of
-the parsed result: the verbatim prose body. The frontmatter shape change does not
+tool consumes `parseBrainAide`'s parsed result and reads exactly one slice on the
+`ok` branch: the `prose` field, which carries the verbatim bytes the parser already
+extracted from between the prose marker pair. The frontmatter shape change does not
 expand this tool's surface; it shrinks the temptation surface for downstream
 regression.
 
@@ -157,14 +186,16 @@ throws away if the task does not need the brain.
 
 **Prose-from-disk, not prose-from-template, is the load-bearing decision.** The
 user writes agent instructions in their own words, tailored to their own brain
-connector. Two connectors need structurally different instructions — an Obsidian
-brain says "read the entry file and follow wikilinks," a hosted knowledge base might
-say "search the indexed database and follow backlinks via the API." No template can
-bridge that shape difference without forcing both into a uniformity neither actually
-has. Hand-written prose per connector with verbatim return at agent-time is the only
-shape that scales without requiring connector authors to agree on a shared vocabulary.
-This traces to the desired outcome that `instructions` on `ok` is byte-identical to
-what the user wrote.
+connector. Two connectors need structurally different instructions — a file-system
+brain says "read the entry file at the brain root and follow the inline references
+it names," a hosted knowledge base might say "query the indexed database and follow
+backlinks via the hosted API." No template can bridge that shape difference without
+forcing both into a uniformity neither actually has. Hand-written prose per
+connector with verbatim return at agent-time is the only shape that scales without
+requiring connector authors to agree on a shared vocabulary. This traces to the
+desired outcome that `instructions` on `ok` is byte-identical to what the user
+wrote — sourced from `parseBrainAide`'s `prose` field, which the parser extracted
+from between the prose marker pair.
 
 **The response shape is `{ status, instructions }` and nothing else.** The old
 shape carried `backend: <id>` as a structured signal consumers could branch on
@@ -218,16 +249,18 @@ the moment `rootPath` was removed.
 ## Good examples
 
 A project with a properly configured `brain.aide` and matching `.mcp.json` entry.
-The user's `## Prose` body reads:
+The user's prose section (the bytes between `<!-- aide-prose-start -->` and
+`<!-- aide-prose-end -->` in `.aide/config/brain.aide`) reads:
 
 ```
-Your brain is an Obsidian vault. Use `mcp__brain__read_note` to open files by
-their vault-relative path. Use `mcp__brain__search_notes` for keyword queries
-across every note in the vault. The vault's entry file is `CLAUDE.md` at the
-vault root — read that first; it carries wikilinks (`[[note-name]]`) you follow
-to deepen context. When a wikilink looks relevant to your task, read it (depth 1)
-and check that note's links too. Stay in scope; don't follow links into unrelated
-topics.
+Your brain is an external knowledge store reached through MCP tools.
+Use `mcp__brain__read_note` to open files by their brain-root-relative
+path. Use `mcp__brain__search_notes` for keyword queries across the
+brain. The brain's entry file is `CLAUDE.md` at the brain root — read
+that first; it lists the inline references your task may need.
+When a reference in the entry file looks relevant to your task, read
+the file it names (depth 1) and check the references inside that file
+too. Stay in scope; don't follow references into unrelated topics.
 ```
 
 The tool returns:
@@ -235,12 +268,13 @@ The tool returns:
 ```json
 {
   "status": "ok",
-  "instructions": "Your brain is an Obsidian vault. Use `mcp__brain__read_note` to open files by\ntheir vault-relative path. Use `mcp__brain__search_notes` for keyword queries\nacross every note in the vault. The vault's entry file is `CLAUDE.md` at the\nvault root — read that first; it carries wikilinks (`[[note-name]]`) you follow\nto deepen context. When a wikilink looks relevant to your task, read it (depth 1)\nand check that note's links too. Stay in scope; don't follow links into unrelated\ntopics."
+  "instructions": "Your brain is an external knowledge store reached through MCP tools.\nUse `mcp__brain__read_note` to open files by their brain-root-relative\npath. Use `mcp__brain__search_notes` for keyword queries across the\nbrain. The brain's entry file is `CLAUDE.md` at the brain root — read\nthat first; it lists the inline references your task may need.\nWhen a reference in the entry file looks relevant to your task, read\nthe file it names (depth 1) and check the references inside that file\ntoo. Stay in scope; don't follow references into unrelated topics."
 }
 ```
 
 No `backend` field, no `connector`, no `name`. The `instructions` text is the
-user's prose verbatim — no server-composed sentences, no template substitution. If
+user's prose verbatim — sourced from `parseBrainAide`'s `prose` field on the
+parsed result, with no server-composed sentences and no template substitution. If
 the user's prose contained a literal `${...}` character sequence (say, because
 their instructions document their own templating), that sequence appears
 unchanged.
@@ -271,11 +305,11 @@ A tool that runs a substitution pass over the prose before returning it:
 ```json
 {
   "status": "ok",
-  "instructions": "Your brain is at D:/notes/my-vault. Use mcp__brain__read_note..."
+  "instructions": "Your brain is at D:/brains/my-brain. Use mcp__brain__read_note..."
 }
 ```
 
-Here `${...}` was replaced with `D:/notes/my-vault` in the prose body before
+Here `${...}` was replaced with `D:/brains/my-brain` in the prose section before
 returning. Violates the verbatim-prose invariant. The user's prose may legitimately
 contain `${...}` sequences documenting a templating language, or may simply not use
 substitution at all; the substitution engine has no authority over agent-facing
@@ -286,14 +320,14 @@ A tool that composes `instructions` from connector-keyed strings inside the pack
 ```json
 {
   "status": "ok",
-  "instructions": "Use mcp__brain__read_note to read CLAUDE.md at the vault root. That file is the brain's navigation contract — once you read it, the brain takes over."
+  "instructions": "Use mcp__brain__read_note to read CLAUDE.md at the brain root. That file is the brain's entry-point contract — once you read it, the brain takes over."
 }
 ```
 
-This looks correct but the text was composed from an `obsidian` entry in a
+This looks correct but the text was composed from a connector-keyed entry in a
 package-side template map, not from the user's `brain.aide`. If the user's prose
-says something different — because they customized their vault layout, added a
-different entry file, or wired a non-Obsidian connector — the agent receives
+says something different — because they customized their brain's layout, named a
+different entry file, or wired a different connector — the agent receives
 instructions that disagree with the user's brain. The package authored the words;
 the user did not.
 
@@ -302,7 +336,7 @@ A tool that returns a removed discriminant:
 ```json
 {
   "status": "ok",
-  "name": "obsidian",
+  "name": "my-brain",
   "instructions": "..."
 }
 ```
@@ -312,7 +346,7 @@ Or:
 ```json
 {
   "status": "ok",
-  "backend": "obsidian",
+  "backend": "some-connector",
   "instructions": "..."
 }
 ```
@@ -354,21 +388,44 @@ Re-adding either is the schema-collapse regression in different clothing.
 
 ## References
 
-- `.aide/intent.aide` -- parent root spec; established that `brain.aide` prose
-  returns verbatim with no server-side substitution, that the response shape
-  carries `status` + `instructions` only (no `backend`, no `connector`, no
-  `name`), that the in-code backend registry is retired entirely, and that the
-  `BrainState` vocabulary covers the full recovery surface (`ok`,
+- `.aide/intent.aide` (brain-layer outcomes) -- parent root spec; established
+  that `brain.aide` prose returns verbatim with no server-side substitution, that
+  the response shape carries `status` + `instructions` only (no `backend`, no
+  `connector`, no `name`), that the in-code backend registry is retired entirely,
+  and that the `BrainState` vocabulary covers the full recovery surface (`ok`,
   `no-brain-aide`, `no-mcp-entry`, `mcp-drift`). Every outcome and strategy
   paragraph in this spec traces to the parent's brain-layer outcomes.
+- `.aide/intent.aide` (body-schema outcome) -- parent root spec; established
+  that the body of `brain.aide` is parsed as exactly three named sections
+  (`prose`, `playbook`, `research`) delimited by paired HTML-comment markers
+  (`<!-- aide-prose-start -->` / `<!-- aide-prose-end -->` and the matching pairs
+  for the other two sections), recognized lowercase and case-sensitive in the
+  required prose-then-playbook-then-research order. Drove the rewrite away from
+  the prior heading-based body framing — this tool now consumes
+  `parseBrainAide`'s `prose` field rather than reasoning about a `## Prose`
+  heading region — and the explicit "this tool does NOT itself parse markers"
+  guard in the verbatim-prose outcome.
+- `.aide/intent.aide` (storage-agnostic vocabulary outcome) -- parent root spec;
+  established the forbidden-token list and the rule that those tokens must not
+  appear in any `.aide` spec authored in this repo nor in code identifiers,
+  comments, or string constants project-wide. Drove the storage-agnostic
+  vocabulary outcome and undesired-outcome in this spec's frontmatter, the
+  rewrite of every body example to use connector-neutral framing
+  (file-system-vs-hosted-knowledge-base contrast in Strategy, brain-root /
+  inline-references vocabulary in the Good example prose), and the
+  anti-example carve-out scoping (frontmatter undesired-outcome blocks only,
+  never `## Bad examples` body prose).
 - `src/service/parseBrainAide/.aide` -- sibling parser spec; defines the
   tagged-result contract (`kind: ok | missing | malformed-frontmatter |
-  malformed-body`), the verbatim-prose guarantee, the never-throws invariant, the
-  two-field frontmatter schema (`name` + `mcpServerConfig`), the explicit
-  rejection of removed fields (`connector`, `rootPath`, `entryFile`, `tools`),
-  and the `interpolateArgs` partitioning that ensures substitution never reaches
-  the prose body. The `ok` branch of this tool depends on the verbatim prose
-  guarantee.
+  malformed-body`), the typed `ok` variant carrying `prose`, `playbook`, and
+  `research` as separately-named fields each verbatim from between its marker
+  pair, the never-throws invariant, the two-field frontmatter schema (`name` +
+  `mcpServerConfig`), the explicit rejection of removed fields (`connector`,
+  `rootPath`, `entryFile`, `tools`), and the `interpolateArgs` partitioning that
+  ensures substitution never reaches any of the three body sections. The `ok`
+  branch of this tool depends on the verbatim guarantee specifically of the
+  `prose` field; this tool does not parse markers itself, it consumes the
+  parser's already-extracted slice.
 - `src/service/buildBrainState/.aide` -- sibling detector spec; defines the
   `BrainState` tagged union this tool forwards unchanged, the no-`backend`-field
   contract, and the no-registry invariant. The tool's branching logic is a

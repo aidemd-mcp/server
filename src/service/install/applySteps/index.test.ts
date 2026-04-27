@@ -58,11 +58,11 @@ describe("applySteps", () => {
 		expect(result).not.toHaveProperty("content");
 	});
 
-	it("would-create brain vault step: directories in content JSON are created under filePath", async () => {
-		const brainPath = join(tempDir, "vault");
+	it("would-create brain root step: directories in content JSON are created under filePath", async () => {
+		const brainPath = join(tempDir, "brain-root");
 		const dirs = ["research", "process/retro", "coding-playbook"];
 		const step: InitStep = {
-			name: "Brain vault",
+			name: "Brain root",
 			status: "would-create",
 			category: "brain",
 			filePath: brainPath,
@@ -76,10 +76,10 @@ describe("applySteps", () => {
 		}
 	});
 
-	it("would-create brain vault step: returned step has status created and no content field", async () => {
-		const brainPath = join(tempDir, "vault");
+	it("would-create brain root step: returned step has status created and no content field", async () => {
+		const brainPath = join(tempDir, "brain-root");
 		const step: InitStep = {
-			name: "Brain vault",
+			name: "Brain root",
 			status: "would-create",
 			category: "brain",
 			filePath: brainPath,
@@ -220,10 +220,10 @@ describe("applySteps", () => {
 		await expect(applySteps([step])).resolves.not.toThrow();
 	});
 
-	it("idempotency: applying brain vault twice does not fail", async () => {
-		const brainPath = join(tempDir, "vault");
+	it("idempotency: applying brain root twice does not fail", async () => {
+		const brainPath = join(tempDir, "brain-root");
 		const step: InitStep = {
-			name: "Brain vault",
+			name: "Brain root",
 			status: "would-create",
 			category: "brain",
 			filePath: brainPath,
@@ -236,7 +236,7 @@ describe("applySteps", () => {
 
 	it("brain placeholder (empty filePath, no content): passes through unchanged", async () => {
 		const step: InitStep = {
-			name: "Brain vault",
+			name: "Brain root",
 			status: "would-create",
 			category: "brain",
 			filePath: "",
@@ -345,10 +345,10 @@ describe("applySteps", () => {
 	});
 
 	it("brain directory step with extension-free filePath: creates directories from JSON content", async () => {
-		const brainPath = join(tempDir, "vault");
+		const brainPath = join(tempDir, "brain-root");
 		const dirs = ["research", "coding-playbook"];
 		const step: InitStep = {
-			name: "Brain vault",
+			name: "Brain root",
 			status: "would-create",
 			category: "brain",
 			filePath: brainPath,

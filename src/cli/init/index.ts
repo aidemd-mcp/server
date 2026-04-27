@@ -28,7 +28,7 @@ import type { InitStep, FrameworkConfig } from "@/types/index.js";
  *   `--vault-path` was supplied): `.aide/config/brain.aide` and the brain MCP
  *   entry it drives are two halves of one user-owned decision. The orchestrator's
  *   inline-recovery flow handles both — open Claude Code and run `/aide`; the
- *   orchestrator prompts for the vault path, scaffolds `.aide/config/brain.aide`,
+ *   orchestrator prompts for the brain root path, scaffolds `.aide/config/brain.aide`,
  *   and tells you to run `npx aidemd-mcp sync`.
  * - IDE configuration (always present): re-run the CLI with `--ide <choice>`.
  *
@@ -45,7 +45,7 @@ function deferredCategories(vaultPath: string | undefined): readonly string[] {
 		];
 	}
 	return [
-		"Brain wiring (.aide/config/brain.aide + derived brain MCP entry) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold .aide/config/brain.aide, and tell you to run npx aidemd-mcp sync",
+		"Brain wiring (.aide/config/brain.aide + derived brain MCP entry) — open Claude Code and run /aide; the orchestrator will prompt for the brain root path, scaffold .aide/config/brain.aide, and tell you to run npx aidemd-mcp sync",
 		"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
 	];
 }
@@ -101,7 +101,7 @@ export async function runInit(
 ): Promise<number> {
 	// Step 1 — Brain.aide scaffold: seed-semantic write that must happen BEFORE
 	// writeMcpEntry because writeMcpEntry reads brain.aide from disk to derive the
-	// brain MCP entry. Only runs when vaultPath is supplied — without a vault path
+	// brain MCP entry. Only runs when vaultPath is supplied — without a brain root path
 	// the CLI cannot know the rootPath and the category is deferred.
 	//
 	// Files inside `.aide/config/` are user-owned per the root spec — this scaffold
@@ -262,7 +262,7 @@ export async function runInit(
 
 	// Step 10 — Render and write the warning block. Deferred categories depend on
 	// whether the user supplied `--vault-path`: with a path, only IDE defers;
-	// without, the vault path + brain scaffolding are also deferred.
+	// without, the brain root path + brain scaffolding are also deferred.
 	const warning = renderWarning({
 		skipped: warningSkipped,
 		failed: warningFailed,
@@ -304,22 +304,22 @@ function parseVaultPath(argv: readonly string[]): string | undefined {
 			"Usage: npx @aidemd-mcp/server init [--vault-path <path>]\n\n" +
 				"Full cold-start installer for AIDE. Installs the complete non-interactive\n" +
 				"footprint into the current project: methodology pointer stub, methodology doc\n" +
-				"hub (.aide/docs/), all pipeline slash commands, all pipeline agent definitions,\n" +
+				"directory (.aide/docs/), all pipeline slash commands, all pipeline agent definitions,\n" +
 				"all skill templates, .aide/config/brain.aide (when --vault-path is supplied), aide\n" +
 				"and brain MCP server entries (additively merged into .mcp.json), and the aide-tree\n" +
 				"launcher. Never overwrites existing files — skip-on-exists is the only safe branch.\n\n" +
 				"Flags:\n" +
-				"  --vault-path <path>   Set the brain vault path at install time. When supplied,\n" +
+				"  --vault-path <path>   Set the brain root path at install time. When supplied,\n" +
 				"                        the CLI scaffolds .aide/config/brain.aide from the canonical\n" +
 				"                        Obsidian template (using the @bitbonsai/mcpvault launcher\n" +
-				"                        with the supplied vault path inlined byte-for-byte in\n" +
+				"                        with the supplied brain root path inlined byte-for-byte in\n" +
 				"                        mcpServerConfig.args) and derives the brain MCP entry from\n" +
 				"                        it. When omitted, both are deferred — open Claude Code\n" +
 				"                        and run /aide; the orchestrator will prompt for the\n" +
-				"                        vault path, scaffold .aide/config/brain.aide, and tell\n" +
+				"                        brain root path, scaffold .aide/config/brain.aide, and tell\n" +
 				"                        you to run npx aidemd-mcp sync. `--vault-path=<path>`\n" +
 				"                        also works.\n\n" +
-				"Post-install brain edits (retargeting the vault path inline in mcpServerConfig.args,\n" +
+				"Post-install brain edits (retargeting the brain root path inline in mcpServerConfig.args,\n" +
 				"swapping the launcher command, renaming the brain via the name field) propagate\n" +
 				"to .mcp.json via: npx aidemd-mcp sync\n\n" +
 				"When --vault-path is not provided, brain wiring (.aide/config/brain.aide plus the\n" +

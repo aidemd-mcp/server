@@ -50,10 +50,10 @@ async function safeReadFile(path: string): Promise<string> {
 const BRAIN_ROOT_DIRS = ["research", "process/retro", "coding-playbook"] as const;
 
 /**
- * Resolve the hub-artifact body bytes from the brain.aide that would be in effect after this install.
+ * Resolve the entry-point artifact body bytes from the brain.aide that would be in effect after this install.
  *
- * This helper is the SINGLE source of hub-artifact body bytes for the install pipeline.
- * The package no longer owns hub bytes as inline TypeScript constants; brain.aide is the
+ * This helper is the SINGLE source of entry-point artifact body bytes for the install pipeline.
+ * The package no longer owns entry-point bytes as inline TypeScript constants; brain.aide is the
  * authoritative source. Both the in-memory cold-install path and the on-disk existing-file
  * path round-trip through the same parser (`parseBrainAideFromString` / `parseBrainAide`),
  * yielding the same field shape — the two paths are structurally identical.
@@ -64,15 +64,15 @@ const BRAIN_ROOT_DIRS = ["research", "process/retro", "coding-playbook"] as cons
  * - Otherwise → on-disk path: brain.aide already exists; parse from the file via
  *   `parseBrainAide(projectRoot)`.
  *
- * Returns `{ playbookHub, researchHub }` on a successful parse (`kind === "ok"`).
+ * Returns `{ playbook, research }` on a successful parse (`kind === "ok"`).
  * Returns `null` on any non-ok result (`missing`, `malformed-frontmatter`, `malformed-body`).
- * Hub-artifact step builders fall back to `would-skip` when this returns `null`, surfacing
+ * Entry-point artifact step builders fall back to `would-skip` when this returns `null`, surfacing
  * an actionable remediation message to the user.
  */
 async function resolveBrainAideBody(
 	projectRoot: string,
 	brainAideStep: InitStep,
-): Promise<{ playbookHub: string; researchHub: string } | null> {
+): Promise<{ playbook: string; research: string } | null> {
 	let parseResult;
 
 	if (brainAideStep.status === "would-create" && brainAideStep.content !== undefined) {
@@ -85,7 +85,7 @@ async function resolveBrainAideBody(
 
 	if (parseResult.kind !== "ok") return null;
 
-	return { playbookHub: parseResult.playbookHub, researchHub: parseResult.researchHub };
+	return { playbook: parseResult.playbook, research: parseResult.research };
 }
 
 /**
@@ -120,11 +120,11 @@ async function resolveBrainAideConfig(
 
 /**
  * Return planning steps for brain config scaffolding, brain root directory scaffolding,
- * hub artifact scaffolding, and brain MCP wiring.
+ * entry-point artifact scaffolding, and brain MCP wiring.
  *
  * Requires a resolved `brainPath` (brain root location) and `projectRoot` (host project root).
- * Hub artifact bytes are sourced from brain.aide body sections via `parseBrainAide` /
- * `parseBrainAideFromString`; this module never holds hub bytes as inline TypeScript constants.
+ * Entry-point artifact bytes are sourced from brain.aide body sections via `parseBrainAide` /
+ * `parseBrainAideFromString`; this module never holds entry-point bytes as inline TypeScript constants.
  * Returns five `InitStep` items in order:
  *
  * 1. Brain config (brain.aide) — `would-create` with bundled default bytes when absent;
@@ -134,11 +134,13 @@ async function resolveBrainAideConfig(
  *    under that directory may ever return `would-overwrite`.
  * 2. Brain root directories — `would-create` with the directories list as JSON content when
  *    the brain root is empty; `exists` when populated.
- * 3. Playbook hub artifact — `would-create` with content sourced from the scaffolded
- *    brain.aide's `## Playbook hub` body section when absent; `exists` when present.
+ * 3. Playbook entry-point artifact — `would-create` with content sourced from the scaffolded
+ *    brain.aide's playbook body section delimited by the `<!-- aide-playbook-start -->` and
+ *    `<!-- aide-playbook-end -->` markers when absent; `exists` when present.
  *    Seed-semantic idempotency.
- * 4. Research hub artifact — `would-create` with content sourced from the scaffolded
- *    brain.aide's `## Research hub` body section when absent; `exists` when present.
+ * 4. Research entry-point artifact — `would-create` with content sourced from the scaffolded
+ *    brain.aide's research body section delimited by the `<!-- aide-research-start -->` and
+ *    `<!-- aide-research-end -->` markers when absent; `exists` when present.
  *    Seed-semantic idempotency.
  * 5. Brain MCP entry — `would-create` for cold installs; `would-overwrite` for legacy
  *    `obsidian`-keyed installs, transitional both-keys states, or entry drift; `exists`
@@ -170,17 +172,19 @@ export default async function provisionBrain(
 	// Step 2: Plan the brain root directory tree.
 	const brainRootStep = await buildBrainRootStep(brainPath);
 
-	// Step 3: Plan the playbook hub artifact. Content sourced from the
-	// scaffolded brain.aide's ## Playbook hub body section via parseBrainAide /
-	// parseBrainAideFromString. Presence-only idempotency (seed-semantic).
-	const playbookHubStep = await buildPlaybookHubStep(
+	// Step 3: Plan the playbook entry-point artifact. Content sourced from the
+	// scaffolded brain.aide's playbook body section between
+	// `<!-- aide-playbook-start -->` and `<!-- aide-playbook-end -->` via
+	// parseBrainAide / parseBrainAideFromString. Presence-only idempotency (seed-semantic).
+	const playbookStep = await buildPlaybookStep(
 		projectRoot, brainPath, brainAideStep,
 	);
 
-	// Step 4: Plan the research hub artifact. Content sourced from the
-	// scaffolded brain.aide's ## Research hub body section via the same parser
-	// pass that powers step 3. Presence-only idempotency (seed-semantic).
-	const researchHubStep = await buildResearchHubStep(
+	// Step 4: Plan the research entry-point artifact. Content sourced from the
+	// scaffolded brain.aide's research body section between
+	// `<!-- aide-research-start -->` and `<!-- aide-research-end -->` via the
+	// same parser pass that powers step 3. Presence-only idempotency (seed-semantic).
+	const researchStep = await buildResearchStep(
 		projectRoot, brainPath, brainAideStep,
 	);
 
@@ -194,7 +198,7 @@ export default async function provisionBrain(
 
 	return [
 		brainAideStep, brainRootStep,
-		playbookHubStep, researchHubStep, mcpStep,
+		playbookStep, researchStep, mcpStep,
 	];
 }
 
@@ -253,7 +257,7 @@ async function buildBrainRootStep(brainPath: string): Promise<InitStep> {
 }
 
 /**
- * Build the playbook hub artifact planning step.
+ * Build the playbook entry-point artifact planning step.
  *
  * Presence-only check — if the file exists at its expected path, the step is
  * `exists` regardless of on-disk content. Once the user has the file, the bytes
@@ -264,10 +268,11 @@ async function buildBrainRootStep(brainPath: string): Promise<InitStep> {
  * The artifact's path (`coding-playbook/coding-playbook.md`) is a framework
  * contract — the `study-playbook` skill navigates to this location regardless
  * of which storage backend the user wires. Content is sourced from the
- * scaffolded brain.aide's `## Playbook hub` body section via
+ * scaffolded brain.aide's playbook body section between
+ * `<!-- aide-playbook-start -->` and `<!-- aide-playbook-end -->` via
  * `resolveBrainAideBody`.
  */
-async function buildPlaybookHubStep(
+async function buildPlaybookStep(
 	projectRoot: string,
 	brainPath: string,
 	brainAideStep: InitStep,
@@ -275,13 +280,13 @@ async function buildPlaybookHubStep(
 	const filePath = join(brainPath, "coding-playbook", "coding-playbook.md");
 
 	if (await exists(filePath)) {
-		return { name: "Playbook hub", status: "exists", category: "brain", filePath };
+		return { name: "Playbook entry-point", status: "exists", category: "brain", filePath };
 	}
 
 	const body = await resolveBrainAideBody(projectRoot, brainAideStep);
 	if (body === null) {
 		return {
-			name: "Playbook hub",
+			name: "Playbook entry-point",
 			status: "would-skip",
 			category: "brain",
 			filePath,
@@ -290,27 +295,28 @@ async function buildPlaybookHubStep(
 	}
 
 	return {
-		name: "Playbook hub",
+		name: "Playbook entry-point",
 		status: "would-create",
 		category: "brain",
 		filePath,
-		content: body.playbookHub,
+		content: body.playbook,
 	};
 }
 
 /**
- * Build the research hub artifact planning step.
+ * Build the research entry-point artifact planning step.
  *
  * Presence-only check — if the file exists at its expected path, the step is
  * `exists` regardless of on-disk content. Once the user has the file, the bytes
- * belong to the user. Seed-semantic idempotency matches `buildPlaybookHubStep`.
+ * belong to the user. Seed-semantic idempotency matches `buildPlaybookStep`.
  *
  * The artifact's path (`research/research.md`) is a framework contract — the
- * framework's research hub lives here regardless of storage backend. Content is
- * sourced from the scaffolded brain.aide's `## Research hub` body section via
- * `resolveBrainAideBody`, the same parser pass that powers the playbook hub step.
+ * research entry-point artifact lives here regardless of storage backend. Content is
+ * sourced from the scaffolded brain.aide's research body section between
+ * `<!-- aide-research-start -->` and `<!-- aide-research-end -->` via
+ * `resolveBrainAideBody`, the same parser pass that powers the playbook entry-point step.
  */
-async function buildResearchHubStep(
+async function buildResearchStep(
 	projectRoot: string,
 	brainPath: string,
 	brainAideStep: InitStep,
@@ -318,13 +324,13 @@ async function buildResearchHubStep(
 	const filePath = join(brainPath, "research", "research.md");
 
 	if (await exists(filePath)) {
-		return { name: "Research hub", status: "exists", category: "brain", filePath };
+		return { name: "Research entry-point", status: "exists", category: "brain", filePath };
 	}
 
 	const body = await resolveBrainAideBody(projectRoot, brainAideStep);
 	if (body === null) {
 		return {
-			name: "Research hub",
+			name: "Research entry-point",
 			status: "would-skip",
 			category: "brain",
 			filePath,
@@ -333,11 +339,11 @@ async function buildResearchHubStep(
 	}
 
 	return {
-		name: "Research hub",
+		name: "Research entry-point",
 		status: "would-create",
 		category: "brain",
 		filePath,
-		content: body.researchHub,
+		content: body.research,
 	};
 }
 

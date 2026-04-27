@@ -109,13 +109,13 @@ export interface FrameworkConfig {
 	/** Path to MCP config file relative to project root. */
 	mcpConfigPath: string;
 	/**
-	 * Directory for the host-side AIDE methodology doc hub, relative to the
-	 * project root. The sibling helpers `writeMethodology` and
-	 * `installMethodologyDocs` both derive the host-side hub location from
-	 * this single field — the stub names the path, the installer writes into
+	 * Directory for the host-side AIDE methodology doc directory, relative to
+	 * the project root. The sibling helpers `writeMethodology` and
+	 * `installMethodologyDocs` both derive the host-side doc directory location
+	 * from this single field — the stub names the path, the installer writes into
 	 * it, and any disagreement between the two sides would send agents to an
 	 * empty directory. Editing this value is the one-place change for the
-	 * host-side hub location across the init subtree.
+	 * host-side doc directory location across the init subtree.
 	 */
 	docHubDir: string;
 	/** Directory for agent files relative to project root. */
@@ -212,14 +212,14 @@ export interface InitStep {
 }
 
 /**
- * A discovered brain vault candidate returned by resolveBrainHints.
+ * A discovered brain root candidate returned by resolveBrainHints.
  * The agent presents these as suggestions and asks the user to confirm
  * or provide a different path.
  */
 export interface BrainHint {
 	/** How this path was discovered. */
 	source: "env" | "sibling" | "conventional";
-	/** Absolute path to the candidate vault location. */
+	/** Absolute path to the candidate brain root location. */
 	path: string;
 }
 
@@ -232,7 +232,7 @@ export interface InitResult {
 	framework: FrameworkType;
 	/** All init steps the agent should present and apply. */
 	steps: InitStep[];
-	/** Discovered vault location candidates for the brain interview. */
+	/** Discovered brain root candidates for the brain interview. */
 	brainHints: BrainHint[];
 }
 
@@ -353,7 +353,7 @@ export type McpServerEntry = {
 };
 
 /**
- * Precondition state of the host's brain vault, returned as a four-state tagged
+ * Precondition state of the host's brain, returned as a four-state tagged
  * union so the orchestrator can branch on each case and compose targeted
  * remediation prose. `buildBrainState` is the single source of this value;
  * both `aide_brain` and `aide_info` consume the same plain-data shape without
@@ -383,7 +383,7 @@ export type McpServerEntry = {
  *   `hints`. Remediation: run `npx aidemd-mcp sync`.
  *
  * `hints` is populated unconditionally on every state — the orchestrator may
- * surface candidate vault locations on `no-brain-aide` (fresh project) just as
+ * surface candidate brain root locations on `no-brain-aide` (fresh project) just as
  * much as on `mcp-drift`. No state carries `rootPath`, `connector`, `entryFile`,
  * `tools`, or `backend` — those fields are retired. Path validity is the
  * launcher's problem at MCP server startup.
@@ -393,26 +393,26 @@ export type BrainState =
 			status: "ok";
 			/** User-declared descriptive label from brain.aide (e.g. `"obsidian"`). Descriptive only — no code branches on this value. */
 			name: string;
-			/** Candidate vault locations for orchestrator remediation suggestions. */
+			/** Candidate brain root locations for orchestrator remediation suggestions. */
 			hints: BrainHint[];
 	  }
 	| {
 			status: "no-brain-aide";
-			/** Candidate vault locations for orchestrator remediation suggestions. */
+			/** Candidate brain root locations for orchestrator remediation suggestions. */
 			hints: BrainHint[];
 	  }
 	| {
 			status: "no-mcp-entry";
 			/** User-declared descriptive label from brain.aide. Carried so the orchestrator can name the wired brain in remediation prose. */
 			name: string;
-			/** Candidate vault locations for orchestrator remediation suggestions. */
+			/** Candidate brain root locations for orchestrator remediation suggestions. */
 			hints: BrainHint[];
 	  }
 	| {
 			status: "mcp-drift";
 			/** User-declared descriptive label from brain.aide. Carried so the orchestrator can name the wired brain in remediation prose. */
 			name: string;
-			/** Candidate vault locations for orchestrator remediation suggestions. */
+			/** Candidate brain root locations for orchestrator remediation suggestions. */
 			hints: BrainHint[];
 	  };
 
@@ -441,7 +441,7 @@ export type BrainToolResult = {
  * - `serverVersion` + `outdated`: staleness of installed AIDE artifacts against
  *   the canonical manifest shipped with this npm package. Soft notification —
  *   the pipeline can run even when artifacts are stale.
- * - `brain`: precondition state of the host's brain MCP vault. Hard
+ * - `brain`: precondition state of the host's brain MCP setup. Hard
  *   gate — the orchestrator halts and directs the user to run `/aide` when
  *   `status` is anything other than `"ok"`; the inline-recovery flow detects
  *   the broken state and prompts the user to resolve it.
@@ -454,7 +454,7 @@ export interface InfoResult {
 	serverVersion: string;
 	/** Artifact keys whose sourceCommit differs between local and canonical. */
 	outdated: string[];
-	/** Precondition state of the host's brain vault. */
+	/** Precondition state of the host's brain. */
 	brain: BrainState;
 }
 
@@ -528,34 +528,55 @@ export type BrainAideConfig = {
  * The discriminant is `kind`. Consumers narrow on `kind` to handle each outcome:
  *
  * - `"ok"` — the file was found, frontmatter parsed cleanly, all required fields
- *   validated, and the body contained exactly the three required sections
- *   (`## Prose`, `## Playbook hub`, `## Research hub`) and no unknown headings.
- *   `config` is the full parsed frontmatter; `prose`, `playbookHub`, and
- *   `researchHub` each carry the verbatim bytes between their heading and the
- *   next heading boundary (or end-of-file for the last section). No substitution
- *   runs on any body field — all three are returned byte-identical to what the
- *   user wrote.
+ *   validated, and the body contained exactly the three required marker-pair
+ *   sections in their required order. `config` is the full parsed frontmatter.
+ *   `prose`, `playbook`, and `research` each carry the verbatim bytes between
+ *   their opening marker and matching closing marker — byte-identical to what the
+ *   user wrote between those bounds. No substitution runs on any body field.
+ *
+ *   The three recognized marker pairs, in required order:
+ *   - `<!-- aide-prose-start -->` / `<!-- aide-prose-end -->`
+ *   - `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`
+ *   - `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
+ *
+ *   Marker tokens are lowercase, case-sensitive, with the literal shape
+ *   `<!-- <token>-start -->` / `<!-- <token>-end -->` exactly. Bytes outside any
+ *   marker pair are silently ignored.
+ *
  * - `"missing"` — `.aide/config/brain.aide` does not exist at the given root (or
  *   was unreachable due to an I/O error). Remediation: run `/aide` and complete
  *   the brain wiring interview.
+ *
  * - `"malformed-frontmatter"` — the file exists but its YAML frontmatter could
  *   not be parsed, a required field (`name`, `mcpServerConfig.command`,
  *   `mcpServerConfig.args`) is absent or wrong-typed, or a deprecated field
  *   (`connector`, `rootPath`, `entryFile`, `tools`) is present. `reason` names
  *   the exact field or parse error so the consumer can surface a targeted
  *   remediation message to the user.
- * - `"malformed-body"` — frontmatter is valid but the body fails the
- *   closed-vocabulary grammar: any required section (`## Prose`,
- *   `## Playbook hub`, `## Research hub`) is absent, OR any unknown top-level
- *   heading is present. `reason` names every missing section in a single
- *   comma-separated listing (e.g. `"missing required sections: ## Playbook hub,
- *   ## Research hub"`) OR names the first unknown heading encountered (e.g.
- *   `"unknown heading: ## Notes"`). Consumed by `buildBrainState`, the brain
- *   tool, `provisionBrain`, and `cli/sync` to compose branch-specific
- *   remediation prose.
+ *
+ * - `"malformed-body"` — frontmatter is valid but the body fails the closed
+ *   marker-pair grammar. `reason` names the violating marker. Violation classes:
+ *   - Missing pair → `"missing markers: <opener>, <closer>"` (lists every absent
+ *     marker in fixed prose-then-playbook-then-research scan order, open before
+ *     close within each section).
+ *   - Malformed or typo'd marker token (uppercase, mixed-case, missing internal
+ *     spaces, extra internal whitespace, typo, missing `aide-` prefix) →
+ *     `"unknown marker: <as-written>"`.
+ *   - Closing marker without a prior matching opener →
+ *     `"unmatched closing marker: <closer> appeared without a prior <matching-opener>"`.
+ *   - Opening marker without a closer →
+ *     `"unmatched opening marker: <opener> has no matching <expected-closer>"`.
+ *   - Wrong section order →
+ *     `"marker order violation: <out-of-order-opener> appeared before <expected-prior-opener>"`.
+ *   - Nested markers (any marker inside another pair's opener-closer span) →
+ *     `"nested marker: <inner-opener> appeared inside the <outer-token> section"`.
+ *
+ *   Every violation halts the pipeline; the parser does not attempt recovery.
+ *   Consumed by `buildBrainState`, the brain tool, `provisionBrain`, and
+ *   `cli/sync` to compose branch-specific remediation prose.
  */
 export type ParseBrainAideResult =
-	| { kind: "ok"; config: BrainAideConfig; prose: string; playbookHub: string; researchHub: string }
+	| { kind: "ok"; config: BrainAideConfig; prose: string; playbook: string; research: string }
 	| { kind: "missing" }
 	| { kind: "malformed-frontmatter"; reason: string }
 	| { kind: "malformed-body"; reason: string };

@@ -40,16 +40,15 @@ outcomes:
     - A cascading-alignment.md methodology doc exists under .aide/docs/
       documenting the protocol, the status field semantics, the aligner's
       role, and how misalignment flows through the pipeline.
-    - "Brain-state failures detected by the `/aide` orchestrator at boot
-      (any non-`ok` value of `brain.status` returned by `aide_info`) are
-      routed to the `/aide:brain` config skill via a single
-      `Skill(skill: \"aide:brain\", args: \"config\")` invocation, after
-      which the orchestrator halts. The harness commits to the routing
-      interface — that the brain command skill exists and owns brain
-      wiring — not to the recovery mechanism itself. The authoritative
-      recovery contract (which states are handled, how scaffolding runs,
-      how `.mcp.json` is mutated, what the user sees) lives in
-      `.claude/commands/aide/brain.aide` and only there."
+    - "Command-specific contracts — the orchestrator's boot sequence and
+      brain-state routing, the brain command's wiring and recovery
+      mechanism, any future per-command behavior — live in per-command
+      `.aide` specs alongside the command file (e.g.
+      `.claude/commands/aide/aide.aide`,
+      `.claude/commands/aide/brain.aide`). The harness spec commits only
+      to the architectural interface — that per-command specs exist and
+      own their command's specific contract — and explicitly disclaims
+      ownership of any one command's substance."
   undesired:
     - The aligner conflated with the QA agent. QA validates code against
       spec outcomes; the aligner validates spec outcomes against ancestor
@@ -70,23 +69,15 @@ outcomes:
       tooling does not actually support. The doc must describe what the
       discover tool, validate tool, and aligner agent actually do, not
       what they might do someday.
-    - "The harness performs brain-recovery work itself — scaffolding
-      `.aide/config/brain.aide`, editing `.mcp.json`, invoking
-      `aide_init`, running sync, or interviewing the user for a brain
-      path — instead of delegating to the `/aide:brain` config skill.
-      The orchestrator's role on a non-`ok` `brain.status` is to detect,
-      route, and halt; performing any of the recovery substance inline
-      duplicates the contract the brain command owns and creates two
-      sources of truth for the same wiring decisions."
-    - "The harness duplicates the brain command's recovery contract —
-      outcomes describing the recovery mechanism, the call topology,
-      per-state remediation, the mutation surface for `.mcp.json`, or
-      the user-facing restart instruction belong in
-      `.claude/commands/aide/brain.aide`, not here. The harness commits
-      only to the routing interface (the brain command skill exists and
-      is invoked on non-`ok` brain state) and to the halt after
-      delegation; any bullet pinning the harness to a specific recovery
-      mechanism is misalignment with the descendant."
+    - "Pinning the harness spec to any one command's specific contract —
+      outcomes that name a particular command's call topology, per-state
+      remediation, mutation surfaces, scaffolding flow, or user-facing
+      messages. That substance belongs in the per-command `.aide` next
+      to the command file (e.g. `.claude/commands/aide/aide.aide`,
+      `.claude/commands/aide/brain.aide`). The harness commits only to
+      the interface — that per-command specs exist and own their
+      command's contract — and any bullet pinning a specific command's
+      mechanism here is misalignment with the descendant that owns it."
 ---
 
 ## Context

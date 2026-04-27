@@ -73,9 +73,9 @@ export type CanonicalDocName = keyof typeof DOC_PATHS;
 
 /**
  * An entry in the methodology-doc enumeration. Consumers iterate this list
- * to install the methodology subset into the host-side doc hub — the
+ * to install the methodology subset into the host-side doc directory — the
  * `canonical` field is the lookup key into `readCanonicalDoc`, and the
- * `hostFilename` is the basename to write under the host hub directory.
+ * `hostFilename` is the basename to write under the host doc directory.
  */
 export interface MethodologyDocEntry {
 	readonly canonical: CanonicalDocName;
@@ -84,10 +84,10 @@ export interface MethodologyDocEntry {
 
 /**
  * The canonical list of methodology docs that ship into the host-side doc
- * hub. Ordering is the hub's reading order and therefore stable — adding a
- * new methodology doc appends to the end. Owning this list here (alongside
- * the name-to-path registry it depends on) is load-bearing: the parent
- * spec's single-reader invariant extends to enumeration, so downstream
+ * directory. Ordering is the doc index reading order and therefore stable —
+ * adding a new methodology doc appends to the end. Owning this list here
+ * (alongside the name-to-path registry it depends on) is load-bearing: the
+ * parent spec's single-reader invariant extends to enumeration, so downstream
  * consumers iterate this list rather than hardcoding the membership of
  * "the methodology" in their own source.
  */
@@ -195,7 +195,7 @@ export function getCanonicalPath(name: CanonicalDocName): string {
 
 /**
  * Return the canonical enumeration of methodology docs that belong in the
- * host-side doc hub. Consumers iterate the returned list rather than
+ * host-side doc directory. Consumers iterate the returned list rather than
  * maintaining their own local copy — hardcoding the membership of "the
  * methodology" anywhere else under the init subtree would be a second
  * source of truth for the same decision and would silently drift on the

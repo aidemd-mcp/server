@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import parseBrainAide, { interpolateArgs } from "@/service/parseBrainAide/index.js";
 import writeMcpEntry from "@/cli/shared/writeMcpEntry/index.js";
 
@@ -100,33 +99,3 @@ export async function runSync(
 	return 0;
 }
 
-(async () => {
-	if (process.argv.includes("--help")) {
-		process.stdout.write(
-			"Usage: npx aidemd-mcp sync\n\n" +
-				"Reads `.aide/config/brain.aide` from the current project root, derives the brain\n" +
-				"MCP server entry by interpolating the configured vault path into the\n" +
-				"mcpServerConfig.args template, and writes the result into `.mcp.json` under\n" +
-				"the fixed `brain` key. Every other key in `mcpServers` (including any `aide`\n" +
-				"entry, personal MCP integrations, etc.) is left byte-identical. If an\n" +
-				"obsolete `obsidian` key is present it is removed in the same write.\n\n" +
-				"Sync is idempotent — running it twice in succession produces the same\n" +
-				"`.mcp.json` bytes, and the second invocation prints 'already in sync'.\n\n" +
-				"Run sync after editing `.aide/config/brain.aide` to propagate your changes:\n" +
-				"  npx aidemd-mcp sync\n\n" +
-				"Sync accepts no flags other than --help. Both paths are conventional:\n" +
-				"  brain.aide  →  <cwd>/.aide/config/brain.aide\n" +
-				"  mcp config  →  <cwd>/.mcp.json\n",
-		);
-		process.exit(2);
-	}
-
-	try {
-		const code = await runSync(process.cwd());
-		process.exit(code);
-	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : String(err);
-		process.stderr.write(`Error: ${message}\n`);
-		process.exit(1);
-	}
-})();

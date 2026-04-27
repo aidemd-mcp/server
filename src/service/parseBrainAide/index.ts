@@ -4,76 +4,253 @@ import { parse } from "yaml";
 import type { BrainAideConfig, ParseBrainAideResult } from "@/types/index.js";
 
 /**
- * The closed vocabulary of valid top-level body headings in a brain.aide file, in canonical
- * declaration order. This constant is the single source of truth for the body grammar: the
- * walker iterates it to detect unknown headings, the missing-section reason builder iterates
- * it to produce deterministic output, and tests assert against it. A future heading addition
- * or rename is a one-line edit here.
+ * The six recognized marker tokens grouped as three pairs, in required order:
+ * prose first, playbook second, research third. Each pair carries the exact
+ * lowercase byte sequences that delimit a named body section. `as const`
+ * narrows `token` to the literal union `"prose" | "playbook" | "research"` —
+ * these token strings are also the destination field names on the ok result,
+ * so the user-facing marker base name and the typed-object key are the same word.
  */
-const REQUIRED_BODY_HEADINGS = ["## Prose", "## Playbook hub", "## Research hub"] as const;
+const MARKER_PAIRS = [
+	{ token: "prose",    open: "<!-- aide-prose-start -->",    close: "<!-- aide-prose-end -->" },
+	{ token: "playbook", open: "<!-- aide-playbook-start -->", close: "<!-- aide-playbook-end -->" },
+	{ token: "research", open: "<!-- aide-research-start -->", close: "<!-- aide-research-end -->" },
+] as const;
 
 /**
- * Walks the body of a brain.aide file and extracts the three required named sections.
- * Enforces a closed vocabulary: every `^## .+$` line must be one of the three required
- * headings; the first unknown heading returns `malformed-body`. If any required heading is
- * absent after the walk, returns `malformed-body` naming every missing section in
- * `REQUIRED_BODY_HEADINGS` order (so the user fixes all gaps in one edit). Section slices
- * are byte-identical to the content between the heading's terminating newline and the next
- * heading line (or end-of-file for the last section). A single leading newline is stripped
- * from `prose` only for backward-compat with pre-widening test assertions.
+ * Single closed-grammar walker over the body's marker pairs. Every marker-layout
+ * violation class returns malformed-body naming the offending marker.
+ *
+ * Pipeline order (each step short-circuits to malformed-body on violation):
+ * 1. Presence — all six recognized markers must appear; lists every absent marker.
+ * 2. Match — unmatched closers (closer before its opener) and unmatched openers
+ *    (opener with no later closer) are each caught in document order.
+ * 3. Order — the three openers must appear in prose-then-playbook-then-research order.
+ * 4. Nesting — no recognized marker may appear inside another pair's opener-closer span.
+ * 5. Slice — bytes between each opener and its closer are returned verbatim.
+ *
+ * Bytes outside any marker pair are silently ignored by construction — the slicer
+ * only reads the regions between matched opener/closer offsets.
  */
-function extractBodySections(body: string):
-	| { kind: "ok"; prose: string; playbookHub: string; researchHub: string }
+function extractMarkerSections(body: string):
+	| { kind: "ok"; prose: string; playbook: string; research: string }
 	| { kind: "malformed-body"; reason: string } {
-	// Scan for every `^## .+$` line and record its heading text plus the byte index
-	// immediately after the heading line's terminating newline (where the section content begins).
-	const headingRegex = /^## .+$/gm;
-	const sections: { heading: string; startIndex: number }[] = [];
-	let match: RegExpExecArray | null;
 
-	while ((match = headingRegex.exec(body)) !== null) {
-		const heading = match[0];
-		// startIndex is the byte offset immediately after the heading line's newline.
-		// match.index is the start of the heading; match[0].length is the heading text length;
-		// +1 skips the trailing newline character.
-		const startIndex = match.index + heading.length + 1;
-		sections.push({ heading, startIndex });
+	// --- Step 1: Locate every recognized marker in document order. ---
+	// Build an ordered list of { tokenKind, sectionToken, index } entries by
+	// scanning each of the six exact byte sequences with indexOf.
+	type MarkerEntry = {
+		tokenKind: "open" | "close";
+		sectionToken: "prose" | "playbook" | "research";
+		marker: string;
+		index: number;
+	};
+
+	const recognized: MarkerEntry[] = [];
+	for (const { token, open, close } of MARKER_PAIRS) {
+		let pos = 0;
+		while (true) {
+			const idx = body.indexOf(open, pos);
+			if (idx === -1) break;
+			recognized.push({ tokenKind: "open", sectionToken: token, marker: open, index: idx });
+			pos = idx + 1;
+		}
+		pos = 0;
+		while (true) {
+			const idx = body.indexOf(close, pos);
+			if (idx === -1) break;
+			recognized.push({ tokenKind: "close", sectionToken: token, marker: close, index: idx });
+			pos = idx + 1;
+		}
 	}
+	recognized.sort((a, b) => a.index - b.index);
 
-	// Closed-vocabulary rejection: the first heading not in the required set terminates the walk.
-	const requiredSet = new Set<string>(REQUIRED_BODY_HEADINGS);
-	for (const { heading } of sections) {
-		if (!requiredSet.has(heading)) {
-			return { kind: "malformed-body", reason: `unknown heading: ${heading}` };
+	// --- Malformed-marker detection ---
+	// Scan for any HTML-comment-like span that LOOKS like an aide section marker
+	// but is not one of the six exact recognized sequences. Catches uppercase
+	// variants, mixed-case, missing spaces, extra whitespace, typos, and
+	// missing `aide-` prefix — the full set from the spec's "Bad examples" block.
+	//
+	// Boundary rule (per spec "Bytes outside any marker pair are silently
+	// ignored"): only scan positions that are NOT inside a recognized matched
+	// pair's content span. A user who writes `<!-- aide-misc -->` between two
+	// recognized pairs is in a "bytes outside" region; that token is plain bytes,
+	// not a malformed aide-section marker. To enforce this, we collect the spans
+	// of any COMPLETE recognized pairs visible in the body (both opener and closer
+	// present, opener before closer) and exclude those interior regions from the
+	// scan. Incomplete pairs have no span to exclude, so the malformed marker in
+	// their position (e.g. a typo'd opener replacing a recognized one) remains
+	// in the scan region and is correctly caught.
+	const RECOGNIZED_SET = new Set<string>(MARKER_PAIRS.flatMap(({ open, close }) => [open, close]));
+
+	// Build exclusion spans from any complete recognized pairs present in the body.
+	// A span is (innerStart, innerEnd) = (openIdx + open.length, closeIdx).
+	const exclusionSpans: Array<{ start: number; end: number }> = [];
+	for (const { open, close } of MARKER_PAIRS) {
+		const openIdx = body.indexOf(open);
+		const closeIdx = body.indexOf(close);
+		if (openIdx !== -1 && closeIdx !== -1 && openIdx < closeIdx) {
+			exclusionSpans.push({ start: openIdx + open.length, end: closeIdx });
 		}
 	}
 
-	// Required-section presence check: collect every missing heading in REQUIRED_BODY_HEADINGS order.
-	const foundHeadings = new Set(sections.map((s) => s.heading));
-	const missing = REQUIRED_BODY_HEADINGS.filter((h) => !foundHeadings.has(h));
-	if (missing.length > 0) {
-		return { kind: "malformed-body", reason: `missing required sections: ${missing.join(", ")}` };
+	function isInsideExclusionSpan(idx: number): boolean {
+		return exclusionSpans.some((s) => idx > s.start && idx < s.end);
 	}
 
-	// Section slicing: for each required heading, slice from its startIndex to the start of the
-	// next heading line or end-of-file. `startIndex` was stored as `match.index + heading.length + 1`,
-	// so `match.index` (the heading line's start) is recoverable as `startIndex - heading.length - 1`.
-	// The upper bound for a section is the `match.index` of the next heading (the newline before it
-	// is the last byte of this section's content), or `body.length` when no next heading exists.
-	function sliceSection(heading: string): string {
-		const entry = sections.find((s) => s.heading === heading)!;
-		const entryIndex = sections.indexOf(entry);
-		const nextEntry = sections[entryIndex + 1];
-		const upperBound =
-			nextEntry !== undefined ? nextEntry.startIndex - nextEntry.heading.length - 1 : body.length;
-		return body.slice(entry.startIndex, upperBound);
+	// Two-pattern union to match malformed-but-recognizable section markers:
+	//
+	// Pattern A — aide-prefixed variants: tokens that contain "aide" AND at least
+	// one of the section names (prose/playbook/research) or the start/end keywords.
+	// This catches uppercase, mixed-case, extra-whitespace, and typo variants like
+	// `<!-- AIDE-PROSE-START -->`, `<!-- aide-prose-strart -->`, and
+	// `<!-- aide-playboook-end -->` (has "aide" + "end"), while NOT flagging a
+	// legitimate `<!-- aide-misc -->` comment (has "aide" but no section/start/end).
+	//
+	// Pattern B — section-name-only variants: tokens that start (after whitespace)
+	// with one of the three section names AND contain a start/end keyword. This
+	// catches the "missing aide- prefix" class, e.g. `<!-- prose-start -->`,
+	// while NOT flagging generic comments like `<!-- TODO: research this -->` (has
+	// "research" but no "start"/"end") or `<!-- aide-misc -->` (no section name).
+	const candidateRegexA = /<!--[^>]*aide[^>]*(?:prose|playbook|research|start|end)[^>]*-->/gi;
+	const candidateRegexB = /<!--\s*(?:prose|playbook|research)[^>]*(?:start|end)[^>]*-->/gi;
+	let candidateMatch: RegExpExecArray | null;
+	let firstMalformed: { marker: string; index: number } | null = null;
+
+	for (const regex of [candidateRegexA, candidateRegexB]) {
+		regex.lastIndex = 0;
+		while ((candidateMatch = regex.exec(body)) !== null) {
+			const candidate = candidateMatch[0];
+			if (RECOGNIZED_SET.has(candidate)) continue; // exact recognized token — not malformed
+			if (isInsideExclusionSpan(candidateMatch.index)) continue; // inside a pair's content span — plain bytes
+			if (firstMalformed === null || candidateMatch.index < firstMalformed.index) {
+				firstMalformed = { marker: candidate, index: candidateMatch.index };
+			}
+		}
+	}
+	if (firstMalformed !== null) {
+		return { kind: "malformed-body", reason: `unknown marker: ${firstMalformed.marker}` };
 	}
 
-	const prose = sliceSection("## Prose").replace(/^\n/, "");
-	const playbookHub = sliceSection("## Playbook hub");
-	const researchHub = sliceSection("## Research hub");
+	// --- Step 1 cont: Presence / partial-pair check ---
+	// Categorize each section pair: both absent, only opener present, only closer
+	// present, or both present. Pairs where BOTH markers are absent are collected
+	// for a single bulk "missing markers" reason (so the user fixes them all in
+	// one edit). Pairs where only ONE marker is present get the unmatched reason
+	// immediately (before the bulk-absent check), because naming the specific
+	// present marker is more actionable than listing it as generically missing.
+	const presentMarkers = new Set(recognized.map((e) => e.marker));
 
-	return { kind: "ok", prose, playbookHub, researchHub };
+	// Fire unmatched-opener (opener present, closer absent) or unmatched-closer
+	// (closer present, opener absent) for each partially-present pair, in
+	// prose-then-playbook-then-research order (first partially-broken pair wins).
+	for (const { token, open, close } of MARKER_PAIRS) {
+		const hasOpen = presentMarkers.has(open);
+		const hasClose = presentMarkers.has(close);
+		if (hasOpen && !hasClose) {
+			return {
+				kind: "malformed-body",
+				reason: `unmatched opening marker: ${open} has no matching ${close}`,
+			};
+		}
+		if (!hasOpen && hasClose) {
+			return {
+				kind: "malformed-body",
+				reason: `unmatched closing marker: ${close} appeared without a prior ${open}`,
+			};
+		}
+	}
+
+	// After partial-pair check: list every completely-absent pair.
+	const absentMarkers: string[] = [];
+	for (const { open, close } of MARKER_PAIRS) {
+		if (!presentMarkers.has(open)) absentMarkers.push(open);
+		if (!presentMarkers.has(close)) absentMarkers.push(close);
+	}
+	if (absentMarkers.length > 0) {
+		return { kind: "malformed-body", reason: `missing markers: ${absentMarkers.join(", ")}` };
+	}
+
+	// --- Step 2: Unmatched-closer check (wrong document order) ---
+	// All six markers are present. Walk in document order. If a close marker
+	// for a section appears before its matching open marker has been seen, the
+	// closer arrived in the wrong position in the document.
+	const seenOpeners = new Set<string>();
+	for (const entry of recognized) {
+		if (entry.tokenKind === "open") {
+			seenOpeners.add(entry.sectionToken);
+		} else {
+			if (!seenOpeners.has(entry.sectionToken)) {
+				const matchingOpen = MARKER_PAIRS.find((p) => p.token === entry.sectionToken)!.open;
+				return {
+					kind: "malformed-body",
+					reason: `unmatched closing marker: ${entry.marker} appeared without a prior ${matchingOpen}`,
+				};
+			}
+		}
+	}
+
+	// --- Step 3: Section-order check ---
+	// The three openers must appear in prose-then-playbook-then-research order.
+	// Fires only after presence and matching pass (missing-markers reason would
+	// have fired earlier if any pair was absent).
+	const openerOrder = recognized.filter((e) => e.tokenKind === "open");
+	const expectedTokenOrder = MARKER_PAIRS.map((p) => p.token);
+	for (let i = 0; i < openerOrder.length - 1; i++) {
+		const currentToken = openerOrder[i].sectionToken;
+		const nextToken = openerOrder[i + 1].sectionToken;
+		const currentExpectedIdx = expectedTokenOrder.indexOf(currentToken);
+		const nextExpectedIdx = expectedTokenOrder.indexOf(nextToken);
+		if (currentExpectedIdx > nextExpectedIdx) {
+			// currentToken appeared first in document order but has a later required position
+			// than nextToken — currentToken is the out-of-order opener that appeared before
+			// the earlier-required nextToken.
+			const outOfOrderPair = MARKER_PAIRS.find((p) => p.token === currentToken)!;
+			const expectedPriorPair = MARKER_PAIRS.find((p) => p.token === nextToken)!;
+			return {
+				kind: "malformed-body",
+				reason: `marker order violation: ${outOfOrderPair.open} appeared before ${expectedPriorPair.open}`,
+			};
+		}
+	}
+
+	// --- Step 4: Nesting check ---
+	// For each matched pair, check that no other recognized marker (open or close)
+	// appears at a byte offset strictly inside that pair's span. The three sections
+	// are siblings, never parent-child. Only markers that are part of a recognized
+	// matched pair are considered here — bytes-outside-pairs content is out of scope.
+	const pairSpans = MARKER_PAIRS.map(({ token, open, close }) => {
+		const openEntry = recognized.find((e) => e.tokenKind === "open" && e.sectionToken === token)!;
+		const closeEntry = recognized.find((e) => e.tokenKind === "close" && e.sectionToken === token)!;
+		return { token, open, innerStart: openEntry.index + open.length, innerEnd: closeEntry.index };
+	});
+
+	for (const span of pairSpans) {
+		for (const entry of recognized) {
+			if (entry.sectionToken === span.token) continue; // same section, skip
+			if (entry.index > span.innerStart && entry.index < span.innerEnd) {
+				return {
+					kind: "malformed-body",
+					reason: `nested marker: ${entry.marker} appeared inside the ${span.token} section`,
+				};
+			}
+		}
+	}
+
+	// --- Step 5: Section slicing ---
+	// Slice each section as the bytes strictly between opener.index+opener.length
+	// and closer.index. No trimming, no normalization — verbatim bytes only.
+	const result: Record<string, string> = {};
+	for (const span of pairSpans) {
+		result[span.token] = body.slice(span.innerStart, span.innerEnd);
+	}
+
+	return {
+		kind: "ok",
+		prose: result["prose"]!,
+		playbook: result["playbook"]!,
+		research: result["research"]!,
+	};
 }
 
 /**
@@ -119,11 +296,9 @@ export function interpolateArgs(config: BrainAideConfig): string[] {
  *    field error.
  * 2. Deprecated fields (`connector`, `rootPath`, `entryFile`, `tools`) — rejected with a
  *    reason listing every stale field found, in deprecated-set order.
- * 3. Body grammar — the closed-vocabulary walker (`extractBodySections`) checks that every
- *    `^## .+$` heading is one of the three required headings (`## Prose`, `## Playbook hub`,
- *    `## Research hub`) and that none are missing. An unknown heading is surfaced immediately
- *    (first occurrence); missing sections are all listed in one response so the user can fix
- *    them in a single edit.
+ * 3. Body grammar — the closed-vocabulary marker walker (`extractMarkerSections`) checks
+ *    that every required marker pair is present and well-formed; every marker-layout
+ *    violation class returns `malformed-body` naming the offending marker.
  */
 export function parseBrainAideFromString(content: string): ParseBrainAideResult {
 	// Step 2: Split on first `---\n` opening fence.
@@ -201,17 +376,20 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		},
 	};
 
-	// Step 5: Extract the three required named body sections via the closed-vocabulary walker.
-	// Unknown headings and missing required sections both surface as malformed-body.
-	const bodyResult = extractBodySections(body);
+	// Step 5: Extract the three required named body sections via the closed-vocabulary marker walker.
+	// The walker enforces the paired HTML-comment marker grammar — required pair presence,
+	// no malformed/typo'd tokens, no unmatched closers or openers, correct section order
+	// (prose then playbook then research), and no nesting. Every violation class returns
+	// malformed-body naming the offending marker.
+	const bodyResult = extractMarkerSections(body);
 	if (bodyResult.kind === "malformed-body") {
 		return bodyResult;
 	}
 
-	const { prose, playbookHub, researchHub } = bodyResult;
+	const { prose, playbook, research } = bodyResult;
 
 	// Step 6: Return the ok result with all three body sections alongside the frontmatter config.
-	return { kind: "ok", config, prose, playbookHub, researchHub };
+	return { kind: "ok", config, prose, playbook, research };
 }
 
 /**
@@ -220,22 +398,27 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
  *
  * Result branches:
  * - `"ok"` — file found, frontmatter parsed, all required fields valid, and all three body
- *   sections (`## Prose`, `## Playbook hub`, `## Research hub`) located. Each section is
- *   returned verbatim (byte-identical between heading boundary and next heading or EOF).
+ *   sections located via their paired HTML-comment markers
+ *   (`<!-- aide-prose-start -->` / `<!-- aide-prose-end -->`,
+ *   `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`,
+ *   `<!-- aide-research-start -->` / `<!-- aide-research-end -->`).
+ *   Each section is returned verbatim — byte-identical between its opening marker and its
+ *   matching closing marker.
  * - `"missing"` — file does not exist or was unreachable (ENOENT or other I/O failure).
  *   Remediation is the same in both cases: run `/aide` and complete the brain wiring interview.
  * - `"malformed-frontmatter"` — file exists but YAML could not be parsed, or a required
  *   field is absent or wrong-typed, or a deprecated field (`connector`, `rootPath`,
  *   `entryFile`, `tools`) is present. `reason` names exactly which field is wrong.
- * - `"malformed-body"` — frontmatter is valid but the body fails the closed-vocabulary
- *   grammar: any of the three required sections is missing (reason lists every absent
- *   section in one response), or an unknown top-level heading is present (reason names
- *   the first unknown heading found).
+ * - `"malformed-body"` — frontmatter is valid but the body fails the closed marker-pair
+ *   grammar. Violation classes: required pair missing (reason lists every absent marker),
+ *   malformed or typo'd marker token (reason names the first offending marker), unmatched
+ *   closing marker, unmatched opening marker, wrong section order, or nested markers.
+ *   `reason` names the violating marker.
  *
  * Load-bearing invariants:
  * - Never throws — all failure modes return a tagged result.
- * - Never interpolates any body section — `prose`, `playbookHub`, and `researchHub` are
- *   byte-identical to the file content between their heading boundaries. Call
+ * - Never interpolates any body section — `prose`, `playbook`, and `research` are
+ *   byte-identical to the file content between their marker boundaries. Call
  *   `interpolateArgs` separately when writing the MCP entry.
  * - Never branches on `name` — the field is surfaced unchanged for consumers to use.
  */

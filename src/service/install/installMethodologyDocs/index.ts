@@ -9,7 +9,7 @@ import compareBytes from "@/service/install/shared/compareBytes/index.js";
 /**
  * Return planning steps for each canonical AIDE methodology doc.
  *
- * For each doc named by `listMethodologyDocs()` — including the hub index —
+ * For each doc named by `listMethodologyDocs()` — including the index —
  * compares the host file bytes against the canonical content:
  * - `would-create`: file does not exist on disk.
  * - `exists`: file exists and its bytes are identical to canonical.

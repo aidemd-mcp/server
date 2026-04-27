@@ -6,7 +6,7 @@ import parseBrainAide, { interpolateArgs } from "@/service/parseBrainAide/index.
 import type { BrainHint, BrainState } from "@/types/index.js";
 
 /**
- * Resolve the host project's brain vault precondition state into a four-state
+ * Resolve the host project's brain precondition state into a four-state
  * tagged union. Never throws — every failure mode collapses to a structured
  * `BrainState` value with targeted remediation vocabulary.
  *
@@ -67,7 +67,7 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 	const frameworkConfig = await detectFramework(root);
 	const mcpConfigPath = join(root, frameworkConfig.mcpConfigPath);
 
-	// Step 2 — Discover candidate vault locations for remediation suggestions.
+	// Step 2 — Discover candidate brain root locations for remediation suggestions.
 	// Populated unconditionally so hints appear on every returned state regardless
 	// of which branch fires.
 	const hints: BrainHint[] = await resolveBrainHints(root);

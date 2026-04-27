@@ -4,11 +4,11 @@ import type { FrameworkType, FrameworkConfig } from "@/types/index.js";
 
 /**
  * Per-framework path resolution for aide_init. The `docHubDir` field is
- * uniform across frameworks on purpose: the host-side doc hub is a
+ * uniform across frameworks on purpose: the host-side doc directory is a
  * framework-agnostic surface (the agent crawls it via relative links, not
  * via framework-specific command wiring), so there is no reason to
  * diverge. Keeping the value uniform also makes it trivial to change the
- * hub location across every framework in a single edit.
+ * doc directory location across every framework in a single edit.
  */
 const FRAMEWORK_CONFIGS: Record<FrameworkType, Omit<FrameworkConfig, "framework">> = {
 	claude: { configPath: "CLAUDE.md", commandDir: ".claude/commands", mcpConfigPath: ".mcp.json", docHubDir: ".aide/docs", agentDir: ".claude/agents", skillDir: ".claude/skills" },
@@ -39,7 +39,7 @@ async function exists(path: string): Promise<boolean> {
  * Checks for framework-specific marker files/directories. Defaults to Claude Code
  * if nothing is detected.
  *
- * Brain vault resolution is NOT performed here — it is a separate concern handled
+ * Brain root resolution is NOT performed here — it is a separate concern handled
  * by `resolveBrainHints`, which the init orchestrator calls independently. This
  * keeps framework detection focused on framework-related config only.
  */

@@ -23,7 +23,7 @@ async function readMcpJson(): Promise<Record<string, unknown>> {
 	return JSON.parse(raw) as Record<string, unknown>;
 }
 
-// Helper: get the expected brain entry derived from the template for a given vault path.
+// Helper: get the expected brain entry derived from the template for a given brain root path.
 function expectedBrainEntry(vaultPath: string) {
 	const content = obsidianBrainAideTemplate(vaultPath);
 	const result = parseBrainAideFromString(content);
@@ -48,7 +48,7 @@ describe("writeMcpEntry (init wrapper)", () => {
 		expect(servers.obsidian).toBeUndefined();
 	});
 
-	it("2a: brain entry args contain the real vault path, not the placeholder", async () => {
+	it("2a: brain entry args contain the real brain root path, not the placeholder", async () => {
 		await writeMcpEntry(tempDir, "/some/real/vault");
 
 		const parsed = await readMcpJson();
@@ -59,14 +59,14 @@ describe("writeMcpEntry (init wrapper)", () => {
 		for (const arg of brain.args) {
 			expect(arg).not.toContain("${rootPath}");
 		}
-		// The vault path must appear somewhere in the args.
+		// The brain root path must appear somewhere in the args.
 		expect(brain.args.some((a) => a.includes("/some/real/vault"))).toBe(true);
 	});
 
 	// --- 2b. vaultPath supplied + existing user-edited brain.aide ---
 
 	it("2b: vaultPath supplied + existing user-edited brain.aide — reads file, derives entry from user config", async () => {
-		// Scaffold a hand-edited brain.aide with a different vault path than the supplied one.
+		// Scaffold a hand-edited brain.aide with a different brain root path than the supplied one.
 		const userVaultPath = "/user/custom/vault";
 		const brainAideDir = join(tempDir, ".aide", "config");
 		await mkdir(brainAideDir, { recursive: true });

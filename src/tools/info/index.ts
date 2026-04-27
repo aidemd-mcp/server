@@ -37,7 +37,7 @@ function readServerVersion(): string {
  *   stale. Missing `.aide/versions.json` (pre-version-tracking install)
  *   collapses silently to an empty `outdated` array.
  *
- * - `brain`: precondition state of the host's brain vault.
+ * - `brain`: precondition state of the host's brain.
  *   Hard gate — the orchestrator must halt and direct the user to run `/aide`
  *   when `brain.status` is anything other than `"ok"`; the inline-recovery
  *   flow detects the broken state and prompts the user to resolve it.

@@ -134,7 +134,7 @@ describe("init — structured JSON result", () => {
 		}
 	});
 
-	it("fresh project: brainHints empty when no vault on disk and no env var", async () => {
+	it("fresh project: brainHints empty when no brain root on disk and no env var", async () => {
 		// Clear env var and ensure no sibling my-brain or ~/my-brain interference
 		delete process.env.AIDE_BRAIN_PATH;
 		// Use an isolated subdirectory to avoid sibling-path false positives
@@ -216,16 +216,16 @@ describe("init — structured JSON result", () => {
 
 		const brainSteps = stepsForCategory(result, "brain");
 		expect(brainSteps.length).toBeGreaterThan(0);
-		// When no hints exist, brain vault step has empty filePath signaling
+		// When no hints exist, brain root step has empty filePath signaling
 		// the agent must interview the user before applying
-		const vaultStep = brainSteps.find((s) => s.name === "Brain root directories");
-		expect(vaultStep).toBeDefined();
-		expect(vaultStep?.status).toBe("would-create");
-		expect(vaultStep?.filePath).toBe("");
+		const brainRootStep = brainSteps.find((s) => s.name === "Brain root directories");
+		expect(brainRootStep).toBeDefined();
+		expect(brainRootStep?.status).toBe("would-create");
+		expect(brainRootStep?.filePath).toBe("");
 	});
 
-	it("no brainPath + hints non-empty: vault step has empty-string filePath (hint NOT used as default)", async () => {
-		// Create a real vault directory so resolveBrainHints returns a hint via env
+	it("no brainPath + hints non-empty: brain root step has empty-string filePath (hint NOT used as default)", async () => {
+		// Create a real brain root directory so resolveBrainHints returns a hint via env
 		const hintVault = join(tempDir, "hint-vault");
 		await mkdir(hintVault);
 		process.env.AIDE_BRAIN_PATH = hintVault;
@@ -239,11 +239,11 @@ describe("init — structured JSON result", () => {
 		const envHints = result.brainHints.filter((h) => h.source === "env");
 		expect(envHints.length).toBeGreaterThan(0);
 
-		// Despite hints being present, vault step must have empty filePath
-		const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
-		expect(vaultStep).toBeDefined();
-		expect(vaultStep?.status).toBe("would-create");
-		expect(vaultStep?.filePath).toBe("");
+		// Despite hints being present, brain root step must have empty filePath
+		const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
+		expect(brainRootStep).toBeDefined();
+		expect(brainRootStep?.status).toBe("would-create");
+		expect(brainRootStep?.filePath).toBe("");
 
 		// Brain MCP step must have NO prescription when brainPath is absent —
 		// the entry cannot be derived without a brain.aide, so no prescription is emitted.
@@ -252,7 +252,7 @@ describe("init — structured JSON result", () => {
 		expect(brainMcpStep?.prescription).toBeUndefined();
 	});
 
-	it("no brainPath + hints empty: vault step has empty-string filePath", async () => {
+	it("no brainPath + hints empty: brain root step has empty-string filePath", async () => {
 		delete process.env.AIDE_BRAIN_PATH;
 		const isolated = join(tempDir, "deeply", "nested", "project");
 		await mkdir(isolated, { recursive: true });
@@ -260,21 +260,21 @@ describe("init — structured JSON result", () => {
 		const result = await init(isolated);
 
 		if (result.brainHints.length === 0) {
-			const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
-			expect(vaultStep).toBeDefined();
-			expect(vaultStep?.filePath).toBe("");
-			expect(vaultStep?.status).toBe("would-create");
+			const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
+			expect(brainRootStep).toBeDefined();
+			expect(brainRootStep?.filePath).toBe("");
+			expect(brainRootStep?.status).toBe("would-create");
 		}
 	});
 
-	it("explicit brainPath: vault step has that path, brainHints still returned", async () => {
+	it("explicit brainPath: brain root step has that path, brainHints still returned", async () => {
 		const confirmedPath = join(tempDir, "confirmed-vault");
 		const result = await init(tempDir, undefined, undefined, confirmedPath);
 
-		// The vault step must use the confirmed path
-		const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
-		expect(vaultStep).toBeDefined();
-		expect(vaultStep?.filePath).toBe(confirmedPath);
+		// The brain root step must use the confirmed path
+		const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
+		expect(brainRootStep).toBeDefined();
+		expect(brainRootStep?.filePath).toBe(confirmedPath);
 
 		// brainHints still present at top level (agent interview material)
 		expect(result).toHaveProperty("brainHints");
@@ -466,20 +466,20 @@ describe("init — apply mode (category call)", () => {
 		expect(applied.some((s) => s.status === "created")).toBe(true);
 	});
 
-	it("brain category with brainPath: vault directories are created, brain step has status created", async () => {
+	it("brain category with brainPath: brain root directories are created, brain step has status created", async () => {
 		const brainPath = join(tempDir, "my-vault");
 		const result = await init(tempDir, undefined, undefined, brainPath);
 		const brainSteps = result.steps.filter((s) => s.category === "brain");
 		expect(brainSteps.length).toBeGreaterThan(0);
 
 		const applied = await applySteps(brainSteps);
-		const vaultStep = applied.find((s) => s.name === "Brain root directories");
+		const brainRootStep = applied.find((s) => s.name === "Brain root directories");
 
-		expect(vaultStep).toBeDefined();
-		expect(vaultStep?.status).toBe("created");
-		expect(vaultStep).not.toHaveProperty("content");
+		expect(brainRootStep).toBeDefined();
+		expect(brainRootStep?.status).toBe("created");
+		expect(brainRootStep).not.toHaveProperty("content");
 
-		// The vault directories should exist on disk
+		// The brain root directories should exist on disk
 		expect(await pathExists(join(brainPath, "research"))).toBe(true);
 		expect(await pathExists(join(brainPath, "coding-playbook"))).toBe(true);
 	});
@@ -657,7 +657,7 @@ describe("init — would-overwrite and silent-create invariants", () => {
 });
 
 describe("init — sentinel brain path collision (issue 8)", () => {
-	it("my-brain/ inside project root does not appear as brain vault step filePath when no env var set", async () => {
+	it("my-brain/ inside project root does not appear as brain root step filePath when no env var set", async () => {
 		delete process.env.AIDE_BRAIN_PATH;
 		// Use isolated subdir so sibling hint from real cwd doesn't fire
 		const isolated = join(tempDir, "project");
@@ -667,24 +667,24 @@ describe("init — sentinel brain path collision (issue 8)", () => {
 
 		const result = await init(isolated);
 
-		const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
-		expect(vaultStep).toBeDefined();
+		const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
+		expect(brainRootStep).toBeDefined();
 		// The tool must NOT adopt the inner my-brain/ path silently.
 		// With no env var and the project root itself not having a sibling my-brain
 		// at the same level, brainHints should be empty (or only contain sibling hint
 		// from the parent tempDir level, not the inner one).
-		// The vault step must have status would-create (not exists pointing at inner dir).
+		// The brain root step must have status would-create (not exists pointing at inner dir).
 		// If brainHints is empty, filePath must be "".
 		if (result.brainHints.length === 0) {
-			expect(vaultStep?.filePath).toBe("");
-			expect(vaultStep?.status).toBe("would-create");
+			expect(brainRootStep?.filePath).toBe("");
+			expect(brainRootStep?.status).toBe("would-create");
 		} else {
 			// If a hint fired (sibling at parent level), the filePath must NOT be the inner my-brain
-			expect(vaultStep?.filePath).not.toBe(join(isolated, "my-brain"));
+			expect(brainRootStep?.filePath).not.toBe(join(isolated, "my-brain"));
 		}
 	});
 
-	it("completely isolated project (no env var, no sibling, subdirectory): brain vault step has empty filePath", async () => {
+	it("completely isolated project (no env var, no sibling, subdirectory): brain root step has empty filePath", async () => {
 		delete process.env.AIDE_BRAIN_PATH;
 		// Use a deeply nested isolated dir where no sibling my-brain can exist at parent
 		const isolated = join(tempDir, "deeply", "nested", "project");
@@ -692,13 +692,13 @@ describe("init — sentinel brain path collision (issue 8)", () => {
 
 		const result = await init(isolated);
 
-		const vaultStep = result.steps.find((s) => s.name === "Brain root directories");
-		expect(vaultStep).toBeDefined();
+		const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
+		expect(brainRootStep).toBeDefined();
 
-		// If no hints, the vault step must have empty filePath (not a fabricated path)
+		// If no hints, the brain root step must have empty filePath (not a fabricated path)
 		if (result.brainHints.length === 0) {
-			expect(vaultStep?.filePath).toBe("");
-			expect(vaultStep?.status).toBe("would-create");
+			expect(brainRootStep?.filePath).toBe("");
+			expect(brainRootStep?.status).toBe("would-create");
 		}
 	});
 });

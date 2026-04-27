@@ -49,10 +49,10 @@ function makeOkState(name = "obsidian") {
 }
 
 /** Verbatim prose string that contains characters a substitution pass would
- *  transform: a ${rootPath} sequence, a [[wikilink]], and markdown formatting.
+ *  transform: a ${rootPath} sequence, a [[reference]], and markdown formatting.
  *  Used to assert the no-substitution invariant. */
 const VERBATIM_PROSE =
-	"exact prose with literal ${rootPath} characters and a [[wikilink]] and **markdown**";
+	"exact prose with literal ${rootPath} characters and a [[reference]] and **markdown**";
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -81,7 +81,7 @@ describe("brain — ok: verbatim prose (4a)", () => {
 	});
 
 	it("preserves literal ${rootPath} characters without substitution", async () => {
-		const proseWithPlaceholder = "Use ${rootPath} to find the vault at ${rootPath}";
+		const proseWithPlaceholder = "Use ${rootPath} to find the brain root at ${rootPath}";
 		mockBuildBrainState.mockResolvedValue(makeOkState());
 		mockParseBrainAide.mockResolvedValue({
 			kind: "ok",

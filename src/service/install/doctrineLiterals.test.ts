@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
  *   - src/tools/init/scaffoldCommands/.aide        (outcomes.undesired[0])
  *   - src/tools/init/initContent/.aide             (outcomes.undesired[3])
  *   - src/tools/init/installMethodologyDocs/.aide  (outcomes.undesired about
- *                                                    hub index doctrine)
+ *                                                    doc index doctrine)
  * And the parent invariants in src/.aide ("no AIDE doctrine as string literals
  * in this submodule's source") and .aide (canonical docs are the single
  * source of truth).
@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
  * writeMethodology is deliberately NOT in this guarded set. Its pointer
  * stub is framework plumbing — a template that tells the agent where the
  * canonical docs live — and it is inlined in that helper's source by
- * design. The doctrine it routes the agent to lives inside the hub docs,
+ * design. The doctrine it routes the agent to lives inside the canonical docs,
  * not in the stub itself.
  *
  * The matcher scans each file's tokenized string literals (single, double,

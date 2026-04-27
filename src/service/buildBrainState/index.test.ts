@@ -54,17 +54,17 @@ function makeBrainAideContent({
 		argsYaml,
 		"---",
 		"",
-		"## Prose",
-		"",
+		"<!-- aide-prose-start -->",
 		"This is the hand-written prose the agent receives verbatim.",
+		"<!-- aide-prose-end -->",
 		"",
-		"## Playbook hub",
-		"",
+		"<!-- aide-playbook-start -->",
 		"The coding-playbook hub lives here.",
+		"<!-- aide-playbook-end -->",
 		"",
-		"## Research hub",
-		"",
+		"<!-- aide-research-start -->",
 		"The research hub lives here.",
+		"<!-- aide-research-end -->",
 	].join("\n");
 }
 
@@ -201,8 +201,8 @@ describe("buildBrainState — no-brain-aide: frontmatter malformed (3c)", () => 
 // ---------------------------------------------------------------------------
 
 describe("buildBrainState — no-brain-aide: body malformed (3d)", () => {
-	it("returns no-brain-aide when brain.aide has valid frontmatter but missing ## Prose section", async () => {
-		// Valid two-field frontmatter but the body has no ## Prose heading.
+	it("returns no-brain-aide when brain.aide has valid frontmatter but missing aide marker sections", async () => {
+		// Valid two-field frontmatter but the body has no aide marker pairs.
 		await writeBrainAide(
 			[
 				"---",
@@ -214,7 +214,7 @@ describe("buildBrainState — no-brain-aide: body malformed (3d)", () => {
 				'    - "/x/vault"',
 				"---",
 				"",
-				"This body has no Prose heading, only free text.",
+				"This body has no aide marker sections, only free text.",
 			].join("\n"),
 		);
 
@@ -395,7 +395,7 @@ describe("buildBrainState — mcp-drift: args mismatch (3j)", () => {
 			["@bitbonsai/mcpvault", "/x/vault", "--extra-flag"],
 		],
 		[
-			"vault path differs (user retargeted brain.aide, forgot sync)",
+			"brain root path differs (user retargeted brain.aide, forgot sync)",
 			["@bitbonsai/mcpvault", "/x/new-vault"],
 			["@bitbonsai/mcpvault", "/x/old-vault"],
 		],
@@ -597,7 +597,7 @@ describe("buildBrainState — detector never throws (3o)", () => {
 
 	it("resolves to no-brain-aide (body malformed) without rejecting", async () => {
 		await writeBrainAide(
-			["---", "name: obsidian", "mcpServerConfig:", "  command: npx", "  args:", '    - "@bitbonsai/mcpvault"', "---", "", "No prose heading here."].join("\n"),
+			["---", "name: obsidian", "mcpServerConfig:", "  command: npx", "  args:", '    - "@bitbonsai/mcpvault"', "---", "", "No aide marker sections here."].join("\n"),
 		);
 		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-brain-aide" });
 	});

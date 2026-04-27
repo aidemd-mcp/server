@@ -22,7 +22,7 @@ import compareBytes from "./shared/compareBytes/index.js";
  * `skipIde` was removed: IDE configuration is presented per-category during
  * the agent interview rather than suppressed via a flag.
  * `framework` remains so the agent can re-call after user confirms or
- * overrides framework detection. `brainPath` is the user-confirmed vault path
+ * overrides framework detection. `brainPath` is the user-confirmed brain root path
  * forwarded to `provisionBrain` — the agent provides this after interviewing
  * the user.
  */
@@ -30,7 +30,7 @@ export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
 	path: z.string().optional().describe("Custom project root path (defaults to server working directory)"),
 	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
-	brainPath: z.string().optional().describe("Resolved brain vault path for the brain category. The agent provides this after interviewing the user."),
+	brainPath: z.string().optional().describe("Resolved brain root path for the brain category. The agent provides this after interviewing the user."),
 });
 
 /**
@@ -43,12 +43,12 @@ export const InitInput = z.object({
  * Each step is idempotent: re-running on a fully initialized project returns
  * all steps as `exists`. Brain hints are discovered from env var, sibling
  * path, and conventional path — returned as candidates the agent presents
- * to the user; the agent confirms the path before any vault work is done.
+ * to the user; the agent confirms the path before any brain root work is done.
  *
  * @param root - Server working directory (from --root CLI arg or cwd).
  * @param framework - Optional framework override.
  * @param path - Optional project root override (absolute or relative to root).
- * @param brainPath - User-confirmed vault path. When provided, forwarded to
+ * @param brainPath - User-confirmed brain root path. When provided, forwarded to
  *   provisionBrain instead of using the first discovered hint.
  */
 export default async function init(
@@ -71,7 +71,7 @@ export default async function init(
 	const aideTreeSteps = await installAideTree(projectRoot);
 	const mcpStep = await wireMcp(join(projectRoot, config.mcpConfigPath));
 
-	// Brain steps require a confirmed vault path. When brainPath is explicitly
+	// Brain steps require a confirmed brain root path. When brainPath is explicitly
 	// provided (agent-confirmed), delegate fully to provisionBrain. When absent,
 	// return placeholder steps with empty filePaths so the agent knows to interview
 	// the user first — the brain MCP entry prescription is omitted because without
@@ -83,7 +83,7 @@ export default async function init(
 	let brainSteps: InitStep[];
 	if (brainPath !== undefined) {
 		// Delegate to provisionBrain with all three inputs: the host project root
-		// (where .aide/brain.aide lives), the vault location, and the MCP config path.
+		// (where .aide/brain.aide lives), the brain root location, and the MCP config path.
 		brainSteps = await provisionBrain(projectRoot, brainPath, brainMcpPath);
 	} else {
 		// No explicit brainPath — the agent must ask the user. Return placeholder

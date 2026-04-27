@@ -8,11 +8,11 @@ import type { InitStep } from "@/types/index.js";
  *
  * For each step:
  * - `"would-create"` / `"would-overwrite"` file steps (no `prescription` field,
- *   not a brain vault step): creates parent directories and writes `content` to
+ *   not a brain root step): creates parent directories and writes `content` to
  *   `filePath`. Returns the step with `status` changed to `"created"` (for
  *   `"would-create"`) or `"overwritten"` (for `"would-overwrite"`) and `content`
  *   removed.
- * - `"would-create"` / `"would-overwrite"` brain vault steps (category `"brain"`)
+ * - `"would-create"` / `"would-overwrite"` brain root steps (category `"brain"`)
  *   — two sub-types:
  *   - **Directory step** (`filePath` has no extension): parses `content` as a
  *     JSON array of directory names, creates each under `filePath` with
@@ -20,7 +20,7 @@ import type { InitStep } from "@/types/index.js";
  *     `content` removed.
  *   - **File step** (`filePath` has a file extension, e.g. `.md`): creates the
  *     parent directory and writes `content` to `filePath`. Used for content
- *     templates such as the playbook hub and vault CLAUDE.md. Returns with
+ *     templates such as the playbook entry-point and brain root CLAUDE.md. Returns with
  *     `status: "created"` or `"overwritten"` and `content` removed.
  * - `"would-create"` / `"would-overwrite"` steps with a `prescription` field
  *   (MCP steps): passed through unchanged — the agent merges prescriptions

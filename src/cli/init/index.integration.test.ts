@@ -89,7 +89,7 @@ describe("5a — .aide/config/brain.aide is scaffolded with canonical Obsidian c
 			expect(result.config.mcpServerConfig.command).toBe("npx");
 		}
 
-		// The vault path must appear byte-for-byte in args (no ${rootPath} placeholder).
+		// The brain root path must appear byte-for-byte in args (no ${rootPath} placeholder).
 		expect(result.config.mcpServerConfig.args).toContain(vaultPath);
 
 		// The disk content must be byte-identical to the template.

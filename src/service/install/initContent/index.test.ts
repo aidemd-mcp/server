@@ -68,7 +68,7 @@ describe("listMethodologyDocs — brain-aide registration (Step 4a/4c)", () => {
 		expect(listMethodologyDocs()).toHaveLength(10);
 	});
 
-	it("lists brain-aide after todo-aide (hub reading-order invariant)", () => {
+	it("lists brain-aide after todo-aide (doc index reading-order invariant)", () => {
 		const docs = listMethodologyDocs();
 		const todoIndex = docs.findIndex((d) => d.canonical === "todo-aide");
 		const brainIndex = docs.findIndex((d) => d.canonical === "brain-aide");

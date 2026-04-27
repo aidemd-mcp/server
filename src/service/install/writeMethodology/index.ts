@@ -3,8 +3,8 @@ import type { InitStep } from "@/types/index.js";
 import { getMethodologyMarker } from "@/service/install/initContent/index.js";
 
 /** Placeholder token inside the stub template that names the host-side
- * doc hub path. writeMethodology substitutes this at install time with
- * the caller-supplied relative path, so the stub's pointer and the
+ * doc directory path. writeMethodology substitutes this at install time
+ * with the caller-supplied relative path, so the stub's pointer and the
  * installer's write target derive from a single shared source. */
 const HUB_PATH_PLACEHOLDER = "{{HUB_PATH}}";
 
@@ -26,10 +26,10 @@ the code changes.
 The full canonical methodology is installed in this project at
 \`${HUB_PATH_PLACEHOLDER}/\`. Start at \`${HUB_PATH_PLACEHOLDER}/index.md\` for the doc list, then
 crawl into the specific canonical doc your current task requires. Read
-only what the task actually needs — the hub is organized for
+only what the task actually needs — the doc directory is organized for
 progressive disclosure, not for front-loading.
 
-**Before writing, editing, or acting on any \`.aide\` file, crawl the hub
+**Before writing, editing, or acting on any \`.aide\` file, crawl the doc directory
 and read the canonical doc that governs the work you are about to do.**
 Never guess AIDE rules from memory: the files under \`${HUB_PATH_PLACEHOLDER}/\` are
 the authoritative source, and any decision that disagrees with them is
@@ -55,7 +55,7 @@ async function safeReadFile(path: string): Promise<string> {
 
 /**
  * Compose the marker-bounded pointer stub. The body is the inlined
- * STUB_TEMPLATE with the host-side hub path substituted in; marker
+ * STUB_TEMPLATE with the host-side doc directory path substituted in; marker
  * comments wrap it for idempotency detection.
  */
 export function composeStub(docHubDir: string): string {

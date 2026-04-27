@@ -1,509 +1,555 @@
 ---
 intent: >
-  Grow the bundled default `brain.aide` template body from one section
-  (`## Prose`) to three (`## Prose`, `## Playbook hub`, `## Research
-  hub`). The Playbook hub section moves out of the inline TS constant
-  in `provisionBrain/index.ts` into the template's body. The Research
-  hub section is brand-new content the user is shipping for the first
-  time. Frontmatter shape, platform branching, and the existing prose
-  body are all preserved unchanged.
+  Migrate the bundled default brain.aide template body from the retired
+  heading-based grammar (`## Prose` / `## Playbook hub` / `## Research hub`)
+  to the marker-pair grammar required by the post-pivot parseBrainAide
+  (`<!-- aide-prose-start -->` / `<!-- aide-prose-end -->`,
+  `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`,
+  `<!-- aide-research-start -->` / `<!-- aide-research-end -->`). Strip the
+  retired storage-specific vocabulary from the emitted prose (the template's
+  body bytes carry the spec's three carve-outs only — `obsidianBrainAideTemplate`
+  the helper folder, the `obsidian` MCP key in legacy migration prose, and
+  the `.obsidian` directory heuristic comment elsewhere). Repoint test
+  fixtures and assertions from `result.playbookHub`/`result.researchHub` to
+  the renamed `result.playbook`/`result.research` typed fields. Frontmatter
+  shape and platform branching are unchanged.
 ---
 
 ## Project Structure
 
-This is an additive/edit plan against an existing helper. The helper's
-external surface is unchanged: one default-exported function with the
-same signature. What changes is the bytes the function emits — the body
-grows from one section to three.
+This is an edit plan against an existing helper. The folder shape and
+external function signature are unchanged. What changes:
+
+- The emitted body switches from three heading-bounded sections to three
+  marker-pair-bounded sections.
+- Forbidden storage-specific tokens in the emitted prose body
+  (`vault`, `obsidian` outside the carve-outs, `note`-as-synonym,
+  `wikilink`, `hub note`, `hub`) are rewritten to storage-agnostic terms.
+- Tests rename body-field assertions from `playbookHub`/`researchHub` to
+  `playbook`/`research`, replace the heading-anchored regex assertions
+  with marker-aware assertions, and drop assertions that asserted
+  forbidden vocabulary in the prose.
 
 ```
 src/service/install/provisionBrain/obsidianBrainAideTemplate/
-├── plan.aide                     ← [this file, NEW — no prior plan existed
-│                                    for this helper folder]
+├── plan.aide                     ← [this file, REPLACES the prior 4/4-done
+│                                    plan that targeted heading-grammar +
+│                                    `playbookHub`/`researchHub` field names]
 ├── index.ts                      ← [edit] export default function
 │                                    obsidianBrainAideTemplate(rootPath: string): string
-│                                    signature unchanged. Behavior:
+│                                    signature unchanged. Behavior changes:
 │                                      - frontmatter unchanged (`name` +
 │                                        platform-branched `mcpServerConfig`)
-│                                      - existing `## Prose` body unchanged,
-│                                        sentinel phrases preserved
-│                                      - new `## Playbook hub` section: moves
-│                                        the `PLAYBOOK_HUB_TEMPLATE` constant
-│                                        from `../index.ts` into this template
-│                                        body verbatim
-│                                      - new `## Research hub` section:
-│                                        brand-new content the user is
-│                                        shipping for the first time, modeled
-│                                        on the Playbook hub's structural
-│                                        shape (H1 title, "How to Use This
-│                                        Index" guidance, table skeleton,
-│                                        empty Sections list)
-└── index.test.ts                 ← [edit] new tests for the three-section
-                                     body, presence of all required headings,
-                                     verbatim round-trip of the new sections;
-                                     existing prose-sentinel and platform-
-                                     branching tests are unchanged in shape
+│                                      - body restructured: three marker-pair
+│                                        sections in fixed order — prose,
+│                                        playbook, research — replacing the
+│                                        retired `## Prose` / `## Playbook hub` /
+│                                        `## Research hub` headings
+│                                      - prose body rewritten to use
+│                                        storage-agnostic vocabulary; the
+│                                        retired tokens (`vault`, `wikilink`,
+│                                        `hub`, `note`-as-synonym) are
+│                                        scrubbed. The MCP tool names
+│                                        `mcp__brain__read_note` and
+│                                        `mcp__brain__search_notes` remain
+│                                        verbatim (those are tool names the
+│                                        agent must call, not our prose
+│                                        vocabulary)
+│                                      - playbook section bytes preserve
+│                                        their structural shape (H1 title,
+│                                        Task Routing table skeleton, How to
+│                                        Use This Index, Always Read First,
+│                                        empty Sections + Contents lists)
+│                                        with nested `## ` already demoted
+│                                        to `### ` from the prior cycle —
+│                                        the marker-pair walker is byte-based
+│                                        so nested `## ` is no longer a
+│                                        parser concern, but the demotion
+│                                        carries forward as it reads cleaner
+│                                      - research section bytes preserve
+│                                        their structural shape mirroring
+│                                        the playbook section
+│                                      - JSDoc updated to enumerate the
+│                                        marker-pair grammar and reference
+│                                        `.aide/docs/brain-aide.md`
+└── index.test.ts                 ← [edit] tests reflect the marker-pair
+                                     grammar and the renamed `playbook` /
+                                     `research` typed fields. Vocabulary
+                                     sweep removes assertions that asserted
+                                     forbidden tokens in the prose body
+                                     (`expect(result.prose).toContain("wikilink")`
+                                     and similar). Round-trip and
+                                     happy-path assertions stay structurally
+                                     identical, only field-name and
+                                     content-anchor strings change.
 ```
 
-The folder shape is unchanged. The two files (`index.ts`,
-`index.test.ts`) get edited in place. No new helpers, no new
-subfolders.
+The helper has no sub-folders and no .aide of its own — the parent
+spec at `../.aide` is the governing intent for this helper's content.
 
 ## Prerequisites
 
-**`src/service/parseBrainAide/`** must export the widened
-`ParseBrainAideResult.ok` shape (with `playbookHub` and `researchHub`
-fields next to `prose`) AND the closed three-section body grammar
-before this plan's tests can pass. Specifically:
+**`src/service/parseBrainAide/`** must export the marker-pair grammar
+already landed (24/24 in its plan, 61/61 tests green):
 
 - `parseBrainAideFromString(content: string)` returns `{ kind: "ok",
-  config, prose, playbookHub, researchHub }` when the content carries
-  exactly the three required sections.
-- `parseBrainAideFromString(content)` returns `{ kind: "malformed-body",
-  reason }` when any required section is absent — which is what
-  this plan's test suite asserts NOT happening on the new template.
-- The required heading vocabulary is exactly `## Prose`, `## Playbook
-  hub`, `## Research hub` — the strings this template emits in its
-  body must match those headings byte-for-byte.
+  config, prose, playbook, research }` when the content carries exactly
+  the three required marker pairs in fixed order.
+- The renamed fields are `playbook` and `research` (NOT
+  `playbookHub`/`researchHub`).
+- A heading-based body (`## Prose` / `## Playbook hub` / `## Research
+  hub` with no marker pairs) returns `{ kind: "malformed-body", reason:
+  "missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->,
+  <!-- aide-playbook-start -->, <!-- aide-playbook-end -->,
+  <!-- aide-research-start -->, <!-- aide-research-end -->" }`.
 
-If `parseBrainAide`'s body-grammar widening has not landed when this
-plan executes, the round-trip tests will surface as `malformed-body`
-on the new template (because the legacy single-section parser only
-extracts `## Prose` and rejects bodies whose grammar has grown). The
-orchestrator must execute `src/service/parseBrainAide/`'s plan first.
+This prerequisite is already satisfied — no work required. The
+breakage report explicitly cites the parser cascade as complete.
 
 ## Plan
 
-### 1. Grow the template body to three sections
+### 1. Switch the emitted body to marker-pair grammar and sweep storage-specific vocabulary
 
 Read: `coding-playbook/foundations/conventions`, `.aide/docs/brain-aide.md`
 
 - [x] Edit `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts`.
       Function signature is unchanged: `default function
-      obsidianBrainAideTemplate(rootPath: string): string`.
+      obsidianBrainAideTemplate(rootPath: string): string`. Frontmatter
+      block (`---` ... `---`) and platform-branched `mcpServerConfig`
+      remain byte-identical to the current implementation.
 
-      The returned string keeps its current frontmatter and `## Prose`
-      body verbatim. Two new sections append after the prose body, in
-      this exact order:
+      Replace the body section structure. The current shape is three
+      headings (`## Prose` / `## Playbook hub` / `## Research hub`) each
+      followed by their bytes. The new shape is three marker pairs in
+      fixed order: prose first, playbook second, research third. Each
+      section is opened by its `<!-- aide-<token>-start -->` line and
+      closed by its `<!-- aide-<token>-end -->` line, with the section
+      bytes between them. Each marker line lives on its own line; the
+      section bytes start on the line after the opener and end on the
+      line before the closer.
 
-      - **`## Playbook hub`** — content sourced verbatim from the
-        legacy `PLAYBOOK_HUB_TEMPLATE` constant currently declared in
-        `src/service/install/provisionBrain/index.ts`. The bytes are:
-
-        ```
-        # Coding Playbook
-
-        ## Task Routing
-
-        | Task domain | Section |
-        |-------------|---------|
-
-        ---
-
-        ## How to Use This Index
-
-        Read this note first. Each section links to a **section hub**
-        that lists its notes with keywords. Navigate to the section
-        relevant to your task, then drill into the specific notes you
-        need. Do not read all sections — only the ones whose keywords
-        match the work.
-
-        ---
-
-        ## Always Read First
-
-        These notes are **required reading** for every task, regardless
-        of which section you're working in:
-
-        1. **[[your-conventions-note]]** — Add your naming, function
-           ordering, and code hygiene conventions here.
-        2. **[[your-folder-structure-note]]** — Add your folder layout
-           and progressive disclosure conventions here.
-
-        ---
-
-        ## Sections
-
-        ---
-
-        ## Contents
-        ```
-
-        These bytes are CARRIED FORWARD from the legacy constant —
-        they are not re-authored. The body content is the user's to
-        edit; this template seeds it once. The implementor copies
-        the bytes verbatim from the constant in `../index.ts` so a
-        diff between the constant and this section is empty (the
-        constant gets DELETED in `provisionBrain`'s plan, this is
-        the new home).
-
-        IMPORTANT: this section's body contains nested `##` headings
-        (e.g. `## Task Routing`, `## How to Use This Index`,
-        `## Sections`, `## Contents`). The parser's closed-vocabulary
-        check rejects unknown TOP-LEVEL `## ` headings — but these
-        are inside a body section, not at the top level. The parser's
-        walker scans for `^## .+$` which would match these too, so
-        the walker MUST distinguish "headings inside a section's
-        body" from "section-boundary headings." The reasoning is
-        that this template has been correctly authored to only put
-        these nested headings AFTER a section's opening `## ` line
-        and before the next section's `## ` line — they are not
-        intended as section boundaries. The parser walks linearly
-        and treats every `^## .+$` as a candidate boundary; the
-        walker's closed-vocabulary check then rejects any candidate
-        not in the required set. **For this template, that means
-        every `^## .+$` line in the bytes must either be one of the
-        three required headings OR not exist.**
-
-        Resolution: replace the nested `## ` headings inside the
-        Playbook hub body with `### ` (H3) so the walker does not
-        treat them as top-level boundaries. Specifically, in the
-        body bytes above:
-        - `## Task Routing` → `### Task Routing`
-        - `## How to Use This Index` → `### How to Use This Index`
-        - `## Always Read First` → `### Always Read First`
-        - `## Sections` → `### Sections`
-        - `## Contents` → `### Contents`
-
-        Same for any nested headings the Research hub section
-        introduces below. The H1 (`# Coding Playbook`,
-        `# Research`) stays as `# `; only `## ` becomes `### `.
-        This keeps the closed-vocabulary check honest: every
-        top-level `## ` in the template body IS a section
-        boundary, by construction.
-
-      - **`## Research hub`** — brand-new content modeled on the
-        Playbook hub's structural shape. The intent is the same:
-        seed an empty hub the user fills in with their own
-        domain content. Bytes:
-
-        ```
-        # Research
-
-        ### Domains
-
-        | Domain | Notes |
-        |--------|-------|
-
-        ---
-
-        ### How to Use This Index
-
-        Research notes are filed by domain. Each subdirectory holds
-        notes for a single domain; read the domain hub before
-        drilling into individual notes. Do not flat-search across
-        every domain — the structure is the navigation.
-
-        ---
-
-        ### Domain Hubs
-
-        Add domain hubs here as your research grows. Each hub lives
-        at `<domain>/<domain>.md` and lists its child notes with
-        keywords.
-
-        ---
-
-        ### Contents
-        ```
-
-        Note: `### Domains`, `### How to Use This Index`,
-        `### Domain Hubs`, `### Contents` use `### ` (H3) for the
-        same reason as the Playbook hub — they are nested inside
-        the `## Research hub` section, not section boundaries.
-
-      Final emitted byte sequence (concatenation order):
+      Final body shape (frontmatter omitted for clarity):
 
       ```
-      ---
-      <frontmatter as today>
-      ---
+      <!-- aide-prose-start -->
 
-      ## Prose
+      <storage-agnostic prose body>
 
-      <existing prose body, unchanged>
+      <!-- aide-prose-end -->
 
-      ## Playbook hub
+      <!-- aide-playbook-start -->
 
-      <playbook hub bytes from above, with nested `## ` → `### `>
+      # Coding Playbook
 
-      ## Research hub
+      <playbook section bytes — structurally preserved from the prior
+      cycle, with nested `## ` already demoted to `### ` from the
+      prior cycle so nothing changes structurally>
 
-      <research hub bytes from above, with nested `## ` → `### `>
+      <!-- aide-playbook-end -->
+
+      <!-- aide-research-start -->
+
+      # Research
+
+      <research section bytes — structurally preserved>
+
+      <!-- aide-research-end -->
       ```
 
-      Each section's heading line is followed by a blank line and
-      then the body bytes. The whole file ends with a trailing
-      newline (matching the current template's end-of-file shape).
+      - **Prose section bytes — vocabulary sweep.** The current prose
+        body is Obsidian-flavored ("Your brain is an Obsidian vault.
+        Use `mcp__brain__read_note` to open files by their
+        vault-relative path...") and uses every forbidden token
+        (`vault`, `wikilink`, `hub`, `note` as synonym for "file").
+        Rewrite to storage-agnostic vocabulary while preserving the
+        load-bearing tool-name sentinels (`mcp__brain__read_note`,
+        `mcp__brain__search_notes`) and the entry-point file paths
+        (`coding-playbook/coding-playbook.md`, `research/research.md`)
+        that downstream code asserts on.
 
-      Update the function's JSDoc to enumerate the three body
-      sections and reference `.aide/docs/brain-aide.md` as the
-      format spec. Note explicitly that:
-      - The Playbook hub bytes are the seed bytes the install
-        service scaffolds as the playbook-hub artifact in the
-        user's brain on cold install.
-      - The Research hub bytes are the seed bytes the install
-        service scaffolds as the research-hub artifact in the
-        user's brain on cold install.
-      - All body sections' bytes are user-editable post-scaffold;
-        the template seeds them once, then the user owns them.
-      - Nested headings inside any section MUST use `### ` or
-        deeper (never `## `) so the parser's closed-vocabulary
-        walker does not treat them as section boundaries.
+        Required content beats the new prose body must hit:
+          - Names the brain in storage-agnostic terms ("Your brain is
+            an external knowledge store reached through MCP tools" or
+            similar wording the strategist uses in the spec's "Good
+            examples" block).
+          - Names the two MCP tool names verbatim:
+            `mcp__brain__read_note` (for opening files by their
+            brain-root-relative path) and `mcp__brain__search_notes`
+            (for keyword queries across the brain).
+          - Names the two entry-point artifact file paths verbatim:
+            `coding-playbook/coding-playbook.md` (playbook entry-point)
+            and `research/research.md` (research entry-point).
+          - Describes the navigation pattern in storage-agnostic terms:
+            "Read either entry-point first, then follow the references
+            it lists into the rest of the brain" (no `wikilink`, no
+            `hub note`).
+          - Stays under ~10 lines so the test fixtures and the
+            generated bytes remain auditable at a glance.
 
-### 2. Extend the test suite for the three-section body
+        Forbidden tokens in this section (the spec's storage-agnostic
+        vocabulary rule applies to template-emitted bytes per the
+        parent spec's outcomes.desired #8 and outcomes.undesired):
+          - `vault` — replace with "brain root" or rewrite the sentence
+          - `wikilink` — replace with "the references it lists" or
+            similar, or drop the wikilink-specific guidance
+          - `hub` (as in "entry hub" or "hub note") — replace with
+            "entry-point" or "entry-point artifact"
+          - `note` used as a synonym for "file" — replace with "file"
+            or "artifact"
 
-Read: `coding-playbook/workflow/testing`
+        Tokens that REMAIN allowed in this prose (carve-outs):
+          - `mcp__brain__read_note` and `mcp__brain__search_notes` are
+            tool names the agent must call by their exact registered
+            name; these are not project vocabulary and are out of
+            scope for the sweep.
+          - `obsidian` does NOT appear in the prose body at all
+            (the helper folder name `obsidianBrainAideTemplate` and
+            the `name: obsidian` frontmatter label remain — those are
+            other carve-outs scoped elsewhere).
+
+      - **Playbook section bytes.** Structurally preserved from the
+        current emission. The bytes between
+        `<!-- aide-playbook-start -->` and
+        `<!-- aide-playbook-end -->` are byte-equal to the bytes the
+        current implementation emits between `## Playbook hub` and
+        `## Research hub` (the H1 `# Coding Playbook` title, the H3
+        `### Task Routing` table, the H3 `### How to Use This Index`
+        guidance, the H3 `### Always Read First` list with the
+        `[[your-conventions-note]]` and `[[your-folder-structure-note]]`
+        wikilinks, the empty H3 `### Sections` and `### Contents`
+        placeholders).
+
+        Note on `wikilink` carve-out for the playbook section: the
+        playbook section's bytes seed the user's playbook entry-point
+        artifact in their brain. The default scaffolded brain is
+        Obsidian-flavored (the helper folder name signals this), and
+        Obsidian users navigate via `[[wikilink]]` syntax. The
+        `[[your-conventions-note]]` and `[[your-folder-structure-note]]`
+        placeholder strings are USER CONTENT the user is expected to
+        edit on first cold install — they are template-content facts,
+        not module-vocabulary facts. The vocabulary sweep applies to
+        prose sentences; placeholder wikilinks the user is meant to
+        replace are content scaffolding, not prose, and remain.
+
+      - **Research section bytes.** Structurally preserved from the
+        current emission. The bytes between
+        `<!-- aide-research-start -->` and
+        `<!-- aide-research-end -->` are byte-equal to the bytes the
+        current implementation emits between `## Research hub` and
+        end-of-file (the H1 `# Research` title, the H3 `### Domains`
+        table, the H3 `### How to Use This Index` guidance, the H3
+        `### Domain Hubs` placeholder, the H3 `### Contents`
+        placeholder).
+
+        Vocabulary inside the research section is already
+        storage-agnostic ("Research notes are filed by domain" — the
+        word "notes" is fine here as it refers to research files, the
+        domain language; only "note" used as a synonym for "file"
+        anywhere is forbidden, and the research section's prose uses
+        the term consistently with the research-domain meaning).
+
+      - **Marker placement and whitespace.** Each opener and closer is
+        on its own line (separated from frontmatter and from each
+        other section by a blank line above and below). The bytes
+        between `<!-- aide-<token>-start -->` and
+        `<!-- aide-<token>-end -->` are exactly the section content;
+        whitespace between the opener and the first content line is
+        considered part of the section. Test fixtures rebuild the
+        same shape, so byte equality holds.
+
+        End-of-file: the file ends with the research closer followed
+        by a single trailing newline (matching the current end-of-file
+        shape). The closer line itself contains exactly the byte
+        sequence `<!-- aide-research-end -->\n`.
+
+      Update the function's JSDoc:
+        - Name the three marker pairs verbatim
+          (`<!-- aide-prose-start -->`/`<!-- aide-prose-end -->`,
+          `<!-- aide-playbook-start -->`/`<!-- aide-playbook-end -->`,
+          `<!-- aide-research-start -->`/`<!-- aide-research-end -->`)
+          and reference `.aide/docs/brain-aide.md` as the format spec.
+        - Drop the prior cycle's note about nested `## ` headings
+          becoming `### ` — the marker-pair walker is byte-based, so
+          nested headings are not a parser concern. Add a one-line
+          note that the marker grammar is byte-bounded (not
+          line-bounded), so any byte sequence that is not one of the
+          six recognized marker tokens passes through verbatim.
+        - The note about user-editable post-scaffold remains; the
+          template seeds bytes once, then the user owns them.
+        - Drop any prose that names `vault`, `wikilink`, `hub`, or
+          `note`-as-synonym from the JSDoc itself. The JSDoc describes
+          this module's code, and module code is governed by the
+          storage-agnostic identifier rule.
+
+### 2. Repoint tests to the marker-pair grammar and the renamed `playbook`/`research` fields
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
 - [x] Edit `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.test.ts`.
-      Existing test groups are kept structurally; new test groups
-      land for the new sections.
+      Existing test groups stay structurally; only field-name accesses
+      and a small number of content assertions change.
 
-      - 2a. **Update the round-trip group ("round-trip parses
-            cleanly under the new schema"):**
-            - Existing assertion `expect(result.config.name).toBe(
-              "obsidian")` stays.
-            - Add: `expect(result.playbookHub.length).toBeGreaterThan(0)`
-              and `expect(result.researchHub.length).toBeGreaterThan(0)`
-              — both new sections must round-trip non-empty.
+      - 2a. **Round-trip group ("round-trip parses cleanly under the
+            new schema"):** rename every `result.playbookHub` →
+            `result.playbook` and every `result.researchHub` →
+            `result.research`. The existing
+            `expect(result.playbook.length).toBeGreaterThan(0)` and
+            `expect(result.research.length).toBeGreaterThan(0)`
+            assertions stay; their semantics are identical, only the
+            field name differs.
 
-      - 2b. **Add a new test group: "three-section body shape".**
-            - Assert `result.kind === "ok"` (proves the body grammar
-              accepts the new template — guards against the parser
-              regressing to single-section).
-            - Assert each of `result.prose`, `result.playbookHub`,
-              `result.researchHub` is a non-empty string.
-            - Assert the three fields are byte-distinct from each
-              other (no field accidentally aliased to another).
+      - 2b. **Three-section body shape group:** rename every
+            `result.playbookHub` → `result.playbook` and every
+            `result.researchHub` → `result.research`. The
+            byte-distinct assertion (`result.prose !==
+            result.playbook`, `result.prose !== result.research`,
+            `result.playbook !== result.research`) stays.
 
-      - 2c. **Add a new test group: "Playbook hub section preserves
-            sentinel structure".**
-            - Assert `result.playbookHub` contains `# Coding Playbook`
-              (the H1 title — proves the body bytes carried over
-              intact from the legacy constant).
-            - Assert `result.playbookHub` contains `### Task Routing`
-              (proves nested headings were demoted to H3 per the
-              closed-vocabulary rule).
-            - Assert `result.playbookHub` does NOT contain
-              `## Task Routing` (anchored to start-of-line via
-              `/^## Task Routing$/m` — proves the demotion happened
-              at the right level).
-            - Assert `result.playbookHub` contains
-              `[[your-conventions-note]]` and
-              `[[your-folder-structure-note]]` (the seeded wikilinks).
+      - 2c. **Playbook section sentinel-structure group** (currently
+            "Playbook hub section preserves sentinel structure"):
+            - Rename test group title to "Playbook section preserves
+              sentinel structure" (drop "hub" from the title, per
+              the storage-agnostic vocabulary rule applied to test
+              prose).
+            - Rename every `result.playbookHub` → `result.playbook`.
+            - The H1 sentinel assertion (`result.playbook.toContain(
+              "# Coding Playbook")`) stays.
+            - The H3 sentinel assertion
+              (`result.playbook.toContain("### Task Routing")`) stays.
+            - The negative anchored regex assertion
+              (`result.playbook.not.toMatch(/^## Task Routing$/m)`)
+              stays as a regression test — even though the marker
+              grammar is byte-based and nested `## ` is no longer a
+              parser concern, the demotion is preserved as content
+              hygiene (cleaner Markdown rendering for users editing
+              the file).
+            - The wikilink-placeholder assertions
+              (`result.playbook.toContain("[[your-conventions-note]]")`
+              and `result.playbook.toContain(
+              "[[your-folder-structure-note]]")`) STAY. Those are
+              content scaffolding the user fills in, not prose
+              vocabulary subject to the sweep.
 
-      - 2d. **Add a new test group: "Research hub section ships
-            structural seed".**
-            - Assert `result.researchHub` contains `# Research`
-              (the H1 title).
-            - Assert `result.researchHub` contains `### Domains`
-              (the canonical first sub-heading).
-            - Assert `result.researchHub` contains `### Domain Hubs`.
-            - Assert `result.researchHub` does NOT match
-              `/^## Domains$/m`, `/^## Domain Hubs$/m`, or any other
-              top-level `## ` heading (anchor with `^` and `$`
-              against multi-line mode).
+      - 2d. **Research section structural-seed group** (currently
+            "Research hub section ships structural seed"):
+            - Rename test group title to "Research section ships
+              structural seed".
+            - Rename every `result.researchHub` →
+              `result.research`.
+            - The H1 sentinel assertion
+              (`result.research.toContain("# Research")`) stays.
+            - The H3 sentinel assertions
+              (`result.research.toContain("### Domains")` and
+              `result.research.toContain("### Domain Hubs")`) stay.
+            - The negative anchored regex assertions
+              (`result.research.not.toMatch(/^## Domains$/m)` and
+              `result.research.not.toMatch(/^## Domain Hubs$/m)` and
+              `result.research.not.toMatch(/^## .+$/m)`) all stay
+              as content-hygiene regression tests.
 
-      - 2e. **Add a new test group: "no nested `## ` headings inside
-            any body section".** This is the load-bearing
-            closed-vocabulary regression test. Walk every body
-            field (`prose`, `playbookHub`, `researchHub`) and
-            assert it does NOT contain any `^## .+$` line — the
-            ONLY top-level `## ` headings in the entire template
-            output are the three section boundaries. If a future
-            edit re-introduces a `## ` heading inside a section's
-            body, this test fails and the parser would reject the
-            template at runtime.
+      - 2e. **No-nested-`## `-headings group** (currently "no nested
+            `## ` headings inside any body section"): rename
+            `result.playbookHub` → `result.playbook` and
+            `result.researchHub` → `result.research`. The
+            anchored-regex negation assertions stay. Test group title
+            stays; "body section" is storage-agnostic.
 
-      - 2f. **Update the existing "Schema does not include
-            intent-spec or deprecated fields" group** to confirm
-            the frontmatter block extraction still works against
-            the three-section template. The split heuristic
-            (`content.split("\n---\n")[0]`) still isolates the
-            frontmatter because the body sections do not contain
-            `\n---\n` (the H3 horizontal rules use `---` on its
-            own line surrounded by blank lines, but the heuristic
-            anchors on `\n---\n` with no surrounding whitespace).
-            Verify this assumption by adding an explicit
-            assertion: `expect(content.split("\n---\n").length).
-            toBeGreaterThanOrEqual(2)` — the split must produce at
-            least frontmatter + body. If a future template change
-            breaks this assumption, the assertion fires.
+      - 2f. **Parsed-config group** ("parsed config contains exactly
+            the new fields"): unchanged. This group asserts on
+            `result.config` (frontmatter), which the body grammar
+            switch does not affect.
 
-            BUT: the current Playbook hub bytes (and the new
-            Research hub bytes) include `---` separators between
-            sub-sections of the body. These will absolutely
-            interfere with the naive split. Two options:
-            - Option A: rewrite those sub-section separators in
-              the bytes to use a different visual marker (e.g.
-              omit them, or use blank lines only).
-            - Option B: change the test's frontmatter-extraction
-              heuristic to anchor on the FIRST `\n---\n` only:
-              `content.indexOf("\n---\n")` → slice 0..that index.
+      - 2g. **Path-is-inlined group:** unchanged. Asserts on
+            `result.config.mcpServerConfig.args` — frontmatter only.
 
-            **Pick Option A.** The horizontal-rule separators in
-            the legacy `PLAYBOOK_HUB_TEMPLATE` are visual sugar,
-            not load-bearing structure. Removing them keeps the
-            template easier to edit and avoids forcing every test
-            consumer to learn a non-obvious split heuristic. The
-            implementor strips the `---` separator lines from
-            both the Playbook hub bytes and the Research hub
-            bytes when authoring step 1, leaving the H3 sub-
-            headings to provide the visual structure on their
-            own.
+      - 2h. **Platform-branching groups (Windows + POSIX):** unchanged.
+            Frontmatter only.
 
-      - 2g. **Keep the platform-branching tests (Windows + POSIX)
-            unchanged.** They assert on `command` and `args` —
-            both are frontmatter, unaffected by the body
-            widening.
+      - 2i. **Windows path round-trip group:** unchanged. Frontmatter
+            only.
 
-      - 2h. **Keep the "interpolateArgs is a no-op on the default
-            scaffold" tests unchanged.** Substitution surface is
-            `mcpServerConfig.args` only; body sections are
-            outside its scope.
+      - 2j. **Prose body sentinel-phrases group:** the load-bearing
+            change. Current assertions include forbidden-token checks
+            (`expect(result.prose).toContain("wikilink")` per the
+            current test file). After the vocabulary sweep in step 1,
+            the prose body no longer contains those tokens, so those
+            assertions WILL FAIL on the rewritten body.
 
-      - 2i. **Keep the "prose body sentinel phrases preserved"
-            tests unchanged.** They assert on `result.prose`,
-            which is structurally isolated from the new sections.
+            DROP these assertions:
+              - `expect(result.prose).toContain("wikilink")` —
+                vocabulary sweep removed `wikilink` from the body.
 
-### 3. Verify the template in isolation
+            KEEP these assertions (they target storage-agnostic
+            sentinels still present in the rewritten body):
+              - `expect(result.prose.trim().length).toBeGreaterThan(0)`
+              - `expect(result.prose).toContain(
+                "mcp__brain__read_note")`
+              - `expect(result.prose).toContain(
+                "mcp__brain__search_notes")`
+              - `expect(result.prose).toContain(
+                "coding-playbook/coding-playbook.md")`
+              - `expect(result.prose).toContain(
+                "research/research.md")`
+
+            ADD these new assertions to anchor the storage-agnostic
+            rewrite (negative regressions — the rewrite must not
+            re-introduce the forbidden tokens):
+              - `expect(result.prose).not.toMatch(/\bvault\b/i)` —
+                the prose body MUST NOT contain the `vault` token
+                (case-insensitive, word-boundary-anchored).
+              - `expect(result.prose).not.toMatch(/\bwikilink\b/i)` —
+                the prose body MUST NOT contain `wikilink`.
+              - `expect(result.prose).not.toMatch(/\bhub\b/i)` — the
+                prose body MUST NOT contain the standalone word
+                `hub` (case-insensitive, word-boundary-anchored).
+                The literal H1 title `# Coding Playbook` lives in
+                the playbook section, not in `result.prose`, so
+                this regex is safe to anchor on `result.prose`
+                only.
+
+            Test group title becomes "prose body uses
+            storage-agnostic vocabulary and preserves entry-point
+            sentinels".
+
+      - 2k. **interpolateArgs is a no-op group:** unchanged.
+            Frontmatter only.
+
+      - 2l. **Schema does not include intent-spec or deprecated
+            fields group:** unchanged. Frontmatter only.
+
+### 3. Verify the helper in isolation
 
 Read: `coding-playbook/workflow/testing`
 
-- [x] 3a. Run `npm test -- obsidianBrainAideTemplate`. Every test
-      in the file must pass. If any fails:
-      - A round-trip failure (`result.kind === "malformed-body"`)
-        indicates either (a) the parser's three-section grammar
-        has not yet landed (`parseBrainAide`'s plan is the
-        prerequisite — escalate) OR (b) the template body
-        contains an undeclared top-level `## ` heading the
-        parser rejects (find the offending line via the
-        `unknown heading: <X>` reason and demote it to `### `).
-      - A sentinel-content failure (`result.playbookHub` missing
-        `[[your-conventions-note]]` etc.) indicates the byte
-        copy from the legacy constant lost characters. Re-copy
-        from `../index.ts`'s `PLAYBOOK_HUB_TEMPLATE`.
+- [x] 3a. Run `npm test -- obsidianBrainAideTemplate`. All tests
+      must pass. Likely failure modes:
+        - A round-trip failure (`result.kind === "malformed-body"`)
+          indicates the marker-pair grammar in the emitted body has
+          a typo — confirm every opener and closer is byte-identical
+          to the recognized form (`<!-- aide-<token>-start -->` and
+          `<!-- aide-<token>-end -->`, lowercase, with single ASCII
+          spaces around the token).
+        - A prose-vocabulary regression assertion
+          (`expect(result.prose).not.toMatch(/\bvault\b/i)`) fails
+          if a missed `vault` token survived the sweep — find and
+          rewrite.
+        - A playbook-sentinel assertion (`# Coding Playbook` etc.)
+          fails if the section bytes were misplaced — confirm the
+          bytes between `<!-- aide-playbook-start -->` and
+          `<!-- aide-playbook-end -->` carry the H1, the table, and
+          the H3 sub-sections.
 
-- [x] 3b. Run `npx tsc --noEmit`. The template helper has no
-      type changes — typecheck is a sanity check that the
-      JSDoc edits didn't break the imports. Downstream
-      consumer (`provisionBrain`) will surface separate type
-      errors because `PLAYBOOK_HUB_TEMPLATE` and the CLAUDE.md
-      template constants will be deleted in its plan; record
-      those errors but do not fix them here.
+- [x] 3b. Run `npx tsc --noEmit` from the project root. The helper
+      file itself must compile cleanly. The orchestrator
+      (`provisionBrain/index.ts`) WILL still surface the breakage
+      cited in the breakage report at this point — those errors
+      are the orchestrator plan's scope, not this plan's. Record
+      the failing files and lines in the implementor's hand-off
+      message; do not fix them in this plan.
 
 ## Decisions
 
 - **Helper folder name stays `obsidianBrainAideTemplate/`.** The
-  spec's strategy paragraph "The bundled-default-brain.aide
-  template helper keeps its current name and folder" calls this
-  out explicitly: the name describes the CONTENT (Obsidian-
-  flavored prose, Obsidian-flavored hub bytes), not a code-level
-  branch. The package never branches on Obsidian; the template
-  ships Obsidian-flavored content because Obsidian is the most
-  common storage choice. Renaming to `defaultBrainAideTemplate/`
-  would obscure that the bytes are Obsidian-shaped, and would
-  imply (incorrectly) that the package has a generic-default
-  vs. backend-specific abstraction. There is none: this is the
-  one default, and it is Obsidian-flavored.
+  parent spec's strategy paragraph and outcomes.undesired call out
+  this folder name explicitly as one of the three forbidden-token
+  carve-outs. The name describes the bundled CONTENT (the default
+  scaffolded brain.aide is Obsidian-flavored — Obsidian-flavored
+  prose, Obsidian-flavored playbook seed bytes with `[[wikilink]]`
+  placeholders, Obsidian-flavored research seed) — not a code-level
+  branch. Renaming would obscure that the bundled bytes are
+  Obsidian-shaped. Decision is preserved verbatim from the prior
+  cycle's plan.
 
-- **Playbook hub bytes are CARRIED FORWARD from the legacy
-  constant, not re-authored.** The current
-  `PLAYBOOK_HUB_TEMPLATE` constant in
-  `src/service/install/provisionBrain/index.ts` is the canonical
-  source of those bytes — it has already been reviewed and
-  accepted by the user as the seed shape. Re-authoring it in
-  this plan would invite drift between "what the legacy install
-  scaffolded" and "what the new install scaffolds." The
-  implementor copies the constant's body verbatim into the
-  template's `## Playbook hub` section, with one mechanical
-  transformation: every nested `## ` heading becomes `### ` so
-  the closed-vocabulary parser does not mistake them for
-  section boundaries.
+- **Playbook and research section bytes are STRUCTURALLY preserved
+  from the prior cycle's emission.** The H1, the H3 table skeleton,
+  the H3 guidance blocks, the H3 placeholder lists — all carry
+  forward byte-for-byte. The user has already accepted these as the
+  seed shape (the prior plan executed and the user approved the
+  bytes). Re-authoring would invite drift between "what the prior
+  cycle scaffolded" and "what this cycle scaffolds." The only
+  change to those sections is the marker delimiters wrapping them
+  — the contents between markers are byte-equal to the contents
+  between the retired headings.
 
-- **Research hub bytes are brand-new content, modeled on the
-  Playbook hub's shape.** The user has not previously shipped
-  a research hub seed; this plan is the first time that bytes
-  land. The architectural decision is to mirror the Playbook
-  hub's structural shape (H1 title, "How to Use This Index"
-  guidance, table skeleton, empty placeholder list) so a user
-  reading both seeds gets the same navigational pattern in two
-  parallel surfaces. The Research hub specifically:
-  - Uses `### Domains` as the entry table (mirroring `### Task
-    Routing` on the Playbook hub).
-  - Uses `### Domain Hubs` as the placeholder section users
-    fill in with per-domain hub references (mirroring
-    `### Sections` on the Playbook hub).
-  - Includes a "How to Use This Index" guidance block that
-    states the research-specific navigation rule: "drill into
-    the domain that matches your task; do not flat-search
-    across every domain."
-  - Stays content-skeleton: zero domain-specific content, zero
-    seeded entries. The user populates it with their own
-    domains. The package never invents research content.
+- **Nested `## ` → `### ` demotion stays even though the parser no
+  longer cares.** The prior cycle's heading-walking parser required
+  every nested `## ` inside a section body to demote to `### ` so
+  the parser would not misread it as a section boundary. The new
+  marker-pair walker is byte-based, so nested `## ` is no longer a
+  parser concern. But the demotion stays as CONTENT HYGIENE: every
+  top-level `## ` in the seeded artifact is a section boundary by
+  user convention, even though the parser has stopped enforcing it.
+  Reverting the demotion would re-introduce visual ambiguity in the
+  rendered Markdown for users editing the file. The negative regex
+  assertions in step 2c and 2d preserve this convention as a
+  regression test.
 
-- **Nested `## ` headings inside body sections become `### `.**
-  The parser's closed-vocabulary walker scans for `^## .+$` and
-  treats every match as a section-boundary candidate. To make
-  the template parse cleanly, every `## ` heading inside any
-  section body must demote to `### ` (or deeper). This is a
-  byte-level constraint imposed by the parser's body grammar;
-  the template author and the parser author agree that
-  top-level `## ` headings are reserved for section boundaries.
-  The legacy `PLAYBOOK_HUB_TEMPLATE` used `## ` for sub-section
-  headings (a holdover from when the constant lived outside any
-  enclosing section), so the demotion is mechanical: `## ` →
-  `### ` everywhere inside both new sections. This is the
-  load-bearing rule for any future addition to either body —
-  documented in the test (step 2e) so a regression fires on
-  reintroduction.
+- **Prose body switches to storage-agnostic vocabulary, but tool
+  names and file paths are sentinels that stay.**
+  `mcp__brain__read_note` and `mcp__brain__search_notes` are MCP
+  tool names the agent must call by their exact registered name —
+  they are not subject to the vocabulary sweep because they are
+  not project prose. The entry-point file paths
+  (`coding-playbook/coding-playbook.md`,
+  `research/research.md`) are framework contracts the prose
+  references for the agent's benefit; they stay as-is. Everything
+  else in the prose body is storage-agnostic project prose subject
+  to the sweep.
 
-- **Visual `---` horizontal-rule separators are removed from
-  the body bytes.** The legacy `PLAYBOOK_HUB_TEMPLATE` used
-  `\n---\n` between sub-sections as visual sugar. Carrying
-  those separators forward would interfere with the
-  frontmatter-extraction heuristic
-  (`content.split("\n---\n")[0]`) the existing test suite uses
-  to isolate the YAML block, and would also force every test
-  consumer to learn a non-obvious split rule. The H3 sub-
-  headings provide enough structure on their own; the
-  separators are visual sugar that the user can re-add by hand
-  if they want. Removing them at the seed level keeps the
-  template simpler and the test suite simpler.
+- **Playbook section's `[[wikilink]]` placeholders are NOT subject
+  to the vocabulary sweep.** The vocabulary sweep applies to module
+  prose (sentence-level descriptions of the brain). The
+  `[[your-conventions-note]]` and
+  `[[your-folder-structure-note]]` strings inside the playbook
+  section are CONTENT SCAFFOLDING — placeholder anchors the user
+  fills in on first edit. They live in the bytes that ship to the
+  user's brain as the playbook entry-point artifact, not in the
+  prose section. The user's brain is Obsidian-shaped by default
+  (per the helper folder name's carve-out), and Obsidian users
+  navigate via wikilinks. Removing the placeholders would orphan
+  the user with an empty entry-point artifact. The
+  storage-agnostic rule applies to prose, not to scaffolding the
+  user is meant to replace.
 
-- **Frontmatter and prose body are unchanged.** The schema
-  collapse already settled the frontmatter shape (`name` +
-  `mcpServerConfig`); the prose body's sentinel phrases
-  (`mcp__brain__read_note`, `mcp__brain__search_notes`,
-  `CLAUDE.md`, `wikilink`) are still correct under the
-  storage-agnostic identifier rule because they are CONTENT
-  (Obsidian-flavored prose), not code identifiers. The
-  identifier-naming rule applies to TypeScript names and
-  inline string constants in code, not to template body
-  content the user is supposed to read and edit. So the prose
-  body carries forward verbatim.
+- **`expect(result.prose).toContain("wikilink")` is the only test
+  assertion that gets DROPPED, not rewritten.** That assertion
+  asserted on the prior body's vocabulary; the new body no longer
+  contains the token. Dropping the assertion is correct (it
+  asserted a now-falsified content fact). The replacement
+  assertions are the negative regressions in step 2j that anchor
+  the storage-agnostic rewrite — they assert what the new body
+  MUST NOT contain.
 
-- **The `## Prose` body keeps the wikilink-protocol guidance
-  it currently has.** A separate consideration could be made
-  about moving wikilink-crawling protocols out of the prose
-  and into pipeline prompts (per the spec's storage-agnostic
-  rule about methodology guidance). But that prose IS user-
-  editable — the user can rewrite it the moment they decide
-  their brain is not Obsidian. The package's job here is to
-  ship a working Obsidian default, and the wikilink protocol
-  is a load-bearing piece of how an Obsidian agent navigates
-  the seeded brain. The methodology-belongs-in-prompts rule
-  applies to CODE in `provisionBrain/index.ts` (which the
-  separate provisionBrain plan addresses), not to TEMPLATE
-  CONTENT in this helper.
+- **Marker placement uses single ASCII spaces around the token.**
+  The parser's recognized marker form is byte-exact:
+  `<!-- aide-prose-start -->` (one space after `<!--`, one space
+  before `-->`, lowercase token, no extra whitespace). The
+  template emits this exact form for every opener and closer. The
+  parser's malformed-marker scan rejects any other whitespace
+  shape (e.g. `<!-- aide-prose-start  -->` with two trailing
+  spaces or `<!--aide-prose-start-->` with no spaces) as
+  `unknown marker`. The template MUST match the recognized form
+  exactly to avoid round-trip failures.
 
-- **No new helper subfolder.** The template emits a single
-  string from a single function with platform-branched
-  frontmatter and three byte-block sections. The current file
-  is ~50 lines; the rewrite grows it to ~150 (frontmatter
-  unchanged + ~50 lines of new section bytes each for
-  Playbook and Research). Still well under the
+- **The `## Prose` / `## Playbook hub` / `## Research hub`
+  headings are removed entirely, not transformed.** The prior
+  cycle's heading-bounded body had three `## ` headings as
+  section boundaries; the marker-pair body replaces them with
+  six marker lines. The headings do not survive in any form —
+  they are not transformed into H1s, they are not preserved as
+  comments, they simply go away. Each section opens and closes
+  with its marker pair only; the section's content starts on the
+  line after the opener (with a blank line for readability).
+
+- **Frontmatter shape is unchanged.** The schema collapse already
+  settled the frontmatter to two top-level fields (`name` +
+  `mcpServerConfig`); the platform branching and path-inline
+  decisions all stay. This plan touches the body grammar only.
+
+- **No new helper subfolder.** The template still emits a single
+  string from a single function. The file size grows slightly to
+  accommodate the marker lines but stays well under the
   progressive-disclosure threshold for splitting. If a future
-  refactor introduces per-section composition logic (e.g.
-  reading section bodies from sibling files), factor each
-  responsibility into its own subfolder at that point.
+  refactor introduces per-section composition logic (e.g. reading
+  section bodies from sibling files), factor each responsibility
+  into its own subfolder at that point.

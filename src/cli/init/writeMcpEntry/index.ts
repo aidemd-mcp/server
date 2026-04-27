@@ -19,7 +19,7 @@ export interface WriteMcpEntryResult {
  * Pipeline:
  * 1. Computes the `aide` entry via `mcpEntry()`.
  * 2. When `vaultPath` is supplied:
- *    - Computes the canonical Obsidian brain.aide template content.
+ *    - Computes the canonical Obsidian brain.aide template content for the brain root path.
  *    - If `.aide/config/brain.aide` exists on disk, reads it (user edits win
  *      over the template). Otherwise uses the in-memory template content.
  *      The file lives inside the user-owned `.aide/config/` directory; this
@@ -50,7 +50,7 @@ export default async function writeMcpEntry(
 	};
 
 	if (vaultPath !== undefined) {
-		// Compute the canonical template content for this vault path.
+		// Compute the canonical template content for this brain root path.
 		const templateContent = obsidianBrainAideTemplate(vaultPath);
 
 		// If brain.aide already exists on disk, use the user's version; otherwise

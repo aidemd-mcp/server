@@ -66,8 +66,8 @@ describe("round-trip parses cleanly under the new schema", () => {
 		if (result.kind !== "ok") return;
 
 		expect(result.config.name).toBe("obsidian");
-		expect(result.playbookHub.length).toBeGreaterThan(0);
-		expect(result.researchHub.length).toBeGreaterThan(0);
+		expect(result.playbook.length).toBeGreaterThan(0);
+		expect(result.research.length).toBeGreaterThan(0);
 	});
 
 	it("parseBrainAideFromString produces the same ok result as writing to disk", async () => {
@@ -107,160 +107,160 @@ describe("three-section body shape", () => {
 		expect(result.prose.length).toBeGreaterThan(0);
 	});
 
-	it("playbookHub is a non-empty string", async () => {
+	it("playbook is a non-empty string", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(typeof result.playbookHub).toBe("string");
-		expect(result.playbookHub.length).toBeGreaterThan(0);
+		expect(typeof result.playbook).toBe("string");
+		expect(result.playbook.length).toBeGreaterThan(0);
 	});
 
-	it("researchHub is a non-empty string", async () => {
+	it("research is a non-empty string", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(typeof result.researchHub).toBe("string");
-		expect(result.researchHub.length).toBeGreaterThan(0);
+		expect(typeof result.research).toBe("string");
+		expect(result.research.length).toBeGreaterThan(0);
 	});
 
-	it("prose, playbookHub, and researchHub are byte-distinct from each other", async () => {
+	it("prose, playbook, and research are byte-distinct from each other", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).not.toBe(result.playbookHub);
-		expect(result.prose).not.toBe(result.researchHub);
-		expect(result.playbookHub).not.toBe(result.researchHub);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Playbook hub section preserves sentinel structure
-// ---------------------------------------------------------------------------
-
-describe("Playbook hub section preserves sentinel structure", () => {
-	it("playbookHub contains the H1 title '# Coding Playbook'", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.playbookHub).toContain("# Coding Playbook");
-	});
-
-	it("playbookHub contains '### Task Routing' (nested heading demoted to H3)", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.playbookHub).toContain("### Task Routing");
-	});
-
-	it("playbookHub does NOT contain '## Task Routing' at the start of a line", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.playbookHub).not.toMatch(/^## Task Routing$/m);
-	});
-
-	it("playbookHub contains '[[your-conventions-note]]'", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.playbookHub).toContain("[[your-conventions-note]]");
-	});
-
-	it("playbookHub contains '[[your-folder-structure-note]]'", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.playbookHub).toContain("[[your-folder-structure-note]]");
+		expect(result.prose).not.toBe(result.playbook);
+		expect(result.prose).not.toBe(result.research);
+		expect(result.playbook).not.toBe(result.research);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Research hub section ships structural seed
+// Playbook section preserves sentinel structure
 // ---------------------------------------------------------------------------
 
-describe("Research hub section ships structural seed", () => {
-	it("researchHub contains the H1 title '# Research'", async () => {
+describe("Playbook section preserves sentinel structure", () => {
+	it("playbook contains the H1 title '# Coding Playbook'", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.researchHub).toContain("# Research");
+		expect(result.playbook).toContain("# Coding Playbook");
 	});
 
-	it("researchHub contains '### Domains' (nested heading at H3)", async () => {
+	it("playbook contains '### Task Routing' (nested heading demoted to H3)", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.researchHub).toContain("### Domains");
+		expect(result.playbook).toContain("### Task Routing");
 	});
 
-	it("researchHub contains '### Domain Hubs'", async () => {
+	it("playbook does NOT contain '## Task Routing' at the start of a line", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.researchHub).toContain("### Domain Hubs");
+		expect(result.playbook).not.toMatch(/^## Task Routing$/m);
 	});
 
-	it("researchHub does NOT contain '## Domains' at the start of a line", async () => {
+	it("playbook contains '[[your-conventions-note]]'", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.researchHub).not.toMatch(/^## Domains$/m);
+		expect(result.playbook).toContain("[[your-conventions-note]]");
 	});
 
-	it("researchHub does NOT contain '## Domain Hubs' at the start of a line", async () => {
+	it("playbook contains '[[your-folder-structure-note]]'", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.researchHub).not.toMatch(/^## Domain Hubs$/m);
+		expect(result.playbook).toContain("[[your-folder-structure-note]]");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Research section ships structural seed
+// ---------------------------------------------------------------------------
+
+describe("Research section ships structural seed", () => {
+	it("research contains the H1 title '# Research'", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.research).toContain("# Research");
 	});
 
-	it("researchHub has no top-level '## ' heading at all", async () => {
+	it("research contains '### Domains' (nested heading at H3)", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.researchHub).not.toMatch(/^## .+$/m);
+		expect(result.research).toContain("### Domains");
+	});
+
+	it("research contains '### Domain Hubs'", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.research).toContain("### Domain Hubs");
+	});
+
+	it("research does NOT contain '## Domains' at the start of a line", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.research).not.toMatch(/^## Domains$/m);
+	});
+
+	it("research does NOT contain '## Domain Hubs' at the start of a line", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.research).not.toMatch(/^## Domain Hubs$/m);
+	});
+
+	it("research has no top-level '## ' heading at all", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.research).not.toMatch(/^## .+$/m);
 	});
 });
 
@@ -279,24 +279,24 @@ describe("no nested '## ' headings inside any body section", () => {
 		expect(result.prose).not.toMatch(/^## .+$/m);
 	});
 
-	it("playbookHub contains no '^## .+$' lines", async () => {
+	it("playbook contains no '^## .+$' lines", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbookHub).not.toMatch(/^## .+$/m);
+		expect(result.playbook).not.toMatch(/^## .+$/m);
 	});
 
-	it("researchHub contains no '^## .+$' lines", async () => {
+	it("research contains no '^## .+$' lines", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.researchHub).not.toMatch(/^## .+$/m);
+		expect(result.research).not.toMatch(/^## .+$/m);
 	});
 });
 
@@ -480,10 +480,10 @@ describe("platform branching — POSIX", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Prose body sentinel phrases preserved
+// Prose body uses storage-agnostic vocabulary and preserves entry-point sentinels
 // ---------------------------------------------------------------------------
 
-describe("prose body sentinel phrases preserved", () => {
+describe("prose body uses storage-agnostic vocabulary and preserves entry-point sentinels", () => {
 	it("prose is non-empty", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
@@ -514,7 +514,7 @@ describe("prose body sentinel phrases preserved", () => {
 		expect(result.prose).toContain("mcp__brain__search_notes");
 	});
 
-	it("prose contains coding-playbook/coding-playbook.md (new entry hub pointer)", async () => {
+	it("prose contains coding-playbook/coding-playbook.md (new entry-point pointer)", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
@@ -524,7 +524,7 @@ describe("prose body sentinel phrases preserved", () => {
 		expect(result.prose).toContain("coding-playbook/coding-playbook.md");
 	});
 
-	it("prose contains research/research.md (new entry hub pointer)", async () => {
+	it("prose contains research/research.md (new entry-point pointer)", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
@@ -534,14 +534,34 @@ describe("prose body sentinel phrases preserved", () => {
 		expect(result.prose).toContain("research/research.md");
 	});
 
-	it("prose contains wikilink", async () => {
+	it("prose does not contain the word 'vault'", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).toContain("wikilink");
+		expect(result.prose).not.toMatch(/\bvault\b/i);
+	});
+
+	it("prose does not contain the word 'wikilink'", async () => {
+		const content = await getTemplate("/vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.prose).not.toMatch(/\bwikilink\b/i);
+	});
+
+	it("prose does not contain the standalone word 'hub'", async () => {
+		const content = await getTemplate("/vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.prose).not.toMatch(/\bhub\b/i);
 	});
 });
 

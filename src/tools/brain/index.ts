@@ -30,7 +30,7 @@ export const BrainInput = z.object({});
  * work.
  *
  * Response contract:
- * - On `status: "ok"`, `instructions` is the verbatim `## Prose` body from
+ * - On `status: "ok"`, `instructions` is the verbatim prose body from
  *   `.aide/config/brain.aide`, byte-identical to what the user wrote. No trimming,
  *   no normalization, no `${...}` substitution of any kind.
  * - On every non-ok `BrainState` status, `instructions` is a fixed
