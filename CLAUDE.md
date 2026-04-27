@@ -41,3 +41,11 @@ This project ships agent definitions (`.claude/agents/`), command prompts (`.cla
 - **Do NOT save it as a feedback memory.** Memory is private to this machine. Canonical docs ship with the package and apply everywhere.
 
 The test: "Will other projects benefit from this fix?" If yes → canonical doc. If it's purely about how *this user* wants to interact → memory.
+
+## Don't Run the Pipeline on the Agent Harness
+
+This repo's primary work is editing `.claude/agents/`, `.claude/commands/`, and `.claude/skills/` — those ARE the canonical agent definitions, command prompts, and skill prompts that ship to host projects via `aide_init`. They are the runtime of the AIDE pipeline; running the pipeline *against* them is a circular dependency.
+
+**Do NOT spawn `/aide` (spec → research → synthesize → plan → build → QA → fix) on `.claude/` files.** No per-agent or per-command `.aide` specs (e.g., `.claude/commands/aide/aide.aide`). When agent, command, or skill behavior needs to change, edit the canonical file directly.
+
+`.aide/docs/`, `.aide/intent.aide`, and `.aide/config/brain.aide` ARE pipeline-appropriate — they describe code contracts and evolve alongside code changes. The rule applies specifically to the prompt/agent/skill definition surfaces under `.claude/`.

@@ -85,11 +85,11 @@ describe("round-trip parses cleanly under the new schema", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Three-section body shape
+// Four-section body shape
 // ---------------------------------------------------------------------------
 
-describe("three-section body shape", () => {
-	it("result.kind is ok — parser accepts the three-section body grammar", async () => {
+describe("four-section body shape", () => {
+	it("result.kind is ok — parser accepts the four-section body grammar", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
@@ -129,7 +129,18 @@ describe("three-section body shape", () => {
 		expect(result.research.length).toBeGreaterThan(0);
 	});
 
-	it("prose, playbook, and research are byte-distinct from each other", async () => {
+	it("studyPlaybook is a non-empty string", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(typeof result.studyPlaybook).toBe("string");
+		expect(result.studyPlaybook.length).toBeGreaterThan(0);
+	});
+
+	it("prose, playbook, studyPlaybook, and research are byte-distinct from each other", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
@@ -137,8 +148,11 @@ describe("three-section body shape", () => {
 		if (result.kind !== "ok") return;
 
 		expect(result.prose).not.toBe(result.playbook);
+		expect(result.prose).not.toBe(result.studyPlaybook);
 		expect(result.prose).not.toBe(result.research);
+		expect(result.playbook).not.toBe(result.studyPlaybook);
 		expect(result.playbook).not.toBe(result.research);
+		expect(result.studyPlaybook).not.toBe(result.research);
 	});
 });
 
@@ -157,24 +171,14 @@ describe("Playbook section preserves sentinel structure", () => {
 		expect(result.playbook).toContain("# Coding Playbook");
 	});
 
-	it("playbook contains '### Task Routing' (nested heading demoted to H3)", async () => {
+	it("playbook contains '## Task Routing' (top-level sub-section under # Coding Playbook)", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbook).toContain("### Task Routing");
-	});
-
-	it("playbook does NOT contain '## Task Routing' at the start of a line", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.playbook).not.toMatch(/^## Task Routing$/m);
+		expect(result.playbook).toMatch(/^## Task Routing$/m);
 	});
 
 	it("playbook contains '[[your-conventions-note]]'", async () => {
@@ -195,6 +199,106 @@ describe("Playbook section preserves sentinel structure", () => {
 		if (result.kind !== "ok") return;
 
 		expect(result.playbook).toContain("[[your-folder-structure-note]]");
+	});
+
+	it("playbook contains '## How to Use This Index' (parent for Always Read First)", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.playbook).toMatch(/^## How to Use This Index$/m);
+	});
+
+	it("playbook does NOT contain procedural Step-1/Step-2/Step-3 narration", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.playbook).not.toContain("Step 1:");
+		expect(result.playbook).not.toContain("Step 2:");
+		expect(result.playbook).not.toContain("Step 3:");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// studyPlaybook section ships the navigation methodology
+// ---------------------------------------------------------------------------
+
+describe("studyPlaybook section ships the navigation methodology", () => {
+	it("studyPlaybook starts with an H1 heading", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.studyPlaybook.trimStart().startsWith("# ")).toBe(true);
+	});
+
+	it("studyPlaybook contains 'Step 1' procedural marker", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.studyPlaybook.includes("Step 1")).toBe(true);
+	});
+
+	it("studyPlaybook contains 'Step 2' procedural marker", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.studyPlaybook.includes("Step 2")).toBe(true);
+	});
+
+	it("studyPlaybook contains 'Step 3' procedural marker", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.studyPlaybook.includes("Step 3")).toBe(true);
+	});
+
+	it("studyPlaybook contains 'Navigation Rules' heading", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.studyPlaybook.includes("Navigation Rules")).toBe(true);
+	});
+
+	it("studyPlaybook contains the depth-counting example anchor", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.studyPlaybook).toMatch(/depth 0/i);
+		expect(result.studyPlaybook).toMatch(/depth 1/i);
+	});
+
+	it("studyPlaybook contains the [[wikilink]] literal substring (user-owned-section carve-out)", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.studyPlaybook.includes("[[")).toBe(true);
+		expect(result.studyPlaybook.includes("]]")).toBe(true);
 	});
 });
 
@@ -277,16 +381,6 @@ describe("no nested '## ' headings inside any body section", () => {
 		if (result.kind !== "ok") return;
 
 		expect(result.prose).not.toMatch(/^## .+$/m);
-	});
-
-	it("playbook contains no '^## .+$' lines", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.playbook).not.toMatch(/^## .+$/m);
 	});
 
 	it("research contains no '^## .+$' lines", async () => {
@@ -551,7 +645,7 @@ describe("prose body uses storage-agnostic vocabulary and preserves entry-point 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).not.toMatch(/\bwikilink\b/i);
+		expect(result.prose).not.toMatch(/\bwikilinks?\b/i);
 	});
 
 	it("prose does not contain the standalone word 'hub'", async () => {

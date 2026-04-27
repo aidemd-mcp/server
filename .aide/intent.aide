@@ -1,7 +1,7 @@
 ---
 scope: .
 description: >
-  Canonical home of the AIDE methodology and the MCP server that delivers it — single source of truth for every downstream host project, with brain configuration owned by the user via a single editable file rather than by code-level backend registries.
+  Canonical home of the AIDE methodology and the MCP server that delivers it — single source of truth for every downstream host project, with brain configuration owned by the user via a single editable file rather than by code-level backend registries. The brain config file's body carries four marker-bounded sections (prose, playbook, studyPlaybook, research) and seeds three required entry-point artifacts (coding-playbook + study-playbook + research) on cold install. The package's code surface stays storage-agnostic; the bundled obsidian-flavored default legitimately ships connector-specific content inside the body section bytes because the bundled template IS the obsidian default and those bytes are user-owned the moment they land.
 intent: >
   This repository is the canonical home of the AIDE methodology — Autonomous
   Intent-Driven Engineering, with a deliberate second reading as AI Domain
@@ -69,9 +69,9 @@ outcomes:
       written into `.mcp.json`). Every other agent-facing concern —
       which MCP tool to call for reads, searches, writes, navigation;
       where to start; how to follow links — lives in the hand-written
-      body sections, owned per consumer (the prose section, the playbook
-      section, the research section — see the body-schema outcome
-      below). The default scaffolded `brain.aide` makes no use of
+      body sections, owned per consumer (the prose section, the
+      playbook section, the studyPlaybook section, the research
+      section — see the body-schema outcome below). The default scaffolded `brain.aide` makes no use of
       substitution: `mcpServerConfig.args` carries the path inline,
       byte-for-byte under user ownership. The parser still supports
       `${...}` interpolation of frontmatter fields inside
@@ -82,33 +82,63 @@ outcomes:
       Adding, replacing, or retargeting a brain is a host-side edit to
       one file followed by a sync, never a code change to this package.
     - >-
-      The body of `brain.aide` is parsed as exactly three named sections
-      — `prose`, `playbook`, and `research` — delimited by paired
-      HTML-comment markers that the parser recognizes case-sensitively
-      and lowercase-only. The recognized markers, in required order, are
-      the `<!-- aide-prose-start -->` / `<!-- aide-prose-end -->` pair,
-      the `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`
-      pair, and the `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
-      pair — six markers total, three pairs, each section opened and
-      closed by its own distinct tokens. The convention extends the
-      existing `writeMethodology` HTML-comment marker precedent (same
-      lowercase shape, distinct open/close per section). Marker layout
-      violations are hard failures returning `malformed-body` naming the
-      violating marker — missing pair, malformed or typo'd marker,
-      unmatched close without prior open, open without close, wrong
-      section order, nested markers all halt the pipeline. Bytes outside
-      any marked section — between frontmatter and the first opener,
+      "The body of `brain.aide` is parsed as exactly four named sections
+      — `prose`, `playbook`, `studyPlaybook`, and `research` — delimited
+      by paired HTML-comment markers that the parser recognizes
+      case-sensitively and lowercase-only. The recognized markers, in
+      required order, are the `<!-- aide-prose-start -->` /
+      `<!-- aide-prose-end -->` pair, the `<!-- aide-playbook-start -->` /
+      `<!-- aide-playbook-end -->` pair, the
+      `<!-- aide-study-playbook-start -->` /
+      `<!-- aide-study-playbook-end -->` pair, and the
+      `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
+      pair — eight markers total, four pairs, each section opened and
+      closed by its own distinct tokens. The kebab-case marker token
+      `study-playbook` populates the camelCase parsed field
+      `studyPlaybook` (no `Hub` suffix; the `Hub`-suffix shape is a
+      retired regression class). The convention extends the existing
+      `writeMethodology` HTML-comment marker precedent (same lowercase
+      shape, distinct open/close per section). Marker layout violations
+      are hard failures returning `malformed-body` naming the violating
+      marker — missing pair, malformed or typo'd marker, unmatched
+      close without prior open, open without close, wrong section
+      order, nested markers all halt the pipeline. Bytes outside any
+      marked section — between frontmatter and the first opener,
       between any closer and the next opener, after the last closer —
       are silently ignored by the parser; the parser's job is to
-      extract the three named sections, not to police the rest of the
+      extract the four named sections, not to police the rest of the
       file, so users may keep notes-to-self, scratch text, or comments
       in those regions without warning or error. Pre-pivot `brain.aide`
       files using the old heading-based body schema (`## Prose` /
-      `## Playbook hub` / `## Research hub` with no markers) return
-      `malformed-body` naming the missing markers — there is no
-      transitional read path; users hand-edit, consistent with the
-      existing strict-failure migration invariant for body schema
-      changes.
+      `## Playbook hub` / `## Research hub` with no markers), and
+      pre-amendment three-section marker-bounded files (prose,
+      playbook, research only — missing the
+      `aide-study-playbook-start` / `aide-study-playbook-end` pair),
+      both return `malformed-body` naming the missing markers
+      specifically — there is no transitional read path and no
+      `aide_upgrade` carve-out that auto-injects the missing pair;
+      users hand-edit, consistent with the existing strict-failure
+      migration invariant for body schema changes."
+    - >-
+      "The framework's brain contract on cold install is exactly three
+      required entry-point artifacts seeded from named body sections of
+      `brain.aide`: the coding-playbook entry-point artifact (sourced
+      from the `playbook` section), the study-playbook entry-point
+      artifact (sourced from the `studyPlaybook` section, holding the
+      backend-specific playbook-navigation prose the `study-playbook`
+      skill points at), and the research entry-point artifact (sourced
+      from the `research` section). For an editor-backed Markdown
+      brain — the bundled default's storage shape — those artifacts
+      land at `coding-playbook/coding-playbook.md`,
+      `coding-playbook/study-playbook.md`, and `research/research.md`
+      respectively; how they manifest in any other storage is the
+      user's `brain.aide` concern, not the package's. Every artifact's
+      bytes flow from a `brain.aide` body section through the parser,
+      never from an inline TypeScript constant in the install module.
+      The agent-side `study-playbook` skill stays minimal: it points
+      at the on-disk study-playbook entry-point artifact and the
+      navigation methodology travels with the user-owned brain
+      template, not with the package's release cycle."
     - >-
       `brain.aide` is a documented AIDE file type sitting alongside
       `intent.aide`, `plan.aide`, `todo.aide`, and `research.aide` in
@@ -215,30 +245,47 @@ outcomes:
       the healthy case, the absence of `brain.aide`, the absence of the
       `.mcp.json` brain entry, and the drift case respectively.
     - >-
-      Storage-agnostic vocabulary across every surface this package
+      "Storage-agnostic vocabulary across every surface this package
       authors. The forbidden-token list — `vault`, `obsidian`, `note`
-      (used as a synonym for "file"), `wikilink`, `hub note`, and `hub`
-      — must not appear in any user-facing prose surface (MCP tool
-      descriptions, the README, the canonical methodology docs under
-      `.aide/docs/`, slash-command prompts under `.claude/commands/`,
-      agent definitions under `.claude/agents/`, and every `.aide`
-      spec authored in this repo) nor in code identifiers, comments,
-      or string constants project-wide. The brain layer is described
-      to agents and users in storage-agnostic terms — "brain", "brain
-      root", "the brain's prose section", "the playbook section", "the
-      research section" — never in the vocabulary of any one connector.
-      Three exceptions are explicitly allowed because each names a
-      legitimate non-branching anchor rather than a code or prose
-      decision: the `obsidianBrainAideTemplate` helper folder name
-      (describes bundled template content, not a dispatch axis), the
-      `.obsidian` directory heuristic comment in `brainRootExists` (an
-      honestly-labeled implementation detail in a single helper), and
+      (used as a synonym for \"file\"), `wikilink`, `hub note`, and
+      `hub` — must not appear in any user-facing prose surface (MCP
+      tool descriptions, the README, the canonical methodology docs
+      under `.aide/docs/`, slash-command prompts under
+      `.claude/commands/`, agent definitions under `.claude/agents/`,
+      and every `.aide` spec authored in this repo) nor in code
+      identifiers, comments, or string constants project-wide. The
+      brain layer is described to agents and users in storage-agnostic
+      terms — \"brain\", \"brain root\", \"the brain's prose section\",
+      \"the playbook section\", \"the studyPlaybook section\", \"the
+      research section\" — never in the vocabulary of any one
+      connector. Four exceptions are explicitly allowed because each
+      names a legitimate non-branching anchor rather than a code or
+      prose decision: the `obsidianBrainAideTemplate` helper folder
+      name (describes bundled template content, not a dispatch axis),
+      the `.obsidian` directory heuristic comment in `brainRootExists`
+      (an honestly-labeled implementation detail in a single helper),
       the legacy `obsidian` MCP key referenced inside migration
-      branches (the key being migrated away from). Anti-example
-      occurrences inside undesired-outcome blocks of specs are also
-      allowed — naming a forbidden token to forbid it is the
-      mechanism, not a violation. Every other appearance of the
-      forbidden tokens, in code or prose, is a regression.
+      branches (the key being migrated away from), and the body
+      section bytes of the bundled `obsidianBrainAideTemplate` helper
+      itself across all four named sections (`prose`, `playbook`,
+      `studyPlaybook`, `research`) — those bytes ship
+      obsidian-flavored content because the bundled template IS the
+      obsidian default, they become user-owned the moment they are
+      scaffolded onto disk, and any host that wires a different brain
+      edits the section bytes in their own `brain.aide`. The
+      bundled-template-body-bytes carve-out is scoped exactly: it
+      covers the bytes inside the template's body section literals
+      only — NOT the JSDoc, identifiers, parameter names, or function
+      names in the template module's `index.ts`, NOT string constants
+      anywhere outside the body section literals, NOT anti-example
+      bullets in undesired-outcome blocks (those have their own
+      anti-example carve-out below), and NOT any other bundled
+      template should one ever exist unless it is explicitly named as
+      another connector-flavored default. Anti-example occurrences
+      inside undesired-outcome blocks of specs are also allowed —
+      naming a forbidden token to forbid it is the mechanism, not a
+      violation. Every other appearance of the forbidden tokens, in
+      code or prose, is a regression."
     - >-
       The in-code backend registry — matchers, drivers, identity inference
       — is fully retired. There is no module in this package whose job is
@@ -384,6 +431,42 @@ file the host owns. The package no longer has an opinion about which
 brain a host runs against; it has an opinion about how the host
 declares it.
 
+The brain config file's body carries four marker-bounded sections in a
+fixed order — prose, playbook, studyPlaybook, research — and three
+required entry-point artifacts seed from those sections at cold install
+(coding-playbook, study-playbook, research). The fourth section
+(`studyPlaybook`) is the methodology home for backend-specific
+playbook-navigation prose: the Step 1/2/3 process for using the
+playbook entry-point, the Navigation Rules block with its
+depth-counting example, and the link-traversal semantics that govern
+how the agent walks references inside the brain. The on-disk
+study-playbook entry-point artifact at
+`coding-playbook/study-playbook.md` is the single read target the
+agent-side `study-playbook` skill points at; the navigation
+methodology travels with the user-owned brain template, not with the
+package's release cycle. Splitting navigation methodology out of the
+playbook section into its own dedicated section keeps the playbook
+section single-purpose (pure conventions: routing, sections,
+contents) and lets the navigation prose evolve as the user's brain
+shape evolves without forcing a code release.
+
+The package's code surface stays storage-agnostic across every
+identifier, comment, JSDoc word, and string constant — but the
+bundled obsidian-flavored default brain.aide template is, by
+definition, the obsidian default, and its body section bytes ship
+obsidian-flavored content across all four named sections. The prose
+section names the connector's MCP tools; the playbook section ships
+coding conventions for an editor-backed brain; the studyPlaybook
+section ships the multi-month-tested navigation methodology written
+for inline references in an editor-backed brain; the research
+section ships an index keyed for the same backend. Those bytes
+become user-owned the moment they are scaffolded onto disk: any host
+that wires a different brain edits the section bytes in their own
+brain.aide, and the package's CODE surface stays storage-agnostic
+regardless. The carve-out for the bundled template's body section
+literals is the explicit boundary between agnostic code and
+connector-flavored user-owned content.
+
 ## Strategy
 
 **Canonical docs are editable files, not compiled output.** The doc set
@@ -435,33 +518,34 @@ and no one notices which copy is authoritative.
 
 **Brain configuration is user-owned, not code-owned.** The architectural
 boundary is sharp: the server reads the host's `brain.aide`, parses its
-body as exactly three named sections — prose, playbook, research, each
-delimited by its own paired HTML-comment markers — and never branches
-on connector identity. The marker pairs follow the same lowercase shape
-the existing `writeMethodology` stub uses, extended with distinct open
-and close tokens per section so a parser violation names the offending
-marker by name rather than guessing where a single-token region was
-supposed to start. The agent-facing contract is the prose section: when
-`aide_brain` is called, the parser extracts the prose section and
-returns it byte-identical. There is no module in this package whose job
-is to enumerate brains, infer which one a host has wired, or dispatch
-behavior on a connector enum — the in-code backend registry is retired
-entirely. The package ships zero connector-specific code paths. What
-replaces the registry is a single file in the host's own repo: a typed
-config frontmatter the host edits, and three hand-written body sections
-the host edits. Adding a new brain is never a code change to this
-package; it is a host-side edit plus a sync. The default scaffolded
-`brain.aide` makes no use of substitution — `mcpServerConfig.args`
-carries the path inline, byte-for-byte under user ownership, and the
-package never derives a logical root from args, never stats a path to
-validate it, and never introspects args to infer connector identity.
-The parser still supports `${...}` interpolation of frontmatter fields
-inside `mcpServerConfig.args` for advanced users who want to DRY a
-value across argument positions; that surface remains for them, but it
-is not exercised by the default scaffold. Substitution lives only in
+body as exactly four named sections — prose, playbook, studyPlaybook,
+research, each delimited by its own paired HTML-comment markers — and
+never branches on connector identity. The marker pairs follow the same
+lowercase shape the existing `writeMethodology` stub uses, extended
+with distinct open and close tokens per section so a parser violation
+names the offending marker by name rather than guessing where a
+single-token region was supposed to start. The agent-facing contract
+is the prose section: when `aide_brain` is called, the parser extracts
+the prose section and returns it byte-identical. There is no module in
+this package whose job is to enumerate brains, infer which one a host
+has wired, or dispatch behavior on a connector enum — the in-code
+backend registry is retired entirely. The package ships zero
+connector-specific code paths. What replaces the registry is a single
+file in the host's own repo: a typed config frontmatter the host
+edits, and four hand-written body sections the host edits. Adding a
+new brain is never a code change to this package; it is a host-side
+edit plus a sync. The default scaffolded `brain.aide` makes no use of
+substitution — `mcpServerConfig.args` carries the path inline,
+byte-for-byte under user ownership, and the package never derives a
+logical root from args, never stats a path to validate it, and never
+introspects args to infer connector identity. The parser still
+supports `${...}` interpolation of frontmatter fields inside
+`mcpServerConfig.args` for advanced users who want to DRY a value
+across argument positions; that surface remains for them, but it is
+not exercised by the default scaffold. Substitution lives only in
 `mcpServerConfig.args` at install/sync time, applied by the `.mcp.json`
-writer when sync runs — never in any of the three body sections at
-agent time. All three body sections return verbatim, with no rendering
+writer when sync runs — never in any of the four body sections at
+agent time. All four body sections return verbatim, with no rendering
 pass between disk and the agent. The decision to hand-write the prose
 per connector rather than template it is load-bearing: different
 connectors need structurally different agent instructions, not the
@@ -469,16 +553,85 @@ same instructions with values swapped. One brain's prose may instruct
 the agent to "read the entry file at the brain root and follow the
 inline references it names to deepen context," another's may say
 "query the indexed database for tagged pages and follow backlinks via
-the hosted API"; templating cannot bridge that shape difference without
-forcing both into a uniformity neither actually has. The mutation
-surface for `.mcp.json` is `npx aidemd-mcp sync` and only `npx aidemd-mcp
-sync` — the MCP server NEVER silently rewrites the host's MCP wiring,
-because every load-bearing contract surface needs a visible command
-boundary the user controls. Drift between `brain.aide` and `.mcp.json`
-is a hard halt: the boot reporter detects it, surfaces it as an
-explicit brain status state alongside the absence-of-`brain.aide`
-state and the preexisting healthy and broken-wiring states, and the
-orchestrator refuses to advance until the user runs sync.
+the hosted API"; templating cannot bridge that shape difference
+without forcing both into a uniformity neither actually has. The
+mutation surface for `.mcp.json` is `npx aidemd-mcp sync` and only
+`npx aidemd-mcp sync` — the MCP server NEVER silently rewrites the
+host's MCP wiring, because every load-bearing contract surface needs
+a visible command boundary the user controls. Drift between
+`brain.aide` and `.mcp.json` is a hard halt: the boot reporter
+detects it, surfaces it as an explicit brain status state alongside
+the absence-of-`brain.aide` state and the preexisting healthy and
+broken-wiring states, and the orchestrator refuses to advance until
+the user runs sync.
+
+**The framework's brain contract is exactly three required entry-point
+artifacts seeded from named body sections, not two.** The coding-playbook
+artifact at `coding-playbook/coding-playbook.md` sources its bytes from
+the `playbook` body section; the study-playbook artifact at
+`coding-playbook/study-playbook.md` sources its bytes from the new
+`studyPlaybook` body section; the research artifact at
+`research/research.md` sources its bytes from the `research` body
+section. The third artifact is what the agent-side `study-playbook`
+skill points at — the skill stays minimal because the navigation
+methodology lives in this on-disk artifact rather than inside the
+skill body itself. Splitting playbook-navigation prose (the Step 1/2/3
+process, the Navigation Rules block, link-traversal semantics) out of
+the playbook section into its own section is what makes the
+study-playbook artifact possible: the playbook section is now
+single-purpose (pure conventions), the studyPlaybook section is
+single-purpose (procedural navigation methodology), and each section
+is trimmable and overridable without conflating concerns. Field-name
+shape: the kebab-case marker token `study-playbook` populates the
+camelCase parsed field `studyPlaybook` (no `Hub` suffix; that suffix
+is a retired regression class that extends to the new field). Storage
+shape for any artifact is the user's `brain.aide` concern, not the
+package's; for an editor-backed Markdown brain the artifacts land at
+the three Markdown paths above, but how they manifest in any other
+backend is a body-section concern, never a code concern.
+
+**Storage-agnostic vocabulary across every code surface this package
+authors, with four explicit carve-outs and no fifth.** The forbidden
+tokens — `vault`, `obsidian`, `note` (as a synonym for "file"),
+`wikilink`, `hub note`, `hub` — must not appear in any user-facing
+prose surface this package authors (MCP tool descriptions, the README,
+canonical methodology docs, slash-command prompts, agent definitions,
+every `.aide` spec authored in this repo) nor in code identifiers,
+comments, or string constants project-wide. The four allowed
+exceptions each name a legitimate non-branching anchor: the
+`obsidianBrainAideTemplate` helper folder name (describes bundled
+template content, not a dispatch axis), the `.obsidian` directory
+heuristic comment in `brainRootExists` (an honestly-labeled
+implementation detail in a single helper), the legacy `obsidian` MCP
+key referenced inside migration branches (the key being migrated away
+from), and the body section bytes of the bundled
+`obsidianBrainAideTemplate` helper itself across all four named
+sections (prose, playbook, studyPlaybook, research). The fourth
+carve-out exists because the bundled template IS the obsidian
+default: those bytes ship obsidian-flavored content by design across
+every section (the prose section naming the connector's MCP tools,
+the playbook section structured for an editor-backed brain, the
+studyPlaybook section shipping the multi-month-tested
+inline-reference navigation methodology, the research index keyed
+for the same backend), they become user-owned the moment they are
+scaffolded onto disk, and any host that wires a different brain
+edits the section bytes in their own brain.aide. The
+bundled-template-body-bytes carve-out is scoped exactly: it covers
+the bytes inside the template's body section literals only — NOT the
+JSDoc, identifiers, parameter names, or function names in the
+template module's `index.ts`, NOT string constants anywhere outside
+the body section literals, NOT anti-example bullets in
+undesired-outcome blocks (those have their own anti-example carve-out),
+and NOT any other bundled template should one ever exist unless it
+is explicitly named as another connector-flavored default.
+Anti-example occurrences inside undesired-outcome blocks are also
+allowed — naming a forbidden token to forbid it is the mechanism, not
+a violation. The safe-list of storage-agnostic body-field names is
+`prose`, `playbook`, `studyPlaybook`, `research`; the field-name
+regression class (Hub suffix) extends from `playbookHub` /
+`researchHub` to `studyPlaybookHub` — every Hub-suffixed shape is
+rejected. Every other appearance of the forbidden tokens, in code or
+prose, is a regression.
 
 **Intent-driven development is the measurement.** Every change to this
 repo — a new doc, a new tool, a revised description, a refactored helper
@@ -553,51 +706,126 @@ mcpServerConfig:
 
 `name: obsidian` is a label the user reads in the file and the agent
 narrates back in conversation; the package never branches on it. The
-body is hand-written and laid out as three marker-bounded sections in
-the required order — prose first, playbook second, research third —
-with each section opened and closed by its own pair of HTML-comment
-markers:
+body is hand-written and laid out as four marker-bounded sections in
+the required order — prose first, playbook second, studyPlaybook
+third, research fourth — with each section opened and closed by its
+own pair of HTML-comment markers. Because the bundled default is the
+obsidian default, the section bytes below ship obsidian-flavored
+content under the storage-agnostic-vocabulary carve-out for the
+template's body section literals:
 
 ```
 <!-- aide-prose-start -->
-Your brain is an external knowledge store reached through MCP tools.
-Use `mcp__brain__read_note` to open files by their brain-root-relative
-path. Use `mcp__brain__search_notes` for keyword queries across the
-brain. The brain's entry file is `CLAUDE.md` at the brain root — read
-that first; it lists the inline references your task may need.
-When a reference in the entry file looks relevant to your task, read
-the file it names (depth 1) and check the references inside that file
-too. Stay in scope; don't follow references into unrelated topics.
+Your brain is an Obsidian vault reached through the MCP labeled `brain`.
+Use `mcp__brain__read_note` to open notes by their vault-relative path.
+Use `mcp__brain__search_notes` for keyword queries across the vault.
+The brain's coding-playbook hub is at `coding-playbook/coding-playbook.md`;
+the study-playbook hub is at `coding-playbook/study-playbook.md`;
+the research hub is at `research/research.md`. Read either hub first,
+then follow the `[[wikilinks]]` it lists into the rest of the vault.
 <!-- aide-prose-end -->
 
 <!-- aide-playbook-start -->
-The coding playbook lives at `coding-playbook/coding-playbook.md`.
-Start there for any coding-conventions or patterns question; the
-playbook is structured for top-down crawling.
+# Coding Playbook
+
+## Task Routing
+
+| Task domain | Section |
+|-------------|---------|
+
+## Always Read First
+
+(content the user fills in)
+
+## Sections
+
+## Contents
 <!-- aide-playbook-end -->
 
+<!-- aide-study-playbook-start -->
+# Study Playbook
+
+## How to use the playbook hub
+
+**Step 1.** Open the coding-playbook hub note. The Task Routing table
+tells you which section applies to your task.
+
+**Step 2.** Drill into the section that matches. Read the section's
+hub note and the `[[wikilinks]]` it lists; pick the wikilinks whose
+names or descriptions match the task at hand.
+
+**Step 3.** Follow each picked wikilink into its target note. Read
+only what your task demands.
+
+## Navigation Rules
+
+Hub notes are navigation, not content — depth does not start there.
+Depth starts on the first content note you reach. From any content
+note, follow the `[[wikilinks]]` it lists for at least one or two
+more levels in any direction the information could apply, but stop
+at the first wikilink whose target is unrelated to the current task.
+
+Example: if the playbook hub lists `[[testing]]` and you read it
+(that is depth 0, the first content note), and `[[testing]]` lists
+`[[mocking]]`, then reading `[[mocking]]` is depth 1.
+<!-- aide-study-playbook-end -->
+
 <!-- aide-research-start -->
-Domain research is filed under `research/` by topic. The entry file
-at `research/research.md` lists the active research areas; drill in
-when a task touches a domain you don't already have context for.
+# Research
+
+## Domains
+
+| Domain | Notes |
+|--------|-------|
+
+## How to Use This Index
+
+Research material is filed by domain. Drill into the domain that
+matches your task; do not flat-search across every domain.
 <!-- aide-research-end -->
 ```
 
-The marker layout is what the parser enforces: lowercase, case-
-sensitive, distinct open and close per section, in the prose-then-
-playbook-then-research order. The body text inside each pair is
-storage-agnostic — it teaches the agent the navigation pattern in
-terms of "brain", "brain root", "entry file", and "references"
-rather than naming any one connector. `aide_brain` returns the prose
-section's bytes verbatim; `provisionBrain` reads the playbook and
-research sections to scaffold the corresponding entry-file artifacts
-on cold install. No code in this package interpreted any of the words
-inside the markers; they are the user's instructions to the agent,
-owned by the user, edited by the user. Bytes outside any marker pair
-— a note-to-self above the first opener, scratch text between two
+The marker layout is what the parser enforces: lowercase,
+case-sensitive, distinct open and close per section, in the
+prose-then-playbook-then-studyPlaybook-then-research order. The body
+text inside each pair is connector-flavored by design here because
+the bundled template IS the obsidian default — the carve-out for the
+template's body section literals legitimately permits the obsidian
+vocabulary across all four sections. `aide_brain` returns the prose
+section's bytes verbatim; `provisionBrain` reads the playbook,
+studyPlaybook, and research sections to scaffold the three
+corresponding entry-point artifacts on cold install. No code in this
+package interpreted any of the words inside the markers; they are
+the user's instructions to the agent, owned by the user the moment
+they land, edited by the user. Bytes outside any marker pair — a
+note-to-self above the first opener, scratch text between two
 sections — are silently ignored by the parser; the parser's job is
-to extract the three named sections, not to police the rest of the
+to extract the four named sections, not to police the rest of the
 file.
+
+A second host wires a different brain — say, a hosted knowledge
+base reached through a different MCP — and edits all four body
+sections in their own `brain.aide`. They strip the obsidian-flavored
+vocabulary out of every section: the prose section now names the
+hosted backend's MCP tools, the studyPlaybook section now describes
+"page-link traversal" instead of `[[wikilink]]` semantics, the
+research section's Notes column becomes Pages, and so on. The
+package's CODE surface — every identifier, JSDoc word, log string,
+and InitStep `name` field — stays storage-agnostic regardless: the
+carve-out applied only to the bundled template's body section
+literals, never to the package's code surface, and the user's
+edited brain.aide is what the parser reads now.
+
+A maintainer adds a typed result field to `parseBrainAide`'s `ok`
+branch for the new section. The field is named `studyPlaybook` —
+camelCase, no `Hub` suffix. The kebab-case marker token
+`study-playbook` populates this exact field name; the parsed result
+shape is `{ frontmatter, prose, playbook, studyPlaybook, research }`.
+A reviewer who proposes `studyPlaybookHub` is rejected: the Hub
+suffix is the retired regression class, applies to the new field
+just as it applies to the existing `playbook` and `research` fields,
+and the safe-list of storage-agnostic body-field names is exactly
+`prose`, `playbook`, `studyPlaybook`, `research`.
 
 The user makes a one-line edit to their `brain.aide` — they retarget
 the brain by changing the brain-root path string inline in
@@ -706,38 +934,73 @@ returning it — the same `${...}` interpolation of frontmatter values
 that lives in the `mcpServerConfig.args` install-time surface,
 applied to one of the agent-facing body sections at response time.
 The same regression with the substitution pass applied to the
-playbook or research section instead of prose is the same regression
-in different clothing — none of the three body sections get
-agent-time substitution. Two failure modes follow. First: a connector
-whose prose legitimately documents a templating language uses literal
-`${...}` characters in the body — say, the prose explains that the
-user's knowledge store lets them define page templates with
-`${variable}` placeholders. The substitution engine eats those
-characters and either errors or silently strips them, mangling the
-agent-facing instructions in a way that's invisible from this
-package's tests. Second, and more load-bearing: with substitution
-in place, every body-section author has to track which strings will
-be rewritten before delivery, and the temptation to "just template
-the prose, playbook, or research sections too" lands. Two
-structurally different connectors get forced into a shared template
-that fits neither — Connector A's prose grows placeholders for
-concepts only Connector B's agents need, Connector B's prose grows
-placeholders for concepts only Connector A's agents need, both
-bodies bloat with conditionals that exist only to keep the shared
-template from breaking either side, and the user editing their own
-`brain.aide` now has to learn the package's template DSL before they
-can write instructions for their own brain. Hand-written body
-sections per connector with zero agent-time substitution — across
-the prose, playbook, and research sections alike — is the only
-shape that scales without forcing connectors to agree on a
-vocabulary they don't share.
+playbook, studyPlaybook, or research section instead of prose is
+the same regression in different clothing — none of the four body
+sections get agent-time substitution. Two failure modes follow.
+First: a connector whose prose legitimately documents a templating
+language uses literal `${...}` characters in the body — say, the
+prose explains that the user's knowledge store lets them define
+page templates with `${variable}` placeholders. The substitution
+engine eats those characters and either errors or silently strips
+them, mangling the agent-facing instructions in a way that's
+invisible from this package's tests. Second, and more load-bearing:
+with substitution in place, every body-section author has to track
+which strings will be rewritten before delivery, and the temptation
+to "just template the prose, playbook, studyPlaybook, or research
+sections too" lands. Two structurally different connectors get
+forced into a shared template that fits neither — Connector A's
+prose grows placeholders for concepts only Connector B's agents
+need, Connector B's prose grows placeholders for concepts only
+Connector A's agents need, both bodies bloat with conditionals that
+exist only to keep the shared template from breaking either side,
+and the user editing their own `brain.aide` now has to learn the
+package's template DSL before they can write instructions for their
+own brain. Hand-written body sections per connector with zero
+agent-time substitution — across the prose, playbook, studyPlaybook,
+and research sections alike — is the only shape that scales without
+forcing connectors to agree on a vocabulary they don't share.
+
+A maintainer reads the storage-agnostic-vocabulary carve-out for the
+bundled template's body section literals and concludes the carve-out
+is a license to use connector-flavored vocabulary anywhere in the
+template module. JSDoc on the template's exported function picks up
+"returns the obsidian-flavored brain.aide bytes for vault scaffolding";
+a parameter renames from `brainPath` to `vaultPath`; an internal helper
+becomes `buildHubBlock`; a string constant outside the body section
+literals declares `const HUB_HEADER = "## Hub"`. The carve-out covers
+BYTES inside the body section literals only — NOT JSDoc, NOT
+identifiers, NOT parameter names, NOT function names, NOT string
+constants outside the section literals. The package's code surface
+stays storage-agnostic regardless of what the user-owned section bytes
+ship; conflating "the bundled template's body bytes ship obsidian
+content" with "the template module's code surface gets to as well" is
+the same regression as letting the studyPlaybook section's connector
+vocabulary leak into `provisionBrain`'s identifiers. Each tainted
+identifier and JSDoc word must be renamed back to the storage-agnostic
+shape; the carve-out's exact scoping is what makes it safe.
+
+A maintainer extends the parser's `ParseBrainAideResult.ok` branch
+with a new field for the new section, names the field
+`studyPlaybookHub`, and writes a corresponding type literal
+`{ prose: string; playbook: string; studyPlaybookHub: string; research: string }`.
+The Hub suffix is the retired regression class — `playbookHub` and
+`researchHub` were rejected during the original three-section pivot
+for the same reason — and adding `studyPlaybookHub` reintroduces the
+rejected shape under the new section's name. The kebab-case marker
+token `study-playbook` populates the camelCase field `studyPlaybook`,
+no suffix; the safe-list of storage-agnostic body-field names is
+exactly `prose`, `playbook`, `studyPlaybook`, `research`. The Hub
+suffix is wrong wherever it lands, in the new field as cleanly as in
+the old ones.
 
 ## References
 
 - `.aide/docs/aide-spec.md` -- canonical AIDE spec format conventions: required body sections, frontmatter rules, and the rule that strategy decisions trace to outcomes; informed the section integration and decision-form writing of the new strategy paragraph.
-- `.aide/docs/index.md` -- current canonical doc set inventory; informed the implicit commitment that a new `brain-aide.md` doc will join the doc hub when the methodology adds `brain.aide` as a sixth file type.
-- `src/service/install/writeMethodology/.aide` and `src/service/install/writeMethodology/index.ts` -- the existing HTML-comment marker precedent that the body-schema outcome extends; informed the lowercase, marker-bounded shape of the prose / playbook / research region delimiters and the principle that bytes outside the marker pair are not the parser's concern.
-- `src/service/parseBrainAide/.aide` -- the parser spec that consumes the body-schema decision; informed the direction that marker layout violations halt the pipeline with a `malformed-body` reason naming the offending marker, and that the parser extracts named sections rather than policing surrounding bytes.
-- `.aide/handoff.aide` -- post-collapse architectural snapshot covering the four cycles that landed before this resync; informed which design decisions were preserved (per-consumer ownership, no agent-time substitution, no introspection of `mcpServerConfig.args`, the four-state boot reporter union) and which were tightened in the marker-pair pivot.
+- `.aide/docs/index.md` -- current canonical doc set inventory; informed the implicit commitment that the `brain-aide.md` doc tracks the four-section / three-artifact contract once the schema-extension cycle lands.
+- `src/service/install/writeMethodology/.aide` and `src/service/install/writeMethodology/index.ts` -- the existing HTML-comment marker precedent that the body-schema outcome extends; informed the lowercase, marker-bounded shape of the prose / playbook / studyPlaybook / research region delimiters and the principle that bytes outside the marker pair are not the parser's concern.
+- `src/service/parseBrainAide/.aide` -- the parser spec that consumes the body-schema decision; already updated to the four-section grammar, returning `{ prose, playbook, studyPlaybook, research }` on the `ok` branch and `malformed-body` naming the offending marker (including the new `aide-study-playbook-*` pair) on violations. Informed the strict-failure migration semantics for pre-pivot and pre-amendment files alike.
+- `src/service/install/provisionBrain/.aide` -- the planning spec that reads the parser's `playbook`, `studyPlaybook`, and `research` fields to scaffold the three required entry-point artifacts; already updated to the six-step pipeline (brain config → brain root → playbook artifact → study-playbook artifact → research artifact → MCP entry) and the three-artifact framework brain contract. Pinned the language pattern that the bundled template's responsibilities expand to include all four body sections, and that the carve-out covers the section bytes (user-owned) not the module's code surface.
+- `src/service/install/provisionBrain/obsidianBrainAideTemplate/` -- the bundled default template helper that emits the four marker-bounded body sections (prose + playbook trimmed to pure conventions + studyPlaybook holding the multi-month-tested navigation methodology + research). The template's body section bytes are the explicit fourth carve-out from the storage-agnostic-vocabulary outcome.
+- `.aide/handoff.aide` "Major code refactor queued" subsection -- architectural decision sign-off (2026-04-26) for the four-section schema extension and the new study-playbook entry-point artifact: section order, marker tokens, the new `coding-playbook/study-playbook.md` artifact path, the `buildStudyPlaybookStep` builder peer, the strict-failure migration policy with no `aide_upgrade` carve-out, and the field-name regression class extension to `studyPlaybookHub`. Drove the body-schema outcome's count update from three to four sections, the entry-point-artifacts outcome's count update from two to three artifacts, and the storage-agnostic-vocabulary outcome's carve-out extension from three exceptions to four.
 
-(No external research references were drawn for the brain-layer additions — that design was specified in conversation between the user and the orchestrator. The existing body's strategy decisions about methodology delivery were established in prior spec rounds and stand on the canonical doc set itself.)
+(No external research references were drawn for the brain-layer additions — that design was specified in conversation between the user and the orchestrator and signed off in `.aide/handoff.aide`. The existing body's strategy decisions about methodology delivery were established in prior spec rounds and stand on the canonical doc set itself.)

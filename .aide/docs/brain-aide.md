@@ -28,6 +28,15 @@ service reads this section and writes it verbatim to
 `coding-playbook/coding-playbook.md` in the host project.
 <!-- aide-playbook-end -->
 
+<!-- aide-study-playbook-start -->
+Seed content for the study-playbook entry-point artifact. The install
+service reads this section and writes it verbatim to
+`coding-playbook/study-playbook.md` in the host project. Holds the
+backend-specific playbook-navigation prose (Step 1/2/3 process,
+Navigation Rules with the depth-counting example, link-traversal
+semantics) that the `study-playbook` skill points at.
+<!-- aide-study-playbook-end -->
+
 <!-- aide-research-start -->
 Seed content for the research entry-point artifact. The install service
 reads this section and writes it verbatim to `research/research.md` in
@@ -49,23 +58,25 @@ That is the complete schema. There are no other top-level fields. A `connector`,
 
 ### Body shape
 
-The body is THREE marker-bounded sections in fixed order:
+The body is FOUR marker-bounded sections in fixed order:
 
 1. `<!-- aide-prose-start -->` ... `<!-- aide-prose-end -->`
 2. `<!-- aide-playbook-start -->` ... `<!-- aide-playbook-end -->`
-3. `<!-- aide-research-start -->` ... `<!-- aide-research-end -->`
+3. `<!-- aide-study-playbook-start -->` ... `<!-- aide-study-playbook-end -->`
+4. `<!-- aide-research-start -->` ... `<!-- aide-research-end -->`
 
-**Marker grammar.** Six markers total, three open/close pairs. Markers are lowercase, case-sensitive, with single ASCII spaces around the token — `<!-- aide-prose-start -->` is valid; `<!--aide-prose-start-->`, `<!-- Aide-Prose-Start -->`, and `<!-- prose-start -->` are not. The fixed order is `prose` then `playbook` then `research`; any other order is a violation. Bytes outside any marker pair are silently ignored — note-to-self comments or blank lines between sections are fine and do not affect parsing.
+**Marker grammar.** Eight markers total, four open/close pairs. Markers are lowercase, case-sensitive, with single ASCII spaces around the token — `<!-- aide-prose-start -->` is valid; `<!--aide-prose-start-->`, `<!-- Aide-Prose-Start -->`, and `<!-- prose-start -->` are not. The fixed order is `prose` then `playbook` then `studyPlaybook` then `research`; any other order is a violation. Bytes outside any marker pair are silently ignored — note-to-self comments or blank lines between sections are fine and do not affect parsing.
 
 **Per-consumer section ownership.** Each section has a single designated consumer:
 
 - `prose` — owned by the runtime brain tool (`aide_brain`). Returns the content verbatim to the agent at session start. This is where the user writes agent-facing usage instructions: which MCP tools to call, how to navigate the knowledge store, what conventions to follow.
-- `playbook` — owned by the install service's brain provisioner. Read once at install time and written verbatim as the coding-playbook entry-point artifact (`coding-playbook/coding-playbook.md`).
-- `research` — owned by the install service's brain provisioner. Read once at install time and written verbatim as the research entry-point artifact (`research/research.md`).
+- `playbook` — owned by the install service's brain provisioner (`provisionBrain`). Read once at install time and written verbatim as the coding-playbook entry-point artifact (`coding-playbook/coding-playbook.md`).
+- `studyPlaybook` — owned by the install service's brain provisioner (`provisionBrain`). Read once at install time and written verbatim as the study-playbook entry-point artifact (`coding-playbook/study-playbook.md`). Holds the backend-specific playbook-navigation prose — the Step 1/2/3 process for using the playbook entry-point, the Navigation Rules block with the depth-counting example, and the link-traversal semantics — that the agent-side `study-playbook` skill points at. The skill itself stays minimal: it reads the on-disk study-playbook entry-point artifact and follows the navigation methodology it describes. The navigation methodology travels with the user-owned brain template, not with the package's release cycle.
+- `research` — owned by the install service's brain provisioner (`provisionBrain`). Read once at install time and written verbatim as the research entry-point artifact (`research/research.md`).
 
-The sync verb and boot reporter read frontmatter only; all three body sections are irrelevant to them.
+The sync verb and boot reporter read frontmatter only; all four body sections are irrelevant to them.
 
-Cross-section reads violate the contract. `aide_brain` does not read `playbook` or `research`. The install service does not read `prose`. Each consumer reads exactly its own section, nothing more.
+Cross-section reads violate the contract. `aide_brain` does not read `playbook`, `studyPlaybook`, or `research`. The install service does not read `prose`. Each consumer reads exactly its own section, nothing more.
 
 **Closed grammar — strict failure on layout violations.** The parser returns `malformed-body` for any of the following:
 
@@ -76,9 +87,9 @@ Cross-section reads violate the contract. `aide_brain` does not read `playbook` 
 - Wrong section order — `"marker order violation: ..."`.
 - Nested markers — `"nested marker: ..."`.
 
-**Strict-failure migration policy.** There is no transitional read path. Pre-pivot files whose body used heading-based organization (`## Prose`, `## Playbook hub`, `## Research hub`) return `malformed-body` naming all six missing markers. Migration is a hand-edit: the user opens the file and adds the six markers in the correct positions, or copies the bundled scaffold and pastes their content into the appropriate sections. The parser never guesses intent from headings.
+**Strict-failure migration policy.** There is no transitional read path. Pre-pivot files whose body used heading-based organization (`## Prose`, `## Playbook hub`, `## Research hub`) return `malformed-body` naming all eight missing markers. Pre-amendment three-section marker-bounded files (prose, playbook, and research pairs present, but missing the `aide-study-playbook-start` / `aide-study-playbook-end` pair) return `malformed-body` naming the two missing markers specifically — there is no auto-injection and no `aide_upgrade` carve-out for this case. Migration is a hand-edit in either case: the user opens the file and adds the missing markers in the correct positions (between the playbook and research sections for the pre-amendment case), or copies the bundled scaffold and pastes their content into the appropriate sections. The parser never guesses intent from headings.
 
-**Entry-point artifact bytes flow from the body sections.** The `playbook` and `research` sections are the source of truth for the entry-point artifacts the install service writes. The package does not hold these bytes as inline TypeScript constants — they live in `brain.aide` where the user can see, edit, and own them.
+**Entry-point artifact bytes flow from the body sections.** The `playbook`, `studyPlaybook`, and `research` sections are the source of truth for the entry-point artifacts the install service writes. The package does not hold these bytes as inline TypeScript constants — they live in `brain.aide` where the user can see, edit, and own them.
 
 ## Substitution surface
 
@@ -86,7 +97,7 @@ The parser supports `${...}` interpolation of frontmatter field names inside `mc
 
 In the current schema, `name` is the only top-level field that resolves as a substitution source, so the surface is essentially dormant. The default scaffold makes no use of it — the path lives inline as a literal string. The interpolation surface remains for advanced users who want to DRY a value across positions, but it is not a feature the standard install exercises and most users will never touch it.
 
-The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.args`. It runs only at sync time. It NEVER applies to any body section. All three body sections (`prose`, `playbook`, `research`) return verbatim, byte-identical to what the user wrote between the recognized markers. A brain whose prose section legitimately documents a templating language — for example, content that explains a knowledge store whose own syntax uses `${variable}` placeholders — can write those characters in the body without fear that the package will interpret or strip them.
+The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.args`. It runs only at sync time. It NEVER applies to any body section. All four body sections (`prose`, `playbook`, `studyPlaybook`, `research`) return verbatim, byte-identical to what the user wrote between the recognized markers. A brain whose prose section legitimately documents a templating language — for example, content that explains a knowledge store whose own syntax uses `${variable}` placeholders — can write those characters in the body without fear that the package will interpret or strip them.
 
 ## The `.aide/config/` directory contract
 
@@ -102,7 +113,7 @@ Files outside `.aide/config/` (the methodology docs at `.aide/docs/`, pipeline c
 
 ## Lifecycle
 
-1. **Scaffolded** by `aide_init` on a cold install. The installer writes `.aide/config/brain.aide` pre-filled with the canonical Obsidian default — `name: obsidian`, an `mcpServerConfig` that launches `@bitbonsai/mcpvault` against the user's resolved knowledge-store path, and three pre-filled body sections: a prose section with agent usage instructions, a playbook section seeding the coding-playbook entry-point artifact, and a research section seeding the research entry-point artifact. A host that never edits this file gets a working brain UX out of the box.
+1. **Scaffolded** by `aide_init` on a cold install. The installer writes `.aide/config/brain.aide` pre-filled with the canonical Obsidian default — `name: obsidian`, an `mcpServerConfig` that launches `@bitbonsai/mcpvault` against the user's resolved knowledge-store path, and four pre-filled body sections: a prose section with agent usage instructions, a playbook section seeding the coding-playbook entry-point artifact, a studyPlaybook section seeding the study-playbook entry-point artifact (holding the backend-specific playbook-navigation prose the `study-playbook` skill points at), and a research section seeding the research entry-point artifact. A host that never edits this file gets a working brain UX out of the box.
 
 2. **Edited** by the user directly. The file is the user's configuration surface; no CLI wraps edits. Retargeting the knowledge-store path, switching brains, swapping the MCP launcher, or rewriting any body section are all hand-edits to this one file. After the initial scaffold, `aide_init` and `aide_upgrade` will never touch it.
 
@@ -140,9 +151,9 @@ The boot reporter surfaces exactly four brain status states. The orchestrator re
 
 ## Rules
 
-- **All three body sections returned verbatim.** Each consumer reads its own owned section and receives the bytes exactly as written. `aide_brain` returns the prose section byte-identical to disk. The install service reads the playbook and research sections byte-identical to disk. No server-side templating, no rendering pass, no variable substitution applies to any body section.
+- **All four body sections returned verbatim.** Each consumer reads its own owned section and receives the bytes exactly as written. `aide_brain` returns the prose section byte-identical to disk. The install service reads the playbook, studyPlaybook, and research sections byte-identical to disk. No server-side templating, no rendering pass, no variable substitution applies to any body section.
 
-- **Per-consumer section ownership is exclusive.** `aide_brain` reads `prose` only. The install service reads `playbook` and `research` only. The sync verb and boot reporter read frontmatter only. Cross-section reads — for example, `aide_brain` reading `playbook`, or the install service reading `prose` — violate the contract.
+- **Per-consumer section ownership is exclusive.** `aide_brain` reads `prose` only. The install service reads `playbook`, `studyPlaybook`, and `research` only. The sync verb and boot reporter read frontmatter only. Cross-section reads — for example, `aide_brain` reading `playbook` or `studyPlaybook`, or the install service reading `prose` — violate the contract.
 
 - **`mcpServerConfig.args` interpolation runs only at sync time.** Any `${fieldName}` references in `args` are expanded by `npx aidemd-mcp sync` against the frontmatter and written into `.mcp.json`. They are never expanded at read time, at server startup, or inside any body section.
 
@@ -160,7 +171,7 @@ The boot reporter surfaces exactly four brain status states. The orchestrator re
 
 - **One file, one source of truth.** `brain.aide` is the single source of truth for brain configuration. The host's `.mcp.json` brain entry is a derived artifact — it must match `brain.aide` and is only updated by sync.
 
-- **Strict-failure migration: no transitional read path.** Pre-pivot files whose body used heading-based organization (`## Prose`, `## Playbook hub`, `## Research hub`) return `malformed-body` naming all six missing markers. The parser never guesses intent from headings. Migration is a hand-edit: open the file, add the six markers in the correct positions (or copy from the bundled scaffold), and paste existing content into the appropriate sections.
+- **Strict-failure migration: no transitional read path.** Pre-pivot files whose body used heading-based organization (`## Prose`, `## Playbook hub`, `## Research hub`) return `malformed-body` naming all eight missing markers. Pre-amendment three-section marker-bounded files (the prose, playbook, and research pairs present but missing the `aide-study-playbook-start` / `aide-study-playbook-end` pair) return `malformed-body` naming the two missing markers specifically; there is no auto-injection and no `aide_upgrade` carve-out. The parser never guesses intent from headings. Migration is a hand-edit in either case: open the file, add the missing markers in the correct positions (between the playbook and research sections for the pre-amendment case, or add all eight markers for the pre-pivot case), and paste existing content into the appropriate sections.
 
 ## Placement
 

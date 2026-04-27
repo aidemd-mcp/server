@@ -31,6 +31,10 @@ Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
 The coding-playbook section lives here.
 <!-- aide-playbook-end -->
 
+<!-- aide-study-playbook-start -->
+The study-playbook hub lives here.
+<!-- aide-study-playbook-end -->
+
 <!-- aide-research-start -->
 The research section lives here.
 <!-- aide-research-end -->
@@ -375,6 +379,10 @@ Prose body.
 The coding-playbook section lives here.
 <!-- aide-playbook-end -->
 
+<!-- aide-study-playbook-start -->
+The study-playbook hub lives here.
+<!-- aide-study-playbook-end -->
+
 <!-- aide-research-start -->
 The research section lives here.
 <!-- aide-research-end -->
@@ -415,6 +423,10 @@ Prose body.
 <!-- aide-playbook-start -->
 The coding-playbook section lives here.
 <!-- aide-playbook-end -->
+
+<!-- aide-study-playbook-start -->
+The study-playbook hub lives here.
+<!-- aide-study-playbook-end -->
 
 <!-- aide-research-start -->
 The research section lives here.
@@ -460,6 +472,10 @@ These should pass through verbatim — sync only interpolates mcpServerConfig.ar
 <!-- aide-playbook-start -->
 The coding-playbook section lives here.
 <!-- aide-playbook-end -->
+
+<!-- aide-study-playbook-start -->
+The study-playbook hub lives here.
+<!-- aide-study-playbook-end -->
 
 <!-- aide-research-start -->
 The research section lives here.

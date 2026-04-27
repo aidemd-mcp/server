@@ -2,36 +2,42 @@
 scope: src/service/parseBrainAide
 description: >
   Single canonical reader for `.aide/config/brain.aide` — parses the two-field
-  YAML frontmatter (`name` + `mcpServerConfig`) and extracts the three required
+  YAML frontmatter (`name` + `mcpServerConfig`) and extracts the four required
   body sections delimited by paired HTML-comment markers
   (`<!-- aide-prose-start -->` / `-end`, `<!-- aide-playbook-start -->` /
-  `-end`, `<!-- aide-research-start -->` / `-end`, lowercase, case-sensitive,
+  `-end`, `<!-- aide-study-playbook-start -->` / `-end`,
+  `<!-- aide-research-start -->` / `-end`, lowercase, case-sensitive,
   in required order) as separately-named fields, optionally applies
   install-time frontmatter-value interpolation to `mcpServerConfig.args` for
   advanced users (a surface the default scaffold does not exercise), and
   returns a structured value whose consumers each pull only the section they
   need: the runtime brain tool reads prose, the brain provisioner reads the
-  playbook and research bodies to scaffold their on-disk artifacts, and the
-  sync verb reads only the frontmatter.
+  playbook, study-playbook, and research bodies to scaffold their on-disk
+  artifacts, and the sync verb reads only the frontmatter.
 intent: >
   parseBrainAide is the single canonical-code module that knows the
-  `brain.aide` file format. The file's body carries three named sections
+  `brain.aide` file format. The file's body carries four named sections
   delimited by paired HTML-comment markers — the prose section (the
   agent-facing usage instructions returned verbatim by `aide_brain`), the
   playbook section (the bytes scaffolded as the coding-playbook entry-point
-  artifact in the brain at install time), and the research section (the
-  bytes scaffolded as the research entry-point artifact at install time) —
-  so that every templated content lives inside the user-owned config file
-  rather than hardcoded in package code. The parser is the load-bearing
-  boundary that keeps the file format hand-written (the user owns it) while
-  every downstream consumer sees the same typed structure with each body
-  section addressable by name. Different consumers pull different
-  sections: the runtime `aide_brain` tool reads `prose` only; the install
-  service's brain provisioner reads `playbook` and `research` to land the
-  on-disk artifacts; the boot reporter and `npx aidemd-mcp sync` verb read
-  only the frontmatter. None of those consumers reach into the raw file
-  format directly; they ask this module for the parsed result and access
-  named fields. The frontmatter schema is the minimum that still has real
+  artifact in the brain at install time), the study-playbook section (the
+  bytes scaffolded as a peer entry-point artifact at install time, holding
+  the backend-specific playbook-navigation prose — Step 1/2/3 process,
+  Navigation Rules with the depth-counting example, link-traversal
+  semantics — that the `study-playbook` skill points at), and the research
+  section (the bytes scaffolded as the research entry-point artifact at
+  install time) — so that every templated content lives inside the
+  user-owned config file rather than hardcoded in package code. The parser
+  is the load-bearing boundary that keeps the file format hand-written
+  (the user owns it) while every downstream consumer sees the same typed
+  structure with each body section addressable by name. Different
+  consumers pull different sections: the runtime `aide_brain` tool reads
+  `prose` only; the install service's brain provisioner reads `playbook`,
+  `studyPlaybook`, and `research` to land the three on-disk entry-point
+  artifacts; the boot reporter and `npx aidemd-mcp sync` verb read only
+  the frontmatter. None of those consumers reach into the raw file format
+  directly; they ask this module for the parsed result and access named
+  fields. The frontmatter schema is the minimum that still has real
   consumers — exactly `name` (a label) and `mcpServerConfig` (consumed by
   sync). Every removed field (`connector`, `rootPath`, `entryFile`,
   `tools`) is rejected as malformed-frontmatter so users migrate cleanly
@@ -39,76 +45,91 @@ intent: >
   the parser's enumerated truth: every required marker pair must be
   present and well-formed, marker layout violations are hard failures, and
   bytes outside any marker pair are silently ignored — the parser
-  extracts the three named sections, it does not police the surrounding
+  extracts the four named sections, it does not police the surrounding
   file. Substitution is partitioned by audience: frontmatter-value
   interpolation (`${fieldName}`) into `mcpServerConfig.args` is
   install-time work the parser performs on demand for sync-class
   consumers; the default scaffold does not exercise this surface (the
   path lives byte-inline in args), and the only frontmatter value
-  resolvable today is `${name}`. The three body sections each return
+  resolvable today is `${name}`. The four body sections each return
   verbatim with zero substitution because their audiences (the agent
-  reading prose; the install scaffolder writing artifacts to disk) are
-  not the `.mcp.json` writer.
+  reading prose; the install scaffolder writing entry-point artifacts to
+  disk) are not the `.mcp.json` writer.
 outcomes:
   desired:
     - >-
       "Reads `.aide/config/brain.aide` from disk and returns a structured
       value with the typed frontmatter object — exactly `name` (string)
       and `mcpServerConfig` (object with `command` and `args`) — plus
-      three separately-named body fields: `prose`, `playbook`, and
-      `research`, each carrying the verbatim bytes between its opening
-      marker and its closing marker. No other frontmatter fields and no
-      other body fields appear in the returned shape. Consumers
-      reference shared types from `src/types/index.ts`, not
-      module-internal definitions."
+      four separately-named body fields: `prose`, `playbook`,
+      `studyPlaybook`, and `research`, each carrying the verbatim bytes
+      between its opening marker and its closing marker. No other
+      frontmatter fields and no other body fields appear in the returned
+      shape. Consumers reference shared types from `src/types/index.ts`,
+      not module-internal definitions."
     - >-
       "Each consumer pulls only the body section it needs by name. The
       runtime brain tool reads `prose`; the brain provisioner reads
-      `playbook` and `research` to scaffold the corresponding entry-point
-      artifacts in the brain at install time; the sync verb and boot
-      reporter read frontmatter only. No consumer re-extracts a section
-      from a freeform body string, and no consumer reads a section it
-      does not own — the parser hands each consumer exactly the typed
-      slice that consumer is contracted to use."
+      `playbook`, `studyPlaybook`, and `research` to scaffold the three
+      corresponding entry-point artifacts in the brain at install time
+      (the coding-playbook artifact, the study-playbook artifact, and the
+      research artifact); the sync verb and boot reporter read
+      frontmatter only. The runtime brain tool does NOT read
+      `studyPlaybook` — the `study-playbook` skill reaches its content
+      through the on-disk artifact the provisioner scaffolds, not through
+      the brain.aide body section directly. No consumer re-extracts a
+      section from a freeform body string, and no consumer reads a
+      section it does not own — the parser hands each consumer exactly
+      the typed slice that consumer is contracted to use."
     - >-
-      "All three body sections return verbatim — byte-identical to what
+      "All four body sections return verbatim — byte-identical to what
       the user wrote between each opening marker and its matching closing
       marker. No trimming, no normalization, no markdown rewriting, no
-      template engine, on any of `prose`, `playbook`, or `research`."
+      template engine, on any of `prose`, `playbook`, `studyPlaybook`, or
+      `research`."
     - >-
-      "Body schema is exactly three named sections delimited by paired
+      "Body schema is exactly four named sections delimited by paired
       HTML-comment markers, recognized lowercase and case-sensitive, in
       required order: the `<!-- aide-prose-start -->` /
       `<!-- aide-prose-end -->` pair first, then the
       `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->` pair,
-      then the `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
-      pair — six markers total, three pairs, distinct open/close tokens
+      then the `<!-- aide-study-playbook-start -->` /
+      `<!-- aide-study-playbook-end -->` pair, then the
+      `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
+      pair — eight markers total, four pairs, distinct open/close tokens
       per section. The convention extends the existing `writeMethodology`
       HTML-comment marker precedent."
     - >-
       "Marker layout violations are hard failures returning
       `malformed-body` with a reason naming the violating marker. The
-      violation set: a required pair missing, a marker token malformed or
-      typo'd, a closing marker without a prior matching opener, an opener
-      without a closer, the three pairs appearing out of the required
-      order, and any nesting of markers inside another marker pair. Any
-      such violation halts the pipeline; the parser does not attempt
-      recovery."
+      violation set: a required pair missing (any of the four), a marker
+      token malformed or typo'd, a closing marker without a prior
+      matching opener, an opener without a closer, the four pairs
+      appearing out of the required order, and any nesting of markers
+      inside another marker pair. Any such violation halts the pipeline;
+      the parser does not attempt recovery."
     - >-
       "Bytes outside any marker pair — between the frontmatter and the
       first opener, between any closer and the next opener, after the
       last closer — are silently ignored by the parser. The parser's job
-      is to extract the three named sections, not to police the rest of
+      is to extract the four named sections, not to police the rest of
       the file; users may keep notes-to-self, scratch text, or comments
       in those regions without warning or error."
     - >-
-      "Strict-failure migration: a pre-pivot `brain.aide` using the old
-      heading-based body schema (`## Prose` / `## Playbook hub` /
-      `## Research hub` with no marker pairs present) returns
-      `malformed-body` with a reason naming the missing markers. There is
-      no transitional read path; the parser does not auto-detect the old
-      schema, does not auto-rewrite, and does not silently default the
-      missing sections. Users hand-edit their file to add the markers."
+      "Strict-failure migration covers both pre-pivot shapes. First: a
+      `brain.aide` using the original heading-based body schema
+      (`## Prose` / `## Playbook hub` / `## Research hub` with no marker
+      pairs present) returns `malformed-body` with a reason naming the
+      missing markers. Second: a `brain.aide` carrying the prior
+      three-pair marker-bounded body (prose, playbook, research only —
+      missing the new `<!-- aide-study-playbook-start -->` /
+      `<!-- aide-study-playbook-end -->` pair) returns `malformed-body`
+      with a reason naming the missing study-playbook markers
+      specifically. There is no transitional read path; the parser does
+      not auto-detect the old schemas, does not auto-rewrite, does not
+      silently default the missing study-playbook section to an empty
+      string, and there is no `aide_upgrade` carve-out that auto-injects
+      the missing pair. Users hand-edit their file to add the markers."
     - >-
       "Failure to read or parse the file collapses to a structured tagged
       result — never throws. Explicit failure shapes: file missing (no
@@ -137,7 +158,7 @@ outcomes:
       future top-level frontmatter key). This is the ONLY substitution
       surface in the package; it runs only for `.mcp.json`-writer
       consumers (the install service and sync verb) and never runs
-      against any of the three body sections. The default scaffold
+      against any of the four body sections. The default scaffold
       contains no placeholders, so the helper is a no-op for default
       installs and exists for advanced users who want to DRY a value
       across positions."
@@ -161,21 +182,29 @@ outcomes:
       as a synonym for \"file\"), `wikilink`, `hub note`, and `hub` —
       does not appear in this spec's prose, outcomes, or references, nor
       in the parser module's identifiers, comments, or string constants.
-      The three body sections are described in storage-agnostic terms
-      (`prose`, `playbook`, `research` — the bytes the agent reads, the
-      bytes scaffolded as the coding-playbook entry-point artifact, the
-      bytes scaffolded as the research entry-point artifact). The
-      anti-example carve-out applies: naming a forbidden token inside an
-      undesired-outcome block to forbid it is the mechanism, not a
-      violation."
+      The four body sections are described in storage-agnostic terms
+      (`prose`, `playbook`, `studyPlaybook`, `research` — the bytes the
+      agent reads, the bytes scaffolded as the coding-playbook
+      entry-point artifact, the bytes scaffolded as the study-playbook
+      entry-point artifact, the bytes scaffolded as the research
+      entry-point artifact). The parent intent's study-playbook carve-out
+      applies to the BYTES of the `studyPlaybook` section only: that
+      section's content is user-owned and may legitimately contain
+      backend-specific vocabulary (the bundled obsidian-flavored default
+      ships obsidian patterns), but the parser code and field name that
+      handle that section stay storage-agnostic — the field is
+      `studyPlaybook`, not `studyPlaybookHub` or anything obsidian-
+      flavored. The anti-example carve-out applies: naming a forbidden
+      token inside an undesired-outcome block to forbid it is the
+      mechanism, not a violation."
   undesired:
     - >-
       "Returning the body as a single freeform string and forcing
-      consumers to extract the playbook or research section themselves.
-      The parser owns body section extraction; if any consumer has to
-      slice marker pairs out of a `body` field, the parser has
-      decentralized the format it exists to centralize and every
-      consumer becomes a second copy of the body grammar."
+      consumers to extract the playbook, study-playbook, or research
+      section themselves. The parser owns body section extraction; if
+      any consumer has to slice marker pairs out of a `body` field, the
+      parser has decentralized the format it exists to centralize and
+      every consumer becomes a second copy of the body grammar."
     - >-
       "Heading-based body parsing of any shape — looking for
       `## Prose` / `## Playbook hub` / `## Research hub` lines, treating
@@ -193,11 +222,13 @@ outcomes:
       shape `<!-- <token>-start -->` / `<!-- <token>-end -->` exactly."
     - >-
       "Tolerating any marker layout violation as a recoverable parse —
-      missing required pair, malformed or typo'd marker, unmatched
-      closer without prior opener, opener without closer, sections in
-      the wrong order (playbook before prose, research before playbook),
-      or nested markers (a prose pair containing a playbook pair). Each
-      is `malformed-body` with a reason naming the violating marker; the
+      missing required pair (any of the four), malformed or typo'd
+      marker, unmatched closer without prior opener, opener without
+      closer, sections in the wrong order (playbook before prose,
+      study-playbook before playbook, research before study-playbook),
+      or nested markers (a prose pair containing a playbook pair, a
+      playbook pair containing a study-playbook pair, etc.). Each is
+      `malformed-body` with a reason naming the violating marker; the
       parser does not patch, reorder, or guess at user intent."
     - >-
       "Treating bytes outside the marker pairs as a parse error. Notes-
@@ -240,11 +271,11 @@ outcomes:
       in different clothing."
     - >-
       "Applying interpolation to any of the body sections. `prose`,
-      `playbook`, and `research` all return verbatim; mixing the
-      install-time substitution surface with the body-section surfaces
-      forces every author to think about which `${...}` strings will be
-      rewritten in which section, exactly the failure mode the parent
-      spec's bad example calls out. Substitution lives in
+      `playbook`, `studyPlaybook`, and `research` all return verbatim;
+      mixing the install-time substitution surface with the body-section
+      surfaces forces every author to think about which `${...}` strings
+      will be rewritten in which section, exactly the failure mode the
+      parent spec's bad example calls out. Substitution lives in
       `mcpServerConfig.args` only."
     - >-
       "Throwing on missing or malformed input. Failure modes are
@@ -256,11 +287,11 @@ outcomes:
       body sections are absent. The user owns the file; if a required
       field is missing, the parser surfaces it as a
       malformed-frontmatter result, and if a required marker pair is
-      missing, the parser surfaces it as a malformed-body result. The
-      consumer composes a remediation message. The package never
-      silently fills in `name: obsidian`, a default
-      `mcpServerConfig.command` of `npx`, or default playbook/research
-      bytes."
+      missing (any of the four), the parser surfaces it as a
+      malformed-body result. The consumer composes a remediation
+      message. The package never silently fills in `name: obsidian`, a
+      default `mcpServerConfig.command` of `npx`, or default playbook /
+      study-playbook / research bytes."
     - >-
       "A second copy of the file format encoded in any consumer.
       `buildBrainState`, the brain tool, the install service, and sync
@@ -269,33 +300,40 @@ outcomes:
       the format the parser exists to centralize."
     - >-
       "A consumer reading a body section it does not own. The brain
-      tool reads `prose` only — never `playbook` or `research`. The
-      brain provisioner reads `playbook` and `research` — never `prose`.
-      Cross-section reads couple consumers to fields they have no
-      contract over and reintroduce the
-      every-consumer-knows-the-whole-file regression the named-section
-      shape exists to prevent."
+      tool reads `prose` only — never `playbook`, `studyPlaybook`, or
+      `research`. The brain provisioner reads `playbook`,
+      `studyPlaybook`, and `research` — never `prose`. The
+      `study-playbook` skill reaches its content through the on-disk
+      artifact the provisioner scaffolds, not through the brain.aide
+      `studyPlaybook` body section directly — no runtime tool surface
+      reads `studyPlaybook` from this parser. Cross-section reads couple
+      consumers to fields they have no contract over and reintroduce
+      the every-consumer-knows-the-whole-file regression the
+      named-section shape exists to prevent."
     - >-
       "Module-private types for the parsed shape. The `BrainAideConfig`
       type — exactly `{ name: string; mcpServerConfig: { command:
       string; args: string[] } }` — and the parser's tagged-result
-      variants (carrying `prose`, `playbook`, and `research` on the `ok`
-      variant) live in `src/types/index.ts` so consumers reference
-      shared definitions. A consumer that has to `import type
-      { ParsedBrainAide } from '@/service/parseBrainAide'` reaches into
-      module internals, breaking the central-types invariant."
+      variants (carrying `prose`, `playbook`, `studyPlaybook`, and
+      `research` on the `ok` variant) live in `src/types/index.ts` so
+      consumers reference shared definitions. A consumer that has to
+      `import type { ParsedBrainAide } from '@/service/parseBrainAide'`
+      reaches into module internals, breaking the central-types
+      invariant."
     - >-
       "Forbidden-token leakage in this spec or in the parser's code.
       The tokens `vault`, `obsidian`, `note` (used as a synonym for
       \"file\"), `wikilink`, `hub note`, and `hub` must not appear in
       this spec's prose, outcomes, or references, nor in the parser
       module's identifiers, comments, or string constants. Field names
-      like `playbookHub` or `researchHub` (carrying the retired `hub`
-      suffix in the typed result) are the same regression in different
-      clothing — the storage-agnostic field names are `playbook` and
-      `research`. Naming a forbidden token inside an undesired-outcome
-      block to forbid it (this bullet) is the carve-out, not a
-      violation."
+      like `playbookHub`, `studyPlaybookHub`, or `researchHub`
+      (carrying the retired `hub` suffix in the typed result) are the
+      same regression in different clothing — the storage-agnostic
+      field names are `playbook`, `studyPlaybook`, and `research`, and
+      they match the marker token base names verbatim (kebab-case in
+      markers, camelCase in the typed result). Naming a forbidden token
+      inside an undesired-outcome block to forbid it (this bullet) is
+      the carve-out, not a violation."
 ---
 
 ## Context
@@ -325,24 +363,45 @@ single consumer. It sits at `src/service/parseBrainAide/` alongside
 any single consumer would force the others to reach across a sibling
 boundary the playbook's horizontal-isolation rule forbids.
 
-The body has grown from a single agent-facing prose section to three
-named sections, and that growth is the load-bearing reason this spec
-was rewritten. The framework's brain contract is exactly two required
-entry-point artifacts (a coding-playbook entry-point and a research
-entry-point); previously the bytes of those entry-point artifacts were
-embedded as inline TypeScript constants inside the install service,
-which made the package the author of content the user is supposed to
-own and edit. The refactor moves all entry-point template content out
-of inline package constants and into the user-owned `brain.aide`, so
-a single canonical file holds every agent-facing string that lands on
-the host's disk: the runtime prose the agent reads through
-`aide_brain`, the playbook entry-point artifact the install service
-scaffolds in the brain on first install, and the research entry-point
-artifact the install service scaffolds alongside it. One file the user
-owns; one parser that reads it; three consumer-facing sections each
-consumed by exactly one downstream module by name. The parser is the
-single canonical reader that extracts all three sections from the same
-file in one parse pass.
+The body has grown in two stages: from a single agent-facing prose
+section, to three named sections (the marker-pair pivot that landed
+the playbook and research entry-point artifacts), and now to four
+named sections — the load-bearing reason this spec was last rewritten.
+The framework's brain contract is exactly three required entry-point
+artifacts (a coding-playbook entry-point, a study-playbook entry-point
+sitting next to it, and a research entry-point); previously the bytes
+of the playbook and research entry-point artifacts were embedded as
+inline TypeScript constants inside the install service, which made the
+package the author of content the user is supposed to own and edit.
+The refactor moves all entry-point template content out of inline
+package constants and into the user-owned `brain.aide`, so a single
+canonical file holds every agent-facing string that lands on the
+host's disk: the runtime prose the agent reads through `aide_brain`,
+the playbook entry-point artifact the install service scaffolds in
+the brain on first install, the study-playbook entry-point artifact
+the install service scaffolds alongside it, and the research
+entry-point artifact the install service scaffolds at the same time.
+One file the user owns; one parser that reads it; four consumer-facing
+sections each consumed by exactly one downstream module by name. The
+parser is the single canonical reader that extracts all four sections
+from the same file in one parse pass.
+
+The fourth section — `studyPlaybook` — exists because backend-specific
+playbook-navigation prose (the multi-month-tested step-by-step process
+and the navigation rules that teach link-traversal depth, scope
+boundaries, and re-read avoidance) needs to live as a peer entry-point
+artifact rather than baked into a package-shipped skill prompt. The
+skill that consumes it stays backend-agnostic — it points at the
+on-disk artifact and lets the artifact carry the navigation prose —
+so the navigation prose travels with the user-owned brain template
+rather than with the package's release cycle. The parser does not
+need to understand any of that; it needs to surface a fourth named
+section so the install service can scaffold the third entry-point
+artifact from user-owned bytes. The runtime brain tool does NOT read
+`studyPlaybook` — the skill reaches its content through the on-disk
+artifact the provisioner scaffolds, not through the parsed body
+section directly. That ownership boundary is what keeps the skill
+from re-coupling to the parser at runtime.
 
 The frontmatter schema is the parent spec's load-bearing minimum:
 exactly `name` (a label) and `mcpServerConfig` (consumed by sync).
@@ -378,8 +437,8 @@ placeholders at all — the helper exists for advanced users who want
 to DRY a value across positions. The shape still keeps the parent
 spec's bad example (server-side substitution leaking into any body
 section) impossible by construction: substitution runs only on
-`mcpServerConfig.args`, and never on `prose`, `playbook`, or
-`research`.
+`mcpServerConfig.args`, and never on `prose`, `playbook`,
+`studyPlaybook`, or `research`.
 
 ## Strategy
 
@@ -394,62 +453,78 @@ edit; the consumers see the new shape automatically. This is the same
 chokepoint pattern the install service's `initContent` already uses
 for canonical docs — one reader, many composers.
 
-**Three named body sections, extracted in one parse pass.** The body
+**Four named body sections, extracted in one parse pass.** The body
 grammar is a small enumerated set of paired HTML-comment markers:
 the `<!-- aide-prose-start -->` / `<!-- aide-prose-end -->` pair, the
 `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->` pair,
-and the `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
-pair — six markers total, three pairs, each section opened and closed
-by its own distinct token. The parser walks the body once after
-frontmatter validation, locates each marker pair, and slices the
-bytes between each opener and its matching closer. The parsed result
-on the `ok` branch carries each section as its own field — `prose`,
-`playbook`, `research` — so consumers reach for the section they own
-by name without having to know the body grammar. The field-name shape
-matches the marker token base names directly, so the user-facing
-syntax and the typed-object key are visibly the same word in lower
-case. No consumer reaches into a freeform body string to extract a
-section; if the parser exposed one, it would have decentralized the
-body grammar to every consumer that opened it.
+the `<!-- aide-study-playbook-start -->` /
+`<!-- aide-study-playbook-end -->` pair, and the
+`<!-- aide-research-start -->` / `<!-- aide-research-end -->` pair —
+eight markers total, four pairs, each section opened and closed by
+its own distinct token. The required order is prose → playbook →
+study-playbook → research; study-playbook sits between playbook and
+research deliberately, mirroring the on-disk layout where the
+study-playbook entry-point artifact sits as a peer of the playbook
+entry-point artifact. The parser walks the body once after frontmatter
+validation, locates each marker pair, and slices the bytes between
+each opener and its matching closer. The parsed result on the `ok`
+branch carries each section as its own field — `prose`, `playbook`,
+`studyPlaybook`, `research` — so consumers reach for the section they
+own by name without having to know the body grammar. The field-name
+shape matches the marker token base names directly: kebab-case in the
+markers (`study-playbook`), camelCase in the typed result
+(`studyPlaybook`), the same word in both surfaces. No consumer reaches
+into a freeform body string to extract a section; if the parser
+exposed one, it would have decentralized the body grammar to every
+consumer that opened it.
 
 **Strict marker layout; violations are malformed-body.** The set of
-valid body section openers and closers is exactly the three pairs
+valid body section openers and closers is exactly the four pairs
 named above, recognized lowercase and case-sensitive in the precise
 shape `<!-- <token>-start -->` / `<!-- <token>-end -->`. Any marker
-layout violation — a required pair missing, a marker token malformed
-or typo'd, a closing marker without a prior matching opener, an
-opener without a closer, the three pairs appearing out of the
-required prose-then-playbook-then-research order, any nesting of
-markers inside another marker pair — returns `malformed-body` with a
-reason naming the violating marker. The parser does NOT case-fold
-the tokens, does NOT tolerate uppercase or mixed-case variants, does
-NOT accept stray whitespace inside the comment delimiters, and does
-NOT attempt recovery. Bytes outside any marker pair — between the
-frontmatter and the first opener, between any closer and the next
-opener, after the last closer — are silently ignored: the parser's
-job is to extract the three named sections, not to police the rest
-of the file. The grammar is closed and reviewable: every recognized
-marker pair has a typed field on the result and a downstream
-consumer that owns it; every layout violation is a structured
-failure the user resolves by editing. This is the body-level
-analogue of the deprecated-fields rejection in frontmatter — both
-surfaces forbid silent acceptance because silent acceptance is how a
-closed schema drifts open one variation at a time.
+layout violation — a required pair missing (any of the four), a
+marker token malformed or typo'd, a closing marker without a prior
+matching opener, an opener without a closer, the four pairs appearing
+out of the required prose-then-playbook-then-study-playbook-then-
+research order, any nesting of markers inside another marker pair —
+returns `malformed-body` with a reason naming the violating marker.
+The parser does NOT case-fold the tokens, does NOT tolerate uppercase
+or mixed-case variants, does NOT accept stray whitespace inside the
+comment delimiters, and does NOT attempt recovery. Bytes outside any
+marker pair — between the frontmatter and the first opener, between
+any closer and the next opener, after the last closer — are silently
+ignored: the parser's job is to extract the four named sections, not
+to police the rest of the file. The grammar is closed and reviewable:
+every recognized marker pair has a typed field on the result and a
+downstream consumer that owns it; every layout violation is a
+structured failure the user resolves by editing. This is the
+body-level analogue of the deprecated-fields rejection in frontmatter
+— both surfaces forbid silent acceptance because silent acceptance is
+how a closed schema drifts open one variation at a time.
 
 **Per-consumer section ownership.** Each section is owned by exactly
 one downstream consumer, and that ownership is a contract this spec
 calls out by name. The runtime brain tool reads `prose` only — never
-`playbook`, never `research`. The install service's brain
-provisioner reads `playbook` and `research` to scaffold the
-entry-point artifacts on disk — never `prose`. The sync verb and the
-boot reporter read frontmatter only — none of the body sections. A
-consumer reading a section it does not own is a contract violation
-even when the read is otherwise harmless: cross-section reads couple
-consumers to fields they have no contract over, and the moment the
-parser tightens or relaxes the grammar of a section, the wrong
-consumer breaks. The named-section shape exists precisely to make
-"the brain tool depends on prose, the provisioner depends on the
-playbook and research sections" visible in the type signatures every
+`playbook`, never `studyPlaybook`, never `research`. The install
+service's brain provisioner reads `playbook`, `studyPlaybook`, and
+`research` to scaffold the three entry-point artifacts on disk —
+never `prose`. The sync verb and the boot reporter read frontmatter
+only — none of the body sections. The runtime brain tool's exclusion
+from `studyPlaybook` is load-bearing: the `study-playbook` skill
+reaches its content through the on-disk artifact the provisioner
+scaffolds (a file at the brain's `coding-playbook/study-playbook.md`
+path), not through the parsed body section directly. Routing the
+skill through the on-disk artifact instead of the parser keeps the
+runtime tool surface minimal — the brain tool returns prose verbatim,
+nothing else — and it keeps the skill's read path identical to the
+read paths it uses for any other entry-point artifact. A consumer
+reading a section it does not own is a contract violation even when
+the read is otherwise harmless: cross-section reads couple consumers
+to fields they have no contract over, and the moment the parser
+tightens or relaxes the grammar of a section, the wrong consumer
+breaks. The named-section shape exists precisely to make "the brain
+tool depends on prose, the provisioner depends on playbook,
+study-playbook, and research" visible in the type signatures every
 consumer imports.
 
 **Verbatim invariant generalized to every body section.** The parser
@@ -457,18 +532,24 @@ returns each body section byte-identical to what the user wrote
 between its opening marker and its matching closing marker. No
 trimming, no normalization, no markdown rewriting, no template
 engine. This was previously a guarantee about prose only; with the
-body grown to three sections the same invariant covers all three. A
+body grown to four sections the same invariant covers all four. A
 user who hand-edits their `playbook` section to land a custom
 entry-point shape on disk gets exactly those bytes scaffolded by the
-install service; a user who embeds literal `${variable}` characters
-in `research` because their research material documents a templating
-language gets those characters preserved. The parent spec's
-no-substitution-on-body-content invariant covers every section the
-parser returns, not just the historically singular prose body.
+install service; a user who hand-edits their `studyPlaybook` section
+to teach a different navigation discipline (different depth rules,
+different scope-boundary heuristics, a different re-read avoidance
+policy) gets exactly those bytes scaffolded as the on-disk
+study-playbook artifact; a user who embeds literal `${variable}`
+characters in `research` because their research material documents a
+templating language gets those characters preserved. The parent
+spec's no-substitution-on-body-content invariant covers every
+section the parser returns, not just the historically singular prose
+body.
 
 **Tagged-result return shape, never throws.** The parser returns a
-discriminated union: `{ kind: "ok", config, prose, playbook, research }`,
-`{ kind: "missing" }`, `{ kind: "malformed-frontmatter", reason }`,
+discriminated union: `{ kind: "ok", config, prose, playbook,
+studyPlaybook, research }`, `{ kind: "missing" }`,
+`{ kind: "malformed-frontmatter", reason }`,
 `{ kind: "malformed-body", reason }`. Every consumer branches on
 `kind` and composes its own remediation prose. This mirrors how
 `buildBrainState` already returns a tagged union for brain
@@ -479,26 +560,37 @@ protocol error with no `instructions` field for the agent to act on,
 defeating the parent spec's "structured-state at every layer"
 invariant.
 
-**Strict-failure migration policy: pre-pivot heading-based files
-surface as malformed-body.** A `brain.aide` carried forward from the
+**Strict-failure migration policy: every pre-pivot shape surfaces as
+malformed-body.** Two pre-pivot shapes exist in the wild and both
+fail strictly. First: a `brain.aide` carried forward from the
 heading-based era — frontmatter is valid, body uses the old
-heading-based schema with no marker pairs present — returns
-`malformed-body` with a reason naming the missing markers. The parser
-does NOT auto-detect the old shape, does NOT auto-rewrite, does NOT
-silently default the missing sections to empty strings, does NOT
-silently scaffold them from package-side templates, and does NOT
-carve out an `aide_upgrade`-time exception that auto-fills them.
-The user hand-edits their file to wrap each section in its marker
-pair; the install service ships the new default scaffold for fresh
-installs. The same policy applies if any one marker pair is missing
+heading-based schema with no marker pairs present anywhere — returns
+`malformed-body` with a reason naming all eight missing markers.
+Second: a `brain.aide` carried forward from the three-pair
+marker-bounded era — frontmatter is valid, body has the prose,
+playbook, and research marker pairs in the right relative order, but
+is missing the `<!-- aide-study-playbook-start -->` /
+`<!-- aide-study-playbook-end -->` pair the four-section schema
+requires — returns `malformed-body` with a reason naming the missing
+study-playbook markers specifically. In neither case does the parser
+auto-detect the old shape, auto-rewrite, silently default the missing
+sections to empty strings, silently scaffold them from package-side
+templates, or carve out an `aide_upgrade`-time exception that
+auto-injects the missing pair. The user hand-edits their file to add
+the markers (or wrap each heading-based section in its pair); the
+install service ships the new default scaffold for fresh installs.
+The same policy applies if any one of the four marker pairs is missing
 from an otherwise marker-bounded file — the parser names the missing
-pair, the user adds it. Silent defaults would re-introduce exactly
-the package-as-vote anti-pattern the inline-template-constants
-retirement was meant to delete: a "fill in what the user didn't"
-surface where the package authors content the user is supposed to
-own. Strict failure forces a deliberate migration touch — the user
-knows their file changed shape because the parser told them so. (If
-usage data later shows users actively need an auto-migration
+pair, the user adds it. The three-pair-to-four-pair case is the
+specific regression a "helpful" upgrade carve-out would re-introduce:
+auto-injecting a default `studyPlaybook` section at upgrade time
+would land package-authored navigation prose in the user-owned file
+the moment they upgrade, exactly the package-as-vote anti-pattern the
+inline-template-constants retirement was meant to delete. Strict
+failure forces a deliberate migration touch — the user knows their
+file changed shape because the parser told them so, and the bytes
+that land in their `studyPlaybook` section are bytes they wrote.
+(If usage data later shows users actively need an auto-migration
 carve-out, this policy is reconsidered then; the default starts
 strict.)
 
@@ -509,14 +601,14 @@ string[]` — takes the parsed config and applies frontmatter-value
 substitution to `mcpServerConfig.args`. Two consumers call it (the
 install service's brain provisioner deriving the MCP entry, the sync
 verb writing `.mcp.json`); the rest do not (the brain tool returning
-prose, the brain provisioner scaffolding entry-point artifacts, the
-boot reporter checking drift). Splitting the interpolation into an
-opt-in helper means a consumer that never imports `interpolateArgs`
-cannot accidentally apply substitution to something it shouldn't —
-none of the body sections has any path through the exported surface
-that runs interpolation on it. This closes the parent spec's bad
-example about substitution leaking into agent-facing or disk-bound
-content.
+prose, the brain provisioner scaffolding entry-point artifacts from
+the `playbook`, `studyPlaybook`, and `research` sections, the boot
+reporter checking drift). Splitting the interpolation into an opt-in
+helper means a consumer that never imports `interpolateArgs` cannot
+accidentally apply substitution to something it shouldn't — none of
+the four body sections has any path through the exported surface that
+runs interpolation on it. This closes the parent spec's bad example
+about substitution leaking into agent-facing or disk-bound content.
 
 **Interpolation is generalized over frontmatter fields, not
 field-specific.** The substitution engine walks each string in `args`
@@ -562,16 +654,17 @@ the parent spec's bad examples explicitly rule out.
 **Types live centrally in `src/types/`, not module-private.** The
 `BrainAideConfig` shape (`{ name; mcpServerConfig: { command; args }
 }`), the `BrainAideMcpServerConfig` slice, and the
-`ParseBrainAideResult` tagged union — including the three body
-section fields (`prose`, `playbook`, `research`) on the `ok` variant
-— all live in `src/types/index.ts` and are imported by every
-consumer. The parser does not export its own type definitions for
-the parsed shape. This keeps the consumers on a shared central type
-surface so a schema change is one edit in one file, with type errors
-propagating to every downstream module that depends on the changed
-shape. A consumer that has to `import type { ParsedBrainAide } from
-'@/service/parseBrainAide'` is reaching into module internals; the
-central-types invariant exists to make that import impossible.
+`ParseBrainAideResult` tagged union — including the four body
+section fields (`prose`, `playbook`, `studyPlaybook`, `research`) on
+the `ok` variant — all live in `src/types/index.ts` and are imported
+by every consumer. The parser does not export its own type
+definitions for the parsed shape. This keeps the consumers on a
+shared central type surface so a schema change is one edit in one
+file, with type errors propagating to every downstream module that
+depends on the changed shape. A consumer that has to `import type
+{ ParsedBrainAide } from '@/service/parseBrainAide'` is reaching into
+module internals; the central-types invariant exists to make that
+import impossible.
 
 **Single-helper file layout.** The module has one orchestrator export
 (`parseBrainAide`), one auxiliary export (`interpolateArgs`), and an
@@ -598,30 +691,51 @@ brain tool's tests don't have to mock filesystem walks the parser
 doesn't perform.
 
 **Storage-agnostic vocabulary across this spec and the parser's
-code.** The parser describes its three body sections as `prose`,
-`playbook`, and `research` — the bytes the agent reads, the bytes
-scaffolded as the coding-playbook entry-point artifact, the bytes
-scaffolded as the research entry-point artifact. The forbidden-token
-list inherited from the parent spec — connector-specific terms a
-single backend would use as synonyms for "brain" or "file" or
-"navigation link" — does not appear in this spec's prose, in the
-parser module's identifiers, in its comments, or in its string
-constants. Field names that carry a backend-specific suffix in the
-typed result (the parent spec's frontmatter calls out two such
-retired suffixed names by example) would be the same regression in
-different clothing; the storage-agnostic field names are `playbook`
-and `research`, and they match the marker token base names verbatim.
-The anti-example carve-out applies one place only: naming a
-forbidden token inside an undesired-outcome block of the frontmatter
-to forbid it. Body-prose paragraphs, the parser's code, its tests,
-its messages all stay storage-agnostic; if a body example needs to
-talk about a connector-specific failure mode, it does so in
+code.** The parser describes its four body sections as `prose`,
+`playbook`, `studyPlaybook`, and `research` — the bytes the agent
+reads, the bytes scaffolded as the coding-playbook entry-point
+artifact, the bytes scaffolded as the study-playbook entry-point
+artifact, the bytes scaffolded as the research entry-point artifact.
+The forbidden-token list inherited from the parent spec —
+connector-specific terms a single backend would use as synonyms for
+"brain" or "file" or "navigation link" — does not appear in this
+spec's prose, in the parser module's identifiers, in its comments, or
+in its string constants. Field names that carry a backend-specific
+suffix in the typed result (the parent spec's frontmatter calls out
+several such retired suffixed names by example) would be the same
+regression in different clothing; the storage-agnostic field names
+are `playbook`, `studyPlaybook`, and `research`, and they match the
+marker token base names verbatim (kebab-case in markers, camelCase in
+the typed result). The anti-example carve-out applies one place only:
+naming a forbidden token inside an undesired-outcome block of the
+frontmatter to forbid it. Body-prose paragraphs, the parser's code,
+its tests, its messages all stay storage-agnostic; if a body example
+needs to talk about a connector-specific failure mode, it does so in
 backend-neutral framing rather than smuggling the forbidden
 vocabulary into the spec body.
 
+**Carve-out: the BYTES of the `studyPlaybook` section are
+user-owned and may legitimately carry backend-specific vocabulary.**
+The parent intent's storage-agnostic invariant covers every surface
+the package authors. The `studyPlaybook` body section is NOT a
+surface the package authors prose for in the backend-agnostic sense
+— its bytes flow from the bundled obsidian-flavored default template,
+which legitimately ships obsidian-specific navigation patterns
+because the bundled brain it's seeded for is obsidian. Hosts that
+pick a different brain edit the section in their own `brain.aide`
+to teach the navigation discipline their backend rewards. The parser
+code, its identifiers, its comments, its string constants, and the
+typed result field name (`studyPlaybook`, never `studyPlaybookHub`
+or any obsidian-flavored variant) all stay storage-agnostic — the
+carve-out applies to the BYTES the user controls, not to the parser
+that handles them. This is the only carve-out the parser's surface
+needs; every other section's bytes are similarly user-owned, and the
+parser's storage-agnostic posture is unaffected by what the user
+chooses to write inside any marker pair.
+
 ## Good examples
 
-**A complete three-section `brain.aide` parses to the expected
+**A complete four-section `brain.aide` parses to the expected
 structure.** The host's `.aide/config/brain.aide` contains:
 
 ```
@@ -663,6 +777,19 @@ matches your task.
 (Add sections here as your playbook grows.)
 <!-- aide-playbook-end -->
 
+<!-- aide-study-playbook-start -->
+# Study playbook
+
+Read the playbook hub first, then drill into the section that matches
+your task. Each section hub lists its child notes with keywords.
+Don't read every section — only the ones whose keywords match the
+work. When a child note references a sibling, follow the reference
+only if it deepens the current task; stop at one level deep unless
+the next level adds context the task needs. Re-reading a note you
+already opened in this session is wasteful; if the agent has the
+file in context, use what's there.
+<!-- aide-study-playbook-end -->
+
 <!-- aide-research-start -->
 # Research
 
@@ -690,6 +817,7 @@ The parser returns:
   },
   prose: "Your brain is an external knowledge store reached through MCP tools...",
   playbook: "# Coding playbook\n\nAn entry point for coding conventions...",
+  studyPlaybook: "# Study playbook\n\nRead the playbook hub first, then drill...",
   research: "# Research\n\nAn entry point for domain research material..."
 }
 ```
@@ -698,11 +826,11 @@ No `connector`, no `rootPath`, no `entryFile`, no `tools` appear in
 the parsed shape — the schema is exactly `name` + `mcpServerConfig`.
 The `args` array carries the path inline byte-for-byte under user
 ownership; no placeholders, no substitution. Each of `prose`,
-`playbook`, and `research` starts immediately after its opening
-marker and ends immediately before its matching closing marker,
-byte-identical to what the user wrote between those bounds. Bytes
-outside any marker pair (the note-to-self above the first opener)
-are silently ignored. Which MCP tools the agent calls
+`playbook`, `studyPlaybook`, and `research` starts immediately after
+its opening marker and ends immediately before its matching closing
+marker, byte-identical to what the user wrote between those bounds.
+Bytes outside any marker pair (the note-to-self above the first
+opener) are silently ignored. Which MCP tools the agent calls
 (`mcp__brain__read_note`, `mcp__brain__search_notes`) appears only
 between `<!-- aide-prose-start -->` and `<!-- aide-prose-end -->` —
 the agent reads them there, not from a frontmatter declaration.
@@ -713,15 +841,20 @@ fields and never cross over:
 
 - `aide_brain` (the runtime brain tool) reads `result.prose`
   verbatim and returns it as `instructions`. It never touches
-  `result.playbook` or `result.research` — those sections do
-  not exist as far as this consumer's contract is concerned.
+  `result.playbook`, `result.studyPlaybook`, or `result.research`
+  — those sections do not exist as far as this consumer's contract
+  is concerned. The runtime tool's exclusion from `studyPlaybook` is
+  deliberate: the `study-playbook` skill reaches its content through
+  the on-disk artifact the provisioner scaffolds, never through the
+  parsed body section.
 - `provisionBrain` (the install service's brain provisioner) reads
   `result.playbook` to source the bytes of the playbook entry-point
-  artifact InitStep and `result.research` to source the bytes of
-  the research entry-point artifact InitStep. It never touches
-  `result.prose` — agent-facing instructions are not the
-  provisioner's concern. It also calls `interpolateArgs(result.config)`
-  to derive the MCP step's args.
+  artifact InitStep, `result.studyPlaybook` to source the bytes of
+  the study-playbook entry-point artifact InitStep, and
+  `result.research` to source the bytes of the research entry-point
+  artifact InitStep. It never touches `result.prose` — agent-facing
+  instructions are not the provisioner's concern. It also calls
+  `interpolateArgs(result.config)` to derive the MCP step's args.
 - `cli/sync` reads `result.config.mcpServerConfig` (after
   `interpolateArgs` runs against args), writes the resulting entry
   into `.mcp.json` under `mcpServers.brain`, and ignores every body
@@ -747,9 +880,9 @@ them unchanged. Sync writes the result into `.mcp.json` under
 `mcpServers.brain` along with `command: "npx"`. The brain tool
 returning the prose body for this same config never calls
 `interpolateArgs` — it returns `result.prose` verbatim. The
-provisioner scaffolding the playbook and research entry-point
-artifacts also never calls `interpolateArgs` against those bytes;
-they go to disk verbatim.
+provisioner scaffolding the playbook, study-playbook, and research
+entry-point artifacts also never calls `interpolateArgs` against
+those bytes; they go to disk verbatim.
 
 **An advanced user opts into interpolation by referencing `${name}`
 in args.** A user authoring a brain whose launcher accepts the
@@ -767,14 +900,14 @@ mcpServerConfig:
 ---
 ```
 
-(plus the three required marker-bounded body sections, unchanged
+(plus the four required marker-bounded body sections, unchanged
 from above.) The parser returns the args verbatim with `"${name}"`
 literal. `interpolateArgs(config)` substitutes the `${name}`
 placeholder against the matching top-level frontmatter field,
 returning `["some-launcher", "--profile", "dev-brain"]`. The
 substitution is purely frontmatter-value-to-args-position; the
 engine knows nothing about environment variables or shell expansion.
-The body sections are returned untouched even if they contain
+The four body sections are returned untouched even if they contain
 literal `${name}` characters in their text — interpolation never
 reaches any body section.
 
@@ -809,12 +942,13 @@ a file the package has stopped honoring.
 `{ kind: "malformed-body", reason: "missing markers:
 <!-- aide-prose-start -->, <!-- aide-prose-end -->,
 <!-- aide-playbook-start -->, <!-- aide-playbook-end -->,
-<!-- aide-research-start -->, <!-- aide-research-end --> " }`.**
+<!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->,
+<!-- aide-research-start -->, <!-- aide-research-end -->" }`.**
 A user whose `brain.aide` predates the marker-pair pivot still
 carries the old heading-based body schema with no marker pairs
 present anywhere. The parser validates the frontmatter (which is
 unchanged shape), walks the body looking for the required marker
-pairs, finds none of the six markers, and returns the structured
+pairs, finds none of the eight markers, and returns the structured
 failure naming every missing marker. The user hand-edits their file
 to wrap each section in its marker pair (or copies the new defaults
 from the bundled scaffold helper) and reruns. There is no
@@ -823,22 +957,39 @@ heading-based schema, does not auto-rewrite, does not silently
 default the missing sections. The user's deliberate edit is the only
 path that resolves the failure.
 
+**A pre-pivot three-pair `brain.aide` returns
+`{ kind: "malformed-body", reason: "missing markers:
+<!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->" }`.**
+A user whose `brain.aide` was scaffolded under the prior three-pair
+schema has a body with the prose, playbook, and research marker pairs
+in the right relative order, but no study-playbook pair anywhere. The
+parser validates the frontmatter, walks the body, finds three of four
+pairs, and returns the structured failure naming the missing
+study-playbook markers specifically. The user hand-edits their file
+to add the new pair (between the playbook closer and the research
+opener) and authors the navigation prose for it; no `aide_upgrade`
+carve-out auto-injects a default. The strict failure is the
+forcing event that makes the user the author of the bytes that land
+in the new on-disk study-playbook entry-point artifact, exactly as
+the strict-failure migration policy intends.
+
 **A `brain.aide` with one missing marker pair returns
 `{ kind: "malformed-body", reason: "missing markers:
 <!-- aide-research-start -->, <!-- aide-research-end -->" }`.** A
-user adds the prose and playbook marker pairs but forgets the
-research pair. The parser walks the body, finds two of three pairs,
-and returns the structured failure naming the missing markers. The
-user adds the missing pair and reruns.
+user adds the prose, playbook, and study-playbook marker pairs but
+forgets the research pair. The parser walks the body, finds three of
+four pairs, and returns the structured failure naming the missing
+markers. The user adds the missing pair and reruns. The same shape
+applies for any single missing pair among the four.
 
 **A `brain.aide` whose markers appear out of order returns
 `{ kind: "malformed-body", reason: "marker order violation:
-<!-- aide-playbook-start --> appeared before
-<!-- aide-prose-start -->" }`.** A user reordered the sections so
-playbook came first, prose second. The parser detects that the first
-opener it finds is not the prose opener and returns the structured
-failure. The required order is prose, then playbook, then research;
-no exceptions, no auto-reorder.
+<!-- aide-study-playbook-start --> appeared before
+<!-- aide-playbook-start -->" }`.** A user reordered the sections so
+study-playbook came before playbook. The parser detects that the
+study-playbook opener appears before the playbook opener and returns
+the structured failure. The required order is prose → playbook →
+study-playbook → research; no exceptions, no auto-reorder.
 
 **A `brain.aide` with a closing marker before its opener returns
 `{ kind: "malformed-body", reason: "unmatched closing marker:
@@ -853,17 +1004,19 @@ intended section boundary.
 
 **A parser that case-folds or otherwise tolerates marker variants.**
 The user writes `<!-- AIDE-PROSE-START -->` (uppercase),
-`<!-- Aide-prose-start -->` (mixed case), `<!--aide-prose-start-->`
-(no surrounding spaces), or `<!-- aide-prose-start  -->` (extra
-internal whitespace) and the parser accepts them all by lowercasing,
-trimming, or matching loosely. Within a few releases every
-`brain.aide` in the wild has a different marker shape, the install
-service's scaffold disagrees with what the parser will accept, and
-a strict-mode flag is added later "for discipline" while every
-existing file is grandfathered. The parser must match the literal
-lowercase tokens with the precise shape `<!-- <token>-start -->` /
-`<!-- <token>-end -->` exactly; any deviation is `malformed-body`
-naming the offending marker.
+`<!-- Aide-study-playbook-start -->` (mixed case),
+`<!--aide-playbook-start-->` (no surrounding spaces), or
+`<!-- aide-research-start  -->` (extra internal whitespace) and the
+parser accepts them all by lowercasing, trimming, or matching
+loosely. Within a few releases every `brain.aide` in the wild has a
+different marker shape, the install service's scaffold disagrees
+with what the parser will accept, and a strict-mode flag is added
+later "for discipline" while every existing file is grandfathered.
+The parser must match the literal lowercase tokens (`aide-prose`,
+`aide-playbook`, `aide-study-playbook`, `aide-research`) with the
+precise shape `<!-- <token>-start -->` / `<!-- <token>-end -->`
+exactly; any deviation is `malformed-body` naming the offending
+marker.
 
 **A parser that auto-fills missing required body sections from
 package defaults.** The user's `brain.aide` predates the marker
@@ -871,17 +1024,24 @@ pivot — the body still uses the old heading-based schema with no
 marker pairs at all. The parser detects the missing markers, looks
 the section bytes up in a package-side template constant, and
 returns the parsed result with package-authored bytes substituted
-in for the missing sections. The install service now scaffolds
-package-authored playbook and research entry-point artifacts onto
-the user's disk every time they run init or upgrade, even though
-the user's deliberate file shape carries no `playbook` or `research`
-section yet. This re-introduces exactly the package-as-vote
+in for any of the four missing sections. The install service now
+scaffolds package-authored playbook, study-playbook, and research
+entry-point artifacts onto the user's disk every time they run init
+or upgrade, even though the user's deliberate file shape carries no
+such sections yet. This re-introduces exactly the package-as-vote
 anti-pattern that the move-of-template-content-out-of-inline-
 constants was meant to delete: the package gets to fill in content
-the user is supposed to own. Strict failure is the only shape that
-keeps the user authoritative — the parser names the missing
-markers, the user adds them, no package-side bytes leak into the
-user-owned file.
+the user is supposed to own. The same regression in slightly
+different clothing is an `aide_upgrade` carve-out that "helpfully"
+auto-injects the missing study-playbook pair when upgrading a
+three-pair file to the four-pair schema — the user runs upgrade,
+the parser sees three pairs, the upgrade path silently appends a
+package-authored study-playbook section between the playbook closer
+and the research opener, and the user wakes up with package-authored
+navigation prose in their user-owned file. Strict failure is the
+only shape that keeps the user authoritative — the parser names the
+missing markers, the user adds them, no package-side bytes leak
+into the user-owned file at any phase (init, upgrade, sync, parse).
 
 **A parser that accepts heading-based input as a transitional read
 path.** "Existing users have files using the pre-pivot heading-based
@@ -897,29 +1057,38 @@ the user hand-edits their file once, drift disappears.
 
 **A consumer reading another consumer's section.** The boot reporter
 imports `result.playbook` "to validate that the section is
-non-empty" or "to surface a preview in the boot status." The brain
-tool concatenates `result.config.name` plus `result.prose` plus
-`result.research` "for richer agent context." Each consumer's
-section ownership is part of its contract; reaching outside that
-contract couples the consumer to a section it has no authority
-over, and the moment the parser tightens or relaxes the grammar of
-the unowned section, the wrong consumer breaks. The runtime brain
-tool reads `prose` only; the brain provisioner reads `playbook`
-and `research` only; the sync verb and boot reporter read
-frontmatter only.
+non-empty" or imports `result.studyPlaybook` "to surface a preview
+of the navigation prose in the boot status." The runtime brain tool
+concatenates `result.prose` plus `result.studyPlaybook` "for richer
+agent context" so the agent gets the navigation prose without
+waiting for the skill to load the on-disk artifact. The brain
+provisioner sneaks a read of `result.prose` "to validate skill
+configuration" before scaffolding the entry-point artifacts. Each
+consumer's section ownership is part of its contract; reaching
+outside that contract couples the consumer to a section it has no
+authority over, and the moment the parser tightens or relaxes the
+grammar of the unowned section, the wrong consumer breaks. The
+runtime brain tool reads `prose` only — never `studyPlaybook`,
+because routing the skill through the on-disk artifact instead of
+the parser is what keeps the runtime tool surface minimal and the
+skill's read path uniform. The brain provisioner reads `playbook`,
+`studyPlaybook`, and `research` only — never `prose`. The sync verb
+and boot reporter read frontmatter only.
 
 **A parser that returns the body as a single freeform string.**
 "The consumers can extract sections themselves with a regex; the
 parser shouldn't be in the marker-pair-splitting business." Now
 every consumer of `brain.aide` carries its own copy of the body
-grammar, and the parser has decentralized the format it exists to
-centralize. The first consumer that miscounts a marker boundary
-scaffolds an entry-point artifact whose bytes start mid-section;
-the second consumer that uses a different regex disagrees about
-which bytes belong to the prose section; the parser pretends the
-body is opaque while every consumer pretends the body is structured.
-The parser owns body section extraction; consumers reach for typed
-fields by name.
+grammar — four marker pairs to find, the required order to validate,
+the nesting and unmatched-marker cases to detect — and the parser
+has decentralized the format it exists to centralize. The first
+consumer that miscounts a marker boundary scaffolds an entry-point
+artifact whose bytes start mid-section; the second consumer that
+uses a different regex disagrees about which bytes belong to the
+prose section versus the playbook section versus the study-playbook
+section; the parser pretends the body is opaque while every
+consumer pretends the body is structured. The parser owns body
+section extraction; consumers reach for typed fields by name.
 
 **Module-private type definitions for the parsed shape.** The parser
 declares its own `interface ParsedBrainAide { ... }` inside
@@ -984,16 +1153,18 @@ each field by naming a real runtime consumer (sync writes
 Anything else belongs in the body sections or nowhere.
 
 **A parser that interpolates any body section.** Before returning
-results, the parser walks `prose`, `playbook`, or `research` and
-replaces `${name}` occurrences with the resolved label. The first
-user whose prose legitimately documents a `${variable}` syntax has
-their body mangled; the first playbook section that legitimately
-contains a `${...}` template example gets rewritten before reaching
-disk; the first research section that documents a templating
-language has its examples corrupted. Worse: every section author
-now needs to know which placeholders the package will rewrite
-before delivery, and the temptation to "just template the body
-sections too" lands. Substitution lives only in
+results, the parser walks `prose`, `playbook`, `studyPlaybook`, or
+`research` and replaces `${name}` occurrences with the resolved
+label. The first user whose prose legitimately documents a
+`${variable}` syntax has their body mangled; the first playbook
+section that legitimately contains a `${...}` template example gets
+rewritten before reaching disk; the first study-playbook section
+whose navigation prose teaches placeholder-style examples has its
+examples corrupted; the first research section that documents a
+templating language has its examples corrupted. Worse: every
+section author now needs to know which placeholders the package
+will rewrite before delivery, and the temptation to "just template
+the body sections too" lands. Substitution lives only in
 `mcpServerConfig.args`; every body section returns verbatim.
 
 **A parser that throws on missing brain.aide.** The host project
@@ -1031,14 +1202,19 @@ it re-decentralizes exactly the surface this module exists to own.
 `brain.aide` has a `<!-- aide-playbook-start -->` opener appearing
 between the `<!-- aide-prose-start -->` and `<!-- aide-prose-end -->`
 markers — the playbook section is nested inside the prose section.
-The parser, walking with a forgiving stack-based grammar,
-successfully extracts both sections by treating the inner pair as a
-nested region. Now the user has invented a containment hierarchy
-the schema does not have, the section-ownership contract becomes
-ambiguous (whose bytes are inside which?), and the next user nests
-research inside playbook inside prose. Any nesting of markers
-inside another marker pair is `malformed-body` naming the offending
-nested marker; the three sections are siblings, never parent-child.
+Or a `<!-- aide-study-playbook-start -->` opener appears between
+the playbook opener and closer, nesting study-playbook inside
+playbook (a tempting "the navigation prose belongs with the
+playbook" containment). Or research is nested inside study-playbook,
+or study-playbook is nested inside prose. The parser, walking with
+a forgiving stack-based grammar, successfully extracts the sections
+by treating each inner pair as a nested region. Now the user has
+invented a containment hierarchy the schema does not have, the
+section-ownership contract becomes ambiguous (whose bytes are
+inside which?), and the next user nests research inside playbook
+inside prose. Any nesting of markers inside another marker pair is
+`malformed-body` naming the offending nested marker; the four
+sections are siblings, never parent-child.
 
 **A parser that recovers from an opener without a closer.** The
 user's `brain.aide` has `<!-- aide-research-start -->` but no
@@ -1057,27 +1233,49 @@ opener, full stop.
 
 - `.aide/intent.aide` (outcome on the body schema, the
   marker-bounded outcome) -- parent root spec; established that the
-  body of `brain.aide` is parsed as exactly three named sections
-  (`prose`, `playbook`, `research`) delimited by paired HTML-comment
-  markers recognized lowercase and case-sensitive in the required
-  prose-then-playbook-then-research order, with marker layout
-  violations halting the pipeline as `malformed-body` naming the
-  offending marker and bytes outside any marker pair silently
-  ignored. Drove the marker-pair body grammar in this spec's
-  Strategy and the strict-failure migration policy for pre-pivot
-  heading-based files.
+  body of `brain.aide` is parsed as named sections delimited by
+  paired HTML-comment markers recognized lowercase and case-sensitive
+  in a required order, with marker layout violations halting the
+  pipeline as `malformed-body` naming the offending marker and
+  bytes outside any marker pair silently ignored. The four-section
+  amendment (adding `studyPlaybook` between `playbook` and
+  `research`) is queued in the parent intent and tracked in the
+  "Major code refactor queued" subsection of `.aide/handoff.aide`;
+  this spec's frontmatter and body have already been updated to
+  reflect the four-section grammar. Drove the marker-pair body
+  grammar in this spec's Strategy, the strict-failure migration
+  policy for both pre-pivot shapes (heading-based files and
+  three-pair files missing the new pair), and the per-consumer
+  section ownership boundaries.
+- `.aide/handoff.aide` (the "Major code refactor queued" subsection)
+  -- the architectural decision sign-off for the four-section schema
+  extension; signed off by the user in conversation and recorded
+  there as the contract every downstream module works from. Drove
+  the addition of the `studyPlaybook` field to the typed result, the
+  fourth marker pair (`<!-- aide-study-playbook-start -->` /
+  `<!-- aide-study-playbook-end -->`), the extension of the
+  strict-failure migration policy to cover three-pair pre-pivot
+  files, the explicit no-`aide_upgrade`-carve-out invariant, the
+  storage-agnostic carve-out for the user-owned bytes of the
+  `studyPlaybook` section (intent #15 in the handoff's
+  architectural-intent list), and the runtime-brain-tool exclusion
+  from `studyPlaybook` (the skill reads the on-disk artifact, not
+  the body section directly).
 - `.aide/intent.aide` (outcome on storage-agnostic vocabulary) --
   parent root spec; established the forbidden-token list and the
   rule that those tokens must not appear in any `.aide` spec
   authored in this repo nor in code identifiers, comments, or
   string constants project-wide. Drove the storage-agnostic
   vocabulary strategy paragraph in this spec, the field-name
-  collapse to the backend-neutral `playbook` and `research` keys
-  (away from the retired backend-suffixed forms the parent spec's
-  frontmatter calls out by name), the rewrite of every body
-  example to use backend-neutral framing, and the anti-example
-  carve-out scoping (frontmatter undesired-outcome blocks only,
-  never body prose).
+  collapse to the backend-neutral `playbook`, `studyPlaybook`, and
+  `research` keys (away from the retired backend-suffixed forms the
+  parent spec's frontmatter calls out by name), the rewrite of
+  every body example to use backend-neutral framing, the anti-
+  example carve-out scoping (frontmatter undesired-outcome blocks
+  only, never body prose), and the storage-agnostic carve-out
+  paragraph that scopes user-owned section bytes (the
+  `studyPlaybook` BYTES may carry backend-specific vocabulary; the
+  parser code, identifiers, and field name stay storage-agnostic).
 - `.aide/intent.aide` (outcomes establishing the two-field
   frontmatter minimum) -- parent root spec; established the
   two-field minimum frontmatter schema (`name` + `mcpServerConfig`),
@@ -1089,7 +1287,8 @@ opener, full stop.
   code-owned" drove the move of entry-point template content out
   of inline package constants and into the user-owned
   `brain.aide`, which is the load-bearing reason this module's
-  body grew to three sections.
+  body grew first to three sections and (per the queued amendment)
+  to four.
 - `src/service/install/writeMethodology/.aide` and the corresponding
   helper code -- the existing HTML-comment marker precedent that
   this spec's marker grammar extends; informed the lowercase shape
@@ -1099,25 +1298,30 @@ opener, full stop.
   of an established pattern in this codebase rather than a novel
   shape.
 - `src/service/install/provisionBrain/.aide` -- sibling consumer
-  spec; specifies that the playbook and research entry-point
-  artifact InitSteps source their `content` bytes from the
-  corresponding body sections of the scaffolded `brain.aide` via
-  this parser, never from inline TypeScript constants. The
-  per-consumer section ownership rule (`playbook` + `research`
-  only, never `prose`) is grounded in this spec's outcomes about
-  entry-point artifact byte sourcing and the
+  spec; specifies that the three entry-point artifact InitSteps
+  (the playbook artifact, the study-playbook artifact, and the
+  research artifact) source their `content` bytes from the
+  corresponding three body sections of the scaffolded `brain.aide`
+  via this parser, never from inline TypeScript constants. The
+  per-consumer section ownership rule (`playbook`, `studyPlaybook`,
+  and `research` only, never `prose`) is grounded in this spec's
+  outcomes about entry-point artifact byte sourcing and the
   no-inline-template-constants invariant.
 - `src/tools/brain/.aide` -- sibling consumer spec; specifies that
   the runtime brain tool reads `prose` only and never reaches into
-  any other field of the parsed config on the `ok` branch. The
-  per-consumer section ownership rule (`prose` only, never the
-  playbook or research sections) is grounded in this spec's
-  "frontmatter-is-syncs-input, prose-is-the-agents-input"
-  boundary.
+  any other field of the parsed config on the `ok` branch — never
+  `playbook`, never `studyPlaybook`, never `research`. The runtime
+  tool's exclusion from `studyPlaybook` is explicit: the
+  `study-playbook` skill reaches its content through the on-disk
+  artifact the provisioner scaffolds, not through this parser's
+  body section. Grounds the per-consumer section ownership rule
+  (`prose` only) in this spec's "frontmatter-is-syncs-input,
+  prose-is-the-agents-input" boundary.
 - `src/types/index.ts` -- canonical home of the `BrainAideConfig`,
   `BrainAideMcpServerConfig`, and `ParseBrainAideResult` type
   definitions. The central-types invariant in the Strategy
   paragraph "Types live centrally in `src/types/`" requires the
-  parsed-shape fields for `prose`, `playbook`, and `research` to
-  land here next to the existing `BrainAideConfig` definition,
+  parsed-shape fields for `prose`, `playbook`, `studyPlaybook`,
+  and `research` to land here next to the existing
+  `BrainAideConfig` definition once the implementation lands,
   imported by every consumer, never re-declared module-private.

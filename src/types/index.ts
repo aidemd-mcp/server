@@ -528,16 +528,22 @@ export type BrainAideConfig = {
  * The discriminant is `kind`. Consumers narrow on `kind` to handle each outcome:
  *
  * - `"ok"` — the file was found, frontmatter parsed cleanly, all required fields
- *   validated, and the body contained exactly the three required marker-pair
+ *   validated, and the body contained exactly the four required marker-pair
  *   sections in their required order. `config` is the full parsed frontmatter.
- *   `prose`, `playbook`, and `research` each carry the verbatim bytes between
- *   their opening marker and matching closing marker — byte-identical to what the
- *   user wrote between those bounds. No substitution runs on any body field.
+ *   `prose`, `playbook`, `studyPlaybook`, and `research` each carry the verbatim
+ *   bytes between their opening marker and matching closing marker — byte-identical
+ *   to what the user wrote between those bounds. No substitution runs on any body
+ *   field.
  *
- *   The three recognized marker pairs, in required order:
+ *   The four recognized marker pairs, in required order:
  *   - `<!-- aide-prose-start -->` / `<!-- aide-prose-end -->`
  *   - `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`
+ *   - `<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->`
  *   - `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
+ *
+ *   `studyPlaybook` carries the verbatim bytes between
+ *   `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->`,
+ *   byte-identical to user input, with no substitution applied.
  *
  *   Marker tokens are lowercase, case-sensitive, with the literal shape
  *   `<!-- <token>-start -->` / `<!-- <token>-end -->` exactly. Bytes outside any
@@ -557,8 +563,9 @@ export type BrainAideConfig = {
  * - `"malformed-body"` — frontmatter is valid but the body fails the closed
  *   marker-pair grammar. `reason` names the violating marker. Violation classes:
  *   - Missing pair → `"missing markers: <opener>, <closer>"` (lists every absent
- *     marker in fixed prose-then-playbook-then-research scan order, open before
- *     close within each section).
+ *     marker in fixed prose-then-playbook-then-studyPlaybook-then-research scan
+ *     order, open before close within each section; any of the four required pairs
+ *     missing produces this form).
  *   - Malformed or typo'd marker token (uppercase, mixed-case, missing internal
  *     spaces, extra internal whitespace, typo, missing `aide-` prefix) →
  *     `"unknown marker: <as-written>"`.
@@ -576,7 +583,7 @@ export type BrainAideConfig = {
  *   `cli/sync` to compose branch-specific remediation prose.
  */
 export type ParseBrainAideResult =
-	| { kind: "ok"; config: BrainAideConfig; prose: string; playbook: string; research: string }
+	| { kind: "ok"; config: BrainAideConfig; prose: string; playbook: string; studyPlaybook: string; research: string }
 	| { kind: "missing" }
 	| { kind: "malformed-frontmatter"; reason: string }
 	| { kind: "malformed-body"; reason: string };

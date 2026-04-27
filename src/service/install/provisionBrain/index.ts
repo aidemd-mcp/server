@@ -64,7 +64,7 @@ const BRAIN_ROOT_DIRS = ["research", "process/retro", "coding-playbook"] as cons
  * - Otherwise → on-disk path: brain.aide already exists; parse from the file via
  *   `parseBrainAide(projectRoot)`.
  *
- * Returns `{ playbook, research }` on a successful parse (`kind === "ok"`).
+ * Returns `{ playbook, studyPlaybook, research }` on a successful parse (`kind === "ok"`).
  * Returns `null` on any non-ok result (`missing`, `malformed-frontmatter`, `malformed-body`).
  * Entry-point artifact step builders fall back to `would-skip` when this returns `null`, surfacing
  * an actionable remediation message to the user.
@@ -72,7 +72,7 @@ const BRAIN_ROOT_DIRS = ["research", "process/retro", "coding-playbook"] as cons
 async function resolveBrainAideBody(
 	projectRoot: string,
 	brainAideStep: InitStep,
-): Promise<{ playbook: string; research: string } | null> {
+): Promise<{ playbook: string; studyPlaybook: string; research: string } | null> {
 	let parseResult;
 
 	if (brainAideStep.status === "would-create" && brainAideStep.content !== undefined) {
@@ -85,7 +85,7 @@ async function resolveBrainAideBody(
 
 	if (parseResult.kind !== "ok") return null;
 
-	return { playbook: parseResult.playbook, research: parseResult.research };
+	return { playbook: parseResult.playbook, studyPlaybook: parseResult.studyPlaybook, research: parseResult.research };
 }
 
 /**
@@ -125,7 +125,7 @@ async function resolveBrainAideConfig(
  * Requires a resolved `brainPath` (brain root location) and `projectRoot` (host project root).
  * Entry-point artifact bytes are sourced from brain.aide body sections via `parseBrainAide` /
  * `parseBrainAideFromString`; this module never holds entry-point bytes as inline TypeScript constants.
- * Returns five `InitStep` items in order:
+ * Returns six `InitStep` items in order:
  *
  * 1. Brain config (brain.aide) — `would-create` with bundled default bytes when absent;
  *    `exists` when present. Written to `.aide/config/brain.aide`. Seed-semantic idempotency —
@@ -138,11 +138,16 @@ async function resolveBrainAideConfig(
  *    brain.aide's playbook body section delimited by the `<!-- aide-playbook-start -->` and
  *    `<!-- aide-playbook-end -->` markers when absent; `exists` when present.
  *    Seed-semantic idempotency.
- * 4. Research entry-point artifact — `would-create` with content sourced from the scaffolded
+ * 4. Study-playbook entry-point artifact — `would-create` with content sourced from the
+ *    scaffolded brain.aide's studyPlaybook body section delimited by the
+ *    `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->` markers when
+ *    absent; `exists` when present. Artifact path: `coding-playbook/study-playbook.md` for an
+ *    editor-backed Markdown brain. Presence-only idempotency (seed-semantic).
+ * 5. Research entry-point artifact — `would-create` with content sourced from the scaffolded
  *    brain.aide's research body section delimited by the `<!-- aide-research-start -->` and
  *    `<!-- aide-research-end -->` markers when absent; `exists` when present.
  *    Seed-semantic idempotency.
- * 5. Brain MCP entry — `would-create` for cold installs; `would-overwrite` for legacy
+ * 6. Brain MCP entry — `would-create` for cold installs; `would-overwrite` for legacy
  *    `obsidian`-keyed installs, transitional both-keys states, or entry drift; `exists`
  *    if the brain key is present with a matching entry (derived from the scaffolded
  *    brain.aide). If the config file is malformed JSON, returns `would-create` with
@@ -150,8 +155,8 @@ async function resolveBrainAideConfig(
  *    scaffolded brain.aide bytes — never constructed inline.
  *
  * Two idempotency modes coexist: seed-semantic (presence-only) for user-owned
- * content (steps 1, 2, 3, 4); canonical-derived (entry comparison) for the MCP
- * prescription (step 5).
+ * content (steps 1, 2, 3, 4, 5); canonical-derived (entry comparison) for the MCP
+ * prescription (step 6).
  *
  * No step writes to disk — this helper is a planner only.
  *
@@ -180,15 +185,23 @@ export default async function provisionBrain(
 		projectRoot, brainPath, brainAideStep,
 	);
 
-	// Step 4: Plan the research entry-point artifact. Content sourced from the
+	// Step 4: Plan the study-playbook entry-point artifact. Content sourced from the
+	// scaffolded brain.aide's studyPlaybook body section between
+	// `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->` via the
+	// same parser pass that powers steps 3 and 5. Presence-only idempotency (seed-semantic).
+	const studyPlaybookStep = await buildStudyPlaybookStep(
+		projectRoot, brainPath, brainAideStep,
+	);
+
+	// Step 5: Plan the research entry-point artifact. Content sourced from the
 	// scaffolded brain.aide's research body section between
 	// `<!-- aide-research-start -->` and `<!-- aide-research-end -->` via the
-	// same parser pass that powers step 3. Presence-only idempotency (seed-semantic).
+	// same parser pass that powers steps 3 and 4. Presence-only idempotency (seed-semantic).
 	const researchStep = await buildResearchStep(
 		projectRoot, brainPath, brainAideStep,
 	);
 
-	// Step 5: Plan the brain MCP entry. Prescription derived from the scaffolded
+	// Step 6: Plan the brain MCP entry. Prescription derived from the scaffolded
 	// brain.aide's frontmatter via parseBrainAide + interpolateArgs. Four
 	// migration branches: cold install, legacy obsidian-only, transitional
 	// both-keys, drift on the brain key.
@@ -198,7 +211,7 @@ export default async function provisionBrain(
 
 	return [
 		brainAideStep, brainRootStep,
-		playbookStep, researchStep, mcpStep,
+		playbookStep, studyPlaybookStep, researchStep, mcpStep,
 	];
 }
 
@@ -300,6 +313,53 @@ async function buildPlaybookStep(
 		category: "brain",
 		filePath,
 		content: body.playbook,
+	};
+}
+
+/**
+ * Build the study-playbook entry-point artifact planning step.
+ *
+ * Presence-only check — if the file exists at its expected path, the step is
+ * `exists` regardless of on-disk content. Once the user has the file, the bytes
+ * belong to the user. See the spec's Strategy section ("Two different idempotency
+ * semantics coexist in this module") for the rationale behind seed-semantic
+ * idempotency vs. the canonical-derived check used by `buildBrainMcpStep`.
+ *
+ * The artifact's path (`coding-playbook/study-playbook.md`) is a framework
+ * contract — the agent-side `study-playbook` skill points at this artifact
+ * regardless of which storage backend the user wires. Content is sourced from
+ * the scaffolded brain.aide's study-playbook body section between
+ * `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->` via
+ * `resolveBrainAideBody`, the same parser pass that powers the playbook entry-point step.
+ */
+async function buildStudyPlaybookStep(
+	projectRoot: string,
+	brainPath: string,
+	brainAideStep: InitStep,
+): Promise<InitStep> {
+	const filePath = join(brainPath, "coding-playbook", "study-playbook.md");
+
+	if (await exists(filePath)) {
+		return { name: "Study-playbook entry-point", status: "exists", category: "brain", filePath };
+	}
+
+	const body = await resolveBrainAideBody(projectRoot, brainAideStep);
+	if (body === null) {
+		return {
+			name: "Study-playbook entry-point",
+			status: "would-skip",
+			category: "brain",
+			filePath,
+			instructions: "Brain config (brain.aide) failed to parse — fix it and re-run.",
+		};
+	}
+
+	return {
+		name: "Study-playbook entry-point",
+		status: "would-create",
+		category: "brain",
+		filePath,
+		content: body.studyPlaybook,
 	};
 }
 

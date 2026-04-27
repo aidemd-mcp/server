@@ -1,728 +1,407 @@
 ---
 intent: >
-  Repoint provisionBrain from the retired `playbookHub`/`researchHub`
-  field names on `ParseBrainAideResult.ok` to the marker-pair-cycle
-  renamed fields `playbook` and `research`. Update the orchestrator's
-  `resolveBrainAideBody` helper return shape to `{ playbook, research }`.
-  Rename the helpers and step names to drop the retired `hub` token
-  (`buildPlaybookHubStep` → `buildPlaybookStep`,
-  `buildResearchHubStep` → `buildResearchStep`, step names
-  `"Playbook hub"` / `"Research hub"` → `"Playbook entry-point"` /
-  `"Research entry-point"`). Repoint test fixtures and assertions
-  accordingly. The 5-step pipeline shape is preserved verbatim
-  (brain config → brain root directories → playbook entry-point
-  artifact → research entry-point artifact → MCP entry); only the
-  field names destructured from the parser result, the helper and
-  step-name vocabulary, and the in-line test fixture body grammar
-  change.
+  Extend provisionBrain's bundled brain.aide template, return-shape, step-list,
+  and tests from the current 3-section / 5-step / 2-artifact contract to the
+  amended 4-section / 6-step / 3-artifact contract. Adds the studyPlaybook body
+  section to obsidianBrainAideTemplate (sourced verbatim from the
+  multi-month-tested skill prose at .claude/skills/study-playbook/SKILL.md),
+  trims the playbook section to pure conventions, extends resolveBrainAideBody
+  to return { playbook, studyPlaybook, research }, inserts buildStudyPlaybookStep
+  between buildPlaybookStep and buildResearchStep (presence-only idempotency at
+  brain-relative path coding-playbook/study-playbook.md), and updates both test
+  files. Existing tests remain green; new tests cover the new section/step/artifact.
 ---
 
 ## Project Structure
 
-This is an edit plan against an existing module. The folder shape and
-the orchestrator's external signature are unchanged. What changes:
-
-- `index.ts`: every reference to the retired `playbookHub` /
-  `researchHub` field names on the parser result is renamed to
-  `playbook` / `research`. The `resolveBrainAideBody` helper's
-  return type changes from `{ playbookHub: string; researchHub:
-  string } | null` to `{ playbook: string; research: string } |
-  null`. Helper names and step names drop the retired `hub` token.
-- `index.test.ts`: every assertion on the retired field names is
-  renamed. In-line brain.aide fixture strings switch from the
-  retired `## Prose` / `## Playbook hub` / `## Research hub`
-  heading grammar to the marker-pair grammar
-  (`<!-- aide-prose-start -->` etc.) so the parser they exercise
-  succeeds. Step-name assertions (`"Playbook hub"` →
-  `"Playbook entry-point"`, `"Research hub"` →
-  `"Research entry-point"`) update to the new vocabulary.
+After this plan executes, the `provisionBrain/` module looks like this. The
+folder is the same scope directory this plan.aide lives in. `[E]` marks files
+that already exist and are modified by this plan; `[E*]` marks the only file
+unchanged structurally but with bytes that round-trip differently because it
+participates in the new four-section grammar (none in this plan); `[NEW]`
+marks files that did not exist before this plan ran. There are NO new files
+in this plan — every change is an in-place edit to an existing file. The
+new builder lives inline in `index.ts`, mirroring the existing
+`buildPlaybookStep` and `buildResearchStep` siblings.
 
 ```
-src/service/install/provisionBrain/
-├── .aide                         ← [existing, aligned] intent spec —
-│                                    already rewritten for the
-│                                    marker-pair grammar, the renamed
-│                                    `playbook`/`research` fields, and
-│                                    the storage-agnostic
-│                                    "entry-point artifact" vocabulary
-├── plan.aide                     ← [this file, REPLACES the prior
-│                                    8/8-done plan that targeted the
-│                                    retired `playbookHub`/`researchHub`
-│                                    field names]
-├── todo.aide                     ← [existing] alignment record (untouched)
-├── index.ts                      ← [edit] orchestrator + helpers
-│                                    export default async function provisionBrain(
-│                                      projectRoot: string,
-│                                      brainPath: string,
-│                                      mcpConfigPath: string,
-│                                    ): Promise<InitStep[]>
-│                                    signature unchanged. 5-step pipeline
-│                                    preserved verbatim. Behavior changes:
-│                                      - resolveBrainAideBody returns
-│                                        `{ playbook, research } | null`
-│                                        (was `{ playbookHub, researchHub }`)
-│                                      - destructure of parseBrainAide /
-│                                        parseBrainAideFromString result
-│                                        uses `parseResult.playbook` and
-│                                        `parseResult.research`
-│                                      - buildPlaybookHubStep →
-│                                        buildPlaybookStep
-│                                      - buildResearchHubStep →
-│                                        buildResearchStep
-│                                      - InitStep.name field on those
-│                                        two steps changes from
-│                                        `"Playbook hub"` →
-│                                        `"Playbook entry-point"` and
-│                                        `"Research hub"` →
-│                                        `"Research entry-point"`
-│                                      - `body.playbookHub` consumer
-│                                        becomes `body.playbook`;
-│                                        `body.researchHub` becomes
-│                                        `body.research`
-│                                      - JSDoc identifier sweep: every
-│                                        remaining occurrence of `hub`
-│                                        in JSDoc, comments, log strings,
-│                                        and identifier names is rewritten
-│                                        to `entry-point` /
-│                                        `entry-point artifact`
-├── index.test.ts                 ← [edit] tests reflect the renamed
-│                                    fields, the renamed helper / step
-│                                    names, and the marker-pair grammar
-│                                    in every in-line brain.aide
-│                                    fixture string. Test descriptions
-│                                    and `it()` titles drop the retired
-│                                    `hub` token.
-└── obsidianBrainAideTemplate/    ← [helper folder, governed by its own
-                                     plan.aide — Plan 1 in this cascade,
-                                     declared as a Prerequisite below]
+provisionBrain/
+├── .aide                        [E] intent spec — already updated to the 4-section / 6-step / 3-artifact contract
+├── plan.aide                    [E] this file
+├── index.ts                     [E] orchestrator — adds buildStudyPlaybookStep, extends resolveBrainAideBody
+│                                    Exports:
+│                                      default async function provisionBrain(
+│                                        projectRoot: string,
+│                                        brainPath: string,
+│                                        mcpConfigPath: string,
+│                                      ): Promise<InitStep[]>     // returns 6 steps
+│                                    Inline helpers (private, in dependency order, all keep their JSDoc):
+│                                      async function exists(path: string): Promise<boolean>
+│                                      async function brainRootExists(brainPath: string): Promise<boolean>
+│                                      async function safeReadFile(path: string): Promise<string>
+│                                      async function resolveBrainAideBody(
+│                                        projectRoot: string,
+│                                        brainAideStep: InitStep,
+│                                      ): Promise<{ playbook: string; studyPlaybook: string; research: string } | null>
+│                                                                  // ← shape extended with studyPlaybook
+│                                      async function resolveBrainAideConfig(
+│                                        projectRoot: string,
+│                                        brainAideStep: InitStep,
+│                                      ): Promise<{ command: string; args: string[] } | null>
+│                                      async function buildBrainAideStep(
+│                                        projectRoot: string,
+│                                        brainPath: string,
+│                                      ): Promise<InitStep>
+│                                      async function buildBrainRootStep(brainPath: string): Promise<InitStep>
+│                                      async function buildPlaybookStep(
+│                                        projectRoot: string,
+│                                        brainPath: string,
+│                                        brainAideStep: InitStep,
+│                                      ): Promise<InitStep>
+│                                      async function buildStudyPlaybookStep(   // ← NEW inline helper
+│                                        projectRoot: string,
+│                                        brainPath: string,
+│                                        brainAideStep: InitStep,
+│                                      ): Promise<InitStep>
+│                                                                   // filePath = brainPath/coding-playbook/study-playbook.md
+│                                                                   // name    = "Study-playbook entry-point"
+│                                                                   // content = body.studyPlaybook on cold install
+│                                                                   // status  = exists when filePath is present (presence-only)
+│                                                                   // status  = would-skip when resolveBrainAideBody returns null
+│                                      async function buildResearchStep(
+│                                        projectRoot: string,
+│                                        brainPath: string,
+│                                        brainAideStep: InitStep,
+│                                      ): Promise<InitStep>
+│                                      async function buildBrainMcpStep(
+│                                        projectRoot: string,
+│                                        brainAideStep: InitStep,
+│                                        mcpConfigPath: string,
+│                                      ): Promise<InitStep>
+│
+├── index.test.ts                [E] test suite — adds buildStudyPlaybookStep tests, updates step-count assertions
+│                                    New / changed describes:
+│                                      • "5a: cold install" — assert results.length === 6
+│                                          and step name order: Brain config (brain.aide), Brain root directories,
+│                                          Playbook entry-point, Study-playbook entry-point, Research entry-point,
+│                                          MCP config (brain)
+│                                      • "5f: fully provisioned project — all six steps return exists" — pre-seed
+│                                          coding-playbook/study-playbook.md too; assert results.length === 6
+│                                          and results[3].status === "exists"
+│                                      • "Cold-install: entry-point artifacts source content from scaffolded brain.aide"
+│                                          — add a third it() that pulls the studyPlaybook body section from the
+│                                          parsed bundled template and asserts results[3].content equals it
+│                                      • "Existing brain.aide: entry-point artifacts source from on-disk file"
+│                                          — extend customContent to include the new aide-study-playbook marker pair
+│                                          with sentinel "USER-EDITED-STUDY-PLAYBOOK"; add a new it() asserting
+│                                          results[3].content contains that sentinel; update existing playbook
+│                                          and research fixtures to also include the new pair so they keep parsing
+│                                      • "Malformed brain.aide" — add assertion that the new study-playbook step
+│                                          is also would-skip; assert all three artifact steps surface would-skip
+│                                          when the body is malformed
+│                                      • "Study-playbook entry-point" describe block (new) — three it() blocks
+│                                          mirroring the playbook entry-point regression block:
+│                                            – "study-playbook entry-point is would-create with content"
+│                                            – "study-playbook entry-point returns exists when file is present
+│                                              (seed-semantic — no byte comparison)"
+│                                            – "study-playbook entry-point status is never would-overwrite"
+│                                              (parameterized in the existing describe.each block alongside playbook
+│                                              and research)
+│                                      • "5h: scaffolded brain.aide schema check" — unchanged (frontmatter-only)
+│                                      • All MCP-step indices update from results[4] to results[5]
+│                                    Total step indices in the test file post-plan:
+│                                          results[0] = Brain config (brain.aide)
+│                                          results[1] = Brain root directories
+│                                          results[2] = Playbook entry-point
+│                                          results[3] = Study-playbook entry-point   ← NEW
+│                                          results[4] = Research entry-point         ← was [3]
+│                                          results[5] = MCP config (brain)           ← was [4]
+│
+└── obsidianBrainAideTemplate/
+    ├── index.ts                 [E] bundled default brain.aide bytes — emits four marker-bounded sections
+    │                                Export unchanged: default function obsidianBrainAideTemplate(rootPath: string): string
+    │                                Internal composition (top-to-bottom in dependency order):
+    │                                  - mcpServerConfig template literal (existing — Windows / POSIX branch unchanged)
+    │                                  - prose section literal (existing bytes, wrapped in
+    │                                      <!-- aide-prose-start --> / <!-- aide-prose-end -->)
+    │                                  - playbook section literal (TRIMMED to pure conventions, wrapped in
+    │                                      <!-- aide-playbook-start --> / <!-- aide-playbook-end -->)
+    │                                  - studyPlaybook section literal (NEW, wrapped in
+    │                                      <!-- aide-study-playbook-start --> / <!-- aide-study-playbook-end -->)
+    │                                      Bytes = the substantive teaching content of
+    │                                      .claude/skills/study-playbook/SKILL.md verbatim (Step 1/2/3 process,
+    │                                      Navigation Rules with depth-counting example, link-traversal semantics,
+    │                                      never-re-read rule, stay-in-scope rule). Skill frontmatter and the
+    │                                      single-line "Use the read tool from `aide_brain` to read..." preamble
+    │                                      that names the skill itself are dropped — only the methodology content
+    │                                      moves.
+    │                                  - research section literal (existing bytes, wrapped in
+    │                                      <!-- aide-research-start --> / <!-- aide-research-end -->)
+    │                                Output is the concatenation of frontmatter + the four marker-bounded sections,
+    │                                each separated by a blank line, in the required order:
+    │                                  prose → playbook → studyPlaybook → research
+    │
+    └── index.test.ts             [E] template tests — adds studyPlaybook section assertions, updates playbook
+                                      section assertions to reflect the trim, replaces all `## Heading`-based
+                                      assertions with marker-bounded grammar assertions where any still depend
+                                      on the old heading boundary.
+                                      New / changed describes:
+                                        • "round-trip parses cleanly under the new schema" — add assertions that
+                                            result.studyPlaybook.length > 0 and that all four sections (prose,
+                                            playbook, studyPlaybook, research) are byte-distinct from each other
+                                        • "three-section body shape" → renamed "four-section body shape"; add an
+                                            it() asserting parseBrainAideFromString(content).studyPlaybook is a
+                                            non-empty string; update the byte-distinct test to compare all four
+                                        • "Playbook section preserves sentinel structure" — TRIMMED expectations:
+                                            – it must STILL contain "# Coding Playbook"
+                                            – it must STILL contain a Task Routing heading sentinel
+                                            – it must STILL contain Always Read First, Sections, Contents headings
+                                              (the trimmed playbook keeps these structural anchors)
+                                            – it must NO LONGER contain navigation prose: assert it does NOT contain
+                                              "How to Use This Index" anywhere in the playbook section, and does
+                                              not contain any Step 1/Step 2/Step 3 procedural narration
+                                            – the [[your-conventions-note]] / [[your-folder-structure-note]]
+                                              wikilink anchors stay (they are convention placeholders, not
+                                              navigation prose)
+                                        • "studyPlaybook section ships the navigation methodology" (NEW) —
+                                            – it() "studyPlaybook contains '# Study Playbook' or equivalent H1"
+                                              (architect leaves the exact heading to the implementor; it must be
+                                              an H1 the section starts with)
+                                            – it() "studyPlaybook contains 'Step 1' / 'Step 2' / 'Step 3' procedural
+                                              markers from the multi-month-tested prose"
+                                            – it() "studyPlaybook contains 'Navigation Rules' heading"
+                                            – it() "studyPlaybook contains the depth-counting example anchor
+                                              ('depth 0' or 'depth 1' literal substring)"
+                                            – it() "studyPlaybook contains '[[wikilinks]]' literal substring"
+                                              (the user-owned-section carve-out explicitly permits the bundled
+                                              connector vocabulary inside this section's bytes)
+                                            – it() "studyPlaybook does NOT contain '^## .+$' top-level lines"
+                                              (nested headings stay at H3 or deeper so the parser is not affected)
+                                        • "Research section ships structural seed" — unchanged
+                                        • "no nested '## ' headings inside any body section" — extend to also
+                                            assert result.studyPlaybook does not match /^## .+$/m
+                                        • "parsed config contains exactly the new fields" — unchanged
+                                        • "platform branching" — unchanged
+                                        • "prose body uses storage-agnostic vocabulary" — unchanged; note that
+                                            this assertion still applies to the prose section ONLY, not to the
+                                            new studyPlaybook section (which carve-out permits connector vocab)
 ```
 
 ## Prerequisites
 
-**1. `src/service/parseBrainAide/`** must export the marker-pair
-grammar with the renamed `playbook` / `research` fields. Already
-satisfied (24/24 in its plan, 61/61 tests green per the breakage
-report). The contract this plan consumes:
+- `@/types/index.js` must export `ParseBrainAideResult.ok` with the field
+  `studyPlaybook: string` (camelCase). **Already in place** — the parser cycle
+  landed first; verify by reading `src/types/index.ts` lines 585-589 (the
+  `ParseBrainAideResult` union literal).
+- `@/service/parseBrainAide/index.js` must export `parseBrainAide`,
+  `parseBrainAideFromString`, and `interpolateArgs`, and the parser must
+  recognize the four marker pairs in the required order
+  prose → playbook → studyPlaybook → research, returning ok results that carry
+  all four typed body fields. **Already in place** — verify by reading
+  `MARKER_PAIRS` (lines 17-22) and `parseBrainAideFromString`'s return shape
+  (line 399) in `src/service/parseBrainAide/index.ts`.
 
-- `parseBrainAideFromString(content)` returns
-  `{ kind: "ok", config, prose, playbook, research }` when the
-  content carries exactly the three required marker pairs in
-  fixed order.
-- `parseBrainAide(root)` reads `.aide/config/brain.aide` and
-  delegates to the same string parser.
-- `interpolateArgs(config)` substitutes `${...}` placeholders in
-  `mcpServerConfig.args` against frontmatter fields (no-op on the
-  default scaffold).
-
-**2. `src/service/install/provisionBrain/obsidianBrainAideTemplate/`**
-must emit a default brain.aide whose body carries the three required
-marker pairs in fixed order. Governed by Plan 1 in this cascade
-(see sibling `obsidianBrainAideTemplate/plan.aide`). The contract
-this plan consumes:
-
-- `obsidianBrainAideTemplate(rootPath: string): string` returns a
-  string that round-trips through `parseBrainAideFromString` to
-  `kind: "ok"` with `result.playbook` and `result.research`
-  carrying the playbook and research entry-point artifact bytes.
-- The emitted prose body uses storage-agnostic vocabulary (no
-  `vault`, no `wikilink`, no `hub` standalone) but preserves the
-  MCP tool-name sentinels (`mcp__brain__read_note`,
-  `mcp__brain__search_notes`) and the entry-point file paths
-  (`coding-playbook/coding-playbook.md`,
-  `research/research.md`) that this module's tests assert on.
-
-If Plan 1 has not landed when this plan executes, every cold-install
-test that derives entry-point bytes from the template will fail —
-the template's body still carries the retired heading grammar and
-parses as `malformed-body`. Run Plan 1 first.
+If either prerequisite is not in place, this plan cannot compile and must
+not start.
 
 ## Plan
 
-### 1. Repoint the orchestrator's parser-result destructuring to the renamed `playbook` / `research` fields
+### [x] 1. Update obsidianBrainAideTemplate to emit the four-section body in the required order
 
-Read: `coding-playbook/architecture/data-flow`, `coding-playbook/foundations/conventions`
+Read: `coding-playbook/foundations/conventions`, `.aide/docs/agent-readable-code.md`, `.aide/docs/progressive-disclosure.md`
 
-- [x] Edit `src/service/install/provisionBrain/index.ts`. Update
-      `resolveBrainAideBody` so its return type reflects the new
-      field names from `ParseBrainAideResult.ok`:
+The current template emits a heading-bounded body (`## Prose`, `## Playbook hub`, `## Research hub`) which the marker-bounded parser rejects. This step replaces the body composition entirely so the output is four marker-bounded sections in the required order, with the playbook section trimmed and the new studyPlaybook section sourced from the multi-month-tested skill prose. The frontmatter and platform branching at the top of the file are unchanged.
 
-      ```
-      Promise<{ playbook: string; research: string } | null>
-      ```
+- [x] 1a. Replace the body half of `obsidianBrainAideTemplate/index.ts` (everything after the `---\n` close fence in the returned string) with four marker-bounded sections in this exact order:
+  - `<!-- aide-prose-start --> ... <!-- aide-prose-end -->` carrying the existing prose bytes (the `Your brain is...` paragraph block, currently between `## Prose` and `## Playbook hub`). Keep the existing storage-agnostic-but-`mcp__brain__*`-flavored vocabulary — the prose section's existing bytes already pass the storage-agnostic prose tests. Add a sentence describing the new study-playbook entry-point at `coding-playbook/study-playbook.md` to the prose so it lists all THREE entry-point artifacts (the existing prose mentions only two).
+  - `<!-- aide-playbook-start --> ... <!-- aide-playbook-end -->` carrying the playbook section content TRIMMED to pure coding conventions (see step 2 — that is a separate step but its output is what lands in this section here; sequence step 1 first to establish the marker scaffold, then step 2 trims the bytes inside).
+  - `<!-- aide-study-playbook-start --> ... <!-- aide-study-playbook-end -->` carrying the multi-month-tested navigation prose. Source: read `.claude/skills/study-playbook/SKILL.md`, drop the YAML frontmatter (lines between the leading `---` fences) and the single-line `# /study-playbook — Load Coding Playbook Context` title plus the one-line "Navigate the coding playbook hub..." preamble that names the skill itself, and write the remaining substantive teaching content verbatim. The remaining content is everything from the `Navigate the coding playbook hub in the brain...` paragraph through `Don't load unrelated sections "just in case."` — the Step 1 / Step 2 / Step 3 process headings and prose, the Navigation Rules block with the depth-counting example, the link-traversal semantics, the never-re-read rule, and the stay-in-scope rule. Replace the H1 with `# Study Playbook` (the bundled artifact's title). All section headings inside this section MUST be `### ` or deeper (not `## `) so the parser walker does not see them as section boundaries — demote any `## ` headings from the source skill content to `### ` here. The `[[wikilink]]` substrings, "hub" word usages, and other connector-flavored vocabulary STAY — the parent intent's user-owned-section-bytes carve-out explicitly permits them inside studyPlaybook bytes.
+  - `<!-- aide-research-start --> ... <!-- aide-research-end -->` carrying the existing research bytes (the `# Research` block currently between `## Research hub` and end-of-string). Demote the existing nested headings to `### ` if they are not already (they currently are `### Domains`, `### How to Use This Index`, `### Domain Hubs`, `### Contents` — verify after the edit).
+- [x] 1b. Update the function-level JSDoc above `obsidianBrainAideTemplate` to describe the new four-section body. Replace the `three body sections in this order` enumeration with `four body sections in this order` and list the new section between playbook and research. Drop or reword the `Format spec: .aide/docs/brain-aide.md` comment if its bullets reference the old shape — only the section count and ordering paragraph need to change. The platform-branching JSDoc bullet stays. The "Nested headings inside any section MUST use `### ` or deeper" bullet is updated to reference markers rather than `## ` boundaries: under marker grammar, nested `## ` is silently ignored by the parser — but for visual consistency and to match the existing tests' "no nested `## ` lines" assertions, keep the requirement.
+- [x] 1c. Verify by running `npx tsc --noEmit` and `npx vitest run src/service/install/provisionBrain/obsidianBrainAideTemplate/`. The template's existing tests should now pass because the body emits valid marker pairs that round-trip through `parseBrainAide`. Tests added in step 4 are not yet in place — running just this step's tests is fine.
 
-      Update the destructure on the `kind: "ok"` branch (currently
-      L88: `return { playbookHub: parseResult.playbookHub,
-      researchHub: parseResult.researchHub };`) to read
-      `parseResult.playbook` and `parseResult.research` and return
-      `{ playbook: parseResult.playbook, research: parseResult.research }`.
+### 2. Trim the playbook body section to pure coding conventions
 
-      Update `resolveBrainAideBody`'s JSDoc:
-        - Field-name references in the JSDoc body change from
-          `playbookHub` / `researchHub` to `playbook` / `research`.
-        - The "single source of hub-artifact body bytes" sentence
-          becomes "single source of entry-point artifact body bytes"
-          (per the storage-agnostic vocabulary sweep — `hub-artifact`
-          contains the retired `hub` token).
-        - The line referencing brain.aide as the authoritative source
-          stays.
-        - The dispatch logic sentences stay structurally; only the
-          terminology shifts ("hub-artifact step builders" →
-          "entry-point artifact step builders").
+Read: `coding-playbook/foundations/conventions`
 
-      No callers of `resolveBrainAideBody` exist outside this file;
-      the consumers are the two step builders (currently
-      `buildPlaybookHubStep` and `buildResearchHubStep`, renamed in
-      step 2 below). Their consumption pattern updates in lockstep
-      with this rename.
+The current playbook section in the template includes both the conventions skeleton (Task Routing table, Always Read First, Sections, Contents) AND a `### How to Use This Index` paragraph (lines 70-72 of the current template) that is procedural navigation prose. The amendment moves all procedural navigation prose into the new studyPlaybook section. This step strips the playbook section to pure conventions only.
 
-### 2. Rename the step builders and their step names; sweep the remaining `hub` vocabulary from the orchestrator
+- [x] Remove the `### How to Use This Index` heading and its paragraph from inside the playbook section's bytes (the paragraph that begins "Read this note first. Each section links to a section hub..."). Keep these inside the playbook section: the `# Coding Playbook` H1, the `### Task Routing` heading and table skeleton, the `### Always Read First` heading and its `[[your-conventions-note]]` / `[[your-folder-structure-note]]` placeholder list, the `### Sections` heading, the `### Contents` heading. Anything that is procedural narration about HOW to read the playbook moves out (it now lives in studyPlaybook); anything that is structural scaffolding for the user's own conventions stays. After the trim the playbook section is a pure structural seed — tables, headings, placeholder wikilinks for the user's domain content. No instructions on how to navigate. **(folded into Step 1's single-pass body replacement per the plan's explicit allowance)**
 
-Read: `coding-playbook/foundations/conventions`, `coding-playbook/foundations/anti-patterns`
+### 3. Update the obsidianBrainAideTemplate test file to assert the new four-section body shape
 
-- [x] 2a. Edit `src/service/install/provisionBrain/index.ts`.
-      Mechanical rename pass:
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-      - `buildPlaybookHubStep` → `buildPlaybookStep`. Update the
-        function declaration AND its call site in `provisionBrain`.
-        The function's signature is unchanged (`projectRoot`,
-        `brainPath`, `brainAideStep`); only the name changes.
-      - `buildResearchHubStep` → `buildResearchStep`. Same shape.
+The current test file at `obsidianBrainAideTemplate/index.test.ts` has describe blocks for "three-section body shape", "Playbook section preserves sentinel structure", "Research section ships structural seed", and "no nested '## ' headings inside any body section". This step updates those describes and adds a new describe for the studyPlaybook section.
 
-      Step name field updates (the `name` property on the
-      InitStep this builder returns):
-      - In `buildPlaybookStep`, every `name: "Playbook hub"` →
-        `name: "Playbook entry-point"`. There are three call sites
-        within the helper: the `exists` branch, the `would-skip`
-        branch (parse failure), and the `would-create` branch.
-      - In `buildResearchStep`, every `name: "Research hub"` →
-        `name: "Research entry-point"`. Same three call sites.
+- [x] 3a. Rename the `describe("three-section body shape", ...)` block to `describe("four-section body shape", ...)`. Inside, add a new `it()` block: `"studyPlaybook is a non-empty string"` that parses the template and asserts `result.studyPlaybook.length > 0`. Update the `it("prose, playbook, and research are byte-distinct from each other", ...)` test to also assert `result.studyPlaybook` is byte-distinct from each of the other three.
+- [x] 3b. Update the `describe("Playbook section preserves sentinel structure", ...)` block: keep the existing `# Coding Playbook` and `### Task Routing` and `[[your-conventions-note]]` / `[[your-folder-structure-note]]` assertions; ADD an `it()` asserting `result.playbook` does NOT contain the substring `"How to Use This Index"` (the trim moved that out); ADD an `it()` asserting `result.playbook` does NOT contain procedural Step-1/Step-2/Step-3 narration (assert against any of the substrings `"Step 1:"`, `"Step 2:"`, `"Step 3:"` in the playbook section).
+- [x] 3c. Add a new describe block `describe("studyPlaybook section ships the navigation methodology", ...)` after the playbook describe. Inside, add these `it()` blocks (all parse the template and narrow `result.kind === "ok"` first):
+  - `"studyPlaybook starts with an H1 heading"` — assert `result.studyPlaybook.trimStart().startsWith("# ")`.
+  - `"studyPlaybook contains 'Step 1' procedural marker"` — assert `result.studyPlaybook.includes("Step 1")`.
+  - `"studyPlaybook contains 'Step 2' procedural marker"` — assert `result.studyPlaybook.includes("Step 2")`.
+  - `"studyPlaybook contains 'Step 3' procedural marker"` — assert `result.studyPlaybook.includes("Step 3")`.
+  - `"studyPlaybook contains 'Navigation Rules' heading"` — assert `result.studyPlaybook.includes("Navigation Rules")`.
+  - `"studyPlaybook contains the depth-counting example anchor"` — assert `result.studyPlaybook` matches `/depth 0/i` AND `/depth 1/i` (both substrings present).
+  - `"studyPlaybook contains the [[wikilink]] literal substring (user-owned-section carve-out)"` — assert `result.studyPlaybook.includes("[[")` AND `result.studyPlaybook.includes("]]")`. This assertion exists to anchor the carve-out as a positive contract: changing the bundled studyPlaybook to drop the wikilink vocab is a separate decision the orchestrator surfaces, not a silent migration.
+- [x] 3d. Update the `describe("no nested '## ' headings inside any body section", ...)` block to add an `it()` asserting `result.studyPlaybook` does NOT match `/^## .+$/m`. The block now covers all four sections.
+- [x] 3e. Verify by running `npx vitest run src/service/install/provisionBrain/obsidianBrainAideTemplate/`. All assertions in this file should pass. The bytes added in step 1 must satisfy every assertion in step 3 — if any assertion fails, the bytes from step 1 are wrong (architect's contract is that the implementor copies the multi-month-tested skill prose verbatim and that prose contains every substring step 3 asserts).
 
-      The user-facing step names propagate through the install
-      service's apply layer to agent-driven install flows — the
-      rename keeps the agent's vocabulary consistent with the
-      spec's storage-agnostic identifier rule. The InitStep object
-      shape is unchanged.
+### 4. Extend resolveBrainAideBody to return studyPlaybook
 
-      Local variable rename in `provisionBrain`'s body:
-      - `playbookHubStep` → `playbookStep`
-      - `researchHubStep` → `researchStep`
+Read: `coding-playbook/foundations/conventions`, `.aide/docs/agent-readable-code.md`
 
-      Inline-comment updates (Tier 3 narrative comments above each
-      pipeline step in `provisionBrain`'s body):
-      - "Step 3: Plan the playbook hub artifact. Content sourced
-        from the scaffolded brain.aide's ## Playbook hub body
-        section..." → "Step 3: Plan the playbook entry-point
-        artifact. Content sourced from the scaffolded brain.aide's
-        playbook body section between
-        `<!-- aide-playbook-start -->` and
-        `<!-- aide-playbook-end -->` via parseBrainAide /
-        parseBrainAideFromString. Presence-only idempotency
-        (seed-semantic)."
-      - "Step 4: Plan the research hub artifact..." → analogous
-        rewrite for the research entry-point artifact and the
-        research marker pair.
+The helper currently destructures `{ playbook, research }` from the parser result and returns those two fields. The amendment adds `studyPlaybook` to the destructure and the return.
 
-      `BRAIN_ROOT_DIRS` constant value stays
-      `["research", "process/retro", "coding-playbook"]` — these
-      directory names are framework contracts already
-      storage-agnostic (the playbook entry-point artifact lives at
-      `coding-playbook/coding-playbook.md`, the research
-      entry-point artifact at `research/research.md`).
+- [x] In `provisionBrain/index.ts`, locate `resolveBrainAideBody` (currently around line 72). Update the function's return type to `Promise<{ playbook: string; studyPlaybook: string; research: string } | null>`. Inside the function, change the success-branch return to `{ playbook: parseResult.playbook, studyPlaybook: parseResult.studyPlaybook, research: parseResult.research }`. Update the function's JSDoc: change the `Returns { playbook, research } on a successful parse...` line to `Returns { playbook, studyPlaybook, research } on a successful parse...`. Field ordering follows marker order: playbook, studyPlaybook, research. The dispatch logic (in-memory cold-install path vs on-disk path) stays unchanged — both branches already produce a `parseResult` with the new field present because the parser was extended in the prior cycle.
 
-      `brainRootExists` (currently `vaultExists`-renamed-from-
-      prior-cycle) is unchanged. Its `.obsidian` directory
-      heuristic is one of the three explicit forbidden-token
-      carve-outs in the parent spec.
+### [x] 5. Add buildStudyPlaybookStep inline helper between buildPlaybookStep and buildResearchStep
 
-- [x] 2b. JSDoc + inline-comment sweep across the entire file.
-      Find and rewrite every remaining occurrence of `hub`:
+Read: `coding-playbook/foundations/conventions`, `.aide/docs/agent-readable-code.md`
 
-      - `buildPlaybookHubStep` JSDoc: the function-level JSDoc
-        still references "playbook hub artifact" and similar
-        phrasings. Rewrite to "playbook entry-point artifact"
-        consistently. The framework-contract sentence
-        ("the `study-playbook` skill navigates to this location
-        regardless of which storage backend the user wires")
-        stays — `study-playbook` is a skill name, not vocabulary.
-      - `buildResearchHubStep` JSDoc: analogous rewrite.
-      - `provisionBrain`'s function-level JSDoc enumerates the
-        five pipeline steps. Update steps 3 and 4:
-        - "Playbook hub artifact" → "Playbook entry-point artifact"
-        - "scaffolded brain.aide's `## Playbook hub` body section"
-          → "scaffolded brain.aide's playbook body section
-          delimited by the `<!-- aide-playbook-start -->` and
-          `<!-- aide-playbook-end -->` markers"
-        - Same shape for step 4 (Research entry-point artifact,
-          research marker pair).
-      - `resolveBrainAideBody` JSDoc: as covered in step 1.
-      - The "two idempotency modes coexist" sentence in
-        `provisionBrain`'s JSDoc names "user-owned content (steps
-        1, 2, 3, 4)" — still correct, no change.
-      - Sentence: "Hub artifact bytes are sourced from brain.aide
-        body sections via parseBrainAide / parseBrainAideFromString;
-        this module never holds hub bytes as inline TypeScript
-        constants." Rewrite to: "Entry-point artifact bytes are
-        sourced from brain.aide body sections via parseBrainAide
-        / parseBrainAideFromString; this module never holds
-        entry-point bytes as inline TypeScript constants."
+Mirror the structure of the existing `buildPlaybookStep` and `buildResearchStep` exactly. The new helper sits between them in the file (dependency order: orchestrator at the bottom; helpers above in the order the orchestrator calls them).
 
-      Tokens that remain (carve-outs):
-      - `obsidianBrainAideTemplate` import statement and usage —
-        helper folder name carve-out.
-      - `obsidian` references inside the MCP step's migration
-        branches (`hasObsidian`, the legacy `obsidian` MCP key
-        name) — legacy-key migration carve-out.
-      - `.obsidian` directory check inside `brainRootExists` —
-        directory-heuristic carve-out.
+- [x] 5a. In `provisionBrain/index.ts`, immediately after `buildPlaybookStep` (currently ends around line 304) and before `buildResearchStep` (currently begins around line 319), insert a new `async function buildStudyPlaybookStep(projectRoot, brainPath, brainAideStep): Promise<InitStep>` declaration. The function:
+  - Computes `filePath = join(brainPath, "coding-playbook", "study-playbook.md")` — same `coding-playbook/` directory as the playbook artifact, different filename. The path string is the only line in the helper that mentions the storage-specific `.md` filename; the surrounding identifiers stay storage-agnostic ("Study-playbook entry-point" name, parameter names, local variable names).
+  - Returns `{ name: "Study-playbook entry-point", status: "exists", category: "brain", filePath }` when `await exists(filePath)` is true. **Presence-only idempotency** — never compares bytes against the brain.aide section that originated them. The seed-semantic invariant matches `buildPlaybookStep` and `buildResearchStep` exactly.
+  - Calls `await resolveBrainAideBody(projectRoot, brainAideStep)`. When the result is null, returns a `would-skip` step with `instructions: "Brain config (brain.aide) failed to parse — fix it and re-run."` (verbatim same instructions string as the playbook and research siblings).
+  - Otherwise returns `{ name: "Study-playbook entry-point", status: "would-create", category: "brain", filePath, content: body.studyPlaybook }`.
+- [x] 5b. Add a JSDoc block above the new function mirroring the structure of `buildPlaybookStep`'s JSDoc (which is the closest peer). Specifically: explain the presence-only check, name the artifact path constant `coding-playbook/study-playbook.md`, name the marker-pair source (`<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->`), and reference the same Strategy paragraph ("Two different idempotency semantics coexist in this module") that the playbook helper's JSDoc references. Add one sentence noting the on-disk artifact's role: "the agent-side `study-playbook` skill points at this artifact". Keep the JSDoc storage-agnostic — the only place a connector-specific filename appears is the `.md` extension in the path constant, which is allowed because the bundled default ships an editor-backed Markdown brain.
 
-      After this sweep, `grep -i hub` against the file should
-      return ZERO matches in identifiers, JSDoc, comments, or
-      string constants. (The MCP tool name `study-playbook`
-      contains the substring "playbook" but not the token "hub";
-      the constant name `BRAIN_ROOT_DIRS` and its array value
-      contain no `hub`.)
+### [x] 6. Wire buildStudyPlaybookStep into the provisionBrain orchestrator and update the returned step list
 
-### 3. Repoint the test suite to the renamed fields, helper names, step names, and marker-pair fixtures
+Read: `coding-playbook/foundations/conventions`, `.aide/docs/agent-readable-code.md`
+
+The orchestrator currently calls five builders sequentially and returns a five-element array. The amendment inserts the new builder call between playbook and research and extends the returned array to six elements.
+
+- [x] 6a. In `provisionBrain/index.ts`, in the `provisionBrain` orchestrator function body, after the `buildPlaybookStep(...)` call (currently around line 179-181) and before the `buildResearchStep(...)` call (currently around line 187-189), insert:
+  ```
+  // Step 4: Plan the study-playbook entry-point artifact. Content sourced from the
+  // scaffolded brain.aide's studyPlaybook body section between
+  // `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->` via the
+  // same parser pass that powers steps 3 and 5. Presence-only idempotency (seed-semantic).
+  const studyPlaybookStep = await buildStudyPlaybookStep(
+      projectRoot, brainPath, brainAideStep,
+  );
+  ```
+  (Architect note: the inline-comment text above is not implementation code — it's the exact narration the implementor must add; comments are documentation, not logic.)
+- [x] 6b. Renumber the existing inline step comments inside the orchestrator body. The comment that currently begins `// Step 4: Plan the research entry-point artifact.` becomes `// Step 5: Plan the research entry-point artifact.`. The comment that currently begins `// Step 5: Plan the brain MCP entry.` becomes `// Step 6: Plan the brain MCP entry.`. The comment that currently introduces buildResearchStep mentions "the same parser pass that powers step 3" — update that to "the same parser pass that powers steps 3 and 4".
+- [x] 6c. Update the orchestrator's return statement from `[brainAideStep, brainRootStep, playbookStep, researchStep, mcpStep]` to `[brainAideStep, brainRootStep, playbookStep, studyPlaybookStep, researchStep, mcpStep]`. The order is load-bearing — the spec's outcomes name a fixed step ordering of brain-config → brain-root → playbook → study-playbook → research → MCP.
+- [x] 6d. Update the `provisionBrain` function's JSDoc:
+  - Change `Returns five InitStep items in order:` to `Returns six InitStep items in order:`.
+  - Insert a new bullet between bullet 3 (playbook) and bullet 4 (research) describing the study-playbook step. Use language mirroring bullet 3's structure: name the marker pair `<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->`, name the artifact path `coding-playbook/study-playbook.md` for an editor-backed Markdown brain, note "Presence-only idempotency (seed-semantic)".
+  - Renumber the existing research bullet from 4 to 5 and the MCP bullet from 5 to 6.
+  - Update the "Two idempotency modes coexist" sentence's parenthetical from `(steps 1, 2, 3, 4)` to `(steps 1, 2, 3, 4, 5)` and `(step 5)` to `(step 6)`.
+- [x] 6e. Verify by running `npx tsc --noEmit`. The orchestrator's return type does not change (still `Promise<InitStep[]>`), so this is purely an internal wiring change at the type level.
+
+### [x] 7. Update the provisionBrain test file: step indexes, count assertions, and existing fixtures
+
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+
+Every existing test that indexes into `results[3]` (Research entry-point, was at index 3) must move to `results[4]`, and every test that indexes into `results[4]` (MCP step, was at index 4) must move to `results[5]`. Every assertion of `results.length === 5` becomes `results.length === 6`. The "5a" cold install test's expected-name list grows to six entries with the new step name in position 3. Existing fixtures that hand-write a brain.aide for the on-disk path (`customBrainAide`, `customContent`, the malformed-body fixture) must be updated to include the new `aide-study-playbook` marker pair so the parser still returns ok / still fails in the way each test expects.
+
+- [x] 7a. In `provisionBrain/index.test.ts`, the "5a: cold install" test:
+  - Update `expect(results).toHaveLength(5)` to `expect(results).toHaveLength(6)`.
+  - Update the name-order block: insert `expect(results[3].name).toBe("Study-playbook entry-point");` between the existing playbook (results[2]) and research lines, and renumber: research becomes `results[4]`, MCP becomes `results[5]`.
+- [x] 7b. The "Cold-install: entry-point artifacts source content from scaffolded brain.aide" describe (lines 96-140 of current test file): research currently is checked at `results[3]` — update to `results[4]`. ADD a new `it()` between the playbook test and the research test:
+  - Title: `"studyPlaybook content matches the studyPlaybook body section between `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->` from the bundled template"`.
+  - Mirrors the existing playbook and research it() blocks: derives the expected bytes by parsing the bundled template via `parseBrainAideFromString(template)` and reading `parsed.studyPlaybook`; asserts `results[3].status === "would-create"` and `results[3].content === expectedStudyPlaybook` and `results[3].content` is truthy.
+- [x] 7c. The "Existing brain.aide: entry-point artifacts source from on-disk file" describe (lines 146-244): the two existing custom fixtures (lines 155-186 and 204-235) must include the `aide-study-playbook` marker pair so the parser succeeds. Insert a marker-bounded block between the playbook section and the research section in each fixture:
+  ```
+  "<!-- aide-study-playbook-start -->",
+  "",
+  "# USER-EDITED-STUDY-PLAYBOOK",
+  "",
+  "User customized this section.",
+  "",
+  "<!-- aide-study-playbook-end -->",
+  "",
+  ```
+  Update the existing playbook test (`results[2]` — unchanged index) and update the research test's index from `results[3]` to `results[4]`. ADD a new `it()` between the playbook and research it() blocks: `"studyPlaybook content reflects user's studyPlaybook section edits in brain.aide"` — same shape as the playbook and research siblings, asserts `results[3].status === "would-create"` and `results[3].content.includes("USER-EDITED-STUDY-PLAYBOOK")`.
+- [x] 7d. The "Malformed brain.aide" describe (lines 250-300): the existing test asserts `results[2]` (playbook) and `results[3]` (research, will move to results[4]) both surface as would-skip. Update: the test now must assert THREE artifact steps surface as would-skip. Add `const studyPlaybookStep = results[3];` (the new index for study-playbook), add `expect(studyPlaybookStep.status).toBe("would-skip")` and `expect(studyPlaybookStep.instructions).toBeTruthy()`. Update the research index from `results[3]` to `results[4]`. The MCP step index updates from `results[4]` to `results[5]`.
+- [x] 7e. The "5b: existing brain.aide" test (line 306) — no changes needed; only checks `results[0]`.
+- [x] 7f. The "5c (win32)" and "5c (posix)" tests (lines 333, 363): MCP step index updates from `results[4]` to `results[5]` in both.
+- [x] 7g. The "5d: existing brain.aide with custom args" test (line 395): the `customBrainAide` fixture (lines 402-429) must include the `aide-study-playbook` marker pair (mirror the structure used in 7c). MCP step index updates from `results[4]` to `results[5]`. Sentinel content in the new section can be minimal (`# Custom Study Playbook`) since the test only asserts on the MCP entry, not the section content.
+- [x] 7h. The "5e: legacy obsidian-only" test (line 452): MCP step index updates from `results[4]` to `results[5]`.
+- [x] 7i. The "5f: fully provisioned project" test (line 476):
+  - Update title from `all five steps return exists` to `all six steps return exists`.
+  - In the setup block, after the existing research entry-point file is pre-written (lines 502-507), pre-write the new study-playbook artifact:
+    ```
+    await writeFile(
+        join(brainPath, "coding-playbook", "study-playbook.md"),
+        "# Study Playbook\n",
+        "utf-8",
+    );
+    ```
+    Reuse the existing `coding-playbook` directory (already created on line 494).
+  - Update `expect(results).toHaveLength(5)` to `expect(results).toHaveLength(6)`.
+  - Add `expect(results[3].status).toBe("exists"); // Study-playbook entry-point` between the existing playbook and research assertions; renumber research from `results[3]` to `results[4]` and MCP from `results[4]` to `results[5]`.
+- [x] 7j. The "5h: scaffolded brain.aide schema check" test (line 537): no step-index changes needed; only inspects the parsed config.
+- [x] 7k. The "regression" describe block tests (lines 593-789):
+  - "brain root directories step is would-create" (line 593): no changes.
+  - "brain root is fully populated when .obsidian dir is present" (line 610): no changes.
+  - "brain root is fully populated when directory is non-empty" (line 622): no changes.
+  - "playbook entry-point is would-create with content" (line 634): no changes (uses results[2]).
+  - "playbook entry-point returns exists when file is present" (line 647): no changes.
+  - "research entry-point is would-create with content" (line 664): step index updates from `results[3]` to `results[4]`.
+  - "research entry-point returns exists when file is present" (line 677): step index updates from `results[3]` to `results[4]`.
+  - ADD between the playbook regression block and the research regression block (after line 662) a new pair of it() blocks mirroring the playbook regression tests:
+    - `"study-playbook entry-point is would-create with content"` — mirrors line 634, asserts `results[3].name === "Study-playbook entry-point"`, status `would-create`, content truthy.
+    - `"study-playbook entry-point returns exists when file is present (seed-semantic — no byte comparison)"` — mirrors line 647, pre-writes `coding-playbook/study-playbook.md` with sentinel content, asserts `results[3].status === "exists"` and `results[3].content === undefined`.
+  - "cold install (no brain, no obsidian key)" (line 694): MCP step index updates from `results[4]` to `results[5]`.
+  - "5g: brain key present with drifted entry" (line 711): MCP step index updates from `results[4]` to `results[5]`.
+  - "transitional install (both brain and obsidian keys)" (line 757): MCP step index updates from `results[4]` to `results[5]`.
+  - "malformed .mcp.json" (line 777): MCP step index updates from `results[4]` to `results[5]`.
+  - "never writes to disk" (line 791): add a line asserting `await expect(access(join(brainPath, "coding-playbook", "study-playbook.md"))).rejects.toThrow();` between the existing playbook and research assertions.
+- [x] 7l. The "seed files never would-overwrite" parameterized describe block (lines 811-871):
+  - In the second `setup` scenario (lines 819-833), pre-write the study-playbook artifact alongside the existing playbook and research artifacts:
+    ```
+    await writeFile(
+        join(brainPath, "coding-playbook", "study-playbook.md"),
+        "# My curated study-playbook\n",
+        "utf-8",
+    );
+    ```
+  - Add a new it() block in the same describe.each callback mirroring the existing two: `"study-playbook entry-point status is never would-overwrite"` — asserts `results[3].status` is not `"would-overwrite"`. Place it between the playbook and research blocks so the test order matches the step order.
+- [x] 7m. Verify by running `npx vitest run src/service/install/provisionBrain/`. Every test in this file must pass. The provisionBrain test file is the most index-sensitive surface in the plan — if any assertion fails, the most likely cause is a missed step-index update (search for `results[3]` and `results[4]` in the test file post-edit; results[3] should ONLY appear as the new study-playbook step or as a length-related expression).
+
+### [x] 8. Run the full project test suite and verify zero failures
 
 Read: `coding-playbook/workflow/testing`
 
-- [x] 3a. Edit `src/service/install/provisionBrain/index.test.ts`.
+The cascade context from the parser cycle showed 101 failures across 7 files all stemming from the bundled template still being three-section. After step 1 lands, the template emits four sections; after step 6 lands, the orchestrator returns six steps; after step 7 lands, the test fixtures match. This step is the contract that everything else stays green.
 
-      - **Step-name assertions across 5a:** The current 5a test
-        asserts `results[2].name === "Playbook hub"` and
-        `results[3].name === "Research hub"`. Update to:
-          - `results[2].name === "Playbook entry-point"`
-          - `results[3].name === "Research entry-point"`
-
-      - **Cold-install hub-artifact group ("Cold-install: hub
-        artifacts source content from scaffolded brain.aide"):**
-        - Rename describe-block title to "Cold-install: entry-point
-          artifacts source content from scaffolded brain.aide".
-        - In each `it()` block, rename local variables
-          `playbookHubStep` → `playbookStep` and `researchHubStep`
-          → `researchStep`.
-        - In each assertion block, rename `parsed.playbookHub` →
-          `parsed.playbook` and `parsed.researchHub` →
-          `parsed.research`. The narrowing pattern
-          (`if (parsed.kind !== "ok") return`) is unchanged.
-        - The expected-bytes derivation stays structurally
-          identical; only the field names on the parser result
-          differ.
-        - `it()` titles update: "playbook hub content matches the
-          ## Playbook hub section" → "playbook content matches the
-          playbook body section between
-          `<!-- aide-playbook-start -->` and
-          `<!-- aide-playbook-end -->` from the bundled template".
-          Same shape for the research test.
-
-      - **Existing-brain.aide hub-artifact group ("Existing
-        brain.aide: hub artifacts source from on-disk file"):**
-        - Rename describe-block title to "Existing brain.aide:
-          entry-point artifacts source from on-disk file".
-        - Rewrite the in-line custom brain.aide fixture STRING.
-          The current fixture writes:
-          ```
-          ## Prose
-
-          Prose content here.
-
-          ## Playbook hub
-
-          # USER-EDITED-PLAYBOOK
-          ...
-          ## Research hub
-
-          # USER-EDITED-RESEARCH
-          ...
-          ```
-          The new fixture writes the marker-pair grammar:
-          ```
-          <!-- aide-prose-start -->
-
-          Prose content here.
-
-          <!-- aide-prose-end -->
-
-          <!-- aide-playbook-start -->
-
-          # USER-EDITED-PLAYBOOK
-
-          User customized this section.
-
-          <!-- aide-playbook-end -->
-
-          <!-- aide-research-start -->
-
-          # USER-EDITED-RESEARCH
-
-          User customized this section.
-
-          <!-- aide-research-end -->
-          ```
-          The fixture continues to be assembled via the existing
-          `[…].join("\n")` pattern; only the body section
-          delimiters change. The retired `## Prose` /
-          `## Playbook hub` / `## Research hub` lines are removed
-          entirely (not transformed into other heading levels —
-          the marker pairs are the new section boundaries).
-        - Rename local variables `playbookHubStep` →
-          `playbookStep` and `researchHubStep` →
-          `researchStep`.
-        - The sentinel-content assertions
-          (`expect(playbookHubStep.content).toContain(
-          "USER-EDITED-PLAYBOOK")` etc.) stay structurally; only
-          the variable name changes.
-        - `it()` titles update: "playbook hub content reflects
-          user's ## Playbook hub edits in brain.aide" → "playbook
-          content reflects user's playbook section edits in
-          brain.aide". Same shape for research.
-
-      - **Malformed-brain.aide group ("Malformed brain.aide: hub
-        steps surface as would-skip"):**
-        - Rename describe-block title to "Malformed brain.aide:
-          entry-point steps surface as would-skip".
-        - The malformed-body fixture asserts that hub steps
-          surface `would-skip` when the body is missing required
-          sections. Update the fixture to reflect the marker-pair
-          grammar's failure mode: a brain.aide with valid
-          frontmatter and a body containing only a `## Prose`
-          heading (NO marker pairs anywhere) parses as
-          `malformed-body` per the parser's missing-markers
-          reason (the spec's strict-failure migration policy).
-          Alternatively, write the fixture with valid prose and
-          playbook marker pairs but a missing research pair,
-          which surfaces `malformed-body` for the missing
-          research markers — equally valid for the test's intent.
-          Pick the simpler fixture: the current "only ## Prose"
-          shape is the closest to the post-pivot heading-only
-          regression case the parser explicitly tests.
-        - Rename local variables `playbookHubStep` →
-          `playbookStep`, `researchHubStep` → `researchStep`.
-        - The status-, instructions-, and brain.aide step
-          assertions stay structurally; only field-name
-          references update.
-        - `it()` title updates: "playbook hub and research hub
-          surface would-skip when brain.aide body is missing the
-          hub sections" → "playbook and research entry-point
-          steps surface would-skip when brain.aide body fails to
-          parse".
-
-      - **Test 5b (existing brain.aide → exists):** unchanged in
-        shape — the test pre-writes a brain.aide via
-        `obsidianBrainAideTemplate(brainPath)`. Once Plan 1 lands,
-        the template emits the marker-pair grammar and the test
-        passes without modification.
-
-      - **Test 5c (Windows + POSIX cold install MCP-entry
-        derivation):** unchanged in shape. The MCP step still
-        derives via `parseBrainAide` + `interpolateArgs`. The
-        `parsed.kind === "ok"` narrowing stays. Once Plan 1 lands,
-        the template's body grammar satisfies the parser and the
-        test passes.
-
-      - **Test 5d (custom user brain.aide):** rewrite the inline
-        fixture STRING. The current fixture writes:
-        ```
-        ## Prose
-
-        Custom user prose.
-
-        ## Playbook hub
-
-        # Custom Playbook
-
-        ## Research hub
-
-        # Custom Research
-        ```
-        Update to the marker-pair grammar:
-        ```
-        <!-- aide-prose-start -->
-
-        Custom user prose.
-
-        <!-- aide-prose-end -->
-
-        <!-- aide-playbook-start -->
-
-        # Custom Playbook
-
-        <!-- aide-playbook-end -->
-
-        <!-- aide-research-start -->
-
-        # Custom Research
-
-        <!-- aide-research-end -->
-        ```
-        Frontmatter is unchanged. Custom command/args assertions
-        (`mcpStep.prescription?.entry.command === "node"`,
-        `args === ["/custom/path/to/launcher.js", brainPath]`)
-        stay byte-identical.
-
-      - **Test 5e (legacy obsidian-only migration):** unchanged.
-        The fixture writes a `.mcp.json` with a legacy
-        `obsidian` key entry; brain.aide is not pre-written, so
-        the cold-install template path runs (and Plan 1's
-        marker-pair template satisfies the parser).
-
-      - **Test 5f (full idempotency — all five steps return
-        exists):** the only update is to the seed entry-point
-        artifact files written to disk:
-        - `coding-playbook/coding-playbook.md` content stays
-          `"# Coding Playbook\n"` — the file's bytes are not
-          asserted for content (the presence check is the
-          entire idempotency contract).
-        - `research/research.md` content stays
-          `"# Research\n"` — same shape.
-        - The brain.aide fixture written to disk uses
-          `obsidianBrainAideTemplate(brainPath)` — once Plan 1
-          lands, the template emits marker-pair bytes and the
-          parser succeeds.
-
-      - **Test 5h (no intent-spec or deprecated fields):**
-        unchanged. The frontmatter-extraction heuristic
-        (`templateContent.indexOf("---\n")` ... `indexOf(
-        "\n---\n", fenceStart + 3)`) still isolates the
-        frontmatter block correctly because the new body uses
-        marker pairs (no `\n---\n` separators inside the body
-        bytes).
-
-      - **Regression group at the bottom of the file ("Regression:
-        existing behaviours preserved from prior test suite"):**
-        - "playbook hub is would-create with Markdown hub content"
-          → "playbook entry-point is would-create with content".
-          Update the assertion `hubStep.name === "Playbook hub"`
-          to `step.name === "Playbook entry-point"` and rename
-          the local variable.
-        - "playbook hub returns exists when file is present
-          (seed-semantic — no byte comparison)" → "playbook
-          entry-point returns exists when file is present
-          (seed-semantic — no byte comparison)". Filename and
-          path assertions stay.
-        - "research hub is would-create with Markdown hub
-          content" → "research entry-point is would-create with
-          content". Same shape.
-        - "research hub returns exists when file is present" →
-          "research entry-point returns exists when file is
-          present".
-
-      - **"seed files never would-overwrite" parameterized
-        group:** unchanged in shape. The describe-block iterates
-        scenarios that pre-write playbook + research entry-point
-        artifact files and asserts `results[2].status !==
-        "would-overwrite"` and `results[3].status !==
-        "would-overwrite"`. Index references stay; only any
-        comments naming "playbook hub" / "research hub" rewrite
-        to "playbook entry-point" / "research entry-point".
-
-      - **Top-of-file invariant comment block:** the existing
-        comment block (the `obsidianMcpEntry` boundary and the
-        `PLAYBOOK_HUB_TEMPLATE` / `VAULT_CLAUDE_MD_TEMPLATE`
-        regression invariants) stays. Update the cycle-specific
-        invariant text:
-        - The `obsidianMcpEntry` block is unchanged (still a
-          load-bearing rule from a prior cycle).
-        - The "this cycle" block currently reads "the inline
-          constants `PLAYBOOK_HUB_TEMPLATE` and
-          `VAULT_CLAUDE_MD_TEMPLATE` were removed... Hub artifact
-          bytes now flow through `parseBrainAide` /
-          `parseBrainAideFromString`...". Rewrite to: "Entry-point
-          artifact bytes flow through `parseBrainAide` /
-          `parseBrainAideFromString` from the scaffolded
-          brain.aide's marker-pair body sections (`playbook` and
-          `research` typed fields). Any future attempt to
-          re-introduce an entry-point bytes constant in this
-          module is a regression."
-
-      - **Vocabulary sweep across describe-block titles, it-block
-        titles, and inline comments:** after all the targeted
-        updates above, do a final pass. Any remaining occurrence
-        of `hub` (standalone word, case-insensitive) in test
-        prose gets rewritten to `entry-point` or
-        `entry-point artifact` per context. The
-        `study-playbook` skill name (no `hub` substring) and
-        the playbook H1 sentinel `# Coding Playbook` (the
-        playbook section's H1 title — content the user owns) are
-        carve-outs. The agent-driven step-name strings rename
-        consistently with the orchestrator's step builders.
-
-### 4. Verify build and tests pass; surface any prerequisite breakage
-
-Read: `coding-playbook/workflow/testing`
-
-- [x] 4a. Run `npm test -- provisionBrain`. Both
-      `provisionBrain/index.test.ts` and (transitively)
-      `obsidianBrainAideTemplate/index.test.ts` should pass
-      cleanly. Likely failure modes:
-
-        - Hub steps return `would-skip` on cold install →
-          Plan 1 (`obsidianBrainAideTemplate`) has not landed.
-          The template still emits heading-grammar bytes and
-          the parser surfaces `malformed-body`. Halt and
-          surface as prerequisite breakage; do NOT patch the
-          template from this plan's scope.
-        - Step-name assertion failures
-          (`expect(results[2].name).toBe("Playbook entry-point")`)
-          → either the orchestrator's `buildPlaybookStep` step
-          name was missed in step 2a's three-call-site rename,
-          or the test's expected string was missed in step 3a.
-          Find the offending site and rewrite.
-        - Field-access TypeScript errors in tests after
-          `parsed.playbookHub` → `parsed.playbook` rename →
-          either the test still references the old field name
-          or the parser's central type still carries the old
-          name. The latter is impossible at this point (the
-          parser cascade landed; types were renamed atomically).
-          The former is a missed test rename — find and fix.
-        - Cold-install playbook/research content assertions
-          fail because the bundled template's emitted bytes for
-          either section differ from what the test expected.
-          Re-derive the expected bytes from the template via
-          `parseBrainAideFromString(template).playbook` /
-          `.research`, never hardcoded.
-
-- [x] 4b. Run `npx tsc --noEmit`. The orchestrator's own files
-      must compile cleanly. The breakage report cited 27 errors
-      across 3 files (the orchestrator, its test, and the
-      template's test); after this plan and Plan 1 both land,
-      every error in those three files clears. Other errors
-      elsewhere in the project (e.g. in `src/cli/init/` or
-      `src/tools/brain/`) that pre-date this plan are out of
-      scope; do not patch them. Note them in the execution log
-      if any appear.
+- [x] 8a. Run `npx tsc --noEmit` from the project root. Exit code must be 0. Any errors are most likely a missed return-shape update (resolveBrainAideBody) or a stale `results[N]` index that compiles but is wrong (TypeScript will not catch the latter — that's caught in 8b).
+- [x] 8b. Run `npx vitest run` from the project root. All tests must pass. Specifically, the previously-failing 101 tests across 7 files must now pass because the template emits four marker-bounded sections that round-trip through the parser. If any test fails:
+  - A `parseBrainAide` or `parseBrainAideFromString` test failing → the bytes step 1 wrote into one of the four sections are wrong (likely missing a marker, wrong marker order, or nested markers in the studyPlaybook section because a `## ` heading wasn't demoted).
+  - A consumer test (cli/sync, tools/brain, install service) failing → a downstream consumer expects a different return shape than this plan delivered, OR the test fixture in that file uses the old three-section body. In the latter case the fix is a fixture update in that test file; flag it for the orchestrator rather than expanding scope here.
+  - A new test added in steps 3 or 7 failing → the added bytes did not satisfy the assertion. Re-read the source skill content for step 1 / re-check the trim for step 2.
+- [x] 8c. If 8b reveals consumer-test fixture failures outside this plan's scope (e.g. a tools/brain test that hand-writes a three-section brain.aide), STOP and surface the list of failing files to the orchestrator. Updating those fixtures is a separate plan cycle scoped to those modules. Do NOT silently edit fixtures outside `provisionBrain/`. The exception is fixtures inside `parseBrainAide/index.test.ts` that already test the four-section grammar — those should already be passing because the parser cycle landed first; if they fail after this plan's changes, something in this plan regressed the parser-side contract and step 1 needs revisiting.
 
 ## Decisions
 
-- **The 5-step pipeline shape is preserved verbatim.** The prior
-  cycle's plan landed the 5-step pipeline (brain config → brain
-  root directories → playbook entry-point artifact → research
-  entry-point artifact → MCP entry); this cycle does NOT touch
-  the pipeline's count, order, or step semantics. Only the
-  field names destructured from the parser result, the helper
-  and step-name vocabulary, and the in-line test fixture body
-  grammar change. Re-litigating the pipeline shape would be
-  scope creep.
+**1. Step builder file structure: inline, mirroring existing peers.**
+The existing `buildPlaybookStep`, `buildResearchStep`, `buildBrainAideStep`, `buildBrainRootStep`, and `buildBrainMcpStep` are all defined inline in `provisionBrain/index.ts` (verified by reading the file: 469 lines, all five builders inline as private functions above the default export). The progressive-disclosure tier model and the playbook's "extract helpers into subfolders" rule both prefer subfolders, BUT the spec's Decision Point 1 directive is unambiguous: "the new builder must look like its peers." Mirroring the existing inline structure is the right call for THIS plan because (a) the existing structure already exists in place and is consistent within the module, (b) extracting only the new helper into its own subfolder would create asymmetry that confuses future readers, (c) the spec's authoritative scope explicitly says mirror the existing pattern, and (d) extracting all five existing helpers AND the new one into subfolders is a separate refactor that belongs in its own cycle (it would more than double the plan's surface area and risk regressions in already-working code). The new helper goes inline above the default export, between `buildPlaybookStep` and `buildResearchStep` in dependency order.
 
-- **Hub-artifact paths stay storage-agnostic by FILE-PATH
-  CONTRACT.** Preserved verbatim from the prior plan: the
-  playbook entry-point artifact lives at
-  `coding-playbook/coding-playbook.md` and the research
-  entry-point artifact at `research/research.md` regardless of
-  storage backend. These are framework contracts; the
-  orchestrator does not branch on storage shape, it writes to
-  fixed paths. The post-pivot vocabulary calls these "entry-point
-  artifacts"; the paths themselves are unchanged.
+**2. studyPlaybook section content sourcing rule.** The implementor reads `.claude/skills/study-playbook/SKILL.md` and copies the substantive teaching content verbatim into the new bundled template section. The exact extraction rule: drop the YAML frontmatter (lines between the leading `---` fences); drop the leading `# /study-playbook — Load Coding Playbook Context` H1 title and the one-line `Navigate the coding playbook hub in the brain and load only the sections relevant to the current task.` preamble that names the skill itself; KEEP everything from the next paragraph (`The brain backend is configurable...` — wait, this preamble is also skill-self-referential and mentions calling `aide_brain` as a separate tool, which is the OLD skill shape — drop this one too) through the end of the file. The remaining substantive teaching content starts at `## Step 1: Read the Playbook Hub` and runs through `Don't load unrelated sections "just in case."`. Replace the `## Step N` headings with `### Step N` (demote to H3 so the no-`^## .+$` test still passes). Replace the `## Navigation Rules` heading with `### Navigation Rules` (same reason). Add a `# Study Playbook` H1 at the top of the section (the artifact's own title — the user-owned artifact needs an H1 of its own; the demoted Step headings sit underneath it). The implementor is NOT free to paraphrase, summarize, or "modernize" the prose — every sentence is multi-month-tested and the carve-out's whole point is that the content travels with the bundled template byte-identical. The two exceptions documented above (drop frontmatter, drop the skill-self-referential preambles, demote `##` to `###`, add the artifact H1) are mechanical transformations; everything else is verbatim.
 
-- **`buildPlaybookHubStep` → `buildPlaybookStep`.** Adjusted from
-  the prior cycle. The prior plan's decision noted
-  "`buildPlaybookHubStep` keeps its name" because at the time
-  "playbook hub" was considered storage-agnostic (the framework
-  concept being the structural hub at a known path). The current
-  cycle's spec retires `hub` from the storage-agnostic vocabulary
-  list entirely — `hub` joins `vault`, `wikilink`, and
-  `note`-as-synonym as a token that names a connector-specific
-  mental model the framework no longer assumes. The renamed
-  helper drops the retired token and the function name remains
-  honest about what it builds: an InitStep for the playbook
-  entry-point artifact.
+**3. Playbook section trim scope.** What stays in the trimmed playbook section: the H1 (`# Coding Playbook`), the `### Task Routing` heading + table skeleton (`| Task domain | Section |\n|-------------|---------|`), the `### Always Read First` heading + the `[[your-conventions-note]]` and `[[your-folder-structure-note]]` placeholder list, the `### Sections` heading, the `### Contents` heading. What moves out: the `### How to Use This Index` heading and its paragraph (currently lines 70-72 of the template's playbook section in `obsidianBrainAideTemplate/index.ts`). After the trim, the playbook section is pure structural scaffolding for the user's domain content — tables, headings, placeholder wikilinks. Procedural narration about HOW to use the playbook is gone (it now lives in studyPlaybook). The single sentence "These notes are required reading for every task..." that introduces the Always Read First list is borderline — it's instructive but it's also a structural label for the placeholder list. **Keep it** — it explains what the list is, not how to navigate the playbook globally; it's a description of one section's role, which is structural scaffolding.
 
-- **InitStep `name` field changes from `"Playbook hub"` /
-  `"Research hub"` to `"Playbook entry-point"` /
-  `"Research entry-point"`.** The InitStep's user-facing name
-  surfaces in agent-driven install flows; consistent
-  storage-agnostic naming there is part of the spec's "code
-  identifiers and inline prose ... storage-agnostic" rule. The
-  prior plan's decision called this out for `"Brain vault"` →
-  `"Brain root directories"`; the same rule applies to these
-  two step names this cycle.
+**4. resolveBrainAideBody return shape.** Field order in the returned literal follows marker order: `{ playbook, studyPlaybook, research }`. The destructure on the parseResult side mirrors the same order. Field order in the returned object is conventional (TypeScript doesn't enforce it), but matching marker order makes the helper's intent self-documenting. The helper stays inline in `provisionBrain/index.ts`; same rationale as Decision 1.
 
-- **`resolveBrainAideBody` is preserved as a sibling helper,
-  not refactored.** The prior plan's decision (sibling to
-  `resolveBrainAideConfig`, not a refactor) still applies. The
-  two helpers do similar work but return different shapes; co-
-  locating them above the orchestrator keeps the parallel
-  visible. This cycle only touches the field name on
-  `resolveBrainAideBody`'s return type.
+**5. Step ordering for safety: template first, then orchestrator step list, then test updates.** The plan order is: (1) template emits four sections → (2) playbook trimmed → (3) template tests pass → (4) resolveBrainAideBody extends → (5) buildStudyPlaybookStep added → (6) orchestrator wires it in and returns six steps → (7) provisionBrain tests updated → (8) full test suite. This ordering matters because the parser is now strict-failure: as soon as the parser cycle landed, the existing three-section template started returning `malformed-body` from `parseBrainAideFromString`. The 101 failing tests cited in the cascade context will START GREEN as soon as step 1 lands (template emits valid four-section markers). The orchestrator step-list update in step 6 is independent of the template fix in step 1 — they could in principle be reordered — BUT putting the template first means the implementor can verify each step's correctness against an immediately-passing local test suite. Reverse-ordering would leave step 1's correctness unverifiable until step 6 also lands. The chosen order keeps every step independently testable.
 
-- **`brainRootExists` heuristic preserved.** The `.obsidian`
-  directory check stays as one of the three explicit
-  forbidden-token carve-outs. The prior plan's decision is still
-  correct; this plan does not touch the helper.
+**6. Test fixture organization: extend existing fixtures in place, do not introduce new test files.** The provisionBrain test file at `index.test.ts` is the canonical home for orchestrator-level tests. The new study-playbook step's tests go in describe blocks that mirror the existing playbook describe blocks, in the same file, in marker order. The new studyPlaybook section's content tests go in the bundled template's test file. Splitting either set of new tests into its own `*.test.ts` file would fragment the test surface (every implementor would need to grep two files to understand what's tested for each step). The existing test files are large but well-organized; adding to them keeps the testing surface consistent.
 
-- **Hub steps surface `would-skip` (not throw) on parse failure.**
-  Preserved verbatim. The cycle's only change to the step
-  builders' parse-failure path is the helper-name rename
-  (`buildPlaybookHubStep` → `buildPlaybookStep` etc.) and the
-  step-name rename inside the returned InitStep object. The
-  `would-skip` semantics, the `instructions` field, and the
-  user-remediation flow all stay.
+**7. JSDoc updates: every JSDoc that enumerates body sections / step counts / artifact counts changes.** The functions whose JSDoc must change:
+- `obsidianBrainAideTemplate` — three sections becomes four; describe the new section in position 3.
+- `resolveBrainAideBody` — return-shape docstring changes; the paragraph beginning "Returns `{ playbook, research }` on a successful parse..." becomes "Returns `{ playbook, studyPlaybook, research }` on a successful parse...".
+- `provisionBrain` — five InitStep items becomes six; insert a new bullet between bullet 3 and the old bullet 4; renumber. The "Two idempotency modes coexist" sentence updates its parentheticals.
+- `buildStudyPlaybookStep` — net-new JSDoc, mirrors `buildPlaybookStep`'s JSDoc with the marker-pair name and artifact path adjusted.
+JSDocs on `buildBrainAideStep`, `buildBrainRootStep`, `buildPlaybookStep`, `buildResearchStep`, `buildBrainMcpStep`, `resolveBrainAideConfig`, `exists`, `safeReadFile`, `brainRootExists` do NOT change — they describe their own helper, not the orchestrator's step count.
 
-- **`obsidianBrainAideTemplate/` is preserved as the helper
-  folder name.** Preserved verbatim. The folder name describes
-  bundled CONTENT (Obsidian-flavored prose, Obsidian-flavored
-  playbook seed bytes); the storage-agnostic identifier rule
-  applies to module code, not to content anchors for the
-  bundled template. The parent spec's outcomes.undesired
-  carve-out applies.
+**8. Idempotency consistency: presence-only, mirrors playbook and research.** `buildStudyPlaybookStep` uses the exact same idempotency check as its peers: `if (await exists(filePath)) return { ..., status: "exists" }`. No byte comparison, no drift detection against the bundled template's `studyPlaybook` section bytes. Once the user has the file, the bytes are theirs; even if the bundled template's studyPlaybook section evolves in a future package release, the on-disk study-playbook.md never gets replaced or re-suggested by provisionBrain. This matches the spec's outcome 4 ("playbook, study-playbook, and research entry-point artifacts are treated as one-time seeds") and the parent spec's directory-level seed-semantic invariant for everything provisionBrain touches outside `.mcp.json`.
 
-- **The MCP step's behavior is unchanged.** Preserved verbatim
-  from the prior plan. `buildBrainMcpStep`, its four migration
-  branches, and its derivation through `parseBrainAide` +
-  `interpolateArgs` all stay. Touching them is scope creep.
+**9. Artifact path: `coding-playbook/study-playbook.md`, same directory as the playbook artifact.** The path is hardcoded in `buildStudyPlaybookStep` as `join(brainPath, "coding-playbook", "study-playbook.md")` — same `coding-playbook/` directory as `coding-playbook/coding-playbook.md`. The two artifacts live as siblings inside one folder. The decision rationale: (a) the spec's outcomes name this exact path explicitly, (b) the agent-side `study-playbook` skill becomes minimal and points at `coding-playbook/study-playbook.md` (not at the brain root), (c) co-locating with the playbook makes it discoverable when someone navigates the brain root via filesystem, and (d) the path string is the only place inside `buildStudyPlaybookStep` that the storage-specific `.md` filename appears — the function name, parameter names, local variable names, and JSDoc all stay storage-agnostic per the spec's outcome 9 (storage-agnostic vocabulary). The `coding-playbook/` directory already exists on disk (it's pre-created by `BRAIN_ROOT_DIRS` in `buildBrainRootStep`), so no new directory creation is needed.
 
-- **Test fixture body grammar switches to marker pairs in every
-  in-line brain.aide string.** The two test groups that build
-  in-line custom brain.aide fixtures (the "Existing brain.aide:
-  ... source from on-disk file" group and test 5d) currently
-  use the retired `## Prose` / `## Playbook hub` / `## Research
-  hub` heading grammar. Those fixtures now parse as
-  `malformed-body` against the post-pivot parser; their
-  assertions about hub-step `would-create` content would never
-  fire because `resolveBrainAideBody` returns null for a
-  malformed body. The fixtures must switch to the marker-pair
-  grammar so the parser succeeds and the tests exercise their
-  intended behavior (user customization flows through to the
-  entry-point artifact bytes). The retired heading lines are
-  REMOVED, not transformed — there are no `## ` headings in
-  the new fixtures' body bytes; the marker pairs are the
-  section boundaries.
-
-- **The malformed-brain.aide test is INTENTIONALLY constructed
-  to trigger `malformed-body`.** That test (in the "Malformed
-  brain.aide" group) is the only fixture in this file that
-  WANTS to surface `malformed-body`. The current "only
-  `## Prose`" shape — which carries the retired heading — now
-  fails the marker-pair grammar with a missing-markers reason
-  (six markers absent, per the strict-failure migration policy).
-  The test's intent is preserved: write a brain.aide whose body
-  the parser rejects, assert the hub steps surface
-  `would-skip`. The fixture's exact shape can stay
-  "only `## Prose`" with no marker pairs, OR can switch to
-  "valid prose marker pair, missing playbook + research marker
-  pairs" — both produce `malformed-body`. The simpler shape
-  (no marker pairs at all) maps directly to the post-pivot
-  strict-failure migration policy and is the canonical
-  malformed-body case the parser cascade plan tests against.
-
-- **Top-of-file invariant comment block preserved with
-  cycle-specific update.** Preserved from the prior cycle. The
-  `obsidianMcpEntry` boundary block stays verbatim (still a
-  load-bearing rule). The "this cycle" block updates to name
-  the new vocabulary: entry-point bytes (not hub bytes) flow
-  through the parser from the marker-pair body sections (not
-  heading-bounded sections). A reviewer encountering the file
-  later understands why the invariant exists and which cycle
-  introduced which constraint.
-
-- **Vocabulary sweep is exhaustive on `hub` standalone but
-  preserves `study-playbook` (skill name) and `# Coding
-  Playbook` (the H1 sentinel inside the playbook section's
-  bytes — content the user owns, asserted on by tests).** A
-  blanket find-and-replace on `hub` would corrupt those
-  carve-outs. The implementor reads each occurrence in context
-  and rewrites only standalone `hub` (and compounds like
-  `hub artifact`, `playbook hub`, `research hub`) per the
-  storage-agnostic vocabulary rule. The MCP tool name
-  `mcp__brain__read_note` and similar tokens contain the
-  substring `note` — those are tool-name carve-outs and stay.
+**10. Storage-agnostic identifiers; carve-outs documented.** Code surfaces (function names, parameter names, JSDoc, log strings, InitStep `name` fields) all stay storage-agnostic. The new builder is `buildStudyPlaybookStep` (camelCase, no `Hub` suffix, no connector prefix). The new InitStep name is `"Study-playbook entry-point"` (matches the playbook's `"Playbook entry-point"` and research's `"Research entry-point"` patterns). The artifact path constant inside `buildStudyPlaybookStep` is the only place in `provisionBrain/index.ts` where the `.md` extension appears; that's allowed under the spec's storage-agnostic rule because the path describes where the bundled-default editor-backed Markdown brain stores its artifact, not a code-level dispatch axis. The studyPlaybook BYTES (which include `[[wikilinks]]`, `hub` words, and other connector vocabulary) live inside `obsidianBrainAideTemplate/index.ts` and travel into the artifact at install time; per the parent intent's user-owned-section-bytes carve-out, those bytes legitimately ship the bundled template's connector-specific navigation prose. The carve-out applies to the section bytes only — not to any identifier or string constant in `provisionBrain/index.ts`.

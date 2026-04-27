@@ -9,41 +9,138 @@ mcpServerConfig:
     - 'D:\Code\Me\my-brain'
 ---
 
-## Prose
+<!-- aide-prose-start -->
 
-Your brain is an Obsidian vault. Use `mcp__brain__read_note` to open files by
-their vault-relative path. Use `mcp__brain__search_notes` for keyword queries
-across every note in the vault. The vault has two entry hubs: the coding-playbook
-hub at `coding-playbook/coding-playbook.md` and the research hub at
-`research/research.md`. Start from the relevant hub for your task, follow
-wikilinks (`[[note-name]]`) to deepen context, and check those notes' links too.
-Stay in scope; don't follow links into unrelated topics.
+Your brain is an Obsidian-backed knowledge store. Use `mcp__brain__read_note` to
+open files by their brain-relative path. Use `mcp__brain__search_notes` for
+keyword queries across every note in the store. The store has three entry-point
+artifacts: the coding-playbook index at `coding-playbook/coding-playbook.md`, the
+study-playbook navigation guide at `coding-playbook/study-playbook.md`, and the
+research index at `research/research.md`. Start from the relevant entry-point for
+your task, follow the references it lists to deepen context, and check those
+files' links too. Stay in scope; don't follow links into unrelated topics.
 
-## Playbook hub
+<!-- aide-prose-end -->
+
+<!-- aide-playbook-start -->
 
 # Coding Playbook
 
-### Task Routing
+Reference for the conventions and patterns this codebase follows. Read top-down — load only the sections that apply to the current task.
+
+## Task Routing
+
+When loading playbook context, match the task domain to the relevant section(s). Read only what applies — do NOT load all sections.
 
 | Task domain | Section |
 |-------------|---------|
 
-### How to Use This Index
+---
 
-Read this note first. Each section links to a **section hub** that lists its notes with keywords. Navigate to the section relevant to your task, then drill into the specific notes you need. Do not read all sections — only the ones whose keywords match the work.
+## How to Use This Index
+
+Each section links to a section hub that lists its notes with keywords. Navigate to the section relevant to your task, then drill into the specific notes you need.
 
 ### Always Read First
 
-These notes are **required reading** for every task, regardless of which section you're working in:
+These notes are **required reading** for every task, regardless of which section you're working in. They define the patterns everything else builds on:
 
 1. **[[your-conventions-note]]** — Add your naming, function ordering, and code hygiene conventions here.
 2. **[[your-folder-structure-note]]** — Add your folder layout and progressive disclosure conventions here.
 
-### Sections
+---
 
-### Contents
+## Sections
 
-## Research hub
+Add your top-level playbook sections here, each linked to its section hub note.
+
+---
+
+## Prime Examples
+
+Add links to reference codebases that demonstrate these patterns in practice.
+
+---
+
+## Contents
+
+<!-- aide-playbook-end -->
+
+<!-- aide-study-playbook-start -->
+
+# Study Playbook
+
+Navigate the coding playbook hub and load only the sections relevant to the current task.
+
+---
+
+## Step 1: Read the Playbook Hub
+
+Read `coding-playbook/coding-playbook.md`.
+
+The hub lists sections with descriptions. Match your current task domain against
+those descriptions to identify which sections apply. Do NOT read all sections —
+only the ones whose descriptions overlap with the work at hand.
+
+---
+
+## Step 2: Read the Relevant Section Hubs
+
+For each matching section, read its hub note (e.g. `<section>/<section>.md`).
+
+Section hubs list their child notes with keywords. Scan the list and identify which
+specific child notes overlap with the task. Do NOT read every child — only the ones
+whose keywords match the work.
+
+---
+
+## Step 3: Read the Specific Child Notes
+
+Read the child notes identified in Step 2 (e.g. `<section>/<child-note>.md`).
+These contain the concrete patterns and code examples to follow.
+
+---
+
+## Navigation Rules
+
+- **Use the hub's link structure, not search.** Do NOT search for playbook content.
+  Searching produces fragments without context; the hub structure gives you the full
+  picture.
+- **Read top-down.** Hub → section hub → child note. Never skip levels.
+- **Follow wikilinks 1–2 levels deep from content notes.** Hub notes (tagged `hub` or
+  acting as section indexes) are navigation — they don't count as depth. Depth starts
+  at the first content note you land on. Example:
+  - `coding-playbook.md` (root hub) → depth 0 (navigation)
+  - `foundations/foundations.md` (section hub) → depth 0 (navigation)
+  - `foundations/conventions.md` (content note) → depth 0 (first real content)
+  - wikilink from `conventions.md` → depth 1
+  - wikilink from *that* note → depth 2
+
+  When reading any content note, look for `[[wikilinks]]`. If a linked note looks
+  relevant to the task, read it — then check *that* note's links too. Go at least
+  1–2 levels deep from the first content note in any direction where the information
+  could apply. Playbook notes cross-reference each other (e.g. a services note may
+  link to error-handling patterns, which links to API response conventions). Following
+  these links is how you build the full picture, not just a fragment.
+- **Never re-read notes.** Before reading any note, check whether it already appears
+  in your conversation context from earlier in the session. You may return to the
+  playbook multiple times across a single workflow — do NOT re-read the playbook hub,
+  section hubs, or child notes you have already loaded. The same applies when following
+  wikilinks: skip any link whose target you have already read in this session.
+- **Approach incrementally, not all at once.** Multi-step work (e.g. planning an
+  end-to-end feature) crosses multiple domains — types, then services, then API, then
+  client. Do NOT try to load every section upfront. Load what you need for the current
+  step. When you move to the next step and realize you're in a new domain without the
+  relevant playbook context, return to the playbook hub for that domain. The "never
+  re-read" rule keeps repeated visits cheap — you'll skip the hub and any notes already
+  loaded, and only read the new sections you actually need.
+- **Stop when you have enough.** Within a single invocation, if the step only touches
+  one domain (e.g. just API routes), you only need that one section's notes plus
+  whatever they link to. Don't load unrelated sections "just in case."
+
+<!-- aide-study-playbook-end -->
+
+<!-- aide-research-start -->
 
 # Research
 
@@ -61,3 +158,5 @@ Research notes are filed by domain. Each subdirectory holds notes for a single d
 Add domain hubs here as your research grows. Each hub lives at `<domain>/<domain>.md` and lists its child notes with keywords.
 
 ### Contents
+
+<!-- aide-research-end -->
