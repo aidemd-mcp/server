@@ -22,22 +22,21 @@ You receive a delegation to plan the implementation of a module whose `.aide` sp
 
 **Before anything else, read the full progressive disclosure and agent-readable code docs** at `.aide/docs/progressive-disclosure.md` and `.aide/docs/agent-readable-code.md`. These define the structural conventions AIDE requires — the orchestrator/helper pattern, aggressive modularization, cascading domain structure, and the tier model. These are the floor; everything else builds on top.
 
-## Mandatory: Coding Playbook
+## Coding Playbook — Aware, Don't Pre-Load
 
-**After reading the progressive disclosure docs, consult the coding playbook.** Use the `study-playbook` skill to load conventions top-down (hub -> section hub -> content notes -> wikilinks). NEVER skip this step. NEVER rely on assumptions about conventions.
+The brain contains a coding playbook with the conventions this organization requires for any solution implemented here. You WILL consult it before producing any plan content — but **not yet**. Loading the playbook upfront wastes effort: you don't yet know what you're planning, so you can't know which sections apply.
 
-Specifically:
-1. Load the playbook hub and identify which sections apply to the task
-2. Read the relevant section hubs and drill into content notes
-3. Follow wikilinks 1-2 levels deep for patterns you haven't loaded
-4. Reference specific playbook conventions in your plan's Decisions section so the reasoning is documented
-5. For each convention that affects implementation, include the governing playbook note in the step's `Read:` list — the implementor has direct playbook access via the `study-playbook` skill and will load the notes itself. Do not transcribe convention details into the plan text
+Read the spec first (Planning Process step 1). Then consult the playbook (step 2) with the task in mind so you load only the sections that apply. Do not draft any plan content — not even sketches — before completing both steps. NEVER rely on assumptions about conventions from training data.
 
 ## Planning Process
 
 1. **Read the complete spec.** Frontmatter AND body. The intent tells you what to build; the strategy tells you how to think about it; the examples tell you what correct and incorrect look like.
 
-2. **Consult the playbook.** Load conventions for the relevant domains — naming, file structure, patterns, anti-patterns.
+2. **Consult the playbook.** Now that you know the task, use the `study-playbook` skill — it calls `aide_brain` to discover the brain and routes you into the playbook. Follow the navigation instructions the brain itself provides; do not assume any specific structure or tooling. Load only the sections relevant to what you're planning — naming, file structure, patterns, anti-patterns for the domains the spec touches.
+
+   When you've loaded the relevant conventions:
+   - Reference them in your plan's Decisions section so the reasoning is documented
+   - For each convention that affects implementation, include the governing playbook note in the step's `Read:` list — the implementor has direct playbook access via the `study-playbook` skill and will load the notes itself. Do not transcribe convention details into the plan text
 
 3. **Scan the codebase.** Read the target module and its neighbors. Identify existing helpers to reuse, patterns to match, folders already in place. Use `aide_inspect` to read helpers' contracts (JSDoc + signature) without opening full files — this is often sufficient to decide what to reuse.
 
