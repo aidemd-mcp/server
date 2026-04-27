@@ -198,6 +198,59 @@ describe("applyFiles", () => {
 		expect(result.canonicalContent).toBeUndefined();
 	});
 
+	// ── Brain: missing → instructions, no disk write ─────────────────────────
+	it("passes through brain-category missing file with instructions, no disk write", async () => {
+		const file = makeFile({
+			name: ".aide/config/brain.aide",
+			filePath: "/some/.aide/config/brain.aide",
+			status: "missing",
+			category: "brain",
+			canonicalContent: undefined,
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(mkdir)).not.toHaveBeenCalled();
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+		expect(result.instructions).toBe("Run /aide:brain config to set up the brain.");
+		expect(result.status).toBe("missing");
+		expect(result.canonicalContent).toBeUndefined();
+	});
+
+	// ── Brain: malformed → instructions, no disk write ────────────────────────
+	it("passes through brain-category malformed file with instructions, no disk write", async () => {
+		const file = makeFile({
+			name: ".aide/config/brain.aide",
+			filePath: "/some/.aide/config/brain.aide",
+			status: "malformed",
+			category: "brain",
+			canonicalContent: undefined,
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(mkdir)).not.toHaveBeenCalled();
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+		expect(result.instructions).toBe("Run /aide:brain config to set up the brain.");
+		expect(result.status).toBe("malformed");
+		expect(result.canonicalContent).toBeUndefined();
+	});
+
+	// ── Brain: matches → unchanged, no instructions ───────────────────────────
+	it("brain-category matches file becomes unchanged with no instructions", async () => {
+		const file = makeFile({
+			name: ".aide/config/brain.aide",
+			filePath: "/some/.aide/config/brain.aide",
+			status: "matches",
+			category: "brain",
+			canonicalContent: undefined,
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(mkdir)).not.toHaveBeenCalled();
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+		expect(result.status).toBe("unchanged");
+		expect(result.instructions).toBeUndefined();
+	});
+
 	// ── Idempotency: already updated passes through ───────────────────────────
 	it("passes through an already-updated file unchanged", async () => {
 		const file = makeFile({ status: "updated", canonicalContent: undefined });

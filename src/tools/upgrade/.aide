@@ -68,23 +68,40 @@ outcomes:
       handled by the tool directly during apply."
     - IDE steps that require external tooling (VS Code CLI) return
       an `instructions` field for the agent to execute.
+    - "The `brain` category is detection-only. The tool reports the
+       state of `.aide/config/brain.aide` via `parseBrainAide` using
+       a three-value vocabulary — `matches` when the file is present
+       and well-formed, `missing` when absent, `malformed` when present
+       but unparseable. There is no `differs` state for this category
+       because the brain root path is host-specific (inlined verbatim
+       into `mcpServerConfig.args` with no placeholder), so byte
+       comparison against a canonical template is meaningless. Apply
+       mode for `category=brain` never writes to disk; on `missing` or
+       `malformed` the manifest entry carries an `instructions` field
+       directing the agent to invoke the `/aide:brain config` skill,
+       which is the single canonical home for brain.aide creation and
+       the brain-root-path interview."
     - "The MCP tool description registered for `aide_upgrade` at
        server-registration time is an auditable contract surface, not
        commentary. It accurately states the two-call progressive-disclosure
        pattern (first call without `category` returns a metadata-only summary
        with statuses and counts but NO `canonicalContent`; second call with
        `category` writes drifted/missing files itself and returns a manifest
-       with `filePath`, `status` of `updated`/`created`/`matches`, and `name`,
-       but NO `canonicalContent`), the nine-category vocabulary (`pointer-stub`,
+       with `filePath`, `status` of `updated`/`created`/`unchanged`, and `name`,
+       but NO `canonicalContent`), the ten-category vocabulary (`pointer-stub`,
        `methodology-docs`, `version-metadata`, `commands`, `agents`, `skills`,
-       `mcp`, `ide`, `readme`), the prescription pattern for MCP and the
+       `mcp`, `ide`, `readme`, `brain`), the prescription pattern for MCP, the
        agent-executes-instruction pattern for IDE VS Code, the
-       one-at-a-time AskUserQuestion wizard pattern, and the never-touches-user-code
-       /never-touches-user-`.aide`-specs scope boundary — so an agent that reads
-       only the description forms the same expectations it would form by reading
-       this spec. The description, the handler's runtime return shape, and the
-       rest of this spec stay in lockstep; drift between any two of them is a
-       falsifiable QA failure traceable to this outcome."
+       detection-only-with-instructions pattern for `brain` (status reported
+       via `parseBrainAide`; apply mode never writes `.aide/config/brain.aide`
+       and instead returns an `instructions` field directing the agent to the
+       `/aide:brain config` skill), the one-at-a-time AskUserQuestion wizard
+       pattern, and the never-touches-user-code/never-touches-user-`.aide`-specs
+       scope boundary — so an agent that reads only the description forms the
+       same expectations it would form by reading this spec. The description,
+       the handler's runtime return shape, and the rest of this spec stay in
+       lockstep; drift between any two of them is a falsifiable QA failure
+       traceable to this outcome."
   undesired:
     - An upgrade that silently overwrites files without presenting
       the dry-run results to the user first. The agent-driven model
@@ -113,24 +130,43 @@ outcomes:
       read-only; any side effect during comparison is a bug.
     - A dry-run whose warning is vague ("some files may change")
       instead of naming the specific categories and files affected.
+    - "An upgrade that scaffolds `.aide/config/brain.aide` from inside
+       the `brain` category — duplicating the brain-root-path interview
+       that already lives in `/aide:brain config`. brain.aide creation
+       has exactly one canonical home; a second path inside upgrade
+       guarantees drift between the two interviews and produces hosts
+       whose brain.aide was never wired through `npx aidemd-mcp sync`."
+    - "An upgrade that byte-compares `.aide/config/brain.aide` against
+       a canonical template and reports `differs`. The brain root path
+       is host-specific and inlined verbatim with no placeholder, so
+       byte comparison is structurally meaningless and any `differs`
+       result for this category is spurious. The state vocabulary for
+       `brain` is `matches`/`missing`/`malformed` only."
+    - "An upgrade that omits the `brain` category from the comparison
+       so a host with a missing or malformed `.aide/config/brain.aide`
+       silently passes upgrade as `current`. This is the regression
+       that motivated the tenth category — a host that ran `init`
+       without `--vault-path` and never ran `/aide:brain config` must
+       see brain.aide flagged on every upgrade until the skill runs."
     - "A registered MCP tool description for `aide_upgrade` that teaches a
        category, status, response field, or behavioral guarantee the handler
        does not implement or this spec does not define — for example:
-       enumerating a tenth category, omitting one of the nine
+       enumerating an eleventh category, omitting one of the ten
        (`pointer-stub`, `methodology-docs`, `version-metadata`, `commands`,
-       `agents`, `skills`, `mcp`, `ide`, `readme`), claiming the category call
-       still returns `canonicalContent` for the agent to write itself,
-       claiming the tool touches user code or user `.aide` specs, claiming
-       MCP config is overwritten directly instead of merged via prescription,
-       presenting an all-or-nothing confirm flow instead of the per-category
-       wizard, or omitting the two-call progressive-disclosure framing.
-       Agents read this description at tool-discovery time and form the
-       interactive-flow mental model from it; teaching the wrong contract
-       there silently destroys user customizations or scrambles the wizard
-       pattern, regardless of how correct the handler is.
-       Description-vs-handler drift, description-vs-spec drift, and
-       silently-stale description text after a contract change are all the
-       same falsifiable failure."
+       `agents`, `skills`, `mcp`, `ide`, `readme`, `brain`), claiming the
+       category call still returns `canonicalContent` for the agent to write
+       itself, claiming the tool touches user code or user `.aide` specs,
+       claiming MCP config is overwritten directly instead of merged via
+       prescription, claiming the `brain` category writes `brain.aide` itself
+       or reports a `differs` state for it, presenting an all-or-nothing
+       confirm flow instead of the per-category wizard, or omitting the
+       two-call progressive-disclosure framing. Agents read this description
+       at tool-discovery time and form the interactive-flow mental model from
+       it; teaching the wrong contract there silently destroys user
+       customizations or scrambles the wizard pattern, regardless of how
+       correct the handler is. Description-vs-handler drift,
+       description-vs-spec drift, and silently-stale description text after
+       a contract change are all the same falsifiable failure."
 ---
 
 ## Context
@@ -177,9 +213,10 @@ confirms. The tool never writes files during comparison.
 
 **Per-category control replaces all-or-nothing confirm.** The agent
 presents results grouped into: pointer stub, methodology docs, version
-metadata, slash commands, agents, skills, MCP config, IDE config. The
-user can confirm any subset. Within a category, all files are updated
-together — no per-file opt-out — to prevent mixed-version artifacts.
+metadata, slash commands, agents, skills, MCP config, IDE config,
+README, and brain config. The user can confirm any subset. Within a
+category, all files are updated together — no per-file opt-out — to
+prevent mixed-version artifacts.
 
 **Status is determined by byte comparison, not by file presence alone.**
 The comparison reads canonical content from the bundled docs, reads the
@@ -201,6 +238,16 @@ leaving everything before and after untouched.
 
 **IDE configuration follows the same per-category flow.** The agent
 asks whether the user wants Zed and/or VS Code updates applied.
+
+**Brain config is detection-only.** `.aide/config/brain.aide` is the
+only artifact in the upgrade surface whose canonical form is
+host-specific — the brain root path is inlined verbatim into the
+config body with no placeholder, so byte comparison is structurally
+meaningless. Instead, the tool parses the file with `parseBrainAide`
+and reports `matches`/`missing`/`malformed`. Apply mode never writes
+brain.aide; the manifest entry routes the agent to `/aide:brain config`,
+which owns the brain-root-path interview and triggers
+`npx aidemd-mcp sync`. Upgrade detects; the skill scaffolds.
 
 ## Good examples
 

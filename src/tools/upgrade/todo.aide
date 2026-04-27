@@ -1,67 +1,91 @@
 ---
 description: >
-  QA issues found after apply-mode implementation: stale Zod schema description and "matches" vs "unchanged" terminal status name mismatch against spec.
+  QA for brain-category amendments: one description-vs-spec vocabulary drift found and fixed; all behavioral outcomes verified clean. Cycle closed.
 intent: >
-  src/tools/upgrade apply-mode implementation QA — verifying against the
-  outcomes.desired and outcomes.undesired contract in .aide
+  Verify the brain-category additions to aide_upgrade against the three new desired
+  outcomes and three new undesired outcomes added in this pipeline cycle. Covers
+  detection-only contract, registered-description accuracy, no-scaffolding guarantee,
+  no-byte-comparison guarantee, no-silent-omission guarantee, and description-vs-handler
+  drift on brain. Pre-existing outcomes are out of scope unless regressed.
 misalignment:
-  - plan-gap
-  - implementation-drift
+  - spec-gap
 ---
 
 ## Issues
 
-- [x] **`src/tools/upgrade/index.ts` line 31 — stale Zod schema description contradicts apply-mode behavior**
-  `UpgradeInput.category.describe()` still reads: "return only this category with
-  full canonicalContent included." This is the pre-apply-mode behavior. The actual
-  behavior is: write files to disk and return a manifest with no `canonicalContent`.
-  Any MCP client that surfaces schema-level descriptions (e.g., Cursor, Windsurf) will
-  instruct the calling LLM to expect `canonicalContent` in the response — the exact
-  anti-pattern the apply-mode was designed to prevent.
-  **Traces to:** desired outcome "A category call that returns canonicalContent for
-  the agent to write" is the undesired[3] tripwire. The stale description tells agents
-  to expect content, which primes hallucination of the write-tool pattern.
-  **Misalignment:** `plan-gap` — plan step 3.3 says "Update the `aide_upgrade` tool
-  description in `src/index.ts`" but does not name the Zod `.describe()` string in
-  `src/tools/upgrade/index.ts` as a target. The intent was clear; the plan was
-  incomplete.
+- [x] **`src/tools/upgrade/.aide` line 90 AND `src/index.ts` line 148 — apply-mode manifest status says `"matches"` but handler emits `"unchanged"`**
+  The new desired outcome (registered-description outcome, lines 86-104 of the spec)
+  stated that the second call's manifest carries `status` of
+  `"updated"`, `"created"`, or `"matches"`. The registered description in `src/index.ts`
+  repeated this: `status` (`"updated"`, `"created"`, or `"matches"`). Both were wrong.
+  The actual handler returns `"unchanged"` for files that already matched canonical —
+  `applyFiles/index.ts` line 54-56 maps `status === "matches"` → `"unchanged"`, and the
+  `UpgradeFileStatus` type includes `"unchanged"` as a distinct terminal value.
+  The correct three-value apply-mode vocabulary is `"updated"` / `"created"` /
+  `"unchanged"`, which the *pre-existing* desired outcome (lines 46-49) already stated
+  correctly. This cycle's new desired outcome and description both copied the wrong term.
+  **Traces to:** desired outcome (lines 86-104) — lockstep invariant. Also trips
+  undesired outcome (lines 151-169) — wrong status term in description.
+  **Misalignment:** `spec-gap`
+  **Fix landed:** `"matches"` changed to `"unchanged"` in the spec's desired outcome
+  (line 90) and in the registered description in `src/index.ts` (line 148). Handler
+  (`applyFiles/index.ts`) was already correct and was not touched. All 99 upgrade tests
+  pass. No new drift found on re-verification.
 
-- [x] **`src/types/index.ts` lines 53 / `src/tools/upgrade/.aide` lines 44, 53, 149, 197 — `"unchanged"` status named in spec but never implemented**
-  The spec names three distinct terminal statuses for the category-call manifest:
-  `"updated"`, `"created"`, and `"unchanged"`. The word `"unchanged"` appears four
-  times in the spec, including in the outcomes block (line 44) and in the explicit
-  manifest contract (line 53: `status` (`"updated"`, `"created"`, or `"unchanged"`)).
-  The implementation uses `"matches"` for this third status — both in
-  `UpgradeFileStatus` type and in the manifest returned by the handler. The tests
-  assert `status === "matches"` for already-current files in the manifest.
-  This is a name contract violation: the spec authored a three-value terminal
-  vocabulary, the implementation delivered a two-value vocabulary plus a holdover
-  dry-run status (`"matches"`) that was never supposed to appear in apply output.
-  An agent reading the spec and then calling `category=X` will find `"matches"` where
-  the spec told it to expect `"unchanged"` — ambiguity at the vocabulary boundary.
-  **Traces to:** desired outcome line 44-46 ("each file is reported with a final
-  status: updated … unchanged … or created") and the manifest contract on line 53.
-  **Misalignment:** `implementation-drift` — the plan (step 1.1) explicitly says
-  "`"matches"` stays as-is" when listing post-apply statuses, diverging from the spec
-  vocabulary. The plan introduced the drift; the implementor followed the plan. The
-  plan should have specified `"unchanged"` to match the spec's named terminal status.
+## Verified Clean (no issues)
+
+The following newly-added outcomes were verified and found fully satisfied:
+
+**Desired — Brain detection-only contract (lines 71-83):**
+- `parseBrainAide` is called with `projectRoot`; result maps `ok→matches`, `missing→missing`,
+  both malformed kinds→`malformed`. No `differs` state is reachable. Verified in
+  `upgrade/index.ts` lines 178-191 and confirmed by tests 11-15 in `index.test.ts`.
+- `applyFiles` brain branch (lines 49-51) returns `instructions` for missing/malformed and
+  never calls `mkdir` or `writeFile`. Verified in `applyFiles/index.ts` and confirmed by
+  3 unit tests in `applyFiles/index.test.ts`.
+
+**Desired — Ten-category vocabulary and brain in description (lines 86-104, excluding the `"matches"` error above):**
+- The registered `category` Zod enum (index.ts line 164) lists exactly ten values.
+- The description's category list names all ten in canonical order.
+- Brain instructions clause is present and accurate.
+
+**Undesired — No scaffolding inside upgrade (lines 133-138):**
+- No `parseBrainAide` template, no brain.aide write path, no brain-root interview anywhere
+  in `upgrade/index.ts` or `applyFiles/index.ts`. Clean.
+
+**Undesired — No byte comparison for brain (lines 139-144):**
+- Brain block uses `parseBrainAide` result, not `compareFile`. The `differs` status is
+  structurally impossible for the brain category. Clean.
+
+**Undesired — No silent omission (lines 145-150):**
+- Brain is the tenth entry in the `categories` assembly (index.ts line 204); always
+  present regardless of `parseBrainAide` result. Test 6 asserts `categories.toContain("brain")`.
+  Clean.
+
+**Undesired — No description-vs-handler drift on brain-specific claims (lines 151-169):**
+- Description correctly says brain never writes and routes to `/aide:brain config`. No
+  claim of `differs` status for brain. No eleventh category enumerated. Clean — the only
+  drift is the `"matches"`/`"unchanged"` vocabulary error already reported above.
 
 ## Retro
 
-Both issues would have been caught at **plan review time** before implementation
-began:
+The `"matches"` vocabulary error would have been caught at **spec authoring time** if the
+author had cross-referenced the new desired outcome's status list against the pre-existing
+desired outcome on lines 46-49 before committing the spec amendment. Both outcomes describe
+the same apply-mode manifest; they must use the same terminal vocabulary.
 
-1. Plan 3.3 lists only `src/index.ts` for the description update. A plan reviewer
-   reading the Zod schema would have caught that `.describe()` is also agent-visible.
-   Adding "and the Zod `.describe()` on `UpgradeInput.category` in `index.ts`" to
-   that checklist item would have closed the gap.
+A lightweight spec self-consistency check — specifically, comparing all status-vocabulary
+enumerations within the same spec file against each other and against `UpgradeFileStatus`
+in `src/types/index.ts` — would catch this class of error. The prior QA cycle (previous
+`todo.aide`) fixed exactly this mismatch in the opposite direction (code said `"matches"`,
+spec said `"unchanged"`); this cycle's amendment reintroduced the same drift in the spec
+and description while leaving the code correct.
 
-2. Plan step 1.1 says "`"matches"` stays as-is" — which directly contradicts the
-   spec's `"unchanged"` terminal vocabulary. A plan reviewer cross-checking 1.1's
-   status list against the spec's desired outcome on line 44 would have flagged the
-   naming mismatch before any code was written. The fix in the plan would have been
-   a one-word change: rename `"matches"` to `"unchanged"` in the post-apply status
-   list and add a note that `"matches"` remains valid for dry-run output only.
+**Stage to strengthen:** spec amendment review — when adding a new desired outcome that
+describes the same runtime contract as a pre-existing one, explicitly compare vocabulary
+against all prior outcomes touching the same return shape.
 
-**Stage to strengthen:** plan review — specifically, explicit cross-checks between
-the plan's named constants/strings and the spec's named terminal values.
+**Cycle close (2026-04-27):** Fix landed cleanly. Both mutation points (`src/tools/upgrade/.aide`
+line 90 and `src/index.ts` line 148) now read `"unchanged"` in place of `"matches"`. The
+handler was not touched — it was already the reference implementation. All 99 upgrade tests
+pass. No new drift was found on re-verification. This QA cycle is complete.

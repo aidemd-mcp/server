@@ -25,6 +25,12 @@ import type { UpgradeFileResult } from "@/types/index.js";
  * - `"differs"` or `"missing"` IDE Zed step:
  *   Has `canonicalContent` — written to disk normally via the regular file path.
  *
+ * - brain category, status `"missing"` or `"malformed"`:
+ *   No disk write. Returned with an `instructions` field directing the agent to
+ *   run `/aide:brain config`, which is the single canonical home for brain.aide
+ *   creation and repair. Status is preserved as-is so the manifest carries the
+ *   precise distinction.
+ *
  * - `"matches"`:
  *   Returned as `"unchanged"` — already current, no write needed. This maps
  *   the dry-run vocabulary to the apply-mode terminal vocabulary defined in
@@ -38,6 +44,12 @@ export default async function applyFiles(files: UpgradeFileResult[]): Promise<Up
 }
 
 async function applyFile(file: UpgradeFileResult): Promise<UpgradeFileResult> {
+	// Brain config is detection-only — direct the agent to /aide:brain config for
+	// creation and repair; never write the file from inside upgrade
+	if (file.category === "brain" && (file.status === "missing" || file.status === "malformed")) {
+		return { ...file, instructions: "Run /aide:brain config to set up the brain." };
+	}
+
 	// Files that already match canonical are reported as "unchanged" in apply output
 	if (file.status === "matches") {
 		return { ...file, status: "unchanged" };

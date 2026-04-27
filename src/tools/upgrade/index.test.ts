@@ -20,6 +20,7 @@ vi.mock("./buildVersionsMeta/index.js");
 vi.mock("./checkMcpConfig/index.js");
 vi.mock("./checkIdeConfig/index.js");
 vi.mock("@/service/install/scaffoldReadme/index.js");
+vi.mock("@/service/parseBrainAide/index.js");
 
 import detectFramework from "@/service/install/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/service/install/initContent/index.js";
@@ -29,6 +30,7 @@ import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
+import parseBrainAide from "@/service/parseBrainAide/index.js";
 import upgrade from "./index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -114,6 +116,14 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 		status: "exists",
 		category: "readme",
 	});
+	vi.mocked(parseBrainAide).mockResolvedValue({
+		kind: "ok",
+		config: { name: "obsidian", mcpServerConfig: { command: "x", args: [] } },
+		prose: "",
+		playbook: "",
+		studyPlaybook: "",
+		research: "",
+	});
 }
 
 // Helper: find a category result by name
@@ -131,7 +141,7 @@ describe("upgrade", () => {
 		const result = await upgrade(tempDir);
 
 		expect(result.framework).toBe("claude");
-		expect(result.categories).toHaveLength(9);
+		expect(result.categories).toHaveLength(10);
 
 		for (const cat of result.categories) {
 			expect(cat.summary.differs).toBe(0);
@@ -259,6 +269,13 @@ describe("upgrade", () => {
 		// ide should have 1 entry (zed only — vscode extension not yet built)
 		const ideCat = findCategory(result, "ide");
 		expect(ideCat!.files).toHaveLength(1);
+
+		// brain category must be present with exactly one file
+		expect(categories).toContain("brain");
+		const brainCat = findCategory(result, "brain");
+		expect(brainCat!.files).toHaveLength(1);
+		expect(brainCat!.files[0].name).toBe(".aide/config/brain.aide");
+		expect(brainCat!.summary.total).toBe(1);
 	});
 
 	// ── Test 7: Framework override forwarded to detectFramework ─────────────
@@ -321,6 +338,76 @@ describe("upgrade", () => {
 				}
 			}
 		}
+	});
+
+	// ── Test 11 (5d): Brain matches when brain.aide is well-formed ───────────
+	it("reports matches in brain category when brain.aide is well-formed", async () => {
+		wireDefaultMocks();
+
+		const result = await upgrade(tempDir);
+
+		const brainCat = findCategory(result, "brain");
+		expect(brainCat).toBeDefined();
+		expect(brainCat!.files[0].status).toBe("matches");
+		expect(brainCat!.summary.matches).toBe(1);
+	});
+
+	// ── Test 12 (5e): Brain missing when brain.aide is absent ────────────────
+	it("reports missing in brain category when brain.aide is absent", async () => {
+		wireDefaultMocks();
+		vi.mocked(parseBrainAide).mockResolvedValue({ kind: "missing" });
+
+		const result = await upgrade(tempDir);
+
+		const brainCat = findCategory(result, "brain");
+		expect(brainCat).toBeDefined();
+		expect(brainCat!.files[0].status).toBe("missing");
+		expect(brainCat!.summary.missing).toBe(1);
+		expect(brainCat!.files[0].canonicalContent).toBeUndefined();
+	});
+
+	// ── Test 13 (5f): Brain malformed when frontmatter fails to parse ─────────
+	it("reports malformed in brain category when frontmatter fails to parse", async () => {
+		wireDefaultMocks();
+		vi.mocked(parseBrainAide).mockResolvedValue({
+			kind: "malformed-frontmatter",
+			reason: "name is required and must be a non-empty string",
+		});
+
+		const result = await upgrade(tempDir);
+
+		const brainCat = findCategory(result, "brain");
+		expect(brainCat).toBeDefined();
+		expect(brainCat!.files[0].status).toBe("malformed");
+		expect(brainCat!.files[0].canonicalContent).toBeUndefined();
+	});
+
+	// ── Test 14 (5g): Brain malformed when body markers are malformed ─────────
+	it("reports malformed in brain category when body markers are malformed", async () => {
+		wireDefaultMocks();
+		vi.mocked(parseBrainAide).mockResolvedValue({
+			kind: "malformed-body",
+			reason: "missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->",
+		});
+
+		const result = await upgrade(tempDir);
+
+		const brainCat = findCategory(result, "brain");
+		expect(brainCat).toBeDefined();
+		expect(brainCat!.files[0].status).toBe("malformed");
+		expect(brainCat!.files[0].canonicalContent).toBeUndefined();
+	});
+
+	// ── Test 15 (5h): Brain category never sets prescription or canonicalContent
+	it("brain category never sets prescription or canonicalContent", async () => {
+		wireDefaultMocks();
+
+		const result = await upgrade(tempDir);
+
+		const brainCat = findCategory(result, "brain");
+		expect(brainCat).toBeDefined();
+		expect(brainCat!.files[0].prescription).toBeUndefined();
+		expect(brainCat!.files[0].canonicalContent).toBeUndefined();
 	});
 });
 
@@ -517,5 +604,83 @@ describe("upgrade — apply mode (handler simulation)", () => {
 
 		expect(applied).toHaveLength(1);
 		expect(applied[0].category).toBe("commands");
+	});
+
+	// ── Test 6a: Brain missing → instructions, no write ──────────────────────
+	it("apply mode brain: missing → instructions, no write", async () => {
+		wireDefaultMocks();
+		vi.mocked(parseBrainAide).mockResolvedValue({ kind: "missing" });
+
+		// applyFiles adds instructions and leaves status as "missing"
+		vi.mocked(applyFiles).mockImplementation(async (files) =>
+			files.map((f) => {
+				if (f.category === "brain" && f.status === "missing") {
+					return { ...f, instructions: "Run /aide:brain config to set up the brain.", canonicalContent: undefined };
+				}
+				return f;
+			}),
+		);
+
+		const result = await upgrade(tempDir);
+		const applied = await simulateApplyMode(result, "brain");
+
+		expect(applied).toHaveLength(1);
+		const file = applied[0].files[0];
+		expect(file.instructions).toBe("Run /aide:brain config to set up the brain.");
+		expect(file.status).toBe("missing");
+		expect(file).not.toHaveProperty("canonicalContent");
+	});
+
+	// ── Test 6b: Brain malformed → instructions, no write ────────────────────
+	it("apply mode brain: malformed → instructions, no write", async () => {
+		wireDefaultMocks();
+		vi.mocked(parseBrainAide).mockResolvedValue({
+			kind: "malformed-frontmatter",
+			reason: "name is required and must be a non-empty string",
+		});
+
+		// applyFiles adds instructions and leaves status as "malformed"
+		vi.mocked(applyFiles).mockImplementation(async (files) =>
+			files.map((f) => {
+				if (f.category === "brain" && f.status === "malformed") {
+					return { ...f, instructions: "Run /aide:brain config to set up the brain.", canonicalContent: undefined };
+				}
+				return f;
+			}),
+		);
+
+		const result = await upgrade(tempDir);
+		const applied = await simulateApplyMode(result, "brain");
+
+		expect(applied).toHaveLength(1);
+		const file = applied[0].files[0];
+		expect(file.instructions).toBe("Run /aide:brain config to set up the brain.");
+		expect(file.status).toBe("malformed");
+		expect(file).not.toHaveProperty("canonicalContent");
+	});
+
+	// ── Test 6c: Brain matches → unchanged, no instructions ──────────────────
+	it("apply mode brain: matches → unchanged, no instructions", async () => {
+		wireDefaultMocks();
+		// Default parseBrainAide mock already returns { kind: "ok" } → status "matches"
+
+		// applyFiles maps matches → "unchanged" (the standard matches branch)
+		vi.mocked(applyFiles).mockImplementation(async (files) =>
+			files.map((f) => {
+				if (f.category === "brain" && f.status === "matches") {
+					return { ...f, status: "unchanged" as const, canonicalContent: undefined };
+				}
+				return f;
+			}),
+		);
+
+		const result = await upgrade(tempDir);
+		const applied = await simulateApplyMode(result, "brain");
+
+		expect(applied).toHaveLength(1);
+		const file = applied[0].files[0];
+		expect(file.status).toBe("unchanged");
+		expect(file.instructions).toBeUndefined();
+		expect(file).not.toHaveProperty("canonicalContent");
 	});
 });

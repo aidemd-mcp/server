@@ -34,7 +34,7 @@ Otherwise, proceed to walk through drifted categories one at a time.
 
 ### Step 2–N: Walk through drifted categories one at a time
 
-For each category where `differs > 0` or `missing > 0`, present ONLY that category:
+For each category where `differs > 0` or `missing > 0` (or, for the `brain` category specifically, any file's `status` is `"malformed"` — which doesn't increment `missing`), present ONLY that category:
 
 - Name the category
 - List which files differ or are missing (use `~` for differs, `+` for missing)
@@ -78,6 +78,18 @@ options:
 ```
 
 On confirmation, read the config, merge the prescription, write with the Write tool. If `malformed`, tell the user and ask how to proceed.
+
+**brain:** When `brain` reports `missing` or `malformed`, brain.aide cannot be written by upgrade — the canonical home for brain.aide creation is `/aide:brain config`. Call `aide_upgrade` with `category: "brain"`; the manifest entry will carry an `instructions` field. Then use `AskUserQuestion`:
+
+```
+question: "Brain config — .aide/config/brain.aide is {missing|malformed}. Set it up now?"
+header: "Brain"
+options:
+  - label: "Yes, set up brain" / description: "Invoke /aide:brain config to scaffold brain.aide"
+  - label: "Skip" / description: "Leave brain.aide untouched"
+```
+
+On "Yes," invoke `Skill(skill="aide:brain", args="config")`. On "Skip," move to the next category.
 
 **ide:** Use `AskUserQuestion` with multiSelect. VS Code steps return an `instructions` field — execute it if confirmed. Zed is written by the tool directly.
 

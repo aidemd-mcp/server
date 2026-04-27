@@ -250,7 +250,8 @@ export type UpgradeCategory =
 	| "skills"
 	| "mcp"
 	| "ide"
-	| "readme";
+	| "readme"
+	| "brain";
 
 /**
  * Comparison status for a single file in an upgrade run.

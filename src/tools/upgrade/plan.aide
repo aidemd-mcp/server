@@ -1,219 +1,186 @@
 ---
-description: >
-  Plan for adding apply mode to aide_upgrade so category calls write files to disk directly and return a manifest instead of returning canonicalContent.
 intent: >
-  Add apply mode to aide_upgrade: when called with a `category` parameter,
-  the tool writes all differs/missing files directly to disk and returns a
-  manifest (no canonicalContent). Same pattern as init's applySteps. The
-  agent never sees file content and never uses the Write tool for
-  methodology files.
+  Add a tenth `brain` category to aide_upgrade — detection-only via
+  parseBrainAide. Reports matches/missing/malformed for
+  .aide/config/brain.aide; never writes the file. Apply mode for
+  category=brain returns an `instructions` field routing the agent to the
+  `/aide:brain config` skill, which is the single canonical home for
+  brain.aide creation.
 ---
+
+## Project Structure
+
+The tree below shows the proposed state of `src/tools/upgrade/` after this plan executes. All file additions are the brain detection block in the orchestrator and the brain branch in `applyFiles` — no new files. The plan is purely additive within existing files.
+
+```
+src/tools/upgrade/
+├── .aide                              ← intent spec for upgrade orchestrator (existing, just amended with tenth category)
+├── plan.aide                          ← this plan (new — overwrites prior 10/10 plan)
+├── index.ts                           ← orchestrator (modified): adds brain to UpgradeInput.category enum,
+│                                        adds brain detection block calling parseBrainAide, appends brain
+│                                        category to assembled categories array. Signature unchanged:
+│                                        upgrade(root: string, framework?: FrameworkType, path?: string)
+│                                        => Promise<UpgradeResult>. The buildCategoryResult helper is
+│                                        reused as-is — no new helper introduced for the brain category.
+├── index.test.ts                      ← orchestrator tests (modified): mocks parseBrainAide, adds tests
+│                                        for the four brain branches (ok / missing-file / malformed-frontmatter
+│                                        / malformed-body) and the apply-mode brain branch. Existing tests
+│                                        bump categories.length expectation from 9 to 10.
+├── applyFiles/
+│   ├── index.ts                       ← apply helper (modified): adds early-return brain branch BEFORE
+│   │                                    the existing matches→unchanged mapping. On status missing or
+│   │                                    malformed for category brain, return the file with an
+│   │                                    instructions field; never writes. Default export signature
+│   │                                    unchanged: applyFiles(files: UpgradeFileResult[])
+│   │                                    => Promise<UpgradeFileResult[]>.
+│   └── index.test.ts                  ← apply tests (existing): add three test cases — brain matches
+│                                        passes through as unchanged; brain missing returns instructions
+│                                        with no disk write; brain malformed returns instructions with
+│                                        no disk write. mkdir/writeFile must remain unmocked-as-called
+│                                        for these branches.
+├── buildVersionsMeta/                 ← (existing, untouched)
+├── checkIdeConfig/                    ← (existing, untouched)
+├── checkMcpConfig/                    ← (existing, untouched)
+├── compareFile/                       ← (existing, untouched)
+└── spliceStub/                        ← (existing, untouched)
+```
+
+## Prerequisites
+
+Glue touches outside `src/tools/upgrade/` that this plan depends on. Each is a small, named edit — not a redesign of the target module. The implementor performs them as part of the indicated steps.
+
+- `src/types/index.ts` must extend the `UpgradeCategory` union with `"brain"`. The union becomes:
+  `"pointer-stub" | "methodology-docs" | "version-metadata" | "commands" | "agents" | "skills" | "mcp" | "ide" | "readme" | "brain"`.
+  No other type changes required — `UpgradeFileResult` already supports `instructions: string` (used by IDE-VS-Code precedent) and the `summary` shape already has `total / matches / missing` which is all the brain category produces.
+
+- `src/index.ts` must update the `aide_upgrade` MCP tool registration:
+  - Add `"brain"` to the `category` enum on `inputSchema.properties.category`.
+  - Append `brain` to the comma-separated category list in the tool description prose ("Categories: pointer-stub, methodology-docs, …, readme, **brain**").
+  - Add one sentence to the tool description body documenting the detection-only contract: brain is the only category whose apply-mode call never writes — instead the manifest entry carries an `instructions` field directing the agent to invoke `/aide:brain config`.
+  No handler dispatch changes — apply-mode for category=brain rides through the existing `applyFiles` path, and `applyFiles` carries the new brain branch.
+
+- `src/service/parseBrainAide/index.ts` must already export the default `parseBrainAide(root: string) => Promise<ParseBrainAideResult>`. This already exists in the codebase — the plan consumes it; it does not modify it.
 
 ## Plan
 
-### Phase 1 — Expand `UpgradeFileStatus` type
+### 1. Extend the `UpgradeCategory` type union
 
-- [x] **1.1 Add `"updated"` and `"created"` to `UpgradeFileStatus` in `src/types/index.ts`.**
-  Current values: `"matches" | "differs" | "missing" | "malformed"`. Add
-  `"updated"` and `"created"` as execution outcomes (parallel to init's
-  `"created"` status). After apply, `"differs"` becomes `"updated"`,
-  `"missing"` becomes `"created"`, `"matches"` stays as-is. The union
-  becomes: `"matches" | "differs" | "missing" | "malformed" | "updated" | "created"`.
-  Traced to: spec desired outcome "each file is reported with a final
-  status: updated, unchanged, or created".
+Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 
-- [x] **1.2 Add optional `instructions?: string` field to `UpgradeFileResult` in `src/types/index.ts`.**
-  Same as init's `InitStep.instructions`. Used by IDE VS Code steps that
-  require the external `code` CLI. The apply helper populates this instead
-  of writing to disk. Traced to: spec desired outcome "IDE steps that
-  require external tooling return an `instructions` field".
+- [x] Add `"brain"` as the tenth member of the `UpgradeCategory` exported union in `src/types/index.ts`. Place it last to mirror the order in the spec's outcome bullet ("the ten-category vocabulary (`pointer-stub`, `methodology-docs`, `version-metadata`, `commands`, `agents`, `skills`, `mcp`, `ide`, `readme`, `brain`)") and the order in the canonical list in `src/index.ts`. Do not modify any other type. The `UpgradeFileStatus` union already supports `matches`, `missing`, and `malformed`; the `UpgradeFileResult` interface already supports an optional `instructions` field — both are reused as-is. Traced to: `.aide` outcomes.desired bullet on the ten-category vocabulary; spec body "the ten-category vocabulary".
 
-### Phase 2 — Create the `applyFiles` helper
+### 2. Add the brain detection block to the orchestrator
 
-- [x] **2.1 Create `src/tools/upgrade/applyFiles/index.ts`.**
-  This is the upgrade-specific apply helper, parallel to init's
-  `src/tools/init/applySteps/index.ts`. Default export:
-  `applyFiles(files: UpgradeFileResult[]) => Promise<UpgradeFileResult[]>`.
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
 
-  The function maps over each `UpgradeFileResult` and applies it:
+- [x] 2a. In `src/tools/upgrade/index.ts`, import the default export from `@/service/parseBrainAide/index.js` at the top of the file, alongside the existing service imports (`detectFramework`, `readCanonicalDoc`, etc.). The import name is `parseBrainAide`.
 
-  - **`"differs"` status, NOT mcp category, NOT VS Code IDE:** Write
-    `canonicalContent` to `filePath` (mkdir parent, writeFile). Return the
-    result with `status: "updated"`, `canonicalContent` stripped.
+- [x] 2b. In the same file, extend the `UpgradeInput` zod schema's `category` enum to include `"brain"` as the tenth value. Order must mirror the type union order from step 1. The `.describe(...)` text on `category` does not need to change — it is generic.
 
-  - **`"missing"` status, NOT mcp category, NOT VS Code IDE:** Write
-    `canonicalContent` to `filePath` (mkdir parent, writeFile). Return the
-    result with `status: "created"`, `canonicalContent` stripped.
+- [x] 2c. After the `// ── i. README` block (the README result assembly) and before the `// ── Assemble categories` block, add a new section comment-block `// ── j. Brain config ──` and the brain detection logic. The block:
+  - Computes the brain.aide host path as `join(projectRoot, ".aide", "config", "brain.aide")` for the `filePath` field on the result. Use `join` from the existing `node:path` import.
+  - Calls `await parseBrainAide(projectRoot)` once.
+  - Maps the `parseBrainAide` tagged result to a single `UpgradeFileResult` value with `category: "brain"`, `name: ".aide/config/brain.aide"`, and the brain.aide host path as `filePath`. The status mapping is:
+    - `kind: "ok"` → status `"matches"`
+    - `kind: "missing"` → status `"missing"`
+    - any other kind (`"malformed-frontmatter"`, `"malformed-body"`) → status `"malformed"`
+  - Never sets `canonicalContent` for any branch — there is no canonical template for this category (the brain root path is host-specific).
+  - Never sets `prescription` — that field is mcp-only.
+  - Never sets `instructions` here — the orchestrator is read-only; instructions are added in apply mode by `applyFiles` (step 4).
 
-  - **`"differs"` or `"missing"` with mcp category:** Pass through
-    unchanged. The agent merges prescriptions itself. Discriminant:
-    `file.category === "mcp"`. Traced to: spec "The agent only uses the
-    Write tool for MCP config (intelligent merge via prescriptions)."
+- [x] 2d. In the `// ── Assemble categories` block at the bottom of the same function, append `buildCategoryResult("brain", [brainResult])` as the final entry of the `categories` array, after `buildCategoryResult("readme", [readmeFileResult])`. Do not introduce a new helper; reuse the existing `buildCategoryResult` exactly — its current `summary` shape (`total`, `differs`, `matches`, `missing`) handles the brain category natively because malformed files count as zero `differs`/zero `matches`/zero `missing` in the auto-summary, and the per-file `status` carries the precise `malformed` distinction. Traced to: spec's apply-mapping reference (delegation note's third Decisions bullet).
 
-  - **`"differs"` IDE VS Code step (name contains "VS Code"):** Pass
-    through with `instructions` field set to
-    `code --install-extension <filePath>`. Do NOT write to disk. Traced
-    to: spec "IDE steps that require external tooling return an
-    `instructions` field for the agent to execute."
+### 3. Update the `aide_upgrade` MCP tool registration
 
-  - **`"differs"` IDE Zed step:** Has `canonicalContent` — write to disk
-    normally, return with `status: "updated"`, content stripped.
+Read: `coding-playbook/foundations/conventions`
 
-  - **`"missing"` IDE Zed step:** Write to disk, return with
-    `status: "created"`, content stripped.
+- [x] 3a. In `src/index.ts`, the `aide_upgrade` `inputSchema.properties.category.enum` array currently lists nine values. Add `"brain"` as the tenth, last in the array, mirroring the order from steps 1 and 2.
 
-  - **`"matches"`, `"malformed"`, `"updated"`, `"created"`:** Pass through
-    unchanged (already applied or no action needed).
+- [x] 3b. In the same registration block, in the `description` string field, find the trailing line "Categories: pointer-stub, methodology-docs, version-metadata, commands, agents, skills, mcp, ide, readme." and append `, brain` so it ends in `…, ide, readme, brain.`.
 
-  JSDoc on the default export explaining the dispatch logic and which
-  categories get special treatment. Inline narration on each branch.
+- [x] 3c. In the same `description` string, add a single sentence at the end of the section that explains the per-category step (the section beginning "5. For `ide`, the manifest may include `instructions`…"). The new sentence documents the detection-only contract for brain: `category=brain` never writes; the manifest entry carries an `instructions` field directing the agent to invoke `/aide:brain config`. Do not introduce any other category-specific copy. The MCP-tool-description outcome (`outcomes.desired` bullet on the description being an auditable contract surface) requires the description and handler stay in lockstep — this sentence is the description-side part of that contract; step 4 is the handler-side part.
 
-  **Why a separate helper instead of reusing init's `applySteps`:** The
-  input types differ (`UpgradeFileResult` vs `InitStep`), the status
-  values differ (`differs`/`missing` vs `would-create`), and the special
-  cases differ (upgrade has pointer-stub splicing already computed, init
-  has brain vault directories). Sharing would require a generalized
-  abstraction that obscures both tools' logic. Two focused helpers are
-  clearer than one polymorphic one. Playbook convention: keep shared code
-  as close to consumers as possible; do not force a shared abstraction
-  when the overlap is only the write-to-disk mechanic.
+### 4. Add the brain branch to `applyFiles`
 
-### Phase 3 — Update the handler in `src/index.ts`
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
 
-- [x] **3.1 Import `applyFiles` in `src/index.ts`.**
-  Add: `import applyFiles from "@/tools/upgrade/applyFiles/index.js";`
-  alongside the existing `import upgrade` and `import applySteps`.
+- [x] In `src/tools/upgrade/applyFiles/index.ts`, add a brain-category branch in `applyFile` that mirrors the existing IDE-VS-Code precedent (lines 56–60). Order constraint: place this branch BEFORE the existing `matches → unchanged` early-return so a brain file with status `matches` falls through into the matches mapping unchanged (no special case for brain matches). The brain branch:
+  - Triggers when `file.category === "brain"` AND `file.status === "missing"` OR `file.status === "malformed"`.
+  - Returns the file with `instructions: "Run /aide:brain config to set up the brain."` and no other field changes — no `mkdir`, no `writeFile`, no `status` rewrite. The `status` stays as-is (`missing` or `malformed`) so the manifest carries the precise distinction.
+  - For `file.category === "brain"` with `file.status === "matches"`, the existing matches→unchanged branch handles it without modification.
 
-- [x] **3.2 Update the `aide_upgrade` handler's category branch.**
-  Current code (lines 208-210):
-  ```
-  if (parsed.category) {
-    result.categories = result.categories.filter((c) => c.category === parsed.category);
-  }
-  ```
-  Change to: filter to the matching category, then run `applyFiles` on
-  that category's `files` array, then rebuild the category result with the
-  applied files and recomputed summary. Strip `canonicalContent` from the
-  response (it should already be stripped by `applyFiles`, but defense in
-  depth). The summary should now count `"updated"` and `"created"` instead
-  of `"differs"` and `"missing"`.
+  Update the existing JSDoc on the default export to add a fifth bullet describing the brain-category branch (right after the IDE VS Code Zed bullet). The bullet states: brain category, status `missing` or `malformed` — no disk write; returns the file with an `instructions` field directing the agent to `/aide:brain config`.
 
-  Specifically:
-  1. Filter `result.categories` to the requested category.
-  2. For each category (there will be exactly one after filtering), call
-     `applyFiles(cat.files)` to get the applied file results.
-  3. Replace `cat.files` with the applied results.
-  4. Recompute `cat.summary` from the new statuses: count `updated`,
-     `created`, `matches`, and `malformed`.
+  Traced to: spec outcomes.desired bullet "The `brain` category is detection-only … apply mode never writes brain.aide; the manifest entry routes the agent to `/aide:brain config`"; spec outcomes.undesired bullet rejecting any apply path that scaffolds brain.aide from inside upgrade.
 
-  The else branch (summary call, no category) stays the same — strip
-  `canonicalContent` from all files.
+### 5. Tests — orchestrator brain detection (summary mode)
 
-- [x] **3.3 Update the `aide_upgrade` tool description in `src/index.ts`.**
-  The tool description currently tells the agent to use the Write tool for
-  each file. Update it to reflect apply mode:
+Read: `coding-playbook/workflow/testing`
 
-  - First call (no `category`): unchanged — returns metadata-only summary.
-  - Second call (with `category`): the tool writes files to disk itself
-    and returns a manifest with `filePath`, `status` (`"updated"`,
-    `"created"`, `"matches"`), and `name` — NO `canonicalContent`.
-  - MCP exception: MCP category still returns `prescription` data for
-    the agent to merge.
-  - IDE VS Code exception: returns `instructions` field for the agent to
-    execute.
-  - Remove all guidance about using the Write tool for methodology files.
-  - Keep the AskUserQuestion wizard pattern guidance.
+- [x] 5a. In `src/tools/upgrade/index.test.ts`, declare a module mock for `@/service/parseBrainAide/index.js` at the top of the file alongside the other `vi.mock(...)` calls, and import the default export `parseBrainAide` so it is type-mockable via `vi.mocked(parseBrainAide)`. Wire a default mocked return of `{ kind: "ok", config: { name: "obsidian", mcpServerConfig: { command: "x", args: [] } }, prose: "", playbook: "", studyPlaybook: "", research: "" }` inside `wireDefaultMocks` so the existing all-matching tests continue to pass. (The `config.name` value is descriptive only — the test does not assert on it.)
 
-### Phase 4 — Update `buildCategoryResult` summary
+- [x] 5b. Update the existing test "returns all-matching summaries when every artifact matches" to expect `result.categories` to have length `10` (was `9`).
 
-- [x] **4.1 Update `buildCategoryResult` in `src/tools/upgrade/index.ts` to
-  handle post-apply statuses.**
-  The current summary only counts `differs`, `missing`, and `matches`.
-  After apply mode, files may have `"updated"` or `"created"` statuses.
-  Add `updated` and `created` counts to the summary object. This is
-  needed because the handler recomputes the summary after applying files.
+- [x] 5c. Update the existing test "groups files into correct categories" to assert that the `categories` array contains `"brain"`, and that the brain category result has exactly one file with `name === ".aide/config/brain.aide"` and `summary.total === 1`.
 
-  Update the `UpgradeCategoryResult.summary` type in `src/types/index.ts`
-  to include optional `updated?: number` and `created?: number` fields.
-  Keep the existing fields — the summary call still uses `differs` and
-  `missing`; the category call uses `updated` and `created`.
+- [x] 5d. Add a new test: "reports matches in brain category when brain.aide is well-formed". Wires the default mocks and asserts the brain category's single file has `status: "matches"` and `summary.matches === 1`. Traced to: spec outcomes.desired bullet "matches when the file is present and well-formed".
 
-### Phase 5 — Tests
+- [x] 5e. Add a new test: "reports missing in brain category when brain.aide is absent". Overrides `parseBrainAide` to return `{ kind: "missing" }`. Asserts the brain category's single file has `status: "missing"` and `summary.missing === 1`. Asserts `canonicalContent` is undefined on the file. Traced to: spec outcomes.desired bullet "missing when absent".
 
-- [x] **5.1 Create `src/tools/upgrade/applyFiles/index.test.ts`.**
-  Test cases mirroring init's `applySteps` test patterns:
+- [x] 5f. Add a new test: "reports malformed in brain category when frontmatter fails to parse". Overrides `parseBrainAide` to return `{ kind: "malformed-frontmatter", reason: "name is required and must be a non-empty string" }`. Asserts the brain category's single file has `status: "malformed"`. Asserts `canonicalContent` is undefined. Traced to: spec outcomes.desired bullet "malformed when present but unparseable".
 
-  - **Regular file with `"differs"` status:** writes to disk, returns
-    `status: "updated"`, no `canonicalContent` in result.
-  - **Regular file with `"missing"` status:** creates parent dirs, writes
-    to disk, returns `status: "created"`, no `canonicalContent`.
-  - **File with `"matches"` status:** passes through unchanged, no disk
-    write.
-  - **MCP file with `"differs"` status:** passes through unchanged with
-    `prescription` intact. No disk write.
-  - **MCP file with `"missing"` status:** passes through unchanged with
-    `prescription` intact.
-  - **MCP file with `"malformed"` status:** passes through unchanged.
-  - **IDE VS Code file with `"differs"` status:** passes through with
-    `instructions` field added. No disk write.
-  - **IDE Zed file with `"differs"` status:** writes to disk, returns
-    `status: "updated"`.
-  - **IDE Zed file with `"missing"` status:** writes to disk, returns
-    `status: "created"`.
-  - **Pointer-stub with `"differs"` status:** writes `canonicalContent`
-    (the full spliced config) to disk. Returns `status: "updated"`.
-  - **Idempotency:** file already `"updated"` or `"created"` passes
-    through unchanged.
+- [x] 5g. Add a new test: "reports malformed in brain category when body markers are malformed". Overrides `parseBrainAide` to return `{ kind: "malformed-body", reason: "missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->" }`. Asserts the brain category's single file has `status: "malformed"`. Same spec trace as 5f — both kinds collapse to `malformed`.
 
-  Mock `fs/promises` (`mkdir`, `writeFile`) to verify disk operations
-  without actual I/O. Use `vi.mock("node:fs/promises")`.
+- [x] 5h. Add a new test: "brain category never sets prescription or canonicalContent". Wires default mocks; asserts the brain category file has `prescription` undefined and `canonicalContent` undefined regardless of status. Traced to: detection mapping reference in delegation note ("There is no `differs` state for this category" and "no canonicalContent / prescription").
 
-- [x] **5.2 Update `src/tools/upgrade/index.test.ts` to cover the handler's
-  apply-mode branch.**
-  Add test cases that call `upgrade` with a `category` parameter and
-  verify the response contains applied statuses (`"updated"`, `"created"`)
-  instead of comparison statuses (`"differs"`, `"missing"`), and that
-  `canonicalContent` is absent from the response.
+### 6. Tests — orchestrator brain detection (apply mode handler simulation)
 
-- [x] **5.3 Run `vitest run` and fix any type errors or test failures.**
+Read: `coding-playbook/workflow/testing`
+
+- [x] 6a. In the existing `describe("upgrade — apply mode (handler simulation)")` block in `src/tools/upgrade/index.test.ts`, add a new test: "apply mode brain: missing → instructions, no write". The `simulateApplyMode` helper already calls `applyFiles`; in this test, configure `vi.mocked(applyFiles)` to map the input file by adding `instructions: "Run /aide:brain config to set up the brain."` and leaving status as `"missing"`. Override `parseBrainAide` to return `{ kind: "missing" }` so the orchestrator emits a missing brain file. Assert the manifest file has `instructions` set, `status: "missing"`, and `canonicalContent` absent. Traced to: applyFiles brain branch (step 4); spec apply-mapping reference.
+
+- [x] 6b. Add a parallel test: "apply mode brain: malformed → instructions, no write". Override `parseBrainAide` to return `{ kind: "malformed-frontmatter", reason: "..." }`. Configure the `applyFiles` mock to add `instructions` and leave `status: "malformed"`. Assert the manifest file has `instructions` set, `status: "malformed"`, and `canonicalContent` absent. Same spec trace as 6a — both terminal statuses route through the same instructions branch.
+
+- [x] 6c. Add a test: "apply mode brain: matches → unchanged, no instructions". Default brain mock (`kind: "ok"`). Configure the `applyFiles` mock to map matches → `status: "unchanged"`. Assert the manifest file has `status: "unchanged"`, `instructions` absent, `canonicalContent` absent. Traced to: spec apply-mapping reference (matches → unchanged).
+
+### 7. Tests — applyFiles brain branch unit tests
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 7a. In `src/tools/upgrade/applyFiles/index.test.ts`, add a test: "passes through brain-category missing file with instructions, no disk write". Build a `UpgradeFileResult` with `category: "brain"`, `status: "missing"`, `name: ".aide/config/brain.aide"`, `filePath: "/some/.aide/config/brain.aide"`, no `canonicalContent`. Run `applyFiles([file])`. Assert the result is a single file whose `instructions` field is `"Run /aide:brain config to set up the brain."`, `status` remains `"missing"`, `canonicalContent` is absent, and the mocked `mkdir` and `writeFile` were not called.
+
+- [x] 7b. Add a parallel test: "passes through brain-category malformed file with instructions, no disk write". Same setup but `status: "malformed"`. Same assertions, but `status` remains `"malformed"`.
+
+- [x] 7c. Add a test: "brain-category matches file becomes unchanged with no instructions". Build a `UpgradeFileResult` with `category: "brain"`, `status: "matches"`. Run `applyFiles([file])`. Assert the result has `status: "unchanged"`, `instructions` is absent, no disk operations occurred. Traced to: applyFiles ordering rule in step 4 (matches→unchanged precedes the brain-special-case branch only conceptually; the existing matches branch fires first and brain matches has no special case).
+
+### 8. Verify the build and run all tests
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] Run `rtk vitest run` and `rtk tsc --noEmit`. Resolve any failures rooted in the changes from steps 1–7. The expected outcome: all existing tests pass (with the length-9 → length-10 update from step 5b), and all new tests pass. Do not modify behavior to make a failing test pass; trace failures back to the steps and either fix the step or escalate.
 
 ## Decisions
 
-**1. Separate `applyFiles` helper for upgrade, not reusing init's `applySteps`.**
-The types are different (`UpgradeFileResult` vs `InitStep`), the status
-discriminants are different (`differs`/`missing` vs `would-create`), and
-the special-case logic differs (upgrade has no brain vault steps; init has
-no pointer-stub or malformed MCP). A shared abstraction would need a
-generic that papers over these differences and makes both tools harder to
-understand. Two focused, 40-line helpers are better than one polymorphic
-80-line helper. Playbook: folder-structure.md shared submodule escalation
-("single consumer -> stays in that operation's folder").
+**1. Reuse `parseBrainAide`, do not introduce a new helper folder under `src/tools/upgrade/`.**
+The plan adds zero new files inside `src/tools/upgrade/`. The brain detection is a single function call against the existing `parseBrainAide` service. Wrapping it in `src/tools/upgrade/checkBrain/index.ts` would add a folder whose entire body is one line of dispatch — an extra hop with no value. Folder-structure escalation rule: a single-consumer dispatch belongs inline in its consumer. The block sits next to the parallel inline blocks in `index.ts` (a–i) and follows the same pattern. Traced to: `coding-playbook/architecture/folder-structure` (Shared Submodules — single consumer stays in that operation's folder); existing pattern of inline `// ── h. IDE config` and `// ── i. README` blocks in `index.ts`.
 
-**2. Apply happens in the handler, not in the upgrade orchestrator.**
-The upgrade orchestrator (`src/tools/upgrade/index.ts`) stays read-only —
-it only compares. The handler in `src/index.ts` calls `applyFiles` after
-filtering to the requested category. This mirrors the init pattern where
-`applySteps` is called in the handler, not inside the init function. The
-orchestrator's JSDoc says "read-only — never writes" and that contract
-stays true. Traced to: spec Strategy "The tool is a comparator."
+**2. No `differs` state for the brain category.**
+The brain root path is host-specific (inlined verbatim into `mcpServerConfig.args` with no placeholder), so byte comparison against a canonical template is structurally meaningless. The category produces only `matches`, `missing`, and `malformed`. The summary's existing `differs: 0` count is correct by construction; no schema change is needed. Traced to: spec outcomes.desired bullet on the three-value vocabulary; spec outcomes.undesired bullet "An upgrade that byte-compares … and reports `differs`".
 
-**3. `"updated"` and `"created"` as new status values, not reusing `"differs"` and `"missing"`.**
-The spec explicitly names these post-apply statuses. Using distinct values
-lets the agent distinguish between "I need to present this for
-confirmation" (differs/missing) and "this has been applied" (updated/
-created). It also makes the response self-documenting. Traced to: spec
-desired outcome "each file is reported with a final status: updated
-(content differed and was replaced) ... or created (was missing)".
+**3. Malformed files count toward `missing` in the summary numerator (no fourth count field).**
+The existing `summary` shape has `total / differs / matches / missing` (plus optional `updated / created / unchanged` for apply mode). Adding a fourth count field for `malformed` would force every other category to declare it too. Instead, the per-file `status` field carries the precise malformed distinction; the summary auto-counts malformed files as zero in every existing bucket, and consumers of the summary read the per-file status when they need to disambiguate. The `malformed` status bucket is left at zero in the summary intentionally — it is not a count the agent uses to drive the wizard; the wizard branches on whether ANY file in the category needs attention, which `differs + missing > 0` already captures (and a malformed brain file shows up in `missing` semantically: "you need to do something about this"). The detection mapping in the delegation note allows this read explicitly. Traced to: detection mapping reference.
 
-**4. Summary type gains optional `updated` and `created` counts.**
-The summary object currently has `total`, `differs`, `missing`, `matches`.
-After apply, the response needs to report how many files were updated vs
-created. Adding these as optional fields (not present in summary-only
-calls) avoids breaking the existing summary shape while supporting the
-apply-mode response. The handler recomputes the summary after applying.
+**4. The orchestrator stays read-only; the `instructions` field is set in apply mode only.**
+Same architectural rule as the existing IDE-VS-Code precedent. The orchestrator (`index.ts`) computes statuses and content; `applyFiles` (in apply mode, called from the handler) decides whether to write or instruct. This keeps the orchestrator JSDoc invariant ("read-only — never writes files") true. Traced to: spec Strategy "The tool is a comparator; the agent is the executor"; existing applyFiles dispatch precedent (IDE VS Code branch lines 56–60).
 
-**5. VS Code IDE steps get `instructions` field, same as init.**
-The VS Code extension install requires the external `code` CLI, which the
-MCP server cannot invoke. The `instructions` field tells the agent what
-command to run. This is the same pattern init uses. Zed settings are a
-regular JSON file write and go through the normal apply path.
+**5. `applyFiles` brain branch goes BEFORE `matches → unchanged`, but the runtime ordering is a no-op for brain matches.**
+Conceptually, the brain branch handles only `missing` and `malformed`. The existing `matches → unchanged` branch handles `matches` for every category including brain. Either physical order works for `matches` because the brain branch's status guard excludes it. The plan places the brain branch BEFORE `matches → unchanged` for symmetry with the existing IDE-VS-Code branch, which is also placed early in the dispatch ladder for the "skip disk write" cases. Traced to: existing dispatch order in `applyFiles/index.ts` (early-return for skip-disk cases).
+
+**6. The MCP tool description gets one new sentence and one enum entry — nothing more.**
+The outcomes.desired bullet on the description-as-auditable-contract makes any drift between description and handler a falsifiable QA failure. The minimum description change that captures the brain category's contract is: (a) add it to the categories list; (b) add it to the enum; (c) add one sentence on the detection-only / `/aide:brain config` routing. Adding more prose risks teaching expectations the handler does not implement; adding less drops the brain category from the "auditable contract surface." Traced to: spec outcomes.desired bullet "The MCP tool description registered for `aide_upgrade` … is an auditable contract surface, not commentary"; spec outcomes.undesired bullet on description-vs-handler / description-vs-spec drift.
+
+**7. The `instructions` string is fixed prose, not assembled.**
+`"Run /aide:brain config to set up the brain."` — short, imperative, names the canonical home. The wording does not vary by `missing` vs `malformed`; both terminal statuses route to the same skill, which has its own internal branching for "create new" vs "fix existing." Keeping the instructions string identical across both kinds avoids encoding two parallel remediation flows that the skill itself owns. Traced to: spec outcomes.desired bullet "the manifest entry routes the agent to `/aide:brain config`, which is the single canonical home"; spec outcomes.undesired bullet "An upgrade that scaffolds `.aide/config/brain.aide` from inside the `brain` category — duplicating the brain-root-path interview".
+
+**8. No edit to `.claude/commands/aide/upgrade.md`.**
+Per project policy stated in the delegation: `.claude/commands/`, `.claude/agents/`, `.claude/skills/` are agent harness — direct edits, not pipelined. The orchestrator-level slash command will be edited outside this pipeline once the engine-side support for the brain category is in place. The plan deliberately stops at the engine boundary. Traced to: delegation's "Out of scope" section.

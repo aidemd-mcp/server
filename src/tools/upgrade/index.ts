@@ -11,6 +11,7 @@ import detectFramework from "@/service/install/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/service/install/initContent/index.js";
 import { COMMANDS } from "@/service/install/scaffoldCommands/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
+import parseBrainAide from "@/service/parseBrainAide/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
@@ -27,7 +28,7 @@ export const UpgradeInput = z.object({
 		.optional()
 		.describe("Custom project root path (defaults to server working directory)"),
 	category: z
-		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "readme"])
+		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "readme", "brain"])
 		.optional()
 		.describe("When provided, write all differs/missing files for this category to disk and return a manifest (no canonicalContent). When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
 });
@@ -174,6 +175,21 @@ export default async function upgrade(
 				category: "readme",
 			};
 
+	// ── j. Brain config ─────────────────────────────────────────────────────
+	const brainAideHostPath = join(projectRoot, ".aide", "config", "brain.aide");
+	const brainParseResult = await parseBrainAide(projectRoot);
+	const brainResult: UpgradeFileResult = {
+		name: ".aide/config/brain.aide",
+		filePath: brainAideHostPath,
+		category: "brain",
+		status:
+			brainParseResult.kind === "ok"
+				? "matches"
+				: brainParseResult.kind === "missing"
+					? "missing"
+					: "malformed",
+	};
+
 	// ── Assemble categories ──────────────────────────────────────────────────
 	const categories: UpgradeCategoryResult[] = [
 		buildCategoryResult("pointer-stub", [stubResult]),
@@ -185,6 +201,7 @@ export default async function upgrade(
 		buildCategoryResult("mcp", [mcpResult]),
 		buildCategoryResult("ide", [zedResult]),
 		buildCategoryResult("readme", [readmeFileResult]),
+		buildCategoryResult("brain", [brainResult]),
 	];
 
 	return { framework: config.framework, categories };
