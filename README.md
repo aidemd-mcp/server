@@ -12,6 +12,8 @@ MCP server that brings intent-driven development to any AI-powered IDE.
 Manage `.aide` spec files that live next to your code — the domain context
 that architects plan from, implementors build from, and QA validates against.
 
+Learn more at [aidemd.dev](https://aidemd.dev).
+
 ## Features
 
 - **Project-wide spec discovery** with a progressive disclosure tree that surfaces intent, research, and QA specs at every level of your codebase
