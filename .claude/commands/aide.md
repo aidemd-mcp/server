@@ -221,7 +221,7 @@ After the agent returns, relay the result and confirm the user is satisfied befo
 **Your job (orchestrator):** Ask the user whether domain knowledge already exists in the brain. If yes, skip to Stage 3. If no, delegate.
 
 **Then delegate** to the `aide-domain-expert` agent (via Agent tool, `subagent_type: aide-domain-expert`). The agent will:
-- Search web, vault, MCP memory for relevant domain sources
+- Search web, brain, MCP memory for relevant domain sources
 - Persist findings to the brain filed by **domain** (e.g., `research/email-marketing/`), not by project
 
 Do NOT research anything yourself. The domain expert agent has specialized tools and context for this.
@@ -233,7 +233,7 @@ Do NOT research anything yourself. The domain expert agent has specialized tools
 **Then delegate** to the `aide-strategist` agent (via Agent tool, `subagent_type: aide-strategist`). The agent will:
 - Use `aide_discover` to understand the intent tree
 - Read the `.aide` frontmatter for intent
-- Read the brain's research notes for domain knowledge
+- Read the brain's research entries for domain knowledge
 - Fill: `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`
 
 After the agent returns, present the completed spec to the user for review before advancing.
@@ -261,7 +261,7 @@ After the agent returns, present the completed spec to the user for review befor
    - Which numbered step to execute (quote it from the plan)
    - If the step has lettered sub-steps (2a, 2b, 2c), include ALL of them — the agent executes the entire numbered group in one session
 
-   **Do NOT include** generic instructions to consult the coding playbook or load conventions from the brain. Each plan step already has a `Read:` list pointing the implementor to the specific playbook notes it needs — the implementor will load those notes itself. Do not duplicate or override the Read list in your delegation prompt.
+   **Do NOT include** generic instructions to consult the coding playbook or load conventions from the brain. Each plan step already has a `Read:` list pointing the implementor to the specific playbook entries it needs — the implementor will load those entries itself. Do not duplicate or override the Read list in your delegation prompt.
 3. After the agent returns, verify the step's checkbox is checked
 4. Repeat from step 1 until all numbered steps are checked
 
@@ -345,11 +345,11 @@ When all issues are resolved:
 ## Rules
 
 - **DELEGATE EVERYTHING.** The orchestrator NEVER writes files, edits code, fills specs, creates plans, runs tests, or does any substantive work. Every phase is handled by its specialized agent via the Agent tool. This is the single most important rule. If you are tempted to "just do it quickly" — don't. Spawn the agent.
-- **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, brain notes.
+- **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, and entries persisted to the brain.
 - **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context.
 - **Pause for approval twice:** after spec frontmatter (Stage 1) and after plan (Stage 4). These are the two points where the user's input shapes the work.
 - **Detect and resume.** If the user runs `/aide` mid-pipeline, detect state from existing files and resume from the correct stage. Never restart from scratch if prior work exists.
-- **Research is filed by domain.** Brain notes go to `research/<domain>/`, not `research/<project>/`. The knowledge is reusable across projects.
+- **Research is filed by domain.** Research entries go to `research/<domain>/` in the brain, not `research/<project>/`. The knowledge is reusable across projects.
 - **Retro is promoted.** When the fix loop closes, extract the `## Retro` section and persist it to `process/retro/` in the brain. This is how the pipeline learns.
 - **No shortcuts.** Even if the task seems trivial, the pipeline exists to maintain intent alignment. A "simple" task handled outside the pipeline is how drift starts. Always delegate.
 - **Suggest alignment, don't force it.** When discover output shows `status: misaligned` on any spec, or when a spec edit touches outcomes, suggest `/aide:align` to the user. Do not invoke it automatically — misalignment is informational, not a pipeline gate. The user decides whether to act.

@@ -28,7 +28,7 @@ You are NOT QA. QA validates implementation against the `.aide` spec's `outcomes
 
 1. **Read the intent spec.** Read the `.aide` spec for the module you're auditing. The spec gives you the module's purpose — you need this to judge whether a convention applies.
 
-2. **Consult the playbook.** Use the `study-playbook` skill to load conventions top-down (hub → section hub → content notes → wikilinks). This is your primary reference. Load every section that could apply to the code you're reviewing — naming, file structure, testing, patterns, anti-patterns. Be thorough: a convention you didn't load is a convention you can't audit against.
+2. **Consult the playbook.** Use the `study-playbook` skill — it calls `aide_brain` to discover the brain and routes you into the playbook. Follow the navigation methodology the brain itself provides; do not assume any specific structure or tooling. This is your primary reference. Load every section that could apply to the code you're reviewing — naming, file structure, testing, patterns, anti-patterns. Be thorough: a convention you didn't load is a convention you can't audit against.
 
 3. **Read the progressive disclosure docs.** Read `.aide/docs/progressive-disclosure.md` and `.aide/docs/agent-readable-code.md`. These define AIDE's structural conventions — the orchestrator/helper pattern, aggressive modularization, cascading domain structure. These are the floor; playbook conventions layer on top.
 

@@ -7,7 +7,7 @@
 1. Create the new `.aide` file at the correct location (next to the orchestrator `index.ts` it governs, or at `.aide/intent.aide` for the project root — see [placement rules](./aide-spec.md#where-aide-files-live)).
 2. Copy the entire fenced block under [The Template](#the-template) into the new file, without the surrounding backticks.
 3. Fill in the frontmatter: replace each `<…>` placeholder with a concrete value.
-4. For each of the first four body sections (`## Context`, `## Strategy`, `## Good examples`, `## Bad examples`), read the guidance paragraph, then **replace it** with real content for this module. The guidance is a prompt for you — it does not belong in the finished spec. For `## References`, do not replace the guidance paragraph manually — the synthesis agent populates this section from its reading log during synthesis. If you are the synthesis agent, log every brain note you actually used (path + one-line description of what you drew from it for the Strategy); discard notes you opened but did not use.
+4. For each of the first four body sections (`## Context`, `## Strategy`, `## Good examples`, `## Bad examples`), read the guidance paragraph, then **replace it** with real content for this module. The guidance is a prompt for you — it does not belong in the finished spec. For `## References`, do not replace the guidance paragraph manually — the synthesis agent populates this section from its reading log during synthesis. If you are the synthesis agent, log every brain entry you actually used (path + one-line description of what you drew from it for the Strategy); discard entries you opened but did not use.
 5. A finished `.aide` file contains zero `<…>` placeholders and zero guidance paragraphs from this template.
 
 ## The Template
@@ -95,15 +95,15 @@ outcomes:
 
 <!-- The synthesis agent populates this section during synthesis — do not fill
   it manually after the fact. Rules for what goes here:
-  - Each entry is a bullet: the brain note path, then ` -- `, then a one-line
-    description of what was drawn from that note for the Strategy.
-  - Only notes that actually informed a strategy decision belong here. Notes
-    the agent opened but did not use are excluded — padding the list destroys
-    the signal between each reference and the decision it supports.
+  - Each entry is a bullet: the brain entry path, then ` -- `, then a one-line
+    description of what was drawn from that entry for the Strategy.
+  - Only entries that actually informed a strategy decision belong here.
+    Entries the agent opened but did not use are excluded — padding the list
+    destroys the signal between each reference and the decision it supports.
   - Descriptions are breadcrumbs: name the source and the specific finding or
     data point drawn from it. Do not restate the full finding; do not duplicate
     the Strategy.
-  - Paths are hints, not contracts. Brain notes move; the description is the
+  - Paths are hints, not contracts. Brain entries move; the description is the
     fallback. No tooling should validate reference paths, and no agent should
     treat a stale path as an error.
   Delete this entire HTML comment once the real references are written. -->

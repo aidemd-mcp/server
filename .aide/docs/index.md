@@ -34,7 +34,7 @@ AIDE ships two canonical skills that `aide_init` installs to `.claude/skills/`:
 
 | Skill | Purpose |
 |---|---|
-| `study-playbook` | Navigate the coding playbook hub top-down to load conventions before writing or reviewing code |
+| `study-playbook` | Navigate the coding playbook top-down to load conventions before writing or reviewing code |
 | `brain` | Signpost — tells agents when a task needs cross-project knowledge external to the repo, and routes them through `/aide:brain` |
 
 The `aide-architect` and `aide-auditor` agents declare `study-playbook` in their frontmatter to load conventions before planning. Host teams build their own coding playbook inside the brain — an external, team-shareable knowledge store that the `brain` skill points at and the `/aide:brain` command navigates.

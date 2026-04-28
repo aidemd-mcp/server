@@ -1,6 +1,6 @@
 # /aide:brain — Brain Interface
 
-General-purpose interface to the project's brain, plus a `config` mode for wiring the brain on first install (or repointing it at a different vault).
+General-purpose interface to the project's brain, plus a `config` mode for wiring the brain on first install (or repointing it at a different location).
 
 The brain is backend-agnostic: it might be Obsidian today and something else tomorrow. The `aide_brain` MCP tool is the single source of truth for *which* MCP tools to call to reach this project's brain — never hardcode a backend tool name.
 
@@ -10,8 +10,8 @@ The brain is backend-agnostic: it might be Obsidian today and something else tom
 
 `$ARGUMENTS` controls which mode runs:
 
-- **`config`** (or `config <path>`) — run the brain wiring flow. Use this when `/aide` reports the brain isn't wired yet, or when you want to point at a different vault.
-- **Anything else (or no arguments)** — general brain interaction. Reach the brain via `aide_brain`, follow the entry-point file's navigation rules, and fulfill the user's request (search notes, save findings, look up research, etc.).
+- **`config`** (or `config <path>`) — run the brain wiring flow. Use this when `/aide` reports the brain isn't wired yet, or when you want to point at a different location.
+- **Anything else (or no arguments)** — general brain interaction. Reach the brain via `aide_brain`, follow the entry-point file's navigation rules, and fulfill the user's request (search the brain, save findings, look up research, etc.).
 
 ---
 
@@ -41,7 +41,7 @@ Return what you found, or write what they asked you to write, synthesized in res
 
 ---
 
-## Mode 2: Config — Wire the Brain Vault (`/aide:brain config`)
+## Mode 2: Config — Wire the Brain (`/aide:brain config`)
 
 When `$ARGUMENTS` starts with `config`, run the brain wiring flow. This is the single source for everything brain-wiring related — `/aide` does not duplicate any of this logic; it just routes here.
 
@@ -53,15 +53,15 @@ Call `aide_info` and read three fields off `brain`: `brain.status`, `brain.name`
 
 Branch on `brain.status`:
 
-- **`ok`** — `.aide/config/brain.aide` exists and `.mcp.json` is in sync. Tell the user there's nothing to do. If `$ARGUMENTS` includes a path and that path represents a different vault from the one currently configured (surfaced by `brain.name` plus the user's own scaffolding history), treat that as a deliberate re-point and continue to Step 2 with the new path. Otherwise **STOP.**
+- **`ok`** — `.aide/config/brain.aide` exists and `.mcp.json` is in sync. Tell the user there's nothing to do. If `$ARGUMENTS` includes a path and that path represents a different brain location from the one currently configured (surfaced by `brain.name` plus the user's own scaffolding history), treat that as a deliberate re-point and continue to Step 2 with the new path. Otherwise **STOP.**
 
-- **`no-brain-aide`** — `.aide/config/brain.aide` does not exist yet. Continue to Step 2 to resolve the vault path, then to Step 3 to scaffold, then to Step 4 to run sync, then to Step 5.
+- **`no-brain-aide`** — `.aide/config/brain.aide` does not exist yet. Continue to Step 2 to resolve the brain path, then to Step 3 to scaffold, then to Step 4 to run sync, then to Step 5.
 
 - **`no-mcp-entry`** — `.aide/config/brain.aide` exists but `.mcp.json` has no `brain` key. Scaffolding is not needed. Skip Steps 2 and 3 and go directly to Step 4 to run sync, then Step 5.
 
 - **`mcp-drift`** — `.aide/config/brain.aide` exists and `.mcp.json` has a `brain` key, but the key's `command`/`args` disagree with the `mcpServerConfig` declared in `brain.aide`. Sync will overwrite the entry to bring it back into alignment. Scaffolding is not needed. Skip Steps 2 and 3 and go directly to Step 4 to run sync, then Step 5.
 
-### Step 2 — Resolve the vault path
+### Step 2 — Resolve the brain path
 
 If `$ARGUMENTS` was `config <path>`, use `<path>` as `<brainPath>` and skip to validation.
 
@@ -69,13 +69,13 @@ Otherwise, branch on `brain.hints.length`:
 
 - **No hints** — ask inline:
 
-  > Where is your brain vault? (Provide an absolute path.)
+  > Where is your brain located? (Provide an absolute path.)
 
   Treat the user's reply as `<brainPath>`.
 
 - **One or more hints** — call `AskUserQuestion`:
-  - `header`: `"Brain vault"`
-  - `question`: `"Where is your brain vault?"`
+  - `header`: `"Brain location"`
+  - `question`: `"Where is your brain located?"`
   - `options`: one entry per hint as `label: "Use {hint.path}"`, `description: "{hint.source} hint"`, **plus** an explicit final entry: `label: "Different location"`, `description: "Paste a custom absolute path"`. The explicit final entry is required (the schema's `minItems: 2` cannot be satisfied with a single hint, and the entry renders correctly for both 1-hint and multi-hint cases). Maximum 4 entries (3 hints + Different location); if hints exceed 3, drop the lowest-priority hint.
 
   **STOP. Wait for the user's response.**
@@ -140,4 +140,4 @@ Do NOT continue the user's original request. The live brain server is provably s
 `$ARGUMENTS` —
 - `config` to enter the wiring flow with hint-driven path resolution.
 - `config <absolute-path>` to wire (or re-point) at an explicit path without prompting.
-- Anything else (or empty) — treat as a general vault query/instruction.
+- Anything else (or empty) — treat as a general brain query/instruction.

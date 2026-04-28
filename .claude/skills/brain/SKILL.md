@@ -5,8 +5,8 @@ description: >
   holds context too durable for the repo and too cross-project for any single
   codebase (domain research, coding playbook, project history, journal,
   environment, identity, references). When the current task needs knowledge
-  that isn't in the working directory, or the user references shared notes /
-  research / conventions, invoke the `/aide:brain` slash command and let it
+  that isn't in the working directory, or the user references shared knowledge
+  / research / conventions, invoke the `/aide:brain` slash command and let it
   discover and navigate the brain. This skill does NOT navigate the brain
   itself. Do NOT trigger for coding conventions or patterns (use `study-playbook`
   instead) or for first-time brain wiring (that's `/aide:brain config`, which
@@ -45,9 +45,9 @@ directory:
 - **Unfamiliar domain.** You're about to make a decision in a domain you have no
   loaded context for (e.g. cold email tactics, local SEO scoring, a vendor API
   quirk).
-- **Shared context referenced.** The user says "check my notes," "what does the
-  team do for X," "we already researched this," or names a project / research
-  area / convention without giving you the file.
+- **Shared context referenced.** The user says "check the brain," "what does
+  the team do for X," "we already researched this," or names a project /
+  research area / convention without giving you the file.
 - **Saving findings.** You produced research, a decision, or a pattern the team
   will need again — synthesis the brain should own, not the repo.
 

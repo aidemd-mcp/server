@@ -36,7 +36,7 @@ Read the spec first (Planning Process step 1). Then consult the playbook (step 2
 
    When you've loaded the relevant conventions:
    - Reference them in your plan's Decisions section so the reasoning is documented
-   - For each convention that affects implementation, include the governing playbook note in the step's `Read:` list — the implementor has direct playbook access via the `study-playbook` skill and will load the notes itself. Do not transcribe convention details into the plan text
+   - For each convention that affects implementation, include the governing playbook entry in the step's `Read:` list — the implementor has direct playbook access via the `study-playbook` skill and will load the entries itself. Do not transcribe convention details into the plan text
 
 3. **Scan the codebase.** Read the target module and its neighbors. Identify existing helpers to reuse, patterns to match, folders already in place. Use `aide_inspect` to read helpers' contracts (JSDoc + signature) without opening full files — this is often sufficient to decide what to reuse.
 
@@ -48,7 +48,7 @@ Read the spec first (Planning Process step 1). Then consult the playbook (step 2
      - `- [ ] What to do, which files, what contracts` (independent step)
      - `- [ ] 2a. First action` / `- [ ] 2b. Second action` (coupled sub-steps)
      No other format — not prose paragraphs under headings, not strikethrough headings with emoji checkmarks, not bolded inline text without checkboxes. Steps without `- [ ]` bullets are malformed.
-     - **Read list first.** Every numbered step opens with a `Read:` line listing 1-3 coding playbook notes from the brain that the implementor should read before coding that step. These are the convention notes that govern how the code should be written — decomposition rules, naming patterns, file size constraints, testing style, etc. You already consulted the playbook in step 2; the Read list tells the implementor exactly which notes to load so it applies the same conventions you planned around. Use the note paths as they appear in the playbook hub.
+     - **Read list first.** Every numbered step opens with a `Read:` line listing 1-3 coding playbook entries from the brain that the implementor should read before coding that step. These are the convention entries that govern how the code should be written — decomposition rules, naming patterns, file size constraints, testing style, etc. You already consulted the playbook in step 2; the Read list tells the implementor exactly which entries to load so it applies the same conventions you planned around. Use the entry paths as they appear in the playbook.
      - Which files to create, modify, or delete
      - Which existing helpers to reuse
      - Function boundaries and contracts between steps
