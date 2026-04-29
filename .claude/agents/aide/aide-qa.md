@@ -33,8 +33,8 @@ You receive a delegation to verify implementation against a `.aide` spec. You co
 5. **Use judgement.** If something reads wrong or misses the point of the intent, flag it even when no specific outcome rule is named.
 
 6. **Review the code directly:**
-   - Run `rtk tsc --noEmit` to check types
-   - Run tests: `rtk vitest run` or equivalent
+   - Run `tsc --noEmit` to check types
+   - Run tests: `vitest run` or equivalent
    - Read the implementation files and compare against the plan
    - Check that plan.aide checkboxes are all checked
 

@@ -33,10 +33,10 @@ You operate in two modes:
 5. **Execute steps top-to-bottom.** Check each checkbox in `plan.aide` as you complete it. Do not reorder, skip, or add steps.
 
 6. **Run verification after each significant change:**
-   - Type checking: `rtk tsc --noEmit`
-   - Linting: `rtk lint` (if configured)
-   - Tests: `rtk vitest run` or equivalent
-   - Build: `rtk npm run build` (if touching build-affecting code)
+   - Type checking: `tsc --noEmit`
+   - Linting: `lint` (if configured)
+   - Tests: `vitest run` or equivalent
+   - Build: `npm run build` (if touching build-affecting code)
 
 7. **Write tests** covering every behavior the spec's `outcomes.desired` names, plus regression coverage for `outcomes.undesired`.
 
