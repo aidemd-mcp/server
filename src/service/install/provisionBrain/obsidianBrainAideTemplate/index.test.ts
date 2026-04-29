@@ -396,24 +396,48 @@ describe("updatePlaybook section ships the playbook-maintenance methodology", ()
 		expect(result.updatePlaybook).toContain("# Update Playbook");
 	});
 
-	it("updatePlaybook contains mcp__brain__patch_note (Obsidian connector-specific edit tool)", async () => {
+	it("updatePlaybook describes the three-layer playbook structure (root hub, section hubs, child notes)", async () => {
 		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.updatePlaybook).toContain("mcp__brain__patch_note");
+		expect(result.updatePlaybook).toContain("Root hub");
+		expect(result.updatePlaybook).toContain("Section hubs");
+		expect(result.updatePlaybook).toContain("Child notes");
 	});
 
-	it("updatePlaybook contains mcp__brain__write_note (Obsidian connector-specific write tool)", async () => {
+	it("updatePlaybook references the section-hub Subnotes table as the per-section index", async () => {
 		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.updatePlaybook).toContain("mcp__brain__write_note");
+		expect(result.updatePlaybook).toContain("## Subnotes");
+	});
+
+	it("updatePlaybook references the root-hub Task Routing table as the task-domain index", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.updatePlaybook).toContain("## Task Routing");
+	});
+
+	it("updatePlaybook is backend-agnostic — names no mcp__brain__* tools (those belong in orientation)", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.updatePlaybook).not.toContain("mcp__brain__patch_note");
+		expect(result.updatePlaybook).not.toContain("mcp__brain__write_note");
+		expect(result.updatePlaybook).not.toContain("mcp__brain__read_note");
 	});
 
 	it("updatePlaybook contains the routing-table drift-check anchor string", async () => {
@@ -434,6 +458,54 @@ describe("updatePlaybook section ships the playbook-maintenance methodology", ()
 		if (result.kind !== "ok") return;
 
 		expect(result.updatePlaybook).not.toBe(result.studyPlaybook);
+	});
+
+	it("updatePlaybook anchors the scope-guard ('## What Belongs Here'), the folder-tree layout ('## Layout'), the progressive-disclosure rule ('## Note Scope'), the per-entry shape ('## Entry Format'), and the wikilink rule ('## Wikilink Format')", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.updatePlaybook).toMatch(/^## What Belongs Here$/m);
+		expect(result.updatePlaybook).toMatch(/^## Layout$/m);
+		expect(result.updatePlaybook).toMatch(/^## Note Scope/m);
+		expect(result.updatePlaybook).toMatch(/^## Entry Format$/m);
+		expect(result.updatePlaybook).toMatch(/^## Wikilink Format$/m);
+	});
+
+	it("updatePlaybook embeds the layout tree (illustrative section folders)", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		// Tree shape — contains the root header and at least one labelled section folder.
+		expect(result.updatePlaybook).toContain("coding-playbook/");
+		expect(result.updatePlaybook).toContain("foundations.md");
+	});
+
+	it("updatePlaybook delegates structural orientation to study-playbook (pointer present)", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.updatePlaybook).toContain("coding-playbook/study-playbook.md");
+	});
+
+	it("updatePlaybook uses the generic provenance placeholder '<project-name>' and does not leak any private project name", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.updatePlaybook).toContain("<project-name>");
+		// Guard against private-project name leakage in the seed bytes shipped to all users.
+		expect(result.updatePlaybook).not.toMatch(/tetsukod/i);
 	});
 });
 

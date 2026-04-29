@@ -48,11 +48,19 @@ import { platform } from "node:os";
  *
  * 5. **`<!-- aide-update-playbook-start -->`** — Seed bytes for the playbook-maintenance
  *    methodology file scaffolded into the user's brain on cold install
- *    (`coding-playbook/update-playbook.md`). Contains the identify-read-apply-drift-
- *    check-confirm methodology with routing-table drift detection. Install-time seed
- *    only — read once by the install service. The shipped `/aide:update-playbook`
- *    command points at this on-disk artifact after install (same pointer pattern as
- *    the `study-playbook` skill). User-editable post-scaffold.
+ *    (`coding-playbook/update-playbook.md`). Defers the structural overview to
+ *    `study-playbook.md` and covers what an updater actually needs: a scope guard
+ *    (What Belongs Here), a folder-tree layout, hub-frontmatter tags, the
+ *    progressive-disclosure note-scope rule, the per-entry Entry Format (rule →
+ *    reason → real code with `<project-name>` provenance comments → Good/Bad pair
+ *    → cross-links), the wikilink format (full-path + label, not bare names), and
+ *    the six-step methodology (identify → locate → apply, with routing-table and
+ *    Subnotes-table drift checks). Backend-agnostic — no MCP tool names; agents use
+ *    whatever read/write surface their brain backend exposes (covered in the
+ *    orientation section). Install-time seed only — read once by the install service.
+ *    The shipped `/aide:update-playbook` command points at this on-disk artifact after
+ *    install (same pointer pattern as the `study-playbook` skill). User-editable
+ *    post-scaffold.
  *
  * 6. **`<!-- aide-research-index-start -->`** — Seed bytes for the research entry-point
  *    file scaffolded into the user's brain on cold install (`research/research.md`).
@@ -323,25 +331,171 @@ export default function obsidianBrainAideTemplate(): string {
 		`\n` +
 		`# Update Playbook\n` +
 		`\n` +
-		`Maintenance methodology for the coding playbook. Use \`mcp__brain__read_note\` to read\n` +
-		`entries, \`mcp__brain__patch_note\` or \`mcp__brain__write_note\` to edit them. Playbook\n` +
-		`entries live under \`coding-playbook/<section>/\`; the index sits at\n` +
-		`\`coding-playbook/coding-playbook.md\`.\n` +
+		`Maintenance methodology for the coding playbook. The three-layer structure\n` +
+		`(root hub → section hubs → child notes) and how to navigate it is described in\n` +
+		`\`coding-playbook/study-playbook.md\`; this note covers the operations that\n` +
+		`preserve it when adding, modifying, renaming, or removing entries.\n` +
 		`\n` +
-		`1. Identify the change — new convention, modification to an existing one, section\n` +
-		`   rename, section removal, or general audit. Skip this step if the user already\n` +
-		`   named the change.\n` +
-		`2. Read \`coding-playbook/coding-playbook.md\` to identify the relevant section, or\n` +
-		`   confirm no section yet exists for a new convention.\n` +
-		`3. Apply the change with \`mcp__brain__patch_note\` or \`mcp__brain__write_note\`. If a\n` +
-		`   section was added, renamed, or removed, offer to reorganize adjacent sections under\n` +
-		`   a new or updated domain grouping if it would improve navigability.\n` +
-		`4. **Routing-table drift check (required):** Compare the playbook entry-point's task\n` +
-		`   routing table against the actual sections that now exist. For each row: does the\n` +
-		`   section it points to still exist under that name? For each section: does the routing\n` +
-		`   table cover it? Offer to reconcile any drift.\n` +
-		`5. Apply any routing-table changes the user approves. Confirm the final state — what\n` +
-		`   was changed in the playbook, what was changed in the routing table.\n` +
+		`## What Belongs Here\n` +
+		`\n` +
+		`The playbook holds reusable engineering conventions and patterns — naming\n` +
+		`rules, error-handling shapes, fetch patterns, schema conventions, anti-patterns,\n` +
+		`testing patterns, etc. It does NOT hold project-specific context (environment,\n` +
+		`business rules, in-progress feature notes), domain research, retro findings, or\n` +
+		`operational runbooks. Those live in other parts of the brain. If the entry\n` +
+		`isn't a rule that survives across projects, it doesn't belong here.\n` +
+		`\n` +
+		`## Layout\n` +
+		`\n` +
+		`The playbook lives under \`coding-playbook/\` with this shape:\n` +
+		`\n` +
+		"```\n" +
+		`coding-playbook/\n` +
+		`├── coding-playbook.md          ← root hub\n` +
+		`├── study-playbook.md           ← navigation methodology\n` +
+		`├── update-playbook.md          ← this note\n` +
+		`├── prime-examples.md           ← (optional) reference codebases\n` +
+		`├── foundations/\n` +
+		`│   ├── foundations.md          ← section hub (navigation only)\n` +
+		`│   ├── conventions.md          ← child note (rules + code)\n` +
+		`│   ├── tooling.md\n` +
+		`│   └── anti-patterns.md\n` +
+		`├── architecture/\n` +
+		`│   ├── architecture.md         ← section hub\n` +
+		`│   ├── folder-structure.md\n` +
+		`│   ├── data-flow.md\n` +
+		`│   └── patterns.md\n` +
+		`└── ... (one folder per section)\n` +
+		"```\n" +
+		`\n` +
+		`Paths an updater needs to recognize:\n` +
+		`\n` +
+		`- Root hub: \`coding-playbook/coding-playbook.md\`\n` +
+		`- Section hub: \`coding-playbook/<section>/<section>.md\`\n` +
+		`- Child note: \`coding-playbook/<section>/<note>.md\`\n` +
+		`\n` +
+		`Section hubs (\`<section>/<section>.md\`) hold **no patterns themselves** — only\n` +
+		`their \`## Subnotes\` table, \`## When to Read This Section\` list, and the\n` +
+		`\`Part of [[coding-playbook/coding-playbook|Coding Playbook]]\` backreference.\n` +
+		`Every pattern, rule, and code example lives in child notes.\n` +
+		`\n` +
+		`Hub notes (root and section) carry frontmatter tags\n` +
+		`\`["coding-playbook","hub","context"]\`. Child notes have no required frontmatter\n` +
+		`convention.\n` +
+		`\n` +
+		`## Note Scope (Progressive Disclosure)\n` +
+		`\n` +
+		`Each child note should be tightly scoped to a single topic an agent might need\n` +
+		`to look up — naming, error handling, a specific fetch pattern, etc. Notes are\n` +
+		`short and focused, not long catch-alls. Connect related notes with \`[[wikilinks]]\`\n` +
+		`so an agent reading one can follow the trail rather than load everything upfront.\n` +
+		`\n` +
+		`If a note has drifted into multiple topics, or grown past the point where an\n` +
+		`agent can scan it quickly, split it: extract each topic into its own child\n` +
+		`note, add rows to the section hub's \`## Subnotes\` table for the new notes,\n` +
+		`update the root hub's \`## Contents\` list, and replace the moved content in the\n` +
+		`original note with a wikilink to the new note. An agent should not have to\n` +
+		`parse 500 lines of markdown to learn how to name a variable.\n` +
+		`\n` +
+		`## Entry Format\n` +
+		`\n` +
+		`Each rule inside a child note follows a consistent shape so an agent can scan\n` +
+		`quickly and learn from concrete examples.\n` +
+		`\n` +
+		`1. **Lead with the rule.** A bolded one-sentence principle as the first line of\n` +
+		`   the section or bullet — e.g. **Name variables after the function that\n` +
+		`   produces them.** State the rule plainly; the rest of the entry justifies and\n` +
+		`   illustrates it.\n` +
+		`\n` +
+		`2. **State the reason inline.** One or two sentences explaining *why*. The\n` +
+		`   reason is what an agent uses to judge edge cases the rule didn't anticipate.\n` +
+		`   Don't split rule and reason across distant sections — they read as a unit.\n` +
+		`\n` +
+		`3. **Show real code.** Use code blocks in the project's actual language (not\n` +
+		`   pseudocode). When the example is lifted from a specific file, prefix the\n` +
+		`   block with a provenance HTML comment naming the project and path, e.g.\n` +
+		`   \`<!-- from <project-name>: src/path/to/file.ts -->\`, so the source stays\n` +
+		`   traceable as the codebase evolves. Only fill in real project names and\n` +
+		`   paths — never leave the angle-bracket placeholders in a published note.\n` +
+		`\n` +
+		`4. **Pair Good and Bad examples.** Most rules have a clear right and wrong\n` +
+		`   shape — show both. Tag each block with a one-line reason in a code comment:\n` +
+		`   \`// Good — descriptive noun, no redundant suffix\` and\n` +
+		`   \`// Bad — Result suffix adds nothing\`. When a rule has multiple failure\n` +
+		`   modes (e.g. helpers inline above the export vs. helpers buried below it),\n` +
+		`   show one Bad block per failure mode so each is recognizable on its own.\n` +
+		`\n` +
+		`5. **Cross-link related rules.** Inside the note body, mention adjacent topics\n` +
+		`   by wikilink. At the bottom of the note, add a \`See also:\` line listing\n` +
+		`   related notes and a \`Part of [[<section>/<section>|<Section>]]\`\n` +
+		`   backreference so the navigation tree closes cleanly.\n` +
+		`\n` +
+		`Goal: an agent landing on a single rule sees the principle, the reasoning, and\n` +
+		`concrete code without scrolling, and knows where to follow up if the rule\n` +
+		`intersects another topic.\n` +
+		`\n` +
+		`## Wikilink Format\n` +
+		`\n` +
+		`Cross-references between notes use full-path wikilinks with a display label,\n` +
+		`not bare names:\n` +
+		`\n` +
+		"```\n" +
+		`// Good — full path survives renames elsewhere; label keeps prose readable\n` +
+		`[[coding-playbook/foundations/conventions|Conventions]]\n` +
+		`\n` +
+		`// Bad — bare name is ambiguous if any other note in the vault shares the title\n` +
+		`[[Conventions]]\n` +
+		"```\n" +
+		`\n` +
+		`This applies everywhere wikilinks appear: inline references inside child\n` +
+		`notes, \`## Subnotes\` table rows in section hubs, \`## Sections\` and \`## Contents\`\n` +
+		`entries in the root hub, \`See also:\` lines, and \`Part of\` backreferences.\n` +
+		`\n` +
+		`## Maintenance Methodology\n` +
+		`\n` +
+		`1. **Identify the change.** New convention, new child note, new section, rename,\n` +
+		`   removal, or general audit. Skip if the user already named it.\n` +
+		`\n` +
+		`2. **Locate the right layer.** Read the root hub. New conventions usually extend\n` +
+		`   an existing child note or land as a new child note inside an existing section.\n` +
+		`   Only justify a new section when the topic isn't covered by any existing one.\n` +
+		`\n` +
+		`3. **Apply the change at the layer it belongs to.**\n` +
+		`   - **Edit a child note** for changes inside an existing topic. Follow the\n` +
+		`     Entry Format above — rule, reason, real code, Good/Bad pair, cross-links.\n` +
+		`     If the change introduces vocabulary an agent might search by, update the\n` +
+		`     section hub's \`## Subnotes\` keywords for that note as well. If the edit\n` +
+		`     pushes the note beyond a single topic, split it (see Note Scope above).\n` +
+		`   - **Add a child note.** Write it using the Entry Format for every rule it\n` +
+		`     contains. Add a row to the section hub's \`## Subnotes\` table with\n` +
+		`     keywords, append its path to the root hub's \`## Contents\` list, and —\n` +
+		`     critically — retrofit the \`See also:\` lines of related existing notes to\n` +
+		`     link to the new one. A note that's only reachable from its section hub is\n` +
+		`     half-orphaned; agents discover related rules by following neighbor links.\n` +
+		`   - **Add a section.** Create \`<section>/<section>.md\` shaped like existing\n` +
+		`     section hubs (\`## Subnotes\`, \`## When to Read This Section\`, the\n` +
+		`     \`Part of [[coding-playbook/coding-playbook|Coding Playbook]]\`\n` +
+		`     backreference, hub frontmatter tags) — and remember section hubs hold\n` +
+		`     navigation only, no patterns. Add the section to the root hub's\n` +
+		`     \`## Sections\` list with a description, append every child note to\n` +
+		`     \`## Contents\`, and add task-domain rows to \`## Task Routing\`.\n` +
+		`   - **Rename or remove** a section or child note. Update the section hub, the\n` +
+		`     root hub's \`## Sections\` and \`## Contents\`, every wikilink in adjacent\n` +
+		`     notes that points at the renamed/removed target (including \`See also:\`\n` +
+		`     lines), and the \`## Task Routing\` table.\n` +
+		`\n` +
+		`4. **Routing-table drift check (required).** Compare the root hub's\n` +
+		`   \`## Task Routing\` table against the sections that exist. Each row should point\n` +
+		`   to a real section; each section should be reachable from at least one row;\n` +
+		`   each new convention added in step 3 should have a row that routes to it.\n` +
+		`   Offer to reconcile any drift.\n` +
+		`\n` +
+		`5. **Subnotes-table drift check (required when a section was touched).** Scan\n` +
+		`   the section hub's \`## Subnotes\` table — every child note in \`<section>/\`\n` +
+		`   should have a row, and every row should point to a note that still exists.\n` +
+		`\n` +
+		`6. **Confirm.** Summarize what changed in the child note(s), in the section hub,\n` +
+		`   and in the root hub (Sections, Contents, Task Routing).\n` +
 		`\n` +
 		`<!-- aide-update-playbook-end -->\n` +
 		`\n` +
