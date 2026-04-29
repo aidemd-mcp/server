@@ -23,21 +23,27 @@ mcpServerConfig:
     - '${TEST_BRAIN_PATH}'
 ---
 
-<!-- aide-prose-start -->
+<!-- aide-orientation-start -->
 Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
-<!-- aide-prose-end -->
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
+<!-- aide-config-start -->
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
 The coding-playbook section lives here.
-<!-- aide-playbook-end -->
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 The study-playbook hub lives here.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
+<!-- aide-update-playbook-start -->
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
 The research section lives here.
-<!-- aide-research-end -->
+<!-- aide-research-index-end -->
 `;
 
 // The expected entry derived from VALID_BRAIN_AIDE — args are byte-for-byte
@@ -273,10 +279,11 @@ Some prose.
 
 describe("3g — malformed body (hub sections absent)", () => {
 	it("exits 1, stderr contains parser reason naming missing markers, .mcp.json unchanged", async () => {
-		// Fixture: valid frontmatter + prose-only body (prose markers present, but
-		// playbook and research markers absent). This is the migration-failure scenario
-		// users hit when they only add prose markers but forget the other two sections.
-		const proseOnlyBody = `---
+		// Fixture: valid frontmatter but no recognized section markers at all.
+		// Old retired markers (aide-prose-start, aide-playbook-start, aide-research-start)
+		// are treated as plain bytes by the parser, so the error names all six missing
+		// new marker pairs.
+		const noSectionsBody = `---
 name: obsidian
 mcpServerConfig:
   command: npx
@@ -285,11 +292,9 @@ mcpServerConfig:
     - '${TEST_BRAIN_PATH}'
 ---
 
-<!-- aide-prose-start -->
 Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
-<!-- aide-prose-end -->
 `;
-		await writeBrainAide(tempDir, proseOnlyBody);
+		await writeBrainAide(tempDir, noSectionsBody);
 		await writeMcpJson(tempDir, { mcpServers: {} });
 		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 
@@ -297,11 +302,11 @@ Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
-		// The parser's reason must name the missing marker pairs, not a heading name.
+		// The parser's reason must name the missing marker pairs (new vocabulary).
 		const stderr = errLines.join("\n");
-		expect(stderr).toContain("<!-- aide-playbook-start -->");
-		expect(stderr).toContain("<!-- aide-research-start -->");
-		expect(stderr).not.toContain("## Prose");
+		expect(stderr).toContain("<!-- aide-orientation-start -->");
+		expect(stderr).toContain("<!-- aide-playbook-index-start -->");
+		expect(stderr).not.toContain("## Orientation");
 
 		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(after).toBe(before);
@@ -371,21 +376,27 @@ mcpServerConfig:
     - '/literal/inline/path'
 ---
 
-<!-- aide-prose-start -->
+<!-- aide-orientation-start -->
 Prose body.
-<!-- aide-prose-end -->
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
+<!-- aide-config-start -->
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
 The coding-playbook section lives here.
-<!-- aide-playbook-end -->
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 The study-playbook hub lives here.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
+<!-- aide-update-playbook-start -->
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
 The research section lives here.
-<!-- aide-research-end -->
+<!-- aide-research-index-end -->
 `;
 		await writeBrainAide(tempDir, noPlaceholderBrainAide);
 
@@ -416,21 +427,27 @@ mcpServerConfig:
     - '\${name}'
 ---
 
-<!-- aide-prose-start -->
+<!-- aide-orientation-start -->
 Prose body.
-<!-- aide-prose-end -->
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
+<!-- aide-config-start -->
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
 The coding-playbook section lives here.
-<!-- aide-playbook-end -->
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 The study-playbook hub lives here.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
+<!-- aide-update-playbook-start -->
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
 The research section lives here.
-<!-- aide-research-end -->
+<!-- aide-research-index-end -->
 `;
 		await writeBrainAide(tempDir, withNamePlaceholder);
 
@@ -464,22 +481,28 @@ mcpServerConfig:
     - '${TEST_BRAIN_PATH}'
 ---
 
-<!-- aide-prose-start -->
+<!-- aide-orientation-start -->
 This prose body contains a literal \${rootPath} placeholder and also \${entryFile}.
 These should pass through verbatim — sync only interpolates mcpServerConfig.args.
-<!-- aide-prose-end -->
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
+<!-- aide-config-start -->
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
 The coding-playbook section lives here.
-<!-- aide-playbook-end -->
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 The study-playbook hub lives here.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
+<!-- aide-update-playbook-start -->
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
 The research section lives here.
-<!-- aide-research-end -->
+<!-- aide-research-index-end -->
 `;
 		await writeBrainAide(tempDir, proseWithPlaceholder);
 

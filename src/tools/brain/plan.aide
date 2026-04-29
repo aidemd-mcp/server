@@ -1,365 +1,502 @@
 ---
 intent: >
-  Refactor the runtime brain tool to the four-state contract: collapse the
-  status union from 5 to 4 by removing `invalid-path`, delete the
-  INVALID_PATH_PROSE constant, update NO_BRAIN_AIDE_PROSE to point at
-  `.aide/config/brain.aide`, retarget the defensive fallback (parse-non-ok
-  despite buildBrainState ok) to NO_BRAIN_AIDE_PROSE, and rewrite the tests
-  so they cover the 4 status branches plus the new fallback target while
-  asserting the response shape never carries `name`, `backend`, or
-  `connector`.
+  Add a `kind?: "orientation" | "config"` discriminator to the `aide_brain`
+  tool — closed two-value vocabulary, default `"orientation"`, schema-level
+  rejection of unknown values, in-memory dispatch on parseBrainAide's typed
+  result, identical non-ok remediation prose regardless of `kind`, and
+  `{ status, instructions }` response shape preserved exactly. Update the
+  registered MCP tool description in `src/index.ts` to teach the new
+  parameter and its vocabulary. Update tests to cover both `kind` values
+  for `ok`, kind-agnostic non-ok branches, and rejection of every seed
+  spelling.
 ---
 
 ## Project Structure
 
+This plan is scoped to `src/tools/brain/`. The module is two files plus a
+co-located spec; no new files are introduced. Two files outside this scope
+need touch-up edits — listed in `## Out-of-scope edits` below.
+
 ```
-src/tools/brain/
-├── .aide                ← [existing, aligned] intent spec for the runtime brain tool
-├── plan.aide            ← [this file]
-├── todo.aide            ← [existing, untouched] alignment cycle log
-├── index.ts             ← [edit] orchestrator: brain(root: string): Promise<BrainToolResult>
-│                          imports buildBrainState (4-state union) and parseBrainAide
-│                          three top-of-file remediation prose constants:
-│                            NO_BRAIN_AIDE_PROSE (path now `.aide/config/brain.aide`)
-│                            NO_MCP_ENTRY_PROSE  (unchanged text)
-│                            MCP_DRIFT_PROSE     (unchanged text)
-│                          INVALID_PATH_PROSE: DELETED
-│                          branches: no-brain-aide | no-mcp-entry | mcp-drift | ok
-│                          ok branch: parseBrainAide → return { status: "ok", instructions: prose }
-│                          defensive fallback (parse non-ok despite ok state):
-│                            return { status: "no-brain-aide", instructions: NO_BRAIN_AIDE_PROSE }
-│                          response shape: { status, instructions } only — never name/backend/connector
-└── index.test.ts        ← [rewrite] 4-state branch tests + defensive fallback to no-brain-aide
-                           verifies response shape has no `name`, no `backend`, no `connector`
-                           verifies verbatim-prose invariant on ok branch
-                           verifies instructions never empty on every branch + fallback
-                           drops every reference to `invalid-path` and INVALID_PATH_PROSE
+src/tools/brain/                            ← scope root for this plan
+├── .aide                                   ← intent spec (already exists, body just updated)
+├── plan.aide                               ← this file
+├── todo.aide                               ← prior alignment-cycle log (untouched)
+├── index.ts                                ← orchestrator (already exists, MODIFIED)
+│                                              export const BrainInput: ZodObject
+│                                                with optional `kind` enum field
+│                                              export default async function brain(
+│                                                root: string,
+│                                                input?: { kind?: "orientation" | "config" }
+│                                              ): Promise<BrainToolResult>
+└── index.test.ts                           ← Vitest test file (already exists, MODIFIED)
+                                              covers ok×{orientation,config}, non-ok×{both kinds},
+                                              defensive fallback, schema rejects every seed spelling
 ```
 
-This plan is module-scoped. The `BrainToolResult` type lives in
-`src/types/index.ts` (outside this scope) and the four-state `BrainState`
-lives in the same shared types module. Both type changes are listed under
-Prerequisites.
+## Out-of-scope edits
+
+Two files outside `src/tools/brain/` need edits to keep this tool's contract
+in lockstep with its callers. The implementor handles them inside the
+relevant numbered steps below — not as a separate plan.
+
+- `src/index.ts` — the tool registration site. Two edits: (a) the
+  `inputSchema` for `aide_brain` in `ListToolsRequestSchema` gains a
+  `kind` property with `enum: ["orientation", "config"]` and a description
+  that documents default + vocabulary; (b) the registered `description`
+  string for `aide_brain` is rewritten to teach the new `kind` parameter
+  and its vocabulary, the orientation/config split, the live-vs-seed rule,
+  and to drop pre-rework language ("verbatim prose body"). The tool
+  dispatch case `aide_brain` also forwards the parsed input to the
+  handler: `brain(root, BrainInput.parse(args))` instead of discarding the
+  parsed object.
+- `src/types/index.ts` — `BrainToolResult` already has the right shape
+  (`{ status, instructions }`). No structural changes needed; just confirm
+  no `kind` echo is added on the wire (negative requirement, enforced by
+  tests). The `ParseBrainAideResult` `ok` variant must already carry the
+  rework-era named fields (`orientation`, `config`, `playbookIndex`,
+  `studyPlaybook`, `updatePlaybook`, `researchIndex`) by the time this
+  plan runs — see Prerequisites.
 
 ## Prerequisites
 
-This plan depends on two upstream contracts being in place before it can
-type-check or run.
-
-- **`src/types/index.ts` must export `BrainState` as a four-variant tagged
-  union** with `status` membership exactly `"ok" | "no-brain-aide" |
-  "no-mcp-entry" | "mcp-drift"`. The `"invalid-path"` variant (and any
-  field references that imply `rootPath` validation, e.g. the
-  `invalid-path` shape's `rootPath` carry) must be gone. `BrainToolResult`
-  must remain typed as `{ status: BrainState["status"]; instructions:
-  string }` — once `BrainState` shrinks, `BrainToolResult["status"]`
-  inherits the four-state union automatically. Without this change, the
-  removal of the `if (state.status === "invalid-path")` branch in this
-  plan's step 2 produces a TS2367 (comparison appears unintentional) on
-  the now-impossible discriminant value, and the new defensive-fallback
-  return literal `{ status: "no-brain-aide", ... }` would be
-  type-checked against a union that still includes `"invalid-path"`.
-
-- **`src/service/buildBrainState/index.ts` must be refactored to never
-  return `{ status: "invalid-path" }`.** The detector's pipeline must
-  drop the `stat(config.rootPath)` step and the two return sites that
-  emit `invalid-path`. After refactor, the function's return shape
-  matches the new four-variant `BrainState`. Without this change, the
-  type-system will still allow `state.status === "invalid-path"` to
-  resolve as a defined case at runtime, even if the type union forbids
-  it at compile time — and any code path in this tool that no longer
-  handles it would route to the defensive fallback unintentionally.
-
-- **`src/service/buildBrainState/.aide` already declares the four-state
-  contract** (status: aligned, post-schema-collapse pivot). No spec
-  change is required there; only its code refactor is the prerequisite.
-
-These prerequisites are external to this plan's scope directory. The
-orchestrator executes their plans (the type-shrink in `src/types/` and
-the detector refactor in `src/service/buildBrainState/`) before this
-plan's steps begin. This plan does NOT modify those files.
+- `parseBrainAide` (at `src/service/parseBrainAide/index.ts`) must export
+  the rework-era 6-section typed `ok` variant — its `ok` result must
+  carry `orientation: string` and `config: string` as separately-named
+  fields, alongside `playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+  `researchIndex`. This plan reads `parseResult.orientation` and
+  `parseResult.config` directly; it does not parse markers itself.
+- `buildBrainState` (at `src/service/buildBrainState/index.ts`) continues
+  to return the existing `BrainState` tagged union (`ok`,
+  `no-brain-aide`, `no-mcp-entry`, `mcp-drift`). No contract change here
+  — this plan forwards the union through unchanged.
+- The pre-rework typed-key mapping (`prose`, `playbook`, `research`)
+  MUST already be gone from `parseBrainAide`'s `ok` variant. If those
+  keys still exist when this plan runs, the parser-side rename is
+  incomplete and this plan stops.
 
 ## Plan
 
-### 1. Refactor `index.ts` to the four-state branch set
+### 1. Tighten `BrainInput` schema and handler signature for the `kind` discriminator
 
-Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error-handling`
+Read: `coding-playbook/api/validation`, `coding-playbook/foundations/conventions`
 
-- [x] 1a. Delete the `INVALID_PATH_PROSE` constant declaration entirely
-  (the string literal and its surrounding documentation comment, if the
-  comment refers only to that constant). Leave the
-  `NO_BRAIN_AIDE_PROSE`, `NO_MCP_ENTRY_PROSE`, and `MCP_DRIFT_PROSE`
-  constants in place.
+- [x] 1a. In `src/tools/brain/index.ts`, redefine `BrainInput` as a Zod
+      object with a single optional field `kind` whose Zod type is
+      `z.enum(["orientation", "config"]).optional()`. Do NOT add a
+      `.default("orientation")` on the schema — the handler resolves
+      the default after parsing so a missing field is unambiguous to
+      the framework's input-validation layer (default would imply the
+      schema itself coerced an absent value to a present one, blurring
+      the "schema rejects unknown values" framing). The schema's job
+      is to enforce vocabulary; the handler's job is to resolve the
+      default.
+- [x] 1b. Define a module-scope type alias at the top of the file
+      (above the prose constants), e.g. `type BrainKind = "orientation"
+      | "config";`. The handler's exhaustive switch types against this
+      alias and a future contributor adding a new value must update
+      both the schema and the alias to compile.
+- [x] 1c. Change the handler signature to `export default async
+      function brain(root: string, input?: { kind?: BrainKind }):
+      Promise<BrainToolResult>`. The second parameter is optional so
+      the existing single-arg call sites (in tests) keep compiling;
+      resolve the effective kind once at the top of the body as
+      `const kind: BrainKind = input?.kind ?? "orientation";`. Resolve
+      it BEFORE the `buildBrainState` call so the resolved value is
+      available for the `ok` branch — non-ok branches do not consume
+      it but resolving once keeps control flow linear.
+- [x] 1d. Update the file-level JSDoc above `brain` to describe the
+      new contract: optional `kind` parameter with two-value
+      vocabulary, default `"orientation"`, in-memory dispatch on
+      parseBrainAide's named fields, identical non-ok remediation
+      prose regardless of `kind`. Drop the pre-rework "verbatim prose
+      body" phrasing — the JSDoc must use the `orientation` /
+      `config` vocabulary now.
+- [x] 1e. Drop or rewrite any inline comments below the handler that
+      still reference `parseResult.prose`. The comment block above
+      the defensive fallback (Step 4 in the existing comments) stays,
+      but its reference to "the prose" becomes "the selected
+      section" since either field could be the one that came back
+      ok-but-via-fallback.
 
-- [x] 1b. Update the `NO_BRAIN_AIDE_PROSE` constant's text. The path
-  reference inside the prose currently reads `.aide/brain.aide`; change
-  it to `.aide/config/brain.aide`. Every other word of the prose stays
-  byte-identical — the load-bearing phrases (the npx command name, the
-  `/aide:brain config` slash command pointer, the "do not proceed" clause)
-  are unchanged. The exact target text:
+### 2. Rewrite the `ok` branch to dispatch on `kind` against parseBrainAide's typed result
 
-  > "No `.aide/config/brain.aide` is present in this project. Tell the
-  > user to run `npx aidemd-mcp init` to scaffold the brain config file,
-  > or `/aide:brain config` if they want to be walked through it. Do
-  > not proceed with this task as if the brain were available — the
-  > file must exist before brain-dependent work continues."
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
 
-  This is the only path-string change in the file. `NO_MCP_ENTRY_PROSE`
-  and `MCP_DRIFT_PROSE` already reference `.aide/brain.aide`; per the
-  spec context the path is the only mention to update for the
-  `no-brain-aide` constant. (Audit `NO_MCP_ENTRY_PROSE` and
-  `MCP_DRIFT_PROSE` while you are in the file — if either references a
-  `brain.aide` path, update it to `.aide/config/brain.aide` for
-  consistency. Each reference is the same load-bearing path-disclosure
-  that `aide_init` writes, so they should match the new canonical
-  location.)
+- [x] 2a. After the three non-ok early returns, call
+      `parseBrainAide(root)` exactly once (no change). On
+      `parseResult.kind === "ok"`, replace the existing
+      `parseResult.prose` access with a switch on the module-scope
+      `kind` value. The pipeline is: read parseResult once → switch
+      on `kind` → return `{ status: "ok", instructions:
+      parseResult.orientation }` for `"orientation"` and
+      `{ status: "ok", instructions: parseResult.config }` for
+      `"config"`. No third branch.
+- [x] 2b. Use the TypeScript exhaustiveness pattern. Either: a switch
+      whose `default` branch contains `const _exhaustive: never =
+      kind;` and falls through to the defensive fallback so a runtime
+      schema-bypass still maps to a non-empty `instructions`; or an
+      `if/else if` chain with a final `_exhaustive: never` assertion
+      below it. Pick whichever shape compiles cleanly without
+      `eslint-disable`; the type checker is the load-bearing
+      guarantee — if `BrainKind` gains a value, the switch must
+      fail to compile until the new branch is wired.
+- [x] 2c. The existing defensive fallback below the `ok` branch
+      (`parseResult.kind` non-`ok` despite `buildBrainState` saying
+      `ok`) stays unchanged in behavior — it still routes to
+      `NO_BRAIN_AIDE_PROSE` on `status: "no-brain-aide"`. The
+      fallback is `kind`-agnostic by design (the file is broken for
+      both sections in the same way). Update the inline comment
+      above the fallback so it no longer says "the prose"; it says
+      "the selected section" or equivalent.
 
-- [x] 1c. Delete the `if (state.status === "invalid-path") return { ... }`
-  branch entirely (the `if` head and the return statement). This branch
-  is no longer reachable once the prerequisite type-shrink lands —
-  TypeScript will surface the now-unreachable comparison as TS2367 if
-  left in place. After deletion, the branch ladder is exactly three
-  non-ok branches: `no-brain-aide`, `no-mcp-entry`, `mcp-drift`.
+### 3. Confirm non-ok branches stay byte-identical regardless of `kind`
 
-- [x] 1d. Retarget the defensive fallback (the final `return` after the
-  `parseResult.kind === "ok"` check). The current fallback returns
-  `{ status: "invalid-path", instructions: INVALID_PATH_PROSE }`; the
-  new fallback returns `{ status: "no-brain-aide", instructions:
-  NO_BRAIN_AIDE_PROSE }`. The rationale is in the spec's Strategy
-  paragraph "A defensive fallback guards the 'instructions never
-  empty' invariant" — the upstream-contract-violation pattern this
-  fallback exists for is "buildBrainState says ok but parser says
-  missing/broken file," which is the missing-or-broken-file shape that
-  `no-brain-aide` is the natural remediation for.
+Read: `coding-playbook/foundations/conventions`
 
-- [x] 1e. Update the orchestrator's JSDoc and the inline comment above
-  the defensive-fallback `return` to reflect the new vocabulary. The
-  JSDoc bullet that enumerated `invalid-path` should be removed; the
-  inline comment above the defensive fallback should name
-  `NO_BRAIN_AIDE_PROSE` (not `INVALID_PATH_PROSE`) as the fallback
-  target and cite the same upstream-contract-violation reasoning. Do
-  not enumerate the count of statuses inline — the spec deliberately
-  avoids pinning a count, so the JSDoc should describe the contract
-  in terms of the `BrainState` vocabulary rather than naming "four
-  states."
+- [x] 3a. The three non-ok branches (`no-brain-aide`,
+      `no-mcp-entry`, `mcp-drift`) keep their existing fixed
+      remediation prose constants (`NO_BRAIN_AIDE_PROSE`,
+      `NO_MCP_ENTRY_PROSE`, `MCP_DRIFT_PROSE`) and return shapes. No
+      change needed beyond confirming the handler does NOT read
+      `kind` on these branches — they fire before the `ok`-path
+      `parseBrainAide` call and they ignore the resolved `kind`.
+- [x] 3b. No new constants are added. No constant is keyed on
+      `kind`. Adding a `kind`-keyed remediation prose map would
+      re-create the registry-dispatch anti-pattern the spec retired
+      — Strategy paragraph "Non-ok branches return identical
+      remediation prose regardless of `kind`" is the source of this
+      guard.
 
-- [x] 1f. Confirm the orchestrator's response literals never include a
-  `name`, `backend`, or `connector` field. Each return statement should
-  be exactly `{ status: <status>, instructions: <prose> }`. This is the
-  no-discriminant-leakage invariant from the spec's outcomes.desired —
-  any extra field re-introduces the registry-dispatch temptation on the
-  consumer side. The current code already complies; verify nothing was
-  reintroduced during the constant cleanup.
+### 4. Wire the new schema through the MCP server registration site
 
-### 2. Rewrite `index.test.ts` to the four-state contract
+Read: `coding-playbook/api/validation`, `coding-playbook/foundations/conventions`
 
-Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+- [x] 4a. In `src/index.ts`, locate the `aide_brain` entry inside
+      the `ListToolsRequestSchema` handler. Update its `inputSchema`
+      from `{ type: "object", properties: {} }` to:
+      ```
+      {
+        type: "object",
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["orientation", "config"],
+            description: "<one-line description of the two-value vocabulary, naming the default and what each value returns>",
+          },
+        },
+      }
+      ```
+      The MCP framework validates against this inputSchema before
+      the handler runs; an unknown value or wrong type fails at the
+      framework boundary with a structured error, exactly as the
+      spec's Strategy paragraph "Schema-level rejection of unknown
+      `kind` values, not handler-level" requires. Do NOT add `kind`
+      to a `required` array — it is optional.
+- [x] 4b. Rewrite the registered `description` string for
+      `aide_brain`. The new description must teach: (i) the optional
+      `kind` parameter and its closed two-value vocabulary
+      (`"orientation" | "config"`); (ii) the default
+      (`"orientation"`); (iii) what each value returns (orientation
+      = runtime briefing when an agent reaches for the brain
+      mid-task; config = integration-specific wiring flow used by
+      `/aide:brain config`); (iv) that install-time seed sections
+      (`playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+      `researchIndex`) are NOT surfaced via this tool — agents
+      reach those via the brain's read tool against the on-disk
+      seed files; (v) the response shape is `{ status, instructions
+      }` only — no `backend`, `connector`, or `name`; (vi) the four
+      `BrainState` statuses (`ok`, `no-brain-aide`, `no-mcp-entry`,
+      `mcp-drift`); (vii) the verbatim-on-ok /
+      fixed-remediation-on-non-ok split, identical across `kind`;
+      (viii) the on-demand-only / not-on-boot guidance. Drop
+      pre-rework language ("verbatim prose body") and replace with
+      the live-section vocabulary. The description must not contain
+      the forbidden tokens listed in the parent spec (`vault`,
+      `obsidian`, `note` as a synonym for "file", `wikilink`, `hub
+      note`, `hub`).
+- [x] 4c. In the `aide_brain` case of the
+      `CallToolRequestSchema` handler, change `BrainInput.parse(args);
+      const result = await brain(root);` to `const parsed =
+      BrainInput.parse(args); const result = await brain(root,
+      parsed);`. The parsed object carries the optional `kind`
+      field; the handler resolves the default. The framework's parse
+      step rejects unknown values structurally before the handler
+      runs.
 
-- [x] 2a. Update the file-header invariant comment. The current header
-  says "five-status branching"; change it to describe the new contract
-  in terms of the `BrainState` vocabulary without pinning a count
-  (mirroring the spec's enumeration-drift guidance). Keep the existing
-  invariant comment forbidding imports from `@/service/brainBackends`.
-
-- [x] 2b. Update the `MINIMAL_CONFIG` fixture to match the new
-  `BrainAideConfig` shape that lives in `src/types/index.ts`. The
-  current fixture carries `connector`, `rootPath`, `entryFile`, `tools`
-  — those are removed from the schema. The new fixture carries `name`
-  and `mcpServerConfig` only, e.g.:
-
-  ```ts
-  const MINIMAL_CONFIG = {
-    name: "obsidian",
-    mcpServerConfig: {
-      command: "npx",
-      args: ["@bitbonsai/mcpvault", "/x"],
-    },
-  };
-  ```
-
-  The exact field values are not under test; only the shape needs to
-  satisfy the type. If the prerequisite parser/type refactor has
-  already collapsed `BrainAideConfig` to two fields, this fixture
-  must match that collapse. If the parser still carries the old
-  fields at the time this test is rewritten, escalate — the
-  prerequisites have not landed.
-
-- [x] 2c. Update the `makeOkState` helper and every inline state
-  fixture in the file to match the new four-variant `BrainState`. The
-  current `makeOkState` returns `{ status: "ok", rootPath, connector,
-  hints }`; the new shape carries `{ status: "ok", name, hints }` (the
-  `connector` field renamed to `name` per the parent root spec; no
-  `rootPath` because the detector no longer stats a path). Every
-  inline state literal in the test body (the `no-mcp-entry` fixture,
-  the `mcp-drift` fixture, the parameterized fixtures in the
-  `it.each` block) must use the same field set. If `BrainState`'s
-  shape after refactor differs from this expectation, conform to the
-  shipped type. Drop every fixture that carries `connector` and
-  every fixture that carries `rootPath` on a state that no longer
-  declares it.
-
-- [x] 2d. Delete the entire `describe("brain — invalid-path:
-  remediation prose (4e)", ...)` block. The branch is gone; tests
-  for it are dead code. Renumber surrounding describe-block labels
-  if your project's convention does so (the existing labels are
-  4a–4j with 4e on `invalid-path` and the defensive fallback at
-  4g — adjust the label letters if needed, or leave the labels
-  static and accept the gap; either is acceptable, just be
-  consistent within the file).
-
-- [x] 2e. Remove the `invalid-path` row from the `it.each([...])`
-  parameterization in the "instructions always non-empty" describe
-  block. The remaining rows are `no-brain-aide`, `no-mcp-entry`,
-  `mcp-drift`. Each row's state fixture must conform to the new
-  `BrainState` shape (field set per step 2c).
-
-- [x] 2f. Rewrite the defensive-fallback describe block (currently
-  asserting `result.status === "invalid-path"` when `parseBrainAide`
-  returns non-ok despite `buildBrainState` ok). The new assertions:
-  - `result.status === "no-brain-aide"` (not `"invalid-path"`)
-  - `result.instructions.length > 0` (unchanged invariant)
-  - `result.instructions === NO_BRAIN_AIDE_PROSE` if the test
-    chooses to import the constant; otherwise assert
-    `result.instructions.includes("npx aidemd-mcp init")` (the
-    load-bearing recovery phrase). Either is acceptable; the
-    constant-import form is more precise but couples the test to
-    the constant's name.
-
-  Cover both the `parseBrainAide` returning `{ kind: "missing" }`
-  case and at least one malformed sub-case (e.g.
-  `{ kind: "malformed-frontmatter", reason: "..." }`) — both must
-  route to the same `no-brain-aide` fallback.
-
-- [x] 2g. Update the "instructions is non-empty on the defensive
-  fallback branch" test (currently asserting fallback returns a
-  non-empty `instructions`). Keep the invariant assertion; update
-  the surrounding mock setup if any field of the fixture changed
-  with `BrainState`'s collapse. The status assertion (if any) must
-  read `"no-brain-aide"`, not `"invalid-path"`.
-
-- [x] 2h. Add a new test (or augment an existing describe block)
-  asserting the response shape never includes `name`, `backend`,
-  or `connector`. Use `expect(result).not.toHaveProperty("name")`,
-  `expect(result).not.toHaveProperty("backend")`,
-  `expect(result).not.toHaveProperty("connector")`. Run this
-  assertion across at least the `ok` branch and one non-ok branch.
-  Co-locate with the existing "no backend field" describe block
-  (4b) and rename the block to cover the broader no-discriminant
-  invariant ("no name, backend, or connector field"). This test
-  enforces the spec's load-bearing outcome that the response carries
-  `status` + `instructions` only.
-
-- [x] 2i. Verify the no-connector-dispatch test (currently 4j) still
-  passes after the fixture rename. The test's purpose — identical
-  prose input must produce identical instructions output — does
-  not change; only the fixture field names need to update from
-  `connector` to `name`. Update both the `makeOkState("obsidian")`
-  / `makeOkState("notion")` calls (or whatever the new helper
-  signature is) and the `MINIMAL_CONFIG` overrides.
-
-- [x] 2j. Run the test suite for this file: `npx vitest run
-  src/tools/brain/index.test.ts`. Expect every test to pass. If a
-  test fails because a prerequisite type or function shape differs
-  from the spec, escalate to the architect rather than patching
-  the test to absorb the difference.
-
-### 3. Final verification
+### 5. Update tests for the `ok` branch — both `kind` values
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [x] 3a. Run `npx tsc --noEmit` from the project root. Expect zero
-  errors in `src/tools/brain/`. If the prerequisite type-shrink in
-  `src/types/index.ts` and the prerequisite detector refactor in
-  `src/service/buildBrainState/` have landed, the compile passes
-  cleanly. If errors surface in those files, the prerequisites
-  have not landed and this plan should not have been executed
-  yet — escalate.
+- [x] 5a. In `src/tools/brain/index.test.ts`, replace the existing
+      `VERBATIM_PROSE` constant with two: `VERBATIM_ORIENTATION` and
+      `VERBATIM_CONFIG`. Both must contain characters a substitution
+      pass would transform (`${...}`, markdown, the kinds of
+      sequences the no-substitution invariant guards against), but
+      with distinct content so a test asserting "section A's bytes
+      came back when kind=A" can't pass by accident if the handler
+      returned the wrong field. Keep the `MINIMAL_CONFIG` fixture
+      shape intact.
+- [x] 5b. Rewrite the `ok` describe block (currently labeled "ok:
+      verbatim prose (4a)") into two paired describe blocks: one
+      for `kind: "orientation"` (omit + explicit) and one for
+      `kind: "config"` (explicit). Each block sets up
+      `mockParseBrainAide.mockResolvedValue({ kind: "ok", config:
+      MINIMAL_CONFIG, orientation: VERBATIM_ORIENTATION, config:
+      VERBATIM_CONFIG, playbookIndex: "...", studyPlaybook: "...",
+      updatePlaybook: "...", researchIndex: "..." })` — the typed
+      `ok` variant requires every named field, so supply
+      placeholder strings for the unused seed fields. The test
+      fixture must mirror the parser's contract.
+- [x] 5c. Add three positive assertions for the orientation block:
+      (i) calling `brain("/root")` with no input returns
+      `instructions === VERBATIM_ORIENTATION`; (ii) calling
+      `brain("/root", { kind: "orientation" })` returns the same;
+      (iii) calling either form NEVER returns `VERBATIM_CONFIG` —
+      cross-section bleed-through is a falsifiable failure.
+- [x] 5d. Add the matching positive assertions for the config
+      block: (i) calling `brain("/root", { kind: "config" })`
+      returns `instructions === VERBATIM_CONFIG`; (ii)
+      cross-section bleed-through (orientation bytes when config
+      requested) is a falsifiable failure.
+- [x] 5e. Add a single test (in either block, or a shared "no
+      substitution on either kind" describe block) that supplies
+      orientation/config strings with literal `${...}` sequences
+      and asserts both come back byte-identical — preserves the
+      no-substitution invariant on the new vocabulary, mirroring
+      the old "preserves literal ${rootPath} characters without
+      substitution" test.
 
-- [x] 3b. Run `npm test -- tools/brain` (or
-  `npx vitest run src/tools/brain/`). Expect every test to pass.
+### 6. Update tests for the negative-shape and no-name-dispatch invariants
 
-- [x] 3c. Run the full project test suite once
-  (`npm test` or `npx vitest run`) to confirm no other consumer
-  regresses. The brain tool's response shape has not changed
-  (`{ status, instructions }` was already the contract); the only
-  behavioral changes are the removal of one branch and the retarget
-  of the defensive fallback. Consumers that branch on
-  `result.status` for `"invalid-path"` would surface as failing
-  tests outside this plan's scope — none should exist after the
-  prerequisite refactor lands, but a regression here means a
-  consumer was missed and the architect should be told.
+Read: `coding-playbook/workflow/testing`
+
+- [x] 6a. In the existing "ok: no name, backend, or connector
+      field (4b)" describe block, add `kind: "config"` parallel
+      cases for every existing `ok` assertion (no `backend`, no
+      `name`, no `connector` field). The negative-shape invariant
+      must hold on both `ok` paths.
+- [x] 6b. Add a NEW assertion in the same block: the response
+      object does NOT include a `kind` field on the wire,
+      regardless of whether `kind` was supplied or omitted.
+      Echoing `kind` back is the subtler version of re-introducing
+      a discriminant — Strategy paragraph "Response shape stays at
+      `{ status, instructions }` regardless of `kind`" is the
+      source. Test both `kind: "orientation"` and `kind: "config"`
+      callers; assert `expect(result).not.toHaveProperty("kind")`
+      on each.
+- [x] 6c. Update the "no name dispatch (4h)" describe block's
+      fixtures to use the new typed-result shape (`orientation`,
+      `config`, `playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+      `researchIndex`). Add a parallel cross-name test for `kind:
+      "config"` — identical config bytes across two name fixtures
+      produce identical `instructions`. The invariant is "the tool
+      doesn't branch on the user's `name` label"; it must hold on
+      both `kind` values.
+
+### 7. Update tests for non-ok branches — kind-agnosticism
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 7a. For each of the three non-ok describe blocks
+      (`no-brain-aide`, `no-mcp-entry`, `mcp-drift`), add a
+      parameterized test (or duplicate test) that calls
+      `brain("/root", { kind: "orientation" })` and `brain("/root",
+      { kind: "config" })` against the same mocked
+      `buildBrainState` state. Assert the two results are
+      byte-identical: same `status`, same `instructions`. The
+      Strategy paragraph "Non-ok branches return identical
+      remediation prose regardless of `kind`" is the source —
+      varying remediation by `kind` would imply per-section
+      recovery paths, which is false.
+- [x] 7b. Confirm `parseBrainAide` is NEVER called on any non-ok
+      branch regardless of `kind` (the existing test for
+      `no-brain-aide` covers this; extend to `no-mcp-entry` and
+      `mcp-drift` if not already there, parameterized over both
+      `kind` values). The `parseBrainAide` mock should record zero
+      calls when the state is non-ok.
+
+### 8. Update tests for the defensive fallback — kind-agnosticism
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 8a. The existing "defensive fallback (4f)" describe block
+      tests `parseBrainAide` returning `missing` and
+      `malformed-frontmatter` despite `buildBrainState` reporting
+      `ok`. Extend each test to cover both `kind` values: the
+      fallback's response must be identical regardless of which
+      `kind` triggered the `ok` path that fell into the
+      parse-disagreement guard. A single parameterized
+      `it.each` over `["orientation", "config"]` keeps it
+      compact.
+- [x] 8b. Add one test for `parseBrainAide` returning
+      `malformed-body` (the third non-ok kind the parser uses for
+      marker-pair grammar violations); both `kind` values route to
+      `NO_BRAIN_AIDE_PROSE`. The fallback target was pinned in the
+      spec's Strategy paragraph "A defensive fallback guards the
+      'instructions never empty' invariant" — keep this step
+      independent because it's the only test that exercises the
+      parser's third non-ok kind.
+
+### 9. Update the "instructions always non-empty" suite for the new vocabulary
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 9a. The existing "instructions always non-empty (4g)"
+      describe block uses `it.each` over `[no-brain-aide,
+      no-mcp-entry, mcp-drift]`. Add a second matrix dimension
+      over `["orientation", "config"]` — every (state × kind)
+      combination must produce non-empty `instructions`. Vitest
+      supports this via nested `it.each` or a flattened tuple
+      `it.each` over six (state, kind) pairs.
+- [x] 9b. Update the `ok` cell in the same block to cover both
+      `kind` values: orientation/config set to non-empty fixtures
+      for each field, the test asserts non-empty `instructions` on
+      both orientation and config calls. The defensive-fallback
+      cell gets the same treatment — both kinds, non-empty.
+
+### 10. Add tests confirming seed-section spellings are NOT live `kind` values
+
+Read: `coding-playbook/api/validation`, `coding-playbook/workflow/testing`
+
+- [x] 10a. Add a NEW describe block, e.g. "BrainInput schema
+      rejects seed-section spellings". For each seed spelling —
+      both camelCase and kebab-case forms — assert
+      `BrainInput.safeParse({ kind: "<spelling>" }).success ===
+      false`. The spellings to cover (one assertion per):
+      `"playbookIndex"`, `"playbook-index"`, `"studyPlaybook"`,
+      `"study-playbook"`, `"updatePlaybook"`, `"update-playbook"`,
+      `"researchIndex"`, `"research-index"`. Source: spec's
+      Bad-examples paragraph and the undesired-outcome bullet
+      listing every forbidden spelling.
+- [x] 10b. Add a positive parse test: `BrainInput.safeParse({
+      kind: "orientation" }).success === true`,
+      `BrainInput.safeParse({ kind: "config" }).success === true`,
+      and `BrainInput.safeParse({}).success === true` (omitted is
+      allowed). These three are the entire surface of accepted
+      vocabulary.
+- [x] 10c. Add a test that confirms an unknown-but-not-seed value
+      (e.g. `"banana"` or `""`) is rejected by the schema. The
+      handler-side guard the spec rules out is "fall back to
+      default for unknown values" — the schema must reject before
+      the handler sees the value, so this test asserts the
+      framework's validation path, not handler behavior.
+
+### 11. Verify no code path imports brainBackends or any retired registry artifact
+
+Read: `coding-playbook/foundations/conventions`
+
+- [x] 11a. Grep `src/tools/brain/` for `brainBackends`,
+      `resolveBackend`, `getDriverById`, and the forbidden tokens
+      (`vault`, `obsidian`, `note` as a synonym for "file",
+      `wikilink`, `hub note`, `hub`). Zero hits expected. The test
+      file already carries an INVARIANT comment forbidding
+      `brainBackends` imports — verify it's still there and
+      unmodified.
+- [x] 11b. Grep `src/index.ts` for `aide_brain`'s registered
+      description after the rewrite. Zero hits expected for the
+      forbidden tokens. The description is the auditable contract
+      surface — the spec's outcome on "the registered MCP tool
+      description … is an auditable contract surface" makes this
+      a falsifiable QA step.
+
+### 12. Run the full Vitest suite and the registration-site type check
+
+Read: `coding-playbook/workflow/testing`
+
+- [x] 12a. Run `rtk vitest run src/tools/brain/index.test.ts` (or
+      the project-wide Vitest command) and confirm every assertion
+      passes. Tests are the load-bearing falsification surface for
+      every Strategy decision in the spec.
+- [x] 12b. Run `rtk tsc --noEmit` (project-wide, not scoped) and
+      confirm zero type errors. The exhaustive switch in the
+      handler and the `BrainKind` alias must compile cleanly; the
+      registration site's `parsed` forward to `brain(root,
+      parsed)` must type-check against the new handler signature.
 
 ## Decisions
 
-- **The `INVALID_PATH_PROSE` constant deletes outright; no
-  rename, no archive comment.** The schema collapse retired the
-  `rootPath` field from `brain.aide`; the package no longer
-  validates a path; there is no `invalid-path` `BrainState`
-  variant; therefore there is no remediation surface for this
-  prose to address. Keeping the constant as dead text invites
-  future contributors to try wiring it back in. The spec's bad
-  example explicitly forbids re-introducing both the branch and
-  the constant.
-
-- **Defensive fallback retargets to `NO_BRAIN_AIDE_PROSE`, not
-  to `MCP_DRIFT_PROSE` or `NO_MCP_ENTRY_PROSE`.** The
-  upstream-contract-violation pattern this fallback exists for
-  is "`buildBrainState` reports `ok` but `parseBrainAide` says
-  `missing` / `malformed-frontmatter` / `malformed-body`" — a
-  missing-or-broken-file shape. `no-brain-aide` is the natural
-  remediation for that shape (it tells the user to run init,
-  which scaffolds the file). Routing to `mcp-drift` or
-  `no-mcp-entry` would tell the user to run sync, which has
-  nothing to read from if the file is missing or malformed.
-  The spec's Strategy paragraph documents this reasoning
-  verbatim; the choice is non-negotiable.
-
-- **No `name`, no `backend`, no `connector` on the wire,
-  enforced by an explicit test.** The spec's
-  `outcomes.desired[0]` is unambiguous: the response carries
-  `status` + `instructions` only. The new "no name, backend, or
-  connector field" assertion (step 2h) is an invariant test —
-  it does not test a behavior, it tests an absence. Adding any
-  one of those fields back, even as a "harmless" diagnostic,
-  re-creates the registry-dispatch temptation on the consumer
-  side and should fail this test by construction.
-
-- **The `NO_BRAIN_AIDE_PROSE` text-update is the only path-
-  string change in the file.** Of the three remaining
-  remediation prose constants, only `NO_BRAIN_AIDE_PROSE`
-  carries the `.aide/brain.aide` path string in its body. (The
-  audit step in 1b says to verify this; if `NO_MCP_ENTRY_PROSE`
-  or `MCP_DRIFT_PROSE` carry the path string, update them too —
-  they should all reflect the new canonical location.) The
-  load-bearing phrases (the `npx aidemd-mcp` commands, the
-  `/aide:brain config` shortcut, the "do not proceed" clauses)
-  are unchanged; the test assertions for those phrases continue
-  to hold.
-
-- **Tests do not pin a status count.** The test file's existing
-  header described "five-status branching"; the rewrite (step
-  2a) describes the contract in terms of the `BrainState`
-  vocabulary instead. This avoids the enumeration-drift pattern
-  that the original spec drift exemplified — pinning a count
-  guarantees the test header rots the next time the parent
-  vocabulary changes. The test bodies enumerate the actual
-  branches they cover (one describe block per branch), which is
-  the registry-as-source-of-truth equivalent at the test layer.
-
-- **Prerequisites are flagged, not absorbed.** The type-shrink
-  (`src/types/index.ts`) and the detector refactor
-  (`src/service/buildBrainState/`) are explicit prerequisites.
-  This plan does NOT modify those files; doing so would expand
-  the plan's scope past its module boundary and tangle three
-  refactors into one. The orchestrator executes those plans
-  first; this plan executes only after both have landed and
-  type-checked clean.
-
-- **No helper-folder extraction.** The orchestrator stays
-  single-file. The four (now three) remediation prose constants
-  and the four-branch ladder fit comfortably within the
-  progressive-disclosure single-helper exception in the parent
-  spec's Context section. A `composeInstructions/` helper
-  folder is what was deleted in the prior plan; recreating it
-  for three constants and three `if` branches would re-add
-  ceremony without payoff.
+- **Schema-level vocabulary, default in handler.** The Zod schema
+  uses `z.enum([...]).optional()` rather than
+  `.default("orientation")` so the framework's input-validation
+  layer cleanly distinguishes "absent" from "present and
+  accepted." The handler does the null-coalescing-to-default. This
+  matches the spec's Strategy paragraph "Schema-level rejection of
+  unknown `kind` values, not handler-level" — the schema's job is
+  vocabulary enforcement; the handler's job is dispatch and default
+  resolution. A `.default()` on the schema would technically work
+  but blurs the responsibility line and makes test fixtures harder
+  to reason about (Zod fills in the default before the handler
+  sees the input, so a test asserting "schema parse of `{}`
+  returns `{ kind: undefined }`" would assert the wrong thing).
+- **Module-scope `BrainKind` alias for the exhaustive switch.**
+  Defined alongside the schema rather than inferred from the Zod
+  schema's output type. Inferring (`z.infer<typeof
+  BrainInput>["kind"]`) would also work but the alias is shorter,
+  the spec's vocabulary lives in one place, and the type checker
+  enforces the same exhaustiveness guarantee. A future contributor
+  adding a new value updates two places (the schema + the alias),
+  and the handler's switch fails to compile until the new branch
+  is wired — exactly the constraint the spec's Strategy paragraph
+  "schema-level enforcement of the live-vs-seed split" requires.
+- **Handler signature gains an optional second parameter rather
+  than refactoring to a single options object.** The existing
+  signature is `(root: string)` — changing to `(root: string,
+  input?: { kind? })` preserves call-site compatibility (no caller
+  pass-through breaks) while still making the parameter typed. The
+  MCP registration site in `src/index.ts` is the only real caller;
+  the test file calls the handler directly and gains a typed
+  second argument cleanly. A full refactor to `(opts: { root,
+  kind? })` would touch the registration site and every test more
+  invasively for no design benefit.
+- **Defensive fallback target stays `no-brain-aide`.** The
+  pre-rework defensive-fallback test asserts this; the spec's
+  Strategy paragraph "A defensive fallback guards the
+  'instructions never empty' invariant" pins the target as
+  `no-brain-aide` for the missing-or-broken-file shape that
+  "buildBrainState says ok but parser disagrees" represents. No
+  change.
+- **Tests use `it.each` over the (state × kind) matrix where it
+  reduces duplication, but stay split where the assertion text is
+  meaningfully different per branch.** The "non-empty
+  instructions" test is a pure-matrix shape — perfect for
+  `it.each`. The "verbatim bytes per kind" tests stay as separate
+  `it()` blocks because the fixture data and the assertion target
+  differ per kind, and reading them at code-review time should
+  not require unwinding a parameter table. Source: spec's
+  Good-examples blocks, which list distinct Good-example
+  responses per kind.
+- **MCP description rewrite is in-scope for this plan.** The
+  spec's desired outcome on "the MCP tool description registered
+  for `aide_brain` … is an auditable contract surface" makes the
+  description a falsifiable surface. Drift between the description
+  and the handler's runtime behavior is a QA failure traceable to
+  this outcome, so the description rewrite must land in the same
+  build as the handler change. The implementor handles
+  `src/index.ts` Step 4 inside this plan rather than escalating to
+  a separate plan.
+- **No `BrainToolResult` type changes.** The wire shape is
+  `{ status, instructions }` and stays that way. The
+  negative-shape tests (no `backend`, no `name`, no `connector`,
+  no echoed `kind`) enforce this; no type-level enforcement is
+  added because the existing `BrainToolResult` already constrains
+  the response shape (and adding a `kind` echo to the type would
+  be a code change, not a wire-level concern).
+- **One `parseBrainAide` call per `ok` invocation, in-memory
+  dispatch on `kind`.** The spec's Strategy paragraph "One
+  `parseBrainAide` call per `ok` invocation; section selection is
+  in-memory dispatch" pins this. Re-parsing per `kind` would
+  double I/O for no benefit and create a between-reads
+  inconsistency window. The Bad-examples block explicitly shows
+  the wrong shape (two parses); the plan's switch happens after
+  the single parse call.
+- **Test fixtures supply every named `ok`-variant field, even
+  unused ones.** The rework-era `ParseBrainAideResult["ok"]`
+  carries six fields (`orientation`, `config`, `playbookIndex`,
+  `studyPlaybook`, `updatePlaybook`, `researchIndex`); a fixture
+  that omits any of them fails to type-check against the parser's
+  contract. Tests supply placeholder strings for the four unused
+  seed fields. This is purely a TypeScript-conformance
+  consideration; no test asserts anything about the seed-field
+  values, since the spec's outcomes guarantee those fields are
+  never returned by this tool.

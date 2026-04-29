@@ -4,21 +4,28 @@ import { parse } from "yaml";
 import type { BrainAideConfig, ParseBrainAideResult } from "@/types/index.js";
 
 /**
- * The eight recognized marker tokens grouped as four pairs, in required order:
- * prose first, playbook second, studyPlaybook third, research fourth. Each pair
- * carries the exact lowercase byte sequences that delimit a named body section.
- * `as const` narrows `token` to the literal union
- * `"prose" | "playbook" | "studyPlaybook" | "research"` — these token strings
- * are also the destination field names on the ok result, so the user-facing
- * marker base name and the typed-object key are the same word (`study-playbook`
- * in markers, `studyPlaybook` in the typed result — kebab-to-camel
- * transformation is purely surface, not a code path).
+ * The twelve recognized marker tokens grouped as six pairs, in required order:
+ * orientation first, config second, playbookIndex third, studyPlaybook fourth,
+ * updatePlaybook fifth, researchIndex sixth. Each pair carries the exact
+ * lowercase byte sequences that delimit a named body section. `as const`
+ * narrows `token` to the literal union
+ * `"orientation" | "config" | "playbookIndex" | "studyPlaybook" | "updatePlaybook" | "researchIndex"` —
+ * these token strings are also the destination field names on the ok result,
+ * so the user-facing marker base name and the typed-object key are the same
+ * word (`aide-orientation`, `aide-config`, `aide-playbook-index`,
+ * `aide-study-playbook`, `aide-update-playbook`, `aide-research-index` in
+ * markers — kebab-case; `orientation`, `config`, `playbookIndex`,
+ * `studyPlaybook`, `updatePlaybook`, `researchIndex` in the typed result —
+ * camelCase; the kebab-to-camel transformation is purely surface, not a code
+ * path).
  */
 const MARKER_PAIRS = [
-	{ token: "prose",        open: "<!-- aide-prose-start -->",         close: "<!-- aide-prose-end -->" },
-	{ token: "playbook",     open: "<!-- aide-playbook-start -->",      close: "<!-- aide-playbook-end -->" },
-	{ token: "studyPlaybook", open: "<!-- aide-study-playbook-start -->", close: "<!-- aide-study-playbook-end -->" },
-	{ token: "research",     open: "<!-- aide-research-start -->",      close: "<!-- aide-research-end -->" },
+	{ token: "orientation",    open: "<!-- aide-orientation-start -->",      close: "<!-- aide-orientation-end -->" },
+	{ token: "config",         open: "<!-- aide-config-start -->",           close: "<!-- aide-config-end -->" },
+	{ token: "playbookIndex",  open: "<!-- aide-playbook-index-start -->",   close: "<!-- aide-playbook-index-end -->" },
+	{ token: "studyPlaybook",  open: "<!-- aide-study-playbook-start -->",   close: "<!-- aide-study-playbook-end -->" },
+	{ token: "updatePlaybook", open: "<!-- aide-update-playbook-start -->",  close: "<!-- aide-update-playbook-end -->" },
+	{ token: "researchIndex",  open: "<!-- aide-research-index-start -->",   close: "<!-- aide-research-index-end -->" },
 ] as const;
 
 /**
@@ -26,27 +33,27 @@ const MARKER_PAIRS = [
  * violation class returns malformed-body naming the offending marker.
  *
  * Pipeline order (each step short-circuits to malformed-body on violation):
- * 1. Presence — all eight recognized markers must appear; lists every absent marker.
+ * 1. Presence — all twelve recognized markers must appear; lists every absent marker.
  * 2. Match — unmatched closers (closer before its opener) and unmatched openers
  *    (opener with no later closer) are each caught in document order.
- * 3. Order — the four openers must appear in prose-then-playbook-then-studyPlaybook-then-research order.
+ * 3. Order — the six openers must appear in orientation-then-config-then-playbookIndex-then-studyPlaybook-then-updatePlaybook-then-researchIndex order.
  * 4. Nesting — no recognized marker may appear inside another pair's opener-closer span.
- *    The four sections are siblings, never parent-child.
+ *    The six sections are siblings, never parent-child.
  * 5. Slice — bytes between each opener and its closer are returned verbatim.
  *
  * Bytes outside any marker pair are silently ignored by construction — the slicer
  * only reads the regions between matched opener/closer offsets.
  */
 function extractMarkerSections(body: string):
-	| { kind: "ok"; prose: string; playbook: string; studyPlaybook: string; research: string }
+	| { kind: "ok"; orientation: string; config: string; playbookIndex: string; studyPlaybook: string; updatePlaybook: string; researchIndex: string }
 	| { kind: "malformed-body"; reason: string } {
 
 	// --- Step 1: Locate every recognized marker in document order. ---
 	// Build an ordered list of { tokenKind, sectionToken, index } entries by
-	// scanning each of the eight exact byte sequences with indexOf.
+	// scanning each of the twelve exact byte sequences with indexOf.
 	type MarkerEntry = {
 		tokenKind: "open" | "close";
-		sectionToken: "prose" | "playbook" | "studyPlaybook" | "research";
+		sectionToken: "orientation" | "config" | "playbookIndex" | "studyPlaybook" | "updatePlaybook" | "researchIndex";
 		marker: string;
 		index: number;
 	};
@@ -72,7 +79,7 @@ function extractMarkerSections(body: string):
 
 	// --- Malformed-marker detection ---
 	// Scan for any HTML-comment-like span that LOOKS like an aide section marker
-	// but is not one of the eight exact recognized sequences. Catches uppercase
+	// but is not one of the twelve exact recognized sequences. Catches uppercase
 	// variants, mixed-case, missing spaces, extra whitespace, typos, and
 	// missing `aide-` prefix — the full set from the spec's "Bad examples" block.
 	//
@@ -106,20 +113,29 @@ function extractMarkerSections(body: string):
 	// Two-pattern union to match malformed-but-recognizable section markers:
 	//
 	// Pattern A — aide-prefixed variants: tokens that contain "aide" AND at least
-	// one of the section names (prose/playbook/study-playbook/research) or the
-	// start/end keywords. This catches uppercase, mixed-case, extra-whitespace, and
-	// typo variants like `<!-- AIDE-PROSE-START -->`, `<!-- aide-prose-strart -->`,
-	// `<!-- AIDE-STUDY-PLAYBOOK-START -->`, and `<!-- aide-playboook-end -->` (has
-	// "aide" + "end"), while NOT flagging a legitimate `<!-- aide-misc -->` comment
-	// (has "aide" but no section/start/end).
+	// one of the six recognized section names (orientation/config/playbook-index/
+	// study-playbook/update-playbook/research-index) or the start/end keywords. This
+	// catches uppercase, mixed-case, extra-whitespace, and typo variants of the new
+	// six-section vocabulary. Retired tokens (`aide-prose-*`, `aide-playbook-*`
+	// without -index, `aide-research-*` without -index) are matched by Pattern A
+	// via the `start`/`end` branch, but are explicitly excluded from the malformed
+	// set by the RETIRED_AIDE_BASE_REGEX check below — they are plain bytes per the
+	// strict-failure-migration decision and must NOT trigger unknown-marker.
 	//
 	// Pattern B — section-name-only variants: tokens that start (after whitespace)
-	// with one of the four section names AND contain a start/end keyword. This
-	// catches the "missing aide- prefix" class, e.g. `<!-- prose-start -->`,
-	// while NOT flagging generic comments like `<!-- TODO: research this -->` (has
-	// "research" but no "start"/"end") or `<!-- aide-misc -->` (no section name).
-	const candidateRegexA = /<!--[^>]*aide[^>]*(?:prose|playbook|study-playbook|research|start|end)[^>]*-->/gi;
-	const candidateRegexB = /<!--\s*(?:prose|playbook|study-playbook|research)[^>]*(?:start|end)[^>]*-->/gi;
+	// with one of the six section names AND contain a start/end keyword. This
+	// catches the "missing aide- prefix" class, e.g. `<!-- orientation-start -->`,
+	// while NOT flagging generic comments like `<!-- TODO: study this -->` (has no
+	// "start"/"end") or `<!-- aide-misc -->` (no section name).
+	const candidateRegexA = /<!--[^>]*aide[^>]*(?:orientation|config|playbook-index|study-playbook|update-playbook|research-index|start|end)[^>]*-->/gi;
+	const candidateRegexB = /<!--\s*(?:orientation|config|playbook-index|study-playbook|update-playbook|research-index)[^>]*(?:start|end)[^>]*-->/gi;
+	// Retired-vocabulary token detector (post-rework, these tokens are plain bytes and
+	// must NOT trigger unknown-marker; they fall through to missing-markers instead).
+	// Matches the exact three retired section pairs in any case:
+	//   aide-prose-start/end, aide-playbook-start/end, aide-research-start/end
+	// Crucially does NOT match typos like aide-playbook-iindex-start (those remain
+	// flagged as malformed) or the new vocabulary like aide-playbook-index-start.
+	const RETIRED_AIDE_BASE_REGEX = /<!--\s*aide-(?:prose|playbook|research)-(?:start|end)\s*-->/i;
 	let candidateMatch: RegExpExecArray | null;
 	let firstMalformed: { marker: string; index: number } | null = null;
 
@@ -129,6 +145,7 @@ function extractMarkerSections(body: string):
 			const candidate = candidateMatch[0];
 			if (RECOGNIZED_SET.has(candidate)) continue; // exact recognized token — not malformed
 			if (isInsideExclusionSpan(candidateMatch.index)) continue; // inside a pair's content span — plain bytes
+			if (RETIRED_AIDE_BASE_REGEX.test(candidate)) continue; // retired vocabulary — plain bytes, not malformed
 			if (firstMalformed === null || candidateMatch.index < firstMalformed.index) {
 				firstMalformed = { marker: candidate, index: candidateMatch.index };
 			}
@@ -149,7 +166,8 @@ function extractMarkerSections(body: string):
 
 	// Fire unmatched-opener (opener present, closer absent) or unmatched-closer
 	// (closer present, opener absent) for each partially-present pair, in
-	// prose-then-playbook-then-studyPlaybook-then-research order (first partially-broken pair wins).
+	// orientation-then-config-then-playbookIndex-then-studyPlaybook-then-updatePlaybook-then-researchIndex order
+	// (first partially-broken pair wins).
 	for (const { token, open, close } of MARKER_PAIRS) {
 		const hasOpen = presentMarkers.has(open);
 		const hasClose = presentMarkers.has(close);
@@ -178,7 +196,7 @@ function extractMarkerSections(body: string):
 	}
 
 	// --- Step 2: Unmatched-closer check (wrong document order) ---
-	// All eight markers are present. Walk in document order. If a close marker
+	// All twelve markers are present. Walk in document order. If a close marker
 	// for a section appears before its matching open marker has been seen, the
 	// closer arrived in the wrong position in the document.
 	const seenOpeners = new Set<string>();
@@ -197,7 +215,7 @@ function extractMarkerSections(body: string):
 	}
 
 	// --- Step 3: Section-order check ---
-	// The four openers must appear in prose-then-playbook-then-studyPlaybook-then-research order.
+	// The six openers must appear in orientation-then-config-then-playbookIndex-then-studyPlaybook-then-updatePlaybook-then-researchIndex order.
 	// Fires only after presence and matching pass (missing-markers reason would
 	// have fired earlier if any pair was absent).
 	const openerOrder = recognized.filter((e) => e.tokenKind === "open");
@@ -222,7 +240,7 @@ function extractMarkerSections(body: string):
 
 	// --- Step 4: Nesting check ---
 	// For each matched pair, check that no other recognized marker (open or close)
-	// appears at a byte offset strictly inside that pair's span. The four sections
+	// appears at a byte offset strictly inside that pair's span. The six sections
 	// are siblings, never parent-child. Only markers that are part of a recognized
 	// matched pair are considered here — bytes-outside-pairs content is out of scope.
 	const pairSpans = MARKER_PAIRS.map(({ token, open, close }) => {
@@ -253,10 +271,12 @@ function extractMarkerSections(body: string):
 
 	return {
 		kind: "ok",
-		prose: result["prose"]!,
-		playbook: result["playbook"]!,
+		orientation: result["orientation"]!,
+		config: result["config"]!,
+		playbookIndex: result["playbookIndex"]!,
 		studyPlaybook: result["studyPlaybook"]!,
-		research: result["research"]!,
+		updatePlaybook: result["updatePlaybook"]!,
+		researchIndex: result["researchIndex"]!,
 	};
 }
 
@@ -305,7 +325,13 @@ export function interpolateArgs(config: BrainAideConfig): string[] {
  *    reason listing every stale field found, in deprecated-set order.
  * 3. Body grammar — the closed-vocabulary marker walker (`extractMarkerSections`) checks
  *    that every required marker pair is present and well-formed; every marker-layout
- *    violation class returns `malformed-body` naming the offending marker.
+ *    violation class returns `malformed-body` naming the offending marker. Step 5:
+ *    Extract the six required named body sections via the closed-vocabulary marker walker.
+ *    The walker enforces the paired HTML-comment marker grammar — required pair presence,
+ *    no malformed/typo'd tokens, no unmatched closers or openers, correct section order
+ *    (orientation then config then playbookIndex then studyPlaybook then updatePlaybook
+ *    then researchIndex), and no nesting. Every violation class returns malformed-body
+ *    naming the offending marker.
  */
 export function parseBrainAideFromString(content: string): ParseBrainAideResult {
 	// Step 2: Split on first `---\n` opening fence.
@@ -374,8 +400,10 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		return { kind: "malformed-frontmatter", reason: `deprecated fields: ${foundDeprecated.join(", ")}` };
 	}
 
-	// Step 4c: Construct the validated config — exactly the two top-level fields.
-	const config: BrainAideConfig = {
+	// Step 4c: Construct the validated frontmatter — exactly the two top-level fields.
+	// Named `parsedFrontmatter` (not `config`) to avoid collision with the body-section
+	// field also named `config` on the flattened ok result.
+	const parsedFrontmatter: BrainAideConfig = {
 		name: fm["name"],
 		mcpServerConfig: {
 			command: mcpServerConfig["command"],
@@ -383,20 +411,26 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		},
 	};
 
-	// Step 5: Extract the four required named body sections via the closed-vocabulary marker walker.
-	// The walker enforces the paired HTML-comment marker grammar — required pair presence,
-	// no malformed/typo'd tokens, no unmatched closers or openers, correct section order
-	// (prose then playbook then studyPlaybook then research), and no nesting. Every violation class returns
-	// malformed-body naming the offending marker.
+	// Step 5: Extract the six required named body sections via the closed-vocabulary marker walker.
 	const bodyResult = extractMarkerSections(body);
 	if (bodyResult.kind === "malformed-body") {
 		return bodyResult;
 	}
 
-	const { prose, playbook, studyPlaybook, research } = bodyResult;
+	const { orientation, config, playbookIndex, studyPlaybook, updatePlaybook, researchIndex } = bodyResult;
 
-	// Step 6: Return the ok result with all four body sections alongside the frontmatter config.
-	return { kind: "ok", config, prose, playbook, studyPlaybook, research };
+	// Step 6: Return the ok result with flattened frontmatter and all six body sections.
+	return {
+		kind: "ok",
+		name: parsedFrontmatter.name,
+		mcpServerConfig: parsedFrontmatter.mcpServerConfig,
+		orientation,
+		config,
+		playbookIndex,
+		studyPlaybook,
+		updatePlaybook,
+		researchIndex,
+	};
 }
 
 /**
@@ -404,12 +438,14 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
  * tagged-result union. The brain.aide path is derived as `join(root, ".aide", "config", "brain.aide")`.
  *
  * Result branches:
- * - `"ok"` — file found, frontmatter parsed, all required fields valid, and all four body
+ * - `"ok"` — file found, frontmatter parsed, all required fields valid, and all six body
  *   sections located via their paired HTML-comment markers
- *   (`<!-- aide-prose-start -->` / `<!-- aide-prose-end -->`,
- *   `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`,
+ *   (`<!-- aide-orientation-start -->` / `<!-- aide-orientation-end -->`,
+ *   `<!-- aide-config-start -->` / `<!-- aide-config-end -->`,
+ *   `<!-- aide-playbook-index-start -->` / `<!-- aide-playbook-index-end -->`,
  *   `<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->`,
- *   `<!-- aide-research-start -->` / `<!-- aide-research-end -->`).
+ *   `<!-- aide-update-playbook-start -->` / `<!-- aide-update-playbook-end -->`,
+ *   `<!-- aide-research-index-start -->` / `<!-- aide-research-index-end -->`).
  *   Each section is returned verbatim — byte-identical between its opening marker and its
  *   matching closing marker.
  * - `"missing"` — file does not exist or was unreachable (ENOENT or other I/O failure).
@@ -422,13 +458,14 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
  *   malformed or typo'd marker token (reason names the first offending marker), unmatched
  *   closing marker, unmatched opening marker, wrong section order, or nested markers.
  *   `reason` names the violating marker. The `studyPlaybook` section participates in the
- *   same closed grammar as a sibling of the other three sections (never a parent or child).
+ *   same closed grammar as a sibling of the other five sections (never a parent or child).
  *
  * Load-bearing invariants:
  * - Never throws — all failure modes return a tagged result.
- * - Never interpolates any body section — `prose`, `playbook`, `studyPlaybook`, and `research` are
- *   byte-identical to the file content between their marker boundaries. Call
- *   `interpolateArgs` separately when writing the MCP entry.
+ * - Never interpolates any body section — `orientation`, `config`, `playbookIndex`,
+ *   `studyPlaybook`, `updatePlaybook`, and `researchIndex` are byte-identical to the file
+ *   content between their marker boundaries. Call `interpolateArgs` separately when writing
+ *   the MCP entry.
  * - Never branches on `name` — the field is surfaced unchanged for consumers to use.
  */
 export default async function parseBrainAide(root: string): Promise<ParseBrainAideResult> {

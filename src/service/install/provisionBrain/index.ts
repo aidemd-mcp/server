@@ -64,7 +64,10 @@ const BRAIN_ROOT_DIRS = ["research", "process/retro", "coding-playbook"] as cons
  * - Otherwise → on-disk path: brain.aide already exists; parse from the file via
  *   `parseBrainAide(projectRoot)`.
  *
- * Returns `{ playbook, studyPlaybook, research }` on a successful parse (`kind === "ok"`).
+ * Returns `{ playbookIndex, studyPlaybook, updatePlaybook, researchIndex }` on a successful
+ * parse (`kind === "ok"`). Only the four install-time-seed keys are destructured;
+ * `orientation` and `config` are deliberately not read — they are live agent-facing
+ * sections, not install seeds, and this module has no reason to inspect them.
  * Returns `null` on any non-ok result (`missing`, `malformed-frontmatter`, `malformed-body`).
  * Entry-point artifact step builders fall back to `would-skip` when this returns `null`, surfacing
  * an actionable remediation message to the user.
@@ -72,7 +75,7 @@ const BRAIN_ROOT_DIRS = ["research", "process/retro", "coding-playbook"] as cons
 async function resolveBrainAideBody(
 	projectRoot: string,
 	brainAideStep: InitStep,
-): Promise<{ playbook: string; studyPlaybook: string; research: string } | null> {
+): Promise<{ playbookIndex: string; studyPlaybook: string; updatePlaybook: string; researchIndex: string } | null> {
 	let parseResult;
 
 	if (brainAideStep.status === "would-create" && brainAideStep.content !== undefined) {
@@ -85,7 +88,8 @@ async function resolveBrainAideBody(
 
 	if (parseResult.kind !== "ok") return null;
 
-	return { playbook: parseResult.playbook, studyPlaybook: parseResult.studyPlaybook, research: parseResult.research };
+	const { playbookIndex, studyPlaybook, updatePlaybook, researchIndex } = parseResult;
+	return { playbookIndex, studyPlaybook, updatePlaybook, researchIndex };
 }
 
 /**
@@ -111,10 +115,10 @@ async function resolveBrainAideConfig(
 
 	if (parseResult.kind !== "ok") return null;
 
-	const { config } = parseResult;
+	const { name, mcpServerConfig } = parseResult;
 	return {
-		command: config.mcpServerConfig.command,
-		args: interpolateArgs(config),
+		command: mcpServerConfig.command,
+		args: interpolateArgs({ name, mcpServerConfig }),
 	};
 }
 
@@ -122,96 +126,137 @@ async function resolveBrainAideConfig(
  * Return planning steps for brain config scaffolding, brain root directory scaffolding,
  * entry-point artifact scaffolding, and brain MCP wiring.
  *
- * Requires a resolved `brainPath` (brain root location) and `projectRoot` (host project root).
+ * When `brainPath` is omitted the function is in bootstrap mode — it scaffolds brain.aide
+ * so the user can later run `/aide:brain config` to supply a real brain root path. In that
+ * mode the bundled template emits the literal `<BRAIN_PATH>` sentinel into `mcpServerConfig.args`,
+ * and that sentinel propagates verbatim through `parseBrainAide` and `interpolateArgs` into
+ * the MCP step's `prescription.entry.args`. No code in this module inspects or substitutes
+ * the sentinel value. The brain-root step and the four artifact-step builders each receive
+ * `brainPath ?? ""` — an empty string makes their `join`-derived paths nonsense, so the
+ * brain-root presence check returns false (benign `would-create` the caller may ignore) and
+ * the artifact steps likewise emit `would-create` with content sourced from the scaffolded
+ * brain.aide. Callers that need correct filesystem-backed planning must supply a real path.
+ *
  * Entry-point artifact bytes are sourced from brain.aide body sections via `parseBrainAide` /
- * `parseBrainAideFromString`; this module never holds entry-point bytes as inline TypeScript constants.
- * Returns six `InitStep` items in order:
+ * `parseBrainAideFromString`; this module never holds entry-point bytes as inline TypeScript
+ * constants.
+ *
+ * Returns seven `InitStep` items in order:
  *
  * 1. Brain config (brain.aide) — `would-create` with bundled default bytes when absent;
  *    `exists` when present. Written to `.aide/config/brain.aide`. Seed-semantic idempotency —
  *    never `would-overwrite` because the file is user-owned the moment it lands. The
  *    directory-level rule applies to every future inhabitant of `.aide/config/`: nothing
- *    under that directory may ever return `would-overwrite`.
+ *    under that directory may ever return `would-overwrite`. When `brainPath` is omitted the
+ *    template emits the literal `<BRAIN_PATH>` sentinel in the args slot.
  * 2. Brain root directories — `would-create` with the directories list as JSON content when
  *    the brain root is empty; `exists` when populated.
  * 3. Playbook entry-point artifact — `would-create` with content sourced from the scaffolded
- *    brain.aide's playbook body section delimited by the `<!-- aide-playbook-start -->` and
- *    `<!-- aide-playbook-end -->` markers when absent; `exists` when present.
- *    Seed-semantic idempotency.
+ *    brain.aide's `playbookIndex` body section delimited by the
+ *    `<!-- aide-playbook-index-start -->` and `<!-- aide-playbook-index-end -->` markers when
+ *    absent; `exists` when present. Seed-semantic idempotency.
  * 4. Study-playbook entry-point artifact — `would-create` with content sourced from the
- *    scaffolded brain.aide's studyPlaybook body section delimited by the
+ *    scaffolded brain.aide's `studyPlaybook` body section delimited by the
  *    `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->` markers when
- *    absent; `exists` when present. Artifact path: `coding-playbook/study-playbook.md` for an
- *    editor-backed Markdown brain. Presence-only idempotency (seed-semantic).
- * 5. Research entry-point artifact — `would-create` with content sourced from the scaffolded
- *    brain.aide's research body section delimited by the `<!-- aide-research-start -->` and
- *    `<!-- aide-research-end -->` markers when absent; `exists` when present.
- *    Seed-semantic idempotency.
- * 6. Brain MCP entry — `would-create` for cold installs; `would-overwrite` for legacy
+ *    absent; `exists` when present. Artifact path: `coding-playbook/study-playbook.md`.
+ *    Presence-only idempotency (seed-semantic).
+ * 5. Update-playbook entry-point artifact — `would-create` with content sourced from the
+ *    scaffolded brain.aide's `updatePlaybook` body section delimited by the
+ *    `<!-- aide-update-playbook-start -->` and `<!-- aide-update-playbook-end -->` markers when
+ *    absent; `exists` when present. Artifact path: `coding-playbook/update-playbook.md`.
+ *    This is an install-time seed (not an `aide_brain` `kind`) — the shipped
+ *    `/aide:update-playbook` slash command points at this on-disk artifact the same way the
+ *    `study-playbook` skill points at `coding-playbook/study-playbook.md`. Presence-only
+ *    idempotency (seed-semantic).
+ * 6. Research entry-point artifact — `would-create` with content sourced from the scaffolded
+ *    brain.aide's `researchIndex` body section delimited by the
+ *    `<!-- aide-research-index-start -->` and `<!-- aide-research-index-end -->` markers when
+ *    absent; `exists` when present. Seed-semantic idempotency.
+ * 7. Brain MCP entry — `would-create` for cold installs; `would-overwrite` for legacy
  *    `obsidian`-keyed installs, transitional both-keys states, or entry drift; `exists`
  *    if the brain key is present with a matching entry (derived from the scaffolded
  *    brain.aide). If the config file is malformed JSON, returns `would-create` with
  *    `configMalformed: true`. The MCP step prescription is ALWAYS derived from the
- *    scaffolded brain.aide bytes — never constructed inline.
+ *    scaffolded brain.aide bytes — never constructed inline. When `brainPath` was omitted the
+ *    derived entry's `args` carries the literal `<BRAIN_PATH>` sentinel, and the step emits
+ *    the same shape regardless.
  *
  * Two idempotency modes coexist: seed-semantic (presence-only) for user-owned
- * content (steps 1, 2, 3, 4, 5); canonical-derived (entry comparison) for the MCP
- * prescription (step 6).
+ * content (steps 1–6); canonical-derived (entry comparison) for the MCP
+ * prescription (step 7).
  *
  * No step writes to disk — this helper is a planner only.
  *
  * @param projectRoot - Host project root (where `.aide/config/brain.aide` lives).
- * @param brainPath - Resolved brain root directory path.
+ * @param brainPath - Optional brain root directory path. When omitted, the bundled template
+ *   emits the literal `<BRAIN_PATH>` sentinel and bootstrap mode is in effect.
  * @param mcpConfigPath - Absolute path to the host's `.mcp.json`.
  */
 export default async function provisionBrain(
 	projectRoot: string,
-	brainPath: string,
+	brainPath: string | undefined,
 	mcpConfigPath: string,
 ): Promise<InitStep[]> {
-	// Step 1: Plan the brain config file. Runs first so steps 3 and 4 can derive
+	// Step 1: Plan the brain config file. Runs first so steps 3–6 can derive
 	// their content from the scaffolded bytes. Lives under .aide/config/, the
 	// user-owned configuration directory — never returns would-overwrite.
+	// When brainPath is omitted the template emits the literal <BRAIN_PATH> sentinel.
 	const brainAideStep = await buildBrainAideStep(projectRoot, brainPath);
 
+	// Resolve the effective brain path for the filesystem-backed steps.
+	// Option 1 (caller responsibility): pass brainPath ?? "" to the builders that
+	// require a real path. An empty brainPath makes join paths nonsense; the
+	// presence checks return false and emit benign would-create steps. The caller
+	// is responsible for supplying a real path when filesystem correctness matters.
+	const effectiveBrainPath = brainPath ?? "";
+
 	// Step 2: Plan the brain root directory tree.
-	const brainRootStep = await buildBrainRootStep(brainPath);
+	const brainRootStep = await buildBrainRootStep(effectiveBrainPath);
 
 	// Step 3: Plan the playbook entry-point artifact. Content sourced from the
-	// scaffolded brain.aide's playbook body section between
-	// `<!-- aide-playbook-start -->` and `<!-- aide-playbook-end -->` via
+	// scaffolded brain.aide's playbookIndex body section between
+	// `<!-- aide-playbook-index-start -->` and `<!-- aide-playbook-index-end -->` via
 	// parseBrainAide / parseBrainAideFromString. Presence-only idempotency (seed-semantic).
 	const playbookStep = await buildPlaybookStep(
-		projectRoot, brainPath, brainAideStep,
+		projectRoot, effectiveBrainPath, brainAideStep,
 	);
 
 	// Step 4: Plan the study-playbook entry-point artifact. Content sourced from the
 	// scaffolded brain.aide's studyPlaybook body section between
 	// `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->` via the
-	// same parser pass that powers steps 3 and 5. Presence-only idempotency (seed-semantic).
+	// same parser pass that powers steps 3, 5, and 6. Presence-only idempotency (seed-semantic).
 	const studyPlaybookStep = await buildStudyPlaybookStep(
-		projectRoot, brainPath, brainAideStep,
+		projectRoot, effectiveBrainPath, brainAideStep,
 	);
 
-	// Step 5: Plan the research entry-point artifact. Content sourced from the
-	// scaffolded brain.aide's research body section between
-	// `<!-- aide-research-start -->` and `<!-- aide-research-end -->` via the
-	// same parser pass that powers steps 3 and 4. Presence-only idempotency (seed-semantic).
+	// Step 5: Plan the update-playbook entry-point artifact. Content sourced from the
+	// scaffolded brain.aide's updatePlaybook body section between
+	// `<!-- aide-update-playbook-start -->` and `<!-- aide-update-playbook-end -->` via the
+	// same parser pass that powers steps 3, 4, and 6. Presence-only idempotency (seed-semantic).
+	const updatePlaybookStep = await buildUpdatePlaybookStep(
+		projectRoot, effectiveBrainPath, brainAideStep,
+	);
+
+	// Step 6: Plan the research entry-point artifact. Content sourced from the
+	// scaffolded brain.aide's researchIndex body section between
+	// `<!-- aide-research-index-start -->` and `<!-- aide-research-index-end -->` via the
+	// same parser pass that powers steps 3, 4, and 5. Presence-only idempotency (seed-semantic).
 	const researchStep = await buildResearchStep(
-		projectRoot, brainPath, brainAideStep,
+		projectRoot, effectiveBrainPath, brainAideStep,
 	);
 
-	// Step 6: Plan the brain MCP entry. Prescription derived from the scaffolded
+	// Step 7: Plan the brain MCP entry. Prescription derived from the scaffolded
 	// brain.aide's frontmatter via parseBrainAide + interpolateArgs. Four
 	// migration branches: cold install, legacy obsidian-only, transitional
-	// both-keys, drift on the brain key.
+	// both-keys, drift on the brain key. When brainPath was omitted the derived
+	// args carry the literal <BRAIN_PATH> sentinel verbatim.
 	const mcpStep = await buildBrainMcpStep(
 		projectRoot, brainAideStep, mcpConfigPath,
 	);
 
 	return [
 		brainAideStep, brainRootStep,
-		playbookStep, studyPlaybookStep, researchStep, mcpStep,
+		playbookStep, studyPlaybookStep, updatePlaybookStep, researchStep, mcpStep,
 	];
 }
 
@@ -224,8 +269,13 @@ export default async function provisionBrain(
  * seed-semantic invariant (never `would-overwrite`) applies to every path under `.aide/config/`,
  * not just brain.aide — the directory boundary is the ownership signal, not a per-file
  * allowlist. provisionBrain never returns `would-overwrite` for any file under `.aide/config/`.
+ *
+ * When `brainPath` is undefined the template emits the literal `<BRAIN_PATH>` sentinel in the
+ * `mcpServerConfig.args` slot. The sentinel is a parser-blind literal — no `${...}` substitution
+ * occurs. The bytes are forwarded to `obsidianBrainAideTemplate(brainPath)` unchanged; the
+ * placeholder branch lives entirely in the template helper.
  */
-async function buildBrainAideStep(projectRoot: string, brainPath: string): Promise<InitStep> {
+async function buildBrainAideStep(projectRoot: string, brainPath: string | undefined): Promise<InitStep> {
 	const filePath = join(projectRoot, ".aide", "config", "brain.aide");
 
 	if (await exists(filePath)) {
@@ -281,8 +331,8 @@ async function buildBrainRootStep(brainPath: string): Promise<InitStep> {
  * The artifact's path (`coding-playbook/coding-playbook.md`) is a framework
  * contract — the `study-playbook` skill navigates to this location regardless
  * of which storage backend the user wires. Content is sourced from the
- * scaffolded brain.aide's playbook body section between
- * `<!-- aide-playbook-start -->` and `<!-- aide-playbook-end -->` via
+ * scaffolded brain.aide's `playbookIndex` body section between
+ * `<!-- aide-playbook-index-start -->` and `<!-- aide-playbook-index-end -->` via
  * `resolveBrainAideBody`.
  */
 async function buildPlaybookStep(
@@ -312,7 +362,7 @@ async function buildPlaybookStep(
 		status: "would-create",
 		category: "brain",
 		filePath,
-		content: body.playbook,
+		content: body.playbookIndex,
 	};
 }
 
@@ -328,9 +378,10 @@ async function buildPlaybookStep(
  * The artifact's path (`coding-playbook/study-playbook.md`) is a framework
  * contract — the agent-side `study-playbook` skill points at this artifact
  * regardless of which storage backend the user wires. Content is sourced from
- * the scaffolded brain.aide's study-playbook body section between
+ * the scaffolded brain.aide's `studyPlaybook` body section between
  * `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->` via
- * `resolveBrainAideBody`, the same parser pass that powers the playbook entry-point step.
+ * `resolveBrainAideBody`, the same parser pass that powers the playbook and update-playbook
+ * entry-point steps.
  */
 async function buildStudyPlaybookStep(
 	projectRoot: string,
@@ -364,6 +415,55 @@ async function buildStudyPlaybookStep(
 }
 
 /**
+ * Build the update-playbook entry-point artifact planning step.
+ *
+ * Presence-only check — if the file exists at its expected path, the step is
+ * `exists` regardless of on-disk content. Once the user has the file, the bytes
+ * belong to the user. See the spec's Strategy section ("Two different idempotency
+ * semantics coexist in this module") for the rationale behind seed-semantic
+ * idempotency vs. the canonical-derived check used by `buildBrainMcpStep`.
+ *
+ * The artifact's path (`coding-playbook/update-playbook.md`) is a framework
+ * contract — the shipped `/aide:update-playbook` slash command points at this
+ * on-disk artifact the same way the `study-playbook` skill points at
+ * `coding-playbook/study-playbook.md`. This is an install-time seed, not an
+ * `aide_brain` `kind`. Content is sourced from the scaffolded brain.aide's
+ * `updatePlaybook` body section between `<!-- aide-update-playbook-start -->` and
+ * `<!-- aide-update-playbook-end -->` via `resolveBrainAideBody`, the same parser
+ * pass that powers the playbook, study-playbook, and research entry-point steps.
+ */
+async function buildUpdatePlaybookStep(
+	projectRoot: string,
+	brainPath: string,
+	brainAideStep: InitStep,
+): Promise<InitStep> {
+	const filePath = join(brainPath, "coding-playbook", "update-playbook.md");
+
+	if (await exists(filePath)) {
+		return { name: "Update-playbook entry-point", status: "exists", category: "brain", filePath };
+	}
+
+	const body = await resolveBrainAideBody(projectRoot, brainAideStep);
+	if (body === null) {
+		return {
+			name: "Update-playbook entry-point",
+			status: "would-skip",
+			category: "brain",
+			filePath,
+			instructions: "Brain config (brain.aide) failed to parse — fix it and re-run.",
+		};
+	}
+
+	return {
+		name: "Update-playbook entry-point",
+		status: "would-create",
+		category: "brain",
+		filePath,
+		content: body.updatePlaybook,
+	};
+}
+
+/**
  * Build the research entry-point artifact planning step.
  *
  * Presence-only check — if the file exists at its expected path, the step is
@@ -372,8 +472,8 @@ async function buildStudyPlaybookStep(
  *
  * The artifact's path (`research/research.md`) is a framework contract — the
  * research entry-point artifact lives here regardless of storage backend. Content is
- * sourced from the scaffolded brain.aide's research body section between
- * `<!-- aide-research-start -->` and `<!-- aide-research-end -->` via
+ * sourced from the scaffolded brain.aide's `researchIndex` body section between
+ * `<!-- aide-research-index-start -->` and `<!-- aide-research-index-end -->` via
  * `resolveBrainAideBody`, the same parser pass that powers the playbook entry-point step.
  */
 async function buildResearchStep(
@@ -403,7 +503,7 @@ async function buildResearchStep(
 		status: "would-create",
 		category: "brain",
 		filePath,
-		content: body.research,
+		content: body.researchIndex,
 	};
 }
 
@@ -418,6 +518,11 @@ async function buildResearchStep(
  *   - Transitional (both `obsidian` and `brain`) → `would-overwrite`.
  *   - Brain present, entry matches derived entry → `exists`.
  *   - Brain present, entry differs → `would-overwrite`.
+ *
+ * When the caller omitted `brainPath`, the derived entry's `args` carries the literal
+ * `<BRAIN_PATH>` sentinel string. The step emits the same shape regardless — no
+ * defensive substitution or branch on the sentinel value. `interpolateArgs` passes it
+ * through unchanged because it is not a `${...}` interpolation target.
  */
 async function buildBrainMcpStep(
 	projectRoot: string,

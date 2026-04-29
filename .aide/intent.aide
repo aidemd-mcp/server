@@ -1,7 +1,7 @@
 ---
 scope: .
 description: >
-  Canonical home of the AIDE methodology and the MCP server that delivers it — single source of truth for every downstream host project, with brain configuration owned by the user via a single editable file rather than by code-level backend registries. The brain config file's body carries four marker-bounded sections (prose, playbook, studyPlaybook, research) and seeds three required entry-point artifacts (coding-playbook + study-playbook + research) on cold install. The package's code surface stays storage-agnostic; the bundled obsidian-flavored default legitimately ships connector-specific content inside the body section bytes because the bundled template IS the obsidian default and those bytes are user-owned the moment they land.
+  Canonical home of the AIDE methodology and the MCP server that delivers it — single source of truth for every downstream host project, with brain configuration owned by the user via a single editable file rather than by code-level backend registries. The brain config file's body carries six marker-bounded sections (orientation, config, playbook-index, study-playbook, update-playbook, research-index): the first two are read live by `aide_brain` (orientation = runtime briefing; config = backend-specific wiring flow), and the last four are install-time seeds whose bytes the integration's `config` body section prose consumes at first `/aide:brain config` to seed entry-point artifacts in the brain via the brain's own MCP write tools. `mcpServerConfig.args` is typed `(string | null)[]` — a null at any index marks an unwired slot the user must fill via `/aide:brain config`; per-integration body sections name which indexes mean what (e.g. for the bundled Obsidian default, `args[3]` is the absolute path to the user's brain root). The package never introspects which slot is which — that knowledge lives entirely in the per-integration prose. `cli/init` accepts exactly one optional argument — `--brain <integration>`, defaulting to `obsidian` — that selects which bundled `brain.aide` template scaffolds; it writes the methodology layer plus the bundled `brain.aide` template (with YAML null at unwired slots) plus the `aide` MCP server entry, and it never writes a `.mcp.json` brain entry, never scaffolds entry-point artifacts, never creates the brain root directory, never asks the user for a brain path, token, or any other backend-specific value. Brain wiring is fully delegated to `/aide:brain config` on first `/aide` run, where `aide_init({ category: "brain" })` unconditionally re-seeds the bundled `brain.aide` if absent and `aide_brain({ kind: "config" })` returns the integration-specific wiring prose the agent executes verbatim to fill the null slot(s), run sync, and seed the four entry-point artifacts into the brain. The `aide_brain` runtime tool accepts a `kind` parameter selecting which live section to return; install-time seed sections feed the integration prose's seeding step, not `aide_brain`. The shipped `/aide:brain` and `/aide:update-playbook` commands are thin routers that forward to the integration's prose. The package's code surface stays storage-agnostic; the bundled obsidian-flavored default legitimately ships connector-specific content inside the body section bytes because the bundled template IS the obsidian default and those bytes are user-owned the moment they land.
 intent: >
   This repository is the canonical home of the AIDE methodology — Autonomous
   Intent-Driven Engineering, with a deliberate second reading as AI Domain
@@ -17,9 +17,42 @@ intent: >
   the methodology routes agents through for cross-project knowledge — is
   configured per host project by a single user-editable file the host owns
   and edits directly, not by a registry of connector identities baked into
-  the server's code. Full autonomy through intent-driven development, with
-  AI domain experts filling the expertise gap and brain wiring under direct
-  user control, is the north star every other decision in this repo must
+  the server's code. That single file carries both the agent-facing
+  runtime briefing the brain interface tool returns live and the
+  integration-specific wiring flow `/aide:brain config` executes verbatim,
+  so per-backend orchestration is a host-side prose edit instead of a
+  shipped-code change. The cold-install CLI accepts exactly one optional
+  argument — `--brain <integration>`, defaulting to `obsidian` — that
+  selects which bundled `brain.aide` template scaffolds; it writes the
+  methodology layer (docs, agents, commands, skills, framework-pointer
+  stub), writes the bundled `brain.aide` template into
+  `.aide/config/brain.aide` with YAML null at unwired slots, and writes
+  the `aide` MCP server entry into `.mcp.json` — and it never writes a
+  `.mcp.json` brain entry, never scaffolds the four entry-point
+  artifacts, never creates the brain root directory, never asks the
+  user for backend-specific values like absolute paths, API tokens, or
+  connection URIs. The brain MCP entry and the entry-point artifacts
+  are wired by `/aide:brain config` on the first `/aide` run after
+  install, where `aide_init({ category: "brain" })` unconditionally
+  re-seeds the bundled `brain.aide` if absent (its other six install
+  steps are gone — the four entry-point artifacts and the brain root
+  directory are no longer scaffolded by any package code path), and the
+  integration's own `config` body section drives the agent through
+  filling the null slot(s), running sync, and seeding the four
+  entry-point artifacts into the brain via the brain's own MCP write
+  tools from the seed-section bytes in `brain.aide`. The brain
+  template's `mcpServerConfig.args` is typed `(string | null)[]` — a
+  YAML null at any index is the explicit unwired-slot signal,
+  replacing every prior literal-string-placeholder design — and
+  per-integration body sections name which arg indexes mean what; the
+  package never introspects slot semantics. Shipped pipeline commands
+  that touch the brain are thin routers that forward to that prose;
+  integration-specific argument shapes, parameter lists, and edit
+  recipes live next to the user, not in the package. Full autonomy
+  through intent-driven development, with AI domain experts filling
+  the expertise gap and brain wiring (including the per-backend wiring
+  flow and the timing of when wiring happens) under direct user
+  control, is the north star every other decision in this repo must
   serve.
 outcomes:
   desired:
@@ -68,77 +101,173 @@ outcomes:
       object naming the launcher command and args (consumed by sync,
       written into `.mcp.json`). Every other agent-facing concern —
       which MCP tool to call for reads, searches, writes, navigation;
-      where to start; how to follow links — lives in the hand-written
-      body sections, owned per consumer (the prose section, the
-      playbook section, the studyPlaybook section, the research
-      section — see the body-schema outcome below). The default scaffolded `brain.aide` makes no use of
-      substitution: `mcpServerConfig.args` carries the path inline,
-      byte-for-byte under user ownership. The parser still supports
-      `${...}` interpolation of frontmatter fields inside
-      `mcpServerConfig.args` for advanced users who want to DRY a value
-      across positions, but that surface is not exercised by the default
-      scaffold. The body sections are hand-written verbatim per backend
-      — no templating, no rendering, no agent-facing substitution.
-      Adding, replacing, or retargeting a brain is a host-side edit to
-      one file followed by a sync, never a code change to this package.
+      where to start; how to follow links; which arguments
+      `/aide:brain config` accepts; what edit-and-sync sequence the
+      backend's wiring flow runs — lives in the hand-written body
+      sections, owned per consumer (the orientation section, the
+      config section, the playbook-index section, the study-playbook
+      section, the update-playbook section, the research-index section
+      — see the body-schema outcome below). The default scaffolded
+      `brain.aide` makes no use of substitution: `mcpServerConfig.args`
+      carries the path inline, byte-for-byte under user ownership. The
+      parser still supports `${...}` interpolation of frontmatter
+      fields inside `mcpServerConfig.args` for advanced users who want
+      to DRY a value across positions, but that surface is not
+      exercised by the default scaffold. The body sections are
+      hand-written verbatim per backend — no templating, no rendering,
+      no agent-facing substitution. Adding, replacing, or retargeting
+      a brain is a host-side edit to one file followed by a sync,
+      never a code change to this package.
     - >-
-      "The body of `brain.aide` is parsed as exactly four named sections
-      — `prose`, `playbook`, `studyPlaybook`, and `research` — delimited
-      by paired HTML-comment markers that the parser recognizes
-      case-sensitively and lowercase-only. The recognized markers, in
-      required order, are the `<!-- aide-prose-start -->` /
-      `<!-- aide-prose-end -->` pair, the `<!-- aide-playbook-start -->` /
-      `<!-- aide-playbook-end -->` pair, the
+      "The body of `brain.aide` is parsed as exactly six named sections
+      — `orientation`, `config`, `playbookIndex`, `studyPlaybook`,
+      `updatePlaybook`, and `researchIndex` — delimited by paired
+      HTML-comment markers that the parser recognizes case-sensitively
+      and lowercase-only. The recognized markers, in required order,
+      are the `<!-- aide-orientation-start -->` /
+      `<!-- aide-orientation-end -->` pair, the
+      `<!-- aide-config-start -->` / `<!-- aide-config-end -->` pair,
+      the `<!-- aide-playbook-index-start -->` /
+      `<!-- aide-playbook-index-end -->` pair, the
       `<!-- aide-study-playbook-start -->` /
-      `<!-- aide-study-playbook-end -->` pair, and the
-      `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
-      pair — eight markers total, four pairs, each section opened and
-      closed by its own distinct tokens. The kebab-case marker token
-      `study-playbook` populates the camelCase parsed field
-      `studyPlaybook` (no `Hub` suffix; the `Hub`-suffix shape is a
-      retired regression class). The convention extends the existing
+      `<!-- aide-study-playbook-end -->` pair, the
+      `<!-- aide-update-playbook-start -->` /
+      `<!-- aide-update-playbook-end -->` pair, and the
+      `<!-- aide-research-index-start -->` /
+      `<!-- aide-research-index-end -->` pair — twelve markers total,
+      six pairs, each section opened and closed by its own distinct
+      tokens. The first two pairs (`orientation`, `config`) are live
+      sections read by `aide_brain` at runtime; the last four pairs
+      (`playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+      `researchIndex`) are install-time seeds whose bytes the
+      integration's `config` body section prose consumes at first
+      `/aide:brain config` to seed entry-point artifacts in the brain
+      via the brain's own MCP write tools — `provisionBrain` itself
+      never reads or writes those four sections, the package's code
+      path stops at scaffolding the bundled `brain.aide` template.
+      The live-vs-seed split is a structural property of the schema —
+      `aide_brain` reads only the live pair and the integration prose
+      reads only the seed pairs at first `/aide:brain config`, with
+      per-consumer ownership enforced by the parser handing each
+      consumer its own typed keys. Kebab-case marker tokens populate
+      camelCase parsed field names (`playbook-index` populates
+      `playbookIndex`, `study-playbook` populates `studyPlaybook`,
+      `update-playbook` populates `updatePlaybook`, `research-index`
+      populates `researchIndex`); no `Hub` suffix anywhere. The
+      `Hub`-suffix shape is a retired regression class that extends
+      across every seed-section field (`playbookIndexHub`,
+      `studyPlaybookHub`, `updatePlaybookHub`, `researchIndexHub` are
+      all rejected with the same reasoning that retired `playbookHub`
+      / `researchHub`). The convention extends the existing
       `writeMethodology` HTML-comment marker precedent (same lowercase
-      shape, distinct open/close per section). Marker layout violations
-      are hard failures returning `malformed-body` naming the violating
-      marker — missing pair, malformed or typo'd marker, unmatched
-      close without prior open, open without close, wrong section
-      order, nested markers all halt the pipeline. Bytes outside any
-      marked section — between frontmatter and the first opener,
-      between any closer and the next opener, after the last closer —
-      are silently ignored by the parser; the parser's job is to
-      extract the four named sections, not to police the rest of the
-      file, so users may keep notes-to-self, scratch text, or comments
-      in those regions without warning or error. Pre-pivot `brain.aide`
-      files using the old heading-based body schema (`## Prose` /
-      `## Playbook hub` / `## Research hub` with no markers), and
-      pre-amendment three-section marker-bounded files (prose,
-      playbook, research only — missing the
-      `aide-study-playbook-start` / `aide-study-playbook-end` pair),
-      both return `malformed-body` naming the missing markers
-      specifically — there is no transitional read path and no
-      `aide_upgrade` carve-out that auto-injects the missing pair;
-      users hand-edit, consistent with the existing strict-failure
-      migration invariant for body schema changes."
+      shape, distinct open/close per section). Marker layout
+      violations are hard failures returning `malformed-body` naming
+      the violating marker — missing pair, malformed or typo'd
+      marker, unmatched close without prior open, open without close,
+      wrong section order, nested markers all halt the pipeline.
+      Bytes outside any marked section — between frontmatter and the
+      first opener, between any closer and the next opener, after the
+      last closer — are silently ignored by the parser; the parser's
+      job is to extract the six named sections, not to police the
+      rest of the file, so users may keep notes-to-self, scratch text,
+      or comments in those regions without warning or error.
+      Pre-pivot `brain.aide` files (old heading-based body schema
+      with `## Prose` / `## Playbook hub` / `## Research hub`),
+      pre-amendment three-section marker-bounded files (prose /
+      playbook / research only), four-section files using the prior
+      `aide-prose-*` / `aide-playbook-*` / `aide-study-playbook-*` /
+      `aide-research-*` markers, and any other arrangement that does
+      not present all six new marker pairs in required order all
+      return `malformed-body` naming the missing markers
+      specifically — there is no transitional read path, no
+      auto-rename rewrite, and no `aide_upgrade` carve-out that
+      auto-injects missing pairs; users hand-edit, consistent with
+      the existing strict-failure migration invariant for body
+      schema changes."
     - >-
-      "The framework's brain contract on cold install is exactly three
-      required entry-point artifacts seeded from named body sections of
-      `brain.aide`: the coding-playbook entry-point artifact (sourced
-      from the `playbook` section), the study-playbook entry-point
-      artifact (sourced from the `studyPlaybook` section, holding the
-      backend-specific playbook-navigation prose the `study-playbook`
-      skill points at), and the research entry-point artifact (sourced
-      from the `research` section). For an editor-backed Markdown
-      brain — the bundled default's storage shape — those artifacts
-      land at `coding-playbook/coding-playbook.md`,
-      `coding-playbook/study-playbook.md`, and `research/research.md`
+      "The framework's brain contract on cold install is exactly four
+      required entry-point artifacts seeded from install-time seed body
+      sections of `brain.aide`: the coding-playbook entry-point artifact
+      (sourced from the `playbookIndex` section), the study-playbook
+      entry-point artifact (sourced from the `studyPlaybook` section,
+      holding the backend-specific playbook-navigation methodology the
+      `study-playbook` skill points at), the update-playbook entry-point
+      artifact (sourced from the `updatePlaybook` section, holding the
+      backend-specific playbook-maintenance methodology the
+      `/aide:update-playbook` shipped command points at), and the
+      research entry-point artifact (sourced from the `researchIndex`
+      section). Seeding is done by the integration's `aide-config` body
+      section prose at first `/aide:brain config` — after the user
+      fills the unwired slot(s) and runs sync — by reading the
+      seed-section bytes from `brain.aide` via `parseBrainAide`'s typed
+      keys and writing each artifact into the brain via the brain's
+      own MCP write tool (e.g. `mcp__brain__write_note` for the
+      bundled Obsidian default) at paths the integration's prose
+      names. `provisionBrain` itself never writes these artifacts —
+      its code path stops at scaffolding the bundled `brain.aide`
+      template plus planning the `.mcp.json` brain entry; everything
+      downstream of that lives in user-owned prose. For an
+      editor-backed Markdown brain — the bundled default's storage
+      shape — those artifacts land at
+      `coding-playbook/coding-playbook.md`,
+      `coding-playbook/study-playbook.md`,
+      `coding-playbook/update-playbook.md`, and `research/research.md`
       respectively; how they manifest in any other storage is the
       user's `brain.aide` concern, not the package's. Every artifact's
       bytes flow from a `brain.aide` body section through the parser,
       never from an inline TypeScript constant in the install module.
-      The agent-side `study-playbook` skill stays minimal: it points
-      at the on-disk study-playbook entry-point artifact and the
-      navigation methodology travels with the user-owned brain
-      template, not with the package's release cycle."
+      Once the integration prose has seeded an entry-point artifact
+      into the brain, the brain owns it: subsequent edits happen in
+      the brain file, not in `brain.aide`'s seed section, and no
+      shipped code path re-reads or re-overwrites the on-disk
+      artifact on later runs. The agent-side `study-playbook` skill
+      and the shipped `/aide:update-playbook` command both stay
+      minimal: each is a thin pointer at its respective on-disk
+      entry-point artifact, and the navigation/maintenance methodology
+      travels with the user-owned brain template, not with the
+      package's release cycle."
+    - >-
+      "Shipped pipeline commands that touch the brain are thin routers
+      that forward to the integration's user-owned prose; per-backend
+      argument shapes, parameter lists, and edit recipes live in
+      `brain.aide` body sections, never in the shipped command files.
+      `/aide:brain config` is a fixed-shape router that calls
+      `aide_init({ category: \"brain\" })` UNCONDITIONALLY at the top
+      of every invocation — the call is not gated on
+      `aide_info.brain.status`, not branched on `no-brain-aide`, not
+      skipped when a `brain.aide` already exists. The unconditional
+      call is what makes a missing `brain.aide` self-heal:
+      `provisionBrain`'s presence-only idempotency re-scaffolds the
+      bundled template in place when absent, without touching an
+      existing one. Missing entry-point artifact recovery is a
+      separate self-heal loop owned by the integration's `aide-config`
+      body section prose: the prose's seeding step runs every
+      `/aide:brain config`, presence-checks each of the four entry-
+      point artifacts in the brain, and re-seeds any that are missing
+      from the seed-section bytes — `provisionBrain` plays no part
+      in entry-point recovery. After the unconditional `aide_init`
+      call, the router pulls integration-specific prose via
+      `aide_brain({ kind: \"config\" })` and executes the returned
+      instructions verbatim, forwarding any user `$ARGUMENTS`
+      opaquely to the integration's prose. The shipped command never
+      parses `$ARGUMENTS`, never branches on backend identity, never
+      hardcodes a backend's argument shape (path, token, JSON blob,
+      or otherwise) — the integration's `config` body section is the
+      only place that documents what users can put after `/aide:brain
+      config` and what the named arg indexes mean. The brain command
+      surface is minimal: only `config`. There is no `doctor`
+      subcommand, no `repair` subcommand, no `status` subcommand —
+      missing-file recovery for `brain.aide` is folded into
+      `config`'s unconditional `aide_init` call and missing
+      entry-point artifact recovery is folded into the integration
+      prose's presence-check + re-seed loop, neither exposed as a
+      separate verb. `/aide:update-playbook` is a one-step router: it
+      calls `aide_brain` for the brain's read tool, reads the
+      on-disk update-playbook entry-point artifact, and follows the
+      maintenance methodology that artifact describes. Both commands
+      are essentially framing-plus-pointer prose; the substance lives
+      in the user-owned brain content. This is the same shape the
+      `study-playbook` skill already follows."
     - >-
       `brain.aide` is a documented AIDE file type sitting alongside
       `intent.aide`, `plan.aide`, `todo.aide`, and `research.aide` in
@@ -150,25 +279,59 @@ outcomes:
       methodology doc ships from this repo to every host project the
       same way every other canonical doc does.
     - >-
-      The MCP server never dispatches on connector identity. `aide_brain`
-      reads the host's `brain.aide` and returns its prose body verbatim
-      alongside a status — no server-side substitution at the prose
-      layer, no rendering pass, no template engine. The response shape
-      carries status and instructions only — no `backend` field, no
-      connector label, no enum the server interprets. What brain is
-      wired is information for the user and the agent reading the
-      literal prose, not for the server's control flow. Different
-      connectors ship structurally different prose; sharing prose across
+      "The MCP server never dispatches on connector identity. `aide_brain`
+      reads the host's `brain.aide` and returns one of its live body
+      sections verbatim alongside a status — no server-side substitution
+      at the section layer, no rendering pass, no template engine. The
+      tool accepts a single optional `kind` parameter selecting which
+      live section to return: `kind: \"orientation\"` (the default;
+      runtime briefing — what the brain is, which tools to call to
+      read it, where the entry-point artifacts live) and
+      `kind: \"config\"` (the integration-specific wiring flow
+      `/aide:brain config` executes verbatim). Only the two live
+      sections are reachable via `aide_brain`; install-time seed
+      sections (`playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+      `researchIndex`) are never returned by `aide_brain` because
+      after install their authoritative bytes live in the brain itself
+      as on-disk entry-point artifacts, not in the seed sections. The
+      response shape carries status and the requested section's bytes
+      only — no `backend` field, no connector label, no enum the
+      server interprets. What brain is wired is information for the
+      user and the agent reading the literal prose, not for the
+      server's control flow. Different connectors ship structurally
+      different prose across both live sections; sharing prose across
       connectors via templating would force a uniformity their actual
-      instructions do not have.
+      instructions do not have."
     - >-
-      `aide_init` ships a ready-to-use brain out of the box: it scaffolds
-      `.aide/config/brain.aide` pre-filled with a canonical Obsidian
-      configuration that launches via `@bitbonsai/mcpvault`, so a host
-      running the standard install has a working brain UX the moment
-      init finishes — no extra step, no regression in default-install
-      ergonomics. Users who want a different brain edit one file and
-      run sync.
+      "The cold-install CLI accepts exactly one optional argument —
+      `--brain <integration>`, defaulting to `obsidian` — and no other
+      arguments of any kind, ever. `npx aidemd-mcp init` and `npx
+      aidemd-mcp init --brain obsidian` are the bundled-default cold
+      starts; future integrations land their own bundled templates
+      and become valid `--brain` values, but the user never supplies
+      backend-specific values like absolute paths, API tokens, or
+      connection URIs to `cli/init`. `cli/init` writes the methodology
+      layer (methodology docs, pipeline agent files, slash commands,
+      skills, the framework pointer stub, and the IDE preview wiring),
+      writes the bundled `brain.aide` template selected by `--brain
+      <integration>` into `.aide/config/brain.aide` — emitting YAML
+      null at every unwired slot in `mcpServerConfig.args` — and
+      writes the `aide` MCP server entry into `.mcp.json`'s
+      `mcpServers[\"aide\"]`. It does NOT write a `.mcp.json` entry
+      under `mcpServers[\"brain\"]`. It does NOT scaffold any of the
+      four entry-point artifacts. It does NOT create the brain root
+      directory. It does NOT call any seeding code path or ask the
+      user for a brain path, token, or connection URI at install
+      time. Brain MCP entry wiring and entry-point artifact seeding
+      are fully delegated to `/aide:brain config` on the first
+      `/aide` run after install, and the cold install's terminal
+      warning routes the user there explicitly. `cli/init` accepts
+      no `--brain-path`, `--vault-path`, `--brain-root`,
+      `--brain-token`, `--brain-name`, `--brain-url`, or any other
+      brain-shaped flag in the current shape — the only sanctioned
+      brain-shaped argument on the install CLI is `--brain
+      <integration>` selecting which bundled template scaffolds, and
+      that argument never collects a backend-specific value."
     - >-
       `.aide/config/` is the canonical home of user-owned configuration
       in every host project. Files inside are scaffolded once at
@@ -184,18 +347,26 @@ outcomes:
       current inhabitant; the convention is forward-compatible with
       future user-owned config files.
     - >-
-      `brain.aide` carries no `rootPath` field — the brain's location
+      "`brain.aide` carries no `rootPath` field — the brain's location
       lives exactly once, inline in `mcpServerConfig.args`. The package
       never derives a logical root from args, never stats a path to
-      validate it, never introspects args to infer connector identity.
-      Path validation is the launcher's job at MCP server startup; the
-      package does not second-guess it. Agents call MCP tools with
-      vault-relative paths and trust the server's responses. Boot
-      reporter brain status states are reduced to `ok`, `no-brain-aide`,
-      `no-mcp-entry`, and `mcp-drift` — the prior `invalid-path` state
-      goes away with `rootPath`.
+      validate it, never introspects args to infer connector identity,
+      never inspects which arg index means what. Path validation is
+      the launcher's job at MCP server startup; the package does not
+      second-guess it. Agents call MCP tools with vault-relative paths
+      and trust the server's responses. Boot reporter brain status
+      states stay reduced to `ok`, `no-brain-aide`, `no-mcp-entry`,
+      and `mcp-drift` — no fifth state is added for the unwired-slot
+      case. `buildBrainState` maps any null entry in `mcpServerConfig.args`
+      to `no-mcp-entry` semantically: a null-bearing config is by
+      definition not a wireable launch command, so the brain's MCP
+      entry is treated as not-yet-wired regardless of whether
+      `.mcp.json` happens to contain a stale entry from a prior
+      session. The four-state vocabulary is closed; null-armed configs
+      collapse into the existing `no-mcp-entry` state rather than
+      forking it."
     - >-
-      `brain.aide`'s frontmatter contains exactly two top-level fields:
+      "`brain.aide`'s frontmatter contains exactly two top-level fields:
       `name` (string, the human-readable label for the wired brain) and
       `mcpServerConfig` (object with `command` and `args`, consumed by
       sync to write the `.mcp.json` brain entry). No `connector`, no
@@ -205,36 +376,73 @@ outcomes:
       without affecting code behavior. The label exists for the human
       reading the file and for the agent narrating, in conversation
       with the user, which brain it is connected to.
-      `mcpServerConfig.command` and `mcpServerConfig.args` mirror the
-      shape `.mcp.json` expects under `mcpServers["brain"]` so the sync
-      verb can write them through unchanged; the args list carries the
-      launcher invocation and the path or identifier inline.
+      `mcpServerConfig.command` is a string. `mcpServerConfig.args` is
+      typed `(string | null)[]` — every element is either a fully-formed
+      argument string or YAML null (a bare `-` with no scalar after,
+      which YAML parses to `null`). A null at any index is the explicit
+      unwired-slot signal: it means \"the user has not yet supplied the
+      value this slot needs.\" Sync writes the post-interpolation
+      `mcpServerConfig` byte-for-byte into `.mcp.json`'s
+      `mcpServers[\"brain\"]` entry; if any arg is null at sync time,
+      sync refuses (see the sync-refusal outcome below). No literal
+      string sentinel — `<BRAIN_PATH>`, `<API_TOKEN>`, `${...}`-shaped
+      placeholder, magic UUID, or any other in-band marker — is part of
+      the design. YAML null is the contract."
     - >-
-      The brain's interface contract is the prose body, not a
+      "Per-integration ownership of arg-index slot semantics. The
+      meaning of each slot in `mcpServerConfig.args` — which index is
+      a path, which is a token, which is a connection URI, which is
+      already fully wired by the launcher itself — is documented
+      exclusively inside that integration's `config` body section in
+      its bundled `brain.aide` template. The bundled Obsidian default
+      names `args[3]` as the absolute path to the user's brain root;
+      a future Mem0 integration would name `args[2]` as the API token
+      and `args[3]` as the user identifier in its own template's
+      `config` section; whatever future integrations exist, each
+      describes its own slot map in its own prose. The shipped
+      `/aide:brain config` router NEVER introspects which slot is
+      which — it forwards `$ARGUMENTS` opaquely and lets the
+      integration's prose drive every per-slot decision. There is no
+      shipped registry of slot meanings, no per-index validation
+      table, no `argSlots` frontmatter field declaring what each index
+      is supposed to be. Slot semantics live in the user-owned body,
+      same as every other per-backend concern. This is what makes
+      adding a new backend a host-side prose addition rather than a
+      package code change."
+    - >-
+      The brain's interface contract is the body sections, not a
       frontmatter declaration. There is no frontmatter field declaring
       expected MCP tool names, expected operations (read, search, write,
       list), or expected entry-point paths — the schema does not
-      enumerate any of those. The agent reads the prose verbatim, calls
-      whatever MCP tools the prose names, and surfaces failures
-      (missing tool, wrong shape, unwired backend) to the user at the
-      first call. Failure is fast, specific, and unmistakable: a user
-      whose MCP session does not expose what their prose names finds
-      out immediately, not after passing a parser check that lied.
-      Placing the binding cost in one place — the prose body — instead
-      of forcing the user to keep frontmatter declarations and prose
-      in sync is the whole point. The schema's minimum justifies its
-      maximum: every frontmatter field must name a real runtime
-      consumer (sync writes `mcpServerConfig` into `.mcp.json`; the
-      user and agent read `name` as a label). A frontmatter field with
-      no code path that consumes its value is validation theater and
-      is rejected.
+      enumerate any of those. The agent reads the relevant body section
+      verbatim, calls whatever MCP tools the section names, and
+      surfaces failures (missing tool, wrong shape, unwired backend)
+      to the user at the first call. Failure is fast, specific, and
+      unmistakable: a user whose MCP session does not expose what
+      their body section names finds out immediately, not after
+      passing a parser check that lied. Placing the binding cost in
+      one place — the body sections — instead of forcing the user to
+      keep frontmatter declarations and section content in sync is
+      the whole point. The schema's minimum justifies its maximum:
+      every frontmatter field must name a real runtime consumer (sync
+      writes `mcpServerConfig` into `.mcp.json`; the user and agent
+      read `name` as a label). A frontmatter field with no code path
+      that consumes its value is validation theater and is rejected.
     - >-
-      `brain.aide` and the host's `.mcp.json` brain entry stay in sync
+      "`brain.aide` and the host's `.mcp.json` brain entry stay in sync
       through one explicit, user-driven action — `npx aidemd-mcp sync` —
       that reads `brain.aide` and writes the corresponding `.mcp.json`
-      brain entry. Sync is idempotent. The MCP server never silently
-      rewrites `.mcp.json`; mutation of the host's MCP wiring is always
-      a deliberate user action with a visible command boundary.
+      brain entry. Sync is idempotent. Sync refuses to write
+      null-bearing args: if any element of `mcpServerConfig.args` is
+      null at sync time, sync exits non-zero, names the offending
+      index(es), and routes the user to `/aide:brain config` to fill
+      them. Sync's contract is byte-faithful propagation of
+      `mcpServerConfig` from `brain.aide` into `.mcp.json` — but
+      propagating null into a launch command is propagating broken
+      state, not a useful byte-faithful action. The MCP server never
+      silently rewrites `.mcp.json`; mutation of the host's MCP wiring
+      is always a deliberate user action with a visible command
+      boundary."
     - >-
       Drift between `brain.aide` and `.mcp.json` is a hard halt for the
       pipeline. The boot reporter detects drift and surfaces it as the
@@ -255,24 +463,30 @@ outcomes:
       and every `.aide` spec authored in this repo) nor in code
       identifiers, comments, or string constants project-wide. The
       brain layer is described to agents and users in storage-agnostic
-      terms — \"brain\", \"brain root\", \"the brain's prose section\",
-      \"the playbook section\", \"the studyPlaybook section\", \"the
-      research section\" — never in the vocabulary of any one
-      connector. Four exceptions are explicitly allowed because each
-      names a legitimate non-branching anchor rather than a code or
-      prose decision: the `obsidianBrainAideTemplate` helper folder
-      name (describes bundled template content, not a dispatch axis),
-      the `.obsidian` directory heuristic comment in `brainRootExists`
-      (an honestly-labeled implementation detail in a single helper),
-      the legacy `obsidian` MCP key referenced inside migration
-      branches (the key being migrated away from), and the body
-      section bytes of the bundled `obsidianBrainAideTemplate` helper
-      itself across all four named sections (`prose`, `playbook`,
-      `studyPlaybook`, `research`) — those bytes ship
-      obsidian-flavored content because the bundled template IS the
-      obsidian default, they become user-owned the moment they are
-      scaffolded onto disk, and any host that wires a different brain
-      edits the section bytes in their own `brain.aide`. The
+      terms — \"brain\", \"brain root\", \"the brain's orientation
+      section\", \"the config section\", \"the playbook-index
+      section\", \"the study-playbook section\", \"the update-playbook
+      section\", \"the research-index section\" — never in the
+      vocabulary of any one connector. Three exceptions are explicitly
+      allowed because each names a legitimate non-branching anchor
+      rather than a code or prose decision: the
+      `obsidianBrainAideTemplate` helper folder name (describes
+      bundled template content, not a dispatch axis), the `.obsidian`
+      directory heuristic comment in `brainRootExists` (an
+      honestly-labeled implementation detail in a single helper), and
+      the body section bytes of the bundled `obsidianBrainAideTemplate`
+      helper itself across all six named sections (`orientation`, `config`,
+      `playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+      `researchIndex`) — those bytes ship obsidian-flavored content
+      because the bundled template IS the obsidian default, they
+      become user-owned the moment they are scaffolded onto disk (for
+      the live sections) or seeded into the brain (for the seed
+      sections), and any host that wires a different brain edits the
+      section bytes in their own `brain.aide`. Additionally, the
+      integration name `obsidian` is allowed as a value of the
+      `cli/init --brain <integration>` argument — a user-facing
+      argument value that selects which bundled template scaffolds
+      and never reaches a code dispatch axis. The
       bundled-template-body-bytes carve-out is scoped exactly: it
       covers the bytes inside the template's body section literals
       only — NOT the JSDoc, identifiers, parameter names, or function
@@ -284,8 +498,15 @@ outcomes:
       another connector-flavored default. Anti-example occurrences
       inside undesired-outcome blocks of specs are also allowed —
       naming a forbidden token to forbid it is the mechanism, not a
-      violation. Every other appearance of the forbidden tokens, in
-      code or prose, is a regression."
+      violation. The safe-list of storage-agnostic body-field names
+      is exactly `orientation`, `config`, `playbookIndex`,
+      `studyPlaybook`, `updatePlaybook`, `researchIndex`; the
+      `Hub`-suffix regression class extends across every seed-section
+      field (`playbookIndexHub`, `studyPlaybookHub`,
+      `updatePlaybookHub`, `researchIndexHub` are all rejected with
+      the same reasoning that retired `playbookHub` / `researchHub`).
+      Every other appearance of the forbidden tokens, in code or
+      prose, is a regression."
     - >-
       The in-code backend registry — matchers, drivers, identity inference
       — is fully retired. There is no module in this package whose job is
@@ -379,16 +600,19 @@ outcomes:
       content lives is inside `brain.aide` itself, where the user owns
       and edits it.
     - >-
-      Server-side substitution applied to the prose body — placeholder
-      rendering, template engines, variable interpolation, anything that
-      mutates the prose between disk and `aide_brain`'s response. The
-      prose body is hand-written per connector and ships verbatim;
-      introducing a substitution pass conflates the install-time
-      interpolation surface (`mcpServerConfig.args`) with the
-      agent-facing surface and forces every prose author to think about
-      which strings will be rewritten. Substitution lives only in
-      `mcpServerConfig.args` (install-time), never in the prose body
-      (agent-time).
+      "Server-side substitution applied to any of the six body sections
+      — placeholder rendering, template engines, variable interpolation,
+      anything that mutates a section's bytes between disk and the
+      consumer (`aide_brain`'s response for the live sections, the
+      integration prose's seeding step for the seed sections). All
+      six sections are hand-written per connector and ship verbatim;
+      introducing a substitution pass on any of them conflates the
+      install-time interpolation surface (`mcpServerConfig.args`) with
+      the section-content surface and forces every section author to
+      think about which strings will be rewritten. Substitution lives
+      only in `mcpServerConfig.args`, never in any of the
+      `orientation`, `config`, `playbookIndex`, `studyPlaybook`,
+      `updatePlaybook`, or `researchIndex` body sections."
     - >-
       Boot reporting that reduces the post-refactor brain layer to a
       single binary state — wired or not. Without explicit states for
@@ -396,73 +620,334 @@ outcomes:
       the pipeline cannot tell the user what to do to recover, and the
       orchestrator cannot enforce the hard halt the sync contract
       depends on.
+    - >-
+      "A shipped pipeline command file under `.claude/commands/` that
+      hardcodes integration-specific argument shape, parameter
+      vocabulary, or backend-specific edit recipes — `/aide:brain
+      config` parsing `$ARGUMENTS` as an absolute path because Obsidian
+      happens to want a path; `/aide:update-playbook` calling
+      `mcp__brain__patch_note` by name because Obsidian happens to use
+      Markdown patches; either command branching on the brain's
+      `name` label or sniffing `mcpServerConfig.args` to decide what
+      to do. Shipped commands are thin routers; integration-specific
+      orchestration belongs in the user-owned `brain.aide` body
+      sections (the `config` section for runtime flow, the
+      `update-playbook` seed section for the maintenance methodology
+      that lands in the brain). A command that knows what kind of
+      brain it's talking to is the in-code backend registry coming
+      back through the command surface."
+    - >-
+      "An `aide_brain` `kind` parameter value that exposes one of the
+      install-time seed sections — `kind: \"playbook-index\"`,
+      `kind: \"study-playbook\"`, `kind: \"update-playbook\"`,
+      `kind: \"research-index\"`, or any future seed section — at
+      runtime. Live sections (`orientation`, `config`) are read by
+      `aide_brain`; seed sections become on-disk entry-point artifacts
+      in the brain after install and are read from there, not from
+      `brain.aide`. Letting `aide_brain` return a seed section creates
+      a second authoritative source for the same content (the
+      brain.aide section AND the on-disk artifact) and lies to the
+      agent about which one its edits should target. The schema's
+      live-vs-seed split is enforceable at the tool surface or it is
+      not enforced at all."
+    - >-
+      "Any transitional read path or `aide_upgrade` carve-out that
+      auto-rewrites pre-rework `brain.aide` files (renaming
+      `aide-prose-*` to `aide-orientation-*`, renaming
+      `aide-playbook-*` to `aide-playbook-index-*`, renaming
+      `aide-research-*` to `aide-research-index-*`, auto-injecting
+      missing `aide-config-*` or `aide-update-playbook-*` pairs).
+      `brain.aide` is user-owned the moment it lands; mutating it
+      from any code path on a subsequent run shifts a load-bearing
+      user surface out from under the user — the same regression
+      class as `aide_init`/`aide_upgrade` rewriting `.aide/config/`
+      files or the MCP server silently rewriting `.mcp.json`. Strict
+      `malformed-body` failure that names every missing marker and
+      forces the user to hand-edit is the only acceptable migration
+      path, consistent with the prior 3→4 amendment."
+    - >-
+      "A literal-string sentinel anywhere in the unwired-slot design —
+      `<BRAIN_PATH>`, `<API_TOKEN>`, `<VAULT_ROOT>`, `__UNWIRED__`, a
+      magic UUID, or any other in-band string the package recognizes
+      as \"this is empty, please fill me in.\" The retired
+      `<BRAIN_PATH>` placeholder is the canonical example: it produced
+      a configuration where `brain.aide` and `.mcp.json` agreed
+      byte-for-byte (both contained the literal `<BRAIN_PATH>`), the
+      drift detector returned `ok`, the orchestrator never routed to
+      `/aide:brain config`, and the user discovered the broken state
+      only when the brain MCP server failed to launch. YAML null is
+      the unwired-slot signal — a structural property of the config,
+      not a string the package has to recognize. Any code path,
+      template, or doc that brings back a literal sentinel under any
+      name is the same regression class."
+    - >-
+      "`cli/init` writing any brain surface beyond
+      `.aide/config/brain.aide` from the selected bundled template, or
+      accepting any brain-shaped argument other than `--brain
+      <integration>`. Writing a `.mcp.json` entry under
+      `mcpServers[\"brain\"]`, scaffolding any of the four entry-point
+      artifacts, creating the brain root directory, or asking the user
+      for a brain path / API token / connection URI / brain name /
+      brain URL at install time are all the same regression: brain
+      MCP entry wiring and entry-point seeding belong to the first
+      `/aide` run's `/aide:brain config` step, not to the cold
+      install. A `--brain-path`, `--vault-path`, `--brain-root`,
+      `--brain-token`, `--brain-name`, `--brain-url`, or any other
+      brain-shaped flag on the install CLI other than `--brain
+      <integration>` is forbidden. The single sanctioned brain-shaped
+      argument — `--brain <integration>`, defaulting to `obsidian` —
+      selects WHICH bundled template `cli/init` scaffolds into
+      `.aide/config/brain.aide`; it does NOT collect a
+      backend-specific value, and it does NOT change the
+      no-`.mcp.json`-brain-entry / no-entry-point-artifacts /
+      no-brain-root-directory / no-backend-prompt invariants
+      above."
+    - >-
+      "`cli/sync` writing null-bearing `mcpServerConfig.args` into
+      `.mcp.json`. Sync's contract is byte-faithful propagation of
+      `mcpServerConfig` — but propagating null into a launch command
+      is propagating broken state, not byte-faithful action. Sync
+      must hard-fail on any null arg: exit non-zero, name the
+      offending index(es), and route the user to `/aide:brain
+      config`. A sync that silently coerces null to empty string,
+      drops the null entry, substitutes a placeholder, or otherwise
+      converts the unwired-slot signal into a string in the launch
+      command is the regression that produced the original
+      `<BRAIN_PATH>`-passes-the-drift-check bug in different clothing."
+    - >-
+      "A `/aide:brain config` router that conditionally calls
+      `aide_init({ category: \"brain\" })` based on
+      `aide_info.brain.status` (skipping the call when the status is
+      anything other than `no-brain-aide`, or when `brain.aide`
+      already exists, or when entry-point seed artifacts already
+      exist on disk). The unconditional call is what makes
+      missing-`brain.aide` recovery self-heal: a user whose prior
+      install was interrupted or whose template version changed
+      gets the bundled template re-scaffolded in place by
+      `provisionBrain`'s presence-only idempotency on every
+      `/aide:brain config` invocation. (Missing entry-point artifact
+      recovery is owned by the integration prose's presence-check +
+      re-seed loop, not by `provisionBrain`.) A conditional call
+      pushes recovery into a separate `doctor` / `repair` / `status`
+      subcommand the agent has to know to invoke — the brain command
+      surface stays minimal at one verb (`config`), and recovery
+      folds into that verb's preamble."
+    - >-
+      "A boot-reporter or `buildBrainState` mapping that introduces
+      a fifth status state for null-armed args — `unwired`,
+      `incomplete-args`, `placeholder-present`, or any other label
+      that splits the unwired-slot case off from `no-mcp-entry`.
+      The four-state vocabulary (`ok`, `no-brain-aide`,
+      `no-mcp-entry`, `mcp-drift`) is closed; null-bearing configs
+      collapse semantically into `no-mcp-entry` because a null arg
+      means the brain's MCP entry is not yet wireable. Forking a
+      fifth state would force every consumer of the four-state
+      union — orchestrator routing, the `/aide` flow, the boot
+      reporter — to grow a fifth branch with no different remedy
+      than `no-mcp-entry` already has (route to `/aide:brain
+      config`)."
+    - >-
+      "A shipped command file, code path, or registry that knows
+      which arg index in `mcpServerConfig.args` means what — a
+      `PATH_SLOT_INDEX` constant or any other named integer
+      hardcoding a slot position, a `resolveBrainRoot`-style helper
+      that reads `mcpServerConfig.args[N]` to extract a path or any
+      other slot semantic, a switch on `args[3]` because Obsidian's
+      path lives there, a matcher recognizing token-shaped strings
+      at `args[2]`, an `argSlots` frontmatter field declaring \"this
+      index is a path,\" a `/aide:brain config` router that
+      introspects which slots are null to decide what to ask the
+      user for. Slot semantics live exclusively in the per-integration
+      `config` body section — the package never inspects which slot
+      is which. A command or code path that grows arg-index
+      awareness is the in-code backend registry coming back through
+      the slot surface."
+    - >-
+      "Any `provisionBrain` step that writes an entry-point artifact
+      to disk, creates the brain root directory, or otherwise scaffolds
+      anything beyond the bundled `brain.aide` template and the
+      `.mcp.json` brain entry plan. `provisionBrain`'s pipeline is
+      exactly two `InitStep`s — scaffold `.aide/config/brain.aide`
+      from the selected bundled template (with YAML null at unwired
+      slots), and plan the `.mcp.json` brain entry. The retired
+      `buildPlaybookStep`, `buildStudyPlaybookStep`,
+      `buildUpdatePlaybookStep`, `buildResearchStep`, and
+      `buildBrainRootStep` step builders — and any successor under
+      a renamed identifier carrying the same shape (a step that
+      reads a seed body section and writes it to a path inside the
+      brain, or a step that creates the brain root directory) —
+      are gone. Entry-point artifacts are seeded by the
+      integration's `aide-config` body section prose at first
+      `/aide:brain config`, not by any package code path; the
+      bytes flow from `brain.aide` seed sections via
+      `parseBrainAide`'s typed keys (`playbookIndex`,
+      `studyPlaybook`, `updatePlaybook`, `researchIndex`) and the
+      writes happen via the brain's own MCP write tool. Restoring
+      a step builder of either retired class — under any name — is
+      the same regression."
 ---
 
 ## Context
 
-Before this repo existed, the AIDE methodology lived in a personal Obsidian
-vault. That worked for one maintainer but could not ship: every new project,
-every new contributor, every new agent framework had to rediscover the rules
-from a vault they did not have access to, and any CLAUDE.md snippet that
-tried to carry the rules forward went stale the moment the canonical vault
-notes changed.
+This repository is the canonical home of the AIDE methodology — Autonomous
+Intent-Driven Engineering, with a deliberate second reading as AI Domain
+Expert — and the MCP server that delivers it to agents in host projects.
+Intent is the primary driver: a `.aide` intent doc governs the code, and a
+research agent fills the role of the domain expert an engineering team
+would otherwise need to hire. The repo has two jobs: author the canonical
+docs, and ship them through the MCP handshake and `aide_init`.
 
 The MCP handshake is the only documentation surface a compliant MCP client
 is required to present to the model verbatim, in every session, in every
-project, without user action. aide_init is the only command needed to turn
-a cold host project into one that knows AIDE. Together those two channels
-give the methodology a delivery path that does not depend on the agent
-remembering anything across sessions or the user editing any file by hand.
-
-This repo's job is to author the methodology once, hold it as the single
-source of truth, and ship it through those two channels. Nothing else.
+project, without user action. `aide_init` is the only command needed to
+turn a cold host project into one that knows AIDE. Together those two
+channels give the methodology a delivery path that does not depend on the
+agent remembering anything across sessions or the user editing any file
+by hand. This repo's job is to author the methodology once, hold it as
+the single source of truth, and ship it through those two channels.
+Nothing else.
 
 The brain layer — the external knowledge store the methodology routes
-agents through for durable, cross-project knowledge — used to be wired
-into this package by code. The server enumerated connectors, inferred
-which one a host had wired by sniffing the shape of an MCP entry, and
-returned connector-specific prose composed in the package's own source.
-That contradicted the portability commitment the methodology itself
-makes: every host gets to run AIDE the same way, against whatever
-knowledge store fits its situation, without this package having to be
-extended every time a new store appears. The refactor moves brain
-configuration out of the package's code and into a single user-editable
-file the host owns. The package no longer has an opinion about which
-brain a host runs against; it has an opinion about how the host
-declares it.
+agents through for durable, cross-project knowledge — is configured per
+host project by a single user-editable file at `.aide/config/brain.aide`.
+The package has an opinion about how the host declares its brain, not
+about which brain it runs against. The frontmatter declares exactly two
+things — a human-readable `name` label and an `mcpServerConfig` object
+with `command` and `args` — and the body carries six marker-bounded
+named sections (`orientation`, `config`, `playbookIndex`,
+`studyPlaybook`, `updatePlaybook`, `researchIndex`) each delimited by
+its own paired HTML-comment markers. Adding a new brain is a host-side
+edit to one file followed by a sync, never a code change to this
+package.
 
-The brain config file's body carries four marker-bounded sections in a
-fixed order — prose, playbook, studyPlaybook, research — and three
-required entry-point artifacts seed from those sections at cold install
-(coding-playbook, study-playbook, research). The fourth section
-(`studyPlaybook`) is the methodology home for backend-specific
-playbook-navigation prose: the Step 1/2/3 process for using the
-playbook entry-point, the Navigation Rules block with its
-depth-counting example, and the link-traversal semantics that govern
-how the agent walks references inside the brain. The on-disk
-study-playbook entry-point artifact at
-`coding-playbook/study-playbook.md` is the single read target the
-agent-side `study-playbook` skill points at; the navigation
-methodology travels with the user-owned brain template, not with the
-package's release cycle. Splitting navigation methodology out of the
-playbook section into its own dedicated section keeps the playbook
-section single-purpose (pure conventions: routing, sections,
-contents) and lets the navigation prose evolve as the user's brain
-shape evolves without forcing a code release.
+The body's six sections split into two structural categories by who
+reads them. Sections one and two — `orientation` and `config` — are
+*live*: `aide_brain` reads them on demand whenever an agent or shipped
+command needs them. Every read goes through the parser, and the user's
+edits in `brain.aide` take effect on the next call. Sections three
+through six — `playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+`researchIndex` — are *seeds*: the install service reads them exactly
+once on cold install and writes their bytes into files inside the
+brain. After that the brain owns the on-disk file; the seed section
+is dormant, and any later edit happens in the brain file, not in
+`brain.aide`. The split is enforced at the consumer boundary:
+`aide_brain`'s `kind` parameter is closed at two values
+(`"orientation"` and `"config"`), and the install service reads the
+four seed keys only. Cross-reading would re-create exactly the
+dual-source-of-truth problem the architecture exists to prevent.
+
+The framework's brain contract on cold install is exactly four
+required entry-point artifacts — the coding-playbook index, the
+study-playbook navigation guide, the update-playbook maintenance
+guide, and the research index — each sourced from one seed body
+section. For an editor-backed Markdown brain (the bundled default's
+storage shape), those artifacts land at
+`coding-playbook/coding-playbook.md`,
+`coding-playbook/study-playbook.md`,
+`coding-playbook/update-playbook.md`, and `research/research.md`. How
+they manifest in any other storage is the user's `brain.aide`
+concern, not the package's. Every artifact's bytes flow from a body
+section through the parser, never from a code-level constant. Once
+the install service has scaffolded an artifact into the brain, the
+brain owns it: subsequent edits happen in the brain file, not in the
+seed section, and the package never re-reads or re-overwrites the
+on-disk artifact on later runs.
+
+Brain wiring is delegated to the first `/aide` run after install,
+not done at install time. The cold-install CLI is argument-less and
+brain-agnostic: `npx aidemd-mcp init` accepts no brain-shaped flag
+of any kind. It installs the methodology layer only (methodology
+docs, pipeline agent files, slash commands, skills, the framework
+pointer stub, the IDE preview wiring) and touches no brain surface:
+it does not write `.aide/config/brain.aide`, does not write a
+`.mcp.json` brain entry, does not call the brain provisioner, does
+not create the brain root directory, does not ask the user for any
+backend-specific value. The cold install's terminal warning routes
+the user to `/aide:brain config` for brain wiring, and that is the
+surface where wiring happens.
+
+`/aide:brain config` is a thin router that calls `aide_init({
+category: "brain" })` unconditionally on every invocation. The call
+is not gated on the brain's status, not branched on whether
+`brain.aide` already exists, not skipped when entry-point files are
+already on disk. The unconditional call is what makes missing-file
+recovery self-heal: a user who deleted a seed artifact, whose prior
+install was interrupted, or whose template version added a section
+gets the missing artifacts re-seeded in place by the brain
+provisioner's presence-only idempotency on every `/aide:brain
+config` invocation. After the unconditional call, the router pulls
+the integration's wiring prose via `aide_brain({ kind: "config" })`
+and executes the returned instructions verbatim, forwarding any
+user `$ARGUMENTS` opaquely. The shipped command never parses
+`$ARGUMENTS`, never branches on backend identity, never hardcodes a
+backend's argument shape — the integration's `config` body section
+is the only place that documents what users can put after
+`/aide:brain config` and what the named arg indexes mean.
+
+The unwired-slot signal is YAML null, not a string. The bundled
+template ships `mcpServerConfig.args` typed `(string | null)[]` —
+every element is either a fully-formed argument string or YAML
+null (a bare `-` with no scalar after, which YAML parses to
+`null`). A null at any index is the explicit, structural signal
+that the user has not yet supplied the value the slot needs. The
+package never introspects which slot is which: per-integration
+body sections name the slot semantics in prose. The bundled
+Obsidian default names `args[3]` as the absolute path to the user's
+brain root in its `config` section; a future Mem0 integration would
+name `args[2]` as the API token and `args[3]` as the user
+identifier in its own template's `config` section. There is no
+shipped registry of slot meanings, no per-index validation table,
+no frontmatter field declaring what each index is supposed to be.
+Slot semantics live in the user-owned body, same as every other
+per-backend concern.
+
+Sync is the only mutation surface for `.mcp.json`'s brain entry
+in the entire package. `npx aidemd-mcp sync` reads `brain.aide`
+and writes the post-interpolation `mcpServerConfig` byte-for-byte
+into `mcpServers["brain"]`. Sync refuses to write null-bearing
+args: if any element of `mcpServerConfig.args` is null at sync
+time, sync exits non-zero, names the offending index(es), and
+routes the user to `/aide:brain config` to fill them. Propagating
+null into a launch command is propagating broken state, not a
+useful byte-faithful action. The boot reporter detects drift
+between `brain.aide` and `.mcp.json` and surfaces it as the
+`mcp-drift` brain status state alongside `ok`, `no-brain-aide`,
+and `no-mcp-entry` — a closed four-state vocabulary. Null-bearing
+configs collapse semantically into `no-mcp-entry`: the brain
+provisioner's `buildBrainState` maps any null entry in
+`mcpServerConfig.args` to `no-mcp-entry`, since a null-bearing
+config is by definition not a wireable launch command. No fifth
+state is added for the unwired-slot case; the four-state
+vocabulary is closed.
+
+Two pipeline commands talk to the brain at runtime: `/aide:brain
+config` and `/aide:update-playbook`. Both ship as thin routers —
+files under `.claude/commands/` that contain framing prose, a
+fixed sequence of tool calls, and zero integration-specific
+knowledge. `/aide:update-playbook` calls `aide_brain` once for the
+brain's read tool, reads `coding-playbook/update-playbook.md` from
+the brain, and follows the methodology that file describes.
+Neither command knows whether the wired brain is Obsidian or
+anything else; argument shape, parameter list, and edit recipe
+live entirely in the user-owned prose — `brain.aide`'s `config`
+section for runtime wiring, `coding-playbook/update-playbook.md`
+in the brain for maintenance methodology.
 
 The package's code surface stays storage-agnostic across every
 identifier, comment, JSDoc word, and string constant — but the
-bundled obsidian-flavored default brain.aide template is, by
+bundled obsidian-flavored default `brain.aide` template is, by
 definition, the obsidian default, and its body section bytes ship
-obsidian-flavored content across all four named sections. The prose
-section names the connector's MCP tools; the playbook section ships
-coding conventions for an editor-backed brain; the studyPlaybook
-section ships the multi-month-tested navigation methodology written
-for inline references in an editor-backed brain; the research
-section ships an index keyed for the same backend. Those bytes
-become user-owned the moment they are scaffolded onto disk: any host
-that wires a different brain edits the section bytes in their own
-brain.aide, and the package's CODE surface stays storage-agnostic
+obsidian-flavored content across all six named sections. The
+`orientation` section names the connector's MCP tools and points
+at the four entry-point artifacts; the `config` section documents
+the integration's argument shape and the wiring flow's
+edit-and-sync sequence including which `args` index is the path
+slot; the four seed sections seed artifacts shaped for an
+editor-backed Markdown brain. Those bytes become user-owned the
+moment they are scaffolded onto disk (for the live sections) or
+seeded into the brain (for the seed sections): any host that wires
+a different brain edits the relevant section bytes in their own
+`brain.aide`, and the package's code surface stays storage-agnostic
 regardless. The carve-out for the bundled template's body section
 literals is the explicit boundary between agnostic code and
 connector-flavored user-owned content.
@@ -480,7 +965,7 @@ invariant has been broken and must be repaired, not worked around.
 
 **Two delivery channels, no third.** MCP tool descriptions teach AIDE at
 handshake time: what `.aide` files are, where they live, the naming rules,
-the read-before-code workflow. aide_init installs the rest: a short
+the read-before-code workflow. `aide_init` installs the rest: a short
 pointer stub into the host's config file, the full canonical methodology
 doc set into a dedicated host-side doc hub the stub points at, the slash
 commands that run the pipeline, the MCP wiring, and the IDE preview. The
@@ -510,128 +995,293 @@ the forcing function. A rule that is wrong or unworkable shows up as
 pain in this repo before it ships to a host project. If a rule can't
 survive being lived under here, it doesn't belong in the canonical docs.
 
-**Migration from the brain is one-way.** Every doc that lands in this
-repo is deleted or archived from the brain on the same commit. Drift
-between two copies of a canonical doc is the worst kind of drift,
-because it silently propagates to every host project on its next init
-and no one notices which copy is authoritative.
-
 **Brain configuration is user-owned, not code-owned.** The architectural
-boundary is sharp: the server reads the host's `brain.aide`, parses its
-body as exactly four named sections — prose, playbook, studyPlaybook,
-research, each delimited by its own paired HTML-comment markers — and
-never branches on connector identity. The marker pairs follow the same
-lowercase shape the existing `writeMethodology` stub uses, extended
-with distinct open and close tokens per section so a parser violation
+boundary is sharp: the server reads the host's `brain.aide`, parses
+its frontmatter and its six marker-bounded body sections, and never
+branches on connector identity. There is no module in this package
+whose job is to enumerate brains, infer which one a host has wired, or
+dispatch behavior on a connector enum. What replaces a registry is a
+single file in the host's own repo: a typed two-field frontmatter the
+host edits, and six hand-written body sections the host edits. Adding
+a new brain is never a code change to this package; it is a host-side
+edit plus a sync. The marker grammar follows the same lowercase shape
+the existing methodology pointer-stub installer uses, extended with
+distinct open and close tokens per section so a parser violation
 names the offending marker by name rather than guessing where a
-single-token region was supposed to start. The agent-facing contract
-is the prose section: when `aide_brain` is called, the parser extracts
-the prose section and returns it byte-identical. There is no module in
-this package whose job is to enumerate brains, infer which one a host
-has wired, or dispatch behavior on a connector enum — the in-code
-backend registry is retired entirely. The package ships zero
-connector-specific code paths. What replaces the registry is a single
-file in the host's own repo: a typed config frontmatter the host
-edits, and four hand-written body sections the host edits. Adding a
-new brain is never a code change to this package; it is a host-side
-edit plus a sync. The default scaffolded `brain.aide` makes no use of
-substitution — `mcpServerConfig.args` carries the path inline,
-byte-for-byte under user ownership, and the package never derives a
-logical root from args, never stats a path to validate it, and never
-introspects args to infer connector identity. The parser still
-supports `${...}` interpolation of frontmatter fields inside
+single-token region was supposed to start. The parser supports
+`${...}` interpolation of frontmatter fields inside
 `mcpServerConfig.args` for advanced users who want to DRY a value
-across argument positions; that surface remains for them, but it is
-not exercised by the default scaffold. Substitution lives only in
-`mcpServerConfig.args` at install/sync time, applied by the `.mcp.json`
-writer when sync runs — never in any of the four body sections at
-agent time. All four body sections return verbatim, with no rendering
-pass between disk and the agent. The decision to hand-write the prose
-per connector rather than template it is load-bearing: different
-connectors need structurally different agent instructions, not the
-same instructions with values swapped. One brain's prose may instruct
-the agent to "read the entry file at the brain root and follow the
-inline references it names to deepen context," another's may say
-"query the indexed database for tagged pages and follow backlinks via
-the hosted API"; templating cannot bridge that shape difference
-without forcing both into a uniformity neither actually has. The
-mutation surface for `.mcp.json` is `npx aidemd-mcp sync` and only
-`npx aidemd-mcp sync` — the MCP server NEVER silently rewrites the
-host's MCP wiring, because every load-bearing contract surface needs
-a visible command boundary the user controls. Drift between
-`brain.aide` and `.mcp.json` is a hard halt: the boot reporter
-detects it, surfaces it as an explicit brain status state alongside
-the absence-of-`brain.aide` state and the preexisting healthy and
-broken-wiring states, and the orchestrator refuses to advance until
-the user runs sync.
+across argument positions; that surface remains for them but is not
+exercised by the default scaffold. Substitution lives only in
+`mcpServerConfig.args` at install/sync time, applied by the
+`.mcp.json` writer when sync runs — never in any of the six body
+sections at agent time. All six body sections return verbatim, with
+no rendering pass between disk and the consumer.
 
-**The framework's brain contract is exactly three required entry-point
-artifacts seeded from named body sections, not two.** The coding-playbook
-artifact at `coding-playbook/coding-playbook.md` sources its bytes from
-the `playbook` body section; the study-playbook artifact at
-`coding-playbook/study-playbook.md` sources its bytes from the new
-`studyPlaybook` body section; the research artifact at
-`research/research.md` sources its bytes from the `research` body
-section. The third artifact is what the agent-side `study-playbook`
-skill points at — the skill stays minimal because the navigation
-methodology lives in this on-disk artifact rather than inside the
-skill body itself. Splitting playbook-navigation prose (the Step 1/2/3
-process, the Navigation Rules block, link-traversal semantics) out of
-the playbook section into its own section is what makes the
-study-playbook artifact possible: the playbook section is now
-single-purpose (pure conventions), the studyPlaybook section is
-single-purpose (procedural navigation methodology), and each section
-is trimmable and overridable without conflating concerns. Field-name
-shape: the kebab-case marker token `study-playbook` populates the
-camelCase parsed field `studyPlaybook` (no `Hub` suffix; that suffix
-is a retired regression class that extends to the new field). Storage
-shape for any artifact is the user's `brain.aide` concern, not the
-package's; for an editor-backed Markdown brain the artifacts land at
-the three Markdown paths above, but how they manifest in any other
-backend is a body-section concern, never a code concern.
+**Six body sections, each named for what it IS.** The schema names
+field names that describe their consumer purpose: `orientation` (the
+runtime briefing the agent reads on session start), `config` (the
+integration-specific wiring flow `/aide:brain config` executes
+verbatim), `playbookIndex` (the install-time *index* of the playbook,
+distinct from the playbook content itself), `studyPlaybook` (the
+install-time seed for the navigation methodology), `updatePlaybook`
+(the install-time seed for the playbook-maintenance methodology),
+and `researchIndex` (the install-time index of research). Each
+section names a distinct consumer concern — runtime orientation,
+runtime wiring, on-disk playbook index, on-disk navigation
+methodology, on-disk maintenance methodology, on-disk research index.
+Collapsing any two into one would force users to read past their
+concern to find what they need. The kebab-case marker tokens populate
+camelCase typed keys (`playbook-index → playbookIndex`,
+`study-playbook → studyPlaybook`, `update-playbook → updatePlaybook`,
+`research-index → researchIndex`), and the `Hub` suffix is a retired
+regression class — `playbookIndexHub`, `studyPlaybookHub`,
+`updatePlaybookHub`, `researchIndexHub` are all rejected.
+
+**Live-vs-seed is enforced as a per-consumer ownership boundary at
+the code level, not as a convention.** The first two sections
+(`orientation`, `config`) are read live by `aide_brain` whenever an
+agent or shipped command calls it; the last four (`playbookIndex`,
+`studyPlaybook`, `updatePlaybook`, `researchIndex`) are read once at
+cold install by the install service and written into the brain as
+on-disk entry-point artifacts. After install the brain owns the
+on-disk file; the seed section in `brain.aide` is dormant, and any
+edit happens in the brain file. The split is enforced at the
+consumer boundary: `aide_brain` MUST NOT read seed sections, and the
+install service MUST NOT read live sections. Cross-reading would
+re-create the dual-source-of-truth problem — if `aide_brain`
+returned the `updatePlaybook` seed at runtime, the agent would have
+two authoritative sources for the same content (the `brain.aide`
+section AND the on-disk artifact in the brain), and edits made to
+one would not propagate to the other. The parser hands each consumer
+its own typed keys, the typed-key surface is the boundary, and any
+helper that crosses it is the same regression as an in-code backend
+registry coming back through a different door.
+
+**`aide_brain`'s `kind` vocabulary is closed at exactly the two live
+sections.** The tool accepts `kind?: "orientation" | "config"` and
+no other value. `kind: "orientation"` is the default and returns the
+runtime briefing; `kind: "config"` returns the wiring flow
+`/aide:brain config` executes. Adding `kind: "playbook-index"`,
+`kind: "study-playbook"`, `kind: "update-playbook"`, `kind:
+"research-index"`, or any future seed section would expose a seed
+through the live-section interface — the failure mode the live-vs-seed
+split exists to prevent. The schema's split is enforceable at the
+tool surface or it is not enforced at all; the closed `kind` enum is
+the enforcement.
+
+**update-playbook is a seed because consistency with study-playbook
+beats convenience.** Every methodology that runs against the brain —
+playbook-navigation, playbook-maintenance — is the user's content,
+edited in the user's brain, evolving outside the package's release
+cycle. The shipped `/aide:update-playbook` command and the agent-side
+`study-playbook` skill share one shape: a thin pointer at an on-disk
+brain artifact whose body holds the methodology. Making
+`update-playbook` a seed (lands in the brain at
+`coding-playbook/update-playbook.md` on cold install, edited in the
+brain afterwards) preserves that shape. Making it a live `aide_brain`
+kind would split the playbook-related methodology surfaces in two —
+one read live from `brain.aide`, one read on-disk from the brain —
+and force users to learn a different edit surface for each. The
+consistency-with-study-playbook decision is load-bearing precisely
+because the user's mental model for "where do I edit this" must
+extend cleanly across both methodologies.
+
+**The cold-install CLI is argument-less and brain-agnostic.** `npx
+aidemd-mcp init` accepts no brain-shaped flag of any kind. It
+installs the methodology layer only — methodology docs, pipeline
+agent files, slash commands, skills, the framework pointer stub, and
+the IDE preview wiring — and touches no brain surface. It does not
+write `.aide/config/brain.aide`. It does not write a `.mcp.json`
+entry under `mcpServers["brain"]`. It does not call the brain
+provisioner. It does not create the brain root directory. It does
+not ask the user for a brain path, an API token, or any other
+backend-specific value. Brain wiring is a separate user-driven
+action on the first `/aide` run, and the cold install's terminal
+warning routes the user there explicitly. Splitting wiring out of
+install is what lets the install path stay backend-agnostic across
+the catalog of brains the user could possibly wire — an install path
+that knows about path slots is an install path that has to know
+about token slots, page-id slots, and connection-uri slots the
+moment the catalog grows. Future integration-selection at install
+time (an `npx aidemd-mcp init --brain <integration>` form that
+selects which bundled template scaffolds on first config) is a
+forward-compatible extension that still leaves slot-filling to
+`/aide:brain config` — the install path never collects
+backend-specific values.
+
+**Brain wiring is `/aide:brain config`'s job, and `aide_init({
+category: "brain" })` is unconditional inside that router.** The
+shipped `/aide:brain config` calls `aide_init({ category: "brain"
+})` at the top of every invocation. The call is not gated on the
+brain's status, not branched on whether `brain.aide` already exists,
+not skipped when entry-point seed artifacts already exist on disk.
+The unconditional call is what makes missing-file recovery
+self-heal: the brain provisioner's presence-only idempotency
+re-seeds any missing artifact in place without touching anything
+that already exists. After the unconditional call the router pulls
+integration-specific wiring instructions via `aide_brain({ kind:
+"config" })` and executes them verbatim, forwarding any user
+`$ARGUMENTS` opaquely. Folding recovery into `config`'s preamble
+keeps the brain command surface minimal at one verb — there is no
+`doctor`, no `repair`, no `status` subcommand the agent has to know
+to invoke. A conditional call would push recovery into a separate
+verb the user and agent both have to discover; the unconditional
+call hides recovery behind the verb they already know to run.
+
+**YAML null is the unwired-slot signal, not a string.** The bundled
+template's `mcpServerConfig.args` is typed `(string | null)[]` —
+every element is either a fully-formed argument string or YAML null
+(a bare `-` with no scalar after, which YAML parses to `null`). A
+null at any index means the user has not yet supplied the value
+that slot needs. The unwired state is a structural property of the
+config, not a string the package has to recognize. A literal-string
+sentinel under any name is rejected: a sentinel produces a
+configuration where `brain.aide` and `.mcp.json` agree byte-for-byte
+(both contain the literal sentinel), the drift detector returns
+`ok`, the orchestrator never routes to `/aide:brain config`, and
+the user discovers the broken state only when the brain MCP server
+fails to launch. YAML null cannot pass the drift check and cannot
+land in `.mcp.json` as a launchable arg — the structural signal
+forces every consumer to either fill the slot or refuse, with no
+silent middle path. Substitution surfaces stay separate: `${...}`
+interpolation of frontmatter fields into args remains for advanced
+users, but the unwired-slot signal does not pass through any
+substitution surface — null is null until the user edits it.
+
+**Per-integration ownership of arg-index slot semantics.** The
+meaning of each slot in `mcpServerConfig.args` — which index is a
+path, which is a token, which is a connection URI, which is already
+fully wired by the launcher itself — is documented exclusively
+inside that integration's `config` body section in its bundled
+`brain.aide` template. The bundled Obsidian default names `args[3]`
+as the absolute path to the user's brain root; a future Mem0
+integration would name `args[2]` as the API token and `args[3]` as
+the user identifier in its own template. Whatever future
+integrations exist, each describes its own slot map in its own
+prose. The shipped `/aide:brain config` router NEVER introspects
+which slot is which — it forwards `$ARGUMENTS` opaquely and lets
+the integration's prose drive every per-slot decision. There is no
+shipped registry of slot meanings, no per-index validation table,
+no `argSlots` frontmatter field declaring what each index is
+supposed to be. Slot semantics live in the user-owned body, same
+as every other per-backend concern. This is what makes adding a
+new backend a host-side prose addition rather than a package code
+change.
+
+**Sync is byte-faithful for real args and refusing for null args.**
+`npx aidemd-mcp sync` reads `brain.aide` and writes the
+post-interpolation `mcpServerConfig` byte-for-byte into
+`.mcp.json`'s `mcpServers["brain"]` entry. Sync is idempotent. Sync
+refuses to write null-bearing args: if any element of
+`mcpServerConfig.args` is null at sync time, sync exits non-zero,
+names the offending index(es), and routes the user to `/aide:brain
+config` to fill them. Propagating null into a launch command is
+propagating broken state, not a useful byte-faithful action. A sync
+that silently coerces null to an empty string, drops the null
+entry, substitutes a placeholder, or otherwise converts the
+unwired-slot signal into a string is exactly the regression that
+made literal-sentinel designs unworkable in the first place. The
+MCP server never silently rewrites `.mcp.json`; mutation of the
+host's MCP wiring is always a deliberate user action with a visible
+command boundary.
+
+**Boot reporter brain status is a closed four-state vocabulary; null
+args collapse into `no-mcp-entry`.** The brain status states are
+`ok`, `no-brain-aide`, `no-mcp-entry`, and `mcp-drift`. The
+`buildBrainState` helper maps any null entry in
+`mcpServerConfig.args` to `no-mcp-entry` semantically: a
+null-bearing config is by definition not a wireable launch command,
+so the brain's MCP entry is treated as not-yet-wired regardless of
+whether `.mcp.json` happens to contain a stale entry from a prior
+session. The four-state vocabulary is closed; introducing a fifth
+state for null-armed args (`unwired`, `incomplete-args`,
+`placeholder-present`) would force every consumer of the four-state
+union — orchestrator routing, the `/aide` flow, the boot reporter —
+to grow a fifth branch with no different remedy than `no-mcp-entry`
+already has (route to `/aide:brain config`). Collapsing the
+unwired-slot case into `no-mcp-entry` is the design that keeps the
+state space minimal and the orchestrator routing trivial.
+
+**Shipped pipeline commands forward arguments, they do not interpret
+them.** `/aide:brain config` takes `$ARGUMENTS` as an opaque
+pass-through string and forwards it verbatim to the integration's
+`config` prose. The shipped command does not parse the bytes, does
+not validate the bytes, does not document what shape the bytes
+should take. Whether the bytes mean an absolute path, an API token,
+a `token+pageId` JSON blob, or anything else is the integration's
+concern, documented inside the integration's `config` body section
+in `brain.aide`. The shipped command's docs cannot list parameter
+shapes — there are none at the shipped layer. A shipped command
+that hardcodes a positional argument because one bundled
+integration happens to want one is the in-code backend registry
+coming back through the command-prompt surface; the same regression
+in different clothing as a switch on `connector` or a registry
+lookup keyed by name. `/aide:update-playbook` applies the same rule
+at one step deeper: it calls `aide_brain` for the brain's read
+tool, reads `coding-playbook/update-playbook.md`, and follows that
+file's instructions verbatim. Backend-specific MCP tool names, edit
+recipes, and routing-table mechanics live in the on-disk artifact,
+not in the shipped command file.
+
+**Pre-rework files return `malformed-body`; there is no transitional
+read path and no auto-rewrite.** Any `brain.aide` file that does
+not present all six new marker pairs in required order halts the
+pipeline with `malformed-body` naming the missing markers
+specifically. There is no `aide_upgrade` carve-out that auto-injects
+missing pairs, no transitional reader that renames retired markers
+on the fly, no fallback path that synthesizes missing sections.
+`brain.aide` is user-owned the moment it lands, and any code path
+that mutates it on a subsequent run shifts a load-bearing user
+surface out from under the user — the same regression class as
+`aide_init` rewriting `.aide/config/` files or the MCP server
+silently rewriting `.mcp.json`. Strict failure that names every
+missing marker, plus the user hand-editing, is the only acceptable
+migration path.
 
 **Storage-agnostic vocabulary across every code surface this package
 authors, with four explicit carve-outs and no fifth.** The forbidden
 tokens — `vault`, `obsidian`, `note` (as a synonym for "file"),
 `wikilink`, `hub note`, `hub` — must not appear in any user-facing
-prose surface this package authors (MCP tool descriptions, the README,
-canonical methodology docs, slash-command prompts, agent definitions,
-every `.aide` spec authored in this repo) nor in code identifiers,
-comments, or string constants project-wide. The four allowed
-exceptions each name a legitimate non-branching anchor: the
+prose surface this package authors (MCP tool descriptions, the
+README, canonical methodology docs, slash-command prompts, agent
+definitions, every `.aide` spec authored in this repo) nor in code
+identifiers, comments, or string constants project-wide. The four
+allowed exceptions each name a legitimate non-branching anchor: the
 `obsidianBrainAideTemplate` helper folder name (describes bundled
 template content, not a dispatch axis), the `.obsidian` directory
 heuristic comment in `brainRootExists` (an honestly-labeled
-implementation detail in a single helper), the legacy `obsidian` MCP
-key referenced inside migration branches (the key being migrated away
-from), and the body section bytes of the bundled
-`obsidianBrainAideTemplate` helper itself across all four named
-sections (prose, playbook, studyPlaybook, research). The fourth
-carve-out exists because the bundled template IS the obsidian
-default: those bytes ship obsidian-flavored content by design across
-every section (the prose section naming the connector's MCP tools,
-the playbook section structured for an editor-backed brain, the
-studyPlaybook section shipping the multi-month-tested
-inline-reference navigation methodology, the research index keyed
-for the same backend), they become user-owned the moment they are
-scaffolded onto disk, and any host that wires a different brain
-edits the section bytes in their own brain.aide. The
-bundled-template-body-bytes carve-out is scoped exactly: it covers
-the bytes inside the template's body section literals only — NOT the
-JSDoc, identifiers, parameter names, or function names in the
-template module's `index.ts`, NOT string constants anywhere outside
-the body section literals, NOT anti-example bullets in
-undesired-outcome blocks (those have their own anti-example carve-out),
-and NOT any other bundled template should one ever exist unless it
-is explicitly named as another connector-flavored default.
-Anti-example occurrences inside undesired-outcome blocks are also
-allowed — naming a forbidden token to forbid it is the mechanism, not
-a violation. The safe-list of storage-agnostic body-field names is
-`prose`, `playbook`, `studyPlaybook`, `research`; the field-name
-regression class (Hub suffix) extends from `playbookHub` /
-`researchHub` to `studyPlaybookHub` — every Hub-suffixed shape is
-rejected. Every other appearance of the forbidden tokens, in code or
-prose, is a regression.
+implementation detail in a single helper), the legacy `obsidian`
+MCP key referenced inside migration branches (the key being
+migrated away from), and the body section bytes of the bundled
+`obsidianBrainAideTemplate` helper itself across all six named
+sections. The fourth carve-out exists because the bundled template
+IS the obsidian default: those bytes ship obsidian-flavored
+content by design across every section, they become user-owned the
+moment they are scaffolded onto disk or seeded into the brain, and
+any host that wires a different brain edits the section bytes in
+their own `brain.aide`. The bundled-template-body-bytes carve-out
+is scoped exactly: it covers the bytes inside the template's body
+section literals only — NOT the JSDoc, identifiers, parameter
+names, or function names in the template module's `index.ts`, NOT
+string constants anywhere outside the body section literals, NOT
+anti-example bullets in undesired-outcome blocks (those have their
+own anti-example carve-out), and NOT any other bundled template
+should one ever exist unless it is explicitly named as another
+connector-flavored default. Anti-example occurrences inside
+undesired-outcome blocks are also allowed — naming a forbidden
+token to forbid it is the mechanism, not a violation. The safe-list
+of storage-agnostic body-field names is exactly `orientation`,
+`config`, `playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+`researchIndex`; the `Hub`-suffix regression class extends across
+every seed-section field. Every other appearance of the forbidden
+tokens, in code or prose, is a regression.
+
+**Migration from the brain is one-way.** Every doc that lands in
+this repo is deleted or archived from the brain on the same commit.
+Drift between two copies of a canonical doc is the worst kind of
+drift, because it silently propagates to every host project on its
+next init and no one notices which copy is authoritative.
 
 **Intent-driven development is the measurement.** Every change to this
 repo — a new doc, a new tool, a revised description, a refactored helper
@@ -660,10 +1310,15 @@ An agent in a cold host project is told only "run aide_init." It does,
 reads back a summary naming the pointer stub in the config file, the
 installed host-side doc hub with every canonical methodology doc by
 name, the pipeline slash commands, the MCP registration, and the
-IDE configuration, and then starts the pipeline with `/aide:research`.
-At no point in that sequence did a human tell the agent what AIDE is,
-what a `.aide` file is, or how the phases fit together — every piece
-came through the tooling.
+IDE configuration, plus a terminal warning that brain wiring still
+needs to happen via `/aide:brain config` on the first `/aide` run.
+At no point in that sequence did a human tell the agent what AIDE
+is, what a `.aide` file is, or how the phases fit together — every
+piece came through the tooling. The summary is honest about what the
+install did and did not do: the methodology layer is in place,
+`brain.aide` does not yet exist, the `.mcp.json` brain entry has not
+been written, and the next step is the user-facing one the warning
+named.
 
 An agent opens a host project to implement a new feature unrelated to
 AIDE. Its first read is the host's config file, which contains a short
@@ -680,52 +1335,109 @@ progressive disclosure the methodology teaches — exactly the way the
 user's global `study-playbook` skill crawls the brain on demand
 instead of hoisting it into every session.
 
-A contributor adds a new tool to the MCP server. They read `/.aide`,
+A contributor adds a new tool to the MCP server. They read `.aide/intent.aide`,
 narrow to `src/.aide`, narrow to their new submodule spec, and know
 exactly which invariants their addition must honor: one-to-one mapping
 between methodology phases and tools, client parity, idempotency,
 progressive disclosure in the code, cascading intent in the spec.
 A small number of reads, full contract, no source files opened.
 
-A host runs `aide_init` and the installer scaffolds
-`.aide/config/brain.aide` prefilled with the canonical default
-configuration. The frontmatter has exactly the two fields the schema
-requires — a human-readable `name` label and an `mcpServerConfig`
-block sync writes verbatim into `.mcp.json`:
+The user runs `npx aidemd-mcp init` in a brand-new host project. The
+CLI installs the methodology layer end-to-end: writes the pointer
+stub into the framework config file, lands the canonical methodology
+doc set under `.aide/docs/`, scaffolds the pipeline slash commands
+under `.claude/commands/aide/`, installs the pipeline agent files
+under `.claude/agents/aide/`, installs the generic `study-playbook`
+skill, writes the `aide` MCP server entry into `.mcp.json`, configures
+IDE preview wiring. It does not write `.aide/config/brain.aide`. It
+does not write a `.mcp.json` entry under `mcpServers["brain"]`. It
+does not create a brain root directory. The terminal output ends
+with a warning that names `/aide:brain config` as the surface to
+run on first `/aide` to wire the brain, plus any IDE-choice or
+upgrade follow-ups the install deferred. The user closes the
+terminal knowing exactly what was done and what is left.
+
+The user runs `/aide` for the first time in the same project. The
+orchestrator reads boot state, sees brain status `no-brain-aide`,
+and routes to `/aide:brain config`. The shipped `/aide:brain config`
+router calls `aide_init({ category: "brain" })` unconditionally as
+its first step. The brain provisioner runs its presence-only
+idempotency check across its seven plan steps, and because nothing
+brain-shaped exists yet, it scaffolds `.aide/config/brain.aide`
+with the bundled obsidian default, ensures the brain root
+directories exist, seeds the four entry-point artifacts from the
+template's seed sections, and writes the `.mcp.json` brain entry
+derived from the scaffolded `brain.aide` via the parser. The
+scaffolded `brain.aide` lands with two top-level frontmatter fields
+and a body laid out as six marker-bounded sections in the required
+order — `orientation`, `config`, `playbookIndex`, `studyPlaybook`,
+`updatePlaybook`, `researchIndex` — each opened and closed by its
+own pair of HTML-comment markers. The frontmatter has YAML null at
+the path slot of `mcpServerConfig.args`, since the user has not yet
+supplied a brain root path:
 
 ```
 ---
 name: obsidian
 mcpServerConfig:
-  command: npx
+  command: cmd
   args:
+    - /c
+    - npx
     - "@bitbonsai/mcpvault"
-    - "D:/brains/my-brain"
+    -
 ---
 ```
 
-`name: obsidian` is a label the user reads in the file and the agent
-narrates back in conversation; the package never branches on it. The
-body is hand-written and laid out as four marker-bounded sections in
-the required order — prose first, playbook second, studyPlaybook
-third, research fourth — with each section opened and closed by its
-own pair of HTML-comment markers. Because the bundled default is the
-obsidian default, the section bytes below ship obsidian-flavored
-content under the storage-agnostic-vocabulary carve-out for the
-template's body section literals:
+The bare `-` on the last line is YAML null, parsed as the explicit
+unwired-slot signal. `name: obsidian` is a label the user reads in
+the file and the agent narrates back in conversation; the package
+never branches on it. The body section bytes ship obsidian-flavored
+content because the bundled template IS the obsidian default,
+under the storage-agnostic-vocabulary carve-out for the template's
+body section literals:
 
 ```
-<!-- aide-prose-start -->
-Your brain is an Obsidian vault reached through the MCP labeled `brain`.
-Use `mcp__brain__read_note` to open notes by their vault-relative path.
-Use `mcp__brain__search_notes` for keyword queries across the vault.
-The brain's coding-playbook hub is at `coding-playbook/coding-playbook.md`;
-the study-playbook hub is at `coding-playbook/study-playbook.md`;
-the research hub is at `research/research.md`. Read either hub first,
-then follow the `[[wikilinks]]` it lists into the rest of the vault.
-<!-- aide-prose-end -->
+<!-- aide-orientation-start -->
+Your brain is an Obsidian-backed knowledge store reached through the
+MCP labeled `brain`. Use `mcp__brain__read_note` to open files by
+their brain-relative path. Use `mcp__brain__search_notes` for
+keyword queries. The store has four entry-point artifacts: the
+coding-playbook index at `coding-playbook/coding-playbook.md`, the
+study-playbook navigation guide at
+`coding-playbook/study-playbook.md`, the update-playbook
+maintenance guide at `coding-playbook/update-playbook.md`, and the
+research index at `research/research.md`. Start from the relevant
+entry-point for your task and follow the `[[wikilinks]]` it lists
+to deepen context.
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
+<!-- aide-config-start -->
+You are completing the wiring of an Obsidian brain. The required
+value is the absolute path to the user's Obsidian vault. In
+`mcpServerConfig.args` for this integration, `args[3]` is the
+path slot — the index that holds the brain-root path the launcher
+needs.
+
+Argument shape (Obsidian only): `/aide:brain config [<absolute-path>]`.
+
+1. Read `brain.aide`. Inspect `mcpServerConfig.args[3]`.
+   - If `args[3]` is null, the brain is not wired; resolve a target
+     path from `$ARGUMENTS` (non-empty) or by asking the user
+     (empty).
+   - If `args[3]` is a real path and `$ARGUMENTS` is empty, STOP —
+     there is nothing to do.
+   - If `args[3]` is a real path and `$ARGUMENTS` is non-empty, the
+     user is re-pointing the brain; the supplied value becomes the
+     new target.
+2. Edit `brain.aide` — replace `args[3]` with the resolved target
+   path string.
+3. Sync — read `.mcp.json["mcpServers"]["aide"]`, append `"sync"` to
+   its args, run via Bash.
+4. Emit the restart message.
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
 # Coding Playbook
 
 ## Task Routing
@@ -733,121 +1445,139 @@ then follow the `[[wikilinks]]` it lists into the rest of the vault.
 | Task domain | Section |
 |-------------|---------|
 
-## Always Read First
-
-(content the user fills in)
-
 ## Sections
-
-## Contents
-<!-- aide-playbook-end -->
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 # Study Playbook
 
-## How to use the playbook hub
+**Step 1.** Open `coding-playbook/coding-playbook.md`. The Task
+Routing table tells you which section applies.
 
-**Step 1.** Open the coding-playbook hub note. The Task Routing table
-tells you which section applies to your task.
+**Step 2.** Drill into the matching section. Read its hub note and
+follow the `[[wikilinks]]` it lists.
 
-**Step 2.** Drill into the section that matches. Read the section's
-hub note and the `[[wikilinks]]` it lists; pick the wikilinks whose
-names or descriptions match the task at hand.
-
-**Step 3.** Follow each picked wikilink into its target note. Read
-only what your task demands.
-
-## Navigation Rules
-
-Hub notes are navigation, not content — depth does not start there.
-Depth starts on the first content note you reach. From any content
-note, follow the `[[wikilinks]]` it lists for at least one or two
-more levels in any direction the information could apply, but stop
-at the first wikilink whose target is unrelated to the current task.
-
-Example: if the playbook hub lists `[[testing]]` and you read it
-(that is depth 0, the first content note), and `[[testing]]` lists
-`[[mocking]]`, then reading `[[mocking]]` is depth 1.
+**Step 3.** Follow picked wikilinks into target notes. Read only
+what your task demands.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
+<!-- aide-update-playbook-start -->
+# Update Playbook
+
+Maintenance methodology. Use `mcp__brain__read_note` and
+`mcp__brain__patch_note` against entries under `coding-playbook/`.
+
+1. Identify the change.
+2. Read `coding-playbook/coding-playbook.md` to locate the section.
+3. Apply the change.
+4. Routing-table drift check: compare the index's routing table
+   against the actual sections.
+5. Reconcile any drift the user approves.
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
 # Research
 
 ## Domains
 
 | Domain | Notes |
 |--------|-------|
-
-## How to Use This Index
-
-Research material is filed by domain. Drill into the domain that
-matches your task; do not flat-search across every domain.
-<!-- aide-research-end -->
+<!-- aide-research-index-end -->
 ```
 
 The marker layout is what the parser enforces: lowercase,
-case-sensitive, distinct open and close per section, in the
-prose-then-playbook-then-studyPlaybook-then-research order. The body
-text inside each pair is connector-flavored by design here because
-the bundled template IS the obsidian default — the carve-out for the
-template's body section literals legitimately permits the obsidian
-vocabulary across all four sections. `aide_brain` returns the prose
-section's bytes verbatim; `provisionBrain` reads the playbook,
-studyPlaybook, and research sections to scaffold the three
-corresponding entry-point artifacts on cold install. No code in this
-package interpreted any of the words inside the markers; they are
-the user's instructions to the agent, owned by the user the moment
-they land, edited by the user. Bytes outside any marker pair — a
-note-to-self above the first opener, scratch text between two
-sections — are silently ignored by the parser; the parser's job is
-to extract the four named sections, not to police the rest of the
-file.
+case-sensitive, distinct open and close per section, in the fixed
+six-pair order. The body text inside each pair is connector-flavored
+by design here because the bundled template IS the obsidian default —
+the carve-out for the template's body section literals legitimately
+permits the obsidian vocabulary across all six sections. `aide_brain`
+reads the `orientation` and `config` sections live; the brain
+provisioner reads the `playbookIndex`, `studyPlaybook`,
+`updatePlaybook`, and `researchIndex` sections once at install time
+to scaffold the four entry-point artifacts inside the brain. After
+install, the brain owns those four files; the seed sections in
+`brain.aide` are dormant. The MCP entry the brain provisioner
+writes to `.mcp.json` is byte-faithful to `mcpServerConfig` from
+the scaffolded `brain.aide` — null at `args[3]` carries through to
+`.mcp.json` unchanged at this point, because filling the slot is
+the next user-facing step in the same flow, not a sync operation.
 
-A second host wires a different brain — say, a hosted knowledge
-base reached through a different MCP — and edits all four body
-sections in their own `brain.aide`. They strip the obsidian-flavored
-vocabulary out of every section: the prose section now names the
-hosted backend's MCP tools, the studyPlaybook section now describes
-"page-link traversal" instead of `[[wikilink]]` semantics, the
-research section's Notes column becomes Pages, and so on. The
-package's CODE surface — every identifier, JSDoc word, log string,
-and InitStep `name` field — stays storage-agnostic regardless: the
-carve-out applied only to the bundled template's body section
-literals, never to the package's code surface, and the user's
-edited brain.aide is what the parser reads now.
+The same `/aide:brain config` invocation continues past its
+unconditional `aide_init` call: it pulls the integration's wiring
+instructions via `aide_brain({ kind: "config" })`, executes them
+verbatim with `$ARGUMENTS` forwarded. The integration's prose
+inspects `args[3]`, sees null, recognizes the user's
+`$ARGUMENTS` as the target absolute path (or asks for one if
+`$ARGUMENTS` is empty), edits `brain.aide` to replace null with
+the supplied path string, and runs sync via the `mcpServers.aide`
+invocation it pulled from `.mcp.json`. Sync reads the now-fully-
+populated `mcpServerConfig`, sees no null entries, writes the
+launch command into `.mcp.json` byte-for-byte, and exits clean.
+The shipped `/aide:brain config` file never parsed the path
+argument, never named a backend, never inspected which arg index
+was the path slot — the integration's `config` prose did all of
+it.
 
-A maintainer adds a typed result field to `parseBrainAide`'s `ok`
-branch for the new section. The field is named `studyPlaybook` —
-camelCase, no `Hub` suffix. The kebab-case marker token
-`study-playbook` populates this exact field name; the parsed result
-shape is `{ frontmatter, prose, playbook, studyPlaybook, research }`.
-A reviewer who proposes `studyPlaybookHub` is rejected: the Hub
-suffix is the retired regression class, applies to the new field
-just as it applies to the existing `playbook` and `research` fields,
-and the safe-list of storage-agnostic body-field names is exactly
-`prose`, `playbook`, `studyPlaybook`, `research`.
+An agent connects to the host's MCP server at session start and
+calls `aide_brain()` with no arguments. The tool defaults `kind` to
+`"orientation"`, parses `brain.aide`, extracts the bytes between
+`<!-- aide-orientation-start -->` and `<!-- aide-orientation-end -->`,
+and returns them verbatim with `status: "ok"`. The agent reads the
+prose, learns that the brain is an Obsidian-backed store with four
+entry-point artifacts at the listed paths, and from there can call
+`mcp__brain__read_note` against any of them. At no point did the
+server know what kind of backend was wired; the bytes the agent read
+came verbatim from the user's own `brain.aide`.
 
-The user makes a one-line edit to their `brain.aide` — they retarget
-the brain by changing the brain-root path string inline in
-`mcpServerConfig.args` (the second list entry, sitting next to
-`"@bitbonsai/mcpvault"`) and rerun `npx aidemd-mcp sync`. The sync
-verb reads the file's frontmatter, takes `mcpServerConfig`
-byte-for-byte as the user wrote it, and writes the resulting object
-into `.mcp.json` under the `brain` key. The transcript is short —
-sync reports that it read the config, names the brain key it wrote,
-and exits. The user runs `npx aidemd-mcp sync` again immediately to
-test idempotency: sync reads the same file, computes the same target
-object, sees `.mcp.json` already matches, and exits reporting no
-change. The host's MCP wiring was mutated exactly once, on a command
-the user typed, with the user looking at the terminal.
+A user runs `/aide:update-playbook` to refine the playbook's testing
+section. The shipped command is a one-step router: it calls
+`aide_brain` once, learns from the `orientation` section that the
+brain's read tool is `mcp__brain__read_note`, reads
+`coding-playbook/update-playbook.md` from the brain, and follows
+the five-step methodology that file describes (identify the change,
+read the index, apply the change, drift check, reconcile). The
+shipped command file never named `mcp__brain__patch_note`, never
+described routing-table drift detection, never branched on the
+wired backend — all of that lives in the on-disk update-playbook
+artifact, which the user has already edited twice since install to
+refine for their team's conventions.
+
+A second host wires a different brain — a hosted knowledge base
+reached through a different MCP — and edits their own `brain.aide`
+end-to-end. The frontmatter `name` becomes a label appropriate to
+the new backend; `mcpServerConfig.command` and `mcpServerConfig.args`
+become whatever launcher the new backend wants, with YAML null at
+whichever args indexes the user has not yet filled. The
+`orientation` section now names the hosted backend's MCP tools; the
+`config` section documents the new backend's slot map (e.g.
+"args[2] is the API token, args[3] is the user identifier") and
+the wiring flow's edit-and-sync sequence; the `studyPlaybook` and
+`updatePlaybook` seeds describe page-link traversal and API-driven
+page edits respectively; the `researchIndex` Notes column becomes
+Pages. The package's code surface — every identifier, JSDoc word,
+log string, InitStep `name` field — stays storage-agnostic
+regardless. Neither shipped command file changed; both still
+forward to whatever the host's brain says, and `/aide:brain config`
+still calls `aide_init({ category: "brain" })` unconditionally and
+forwards `$ARGUMENTS` opaquely.
+
+The user makes a one-line edit to their fully-wired `brain.aide` —
+they retarget the brain by changing the path string inline in
+`mcpServerConfig.args` and rerun `npx aidemd-mcp sync`. Sync reads
+the file's frontmatter, takes `mcpServerConfig` byte-for-byte as
+the user wrote it, sees no null entries, and writes the resulting
+object into `.mcp.json` under the `brain` key. A second `sync`
+immediately afterward computes the same target, sees `.mcp.json`
+already matches, and exits reporting no change. The host's MCP
+wiring was mutated exactly once, on a command the user typed.
 
 ## Bad examples
 
 A doctrine change that lands as a one-liner in a host project's CLAUDE.md
 after a maintainer "noticed something while using AIDE in production."
 The host project is correct for a week. The canonical docs in this repo
-still reflect the old rule. The next host project that runs aide_init
-receives the old rule because aide_init reads from the canonical docs,
+still reflect the old rule. The next host project that runs `aide_init`
+receives the old rule because `aide_init` reads from the canonical docs,
 and the two projects now diverge invisibly. The fix is to land the
 change in this repo first and let it flow outward, not to patch the edge
 and forget to come back.
@@ -883,11 +1613,11 @@ The correct response is to fix the tool descriptions, not to add a
 channel that papers over their weakness.
 
 A canonical doc that introduces a new pipeline phase — say, "review" —
-without aide_init scaffolding an `/aide:review` slash command to match.
-Agents read the methodology, look for the command, can't find it, and
-conclude the system is incomplete. The doc was aspirational; the tooling
-was real; they disagreed; the agent trusted the tooling and lost trust
-in the doc.
+without `aide_init` scaffolding an `/aide:review` slash command to
+match. Agents read the methodology, look for the command, can't find
+it, and conclude the system is incomplete. The doc was aspirational;
+the tooling was real; they disagreed; the agent trusted the tooling
+and lost trust in the doc.
 
 A child `.aide` that opens with "this repo is the canonical home of
 AIDE…" — a verbatim restatement of this spec's intent paragraph. The
@@ -900,107 +1630,252 @@ host's `.mcp.json`, inspects the entry's `command` and `args` shape,
 matches the args against a registered table of "known launchers,"
 identifies a specific connector, and returns connector-specific prose
 hardcoded in the package's source. The package now has to know about
-every brain a user might ever wire — the registry the refactor
-retired comes back through the side door. A user who wires an MCP
-server whose launcher shape doesn't match any registered matcher gets
-a "no brain wired" status from the boot reporter even though they
-clearly wired one; the package doesn't recognize their brain so it
-pretends it isn't there. The host's brain configuration is no longer
-user-owned; it is a vote the package gets to override. The whole
-point of the refactor was to remove this branching, and re-introducing
-it under any name — registry, matcher table, identity inferrer,
+every brain a user might ever wire — a registry coming in through the
+side door. A user who wires an MCP server whose launcher shape doesn't
+match any registered matcher gets a "no brain wired" status from the
+boot reporter even though they clearly wired one. Re-introducing the
+matching under any name — registry, matcher table, identity inferrer,
 "connector detection helper" — is the same regression in different
 clothing.
 
 The boot reporter runs at server startup, detects that `brain.aide`
-and `.mcp.json` disagree about the brain's launcher args, and
-"helpfully" auto-syncs by overwriting `.mcp.json`'s brain entry from
-the `brain.aide` source of truth. The user wakes up the next morning and
-finds their `.mcp.json` mutated by something that was not a command
-they typed. Worse: the prior afternoon they had hand-edited
-`.mcp.json` to point the brain MCP server at a temporary debug
-brain location while reproducing a bug; that hand-edit is now silently gone,
-because the auto-sync treated `brain.aide` as authoritative without
-asking. The user no longer trusts that the file they just edited
-will still say what they wrote when they come back to it. The
-substitution surface they thought they controlled — `.mcp.json` is
-the host's file, mutated only on commands the user runs — has been
-shifted out from under them. Drift is a hard halt, not a self-repair
-event; the only thing the boot reporter is allowed to do with drift
-is name it and stop.
+and `.mcp.json` disagree, and "helpfully" auto-syncs by overwriting
+`.mcp.json`'s brain entry from the `brain.aide` source of truth. The
+user wakes up to a `.mcp.json` mutated by something that was not a
+command they typed; their prior-afternoon hand-edit pointing the
+brain MCP server at a temporary debug location is silently gone.
+Drift is a hard halt, not a self-repair event; the only thing the
+boot reporter is allowed to do with drift is name it as `mcp-drift`
+and stop.
 
-`aide_brain` runs a substitution pass over the prose section before
-returning it — the same `${...}` interpolation of frontmatter values
-that lives in the `mcpServerConfig.args` install-time surface,
-applied to one of the agent-facing body sections at response time.
-The same regression with the substitution pass applied to the
-playbook, studyPlaybook, or research section instead of prose is
-the same regression in different clothing — none of the four body
-sections get agent-time substitution. Two failure modes follow.
-First: a connector whose prose legitimately documents a templating
-language uses literal `${...}` characters in the body — say, the
-prose explains that the user's knowledge store lets them define
-page templates with `${variable}` placeholders. The substitution
-engine eats those characters and either errors or silently strips
-them, mangling the agent-facing instructions in a way that's
-invisible from this package's tests. Second, and more load-bearing:
-with substitution in place, every body-section author has to track
-which strings will be rewritten before delivery, and the temptation
-to "just template the prose, playbook, studyPlaybook, or research
-sections too" lands. Two structurally different connectors get
-forced into a shared template that fits neither — Connector A's
-prose grows placeholders for concepts only Connector B's agents
-need, Connector B's prose grows placeholders for concepts only
-Connector A's agents need, both bodies bloat with conditionals that
-exist only to keep the shared template from breaking either side,
-and the user editing their own `brain.aide` now has to learn the
-package's template DSL before they can write instructions for their
-own brain. Hand-written body sections per connector with zero
-agent-time substitution — across the prose, playbook, studyPlaybook,
-and research sections alike — is the only shape that scales without
-forcing connectors to agree on a vocabulary they don't share.
+A shipped `.claude/commands/aide/brain.md` file documents
+`<absolute-path>` as a positional argument under its config mode.
+The shipped command's prose says "pass the absolute path to your
+brain root as `$ARGUMENTS`," and parses `$ARGUMENTS` against a
+path-shape expectation before forwarding. The bundled obsidian
+default happens to want a path — but the shipped command is the
+wrong layer to know that. A different brain wants a token-and-id
+pair, a hosted-API brain wants an API key, a JSON-blob brain wants
+a JSON blob; documenting one backend's shape at the shipped layer
+makes every other backend's users wrong by default and forces them
+to ignore docs that contradict their own integration's `config`
+section. The shipped command must take `$ARGUMENTS` opaquely,
+forward verbatim, and let the integration's `config` prose document
+its own argument shape and slot map. A command that parses
+`$ARGUMENTS` against a backend-specific shape is the in-code
+backend registry coming back through the command surface.
 
-A maintainer reads the storage-agnostic-vocabulary carve-out for the
-bundled template's body section literals and concludes the carve-out
-is a license to use connector-flavored vocabulary anywhere in the
-template module. JSDoc on the template's exported function picks up
-"returns the obsidian-flavored brain.aide bytes for vault scaffolding";
-a parameter renames from `brainPath` to `vaultPath`; an internal helper
-becomes `buildHubBlock`; a string constant outside the body section
-literals declares `const HUB_HEADER = "## Hub"`. The carve-out covers
-BYTES inside the body section literals only — NOT JSDoc, NOT
-identifiers, NOT parameter names, NOT function names, NOT string
-constants outside the section literals. The package's code surface
-stays storage-agnostic regardless of what the user-owned section bytes
-ship; conflating "the bundled template's body bytes ship obsidian
-content" with "the template module's code surface gets to as well" is
-the same regression as letting the studyPlaybook section's connector
-vocabulary leak into `provisionBrain`'s identifiers. Each tainted
-identifier and JSDoc word must be renamed back to the storage-agnostic
-shape; the carve-out's exact scoping is what makes it safe.
+A maintainer adds a third value to `aide_brain`'s `kind` enum:
+`kind: "update-playbook"` returns the `updatePlaybook` body section
+verbatim. The motivation reads as "consistency — if `orientation`
+and `config` are reachable, why not `update-playbook` too?" The
+failure mode is exactly the dual-source-of-truth problem the
+live-vs-seed split exists to prevent: after install, the
+authoritative bytes for the update-playbook methodology live in the
+brain at `coding-playbook/update-playbook.md`, where the user has
+edited them twice. `aide_brain({ kind: "update-playbook" })`
+returns the `brain.aide` seed bytes, which are now stale relative
+to the brain file. The agent reads the live tool's response and
+follows methodology the user replaced months ago. The live-vs-seed
+split must be enforceable at the tool surface or it is not
+enforceable at all; the closed two-value `kind` enum is the
+enforcement. Extending `kind` to `playbook-index`,
+`study-playbook`, or `research-index` is the same regression for
+the same reason.
 
-A maintainer extends the parser's `ParseBrainAideResult.ok` branch
-with a new field for the new section, names the field
-`studyPlaybookHub`, and writes a corresponding type literal
-`{ prose: string; playbook: string; studyPlaybookHub: string; research: string }`.
-The Hub suffix is the retired regression class — `playbookHub` and
-`researchHub` were rejected during the original three-section pivot
-for the same reason — and adding `studyPlaybookHub` reintroduces the
-rejected shape under the new section's name. The kebab-case marker
-token `study-playbook` populates the camelCase field `studyPlaybook`,
-no suffix; the safe-list of storage-agnostic body-field names is
-exactly `prose`, `playbook`, `studyPlaybook`, `research`. The Hub
-suffix is wrong wherever it lands, in the new field as cleanly as in
-the old ones.
+A maintainer notices that some `brain.aide` files in the wild use
+an older marker grammar and adds a transitional read path: when the
+parser sees old pairs, it auto-renames them to the new pairs in
+memory, synthesizes empty new sections, and returns `ok` so the
+pipeline proceeds. To avoid a per-session penalty the maintainer
+takes one more step: `aide_upgrade` rewrites `brain.aide` on disk,
+replacing old markers with new ones and inserting empty blocks. The
+user's file is now mutated by code they did not run, with empty
+sections that look authored but aren't — the next time
+`/aide:brain config` calls `aide_brain({ kind: "config" })` it
+gets back zero bytes and silently does nothing. `brain.aide` is
+user-owned the moment it lands; mutating it from any code path on
+a subsequent run shifts a load-bearing user surface out from under
+the user — same regression class as the MCP server silently
+rewriting `.mcp.json`. Strict `malformed-body` failure that names
+every missing marker and forces the user to hand-edit is the only
+acceptable migration path.
+
+The install service helper reads `brain.aide` and grabs the
+`orientation` field off the parsed result to decide what to seed
+the playbook index with. The motivation reads as "compose the
+playbook index from the orientation prose so the user only has to
+edit one place." The boundary the architecture draws is the
+opposite: the install service reads only seed sections
+(`playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+`researchIndex`) and never the live ones. A symmetric regression:
+`aide_brain` reads the `studyPlaybook` field off the parsed result
+to compose its `kind: "orientation"` response, on the theory that
+"every entry-point fact the orientation needs to mention is already
+in the study-playbook seed, so let's not duplicate." Both
+directions cross the per-consumer ownership boundary, both create
+a path where one consumer's edits silently affect the other
+consumer's output, and both rebuild the very dual-source-of-truth
+problem the split exists to prevent. The parser hands each
+consumer its own typed keys; helpers on either side touch only
+their own keys.
+
+A maintainer reads the storage-agnostic-vocabulary carve-out for
+the bundled template's body section literals and concludes the
+carve-out is a license to use connector-flavored vocabulary
+anywhere in the template module. JSDoc on the template's exported
+function picks up "returns the obsidian-flavored brain.aide bytes
+for vault scaffolding"; an internal helper becomes
+`buildHubBlock`; a string constant outside the body section
+literals declares `const HUB_HEADER = "## Hub"`; a log line in
+the brain provisioner reads `provisioning vault root at...`. The
+carve-out covers BYTES inside the body section literals only —
+NOT JSDoc, NOT identifiers, NOT parameter names, NOT function
+names, NOT string constants outside the section literals. The
+package's code surface stays storage-agnostic regardless of what
+the user-owned section bytes ship; conflating "the bundled
+template's body bytes ship obsidian content" with "the template
+module's code surface gets to as well" is the same regression as
+letting connector vocabulary leak into the brain provisioner's
+identifiers.
+
+A maintainer extends the parser's result type with new fields for
+the rework's sections and writes the type as `{ frontmatter,
+orientation, config, playbookIndexHub, studyPlaybookHub,
+updatePlaybookHub, researchIndexHub }`. The `Hub` suffix is a
+retired regression class — adding it to any seed-section field
+reintroduces the rejected shape under new section names. The
+kebab-case marker tokens populate the camelCase field names
+exactly: `playbook-index → playbookIndex`, `update-playbook →
+updatePlaybook`, `research-index → researchIndex`. The safe-list
+of storage-agnostic body-field names is exactly `orientation`,
+`config`, `playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+`researchIndex`; the `Hub` suffix is wrong wherever it lands.
+
+`cli/init` accepts a brain-shaped path flag that, when set, writes
+`.aide/config/brain.aide` with the supplied path inline in
+`mcpServerConfig.args` and writes a matching `.mcp.json` brain
+entry as part of the cold install. The motivation reads as
+"convenience for the power user who already knows their brain
+root." The failure mode is structural: collecting a backend-
+specific value at install time forces the install path to know
+about path slots, and a path slot is a path slot is a path slot
+until the catalog of brains the user could possibly wire grows
+to include token slots and connection-uri slots. The argument
+shape that worked for one bundled default becomes the argument
+shape every future bundled integration has to fight against. The
+brain-agnostic install path is structural: it ships only the
+methodology layer, and brain wiring lives downstream of the
+first `/aide` run where `/aide:brain config` owns it. Forms of
+the same regression include any path-shaped flag, any token-
+shaped flag for a hosted backend, an MCP-config-blob flag, and
+any other backend-shaped flag on the install CLI under any name.
+
+The bundled obsidian template emits `mcpServerConfig.args` with a
+recognizable literal string at the path slot when the brain has
+not been wired — angle-bracketed bytes the wiring flow is meant
+to grep-replace on its way to landing the real path. The intent
+reads as "use a visible placeholder so the user knows where to
+substitute." The failure mode is exactly what makes literal-
+sentinel designs unworkable: `brain.aide` lands with the literal
+in args, sync runs, the byte-identical literal propagates into
+`.mcp.json` under `mcpServers["brain"]`, the boot reporter
+compares `brain.aide` against `.mcp.json`, they agree byte-for-
+byte, the brain status returns `ok`, and the orchestrator never
+routes to `/aide:brain config`. The user discovers the broken
+state only when the brain MCP server fails to launch on a string
+the launcher cannot interpret. YAML null is the structural
+unwired-slot signal precisely because it cannot pass the drift
+check and cannot land in `.mcp.json` as a launchable arg — every
+consumer either fills the slot or refuses, with no silent middle
+path. Re-introducing a literal sentinel under any name — angle-
+bracketed placeholder, double-underscore-flanked uppercase token,
+magic UUID, the integer `-1`, the empty string treated as
+unwired, or any other in-band string the package recognizes as
+"please fill me in" — is the same regression class.
+
+`cli/sync` reads `brain.aide`, sees a null entry in
+`mcpServerConfig.args`, and "helpfully" coerces it to the empty
+string before writing `.mcp.json`. The motivation reads as
+"byte-faithful propagation — `args` is `(string | null)[]`, so
+the closest string is the empty string." The failure mode is
+that `.mcp.json` now contains a launch command with an empty arg
+where the brain root path was supposed to go, the launcher
+either crashes on the empty value or interprets it as the
+current working directory, and the boot reporter reports `ok`
+because `brain.aide` and `.mcp.json` agree (the `null →
+""` round-trip is stable). Variants of the same regression: sync
+drops the null entry entirely (shifting every later index by one
+and breaking slot semantics for every integration), substitutes a
+placeholder string, or rewrites `brain.aide` to fill the null
+with a default. The contract is hard-fail: any null arg at sync
+time exits non-zero, names the offending index, and routes the
+user to `/aide:brain config`. Sync's job is byte-faithful
+propagation of fully-formed launch commands, not best-effort
+patching of broken state.
+
+A `/aide:brain config` router that calls `aide_init({ category:
+"brain" })` only when `aide_info.brain.status` is
+`no-brain-aide`, skipping the call when `brain.aide` already
+exists or when the four entry-point artifacts are already on
+disk. The motivation reads as "avoid redundant work — the brain
+provisioner has nothing to do if the artifacts exist." The
+failure mode is that a user who deleted a seed artifact, whose
+prior install was interrupted, or whose template version added a
+section gets no recovery: the conditional skips the
+provisioner's presence-only idempotency check, the missing
+artifact stays missing, and the user has to discover a separate
+recovery verb. The unconditional call is what makes recovery
+self-heal. A conditional call pushes recovery into a `doctor` /
+`repair` / `status` subcommand the agent has to know to invoke,
+splitting the brain command surface and forcing every documentation
+surface to teach the conditional. The brain command surface stays
+minimal at one verb (`config`); recovery folds into that verb's
+preamble.
+
+A boot reporter or `buildBrainState` mapping that introduces a
+fifth status state for null-armed args — `unwired`,
+`incomplete-args`, `placeholder-present`, or any other label that
+splits the unwired-slot case off from `no-mcp-entry`. The
+motivation reads as "give the user a more specific signal." The
+failure mode is that the four-state vocabulary stops being closed:
+every consumer of the union (orchestrator routing, the `/aide`
+flow, the boot reporter, every test that exhaustively branches on
+the union) grows a fifth branch that routes to the same remedy
+`no-mcp-entry` already routes to (`/aide:brain config`).
+Specificity that doesn't change the remedy is overhead, not
+information. Null-armed args collapse semantically into
+`no-mcp-entry` because a null arg means the brain's MCP entry is
+not yet wireable; the four-state vocabulary stays closed.
+
+A shipped command file, code path, or registry that knows which
+arg index in `mcpServerConfig.args` means what — a switch on
+`args[3]` because the bundled default's path lives there, a
+matcher recognizing token-shaped strings at `args[2]`, an
+`argSlots` frontmatter field declaring "this index is a path,"
+a `/aide:brain config` router that introspects which slots are
+null to decide what to ask the user for. The motivation reads as
+"validate the slot before sync runs." The failure mode is the
+same as every previous registry regression: the package now has
+an opinion about which slots in which integrations mean what,
+and that opinion has to be updated every time a new integration's
+slot map changes. Slot semantics live exclusively in the
+per-integration `config` body section — the package never
+inspects which slot is which. A command or code path that grows
+arg-index awareness is the in-code backend registry coming back
+through the slot surface.
 
 ## References
 
-- `.aide/docs/aide-spec.md` -- canonical AIDE spec format conventions: required body sections, frontmatter rules, and the rule that strategy decisions trace to outcomes; informed the section integration and decision-form writing of the new strategy paragraph.
-- `.aide/docs/index.md` -- current canonical doc set inventory; informed the implicit commitment that the `brain-aide.md` doc tracks the four-section / three-artifact contract once the schema-extension cycle lands.
-- `src/service/install/writeMethodology/.aide` and `src/service/install/writeMethodology/index.ts` -- the existing HTML-comment marker precedent that the body-schema outcome extends; informed the lowercase, marker-bounded shape of the prose / playbook / studyPlaybook / research region delimiters and the principle that bytes outside the marker pair are not the parser's concern.
-- `src/service/parseBrainAide/.aide` -- the parser spec that consumes the body-schema decision; already updated to the four-section grammar, returning `{ prose, playbook, studyPlaybook, research }` on the `ok` branch and `malformed-body` naming the offending marker (including the new `aide-study-playbook-*` pair) on violations. Informed the strict-failure migration semantics for pre-pivot and pre-amendment files alike.
-- `src/service/install/provisionBrain/.aide` -- the planning spec that reads the parser's `playbook`, `studyPlaybook`, and `research` fields to scaffold the three required entry-point artifacts; already updated to the six-step pipeline (brain config → brain root → playbook artifact → study-playbook artifact → research artifact → MCP entry) and the three-artifact framework brain contract. Pinned the language pattern that the bundled template's responsibilities expand to include all four body sections, and that the carve-out covers the section bytes (user-owned) not the module's code surface.
-- `src/service/install/provisionBrain/obsidianBrainAideTemplate/` -- the bundled default template helper that emits the four marker-bounded body sections (prose + playbook trimmed to pure conventions + studyPlaybook holding the multi-month-tested navigation methodology + research). The template's body section bytes are the explicit fourth carve-out from the storage-agnostic-vocabulary outcome.
-- `.aide/handoff.aide` "Major code refactor queued" subsection -- architectural decision sign-off (2026-04-26) for the four-section schema extension and the new study-playbook entry-point artifact: section order, marker tokens, the new `coding-playbook/study-playbook.md` artifact path, the `buildStudyPlaybookStep` builder peer, the strict-failure migration policy with no `aide_upgrade` carve-out, and the field-name regression class extension to `studyPlaybookHub`. Drove the body-schema outcome's count update from three to four sections, the entry-point-artifacts outcome's count update from two to three artifacts, and the storage-agnostic-vocabulary outcome's carve-out extension from three exceptions to four.
+- `D:/Code/Me/aidemd-mcp/.aide/intent.aide` (frontmatter, lines 1-704) -- the source-of-truth contract this body synthesizes from. Every Strategy decision traces to a frontmatter outcome: the YAML-null-as-unwired-slot-signal paragraph traces to the args-typed `(string | null)[]` outcome and the no-literal-sentinel undesired outcome; the cli/init brain-agnostic paragraph traces to the cold-install-CLI-is-argument-less outcome and the cli/init-writing-brain-surface undesired outcome; the unconditional-`aide_init` paragraph traces to the shipped-pipeline-commands outcome; the per-integration arg-index slot semantics paragraph traces to the corresponding outcome of the same name; the sync-refusal paragraph traces to the `brain.aide`-and-`.mcp.json`-stay-in-sync outcome and the cli/sync-null-bearing-args undesired outcome; the closed-four-state paragraph traces to the no-`rootPath`-no-fifth-state outcome and the boot-reporter-fifth-state undesired outcome.
+- `.aide/docs/aide-spec.md` -- canonical AIDE spec format conventions: required body sections, frontmatter rules, the rule that strategy decisions trace to outcomes, and the decisions-not-descriptions standard for `## Strategy` paragraphs. Informed the per-paragraph rewrite shape: each strategy paragraph leads with the decision and follows with the reasoning.
+- `.aide/docs/index.md` -- canonical doc set inventory; informed the implicit commitment that `brain-aide.md` tracks the six-section / four-artifact contract and that `brain.aide` is a documented AIDE file type alongside `intent.aide`, `plan.aide`, `todo.aide`, `research.aide`.
+- `src/cli/init/.aide` -- sibling spec for the cold-install CLI whose own description was rewritten to "argument-less, brain-agnostic" in the same Stage 1 frontmatter rewrite. Confirmed the framing for the brain-agnostic-install Strategy paragraph: methodology-only install, no brain surfaces, terminal warning routes to `/aide:brain config`.
+- `src/cli/sync/.aide` -- sibling spec for the sync verb whose description was rewritten to "refuses to write null-bearing args" in the same Stage 1 rewrite. Confirmed the sync-refusal Strategy paragraph's "exit non-zero, name the offending index, route to `/aide:brain config`" remedy is the contract the sync module enforces.
+- `src/service/buildBrainState/.aide` -- sibling spec for the brain-state detector whose description was rewritten to "returns `no-mcp-entry` immediately when any element of the parsed `mcpServerConfig.args` is null" in the same Stage 1 rewrite. Confirmed the closed-four-state Strategy paragraph's null-collapses-to-`no-mcp-entry` mapping is the contract `buildBrainState` enforces and that the null check runs before drift comparison.
+- `src/service/parseBrainAide/.aide` -- sibling spec for the parser whose description names `mcpServerConfig.args` typed `(string | null)[]` with null preserved verbatim through to consumers. Confirmed the YAML-null Strategy paragraph's parser-level contract: null is part of the args type, the parser does not coerce or reject, downstream consumers decide per their own contracts.
+- `src/service/install/provisionBrain/.aide` -- sibling spec for the brain provisioner whose description names presence-only idempotency, the seven-step plan, and brain-root-path derivation via `parseBrainAide`. Confirmed the unconditional-`aide_init` Strategy paragraph's recovery-self-heals mechanism: the provisioner's idempotency is what makes the unconditional call free when nothing is missing.
+- `src/tools/brain/.aide` -- sibling spec for the `aide_brain` MCP tool whose description names the closed two-value `kind` discriminator and the response shape that carries only `status` + `instructions`. Confirmed the closed-`kind` Strategy paragraph's enforcement: the schema's split is enforceable at the tool surface or it is not enforced at all.
+- `.aide/handoff.aide` -- architectural decision sign-off captured during the rework. Carries the anti-regression invariants every build phase must hold (no transitional read paths, no silent acceptance of marker-layout violations, no introspection of `mcpServerConfig.args`, no reading another consumer's owned body section, no shipped pipeline command file documenting integration-specific argument shape, no hardcoded sync invocation in any skill or command prompt). Informed the bad-examples set's anti-pattern catalog.
 
-(No external research references were drawn for the brain-layer additions — that design was specified in conversation between the user and the orchestrator and signed off in `.aide/handoff.aide`. The existing body's strategy decisions about methodology delivery were established in prior spec rounds and stand on the canonical doc set itself.)
+(External domain research was not drawn for this rework. The design conclusions were specified directly in the frontmatter rewrite — the body's job is to surface the why behind each frontmatter decision. The methodology-delivery Strategy paragraphs that survived from prior spec rounds stand on the canonical doc set itself.)

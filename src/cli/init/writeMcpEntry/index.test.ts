@@ -24,11 +24,11 @@ async function readMcpJson(): Promise<Record<string, unknown>> {
 }
 
 // Helper: get the expected brain entry derived from the template for a given brain root path.
-function expectedBrainEntry(vaultPath: string) {
-	const content = obsidianBrainAideTemplate(vaultPath);
+function expectedBrainEntry(brainPath?: string) {
+	const content = obsidianBrainAideTemplate(brainPath);
 	const result = parseBrainAideFromString(content);
 	if (result.kind !== "ok") throw new Error("Template did not parse");
-	return { command: result.config.mcpServerConfig.command, args: interpolateArgs(result.config) };
+	return { command: result.mcpServerConfig.command, args: interpolateArgs({ name: result.name, mcpServerConfig: result.mcpServerConfig }) };
 }
 
 describe("writeMcpEntry (init wrapper)", () => {
@@ -106,9 +106,12 @@ describe("writeMcpEntry (init wrapper)", () => {
 		expect(brain.args.some((a) => a.includes("/new/path"))).toBe(false);
 	});
 
-	// --- 2c. vaultPath absent — only aide is written ---
+	// --- 2c. brainPath absent — brain entry still written with <BRAIN_PATH> placeholder ---
+	// Under the always-scaffold contract, the brain entry is always present in .mcp.json.
+	// When brainPath is omitted the ENOENT fallback template (obsidianBrainAideTemplate(undefined))
+	// produces the <BRAIN_PATH> placeholder, and interpolateArgs passes it through verbatim.
 
-	it("2c: vaultPath absent — only aide entry is written, brain is not included", async () => {
+	it("2c: brainPath absent — brain entry is written with <BRAIN_PATH> placeholder args", async () => {
 		const result = await writeMcpEntry(tempDir);
 
 		expect(result.status).toBe("created");
@@ -117,14 +120,22 @@ describe("writeMcpEntry (init wrapper)", () => {
 		const servers = parsed.mcpServers as Record<string, unknown>;
 
 		expect(servers.aide).toEqual(mcpEntry());
-		expect(servers.brain).toBeUndefined();
+		// Brain entry is always present — args carry the <BRAIN_PATH> placeholder verbatim.
+		const brain = servers.brain as { command: string; args: string[] };
+		expect(brain).toBeDefined();
+		expect(brain.args.some((a) => a.includes("<BRAIN_PATH>"))).toBe(true);
+		// Legacy obsidian key is always removed.
+		expect(servers.obsidian).toBeUndefined();
 	});
 
-	it("2c: vaultPath absent — message does not mention brain or placeholder", async () => {
-		const result = await writeMcpEntry(tempDir);
+	it("2c: brainPath absent — brain entry matches the placeholder template", async () => {
+		await writeMcpEntry(tempDir);
 
-		// The message should not include brain-related placeholders from the old implementation.
-		expect(result.message).not.toContain("placeholder");
+		const parsed = await readMcpJson();
+		const servers = parsed.mcpServers as Record<string, unknown>;
+		const brain = servers.brain as { command: string; args: string[] };
+
+		expect(brain).toEqual(expectedBrainEntry(undefined));
 	});
 
 	// --- 2d. Idempotent re-run ---
@@ -181,9 +192,8 @@ describe("writeMcpEntry (init wrapper)", () => {
 		expect(servers.aide).toEqual(mcpEntry());
 	});
 
-	it("2e: when vaultPath is absent, the obsidian key is preserved (no migration without path)", async () => {
-		const obsidianEntry = { command: "npx", args: ["@bitbonsai/mcpvault", "/old/vault"] };
-		const existing = { mcpServers: { obsidian: obsidianEntry } };
+	it("2e: when brainPath is absent, the obsidian key is still removed (always-scaffold contract removes it unconditionally)", async () => {
+		const existing = { mcpServers: { obsidian: { command: "npx", args: ["@bitbonsai/mcpvault", "/old/vault"] } } };
 		await writeFile(join(tempDir, ".mcp.json"), JSON.stringify(existing, null, 2), "utf-8");
 
 		await writeMcpEntry(tempDir);
@@ -191,8 +201,12 @@ describe("writeMcpEntry (init wrapper)", () => {
 		const parsed = await readMcpJson();
 		const servers = parsed.mcpServers as Record<string, unknown>;
 
-		// obsidian must still be there — only vaultPath path triggers migration.
-		expect(servers.obsidian).toEqual(obsidianEntry);
+		// obsidian must be removed — the brain entry is always written, obsidian always deleted.
+		expect(servers.obsidian).toBeUndefined();
+		// brain entry present with placeholder args.
+		const brain = servers.brain as { command: string; args: string[] };
+		expect(brain).toBeDefined();
+		expect(brain.args.some((a) => a.includes("<BRAIN_PATH>"))).toBe(true);
 	});
 
 	// --- Additional coverage ---

@@ -18,21 +18,27 @@ export interface WriteMcpEntryResult {
  *
  * Pipeline:
  * 1. Computes the `aide` entry via `mcpEntry()`.
- * 2. When `vaultPath` is supplied:
- *    - Computes the canonical Obsidian brain.aide template content for the brain root path.
- *    - If `.aide/config/brain.aide` exists on disk, reads it (user edits win
- *      over the template). Otherwise uses the in-memory template content.
+ * 2. Derives the brain MCP entry — always present under the always-scaffold
+ *    contract:
+ *    - Attempts to read `.aide/config/brain.aide` from disk. User edits win
+ *      over the template: if the file exists, its bytes are the source of truth.
+ *    - On ENOENT, falls back to the in-memory template generated from `brainPath`
+ *      (or `obsidianBrainAideTemplate(undefined)` when `brainPath` is absent, which
+ *      produces the `<BRAIN_PATH>` placeholder template). This fallback is
+ *      defense-in-depth for non-CLI callers that have not pre-written brain.aide;
+ *      the cold-start CLI (`runInit`) always pre-writes the file before this helper
+ *      runs, so the ENOENT branch is unreachable on the CLI path.
  *      The file lives inside the user-owned `.aide/config/` directory; this
  *      wrapper never writes to that path — only the orchestrator's
  *      seed-semantic scaffold step (Step 1 of runInit) writes it.
  *    - Parses the content via `parseBrainAideFromString`. On `ok`, derives
- *      the `brain` entry. On any non-ok kind, throws — a hand-edited
- *      brain.aide that doesn't parse is a user error to surface.
+ *      the `brain` entry via `parseResult.name` / `parseResult.mcpServerConfig`
+ *      (the flattened ok shape — no `.config` wrapper). On any non-ok kind,
+ *      throws — a hand-edited brain.aide that doesn't parse is a user error
+ *      to surface.
  *    - Adds `brain: brainEntry` and `obsidian: "delete"` to the entries map
  *      (legacy key migration, uniform with sync).
- * 3. When `vaultPath` is absent: only `aide` is in the entries map — the
- *    caller's deferred-categories messaging handles the brain followup.
- * 4. Delegates to the shared helper, then maps the result to the CLI shape:
+ * 3. Delegates to the shared helper, then maps the result to the CLI shape:
  *    - `unchanged: true` and no writes → `{ status: "exists", ... }`.
  *    - Otherwise → `{ status: "created", message: <composed from written + deleted> }`.
  *
@@ -43,49 +49,46 @@ export interface WriteMcpEntryResult {
  */
 export default async function writeMcpEntry(
 	projectRoot: string,
-	vaultPath?: string,
+	brainPath?: string,
 ): Promise<WriteMcpEntryResult> {
 	const entries: Record<string, McpServerEntry | "delete"> = {
 		aide: mcpEntry(),
 	};
 
-	if (vaultPath !== undefined) {
-		// Compute the canonical template content for this brain root path.
-		const templateContent = obsidianBrainAideTemplate(vaultPath);
-
-		// If brain.aide already exists on disk, use the user's version; otherwise
-		// fall back to the in-memory template (handles first-run and re-run cases).
-		const brainAidePath = join(projectRoot, ".aide", "config", "brain.aide");
-		let brainAideContent: string;
-		try {
-			brainAideContent = await readFile(brainAidePath, "utf-8");
-		} catch (err: unknown) {
-			if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-				brainAideContent = templateContent;
-			} else {
-				throw err;
-			}
+	// Derive the brain entry unconditionally — brain.aide is always on disk
+	// under the always-scaffold contract. `brainPath` is retained solely for
+	// the ENOENT fallback template (defense-in-depth for non-CLI callers).
+	const brainAidePath = join(projectRoot, ".aide", "config", "brain.aide");
+	let brainAideContent: string;
+	try {
+		brainAideContent = await readFile(brainAidePath, "utf-8");
+	} catch (err: unknown) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			// Fallback for non-CLI callers; the cold-start CLI always pre-writes
+			// the file before this helper runs.
+			brainAideContent = obsidianBrainAideTemplate(brainPath);
+		} else {
+			throw err;
 		}
-
-		// Parse the brain.aide content. Any non-ok result is a user error to surface.
-		const parseResult = parseBrainAideFromString(brainAideContent);
-		if (parseResult.kind !== "ok") {
-			const reason = parseResult.kind === "missing" ? "missing" : parseResult.reason;
-			throw new Error(
-				`.aide/config/brain.aide could not be parsed: ${reason}. Fix the file and re-run.`,
-			);
-		}
-
-		const { config } = parseResult;
-		const brainEntry: McpServerEntry = {
-			command: config.mcpServerConfig.command,
-			args: interpolateArgs(config),
-		};
-
-		entries.brain = brainEntry;
-		// Migrate legacy obsidian key — uniform with sync's behavior.
-		entries.obsidian = "delete";
 	}
+
+	// Parse the brain.aide content. Any non-ok result is a user error to surface.
+	const parseResult = parseBrainAideFromString(brainAideContent);
+	if (parseResult.kind !== "ok") {
+		const reason = parseResult.kind === "missing" ? "missing" : parseResult.reason;
+		throw new Error(
+			`.aide/config/brain.aide could not be parsed: ${reason}. Fix the file and re-run.`,
+		);
+	}
+
+	const brainEntry: McpServerEntry = {
+		command: parseResult.mcpServerConfig.command,
+		args: interpolateArgs({ name: parseResult.name, mcpServerConfig: parseResult.mcpServerConfig }),
+	};
+
+	entries.brain = brainEntry;
+	// Migrate legacy obsidian key — uniform with sync's behavior.
+	entries.obsidian = "delete";
 
 	const result = await sharedWriteMcpEntry(projectRoot, entries);
 

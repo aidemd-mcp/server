@@ -1,230 +1,221 @@
 ---
 intent: >
-  Extend the brain.aide body grammar from three to four marker-bounded
-  sections by inserting a `studyPlaybook` section between `playbook`
-  and `research`. Update the parser, its tagged-result type, and the
-  test suite so the parsed `ok` shape carries a fourth `studyPlaybook`
-  string field byte-identical to the bytes between
-  `<!-- aide-study-playbook-start -->` and
-  `<!-- aide-study-playbook-end -->`. All existing three-section
-  behavior — verbatim slicing, marker-layout violation classes,
-  bytes-outside-pairs silent ignore, frontmatter validation, deprecated
-  field rejection, interpolation surface — stays unchanged for the
-  prose / playbook / research sections; the new section participates in
-  the same closed grammar as a sibling (never parent or child) of the
-  other three. Strict-failure migration extends to cover three-pair
-  pre-pivot files: a body with prose + playbook + research markers and
-  no study-playbook pair returns `malformed-body` naming the missing
-  study-playbook markers specifically. No auto-injection, no
-  `aide_upgrade` carve-out.
+  Broaden `mcpServerConfig.args` from `string[]` to `(string | null)[]` across
+  the parser's central type surface and runtime behavior. The parser must
+  preserve YAML null entries verbatim — same type, same index — through both
+  validation and the `interpolateArgs` helper, removing the prior
+  string-only-arg validation rule and any retired `<BRAIN_PATH>`-style
+  literal-sentinel awareness. Update the test suite to cover null-armed
+  parsing, null passthrough through `interpolateArgs`, and structural
+  round-trip from YAML through to the typed result. Strict scope: changes
+  land only in `src/service/parseBrainAide/` (orchestrator + tests) and the
+  `BrainAideMcpServerConfig` type in `src/types/index.ts`. Consumer modules
+  (sync, buildBrainState, provisionBrain, cli/init, brain tool) have their
+  own plans and consume the broadened type via downstream architects'
+  scopes.
 ---
 
 ## Project Structure
 
-The parser module is a single-helper-exception orchestrator (per the
-progressive-disclosure spec): one file, two exports plus one helper,
-under ~200 lines of concrete logic. The four-section extension does
-not change that shape — it widens an already-closed marker-pair
-vocabulary by one entry and adds a fourth body-field destination on
-the `ok` result. No new helper subfolders are introduced; the
-`extractMarkerSections` helper stays inline above the default export
-per the function-ordering rule.
+This plan is scoped to a single orchestrator with one inline helper, two
+exports, and one co-located test file. The 4→6 marker rework is fully done
+(plan.aide is 32/32 from the prior iteration); the only changes this plan
+delivers are the args-type broadening to `(string | null)[]` and the
+behaviors that follow from it. The folder shape, the orchestrator/helper
+layout, and the single-helper-exception placement (per the spec's
+"Single-helper file layout" Strategy paragraph) all stay unchanged.
 
 ```
 src/service/parseBrainAide/
-├── .aide                    ← intent spec for this orchestrator (existing — already updated to 4-section grammar)
-├── plan.aide                ← this file (new)
+├── .aide                    ← intent spec for this orchestrator (existing — body just rewritten in Stages 1+3)
+├── plan.aide                ← this file (existing — being rewritten for the args broadening)
 ├── index.ts                 ← orchestrator (existing — modified)
-│                              MARKER_PAIRS: extended from 3 entries to 4 (insert study-playbook between playbook and research)
+│                              MARKER_PAIRS: unchanged (six pairs, fixed order)
 │                              extractMarkerSections(body: string)
-│                                : { kind: "ok"; prose: string; playbook: string; studyPlaybook: string; research: string }
-│                                | { kind: "malformed-body"; reason: string }
-│                              interpolateArgs(config: BrainAideConfig): string[]    (unchanged)
+│                                : { kind: "ok"; orientation: string; config: string; playbookIndex: string;
+│                                    studyPlaybook: string; updatePlaybook: string; researchIndex: string }
+│                                | { kind: "malformed-body"; reason: string }    (unchanged)
+│                              interpolateArgs(config: BrainAideConfig): (string | null)[]
+│                                (modified — element-walk visits each entry; string elements get
+│                                 ${name}-style placeholder substitution; null elements pass through
+│                                 unchanged at their original index)
 │                              parseBrainAideFromString(content: string): ParseBrainAideResult
-│                                (modified — destructures and forwards studyPlaybook into the ok result)
-│                              parseBrainAide(root: string): Promise<ParseBrainAideResult>    (default export, unchanged signature)
+│                                (modified — the args validation predicate is broadened from
+│                                 "every element is a string" to "every element is a string OR null";
+│                                 the parsed args array is forwarded as `(string | null)[]`)
+│                              parseBrainAide(root: string): Promise<ParseBrainAideResult>
+│                                (default export, signature unchanged — returns the same union with
+│                                 the broadened args type on the ok variant)
 └── index.test.ts            ← co-located vitest suite (existing — modified)
-                               Updates every existing 3-section fixture to include the study-playbook marker pair
-                               Adds new test groups for the studyPlaybook section (presence, ordering, missing-pair,
-                               malformed/typo, unmatched, nested, slicing, verbatim invariant, three-pair pre-pivot
-                               strict-failure migration, per-consumer-ownership type-boundary check)
+                               Adds null-armed parsing cases (single null, multiple nulls, all nulls,
+                               null-only mixed with strings) for both parseBrainAide (disk path) and
+                               parseBrainAideFromString (in-memory path)
+                               Adds interpolateArgs null-passthrough cases (null only, null + ${name},
+                               null preserved at original index)
+                               Adds an args-type-contract round-trip case proving null entries flow
+                               from source YAML byte → JS null → typed `(string | null)[]` value at the
+                               same index, with no compaction or coercion
+                               Removes any test asserting that null entries are rejected as
+                               malformed-frontmatter (none exist today, but the audit step verifies)
+                               Removes any test that pattern-matches a retired literal-string sentinel
+                               (`<BRAIN_PATH>`, `<API_TOKEN>`, etc.) as a parse-level signal (none exist
+                               today, but the audit step verifies)
 ```
 
 ## Prerequisites
 
-This plan touches one file outside the parser folder's scope:
+This plan touches one file outside the parser's scope. It is the same
+cross-cutting touchpoint precedent the prior 4→6 plan used (see Decisions);
+the contract is bounded to one type and one JSDoc block.
 
-- **`src/types/index.ts`** — must export `ParseBrainAideResult` such that
-  the `ok` variant carries a `studyPlaybook: string` field alongside the
-  existing `prose: string`, `playbook: string`, `research: string`
-  fields. The variant otherwise stays unchanged: `kind: "ok"; config:
-  BrainAideConfig; prose: string; playbook: string; studyPlaybook:
-  string; research: string`. Field ordering follows marker order
-  (prose → playbook → studyPlaybook → research) so JSON serialization
-  and human-readable diffs mirror the body layout. JSDoc on the result
-  type must list the four marker pairs in required order and mention
-  that `studyPlaybook` carries the bytes between
-  `<!-- aide-study-playbook-start -->` and
-  `<!-- aide-study-playbook-end -->` byte-identical to user input.
+- **`src/types/index.ts`** — must export `BrainAideMcpServerConfig` such
+  that its `args` field is typed `(string | null)[]`. Concretely the type
+  becomes:
+  ```
+  export type BrainAideMcpServerConfig = {
+    command: string;
+    args: (string | null)[];
+  };
+  ```
+  `BrainAideConfig` automatically inherits the broadened arg type because
+  it embeds `BrainAideMcpServerConfig` directly. The `ParseBrainAideResult.ok`
+  variant's `mcpServerConfig: BrainAideMcpServerConfig` field carries the
+  same broadened shape with no further edit needed at that site. The
+  separate `McpServerEntry` type used for `.mcp.json` writes (consumed by
+  `writeMcpEntry`, `buildBrainState`'s drift comparison, and
+  `provisionBrain`'s MCP step) STAYS `args: string[]` — that type
+  represents the post-sync byte-faithful shape, and sync's null-refusal
+  precondition means `McpServerEntry` only ever carries fully-resolved
+  string args. The two types intentionally diverge at the parse-vs-write
+  boundary.
 
-  This edit is one-field additive in a shared types file with no
-  orchestrator at `src/types/`. Per the architect's decision (see
-  Decisions section), this prerequisite is fulfilled by Step 1 of
-  this plan rather than forked into a separate plan.aide. The
-  plan-aide.md scoping rule is honored by treating `src/types/index.ts`
-  as a declared cross-cutting touchpoint with the contract above and
-  by limiting this plan's reach into it to exactly the additive
-  field on the existing `ParseBrainAideResult.ok` variant — nothing
-  else in `src/types/` is modified.
+  This edit's reach into `src/types/` is bounded: only `BrainAideMcpServerConfig.args`
+  changes, plus the JSDoc on that type and on `BrainAideConfig` to reflect
+  the null-as-unwired-slot contract. Nothing else in `src/types/index.ts`
+  is modified — `McpServerEntry`, `BrainState`, `BrainToolResult`,
+  `ParseBrainAideResult`, and every other type stay byte-identical.
 
 ## Plan
 
-### 1. Extend `ParseBrainAideResult.ok` with the `studyPlaybook` field in `src/types/index.ts`
+### 1. Broaden `BrainAideMcpServerConfig.args` to `(string | null)[]` in `src/types/index.ts`
 
 Read: `coding-playbook/workflow/type-system`, `coding-playbook/foundations/conventions`
 
-- [x] Add `studyPlaybook: string` to the `ok` variant of `ParseBrainAideResult` in `src/types/index.ts`. Place the field between `playbook: string` and `research: string` so the typed shape mirrors the marker order (prose → playbook → studyPlaybook → research). No other variants change; `missing`, `malformed-frontmatter`, and `malformed-body` stay byte-identical.
-- [x] Update the JSDoc block that describes the `ok` branch and lists the recognized marker pairs: it currently enumerates three pairs (prose, playbook, research) in required order — extend the list to four pairs in the new required order, and add one sentence describing what `studyPlaybook` carries (the verbatim bytes between `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->`, byte-identical to user input, no substitution). Update the malformed-body sub-list mention of "missing pair" to clarify that any of the four required pairs missing produces `"missing markers: <opener>, <closer>"`. Update the marker-base name list `prose, playbook, research` wherever it appears in JSDoc to `prose, playbook, studyPlaybook, research`.
-- [x] Do NOT touch `BrainAideConfig`, `BrainAideMcpServerConfig`, `BrainState`, `BrainToolResult`, `InfoResult`, or any other type in this file — the schema collapse for those types is settled and out of scope for this plan.
-- [x] Run `npx tsc --noEmit` after the edit. Expected: red errors in `src/service/parseBrainAide/index.ts` (the `parseBrainAideFromString` ok-result construction does not yet carry `studyPlaybook`) and in any consumer that constructs an ok result. The parser itself will be fixed in Step 3; consumers that ONLY narrow on `kind` and read existing fields stay green. Do NOT fix the parser or consumers in this step — the type error is the forcing event for the next steps and proves the field is wired into the central type surface.
+- [ ] Update the `BrainAideMcpServerConfig` type so its `args` field is typed `(string | null)[]`. Concrete type after edit:
+  ```
+  export type BrainAideMcpServerConfig = {
+    command: string;
+    args: (string | null)[];
+  };
+  ```
+  Field order, location in the file, and surrounding code stay byte-identical — the only character changes are the union widening on `args`.
+- [ ] Update the JSDoc block on `BrainAideMcpServerConfig` and on `BrainAideConfig` to reflect the null-as-unwired-slot contract. The JSDoc must say in prose that:
+  - `args` is `(string | null)[]`; every element is either a fully-formed argument string OR YAML null.
+  - YAML null at any index is the explicit unwired-slot signal — replacing the retired `<BRAIN_PATH>` literal-sentinel design.
+  - The parser preserves null entries verbatim at their original indexes; downstream consumers (sync's null-refusal, `buildBrainState`'s null-detection, `interpolateArgs`'s null-passthrough) branch on null structurally.
+  - Every retired-vocabulary mention of `<BRAIN_PATH>`, `<API_TOKEN>`, magic UUIDs, or any other string sentinel MUST be removed from this JSDoc if any reference exists. Do NOT name them in this JSDoc as live signals; if naming the retired tokens is needed for migration prose, reference the spec's strict-failure-migration outcome instead of repeating the names here.
+- [ ] Do NOT touch `McpServerEntry` — it remains `{ command: string; args: string[] }`. The two types intentionally diverge: parse-time accepts `(string | null)[]`; post-sync `.mcp.json` writes accept only `string[]`. Any consumer that needs to convert from `(string | null)[]` to `string[]` (e.g. sync after null-refusal passes) does so in its own consumer plan, not here.
+- [ ] Do NOT touch `BrainAideConfig`'s shape — it embeds `BrainAideMcpServerConfig` and inherits the broadened type automatically. Do NOT touch `ParseBrainAideResult` — its `ok` variant carries `mcpServerConfig: BrainAideMcpServerConfig` and inherits the same broadened type.
+- [ ] Run `npx tsc --noEmit` after the edit. Expected: red errors in `src/service/parseBrainAide/index.ts` (the `parseBrainAideFromString` validator currently rejects non-string args, and the `interpolateArgs` helper currently calls `arg.replace(...)` on every element which only typechecks against `string`); red errors in any consumer that constructs an args array as `string[]` and assigns to a `BrainAideMcpServerConfig.args` slot. The parser itself will be fixed in Step 2; consumers are out of scope. Do NOT fix consumer modules (`src/service/install/provisionBrain/`, `src/service/buildBrainState/`, `src/cli/sync/`, `src/cli/init/`, `src/tools/brain/`) in this step or any other step in this plan — their own plans will catch the type errors and migrate them.
 
-### 2. Extend `MARKER_PAIRS` and `extractMarkerSections` to the four-pair grammar in `src/service/parseBrainAide/index.ts`
+### 2. Broaden the parser's args validation and `interpolateArgs` helper to accept and preserve null entries in `src/service/parseBrainAide/index.ts`
 
-Read: `coding-playbook/foundations/conventions`, `.aide/docs/agent-readable-code`
+Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/folder-structure`
 
-This step is a single coupled unit — the constant declaration and its consumer (the helper that walks the body) live in the same file and must be updated together so the file compiles and the section-extraction logic produces the new four-section result shape in one edit. Lettered sub-steps run in one implementor session.
+This step is a single coupled unit — the args validation predicate inside `parseBrainAideFromString`, the `interpolateArgs` helper's element walk, and the JSDoc on both functions must change together so the file compiles cleanly and the runtime behavior matches the broadened type contract in one edit. Lettered sub-steps run in one implementor session.
 
-- [x] 2a. Extend `MARKER_PAIRS` from three entries to four. Insert a new entry between the existing `playbook` and `research` entries: `{ token: "studyPlaybook", open: "<!-- aide-study-playbook-start -->", close: "<!-- aide-study-playbook-end -->" }`. Keep the existing `as const` annotation and tuple ordering rules; the array is positional (per the `as const` literal-tuple narrowing) and the prose-then-playbook-then-studyPlaybook-then-research order is the source of truth for both the section-order check and the missing-marker enumeration order. Update the JSDoc above `MARKER_PAIRS`: change the count from "six recognized marker tokens grouped as three pairs" to "eight recognized marker tokens grouped as four pairs"; rename the literal-union narrowing description from `"prose" | "playbook" | "research"` to `"prose" | "playbook" | "studyPlaybook" | "research"`; reaffirm that token strings double as ok-result destination field names so the marker base name and the typed key are the same word (`study-playbook` in markers, `studyPlaybook` in the typed result — kebab-to-camel transformation is purely surface, not a code path).
-- [x] 2b. Update the `extractMarkerSections` return type annotation to add `studyPlaybook: string` between `playbook: string` and `research: string` on the `ok` branch. Update the `MarkerEntry.sectionToken` literal-union narrowing from `"prose" | "playbook" | "research"` to `"prose" | "playbook" | "studyPlaybook" | "research"`. Update the helper's JSDoc to reflect the four-pair count: change "all six recognized markers" to "all eight recognized markers", change "the three openers must appear in prose-then-playbook-then-research order" to "the four openers must appear in prose-then-playbook-then-studyPlaybook-then-research order", and update the nesting-class summary to mention four sibling sections (never parent-child). The pipeline order itself (Step 1: presence; Step 2: match; Step 3: order; Step 4: nesting; Step 5: slice) does not change — every step iterates over `MARKER_PAIRS`, so adding the fourth entry extends each step automatically.
-- [x] 2c. Update the final ok-return at the bottom of `extractMarkerSections` to include `studyPlaybook: result["studyPlaybook"]!` between `playbook` and `research`. The slicer (`for (const span of pairSpans) result[span.token] = body.slice(...)`) populates `result` from the iterated `MARKER_PAIRS`, so this is the only literal-key reference that needs editing. Confirm by reading the file end-to-end that no other location enumerates the three section tokens by literal name — if any unsuspected enumeration exists (a switch statement, a hardcoded array literal `["prose", "playbook", "research"]`, a destructuring pattern), update it to four sections in the same edit. Per the spec's "single closed-grammar walker" invariant, all such enumerations should derive from `MARKER_PAIRS` itself; the audit verifies that.
-- [x] 2d. Confirm the malformed-marker scan regexes (`candidateRegexA` and `candidateRegexB`) do NOT need to enumerate the section base names. Read both regex literals: pattern A is `/<!--[^>]*aide[^>]*(?:prose|playbook|research|start|end)[^>]*-->/gi` (a candidate matches if it contains `aide` AND any of the listed words); pattern B is `/<!--\s*(?:prose|playbook|research)[^>]*(?:start|end)[^>]*-->/gi`. Both currently list `prose|playbook|research` as the base-name alternation. Decision: extend both regexes by adding `study-playbook` (pattern A) and `study-playbook` (pattern B) to the alternation so malformed variants of the new section's marker (e.g. `<!-- AIDE-STUDY-PLAYBOOK-START -->`, `<!-- aide-study-playbook-strart -->`) are caught by the same scan that catches malformed prose / playbook / research markers. The alternation must use the kebab-case `study-playbook` (the marker form), not the camelCase `studyPlaybook`. Pattern A's full word-list becomes `(?:prose|playbook|study-playbook|research|start|end)`. Pattern B's word-list becomes `(?:prose|playbook|study-playbook|research)`. The pattern still relies on the body containing literally `aide` and one of those words for pattern A, or starting with one of those base names + a start/end keyword for pattern B — adding the new word does not loosen either pattern.
+- [ ] 2a. Locate the args validation predicate inside `parseBrainAideFromString` (currently the line that reads `if (!Array.isArray(mcpServerConfig["args"]) || !mcpServerConfig["args"].every((a) => typeof a === "string"))` and the surrounding malformed-frontmatter return). Broaden the element predicate from `typeof a === "string"` to accept either string OR null. Concretely the predicate becomes "every element of `args` is either a string or null"; any other element type (number, boolean, object, undefined) still returns `malformed-frontmatter` with a reason naming the field. Per the spec's Strategy paragraph "Schema is exactly `name` + `mcpServerConfig.{command, args}` with `args` typed `(string | null)[]`; deprecated fields are rejected, not stripped" — null entries are part of the contract, not malformed. Update the malformed-frontmatter reason string for non-string-non-null elements to read "mcpServerConfig.args is required and must be an array of strings or null" (or equivalent — the rule is to surface the contract, including null, in the error so users understand what is allowed).
+- [ ] 2b. Update the `parsedFrontmatter.mcpServerConfig.args` cast site from `mcpServerConfig["args"] as string[]` to `mcpServerConfig["args"] as (string | null)[]`. The runtime YAML parser already produces JS `null` for bare `-` entries; the only edit is the type assertion that flows the broadened element type into `BrainAideConfig.mcpServerConfig.args`. Preserve every existing index — no compaction, no filtering, no reordering.
+- [ ] 2c. Rewrite `interpolateArgs`'s element walk so the helper visits each entry by structure rather than calling `.replace(...)` blindly. The new behavior is per-element: (i) if the entry is `null`, pass it through unchanged at the same index; (ii) if the entry is a string, apply the existing `${fieldName}` placeholder substitution against the top-level frontmatter substitutions map (today only `${name}` is resolvable). The return-type annotation broadens from `string[]` to `(string | null)[]`. The `substitutions` map and the placeholder regex stay byte-identical. The array length stays equal to the input args length — null entries do NOT compact away. Per the spec's "Substitution is exposed as a separate helper" Strategy paragraph and the "interpolateArgs against a null-armed config preserves the null at its index" Good example, the helper is the third party in the null-passthrough contract (alongside sync's null-refusal and buildBrainState's null-detection); coercing the null to empty string here would silently break sync's null-refusal downstream.
+- [ ] 2d. Update the JSDoc above `interpolateArgs` to reflect the new contract:
+  - The return type is `(string | null)[]`, not `string[]`.
+  - The helper walks args element-by-element. String elements get `${fieldName}` placeholder substitution; null elements pass through unchanged at their original index because there is no string to substitute into.
+  - The default scaffold contains no `${...}` placeholders and may carry one or more nulls at unwired-slot indexes; for that scaffold the helper is structurally a no-op (output deep-equals input).
+  - Audience clarification: this is the `.mcp.json`-writer surface, so consumers running `interpolateArgs` and then sync handle null-refusal in sync, never in this helper. The interpolation surface is the ONLY substitution surface in the package and never runs against any of the six body sections.
+  - Remove any retired-vocabulary references in the JSDoc (e.g. mentions of `<BRAIN_PATH>`-style sentinels as live signals). If any retired-name reference exists today, scrub it; the rework retired the literal-sentinel design entirely.
+- [ ] 2e. Update the JSDoc above `parseBrainAideFromString` to mention the broadened args contract. Specifically the "Step 4: Validate required fields" comment block must say that `mcpServerConfig.args` is an array whose every element is string OR null; null is part of the contract, NOT a malformed value. The validation order (name → mcpServerConfig (object) → mcpServerConfig.command → mcpServerConfig.args) stays unchanged. Update the "Step 4b: Reject deprecated fields" comment block to keep its existing four-name list (`connector`, `rootPath`, `entryFile`, `tools`) — null in args is NOT a deprecated field; the broadening is at the type level, not the validation set.
+- [ ] 2f. Update the JSDoc above the default-export `parseBrainAide` to reflect the args contract. The "Load-bearing invariants" block must mention that `mcpServerConfig.args` is `(string | null)[]` and that null entries are preserved verbatim at their original indexes. The "Never throws" and "Never interpolates any body section" invariants stay byte-identical. Add one line stating that null is the explicit unwired-slot signal and that there is no literal-string sentinel (`<BRAIN_PATH>`, `<API_TOKEN>`, magic UUIDs) recognized at any layer.
+- [ ] 2g. Audit the entire `src/service/parseBrainAide/index.ts` file for any remaining reference to a literal-string sentinel as a parse-level signal. Search for `<BRAIN_PATH>`, `<API_TOKEN>`, `__UNWIRED__`, and any `<` followed by uppercase identifier-shape text matching `[A-Z_]+>` in identifiers, comments, or string constants. Per the spec's "A parser that pattern-matches `<BRAIN_PATH>` (or any other literal-string sentinel)" undesired outcome and the Strategy paragraph "YAML null is the unwired-slot signal", every such reference must be either removed (if it was active code) or surrounded by a "retired-vocabulary, do not re-add" comment block (if naming it serves as a forbidden-token reference for future maintainers). Today's code does not branch on any string sentinel — the audit verifies post-edit that no sentinel reference snuck in via the JSDoc rewrite or the comment updates.
+- [ ] 2h. Run `npx tsc --noEmit` after the edits. Expected: green for `src/types/index.ts` and `src/service/parseBrainAide/index.ts`; red errors persist in consumer modules (sync, buildBrainState, provisionBrain, cli/init, tools/brain) that consume args as `string[]`. Do NOT fix consumer modules — their own plans will migrate them.
 
-### 3. Wire `studyPlaybook` through `parseBrainAideFromString` and update its JSDoc
-
-Read: `coding-playbook/foundations/conventions`, `.aide/docs/progressive-disclosure`
-
-- [x] Update the destructure of `bodyResult` in `parseBrainAideFromString` from `const { prose, playbook, research } = bodyResult` to `const { prose, playbook, studyPlaybook, research } = bodyResult`. Update the final ok-return shape to include `studyPlaybook` between `playbook` and `research`: `{ kind: "ok", config, prose, playbook, studyPlaybook, research }`. Field ordering in the returned object literal mirrors the marker order so human-readable diffs and JSON serialization both reflect the body layout.
-- [x] Update the JSDoc on `parseBrainAideFromString`. Step 5's description currently says "Extract the three required named body sections via the closed-vocabulary marker walker" and lists "prose then playbook then research" — change "three" to "four" and the order list to "prose then playbook then studyPlaybook then research". Step 6's description currently says "Return the ok result with all three body sections alongside the frontmatter config" — change "three" to "four". The validation order (1: required frontmatter fields; 2: deprecated fields; 3: body grammar) is unchanged.
-- [x] Update the JSDoc on the default-exported `parseBrainAide`. The "ok" branch description enumerates the three required marker pairs by name and shape; extend the enumeration to four pairs in the new required order and add the new pair: `<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->`. The "malformed-body" branch description references "every absent marker" — the wording does not need to change because the helper now scans four pairs by virtue of `MARKER_PAIRS`; add one sentence noting that the new section participates in the same closed grammar as a sibling of the other three (never parent or child). The load-bearing-invariants list currently references "prose, playbook, and research" being byte-identical to file content — extend to "prose, playbook, studyPlaybook, and research".
-- [x] Run `npx tsc --noEmit`. Expected: clean exit. The Step 1 type error in this file is now resolved; consumers that did not enumerate body fields by name remain unaffected. Do NOT modify any other file in this step (consumer updates are separate plans for separate modules per the AIDE-pipeline-is-code-only handoff scoping). If `tsc` reports errors in any consumer file (e.g. `tools/brain`, `service/install/provisionBrain`, `cli/sync`), the plan is incomplete — re-read the spec's per-consumer-ownership outcomes (the brain tool reads `prose` only; `provisionBrain` reads `playbook`, `studyPlaybook`, `research`; sync reads frontmatter only). Adding a new optional field on the ok variant must not break consumers that read existing fields. If a consumer breaks, it has reached into a section it does not own — surface that in the implementor's hand-back, do NOT silently fix it here.
-
-### 4. Update existing tests' fixtures and helpers in `src/service/parseBrainAide/index.test.ts` to include the study-playbook marker pair
-
-Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
-
-- [x] Update the `CANONICAL_BRAIN_AIDE` fixture string (top of file). The current fixture has three marker-pair sections in prose-then-playbook-then-research order; insert a new `<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->` pair between the playbook closer and the research opener, with multi-paragraph content that mirrors the spec's "Good examples" canonical four-section example: a `# Study playbook` H1, a paragraph teaching playbook hub navigation discipline (start at the hub, drill into matching sections, follow references one level deep when the next level adds task context, never re-read), backend-neutral language throughout (no forbidden tokens). The fixture must continue to exercise the bytes-outside-pairs silent-ignore on the happy path (the existing note-to-self above the first opener stays); add no scratch text inside the new pair.
-- [x] Update `MARKER_OPENERS` and `MARKER_CLOSERS` records (just below the fixture). Both are typed `Record<"prose" | "playbook" | "research", string>` — extend the key union to `"prose" | "playbook" | "studyPlaybook" | "research"` and add the corresponding `<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->` entries. Update `extractCanonicalSection`'s parameter type from `name: "prose" | "playbook" | "research"` to `name: "prose" | "playbook" | "studyPlaybook" | "research"`. The helper's body does not need other changes — it slices by named opener/closer just like the parser.
-- [x] Update the `makeCanonicalContent` helper. Its `overrides` object currently accepts `proseBody`, `playbookBody`, `researchBody`; add `studyPlaybookBody` between `playbookBody` and `researchBody`. Apply the default `"Some study playbook body.\n"` when not overridden. Insert a new `<!-- aide-study-playbook-start -->\n${studyPlaybook}<!-- aide-study-playbook-end -->\n\n` block in the returned template string between the playbook block and the research block.
-- [x] Update every parameterized test fixture that currently builds a body inline with three marker pairs. The full list of locations:
-  - `3c — malformed YAML frontmatter` (its bad-yaml fixture)
-  - `3d — missing required field` (`makeContentMissing` helper inside the describe)
-  - `3d' — deprecated field rejection` (the inline content built inside the parameterized `it.each` body)
-  - `3e — missing required sections` (the `validFrontmatter` constant + the `allMarkers` array + the bodyWithMarkers builder + the unmatched-opener and unmatched-closer fixtures)
-  - `3f — malformed/typo'd marker rejection` (the `bodyWithMalformedProseOpener` builder + the typo-in-section-name fixture)
-  - `3g — marker order violation` (the inline orderCases fixtures)
-  - `3h — nested marker rejection` (the inline nestingCases fixtures)
-  - `3j — bytes outside marker pairs` (the `proseSection` / `playbookSection` / `researchSection` constants and the outsideCases fixtures)
-  - `3k — verbatim invariant` (each per-section test's inline fixture content)
-  - `3l — name is metadata` (the `makeContentWithName` helper)
-  - `3n — parseBrainAideFromString parity` (the `noPlaybookContent` fixture for the missing-pair parity test)
-
-  Every location must add a `<!-- aide-study-playbook-start -->\n...\n<!-- aide-study-playbook-end -->\n\n` block in the correct sequential position (between the playbook block and the research block) so each fixture has all four required pairs present and well-formed. The body content for the new section is `Some study playbook body.\n` (or any short non-empty string) when the test does not specifically exercise study-playbook content.
-
-- [x] Update the `3a — happy path` describe's first test ("returns ok with two-field config and all three body sections"). Rename to "returns ok with two-field config and all four body sections". Add an assertion `expect(result.studyPlaybook).toBe(extractCanonicalSection("studyPlaybook"))` between the playbook and research assertions. Add a content-substring assertion `expect(result.studyPlaybook).toMatch(/<some-distinctive-substring-from-the-canonical-fixture>/)` (mirroring the existing prose's `/Your brain is an external knowledge store/` assertion). The literal-`#`-headings test in the same describe should add comparable assertions for the study-playbook section's H1/H2 headings if the canonical fixture's study-playbook content includes them.
-- [x] Update the `3e` describe's missing-pair parameterized cases. The current set has six cases (each of the three pairs missing alone, plus three pairs of two-pair-missing combinations). Add four NEW cases for the new section's coverage:
-  - "missing studyPlaybook pair only" → expected reason `"missing markers: <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->"`
-  - "missing prose and studyPlaybook pairs" → expected reason `"missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->"`
-  - "missing playbook and studyPlaybook pairs" → expected reason listing those four markers in fixed prose-then-playbook-then-studyPlaybook-then-research scan order
-  - "missing studyPlaybook and research pairs" → expected reason listing those four markers in the same order
-
-  The reason format is the existing `"missing markers: <opener>, <closer>, ..."` shape; the order within the reason is fixed by `MARKER_PAIRS` iteration order (prose pair first, then playbook pair, then studyPlaybook pair, then research pair, with opener before closer within each pair). The `allMarkers` array updated in the previous bullet now has eight entries; the `.filter(...)` predicates in each case naturally select-or-exclude by the section name substring (`includes("studyPlaybook")` would match both kebab and camel forms — use `includes("study-playbook")` to match only the marker tokens which are kebab-case).
-
-  Add one ADDITIONAL case alongside these to cover unmatched-opener and unmatched-closer for the new section:
-  - "studyPlaybook opener present but closer missing" → expected reason `"unmatched opening marker: <!-- aide-study-playbook-start --> has no matching <!-- aide-study-playbook-end -->"`
-  - "studyPlaybook closer present but opener missing" → expected reason `"unmatched closing marker: <!-- aide-study-playbook-end --> appeared without a prior <!-- aide-study-playbook-start -->"`
-
-  These mirror the existing prose unmatched-opener and unmatched-closer tests that already live in `3e`. The implementor decides whether to add them as additional `it(...)` cases parallel to the existing prose ones, or to parameterize the unmatched-opener/closer tests over all four sections — either is fine; the playbook's testing note prefers parameterization when test bodies are identical.
-
-- [x] Update the `3f` describe's malformed-marker cases to add at least one case targeting the new section's marker. Append a case mirroring the existing "typo in section name (playboook)" test — e.g. "typo in study-playbook section name (study-pllaybook)" with body where the `<!-- aide-study-playbook-start -->` marker is replaced by `<!-- aide-study-pllaybook-start -->`, and the other seven recognized markers are correctly present. Expected reason: `"unknown marker: <!-- aide-study-pllaybook-start -->"`. Also append a case targeting an uppercase variant of the new section's marker — `<!-- AIDE-STUDY-PLAYBOOK-START -->` substituted for the prose opener (using a parallel `bodyWithMalformedStudyPlaybookOpener` builder, or extend the existing builder helper to take the section name as a parameter) — expected reason `"unknown marker: <!-- AIDE-STUDY-PLAYBOOK-START -->"`. These two cases prove the regex extension in step 2d catches malformed variants of the new section's marker.
-
-- [x] Update the `3g` describe's order-violation cases to add at least two cases involving the new section's required position. Examples:
-  - "study-playbook before playbook" — body has prose then study-playbook then playbook then research, with all four pairs well-formed. Expected reason: `"marker order violation: <!-- aide-study-playbook-start --> appeared before <!-- aide-playbook-start -->"`.
-  - "research before study-playbook" — body has prose then playbook then research then study-playbook, with all four pairs well-formed. Expected reason: `"marker order violation: <!-- aide-research-start --> appeared before <!-- aide-study-playbook-start -->"`.
-
-  These prove that the section-order check (Step 3 in `extractMarkerSections`) treats the new section's required slot (between playbook and research) as load-bearing.
-
-- [x] Update the `3h` describe's nesting cases to add at least one case targeting the new section's containment. Append `"study-playbook pair nested inside playbook pair"` (the spec calls this out by name — "the navigation prose belongs with the playbook" is named as a tempting containment) — body has prose pair, then a playbook opener, then study-playbook pair fully nested inside the playbook span, then playbook closer, then research pair. Expected reason: `"nested marker: <!-- aide-study-playbook-start --> appeared inside the playbook section"`. Optionally also add `"research pair nested inside study-playbook pair"` to cover the next-level containment the spec lists.
-
-- [x] Update the `3j` describe's outside-bytes cases (silently-ignored bytes between sections). The current cases enumerate four gap positions (frontmatter→prose, prose→playbook, playbook→research, after-research) plus a "marker-shaped content outside pairs" edge case. With four sections, there are now FIVE gap positions. Add:
-  - `"scratch text between playbook closer and study-playbook opener"` — scratch text in the new gap between sections 2 and 3.
-  - `"scratch text between study-playbook closer and research opener"` — scratch text in the new gap between sections 3 and 4 (replacing the old "between playbook closer and research opener" test, which is now invalid because there is no longer a direct adjacency between playbook and research).
-
-  Update the existing "scratch text between playbook closer and research opener" test name and content to reflect that there is now a study-playbook section between them — it becomes the "between playbook and study-playbook" case. Update the "all four gap positions populated simultaneously" case to "all five gap positions populated simultaneously" with scratch text in every gap. Update the assertions in the parameterized `it.each` body to verify `result.studyPlaybook` carries only its own bytes (the helper test asserts `expect(result.studyPlaybook).toBe("\nSome study playbook.\n")` mirroring the existing per-section assertions).
-
-- [x] Update the `3k` describe's verbatim invariant tests to add a fourth `it(...)` case "studyPlaybook containing literal ${name} passes through byte-identical", mirroring the existing prose / playbook / research tests. The fixture has a `studyPlaybookBody` containing literal `${name}` and `${rootPath}` strings; the assertion verifies `result.studyPlaybook` contains the literal `${name}` unchanged and does NOT contain the substituted value `my-brain` (substitution runs only on `mcpServerConfig.args`).
-
-- [x] Update the `3o — per-section ownership` describe. The current test asserts `result.config` does NOT contain `prose`, `playbook`, or `research`. Extend to also assert `result.config` does NOT contain `studyPlaybook`, and that `typeof result.studyPlaybook === "string"` as a sibling of `result.config`. The contract is: body sections are siblings on the ok variant, never properties of config.
-
-### 5. Add new `studyPlaybook`-specific test groups for behaviors unique to the four-section grammar
+### 3. Add null-handling test cases to `src/service/parseBrainAide/index.test.ts`
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-These tests exercise behaviors that exist ONLY because the body grammar gained a fourth section. They cover:
+These cases land on top of the existing 32-step suite. They do NOT modify any existing case; the prior 4→6 rework already brought the fixtures and helpers to the six-section vocabulary. The new behavior under test is exclusively the args type broadening.
 
-- The strict-failure migration extension for three-pair pre-pivot files (the most load-bearing new behavior — the spec's outcome #7 calls it out explicitly and dedicates a "Good examples" block to it).
-- The `parseBrainAideFromString` parity coverage for the new section.
-- A `noStudyPlaybookContent` fixture for the missing-pair parity test parallel to the existing `noPlaybookContent` fixture.
+- [ ] 3a. Add a new describe block — name it after the args type contract (e.g. `"args type contract — string | null"`). Inside it, add a happy-path null-armed case:
+  - Build a fixture using the `makeCanonicalContent` helper with a frontmatter override that lands a YAML null at one args index. The YAML representation is a bare `-` with no scalar (e.g. `args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n    -`). Since `makeCanonicalContent` does not currently take a custom `argsLines` override, either add an `argsLines` override to the helper (preferred — single small extension that future cases can reuse) OR construct the content string inline for this test (acceptable for one-off cases).
+  - Assert `result.kind === "ok"`.
+  - Assert `result.mcpServerConfig.args.length === 3` (no compaction).
+  - Assert `result.mcpServerConfig.args[0]` and `result.mcpServerConfig.args[1]` are the original string entries (`"@example/mcp-launcher"`, `"D:/brains/my-brain"`).
+  - Assert `result.mcpServerConfig.args[2] === null` (JS strict equality, not loose). The null index in the parsed result MUST equal the null index in the source YAML.
+  - This test maps directly to the spec's "A null-armed `brain.aide`... parses with a YAML null preserved at the unwired index" Good example.
+- [ ] 3b. Add a multi-null parsing case:
+  - Frontmatter args list with two YAML nulls at non-adjacent indexes (e.g. positions 1 and 3 of a four-entry args list, with strings at 0 and 2).
+  - Assert `result.kind === "ok"`, `result.mcpServerConfig.args.length === 4`, the two string indexes carry their string values, and the two null indexes carry JS `null` (strict equality).
+  - This locks in the structural-null invariant: multiple nulls at arbitrary indexes preserve their indexes one-to-one with the source YAML (per the spec's "A parser that drops null entries from `args` or compacts the array" undesired outcome).
+- [ ] 3c. Add an all-null parsing case:
+  - Frontmatter args list with three entries, all YAML nulls.
+  - Assert `result.kind === "ok"`, `result.mcpServerConfig.args.length === 3`, and every element is JS `null` (strict equality on each index, not deep-equal against an array literal — strict equality per index makes the test failure mode pinpoint the offending index).
+  - This case may seem extreme but the parser's contract is per-element: every element passes through verbatim, regardless of the mix.
+- [ ] 3d. Add a null-rejected-as-malformed REGRESSION-PREVENTION case:
+  - Construct a fixture frontmatter args list with a single null entry mixed with strings.
+  - Assert `result.kind === "ok"` (NOT `"malformed-frontmatter"`).
+  - The test case header explicitly notes that null is part of the args contract, not a malformed value. The case is the regression bumper for the spec's "A parser that rejects null entries in args as `malformed-frontmatter`" undesired outcome.
+- [ ] 3e. Add an `interpolateArgs` null-passthrough happy path case (in the existing `3m — interpolateArgs canonical config is a no-op` describe block, OR a new describe block `"4b — interpolateArgs null-passthrough"` if grouping by step is preferred). The test:
+  - Construct a `BrainAideConfig` literal with `args: ["a", null, "b"]` and `name: "my-brain"`.
+  - Call `interpolateArgs(config)`.
+  - Assert the result deep-equals `["a", null, "b"]` (the strings have no `${...}` placeholders, so they pass through; the null at index 1 passes through unchanged).
+  - Assert the result has `length === 3` (no compaction).
+  - Maps directly to the spec's "interpolateArgs against a null-armed config preserves the null at its index" Good example.
+- [ ] 3f. Add an `interpolateArgs` mixed-substitution-and-null case:
+  - Construct a `BrainAideConfig` literal with `args: ["some-launcher", "--profile", "${name}", null]` and `name: "dev-brain"`.
+  - Call `interpolateArgs(config)`.
+  - Assert the result deep-equals `["some-launcher", "--profile", "dev-brain", null]`. Per-element substitution applies to the `${name}` index; null at the next index passes through unchanged at its original position.
+  - Maps directly to the spec's "An advanced user opts into interpolation by referencing `${name}`; null entries continue to pass through" Good example.
+- [ ] 3g. Add a structural round-trip case (in the new args-type-contract describe block from 3a, or a new sibling block):
+  - Build a fixture with a YAML null at args index 3 (the canonical Obsidian-default-position).
+  - Call `parseBrainAide` on the fixture; assert `result.kind === "ok"` and `result.mcpServerConfig.args[3] === null`.
+  - Call `interpolateArgs(result)` (using the flattened ok variant's `name` and `mcpServerConfig` fields, per the existing 3m'' test pattern).
+  - Assert the interpolation result has `length === 4` and `interpolated[3] === null` (strict equality). The structural unwired-slot signal survives the entire parser → interpolateArgs pipeline at the same index.
+  - This case proves the spec's "Null passthrough is mandatory and tested at every transformation the parser exposes" Strategy paragraph end-to-end: the parser preserves null, the interpolation helper preserves null, and the index where the null lives in the source YAML is the same index where it lives at every observable point in the pipeline.
+- [ ] 3h. Add a parity case linking `parseBrainAideFromString` to `parseBrainAide` for the null-armed input (extend the existing `3n — parseBrainAideFromString parses bytes identically to parseBrainAide from disk` describe block):
+  - Build a null-armed content string (the same fixture used in 3a, but constructed once and shared).
+  - Write the content to disk and call `parseBrainAide`; call `parseBrainAideFromString` on the same content.
+  - Assert both results are deep-equal AND their `mcpServerConfig.args[<null-index>]` is JS `null` on both paths.
+  - The parity test catches regressions where one path inadvertently coerces null while the other preserves it (e.g. if a future maintainer adds a "normalize" pass to one path only).
+- [ ] 3i. Audit the existing test file for any test that pattern-matches a retired literal-string sentinel (`<BRAIN_PATH>`, `<API_TOKEN>`, `__UNWIRED__`, magic-UUID-shaped strings) as a parse-level signal. Specifically grep the file for `<BRAIN_PATH>`, `<API_TOKEN>`, `__UNWIRED__`, and any `<[A-Z_]+>` shape inside a string fixture or assertion. Per the spec's "A parser that pattern-matches `<BRAIN_PATH>`..." undesired outcome and the Strategy paragraph "YAML null is the unwired-slot signal; ... the parser does NOT recognize `<BRAIN_PATH>`..." — none of these tokens may appear in any active test case as a parse-level signal. Today's tests do not assert on any sentinel; the audit is a regression-prevention pass that confirms post-edit. If an audit hit appears (inside a comment naming the retired vocabulary as forbidden, for example), leave it alone — that's the spec's anti-example carve-out and is the mechanism that forbids the token. Live test fixtures and assertions MUST NOT contain the tokens.
+- [ ] 3j. Run `npx vitest run src/service/parseBrainAide/index.test.ts` after every new case lands. Expected: green across the entire suite. Red failures pinpoint either a parser bug (return to Step 2 sub-steps and fix) or a test-construction bug (fix in this step). Do NOT advance until this file is fully green.
 
-- [x] Add a new describe block `3i' — strict-failure migration: pre-pivot three-pair body` (placed immediately after the existing `3i — strict-failure migration: pre-pivot heading-based body` describe to keep the migration-policy tests grouped). The single test asserts that a brain.aide with valid frontmatter and a body containing prose + playbook + research marker pairs in the right relative order — but missing the study-playbook pair entirely — returns `malformed-body` with reason exactly `"missing markers: <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->"`. The test fixture must be a valid three-pair body (the implementor builds it inline by concatenating the three marker-pair blocks from `MARKER_OPENERS` / `MARKER_CLOSERS` in the right order). The assertion comment must reference the spec's `outcomes.desired` strict-failure-migration outcome that names this case ("a `brain.aide` carrying the prior three-pair marker-bounded body returns `malformed-body` with a reason naming the missing study-playbook markers specifically"). The assertion comment must also state that the parser does NOT auto-detect the three-pair shape, does NOT auto-rewrite, does NOT silently default the missing studyPlaybook section to an empty string, and that there is no `aide_upgrade` carve-out — strict failure is the only resolution path.
-- [x] Update the existing `3i — strict-failure migration: pre-pivot heading-based body` test's expected reason. The current fixture has frontmatter + heading-based body (no markers). The current expected reason lists six markers (prose pair + playbook pair + research pair). Update it to list eight markers in the `MARKER_PAIRS` iteration order: prose-start, prose-end, playbook-start, playbook-end, study-playbook-start, study-playbook-end, research-start, research-end. The literal expected reason becomes: `"missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->, <!-- aide-playbook-start -->, <!-- aide-playbook-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->, <!-- aide-research-start -->, <!-- aide-research-end -->"`. The test's narrative comment also needs updating to reflect "all eight missing markers" instead of "all six missing markers".
-- [x] Add a new test inside `3n — parseBrainAideFromString parity` for the studyPlaybook-pair-missing case. Mirror the existing `noPlaybookContent` fixture and test exactly: build a `noStudyPlaybookContent` string with frontmatter + prose + playbook + research marker pairs (no study-playbook pair), run both `parseBrainAide` from disk and `parseBrainAideFromString` from memory against it, assert both return `kind: "malformed-body"`, both reasons are exactly `"missing markers: <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->"`, and `expect(fromDisk).toEqual(fromString)`. This proves the disk and string paths agree on the new pair's missing-pair detection.
+### 4. Final compile-and-test sweep over the parser slice
 
-### 6. Run the full test suite and verify clean type-check
+Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-Read: `coding-playbook/workflow/testing`
-
-- [x] Run `npx tsc --noEmit` from the project root. Expected exit code 0. If any consumer outside `src/service/parseBrainAide/` fails to type-check, surface the file and error to the user without fixing it — the per-consumer-ownership invariant says the brain tool reads `prose` only, the provisioner reads `playbook` + `studyPlaybook` + `research`, sync reads frontmatter only; consumers that did not enumerate body fields by name should remain green. A consumer failure means it reached into a section it does not own, which is a separate plan.aide cycle for that module (per the parser-foundation-first sequencing in the handoff).
-- [x] Run `rtk vitest run src/service/parseBrainAide/` (or `npx vitest run src/service/parseBrainAide/`). Expected: every test passes — both the original three-section tests (now updated to four-section fixtures) and the new study-playbook-specific tests. If any test fails, do NOT modify the test to make it pass; trace back to the production code (steps 2–3) and confirm the `MARKER_PAIRS` extension, the regex updates, the destructure update, and the ok-result construction match what the test asserts. The test is the contract; the production code adapts to the spec's outcomes via the test's expectations.
-- [x] Run `rtk vitest run` (project-wide). Expected: every project-wide test passes. If any consumer test fails (e.g. a `provisionBrain/index.test.ts` test that constructs an ok-shape inline), surface to the user and let them choose the remediation: either it's a legitimate new fixture-update need belonging to the next module's plan.aide cycle, or it indicates a consumer reaching into the parser's internals via the result shape. Do not silently fix consumer tests in this plan.
+- [ ] Run `npx tsc --noEmit` on the full project. Expected: green across `src/types/index.ts` and `src/service/parseBrainAide/`; red errors in consumer modules (`src/cli/sync/`, `src/service/buildBrainState/`, `src/service/install/provisionBrain/`, `src/cli/init/`, `src/tools/brain/`) that read args as `string[]` are EXPECTED — their plans land next and will migrate them. Do NOT fix consumers in this plan.
+- [ ] Run `npx vitest run src/service/parseBrainAide/index.test.ts`. Expected: green. If any test in this file remains red, return to Step 2 or Step 3 and fix the cause; do not advance until this file is fully green.
+- [ ] Run `npx vitest run` against the whole repo (no filter). Expected: red in consumer module tests (provisionBrain, brain tool, sync, init, buildBrainState) — same forcing-event shape as the tsc errors. The parser slice's tests stay green. Do NOT fix consumer tests in this plan.
+- [ ] Audit `src/service/parseBrainAide/` (the parser file and its test file together) for any leftover `string[]` annotation on an args-shaped slot. Specifically grep the directory for the substring `args: string[]` and `args as string[]`. Every match must be either: replaced with `args: (string | null)[]` / `args as (string | null)[]`; or absent. The Project Structure tree's annotated function signatures (above) match the post-edit state; any deviation in the actual file is a bug to fix. Do NOT edit `McpServerEntry` in `src/types/index.ts` — that type's `args: string[]` annotation is correct and load-bearing for the post-sync byte-faithful boundary.
+- [ ] Audit the parser slice for any leftover retired-sentinel token as a live signal. Grep for `<BRAIN_PATH>`, `<API_TOKEN>`, `__UNWIRED__`. Each match must be in a forbidden-token comment (per the spec's anti-example carve-out) or absent — never as a live recognized string in code or as a fixture in an active test assertion.
 
 ## Decisions
 
-### 1. Type edit lives inline as Step 1, not as a separate plan.aide
+- **Null-passthrough is mandatory at both the parser and the interpolation helper, in one coupled step.** The validation predicate inside `parseBrainAideFromString` and the element walk inside `interpolateArgs` are bundled into Step 2 because they live in the same file, share the same compile-time forcing event (the type rewrite from Step 1), and produce a single coherent unit of behavior change. Splitting them into two separate steps would land an intermediate state where the type allows null but `interpolateArgs` still does `arg.replace(...)` blindly — a runtime crash on the first null entry that would mask the type contract change. The coupled step lets the implementor land the type, the validator, and the helper in one edit and run a single tsc/vitest sweep to confirm the parser slice is internally consistent.
 
-The handoff names `src/types/index.ts` as part of the parser refactor scope. The edit is one additive line on `ParseBrainAideResult.ok` plus one JSDoc paragraph. `src/types/` has no orchestrator, no helper subfolders, no `.aide` spec — the "single-module scoping" rule was written for module folders that DO have an orchestrator and DO benefit from a per-folder plan.aide. Forking a separate plan for one field on a shared types file would create a one-line plan.aide that cross-references this plan immediately, doubling the orchestration overhead for zero architectural clarity. The architect treats the types file as a declared cross-cutting touchpoint with the contract listed under `## Prerequisites` and limits this plan's reach into it to exactly one field on one variant — nothing else. If the implementor finds itself touching anything else in `src/types/`, it has scope-crept and must hand back to the architect.
+- **`McpServerEntry` stays `args: string[]`; the divergence at the parse-vs-write boundary is intentional.** Per the spec's "Sync writes the post-interpolation `mcpServerConfig` byte-for-byte into `.mcp.json`'s `mcpServers["brain"]` entry; if any arg is null at sync time, sync refuses" outcome, sync's null-refusal precondition is what guarantees `McpServerEntry` only ever carries fully-resolved string args. Broadening `McpServerEntry` to `(string | null)[]` would force every `.mcp.json`-writer in the package to handle null at every call site (writeMcpEntry, the buildBrainState drift comparison, the provisionBrain MCP step) — a regression that defeats the type-system invariant of "type at the boundary names the post-state contract, not every transient state on the way to it". The two types diverge by design: `BrainAideMcpServerConfig.args` is `(string | null)[]` (the parse-time shape, which carries the unwired-slot signal); `McpServerEntry.args` is `string[]` (the post-sync shape, which sync's null-refusal guarantees). Each consumer plan migrates its call site as needed (sync filters/validates before producing an `McpServerEntry`; buildBrainState's drift comparison reads the parsed config's typed null and treats null-bearing args as the no-mcp-entry semantic per the spec's "buildBrainState maps any null entry... to no-mcp-entry" outcome, which is a buildBrainState-plan concern).
 
-### 2. `MARKER_PAIRS` insertion at index 2 (between playbook and research) is positional and intentional
+- **Cross-cutting type touchpoint stays in this plan, mirroring the prior 4→6 plan's precedent.** Per `plan-aide.md`'s single-module scoping rule, a plan touches only its scope directory. `src/types/index.ts` lives outside `src/service/parseBrainAide/`. Two options: (a) carve out a separate plan.aide for `src/types/` declaring the type shape change as its own work; (b) declare the touchpoint in this plan's Prerequisites section and execute it as Step 1. Chose (b), exactly as the prior 4→6 amendment plan did. Rationale: `src/types/` has no orchestrator, no `.aide` spec, no plan home of its own; the single-field/single-shape edit is tightly coupled to the parser's matching changes (you cannot land the type without the parser, or vice versa, without breaking compile); and forking a plan whose only step is "broaden one type field" introduces orchestration churn without isolating any architectural decision. The Prerequisites section bounds the edit's reach into `src/types/index.ts` to exactly the `BrainAideMcpServerConfig.args` field, the JSDoc on it and on `BrainAideConfig`, and nothing else.
 
-The constant is `as const`-narrowed to a literal tuple. Iteration order is the source of truth for: the section-order check (Step 3 of the helper's pipeline), the missing-marker enumeration order (Step 1), the openerOrder slice extraction, the unmatched-opener-vs-unmatched-closer reporting order, and the JSON serialization order of the ok-result fields when they're constructed in marker order. Placing the new entry at index 2 (after playbook, before research) means every downstream consumer of `MARKER_PAIRS` automatically sees the four-pair grammar in the right order. Placing it at index 3 (at the end) would put research before study-playbook in every error message, in every iteration, and in every contract surface — wrong by the spec. Placing it at index 0 or 1 would produce equally wrong order. The single source of truth for "what is the required section order" is this array's index ordering; every step of `extractMarkerSections` derives from it. Future additions (a fifth section, a sixth) follow the same rule: pick the array index that matches the required position in the body, edit one constant, every downstream check picks up the new entry by virtue of iterating `MARKER_PAIRS` rather than enumerating section names by literal.
+- **`BrainAideConfig` and `ParseBrainAideResult` inherit the broadening automatically.** `BrainAideConfig` embeds `BrainAideMcpServerConfig` directly (no inline arg-type override); its `mcpServerConfig.args` field becomes `(string | null)[]` by transitive type inference the moment `BrainAideMcpServerConfig.args` widens. `ParseBrainAideResult.ok` carries `mcpServerConfig: BrainAideMcpServerConfig` and inherits the same. Step 1's edit is therefore one type edit that propagates to three call sites without explicit edits at the embed points — exactly the central-types invariant the spec's "Types live centrally in `src/types/`" Strategy paragraph mandates.
 
-### 3. Field name is `studyPlaybook` (camelCase, no `Hub` suffix) on the typed result
+- **The args validation predicate is broadened, not deleted.** A user who writes `args: 42` (number) or `args: { command: "x" }` (object) still sees `malformed-frontmatter` — the validation is "every element is string OR null", not "any value is acceptable". Per the spec's "Schema is exactly... `args` typed `(string | null)[]`; deprecated fields are rejected, not stripped" outcome, the broadening adds null to the accepted set without weakening the surrounding validation. Other element types (number, boolean, object, undefined) remain malformed. The reason string is updated to surface the "string or null" contract so users understand what the parser allows.
 
-The spec's frontmatter explicitly names this rule (outcomes.undesired field-name regression: `playbookHub`, `studyPlaybookHub`, `researchHub` are forbidden). The typed key matches the marker token base name: kebab-case in markers (`study-playbook`), camelCase in the typed result (`studyPlaybook`), the same word in both surfaces. The kebab-to-camel transformation is purely a TypeScript-identifier surface concern and does not appear in any code path — the `MARKER_PAIRS` constant carries both the marker string AND the camel-case token; the slicer populates a `Record<string, string>` keyed by the camel token; the ok-result destructure reads the camel keys.
+- **The `interpolateArgs` element walk is per-element, not per-string-then-rejoin.** The current implementation calls `arg.replace(...)` on every element of the args array — which only typechecks against `string` and crashes at runtime against `null`. The fix is structural: visit each element by type (string → substitute; null → passthrough). The existing `${(\w+)}` regex, the `substitutions` map, and the `Object.prototype.hasOwnProperty.call` lookup all stay byte-identical inside the string branch. The array length and element indexes stay equal between input and output — interpolation is a per-string transform, never an array-shape transform. Per the spec's "Per-element interpolation composes cleanly with per-element null passthrough" Good example, the helper's contract is per-element substitution within the `(string | null)[]` shape.
 
-### 4. Field placement on `ParseBrainAideResult.ok` is positional (between `playbook` and `research`) for diff and serialization legibility
+- **Tests for the new behavior land as additive cases, not as rewrites of existing cases.** The 32-step prior plan brought the test suite to the six-section marker grammar; its existing cases (happy path, missing pair, marker order, nesting, malformed marker, deprecated fields, parity, verbatim invariant, name-as-metadata) are all still correct under the broadened args contract. The new behavior — null-armed parsing, null-passthrough through interpolateArgs, null structural round-trip — gets new describe blocks layered on top. This split keeps the diff readable and prevents test-name drift in the existing fixtures.
 
-TypeScript does not care about field declaration order semantically; an object is structurally typed. But human-readable diffs (when a future maintainer reads the `ok` variant declaration), JSON serialization output (`JSON.stringify(result)`), and Vitest snapshot output all reflect declaration order. Placing `studyPlaybook` between `playbook` and `research` mirrors the marker order and keeps the surface coherent end-to-end. The same positional intent governs the field order in the destructure inside `parseBrainAideFromString` and the field order in the returned object literal.
+- **No transitional read path. No literal-sentinel awareness. No auto-coerce.** Per the spec's "YAML null is the unwired-slot signal; the parser preserves it verbatim and never introspects literal-string sentinels" Strategy paragraph and the cluster of undesired outcomes around sentinels, coercion, dropping nulls, and rejecting nulls — every form of "let's just turn nulls into something easier to work with" is rejected. The parser hands nulls through faithfully, the helper hands them through faithfully, the consumer plans (sync, buildBrainState, etc.) decide what to do with nulls per their own contracts. This plan locks in that boundary at the parse layer; the consumer plans land next and consume what this plan delivers.
 
-### 5. Section-order validator extension is automatic — no code changes needed beyond `MARKER_PAIRS`
+- **Consumer migrations are explicitly OUT OF SCOPE for this plan.** Per the parent rework's pipelined-work order, consumer plans (`provisionBrain`, `tools/brain`, `cli/sync`, `buildBrainState`, `cli/init`) land separately and consume the broadened type this plan delivers. Step 4's compile/test sweep documents the EXPECTED red errors in consumer modules so the implementor does not get tempted to "just fix one quick thing" outside the parser slice — those fixes belong in their own plans, where the architect can evaluate the consumer's own contracts and tests against the spec.
 
-The existing `extractMarkerSections` Step 3 (section-order check) reads `expectedTokenOrder` from `MARKER_PAIRS.map((p) => p.token)`. Extending `MARKER_PAIRS` to four entries automatically extends `expectedTokenOrder` to a four-element array; the comparison logic (`if (currentExpectedIdx > nextExpectedIdx)`) is index-based and works for arrays of any length. The same reasoning applies to Step 1 (presence check, iterates `MARKER_PAIRS`), Step 2 (unmatched-opener / unmatched-closer, iterates `MARKER_PAIRS`), Step 4 (nesting check, iterates `pairSpans` which is built from `MARKER_PAIRS`), and Step 5 (slicing, iterates `pairSpans`). The architect's audit per Step 2c verifies this — the only literal three-section enumerations should be the JSDoc comment text (which Step 2 updates explicitly) and the final `return { kind: "ok", prose: result["prose"]!, playbook: result["playbook"]!, research: result["research"]! }` (which Step 2c updates). If the audit finds another enumeration the plan didn't anticipate, the implementor surfaces it instead of guessing.
-
-### 6. Strict-failure migration scope: extend the missing-pair detection naturally; the regression-prevention test is explicit
-
-Per spec outcome #7 (strict-failure migration covers BOTH pre-pivot shapes — heading-based AND three-pair). The heading-based case is already covered by the existing `3i` describe (its expected reason now lists eight markers instead of six — Step 5's first bullet handles that one-line update). The three-pair case is NEW; Step 5's main work is adding `3i'` with the explicit `"missing markers: <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->"` assertion. The test exists not because the code has a special path for "is this a three-pair file" — there is no such path; the missing-pair detection naturally enumerates `MARKER_PAIRS` and flags every absent pair. The test exists to PIN the regression-prevention contract in code: if a future "helpful" maintainer adds a three-pair-tolerant fallback (the spec's "Bad examples" block calls this out by name), the test fails immediately. The test's narrative comment must explain that this is regression prevention against the auto-injection anti-pattern, not a documentation-only assertion.
-
-### 7. Malformed-marker scan regex extension uses kebab-case `study-playbook` in the alternation
-
-Both regex literals (`candidateRegexA` and `candidateRegexB`) match the LITERAL marker bytes in the body string, not the typed identifier. The bytes are kebab-case (`<!-- aide-study-playbook-start -->`), so the alternation must list `study-playbook` — not `studyPlaybook`. The pattern still requires `aide` AND a recognized base name in pattern A, OR starts-with one of the base names + a start/end keyword in pattern B; adding the new word maintains both invariants. Tested by Step 4's malformed-marker case extension (uppercase variant + typo variant for the new section).
-
-### 8. Test additions stay grouped with related existing tests (no "study-playbook tests" appendix block)
-
-Per the architect's planning rule (decision point 6 in the briefing): NEW tests for the new section live next to related existing tests. The "studyPlaybook missing pair only" case lives in `3e` next to "missing prose pair only", not in a separate `3p — studyPlaybook tests` block. The "typo in study-playbook section name" case lives in `3f` next to "typo in section name (playboook)". The "study-playbook before playbook" case lives in `3g`. The "study-playbook pair nested inside playbook pair" case lives in `3h`. The "scratch text between playbook closer and study-playbook opener" case lives in `3j`. The "studyPlaybook containing literal ${name}" case lives in `3k`. The exception is the strict-failure migration extension in `3i'`, which is its own describe parallel to the existing `3i` so the migration-policy tests stay grouped — these are conceptually peer regression-prevention contracts, not parameterized cases of one another.
-
-### 9. JSDoc updates are content-shape changes, not surface-doc rewrites
-
-Every JSDoc that enumerates the body sections needs to enumerate four sections instead of three; every count of "three pairs" / "six markers" / "three sections" becomes "four pairs" / "eight markers" / "four sections". The architect identifies the locations (Steps 1, 2a, 2b, 3) and describes the change shape (extend the enumeration, update the count). The implementor writes the actual JSDoc text following the existing voice and length of each block. No JSDoc text is transcribed into this plan because the playbook-driven JSDoc convention (orchestrator JSDoc summarizes the full flow, helper JSDoc explains why-it-exists) is what governs the wording — and the implementor has direct playbook access via the `study-playbook` skill.
-
-### 10. The `interpolateArgs` helper and the `parseBrainAide` default-export I/O wrapper are unchanged
-
-`interpolateArgs` operates on `BrainAideConfig` (frontmatter only) and never touches body sections — extending the body grammar does not add any interpolation surface. `parseBrainAide` (the I/O wrapper) reads the file, hands the bytes to `parseBrainAideFromString`, and returns whatever the string parser returns; its function signature is unchanged. The only edits to either are JSDoc enumeration extensions (Step 3's third bullet covers the default export's JSDoc; `interpolateArgs` JSDoc does not enumerate body sections at all so it stays untouched).
+- **The single-helper file layout still applies.** Per the spec's "Single-helper file layout" Strategy paragraph, the module fits comfortably under ~200 lines (parser + extractMarkerSections inline + interpolateArgs + JSDoc). The args broadening adds no new helpers, no new pipelines, no new responsibilities. `extractMarkerSections` stays inline above the default export per the function-ordering rule. The orchestrator/helper pattern's "extract into subfolders" trigger is "when a helper supports an orchestrator" — `extractMarkerSections` is the orchestrator's body-walking step but the rest of the module's logic (frontmatter validation, deprecated-field rejection, the broadened args validation, interpolation) is inline by spec design and stays that way.

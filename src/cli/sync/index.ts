@@ -55,8 +55,8 @@ export async function runSync(
 	// Step 2 — Compute the expected MCP entry. interpolateArgs substitutes
 	// any ${<key>} placeholders in mcpServerConfig.args against frontmatter fields.
 	const expectedEntry = {
-		command: result.config.mcpServerConfig.command,
-		args: interpolateArgs(result.config),
+		command: result.mcpServerConfig.command,
+		args: interpolateArgs({ name: result.name, mcpServerConfig: result.mcpServerConfig }),
 	};
 
 	// Step 3 — Build the entries map. Always set brain; always request obsidian

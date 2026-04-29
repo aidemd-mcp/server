@@ -80,7 +80,7 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 	if (parseResult.kind !== "ok") {
 		return { status: "no-brain-aide", hints };
 	}
-	const { config } = parseResult;
+	const { name, mcpServerConfig } = parseResult;
 
 	// Step 4 — Read .mcp.json at the framework-derived path. ENOENT and all
 	// other I/O failures collapse to no-mcp-entry: the user has a brain.aide but
@@ -89,7 +89,7 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 	try {
 		raw = await readFile(mcpConfigPath, "utf-8");
 	} catch {
-		return { status: "no-mcp-entry", name: config.name, hints };
+		return { status: "no-mcp-entry", name, hints };
 	}
 
 	// Step 5 — Parse .mcp.json JSON. Parse failure maps to no-mcp-entry for
@@ -98,7 +98,7 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 	try {
 		mcpConfig = JSON.parse(raw);
 	} catch {
-		return { status: "no-mcp-entry", name: config.name, hints };
+		return { status: "no-mcp-entry", name, hints };
 	}
 
 	// Step 6 — Look up mcpServers.brain. Any structural miss → no-mcp-entry.
@@ -109,13 +109,13 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 			: undefined;
 
 	if (servers === null || typeof servers !== "object" || !("brain" in (servers as object))) {
-		return { status: "no-mcp-entry", name: config.name, hints };
+		return { status: "no-mcp-entry", name, hints };
 	}
 
 	const brainEntry = (servers as Record<string, unknown>).brain;
 
 	if (brainEntry === null || typeof brainEntry !== "object") {
-		return { status: "no-mcp-entry", name: config.name, hints };
+		return { status: "no-mcp-entry", name, hints };
 	}
 
 	const entryRecord = brainEntry as Record<string, unknown>;
@@ -123,15 +123,15 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 	const actualArgs = Array.isArray(entryRecord.args) ? (entryRecord.args as unknown[]) : undefined;
 
 	if (actualCommand === undefined || actualArgs === undefined) {
-		return { status: "no-mcp-entry", name: config.name, hints };
+		return { status: "no-mcp-entry", name, hints };
 	}
 
 	// Step 7 — Compute the expected entry from the parsed brain.aide.
 	// interpolateArgs is called unconditionally per the spec's "always interpolate,
 	// then compare" contract — a no-op for default installs (no placeholders), but
 	// required for advanced users who use ${name} in their args.
-	const expectedCommand = config.mcpServerConfig.command;
-	const expectedArgs = interpolateArgs(config);
+	const expectedCommand = mcpServerConfig.command;
+	const expectedArgs = interpolateArgs({ name, mcpServerConfig });
 
 	// Step 8 — Structural drift comparison. Both sides are in-memory objects so
 	// whitespace and key ordering in the serialized .mcp.json are invisible to
@@ -142,10 +142,10 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 		expectedArgs.every((expected, i) => actualArgs[i] === expected);
 
 	if (!commandMatches || !argsMatch) {
-		return { status: "mcp-drift", name: config.name, hints };
+		return { status: "mcp-drift", name, hints };
 	}
 
 	// Step 9 — Happy path: brain.aide parsed, .mcp.json brain entry present and
 	// structurally matches the interpolated mcpServerConfig.
-	return { status: "ok", name: config.name, hints };
+	return { status: "ok", name, hints };
 }

@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import parseBrainAide, { parseBrainAideFromString, interpolateArgs } from "@/service/parseBrainAide/index.js";
+import type { BrainAideConfig } from "@/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Module-scope mock for node:os — each test that needs platform branching
@@ -36,13 +37,13 @@ afterEach(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getTemplate(rootPath: string, mockedPlatform?: "win32" | "posix"): Promise<string> {
+async function getTemplate(brainPath?: string, mockedPlatform?: "win32" | "posix"): Promise<string> {
 	const { platform } = await import("node:os");
 	if (mockedPlatform !== undefined) {
 		vi.mocked(platform).mockReturnValue(mockedPlatform === "win32" ? "win32" : "linux");
 	}
 	const { default: obsidianBrainAideTemplate } = await import("./index.js");
-	return obsidianBrainAideTemplate(rootPath);
+	return obsidianBrainAideTemplate(brainPath);
 }
 
 async function writeBrainAide(root: string, content: string): Promise<void> {
@@ -56,8 +57,8 @@ async function writeBrainAide(root: string, content: string): Promise<void> {
 
 describe("round-trip parses cleanly under the new schema", () => {
 	it("template output round-trips through parseBrainAide with kind ok", async () => {
-		const rootPath = "/foo/my-vault";
-		const content = await getTemplate(rootPath);
+		const brainPath = "/foo/my-vault";
+		const content = await getTemplate(brainPath);
 
 		await writeBrainAide(tempDir, content);
 		const result = await parseBrainAide(tempDir);
@@ -65,14 +66,14 @@ describe("round-trip parses cleanly under the new schema", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.name).toBe("obsidian");
-		expect(result.playbook.length).toBeGreaterThan(0);
-		expect(result.research.length).toBeGreaterThan(0);
+		expect(result.name).toBe("obsidian");
+		expect(result.playbookIndex.length).toBeGreaterThan(0);
+		expect(result.researchIndex.length).toBeGreaterThan(0);
 	});
 
 	it("parseBrainAideFromString produces the same ok result as writing to disk", async () => {
-		const rootPath = "/foo/my-vault";
-		const content = await getTemplate(rootPath);
+		const brainPath = "/foo/my-vault";
+		const content = await getTemplate(brainPath);
 
 		await writeBrainAide(tempDir, content);
 		const fromDisk = await parseBrainAide(tempDir);
@@ -85,48 +86,48 @@ describe("round-trip parses cleanly under the new schema", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Four-section body shape
+// Six-section body shape
 // ---------------------------------------------------------------------------
 
-describe("four-section body shape", () => {
-	it("result.kind is ok — parser accepts the four-section body grammar", async () => {
+describe("six-section body shape", () => {
+	it("result.kind is ok — parser accepts the six-section body grammar", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 	});
 
-	it("prose is a non-empty string", async () => {
+	it("orientation is a non-empty string", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(typeof result.prose).toBe("string");
-		expect(result.prose.length).toBeGreaterThan(0);
+		expect(typeof result.orientation).toBe("string");
+		expect(result.orientation.length).toBeGreaterThan(0);
 	});
 
-	it("playbook is a non-empty string", async () => {
+	it("config is a non-empty string", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(typeof result.playbook).toBe("string");
-		expect(result.playbook.length).toBeGreaterThan(0);
+		expect(typeof result.config).toBe("string");
+		expect(result.config.length).toBeGreaterThan(0);
 	});
 
-	it("research is a non-empty string", async () => {
+	it("playbookIndex is a non-empty string", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(typeof result.research).toBe("string");
-		expect(result.research.length).toBeGreaterThan(0);
+		expect(typeof result.playbookIndex).toBe("string");
+		expect(result.playbookIndex.length).toBeGreaterThan(0);
 	});
 
 	it("studyPlaybook is a non-empty string", async () => {
@@ -140,87 +141,117 @@ describe("four-section body shape", () => {
 		expect(result.studyPlaybook.length).toBeGreaterThan(0);
 	});
 
-	it("prose, playbook, studyPlaybook, and research are byte-distinct from each other", async () => {
+	it("updatePlaybook is a non-empty string", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).not.toBe(result.playbook);
-		expect(result.prose).not.toBe(result.studyPlaybook);
-		expect(result.prose).not.toBe(result.research);
-		expect(result.playbook).not.toBe(result.studyPlaybook);
-		expect(result.playbook).not.toBe(result.research);
-		expect(result.studyPlaybook).not.toBe(result.research);
+		expect(typeof result.updatePlaybook).toBe("string");
+		expect(result.updatePlaybook.length).toBeGreaterThan(0);
+	});
+
+	it("researchIndex is a non-empty string", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(typeof result.researchIndex).toBe("string");
+		expect(result.researchIndex.length).toBeGreaterThan(0);
+	});
+
+	it("all six body sections are pairwise byte-distinct", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const sections = [
+			result.orientation,
+			result.config,
+			result.playbookIndex,
+			result.studyPlaybook,
+			result.updatePlaybook,
+			result.researchIndex,
+		];
+
+		for (let i = 0; i < sections.length; i++) {
+			for (let j = i + 1; j < sections.length; j++) {
+				expect(sections[i]).not.toBe(sections[j]);
+			}
+		}
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Playbook section preserves sentinel structure
+// Playbook-index section preserves sentinel structure
 // ---------------------------------------------------------------------------
 
-describe("Playbook section preserves sentinel structure", () => {
-	it("playbook contains the H1 title '# Coding Playbook'", async () => {
+describe("Playbook-index section preserves sentinel structure", () => {
+	it("playbookIndex contains the H1 title '# Coding Playbook'", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbook).toContain("# Coding Playbook");
+		expect(result.playbookIndex).toContain("# Coding Playbook");
 	});
 
-	it("playbook contains '## Task Routing' (top-level sub-section under # Coding Playbook)", async () => {
+	it("playbookIndex contains '## Task Routing' (top-level sub-section under # Coding Playbook)", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbook).toMatch(/^## Task Routing$/m);
+		expect(result.playbookIndex).toMatch(/^## Task Routing$/m);
 	});
 
-	it("playbook contains '[[your-conventions-note]]'", async () => {
+	it("playbookIndex contains '[[your-conventions-note]]'", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbook).toContain("[[your-conventions-note]]");
+		expect(result.playbookIndex).toContain("[[your-conventions-note]]");
 	});
 
-	it("playbook contains '[[your-folder-structure-note]]'", async () => {
+	it("playbookIndex contains '[[your-folder-structure-note]]'", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbook).toContain("[[your-folder-structure-note]]");
+		expect(result.playbookIndex).toContain("[[your-folder-structure-note]]");
 	});
 
-	it("playbook contains '## How to Use This Index' (parent for Always Read First)", async () => {
+	it("playbookIndex contains '## How to Use This Index' (parent for Always Read First)", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbook).toMatch(/^## How to Use This Index$/m);
+		expect(result.playbookIndex).toMatch(/^## How to Use This Index$/m);
 	});
 
-	it("playbook does NOT contain procedural Step-1/Step-2/Step-3 narration", async () => {
+	it("playbookIndex does NOT contain procedural Step-1/Step-2/Step-3 narration", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbook).not.toContain("Step 1:");
-		expect(result.playbook).not.toContain("Step 2:");
-		expect(result.playbook).not.toContain("Step 3:");
+		expect(result.playbookIndex).not.toContain("Step 1:");
+		expect(result.playbookIndex).not.toContain("Step 2:");
+		expect(result.playbookIndex).not.toContain("Step 3:");
 	});
 });
 
@@ -303,102 +334,215 @@ describe("studyPlaybook section ships the navigation methodology", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Research section ships structural seed
+// updatePlaybook section ships the playbook-maintenance methodology
 // ---------------------------------------------------------------------------
 
-describe("Research section ships structural seed", () => {
-	it("research contains the H1 title '# Research'", async () => {
+describe("updatePlaybook section ships the playbook-maintenance methodology", () => {
+	it("updatePlaybook is non-empty and contains '# Update Playbook'", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.research).toContain("# Research");
+		expect(result.updatePlaybook.trim().length).toBeGreaterThan(0);
+		expect(result.updatePlaybook).toContain("# Update Playbook");
 	});
 
-	it("research contains '### Domains' (nested heading at H3)", async () => {
+	it("updatePlaybook contains mcp__brain__patch_note (Obsidian connector-specific edit tool)", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.research).toContain("### Domains");
+		expect(result.updatePlaybook).toContain("mcp__brain__patch_note");
 	});
 
-	it("research contains '### Domain Hubs'", async () => {
+	it("updatePlaybook contains mcp__brain__write_note (Obsidian connector-specific write tool)", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.research).toContain("### Domain Hubs");
+		expect(result.updatePlaybook).toContain("mcp__brain__write_note");
 	});
 
-	it("research does NOT contain '## Domains' at the start of a line", async () => {
+	it("updatePlaybook contains the routing-table drift-check anchor string", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.research).not.toMatch(/^## Domains$/m);
+		expect(result.updatePlaybook).toContain("Routing-table drift check");
 	});
 
-	it("research does NOT contain '## Domain Hubs' at the start of a line", async () => {
+	it("updatePlaybook is byte-distinct from studyPlaybook", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.research).not.toMatch(/^## Domain Hubs$/m);
-	});
-
-	it("research has no top-level '## ' heading at all", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.research).not.toMatch(/^## .+$/m);
+		expect(result.updatePlaybook).not.toBe(result.studyPlaybook);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// No nested '## ' headings inside any body section (closed-vocabulary regression)
+// config section ships the Obsidian wiring flow
 // ---------------------------------------------------------------------------
 
-describe("no nested '## ' headings inside any body section", () => {
-	it("prose contains no '^## .+$' lines", async () => {
+describe("config section ships the Obsidian wiring flow", () => {
+	it("config is non-empty", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).not.toMatch(/^## .+$/m);
+		expect(result.config.trim().length).toBeGreaterThan(0);
 	});
 
-	it("research contains no '^## .+$' lines", async () => {
+	it("config mentions mcpServerConfig.args (the field that carries the vault path)", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.research).not.toMatch(/^## .+$/m);
+		expect(result.config).toContain("mcpServerConfig.args");
+	});
+
+	it("config mentions the <BRAIN_PATH> placeholder (detecting the un-wired state)", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.config).toContain("<BRAIN_PATH>");
+	});
+
+	it("config mentions /aide:brain config (the argument shape for Obsidian wiring)", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.config).toContain("/aide:brain config");
+	});
+
+	it("config contains a restart-style instruction", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.config).toContain("Restart");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Parsed config contains EXACTLY the new fields
+// Research-index section ships structural seed
 // ---------------------------------------------------------------------------
 
-describe("parsed config contains exactly the new fields", () => {
+describe("Research-index section ships structural seed", () => {
+	it("researchIndex contains the H1 title '# Research'", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.researchIndex).toContain("# Research");
+	});
+
+	it("researchIndex contains '### Domains' (nested heading at H3)", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.researchIndex).toContain("### Domains");
+	});
+
+	it("researchIndex contains '### Domain Hubs'", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.researchIndex).toContain("### Domain Hubs");
+	});
+
+	it("researchIndex does NOT contain '## Domains' at the start of a line", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.researchIndex).not.toMatch(/^## Domains$/m);
+	});
+
+	it("researchIndex does NOT contain '## Domain Hubs' at the start of a line", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.researchIndex).not.toMatch(/^## Domain Hubs$/m);
+	});
+
+	it("researchIndex has no top-level '## ' heading at all", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.researchIndex).not.toMatch(/^## .+$/m);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// No nested '## ' headings inside orientation or researchIndex sections
+// ---------------------------------------------------------------------------
+
+describe("no nested '## ' headings inside orientation or researchIndex sections", () => {
+	it("orientation contains no '^## .+$' lines", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.orientation).not.toMatch(/^## .+$/m);
+	});
+
+	it("researchIndex contains no '^## .+$' lines", async () => {
+		const content = await getTemplate("/foo/my-vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.researchIndex).not.toMatch(/^## .+$/m);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Parsed frontmatter contains exactly the new flat fields
+// ---------------------------------------------------------------------------
+
+describe("parsed frontmatter contains exactly the new flat fields", () => {
 	it("name is obsidian", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
@@ -406,7 +550,7 @@ describe("parsed config contains exactly the new fields", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.name).toBe("obsidian");
+		expect(result.name).toBe("obsidian");
 	});
 
 	it("mcpServerConfig.command is a non-empty string", async () => {
@@ -416,8 +560,8 @@ describe("parsed config contains exactly the new fields", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(typeof result.config.mcpServerConfig.command).toBe("string");
-		expect(result.config.mcpServerConfig.command.length).toBeGreaterThan(0);
+		expect(typeof result.mcpServerConfig.command).toBe("string");
+		expect(result.mcpServerConfig.command.length).toBeGreaterThan(0);
 	});
 
 	it("mcpServerConfig.args is a non-empty string array", async () => {
@@ -427,53 +571,53 @@ describe("parsed config contains exactly the new fields", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(Array.isArray(result.config.mcpServerConfig.args)).toBe(true);
-		expect(result.config.mcpServerConfig.args.length).toBeGreaterThan(0);
-		for (const arg of result.config.mcpServerConfig.args) {
+		expect(Array.isArray(result.mcpServerConfig.args)).toBe(true);
+		expect(result.mcpServerConfig.args.length).toBeGreaterThan(0);
+		for (const arg of result.mcpServerConfig.args) {
 			expect(typeof arg).toBe("string");
 		}
 	});
 
-	it("config has no connector, rootPath, entryFile, or tools keys", async () => {
+	it("result has no connector, rootPath, entryFile, or tools keys on the ok variant", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(Object.prototype.hasOwnProperty.call(result.config, "connector")).toBe(false);
-		expect(Object.prototype.hasOwnProperty.call(result.config, "rootPath")).toBe(false);
-		expect(Object.prototype.hasOwnProperty.call(result.config, "entryFile")).toBe(false);
-		expect(Object.prototype.hasOwnProperty.call(result.config, "tools")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result, "connector")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result, "rootPath")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result, "entryFile")).toBe(false);
+		expect(Object.prototype.hasOwnProperty.call(result, "tools")).toBe(false);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Path is inlined, no placeholder
+// Path is inlined, no placeholder (brainPath supplied)
 // ---------------------------------------------------------------------------
 
 describe("path is inlined, no placeholder", () => {
-	it("last arg equals the rootPath value byte-for-byte", async () => {
-		const rootPath = "/foo/my-vault";
-		const content = await getTemplate(rootPath);
+	it("last arg equals the brainPath value byte-for-byte", async () => {
+		const brainPath = "/foo/my-vault";
+		const content = await getTemplate(brainPath);
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		const args = result.config.mcpServerConfig.args;
-		expect(args[args.length - 1]).toBe(rootPath);
+		const args = result.mcpServerConfig.args;
+		expect(args[args.length - 1]).toBe(brainPath);
 	});
 
-	it("last arg is not the literal string ${rootPath}", async () => {
+	it("last arg is not the literal string ${brainPath}", async () => {
 		const content = await getTemplate("/foo/my-vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		const args = result.config.mcpServerConfig.args;
-		expect(args[args.length - 1]).not.toBe("${rootPath}");
+		const args = result.mcpServerConfig.args;
+		expect(args[args.length - 1]).not.toBe("${brainPath}");
 	});
 
 	it("no arg element contains a ${...} placeholder", async () => {
@@ -483,7 +627,77 @@ describe("path is inlined, no placeholder", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		for (const arg of result.config.mcpServerConfig.args) {
+		for (const arg of result.mcpServerConfig.args) {
+			expect(arg).not.toMatch(/\$\{.+\}/);
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Optional brainPath — placeholder sentinel behaviour
+// ---------------------------------------------------------------------------
+
+describe("optional brainPath — placeholder sentinel behaviour", () => {
+	it("calling with no argument parses cleanly with kind ok", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+	});
+
+	it("last arg is the literal string '<BRAIN_PATH>' when brainPath is omitted", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const args = result.mcpServerConfig.args;
+		expect(args[args.length - 1]).toBe("<BRAIN_PATH>");
+	});
+
+	it("on posix, args take the ['@bitbonsai/mcpvault', '<BRAIN_PATH>'] shape when brainPath is omitted", async () => {
+		const content = await getTemplate(undefined, "posix");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", "<BRAIN_PATH>"]);
+	});
+
+	it("on win32, args take the ['/c', 'npx', '@bitbonsai/mcpvault', '<BRAIN_PATH>'] shape when brainPath is omitted", async () => {
+		const content = await getTemplate(undefined, "win32");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.mcpServerConfig.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", "<BRAIN_PATH>"]);
+	});
+
+	it("interpolateArgs is a no-op on the placeholder — '<BRAIN_PATH>' passes through unchanged", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const brainAideConfig: BrainAideConfig = { name: result.name, mcpServerConfig: result.mcpServerConfig };
+		const interpolated = interpolateArgs(brainAideConfig);
+		const args = result.mcpServerConfig.args;
+		expect(interpolated[interpolated.length - 1]).toBe("<BRAIN_PATH>");
+		expect(interpolated).toEqual(args);
+	});
+
+	it("no arg element matches the ${...} regex (placeholder is not an interpolation target)", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		for (const arg of result.mcpServerConfig.args) {
 			expect(arg).not.toMatch(/\$\{.+\}/);
 		}
 	});
@@ -501,18 +715,18 @@ describe("platform branching — Windows", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.mcpServerConfig.command).toBe("cmd");
+		expect(result.mcpServerConfig.command).toBe("cmd");
 	});
 
-	it("args are [/c, npx, @bitbonsai/mcpvault, rootPath] on win32", async () => {
-		const rootPath = "/vault";
-		const content = await getTemplate(rootPath, "win32");
+	it("args are [/c, npx, @bitbonsai/mcpvault, brainPath] on win32", async () => {
+		const brainPath = "/vault";
+		const content = await getTemplate(brainPath, "win32");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.mcpServerConfig.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", rootPath]);
+		expect(result.mcpServerConfig.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", brainPath]);
 	});
 });
 
@@ -522,27 +736,27 @@ describe("platform branching — Windows", () => {
 
 describe("Windows path round-trip (backslash regression)", () => {
 	it("win32 branch: Windows path with backslashes parses cleanly and round-trips byte-for-byte", async () => {
-		const rootPath = "C:\\Users\\test\\my-vault";
-		const content = await getTemplate(rootPath, "win32");
+		const brainPath = "C:\\Users\\test\\my-vault";
+		const content = await getTemplate(brainPath, "win32");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		const args = result.config.mcpServerConfig.args;
-		expect(args[args.length - 1]).toBe(rootPath);
+		const args = result.mcpServerConfig.args;
+		expect(args[args.length - 1]).toBe(brainPath);
 	});
 
 	it("posix branch: Windows-formatted path string parses cleanly and round-trips byte-for-byte", async () => {
-		const rootPath = "C:\\Users\\test\\my-vault";
-		const content = await getTemplate(rootPath, "posix");
+		const brainPath = "C:\\Users\\test\\my-vault";
+		const content = await getTemplate(brainPath, "posix");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		const args = result.config.mcpServerConfig.args;
-		expect(args[args.length - 1]).toBe(rootPath);
+		const args = result.mcpServerConfig.args;
+		expect(args[args.length - 1]).toBe(brainPath);
 	});
 });
 
@@ -558,122 +772,143 @@ describe("platform branching — POSIX", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.mcpServerConfig.command).toBe("npx");
+		expect(result.mcpServerConfig.command).toBe("npx");
 	});
 
-	it("args are [@bitbonsai/mcpvault, rootPath] on linux", async () => {
-		const rootPath = "/vault";
-		const content = await getTemplate(rootPath, "posix");
+	it("args are [@bitbonsai/mcpvault, brainPath] on linux", async () => {
+		const brainPath = "/vault";
+		const content = await getTemplate(brainPath, "posix");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", rootPath]);
+		expect(result.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", brainPath]);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Prose body uses storage-agnostic vocabulary and preserves entry-point sentinels
+// Orientation body uses storage-agnostic vocabulary and lists all four entry-point artifacts
 // ---------------------------------------------------------------------------
 
-describe("prose body uses storage-agnostic vocabulary and preserves entry-point sentinels", () => {
-	it("prose is non-empty", async () => {
+describe("orientation body uses storage-agnostic vocabulary and lists all four entry-point artifacts", () => {
+	it("orientation is non-empty", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose.trim().length).toBeGreaterThan(0);
+		expect(result.orientation.trim().length).toBeGreaterThan(0);
 	});
 
-	it("prose contains mcp__brain__read_note", async () => {
+	it("orientation contains mcp__brain__read_note", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).toContain("mcp__brain__read_note");
+		expect(result.orientation).toContain("mcp__brain__read_note");
 	});
 
-	it("prose contains mcp__brain__search_notes", async () => {
+	it("orientation contains mcp__brain__search_notes", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).toContain("mcp__brain__search_notes");
+		expect(result.orientation).toContain("mcp__brain__search_notes");
 	});
 
-	it("prose contains coding-playbook/coding-playbook.md (new entry-point pointer)", async () => {
+	it("orientation contains coding-playbook/coding-playbook.md", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).toContain("coding-playbook/coding-playbook.md");
+		expect(result.orientation).toContain("coding-playbook/coding-playbook.md");
 	});
 
-	it("prose contains research/research.md (new entry-point pointer)", async () => {
+	it("orientation contains coding-playbook/study-playbook.md", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).toContain("research/research.md");
+		expect(result.orientation).toContain("coding-playbook/study-playbook.md");
 	});
 
-	it("prose does not contain the word 'vault'", async () => {
+	it("orientation contains coding-playbook/update-playbook.md (new fourth entry-point artifact)", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).not.toMatch(/\bvault\b/i);
+		expect(result.orientation).toContain("coding-playbook/update-playbook.md");
 	});
 
-	it("prose does not contain the word 'wikilink'", async () => {
+	it("orientation contains research/research.md", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).not.toMatch(/\bwikilinks?\b/i);
+		expect(result.orientation).toContain("research/research.md");
 	});
 
-	it("prose does not contain the standalone word 'hub'", async () => {
+	it("orientation does not contain the word 'vault'", async () => {
 		const content = await getTemplate("/vault");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.prose).not.toMatch(/\bhub\b/i);
+		expect(result.orientation).not.toMatch(/\bvault\b/i);
+	});
+
+	it("orientation does not contain the word 'wikilink'", async () => {
+		const content = await getTemplate("/vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.orientation).not.toMatch(/\bwikilinks?\b/i);
+	});
+
+	it("orientation does not contain the standalone word 'hub'", async () => {
+		const content = await getTemplate("/vault");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.orientation).not.toMatch(/\bhub\b/i);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// interpolateArgs is a no-op on the default scaffold
+// interpolateArgs is a no-op on the default scaffold (brainPath supplied)
 // ---------------------------------------------------------------------------
 
 describe("interpolateArgs is a no-op on the default scaffold", () => {
 	it("interpolated args are deep-equal to original args (no placeholders to replace)", async () => {
-		const rootPath = "/home/user/vault";
-		const content = await getTemplate(rootPath);
+		const brainPath = "/home/user/vault";
+		const content = await getTemplate(brainPath);
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		const interpolated = interpolateArgs(result.config);
-		expect(interpolated).toEqual(result.config.mcpServerConfig.args);
+		const brainAideConfig: BrainAideConfig = { name: result.name, mcpServerConfig: result.mcpServerConfig };
+		const interpolated = interpolateArgs(brainAideConfig);
+		expect(interpolated).toEqual(result.mcpServerConfig.args);
 	});
 
 	it("interpolateArgs does not mutate the parsed config args", async () => {
@@ -683,9 +918,10 @@ describe("interpolateArgs is a no-op on the default scaffold", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		const originalArgs = [...result.config.mcpServerConfig.args];
-		interpolateArgs(result.config);
-		expect(result.config.mcpServerConfig.args).toEqual(originalArgs);
+		const brainAideConfig: BrainAideConfig = { name: result.name, mcpServerConfig: result.mcpServerConfig };
+		const originalArgs = [...result.mcpServerConfig.args];
+		interpolateArgs(brainAideConfig);
+		expect(result.mcpServerConfig.args).toEqual(originalArgs);
 	});
 });
 

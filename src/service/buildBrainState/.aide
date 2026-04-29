@@ -3,40 +3,55 @@ scope: src/service/buildBrainState
 status: aligned
 description: >
   Read-only brain-state detector — consumes `.aide/config/brain.aide` via
-  parseBrainAide as the source of truth, compares the parsed
-  `mcpServerConfig` against the host's `.mcp.json` brain entry for drift,
-  and returns a four-state tagged union (`ok`, `no-brain-aide`,
-  `no-mcp-entry`, `mcp-drift`) that the boot probe and runtime brain tool
-  both consume without re-deriving detection logic. The detector never
-  stats a path; path validity is the launcher's problem at MCP server
-  startup.
+  parseBrainAide as the source of truth, returns `no-mcp-entry` immediately
+  when any element of the parsed `mcpServerConfig.args` is null (a
+  null-bearing config is by definition not a wireable launch command),
+  otherwise compares the parsed `mcpServerConfig` against the host's
+  `.mcp.json` brain entry for drift, and returns a closed four-state tagged
+  union (`ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`) that the boot
+  probe and runtime brain tool both consume without re-deriving detection
+  logic. The null-args structural check runs BEFORE the byte-for-byte
+  drift comparison, so a null-bearing `brain.aide` matched byte-for-byte
+  by an equally null-bearing `.mcp.json` does not slip through as `ok`.
+  The detector never stats a path; path validity is the launcher's problem
+  at MCP server startup.
 intent: >
   buildBrainState is the single canonical-code detector that resolves the
   host project's brain precondition state into a structured `BrainState`
-  tagged union. It calls `parseBrainAide(root)` to read the user-owned
-  source of truth (`.aide/config/brain.aide`), reads `.mcp.json` and
-  looks up the fixed `brain` key, and structurally compares the parsed
+  tagged union drawn from a closed four-state vocabulary — `ok`,
+  `no-brain-aide`, `no-mcp-entry`, `mcp-drift`. The detector's job is
+  structural classification of the brain wiring state. It calls
+  `parseBrainAide(root)` to read the user-owned source of truth
+  (`.aide/config/brain.aide`); if any element of the parsed
+  `mcpServerConfig.args` is null, the detector returns `no-mcp-entry`
+  immediately — null in args is a structural property of "wiring not
+  done," and a null-armed launch command is unwireable regardless of
+  what `.mcp.json` contains. Otherwise it reads `.mcp.json`, looks up
+  the fixed `brain` key, and structurally compares the parsed
   `mcpServerConfig` against the actual `.mcp.json` brain entry. Every
-  failure mode collapses to one of four structured statuses — `ok`,
-  `no-brain-aide`, `no-mcp-entry`, `mcp-drift` — so the orchestrator can
-  name the user's recovery path without parsing prose. The detector is
-  read-only: it never writes `.mcp.json`, never auto-syncs on drift,
-  never spawns processes, never stats any path on disk, never throws. It
-  also never imports from a backend registry, never branches on the
-  user's `name` label, and never re-implements brain.aide parsing —
+  failure mode collapses into the closed four-state vocabulary — no
+  fifth state for null-armed args, because null-bearing configs collapse
+  semantically into `no-mcp-entry` (the brain's MCP entry is not yet
+  wireable, which is exactly what `no-mcp-entry` already means). The
+  detector is read-only: it never writes `.mcp.json`, never auto-syncs
+  on drift, never spawns processes, never stats any path on disk, never
+  throws. It also never imports from a backend registry, never branches
+  on the user's `name` label, never re-implements brain.aide parsing,
+  and never pattern-matches string contents to detect placeholders —
   `name` is descriptive metadata threaded through unchanged, the parser
-  owns the file-format contract, and path validation is the launcher's
-  job (the package does not second-guess it). The default scaffolded
+  owns the file-format contract, path validation is the launcher's job,
+  and YAML null is the unambiguous unwired-slot signal (no literal
+  sentinel like `<BRAIN_PATH>` is recognized). The default scaffolded
   brain.aide carries the brain's location inline in `mcpServerConfig.args`
-  byte-for-byte, with no `${...}` placeholders to interpolate; the
-  parser still applies `${...}` substitution if any frontmatter field is
-  referenced (advanced users may DRY a value across positions), but with
-  only `name` available to substitute, that surface is essentially
-  dormant in the default flow. Two distinct consumers depend on this
-  module: the runtime brain tool (`aide_brain`) composes its agent-facing
-  prose from the resolved state, and the boot probe (`aide_info`) gates
-  pipeline work on it. Both receive the same plain-data state with the
-  same discriminant rules.
+  byte-for-byte for fully-wired slots, with no `${...}` placeholders to
+  interpolate; the parser still applies `${...}` substitution if any
+  frontmatter field is referenced (advanced users may DRY a value across
+  positions), but with only `name` available to substitute, that surface
+  is essentially dormant in the default flow. Two distinct consumers
+  depend on this module: the runtime brain tool (`aide_brain`) composes
+  its agent-facing prose from the resolved state, and the boot probe
+  (`aide_info`) gates pipeline work on it. Both receive the same
+  plain-data state with the same discriminant rules.
 outcomes:
   desired:
     - >-
@@ -67,6 +82,39 @@ outcomes:
       element-by-element equality on `args` (same length, same value
       at every position). Any deviation is drift; matching values are
       not."
+    - >-
+      "Any null entry in the parsed `mcpServerConfig.args` returns
+      `no-mcp-entry`. Detection is a structural property of the parsed
+      config — the detector does not pattern-match string contents,
+      does not recognize literal sentinels (no `<BRAIN_PATH>`, no
+      `<API_TOKEN>`, no magic UUIDs, no sentinel-shaped strings), and
+      does not introspect arg semantics. YAML null is the unambiguous
+      unwired-slot signal: a bare `-` in `mcpServerConfig.args` parses
+      to JS `null`, and that JS `null` triggers `no-mcp-entry`. Null
+      in any arg position means the launch command is unwireable, and
+      an unwireable launch command means the brain's MCP entry is not
+      yet wired — which is exactly what `no-mcp-entry` already means."
+    - >-
+      "The null-args check runs BEFORE the byte-for-byte drift
+      comparison. A null-bearing `brain.aide` matched byte-for-byte by
+      an equally null-bearing `.mcp.json` does NOT pass through as
+      `ok` — the structural unwired-slot state takes precedence over
+      `.mcp.json` agreement. Bytes that agree on null have agreed on
+      broken state; that is not health, and the detector must surface
+      it as `no-mcp-entry` regardless of how clean the drift comparison
+      would otherwise come back."
+    - >-
+      "The four-state vocabulary (`ok`, `no-brain-aide`, `no-mcp-entry`,
+      `mcp-drift`) is closed. Null-armed configs collapse semantically
+      into `no-mcp-entry` because null in args means the brain's MCP
+      entry is not yet wireable. The semantic mapping is unambiguous
+      and complete: `no-brain-aide` covers absent or malformed source
+      of truth; `no-mcp-entry` covers every case where the source of
+      truth exists but the MCP entry is not yet wired (whether because
+      `.mcp.json` is missing the key, because `.mcp.json` cannot be
+      read, or because `mcpServerConfig.args` is null-armed); `mcp-drift`
+      covers content disagreement between two non-null configs; `ok`
+      covers full agreement on fully-wired configs."
     - >-
       "Drift detection is structural-equality on the in-memory entry
       shape, not byte-equality on the serialized JSON. Reformatted
@@ -184,6 +232,45 @@ outcomes:
       align the entry), and collapsing them costs the orchestrator its
       ability to tell the user what to do."
     - >-
+      "A fifth boot-reporter status state for null-armed args —
+      `unwired`, `incomplete-args`, `placeholder-present`,
+      `not-yet-configured`, or any rename of the same idea. The
+      four-state vocabulary is closed; null-bearing configs map to
+      `no-mcp-entry`. Forking a fifth state for the unwired-slot case
+      forces every consumer to learn another branch with the same
+      remediation as `no-mcp-entry` (route the user to
+      `/aide:brain config`), and it splits a single semantic state
+      across two discriminants for no consumer benefit."
+    - >-
+      "Pattern-matching string contents to detect placeholders —
+      checking for `<BRAIN_PATH>`, `<API_TOKEN>`, magic UUIDs,
+      sentinel-shaped strings, angle-bracket-wrapped tokens, or any
+      other in-band string marker that 'looks like a placeholder.'
+      Detection is structural — null in YAML, never a string the
+      detector has to recognize. The moment the detector starts
+      pattern-matching string contents, it commits to a sentinel
+      vocabulary it has to keep in sync with whatever templates and
+      integrations ship; YAML null is the language-level contract,
+      and using it eliminates the sentinel-vocabulary surface
+      entirely."
+    - >-
+      "Detecting null in args by string-equality with `'null'` or
+      `'~'` rather than by JS `=== null`. The detector reads parsed
+      YAML, where bare `-` (no scalar after the dash) becomes JS
+      `null`. Comparing against the strings `'null'` or `'~'` would
+      detect text the user typed verbatim instead of the YAML-null
+      values the parser actually produces — and would silently miss
+      every actual unwired slot."
+    - >-
+      "Returning `mcp-drift` for a config where both `brain.aide` and
+      `.mcp.json` contain matching nulls. They agree byte-for-byte
+      but the wiring is unwired — `no-mcp-entry` is correct,
+      `mcp-drift` is wrong (it implies disagreement between two
+      otherwise-valid configs). Running drift comparison ahead of the
+      null-args check creates exactly this regression: agreement on
+      broken state masquerading as health-with-disagreement when the
+      truthful answer is unwired-slot."
+    - >-
       "Reintroducing the retired `invalid-path` state — under that name
       or any rename. Path validity is the launcher's job at MCP server
       startup; the detector does not stat any path. A status that
@@ -254,76 +341,41 @@ outcomes:
 
 ## Context
 
-Before this rewrite, the brain-state detector treated the host's `.mcp.json` as the authoritative source for what brain was wired and where it lived. Identity was inferred by dispatching the entry's `command/args` shape to a backend registry, which returned a driver whose `id` populated a `backend` field on the returned state. That model conflated two responsibilities — wiring detection and identity inference — and forced this package to know about every brain a user might ever wire.
+The brain-state detector performs read-only structural classification of the host project's brain wiring state. Two consumers read its output: the boot probe (`aide_info`) gates pipeline work on the result, and the runtime brain tool (`aide_brain`) composes agent-facing prose from the same result. Both branch on a single discriminant — `status` — drawn from a closed four-state vocabulary: `ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`. Each state names a distinct user recovery path, and each state corresponds to a distinct prose remediation the orchestrator surfaces.
 
-The settled architectural shift in `.aide/intent.aide` repartitions the contract. `.aide/config/brain.aide`, a hand-written file the host owns and lives in the user-owned `.aide/config/` directory, is the source of truth for which brain is wired and how the MCP server is launched. `.mcp.json` becomes a derived artifact written by `npx aidemd-mcp sync` from brain.aide. The detector's job changes accordingly: it no longer infers identity from `.mcp.json`'s shape; it reads brain.aide for the user's declared intent, then checks whether `.mcp.json` agrees. Disagreement — drift — is a distinct failure mode the orchestrator must surface so the user knows to run sync.
+The source-of-truth contract is layered. `.aide/config/brain.aide` is the user-owned source of truth for what brain is wired and how its MCP server launches. `.mcp.json` is a derived artifact written by `npx aidemd-mcp sync` from brain.aide. The detector reads brain.aide first (via the canonical `parseBrainAide` module) and then checks whether `.mcp.json` agrees. Disagreement is `mcp-drift`; absence on the derived side is `no-mcp-entry`; absence on the source-of-truth side is `no-brain-aide`; full agreement on a fully-wired config is `ok`.
 
-The schema collapse is sharp. `brain.aide`'s frontmatter contains exactly two top-level fields — `name` (the human-readable label) and `mcpServerConfig` (`command` and `args`). No `rootPath`, no `entryFile`, no `connector`, no `tools`. The detector's vocabulary collapses with it: four states cover the recovery surface — `ok` (everything agrees), `no-brain-aide` (no source of truth to read), `no-mcp-entry` (source of truth exists but `.mcp.json` doesn't agree by absence), and `mcp-drift` (source of truth exists, `.mcp.json` exists, but they disagree by content). The prior `invalid-path` state goes away with `rootPath`; path validation is the launcher's job at MCP server startup, not the boot reporter's. Each remaining state names a distinct user action — create the file, run sync, run sync — and the orchestrator composes a different remediation for each.
+`mcpServerConfig.args` is typed `(string | null)[]`. A YAML null at any index is the explicit unwired-slot signal — the user (or the cold-install seed) left that argument position blank for `/aide:brain config` to fill. A null-armed launch command is, by definition, not yet wireable: a launcher invocation with a null in its args list cannot start a process. The detector recognizes that condition structurally and returns `no-mcp-entry` before any comparison against `.mcp.json` runs. Null-armed configs collapse semantically into `no-mcp-entry` rather than forking a fifth state, because the user remediation is identical (run `/aide:brain config` to fill the slot, then sync) and a fifth status would force every consumer of the four-state union to grow another branch with no different remedy.
 
-Two consumers read this output: `aide_info` at boot time, gating pipeline work on a healthy state, and `aide_brain` at runtime, composing agent-facing prose from the same state. Both branch on `status` alone — no `backend` field, no brand dispatch on the consumer side. The detector's contract is structural: parse the source of truth, compare against the derived artifact, return a tagged status. Identity belongs to the user (encoded in their hand-written `name` label and their hand-written prose body); the detector threads `name` through unchanged so consumers can display it, never branch on it.
-
-Format knowledge lives in the sibling `parseBrainAide` module. This detector is one consumer of the parser; it never reaches into the brain.aide file format directly. The interpolation surface — `${...}` substitution into `mcpServerConfig.args` — lives in `parseBrainAide`'s `interpolateArgs` helper; this detector calls it once when computing the expected `.mcp.json` entry for drift comparison. In the default scaffold no placeholders are present, so the call is structurally a no-op; the call remains unconditional because the contract is "always interpolate, then compare," and advanced users who DRY a value across args via `${name}` rely on it.
+The detector never stats a path. With `rootPath` removed from the brain.aide schema, there is no path field for this module to validate; whatever path the user inlined into `mcpServerConfig.args` is the launcher's responsibility to resolve at MCP server startup. Format knowledge lives entirely in the sibling `parseBrainAide` module — the detector is one of its consumers and never reaches into the brain.aide file format directly. Identity inference is retired entirely: the user's `name` label is descriptive metadata threaded through unchanged so consumers can display it, never a switch the package interprets.
 
 ## Strategy
 
-**Pipeline order encodes the source-of-truth direction.** brain.aide first, then `.mcp.json`. The detector parses brain.aide before reading `.mcp.json` because brain.aide is canonical; reading the wiring file first would invert the dependency (`.mcp.json` is what we're checking against the source of truth, not the source of truth itself). The pipeline has only two reads now — the path-stat step is gone with `rootPath`. Reordering this pipeline would silently treat `.mcp.json` as authoritative — the exact regression the parent intent spec's "user-owned, not code-owned" decision exists to prevent.
+**Structural detection over string-matching.** Null in YAML is the language-level contract for "no value here." The detector recognizes nulls as JS `=== null` against the parsed args list — the value `parseBrainAide` actually produces when it encounters a bare `-` (no scalar after the dash) in `mcpServerConfig.args`. The retired alternative was pattern-matching string sentinels (`<BRAIN_PATH>`, `<API_TOKEN>`, magic UUIDs, angle-bracket-wrapped tokens). That design failed in production: literal `<BRAIN_PATH>` placeholder strings propagated verbatim into both `brain.aide` and `.mcp.json`, the byte-for-byte drift comparison returned `ok` because both sides agreed on the placeholder, the orchestrator never routed the user to `/aide:brain config`, and the brain MCP server failed silently at launch. The structural fix is to detect null-shape on the parsed config — robust to any unwired-slot configuration the user can produce, with no in-band string vocabulary the package has to keep in sync with whatever templates and integrations ship. Pattern-matching string contents is forbidden; detection is structural via JS `=== null`.
 
-**No path validation.** With `rootPath` removed from the brain.aide schema, the detector has no path to stat. Path validity becomes the launcher's problem at MCP server startup (the launcher will fail loudly when invoked with a missing path), not the boot reporter's. The detector returns `ok` if brain.aide parses and the MCP entry matches; it never opens any file beyond brain.aide and `.mcp.json`. Reintroducing a stat — even as a courtesy `existsSync` "to give the user a friendlier error" — re-creates the retired `invalid-path` state in spirit, shifts a load-bearing contract surface back into the package, and re-introduces a per-brand assumption (only some launchers take a single path argument; the detector cannot know which arg position holds "the path" in general).
+**Precedence ordering: parse → null-check → compare.** The null-args check runs BEFORE the byte-for-byte drift comparison. The order matters because null-armed configs can match each other byte-for-byte: a freshly-installed brain.aide carries nulls in unwired slots, and a sync run against that brain.aide would write the same nulls into `.mcp.json`, producing two equally null-bearing files that agree byte-for-byte. Without precedence ordering, the drift comparison would return `ok` on that pair and the detector would report a healthy brain when the wiring is actually unwired. Running the structural pre-check ahead of the drift comparison forces the unwired-slot signal to win: any null in args returns `no-mcp-entry` immediately, and the detector never reaches the `.mcp.json` read on a null-armed config. Bytes that agree on null have agreed on broken state; that is not health.
+
+**Null-armed configs collapse semantically into `no-mcp-entry`.** The four-state vocabulary is closed. A fifth state for unwired-slot args (`unwired`, `incomplete-args`, `placeholder-present`, `not-yet-configured`, or any rename of the same idea) was deliberately rejected. The mapping is unambiguous: `no-mcp-entry` already means "the source of truth exists but the brain's MCP entry is not yet wireable," and a null-armed launch command is exactly that — not yet wireable. Both sub-cases (no `mcpServers.brain` key in `.mcp.json`, and a null-bearing `mcpServerConfig.args`) route the user to the same remedy: run `/aide:brain config` to fill any null slots, then run sync to write the entry. Forking a fifth status would force every consumer of the four-state union to grow another branch with no different remediation — pure cost, no benefit.
+
+**Pipeline order encodes the source-of-truth direction.** brain.aide first, then `.mcp.json`. The detector parses brain.aide before reading `.mcp.json` because brain.aide is canonical; reading the wiring file first would invert the dependency. With the null pre-check, the detector reads `.mcp.json` only after confirming the parsed args list contains no nulls — null-armed configs short-circuit before the second read. Reordering this pipeline would silently treat `.mcp.json` as authoritative — the exact regression the parent intent spec's "user-owned, not code-owned" decision exists to prevent.
+
+**No path validation.** With `rootPath` removed from the brain.aide schema, the detector has no path to stat. Path validity becomes the launcher's problem at MCP server startup (the launcher will fail loudly when invoked with a missing path), not the boot reporter's. Reintroducing a stat — even as a courtesy `existsSync` "to give the user a friendlier error" — re-creates the retired `invalid-path` state in spirit, shifts a load-bearing contract surface back into the package, and re-introduces a per-integration assumption (only some launchers take a single path argument; the detector cannot know which arg position holds "the path" in general, and it must not introspect args to guess).
 
 **Malformed brain.aide collapses to `no-brain-aide`.** `parseBrainAide` returns three failure variants: `missing`, `malformed-frontmatter`, `malformed-body`. The detector treats all three identically — no usable source of truth, no `name` or `mcpServerConfig` to thread into downstream branches. The smaller vocabulary is deliberate: every malformed-file recovery path reduces to "fix or recreate `brain.aide`," and a separate status for each malformed sub-case would force every consumer to learn three branches for one remediation. The parser surfaces the precise reason in its result; consumers that need the granular reason read it from the parser directly, not from this detector.
 
-**Drift detection is structural, not byte-equal.** The comparison runs on the in-memory parsed entry shape: string equality on `command`, element-by-element string equality on `args`. Whitespace, key ordering, and trailing newlines in the serialized `.mcp.json` are invisible to this comparison because both sides are parsed before comparing. The reason: the package owns the canonical structure; bytes-not-equal in a way that doesn't change semantic structure should NOT trigger drift. A user who reformatted their `.mcp.json` to match their editor's prettifier without touching the brain entry's `command` or `args` must see `ok`, not `mcp-drift`. Otherwise every cosmetic edit fires a false drift alert and the orchestrator halts the pipeline for nothing.
+**Drift detection is structural, not byte-equal.** The comparison runs on the in-memory parsed entry shape: string equality on `command`, element-by-element equality on `args`. Whitespace, key ordering, and trailing newlines in the serialized `.mcp.json` are invisible to this comparison because both sides are parsed before comparing. The reason: the package owns the canonical structure; bytes-not-equal in a way that doesn't change semantic structure should NOT trigger drift. A user who reformatted their `.mcp.json` to match their editor's prettifier without touching the brain entry's `command` or `args` must see `ok`, not `mcp-drift`. The structural-equality rule is the inverse of the null pre-check: matching nulls are NOT drift either (they agree, so they are not disagreement), and the truthful classification of two null-bearing configs is `no-mcp-entry` via the pre-check, not `mcp-drift` via the comparison.
 
-**Interpolation is unconditional, but typically a no-op.** The default scaffolded brain.aide carries the brain's path inline in `mcpServerConfig.args` byte-for-byte — no `${...}` placeholders to substitute. The detector still calls `interpolateArgs(config)` once when computing the expected entry; in the default flow the call returns the args list unchanged. The call remains unconditional because the contract is "always interpolate, then compare," and advanced users who choose to DRY a value via `${name}` rely on the call running. Skipping the call when no placeholders are present would optimize a no-op and create a forked code path for the advanced case.
+**Interpolation is unconditional, but typically a no-op.** When the parsed config has no nulls and the detector proceeds to compare against `.mcp.json`, it calls `interpolateArgs(config)` once when computing the expected entry. The default scaffolded brain.aide carries the brain's path inline byte-for-byte — no `${...}` placeholders to substitute — so the call returns the args list unchanged. The call remains unconditional because the contract is "always interpolate, then compare," and advanced users who choose to DRY a value via `${name}` rely on the call running. Skipping the call when no placeholders are present would optimize a no-op and create a forked code path for the advanced case.
 
-**`name` is metadata, not dispatch.** The detector reads `name` from the parsed brain.aide and includes it on every state shape that carries config (`ok`, `no-mcp-entry`, `mcp-drift`). No code path in this detector branches on its value. The reason is layering: identity inference is retired entirely from this package, and the user's label is purely descriptive — surfaced in `aide_info`'s prose and `brain.aide` itself, never a switch the package interprets. If a future consumer wants brand-specific behavior, the right move is to push that decision back into the user's hand-written brain.aide prose body, not to re-introduce a registry under another name.
+**`name` is metadata, not dispatch.** The detector reads `name` from the parsed brain.aide and includes it on every state shape that carries config (`ok`, `no-mcp-entry`, `mcp-drift`). No code path in this detector branches on its value. Identity inference is retired entirely from this package, and the user's label is purely descriptive — surfaced in `aide_info`'s prose and `brain.aide` itself, never a switch the package interprets. If a future consumer wants brand-specific behavior, the right move is to push that decision back into the user's hand-written brain.aide prose body, not to re-introduce a registry under another name.
 
-**The `backend`, `rootPath`, `connector`, `entryFile`, and `tools` fields are removed.** The old contract carried `backend: <driver.id>` on `ok` and `backend: null` elsewhere as a discriminant for consumers; it also threaded `connector`, `rootPath`, and other config through. The new contract removes all of them. Consumers branch on `status` alone. The wired brain is described by `name` (descriptive) on the states that carry it; consumers that want to display "your Obsidian brain is configured" read `name` and substitute it into their prose. The brain's interface contract — which MCP tools to call, where to start reading — lives in the prose body the runtime brain tool returns verbatim, not in any frontmatter declaration the detector reports.
+**Drift is a hard halt — the detector never auto-repairs.** When `mcp-drift` is detected, the detector returns the tagged state and stops. It does not write `.mcp.json` to bring it in line with brain.aide. Every mutation of `.mcp.json` is a deliberate user action with a visible command boundary (`npx aidemd-mcp sync`); auto-repair shifts that contract surface out from under the user. A user who hand-edited `.mcp.json` for a debug session must not lose that edit silently because the detector "helpfully" overwrote it. The detector's only role on drift is to name it.
 
-**Drift is a hard halt — the detector never auto-repairs.** When `mcp-drift` is detected, the detector returns the tagged state and stops. It does not write `.mcp.json` to bring it in line with brain.aide. The reason is the parent spec's contract: every mutation of `.mcp.json` is a deliberate user action with a visible command boundary (`npx aidemd-mcp sync`), and auto-repair shifts that contract surface out from under the user. A user who hand-edited `.mcp.json` for a debug session must not lose that edit silently because the detector "helpfully" overwrote it. The detector's only role on drift is to name it.
-
-**Single-orchestrator file, no helper subfolders today.** The new pipeline is two reads (parse brain.aide, parse `.mcp.json`) and one structural comparison. Splitting into sub-helpers would create folders for what amount to single-statement comparisons. The folder-structure rule (helpers extracted into subfolders when they earn it) applies when a step's logic crosses ~30 lines; today every step is well below that threshold. If the drift comparison grows structurally complex (e.g. a future schema adds optional fields requiring deep partial-equality), factor that step into a sibling subfolder at that point.
-
-**Pure read-side detection.** The detector reads brain.aide via the parser and reads `.mcp.json`. Nothing else. No path stats, no writes, no shell-out to `npx`, no MCP server boot, no network call. This honors the parent intent spec's separation: detection observes; mutation lives in the explicit user-driven verbs (`init`, `sync`). Any side effect inside this detector erodes the verb-boundary the user relies on to know when their `.mcp.json` will change.
+**Pure read-side detection.** The detector reads brain.aide via the parser and (only when the args list contains no nulls) reads `.mcp.json`. Nothing else. No path stats, no writes, no shell-out to `npx`, no MCP server boot, no network call. The never-throws invariant is the other side of this coin: every error and edge case — missing brain.aide, malformed brain.aide, missing or malformed `.mcp.json`, null-bearing args, drift — collapses to a structured `BrainState` value the consumer can branch on. A throw surfaces as an MCP protocol error with no structured remediation for the consumer.
 
 ## Good examples
 
-**`ok` with brain.aide and `.mcp.json` agreeing.** brain.aide declares `name: obsidian` and a `mcpServerConfig` whose args are `["@bitbonsai/mcpvault", "D:/notes/my-vault"]` (inline path, no placeholders). `.mcp.json` has `mcpServers.brain` with `command: "npx"` and `args: ["@bitbonsai/mcpvault", "D:/notes/my-vault"]`. The detector parses brain.aide, calls `interpolateArgs(config)` (which returns the args list unchanged because no placeholders are present), reads `.mcp.json`, finds the `brain` key, and structurally compares. Everything matches. The detector returns:
-
-```
-{
-  status: "ok",
-  name: "obsidian",
-  hints: [...]
-}
-```
-
-`name` is threaded through from brain.aide for diagnostic prose; `hints` is populated from the standard sibling/env-var/conventional resolution path. No `backend` field, no `rootPath` field, no `connector` field — none of these exist on the contract.
-
-**`mcp-drift` after a user edited brain.aide and forgot to run sync.** brain.aide was retargeted to a new vault — the user changed the second arg in `mcpServerConfig.args` from `"D:/notes/old-vault"` to `"D:/notes/new-vault"`. `.mcp.json`'s brain entry still references the old path:
-
-```
-{
-  status: "mcp-drift",
-  name: "obsidian",
-  hints: [...]
-}
-```
-
-The detector parsed brain.aide successfully (so `name` comes from it), called `interpolateArgs` (a no-op in the default flow), read `.mcp.json` successfully, found a `brain` key, and computed the expected entry from brain.aide. The expected `args[1]` was `"D:/notes/new-vault"`; the actual `args[1]` was `"D:/notes/old-vault"`. Element-by-element comparison flagged the mismatch and returned `mcp-drift`. The orchestrator's remediation: "your brain.aide and .mcp.json disagree about the vault path; run `npx aidemd-mcp sync` to align them."
-
-**`no-brain-aide` on a fresh project.** No `.aide/config/brain.aide` exists yet. The parser returns `kind: missing`. The detector returns:
-
-```
-{
-  status: "no-brain-aide",
-  hints: [...]
-}
-```
-
-No `name`, no `backend`. The orchestrator routes the user to `npx aidemd-mcp init`. `hints` is still populated so the consumer can suggest candidate vault locations the user might want to point a new brain at.
-
-**`no-mcp-entry` after `aide_init` scaffolded brain.aide but the user never ran sync.** brain.aide exists at `.aide/config/brain.aide` with `name: obsidian` and a populated `mcpServerConfig`, but `.mcp.json` either doesn't exist, or has no `mcpServers.brain` key:
+**`no-mcp-entry` for a freshly-installed null-armed brain.aide (precedence pre-check fires).** `aide_init({ category: "brain" })` just seeded `.aide/config/brain.aide` with the bundled Obsidian default. `name` is `obsidian`. `mcpServerConfig.args` is `["-y", "@modelcontextprotocol/obsidian-mcp-server", "--vault-path", null]` — `args[3]` is YAML null, marking the slot the user must fill via `/aide:brain config`. The detector parses brain.aide successfully, scans the parsed args list, finds JS `null` at index 3, and returns:
 
 ```
 {
@@ -333,9 +385,90 @@ No `name`, no `backend`. The orchestrator routes the user to `npx aidemd-mcp ini
 }
 ```
 
-`name` is carried from brain.aide so the orchestrator can name the wired brand in remediation prose ("your brain.aide declares an Obsidian brain, but no `.mcp.json` brain entry is wired — run `npx aidemd-mcp sync` to install it"). The detector reached the `.mcp.json` step, did not find the key, and returned without comparing.
+The detector never reads `.mcp.json` on this branch — the null pre-check short-circuits the pipeline. The `name` field is threaded through from brain.aide so the orchestrator's remediation prose can name the wired brand: "your brain.aide declares an Obsidian brain with an unwired slot at `args[3]` (the absolute path to your vault); run `/aide:brain config <path>` to fill it, then sync."
+
+**`ok` with a fully-wired brain.aide and `.mcp.json` agreeing.** brain.aide declares `name: obsidian` and `mcpServerConfig.args` of `["-y", "@modelcontextprotocol/obsidian-mcp-server", "--vault-path", "D:/notes/my-vault"]` — every element is a non-null string. `.mcp.json` has `mcpServers.brain` with `command: "npx"` and matching args. The detector parses brain.aide, scans the args list, finds no nulls, calls `interpolateArgs(config)` (a no-op in the default flow), reads `.mcp.json`, finds the `brain` key, and structurally compares. Everything matches:
+
+```
+{
+  status: "ok",
+  name: "obsidian",
+  hints: [...]
+}
+```
+
+**`mcp-drift` after a user edited brain.aide and forgot to run sync.** brain.aide was retargeted — the user changed `args[3]` from `"D:/notes/old-vault"` to `"D:/notes/new-vault"`. No nulls anywhere. `.mcp.json`'s brain entry still references the old path. The detector parses brain.aide, the null pre-check passes (no nulls), it reads `.mcp.json`, computes the expected entry, and element-by-element comparison flags the mismatch at `args[3]`:
+
+```
+{
+  status: "mcp-drift",
+  name: "obsidian",
+  hints: [...]
+}
+```
+
+The orchestrator's remediation: "your brain.aide and .mcp.json disagree about `args[3]`; run `npx aidemd-mcp sync` to align them."
+
+**`no-brain-aide` on a fresh project.** No `.aide/config/brain.aide` exists yet (the host has run `npx aidemd-mcp init` but has not yet run `/aide` for the first time). The parser returns `kind: missing`. The detector returns:
+
+```
+{
+  status: "no-brain-aide",
+  hints: [...]
+}
+```
+
+No `name` (the source of truth that would have carried it does not exist). The orchestrator routes the user to `/aide:brain config` on first `/aide` run. `hints` is still populated so the consumer can suggest candidate vault locations the user might want to point a new brain at.
 
 ## Bad examples
+
+**Returning `ok` when both sides match byte-for-byte on null (the retired regression).** brain.aide carries `args[3] = null`. The user (or sync) has propagated that null into `.mcp.json` — `.mcp.json`'s `mcpServers.brain.args[3]` is also null. The detector skips the null pre-check, reads `.mcp.json`, runs the structural comparison, sees every element equal at every position, and returns:
+
+```
+return { status: "ok", name, hints };
+```
+
+This is the exact regression the precedence ordering exists to prevent. Bytes that agree on null have agreed on broken state, not on health. The brain MCP server cannot start with a null in its launch args; reporting `ok` lets the orchestrator treat the brain as wired and the boot probe never surfaces the actual problem. The fix is structural: the null-args check must run BEFORE the byte-for-byte drift comparison, so a null-bearing brain.aide returns `no-mcp-entry` regardless of how clean the drift comparison would otherwise come back.
+
+**Pattern-matching `<BRAIN_PATH>` in args.** The detector scans the parsed args list for placeholder strings:
+
+```
+if (args.some(a => typeof a === "string" && a.includes("<BRAIN_PATH>"))) {
+  return { status: "no-mcp-entry", ... };
+}
+```
+
+Violates the structural-detection invariant. The literal `<BRAIN_PATH>` sentinel is a retired anti-pattern — the original design that produced the silent-fail regression in the first place. Detection is structural via JS `=== null`, never pattern-matching string contents. The moment the detector starts recognizing in-band string markers, it commits to a sentinel vocabulary it has to keep in sync with whatever templates and integrations ship; YAML null is the language-level contract that eliminates that surface entirely.
+
+**String-equality with `'null'` or `'~'` instead of `=== null`.** The detector compares arg strings against YAML null literals as text:
+
+```
+if (args.some(a => a === "null" || a === "~")) {
+  return { status: "no-mcp-entry", ... };
+}
+```
+
+Violates the structural-detection contract for a subtler reason: `parseBrainAide` produces JS `null` (the actual value, not the strings `"null"` or `"~"`) when it parses a bare `-` in args. Comparing against the strings would detect text the user typed verbatim — and would silently miss every actual unwired slot. The check must be `arg === null` against the JS value the parser actually produces.
+
+**Forking a fifth status state for null-armed args.** The detector introduces `unwired` (or `incomplete-args`, or `placeholder-present`, or `not-yet-configured`) as a distinct status:
+
+```
+if (args.includes(null)) {
+  return { status: "unwired", name, hints };
+}
+```
+
+Violates the closed four-state vocabulary. Every consumer of `BrainState` would have to grow a fifth branch — the boot probe's prose composer, the runtime brain tool's response shape, the orchestrator's remediation routing — for a state whose remediation is identical to `no-mcp-entry` (route the user to `/aide:brain config`). The mapping into `no-mcp-entry` is unambiguous: a null-armed launch command is by definition a brain whose MCP entry is not yet wireable, which is exactly what `no-mcp-entry` already means.
+
+**Returning `mcp-drift` for a config where both sides contain matching nulls.** The detector reaches the comparison step on a null-bearing config and reports drift because something feels wrong:
+
+```
+if (expected.args.includes(null) || actual.args.includes(null)) {
+  return { status: "mcp-drift", ... };
+}
+```
+
+Semantically wrong on two counts. First, the precedence ordering is violated — a null-bearing parsed config should never reach the drift comparison at all. Second, `mcp-drift` implies disagreement between two otherwise-valid configs; matching nulls AGREE, they do not disagree, so the disagreement framing is a lie. The truthful classification is `no-mcp-entry` via the pre-check, surfaced before any comparison runs.
 
 **Hardcoding `backend: "obsidian"` on the `ok` branch.** The detector ignores brain.aide's `name` and writes a backend identifier:
 
@@ -343,16 +476,7 @@ No `name`, no `backend`. The orchestrator routes the user to `npx aidemd-mcp ini
 return { status: "ok", name, backend: "obsidian", hints };
 ```
 
-Two violations in one return. First, the `backend` field was removed from the contract entirely — consumers no longer read it, and re-introducing it forces every consumer to remember it does nothing. Second, hardcoding `"obsidian"` re-introduces the per-brand knowledge the registry retirement explicitly deleted; the moment a Notion brain is wired, this line silently mis-labels it.
-
-**Falling back to the `obsidian` MCP key when `brain` is absent.** The detector tries the legacy key before giving up:
-
-```
-const entry = mcpServers.brain ?? mcpServers.obsidian;
-if (!entry) return { status: "no-mcp-entry", ... };
-```
-
-Violates the fixed-key invariant settled at install. Legacy migration is the install service's job at upgrade time — once. Pushing fallback logic into the detector creates a second migration surface that drifts from the install-time one and lets installs limp along on the legacy key forever.
+Two violations. The `backend` field was removed from the contract entirely — consumers no longer read it, and re-introducing it forces every consumer to remember it does nothing. Hardcoding `"obsidian"` re-introduces the per-brand knowledge the registry retirement explicitly deleted; the moment a Notion brain is wired, this line silently mis-labels it.
 
 **Calling a retired backend registry on the `.mcp.json` brain entry.** The detector dispatches the entry to a registry function:
 
@@ -366,14 +490,11 @@ Violates the no-registry invariant. The backend registry is retired; importing f
 **Branching on `name` to vary the comparison.** The detector applies different drift rules per brand:
 
 ```
-if (config.name === "obsidian") {
-  // compare command + args
-} else if (config.name === "notion") {
-  // compare a different field
-}
+if (config.name === "obsidian") { /* compare command + args */ }
+else if (config.name === "notion") { /* compare a different field */ }
 ```
 
-Violates the name-is-metadata invariant. The detector's contract is structural and uniform across brands: parse `mcpServerConfig.command` and `mcpServerConfig.args`, interpolate, compare element-by-element. The user's label never controls the comparison logic.
+Violates the name-is-metadata invariant. The detector's contract is structural and uniform across brands: parse `mcpServerConfig.command` and `mcpServerConfig.args`, run the null pre-check, interpolate, compare element-by-element. The user's label never controls the comparison logic.
 
 **Statting a path extracted from `mcpServerConfig.args`.** The detector pulls a string out of args, guesses it's a path, and stats it:
 
@@ -384,7 +505,7 @@ if (maybePath && !existsSync(maybePath)) {
 }
 ```
 
-Three violations stacked. First, the `invalid-path` state is retired — returning it is returning a status that no consumer knows how to handle. Second, the package does not introspect `args` to extract paths; the args list is opaque to this detector except for equality comparison. Third, "the last arg is the path" is a per-brand assumption the no-branching invariant explicitly forbids — different launchers have different arg conventions, and the detector cannot know which.
+Three violations stacked. The `invalid-path` state is retired — returning it means returning a status no consumer knows how to handle. The package does not introspect `args` to extract paths; the args list is opaque to this detector except for null-presence and equality comparison. "The last arg is the path" is a per-integration assumption the no-branching invariant explicitly forbids — different launchers have different arg conventions, and the detector cannot know which.
 
 **Re-reading brain.aide directly with `fs.readFile`.** The detector bypasses the parser:
 
@@ -393,7 +514,7 @@ const raw = await fs.readFile(join(root, ".aide/config/brain.aide"), "utf8");
 const config = yaml.parse(raw.split("---")[1]);
 ```
 
-Violates the single-canonical-reader invariant. Format knowledge lives in `parseBrainAide`; this detector is one of its consumers and must call it. A second copy of the YAML reader here means every brain.aide schema change has to be made in two places, and the moment they disagree the consumer drifts from the format.
+Violates the single-canonical-reader invariant. Format knowledge lives in `parseBrainAide`; this detector is one of its consumers and must call it. A second copy of the YAML reader here means every brain.aide schema change has to be made in two places, and the moment they disagree the consumer drifts from the format — including the `(string | null)[]` typing of `mcpServerConfig.args` that the null pre-check depends on.
 
 **Auto-syncing `.mcp.json` on drift.** The detector "helpfully" repairs the disagreement:
 
@@ -404,18 +525,16 @@ if (driftDetected) {
 }
 ```
 
-Violates the hard-halt contract. Every mutation of `.mcp.json` is a deliberate user action through `npx aidemd-mcp sync`. The detector that auto-repairs robs the user of the visible command boundary they rely on to know when their MCP wiring will change — and silently destroys hand-edits the user made for debug sessions.
+Violates the hard-halt contract. Every mutation of `.mcp.json` is a deliberate user action through `npx aidemd-mcp sync`. Auto-repair robs the user of the visible command boundary they rely on — and silently destroys hand-edits the user made for debug sessions.
 
 **Collapsing the four-state vocabulary down to fewer states.** The detector merges branches "to keep things simple":
 
 ```
-// brain.aide missing → just say no-mcp-entry, the user runs the same fix anyway
 if (parseResult.kind === "missing") return { status: "no-mcp-entry", ... };
-// drift → also say no-mcp-entry, sync handles both
 if (driftDetected) return { status: "no-mcp-entry", ... };
 ```
 
-Violates the four-state contract. The orchestrator's remediation prose is per-status; collapsing `no-brain-aide` into `no-mcp-entry` tells the user to run sync when they actually need to run init (sync has nothing to read), and collapsing `mcp-drift` into `no-mcp-entry` tells the user "no entry exists" when an entry exists and merely disagrees. Vocabulary that lies about the recovery path is worse than vocabulary that admits it doesn't know.
+Violates the four-state contract. The orchestrator's remediation prose is per-status; collapsing `no-brain-aide` into `no-mcp-entry` tells the user to run sync when they actually need to run `/aide:brain config` (sync has nothing to read), and collapsing `mcp-drift` into `no-mcp-entry` tells the user "no entry exists" when an entry exists and merely disagrees. Vocabulary that lies about the recovery path is worse than vocabulary that admits it doesn't know.
 
 **Throwing when `.mcp.json` is malformed JSON.** The detector lets `JSON.parse` propagate:
 
@@ -428,15 +547,15 @@ Violates the never-throws invariant. A thrown SyntaxError surfaces as an MCP pro
 **Byte-comparing serialized `.mcp.json`.** The detector reads both raw text and compares strings:
 
 ```
-const expectedRaw = JSON.stringify(expectedEntry);
-const actualRaw = JSON.stringify(actualEntry);
-if (expectedRaw !== actualRaw) return { status: "mcp-drift", ... };
+if (JSON.stringify(expectedEntry) !== JSON.stringify(actualEntry)) {
+  return { status: "mcp-drift", ... };
+}
 ```
 
 Violates the structural-equality rule. Object key order, whitespace, and trailing newlines in serialization output are not stable across writers; a `.mcp.json` reformatted by the user's editor would fire spurious drift even when `command` and `args` semantically match. The comparison runs on parsed in-memory shapes.
 
 ## References
 
-- `src/service/buildBrainState/plan.aide` -- the original plan that drove the prior rewrite. Names the source-of-truth pivot to brain.aide, the removal of the `backend` field, and the no-registry/no-name-dispatch invariants. Pre-dates the schema-collapse pivot (which removes `rootPath`, `entryFile`, `tools` and the `invalid-path` state) — read in conjunction with the new root spec, not in isolation.
-- `src/service/parseBrainAide/.aide` -- the sibling parser's spec. Pinned the tagged-result contract (`kind: ok | missing | malformed-frontmatter | malformed-body`), the never-throws guarantee, and the `interpolateArgs` helper this detector calls when computing the expected `.mcp.json` entry. Anchors the Strategy paragraphs on malformed-collapse-to-no-brain-aide and on calling the parser instead of re-reading the file.
-- `.aide/intent.aide` -- the parent root spec, post-schema-collapse pivot. Established that brain.aide lives at `.aide/config/brain.aide`, that its frontmatter contains exactly `name` and `mcpServerConfig`, that no `rootPath` field exists, that the boot reporter's brain status states are `ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift` (no `invalid-path`), that the package never stats a path, that `.mcp.json` is derived, that the in-code backend registry is retired entirely, that drift is a hard halt the user resolves with `npx aidemd-mcp sync`, that the package never auto-mutates `.mcp.json`, and that `name` is descriptive metadata never dispatched on. Anchors the no-registry invariant, the no-stat invariant, the no-auto-sync invariant, and the consumer-uniformity contract.
+- `.aide/intent.aide` -- the parent root spec. Established that `mcpServerConfig.args` is typed `(string | null)[]`, that a YAML null at any index is the explicit unwired-slot signal replacing every prior literal-string-placeholder design, that the package never introspects which slot is which, that brain wiring is delegated to `/aide:brain config`, and that the detector's status vocabulary is the closed four-state set (no `invalid-path`, no fifth state for null args). Anchors the structural-detection-over-string-matching paragraph, the precedence-ordering paragraph, and the closed-four-state-collapse paragraph.
+- `src/service/parseBrainAide/.aide` -- the sibling parser's spec. Pinned the `(string | null)[]` typing of `mcpServerConfig.args`, the parser's commitment to preserving null entries verbatim through to consumers, the explicit "downstream consumers (sync, buildBrainState, the install-time interpolation helper) decide what to do with nulls per their own contracts" division of labor, the tagged-result contract (`kind: ok | missing | malformed-frontmatter | malformed-body`), the never-throws guarantee, and the `interpolateArgs` helper. Anchors the JS-`=== null`-against-the-parser's-output detail, the malformed-collapse-to-no-brain-aide paragraph, and the call-the-parser-instead-of-re-reading paragraph.
+- `src/service/buildBrainState/plan.aide` -- the prior plan that drove the schema-collapse rewrite. Pre-dates the null-args precedence pivot but documents the surrounding invariants the new rule plugs into: the no-registry, no-name-dispatch, no-stat, no-auto-sync, never-throws, and structural-drift-equality contracts the null pre-check must coexist with without breaking any of them.

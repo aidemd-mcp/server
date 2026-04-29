@@ -1,183 +1,202 @@
 ---
 scope: src/cli/init
-status: aligned
 description: >
-  Fast cold-start installer that writes every canonical AIDE artifact it can
-  safely place without user interaction, never overwrites existing files
-  (and never touches anything under the user-owned `.aide/config/` directory
-  on subsequent runs), and surfaces a prominent terminal warning naming the
-  right follow-up surface per category (orchestrator inline-recovery via
-  /aide for vault path and brain wiring, re-running the cli with --ide for
-  IDE choice, /aide:upgrade for drift in shipped artifacts) for anything it
-  had to skip or defer.
+  Cold-start installer that accepts exactly one optional argument —
+  `--brain <integration>`, defaulting to `obsidian` — and ships the
+  methodology layer (pointer stub, methodology doc set, pipeline slash
+  commands, pipeline agent definitions, skill templates, the `aide` MCP
+  server entry, the `aide-tree` launcher, IDE preview wiring) plus the
+  bundled `brain.aide` template selected by `--brain` (with YAML null
+  at unwired slots), while never writing a `.mcp.json` brain entry,
+  never scaffolding the four entry-point artifacts (coding-playbook,
+  study-playbook, update-playbook, research index), never creating the
+  brain root directory, never asking the user for a brain path, token,
+  connection URI, or any other backend-specific value, never
+  overwriting existing files (and never touching anything under
+  `.aide/config/` on subsequent runs), and surfacing a prominent
+  terminal warning naming the right follow-up surface per category
+  (`/aide:brain config` for filling the unwired slot and seeding
+  entry-point artifacts, re-running the CLI with `--ide` for IDE
+  choice when the IDE category was deferred, `/aide:upgrade` for drift
+  in shipped artifacts) for anything it had to skip or defer.
 intent: >
   The CLI bootstrapper is the sole cold-start installer — the one
-  `npx` invocation that turns a cold project into an AIDE-ready
-  project end-to-end in the common case, without any Claude Code
-  session yet. It runs in a plain terminal before any agent exists,
-  so it has no user to interview: the only safe write policy is
-  create-if-missing, skip-if-present, with the user-owned
-  `.aide/config/` directory carrying an even stronger guarantee —
-  files inside are scaffolded once on first cold start if absent,
-  and the CLI never touches them again on any subsequent run.
-  There are no confirmation prompts. The only flags the CLI accepts
-  are `--help` and a small, explicitly-sanctioned set of escape
-  hatches whose sole purpose is to supply, up-front, the answers to
-  the inherently-interactive decisions the CLI would otherwise have
-  to defer — currently `--vault-path <path>` (brain vault) and
-  `--ide <choice>` (IDE configuration). Running `npx` is itself the
-  opt-in.
+  `npx` invocation that turns a cold project into a methodology-ready
+  project end-to-end, without any Claude Code session yet. It runs in
+  a plain terminal before any agent exists, so it has no user to
+  interview: the only safe write policy is create-if-missing,
+  skip-if-present, with the user-owned `.aide/config/` directory
+  carrying an even stronger guarantee — once the CLI scaffolds a file
+  inside that directory, the bytes belong to the user the moment they
+  land and the CLI never touches them again on any subsequent run.
+  There are no confirmation prompts. The non-help flag surface is
+  intentionally narrow and storage-agnostic. Running `npx` is itself
+  the opt-in.
 
-  The CLI installs everything in the non-interactive footprint:
-  the methodology pointer stub, the methodology doc hub under
-  `.aide/docs/`, the full set of pipeline slash commands, the full
-  set of pipeline agent definitions, the full set of skill
-  templates, the `aide` MCP server entry (additively merged into
-  `.mcp.json`), and the `aide-tree` launcher script. When the user
-  supplies `--vault-path`, the CLI also scaffolds the canonical
-  Obsidian `.aide/config/brain.aide` (frontmatter `name` plus
-  `mcpServerConfig.{command, args}`, defaulting to a
-  `@bitbonsai/mcpvault` launcher with the supplied vault path
-  carried inline byte-for-byte in `args`) and additively merges the
-  derived `brain` MCP server entry into `.mcp.json` — the
-  scaffolded file is the source of truth for the launcher shape,
-  not a constant inlined in the CLI. For every package-owned file
-  it writes, it checks disk first — if the file exists, the CLI
-  skips it and records the skip. For every file under
-  `.aide/config/`, the CLI checks disk first AND, once written,
-  the bytes belong to the user forever — the file is scaffolded
-  once on a cold start where it is absent, and never touched again
-  on any subsequent run regardless of drift from the canonical
-  default. The CLI never overwrites either class.
+  The cold install ships the methodology layer plus the bundled
+  `brain.aide` template plus the `aide` MCP server entry. The
+  methodology layer is the methodology pointer stub, the methodology
+  doc set under `.aide/docs/`, the full set of pipeline slash
+  commands, the full set of pipeline agent definitions, the full set
+  of skill templates, the `aide-tree` launcher script, and IDE
+  preview wiring when applicable. The bundled `brain.aide` template
+  is the file the integration named by `--brain <integration>`
+  (defaulting to `obsidian`) emits when invoked through the shared
+  install service — for the default integration that means
+  `obsidianBrainAideTemplate()` produces a `brain.aide` whose
+  `mcpServerConfig.args` carries YAML null at the unwired slot
+  (`args[3]`), and the file lands at `.aide/config/brain.aide`. The
+  `aide` MCP server entry is additively merged into `.mcp.json` under
+  the key `aide`. Brain MCP wiring and entry-point artifact seeding
+  are NOT part of the cold install: the CLI never writes a
+  `.mcp.json` brain entry, never scaffolds the four required
+  entry-point artifacts (coding-playbook, study-playbook,
+  update-playbook, research index), never creates the brain root
+  directory, and never asks the user for a brain path, token,
+  connection URI, or any other backend-specific value at install
+  time. Those steps are fully delegated to `/aide:brain config` on
+  the first `/aide` run inside Claude Code, where the integration's
+  own `config` body section prose owns asking the user for whatever
+  the chosen backend needs, editing `brain.aide` in place to fill the
+  null slot(s), invoking `cli/sync` to derive the `.mcp.json` brain
+  entry, and seeding the four entry-point artifacts via the brain's
+  own MCP write tools.
 
-  Categories that depend on inherent user decisions are deferred
-  to the right interactive surface unless the user supplied the
-  corresponding flag at invocation time. When `--vault-path` is
-  absent, `.aide/config/brain.aide` is not scaffolded (the CLI
-  cannot author the user-owned file without knowing the vault
-  path) and the brain MCP entry is not written either (it is
-  derived from that file at sync time) — the two collapse into
-  one deferred decision because the user owns one file and sync
-  derives the entry. The deferred recovery route is: open Claude
-  Code and run `/aide`; the orchestrator prompts for the vault
-  path, scaffolds `.aide/config/brain.aide`, and tells you to run
-  `npx aidemd-mcp sync`. Sync reads the scaffolded
-  `.aide/config/brain.aide` and writes the brain MCP entry into
-  `.mcp.json`. When `--vault-path` is supplied, the CLI resolves
-  both halves in order: writes `.aide/config/brain.aide`, derives
-  the MCP entry from it, and merges the entry into `.mcp.json`.
-  Post-install edits to `.aide/config/brain.aide` (retargeting
-  the vault path inline in `mcpServerConfig.args`, swapping the
-  launcher command, rewriting the prose body) propagate via
-  `npx aidemd-mcp sync` — not by re-running init, which never
-  touches the user-owned file again. IDE configuration is
-  deferred to a re-run of the CLI with `--ide` when the flag is
-  absent, and applied when it is supplied.
+  The CLI is intentionally storage-agnostic at the code surface. It
+  does not enumerate brain backends, it does not branch on which
+  integration was selected, and it never reads or introspects the
+  bytes of the bundled template it scaffolds. The single recognized
+  brain-shaped flag is `--brain <integration>`, whose effect is
+  template-bundle selection only — the integration name picks which
+  bundled template helper produces the `brain.aide` bytes; today
+  `obsidian` (the default) is the only valid value. Every other
+  brain-shaped flag — `--brain-path`, `--vault-path`, `--brain-root`,
+  `--brain-token`, `--brain-url`, `--brain-name`, or any flag whose
+  value is a backend-specific datum — is forbidden in any shape. The
+  CLI never asks the user for backend-specific values; those belong
+  to the integration's prose, surfaced through `/aide:brain config`
+  inside an agent session that can hold a conversation, not through
+  a one-shot terminal invocation that cannot.
+
+  For every package-owned file it writes, the CLI checks disk first —
+  if the file exists, the CLI skips it and records the skip. The CLI
+  never overwrites. Files inside `.aide/config/` carry the parent
+  spec's directory-as-ownership-boundary guarantee: once
+  `brain.aide` (or any future user-owned config file) lands under
+  that path, the bytes belong to the user forever and the CLI never
+  patches, migrates, or rewrites them on any subsequent run
+  regardless of byte drift from the canonical default. New defaults
+  reach existing hosts through `/aide:brain config` (or direct user
+  edit) for files inside `.aide/config/`, and through `/aide:upgrade`
+  for shipped artifacts outside that directory — never through the
+  install path.
 
   After the install pass, the CLI emits a prominent, hard-to-miss
-  terminal warning — a loud ASCII-bordered block, not a routine
-  log line — listing every file it skipped and every category it
-  deferred, with each entry naming the right follow-up surface for
-  that category: deferred brain wiring (vault path plus the
-  derived MCP entry, as one combined item) points the user at
-  opening Claude Code and running `/aide` (the orchestrator's
-  inline-recovery flow prompts for the path, scaffolds
-  `.aide/config/brain.aide`, and directs the user to run sync);
-  deferred IDE configuration points at re-running the CLI with
-  `--ide <choice>`; skipped shipped artifacts (already-present
-  canonical files that may have drifted from the package's
-  current canonical content) point at `/aide:upgrade` for guided
-  reconciliation. When the CLI finishes with nothing skipped and
-  nothing deferred (a fully installed project or a clean cold
-  start with no inherent-decision residue), the warning is
-  omitted and a plain "already set up" or "install complete"
-  line is printed instead.
+  terminal warning — a loud ASCII-bordered block, not a routine log
+  line — listing every file it skipped and every category whose
+  setup remains for the user to finish, with each entry naming the
+  right follow-up surface: brain wiring (the CLI scaffolded the
+  template with a null unwired slot but did not fill it, did not
+  derive the `.mcp.json` brain entry, and did not seed the four
+  entry-point artifacts) points at `/aide:brain config`; deferred IDE
+  configuration points at re-running the CLI with `--ide <choice>`;
+  skipped shipped artifacts (already-present canonical files that
+  may have drifted from the package's current canonical content)
+  point at `/aide:upgrade` for guided reconciliation. When the CLI
+  finishes with nothing skipped and no IDE choice deferred, the
+  warning is omitted and a plain "already set up" or "install
+  complete" line is printed instead.
 
-  The CLI must be safe to run repeatedly, must never destroy
-  existing MCP entries or other files, must abort without writing
-  if `.mcp.json` is malformed, must never mutate any file under
-  `.aide/config/` after its first-write scaffold, and must always
-  leave the project in a state where the user can finish the job
-  for anything the CLI could not do itself by following the
-  per-category follow-up surface named in the warning.
+  The CLI must be safe to run repeatedly, must never destroy existing
+  MCP entries or other files, must abort without writing if `.mcp.json`
+  is malformed, must never mutate any file under `.aide/config/` on
+  any run after the first scaffold, and must always leave the project
+  in a state where the user can finish the job for anything the CLI
+  could not do itself by following the per-category follow-up surface
+  named in the warning.
 outcomes:
   desired:
-    - "Running the CLI installs every canonical artifact that has no inherent user decision attached: the methodology pointer stub, the methodology doc hub under `.aide/docs/`, every pipeline slash command, every pipeline agent definition, every skill template, the `aide` MCP server entry (additively merged into `.mcp.json`), and the `aide-tree` launcher script at `.aide/bin/aide-tree.mjs`. When `--vault-path` is supplied, the CLI additionally scaffolds `.aide/config/brain.aide` from the canonical Obsidian template and additively merges the derived `brain` MCP server entry into `.mcp.json` under the fixed `brain` key. When `--vault-path` is absent, both brain artifacts are omitted from this run and surfaced as a single deferred item in the warning. The CLI is the sole cold-start surface that scaffolds these canonical artifacts; no slash command duplicates this responsibility."
-    - "For every package-owned file it writes, the CLI checks disk first and never overwrites. If the target file exists, the CLI skips it and records the skip for the final warning, with the warning naming `/aide:upgrade` as the follow-up surface for reconciling drift in shipped artifacts. Files under the user-owned `.aide/config/` directory (currently `.aide/config/brain.aide`) carry a stronger guarantee: scaffolded once on a cold start where the file is absent, and never touched again on any subsequent run regardless of byte drift from the canonical default — the directory path itself is the ownership signal, with no per-file allowlist. Skip-on-exists is the only safe branch for shipped artifacts; presence-once-then-hands-off is the only safe branch for `.aide/config/`. The CLI has no user to consent to either form of overwrite, and reconciliation against the package's current canonical content for shipped artifacts is `/aide:upgrade`'s job; reconciliation of `.aide/config/` content is the user's via direct edits plus `npx aidemd-mcp sync`."
+    - "Running the CLI installs every methodology-layer canonical artifact on every cold start: the methodology pointer stub, the methodology doc set under `.aide/docs/`, every pipeline slash command, every pipeline agent definition, every skill template, the `aide` MCP server entry (additively merged into `.mcp.json`), the `aide-tree` launcher script at `.aide/bin/aide-tree.mjs`, and IDE preview wiring when applicable. The CLI is the sole cold-start surface that scaffolds these methodology-layer artifacts; no slash command duplicates this responsibility."
+    - "Running the CLI also scaffolds `.aide/config/brain.aide` from the bundled template selected by `--brain <integration>` (defaulting to `obsidian`), with YAML null at unwired slots in `mcpServerConfig.args` (for the default integration that means a bare `-` at `args[3]`). The CLI obtains the bytes by invoking the same `aide_init({ category: \"brain\" })` install-service path that `/aide:brain config` uses, but applies only the brain.aide-scaffold InitStep — the MCP-entry-plan InitStep is also returned and is deliberately NOT applied here (sync owns that write). Once the file lands, it is the user's: the CLI never patches, migrates, or rewrites it on any subsequent run regardless of byte drift from the canonical default."
+    - "The CLI accepts exactly one brain-shaped flag, `--brain <integration>`, whose effect is template-bundle selection only — choosing which bundled template the install service will scaffold. Today `obsidian` (the default when `--brain` is omitted) is the only valid value; future integrations land their own bundled templates and become valid `--brain` values without changing this contract. The CLI never accepts any other brain-shaped flag (`--brain-path`, `--vault-path`, `--brain-root`, `--brain-token`, `--brain-url`, `--brain-name`, or any flag whose value is a backend-specific datum), never asks the user for backend-specific values through stdin, an `--interactive` mode, or any other surface, and never branches on or introspects the bytes of the bundled template it scaffolds."
+    - "The CLI writes no brain wiring beyond the `brain.aide` template. It does not write a `.mcp.json` brain entry (sync owns `mcpServers[\"brain\"]`), does not seed any of the four required entry-point artifacts (coding-playbook, study-playbook, update-playbook, research index — those need a brain root path the CLI never has), does not create the brain root directory, and does not reach outside the host project root. Filling the null slot in `brain.aide`, deriving the brain MCP entry, and seeding the entry-point artifacts are all the responsibility of `/aide:brain config` on the first `/aide` run."
+    - "For every package-owned file it writes, the CLI checks disk first and never overwrites. If the target file exists, the CLI skips it and records the skip for the final warning, with the warning naming `/aide:upgrade` as the follow-up surface for reconciling drift in shipped artifacts. Any path under `.aide/config/` carries a stronger guarantee: once a file inside that directory lands, it is never touched again on any subsequent run regardless of byte drift from the canonical default — the directory path itself is the ownership signal, with no per-file allowlist. Skip-on-exists is the only safe branch for shipped artifacts; presence-once-then-hands-off is the only safe branch for `.aide/config/`. The CLI has no user to consent to either form of overwrite, and reconciliation against the package's current canonical content for shipped artifacts is `/aide:upgrade`'s job; reconciliation of `.aide/config/` content is the user's via `/aide:brain config` or direct edits plus `npx aidemd-mcp sync`."
     - "The `aide` MCP server entry is always additively merged into `.mcp.json` — if the file does not exist it is created with just the `aide` entry; if it exists with other server entries (`github`, custom servers, etc.) every existing entry is preserved and only `aide` is added. The key is `\"aide\"` (matching the dual-key check `\"aide\" in servers || \"aidemd-mcp\" in servers`)."
     - "If `.mcp.json` exists but contains malformed JSON, the CLI prints a clear error naming the file, exits non-zero, and writes nothing — it never clobbers a broken config."
-    - "Categories that require an inherent user decision — brain wiring (vault path plus the derived MCP entry, treated as one decision because both descend from the user-owned `.aide/config/brain.aide`) and IDE configuration choice — are deferred to a category-specific follow-up surface only when the corresponding escape-hatch flag (`--vault-path`, `--ide`) was not supplied. When the user supplies `--vault-path <path>`, the CLI uses that path as the resolved vault location and writes it inline byte-for-byte into the scaffolded `brain.aide`'s `mcpServerConfig.args`; when the user supplies `--ide <choice>`, the CLI applies the IDE configuration for that choice. When the flag is absent, the category is added to the deferred list in the final warning with the right follow-up named: brain wiring defers to opening Claude Code and running `/aide` (the orchestrator's inline-recovery flow detects the missing `.aide/config/brain.aide` via the boot reporter's `no-brain-aide` state, prompts for the vault path, scaffolds the file, and directs the user to run `npx aidemd-mcp sync`); IDE configuration defers to re-running the CLI with `--ide <choice>`. The CLI never guesses, defaults, or scans the filesystem to fill these decisions."
-    - "When (and only when) `--vault-path` is supplied, the CLI writes the `brain` MCP server entry into `.mcp.json` under the fixed `brain` key. The entry is derived from the just-scaffolded `.aide/config/brain.aide` — its `command` and `args` come straight out of the file's `mcpServerConfig`, with the canonical default producing a `@bitbonsai/mcpvault` launcher and the supplied vault path inlined byte-for-byte in `args`. The merge into `.mcp.json` is purely additive: every existing MCP server entry survives untouched. When `--vault-path` is absent the CLI does not write a `brain` MCP entry at all (no placeholder, no empty path slot, no synthesized stub), and the boot reporter inside Claude Code detects the missing `.aide/config/brain.aide` via the `no-brain-aide` state — the orchestrator's inline-recovery flow then prompts for the vault path, scaffolds the file, and directs the user to run `npx aidemd-mcp sync` which writes the entry."
-    - "Recognized flags are `--help`, `--vault-path <path>`, and `--ide <choice>`. Each non-help flag exists for exactly one reason: to let the user supply, up-front, the answer to an inherently-interactive decision the CLI would otherwise defer to its category-specific follow-up surface (brain wiring → orchestrator inline recovery via `/aide`; IDE → re-running the CLI with `--ide`). New flags may be added only when they meet the same bar — they bypass an interactive deferral that would otherwise land in the warning. Flags that gate behavior unrelated to inherent decisions (verbosity, dry-run, force, framework selection) are out of scope for the cold-start CLI."
-    - "After the install pass, the CLI prints a prominent, hard-to-miss terminal warning block — loud ASCII borders, uppercase heading, clearly separated from the per-file log lines — that names every file it skipped (because it already existed) and every category it deferred (brain wiring as one combined item when `--vault-path` was not supplied, IDE when `--ide` was not supplied), and tells the user the right follow-up surface per category: deferred brain wiring → open Claude Code and run `/aide` (the orchestrator's inline-recovery flow prompts for the vault path, scaffolds `.aide/config/brain.aide`, and directs the user to run `npx aidemd-mcp sync`); deferred IDE → re-run the CLI with `--ide <choice>`; skipped shipped artifacts → run `/aide:upgrade` for guided reconciliation."
-    - "When the install pass has nothing to warn about — every file the CLI would have written already existed and there are no inherent-decision categories to defer in the current run — the warning block is omitted and a plain `Already set up.` or `Install complete.` line is printed instead, with no follow-up surface named because there is nothing left to follow up on."
+    - "The recognized flag surface is `--help`, `--ide <choice>`, and `--brain <integration>`. Each non-help flag is a power-user shortcut to supply, up-front, a value that selects a methodology-layer artifact bundle: `--ide` selects which IDE preview wiring scaffolds; `--brain` selects which bundled `brain.aide` template scaffolds. Neither flag prompts the user, neither flag accepts a backend-specific datum (path, token, URI, vault root), and flags that gate behavior unrelated to artifact selection (verbosity, dry-run, force, framework selection) are out of scope for the cold-start CLI."
+    - "When `--ide <choice>` is supplied, the CLI applies the IDE configuration for that choice; when absent, IDE is the only category that defers entirely (no scaffold lands at all) and the deferred list in the final warning names re-running the CLI with `--ide <choice>` as the follow-up. The CLI never guesses, defaults, or scans the filesystem to fill this decision."
+    - "After the install pass, the CLI prints a prominent, hard-to-miss terminal warning block — loud ASCII borders, uppercase heading, clearly separated from the per-file log lines — that names every file it skipped (because it already existed) and every category whose setup remains for the user to finish, and tells the user the right follow-up surface per category: brain wiring (the CLI scaffolded `brain.aide` with a null unwired slot but did not fill it, did not derive the brain MCP entry, and did not seed the four entry-point artifacts) → run `/aide:brain config` on the first `/aide` run; deferred IDE (because `--ide` was not supplied) → re-run the CLI with `--ide <choice>`; skipped shipped artifacts → run `/aide:upgrade` for guided reconciliation."
+    - "When the install pass has nothing to warn about — every file the CLI would have written already existed and there is no IDE deferral — the warning block is omitted and a plain `Already set up.` or `Install complete.` line is printed instead, with no follow-up surface named because there is nothing left for the CLI to follow up on. (Brain wiring's follow-up surface is owned by `/aide:brain config` on first `/aide` run regardless of CLI state, so it is not a CLI-side condition that triggers the warning.)"
     - "Per-file terminal output is terse and scannable: one line per artifact with a `[created]` or `[exists]` status prefix. No colors, no spinners, no progress bars, no ASCII art in the per-file log — the loud ASCII is reserved for the final warning so it stands out."
-    - "Running the CLI is idempotent. A second run on a project where the CLI already completed its install writes no files, reports every artifact as `[exists]`, and either prints the `Already set up.` line (if no categories remain deferred) or re-prints the same deferred-category warning as the first run."
+    - "Running the CLI is idempotent. A second run on a project where the CLI already completed its install writes no files, reports every artifact (including the previously-scaffolded `brain.aide`) as `[exists]`, and either prints the `Already set up.` line (if no IDE deferral remains) or re-prints the same warning as the first run."
     - "The CLI completes its default happy path with no user interaction beyond running `npx` itself — no confirmation prompts, no `y/N` gates, no in-run input requests. Flags are accepted only when they were supplied on the invocation line, and even then they must not block on user input mid-run."
-    - "Exit code is 0 when the install pass completes without error, regardless of whether files were skipped or categories deferred. Exit code is non-zero only for actual failures (malformed `.mcp.json`, unwritable filesystem, missing canonical content)."
-    - "After the CLI completes, the per-category follow-up surfaces named in the warning are sufficient — and individually executable — to finish the setup for every skipped file and every deferred category. Brain wiring is finished by opening Claude Code and running `/aide` (the orchestrator's inline-recovery flow prompts for the vault path, scaffolds `.aide/config/brain.aide`, and tells you to run `npx aidemd-mcp sync`, which reads the file and writes the derived `brain` MCP entry into `.mcp.json`); IDE is finished by re-running the CLI with `--ide <choice>`; skipped shipped artifacts are reconciled by running `/aide:upgrade`. No single surface owns the whole follow-up, and the user is never told to run a removed slash command."
-    - "When `--vault-path` is supplied, the CLI scaffolds `.aide/config/brain.aide` using the canonical Obsidian template (frontmatter `name` plus `mcpServerConfig.{command, args}`, defaulting to a `@bitbonsai/mcpvault` launcher with the supplied vault path inlined byte-for-byte in `args`) before computing the brain MCP entry. The scaffolded file lives inside the user-owned `.aide/config/` directory and inherits its ownership semantics: scaffolded once on a cold start where it is absent, then belongs to the user forever — the CLI never patches, migrates, or rewrites it on any subsequent run regardless of byte drift from the canonical default. The brain MCP entry written into `.mcp.json` is derived from the scaffolded (or pre-existing) `.aide/config/brain.aide` via `parseBrainAideFromString` + `interpolateArgs` — never from a hardcoded launcher constant. When `--vault-path` is absent, both `.aide/config/brain.aide` and the brain MCP entry are deferred together as a single inherent decision."
-    - "Post-install brain edits (retargeting the vault path inline in `mcpServerConfig.args`, swapping the launcher command, renaming the brain via the `name` field, rewriting the prose body) propagate to `.mcp.json` via `npx aidemd-mcp sync` — not by re-running `init`, which never touches the user-owned `.aide/config/brain.aide` after its first-write scaffold. The warning block names sync as the follow-up verb for deferred brain wiring, so users who want to do everything from the terminal have a clear path."
+    - "Exit code is 0 when the install pass completes without error, regardless of whether files were skipped or IDE was deferred. Exit code is non-zero only for actual failures (malformed `.mcp.json`, unwritable filesystem, missing canonical content)."
+    - "After the CLI completes, the per-category follow-up surfaces named in the warning are sufficient — and individually executable — to finish the setup for every skipped file and every incomplete category. Brain wiring is finished by running `/aide:brain config` on the first `/aide` run inside Claude Code (the integration's own `config` prose owns asking the user for whatever the backend needs, editing the scaffolded `brain.aide` to fill the null slot(s), invoking `cli/sync` to derive the `.mcp.json` brain entry, and seeding the four required entry-point artifacts via the brain's own MCP write tools); IDE is finished by re-running the CLI with `--ide <choice>`; skipped shipped artifacts are reconciled by running `/aide:upgrade`. No single surface owns the whole follow-up, and the user is never told to run a removed slash command."
   undesired:
-    - "The CLI overwrites an existing file because it assumed the on-disk copy was stale or out of date. The CLI has no user to consent to an overwrite — skip-on-exists is the only safe branch, and any reconciliation against the package's current canonical content must be deferred to `/aide:upgrade`. The same prohibition applies with extra force to anything under `.aide/config/`: even if the on-disk content has drifted from the canonical default, even if a newer template would be more correct, the CLI must not patch, migrate, or rewrite a file inside that directory after the first-write scaffold. New defaults reach existing hosts only through `npx aidemd-mcp sync` (for the derived `.mcp.json` entry) or a deliberate user edit (for the file itself), never through the install path."
-    - "The CLI finishes with files skipped or categories deferred but prints no warning, leaving the user to discover their install is incomplete only when they later trip over a missing agent, missing command, or missing MCP entry."
-    - "The warning about skipped files and deferred categories is quiet, inline with the routine `[created]/[exists]` log lines, or formatted in a way the user can miss when skimming. The warning must be unmissable — loud ASCII borders, clear separation, and explicit per-category follow-up instructions naming the right surface for each (open Claude Code and run `/aide` for brain wiring, re-run the CLI with `--ide <choice>` for IDE, run `/aide:upgrade` for skipped shipped artifacts)."
-    - "The warning block is printed even when there is nothing to warn about. A clean install with no skips and no deferrals must print a plain completion line, not a loud box with an empty body."
-    - "The CLI attempts brain vault provisioning by guessing a path (sibling folder, environment variable, platform default) without a user to confirm. Vault location is an inherent decision and always belongs to the orchestrator's inline-recovery flow inside Claude Code (the user opens Claude and runs `/aide`, which detects the missing path via `aide_info` and prompts for it)."
-    - "The CLI writes the `brain` MCP server entry on a run where `--vault-path` was not supplied — synthesizing a stub, a placeholder, an empty path slot, or any pre-wired entry the user did not consent to. The brain MCP entry is derived from the user-owned `.aide/config/brain.aide`; without that file present, the entry has no source-of-truth to derive from and must not be written. The boot reporter's `no-brain-aide` state, not a placeholder MCP entry, is what routes the orchestrator's inline-recovery flow when the user opens Claude Code and runs `/aide`. Writing a placeholder entry would reintroduce a package-owned launcher constant the refactor explicitly retired and contradict the user-ownership invariant that everything under `.aide/config/` carries."
-    - "The CLI invents or guesses a vault path to scaffold `.aide/config/brain.aide` (and the derived `brain` entry's `mcpServerConfig.args`) when `--vault-path` was not supplied. Without the flag, the CLI must NOT scaffold the file at all — neither a placeholder, a sibling-folder guess, an env-var read, nor a platform default. Brain wiring is deferred as a single inherent decision and surfaced in the warning. Guessing here is the same failure mode as guessing brain provisioning — the CLI has no user to confirm and must surface the gap, not paper over it."
+    - "The CLI writes a `.mcp.json` brain entry from inside the cold-start install path. The brain MCP entry is written by `cli/sync` invoked from `/aide:brain config` after the user has filled the null unwired slot in `brain.aide`. Writing the brain entry from `cli/init` would land a `mcpServers[\"brain\"]` whose `args` carry YAML null at the unwired index — exactly the shape sync refuses at its boundary — and creates a path where `.mcp.json` carries a brain entry that does not derive from a fully-wired `brain.aide`. Even though the install service returns the MCP-entry-plan InitStep alongside the brain.aide-scaffold InitStep, `cli/init` deliberately applies only the latter."
+    - "The CLI seeds any of the four required entry-point artifacts (coding-playbook, study-playbook, update-playbook, research index) on cold install. Entry-point seeding needs a brain root path the cold-start CLI never has and never asks for; it happens later through the integration's `config` body section prose during `/aide:brain config`, after the user has filled the null slot and sync has wired the brain MCP entry. Seeding from `cli/init` would either guess a brain root or read the just-emitted `brain.aide`'s args (introspection of `mcpServerConfig.args` is forbidden by the parent intent) — both regressions of the same class."
+    - "The CLI creates the brain root directory (or otherwise touches the filesystem location the user's brain will eventually live at) on cold install. Brain root creation is the integration's responsibility, surfaced through `/aide:brain config` after the user has chosen and configured a backend. The cold-start CLI never reaches outside the host project root for brain-related filesystem state."
+    - "The CLI asks the user for a brain path, API token, connection URI, vault root, or any other backend-specific value at install time — through stdin prompts, an `--interactive` mode, an environment-variable read with a confirm step, or any other surface. Backend-specific values belong to the integration's prose surfaced through `/aide:brain config` inside an agent session, not to the cold-start terminal invocation. (Writing a `.mcp.json` brain entry, seeding entry-point artifacts, creating the brain root directory, and asking for backend-specific values are the same regression class — the CLI doing brain wiring beyond scaffolding the bundled template.)"
+    - "The CLI accepts any brain-shaped flag other than `--brain <integration>` — `--brain-path`, `--vault-path`, `--brain-root`, `--brain-token`, `--brain-url`, `--brain-name`, or any other flag whose value is a backend-specific datum the user would otherwise supply through `/aide:brain config`. The CLI's storage-agnostic invariant forbids the entire flag class with one carve-out: `--brain <integration>` whose effect is template-bundle selection only (today the only valid value is `obsidian`), with no backend-specific values exchanged at install time."
+    - "The CLI branches on or introspects the bytes of the bundled `brain.aide` template it scaffolds — reading `mcpServerConfig.args` to extract a path, parsing a body section, hardcoding a slot index like `args[3]`, or otherwise letting code know which slot means what. Slot semantics live exclusively in the per-integration `config` body section prose (parent intent #25); the CLI's job ends at `aide_init({ category: \"brain\" })` returning bytes and `cli/init` writing them to disk."
+    - "Any literal-string placeholder appears in the `brain.aide` bytes the CLI scaffolds — `<BRAIN_PATH>`, `<API_TOKEN>`, `<VAULT_ROOT>`, `${BRAIN_PATH}`, `__UNWIRED__`, magic UUIDs, or any other in-band string the package recognizes as \"fill me in\". YAML null is the structural unwired-slot signal the bundled template emits and the only one this package ever ships; literal-string sentinels are retired entirely (parent intent #20) and reintroducing one under any name re-creates the byte-for-byte-agreement-passes-drift-check silent-failure bug that the YAML-null design fixes."
+    - "The CLI overwrites an existing file because it assumed the on-disk copy was stale or out of date. The CLI has no user to consent to an overwrite — skip-on-exists is the only safe branch, and any reconciliation against the package's current canonical content must be deferred to `/aide:upgrade`. The same prohibition applies with extra force to anything under `.aide/config/`: once `brain.aide` (or any future user-owned config file) lands in that directory, even if the on-disk content has drifted from the canonical default, even if a newer bundled template would be more correct, even if the user re-runs init, the CLI must not patch, migrate, or rewrite the file."
+    - "The CLI finishes with files skipped or categories incomplete but prints no warning, leaving the user to discover their install is incomplete only when they later trip over a missing agent, a missing command, or a missing MCP entry."
+    - "The warning about skipped files and incomplete categories is quiet, inline with the routine `[created]/[exists]` log lines, or formatted in a way the user can miss when skimming. The warning must be unmissable — loud ASCII borders, clear separation, and explicit per-category follow-up instructions naming the right surface for each (`/aide:brain config` for filling the unwired slot and seeding entry-point artifacts, re-run the CLI with `--ide <choice>` for IDE, run `/aide:upgrade` for skipped shipped artifacts)."
+    - "The warning block is printed even when there is nothing to warn about. A clean install with no skips and no IDE deferral must print a plain completion line, not a loud box with an empty body."
     - "The CLI attempts IDE configuration (Zed, VS Code extension install, file-association edits) on a run where `--ide` was not supplied. IDE choice is an inherent decision; without the flag, the only correct path is to defer the category and tell the user to re-run the CLI with `--ide <choice>`."
     - "Overwriting or removing existing MCP server entries that belong to other tools when merging the `aide` entry into an existing config. The merge must be purely additive."
     - "Silently succeeding while writing malformed JSON to `.mcp.json`, leaving the project in a state where no MCP servers load."
     - "Clobbering an existing `.mcp.json` that contains malformed JSON. The CLI must detect the parse failure, print a clear error naming the file, exit non-zero, and leave the file untouched."
-    - "Writing the aide MCP entry under a key other than `\"aide\"` (for example `\"aidemd-mcp-server\"` or `\"aide-server\"`). The dual-key check `\"aide\" in servers || \"aidemd-mcp\" in servers` is the contract; any other key causes downstream tooling (including `/aide:upgrade` and the orchestrator's inline-recovery flow) to see no existing entry and offer to add a duplicate."
-    - "Prompting the user interactively on the happy path — `y/N` gates, conversational questions, or any in-run input request. The CLI is opt-in by virtue of the user running `npx`; further confirmation adds friction to a non-interactive bootstrap."
-    - "Adding flags that gate behavior unrelated to bypassing an inherent-decision deferral — verbosity toggles, dry-run, force-overwrite, framework selection, dotfile discovery, network opt-in, telemetry. The non-help flag surface is reserved exclusively for supplying the answers to interactive decisions the CLI would otherwise have to defer to a category-specific follow-up surface (brain wiring → orchestrator inline recovery via `/aide`; IDE → re-running the CLI with `--ide`). Anything else is scope creep that drags the cold-start CLI toward a general-purpose configuration tool it must not become."
-    - "The CLI aborts the whole install on the first per-file failure. An unwritable agent file must not prevent the methodology stub, the slash commands, the MCP merge, and the launcher from being installed — failed writes go into the final warning alongside skipped files, and the CLI continues."
+    - "Writing the aide MCP entry under a key other than `\"aide\"` (for example `\"aidemd-mcp-server\"` or `\"aide-server\"`). The dual-key check `\"aide\" in servers || \"aidemd-mcp\" in servers` is the contract for the aide entry; any other key causes downstream tooling (including `/aide:upgrade`, `/aide:brain config`, and `npx aidemd-mcp sync`) to see no existing entry and offer to add a duplicate."
+    - "Prompting the user interactively on the happy path — `y/N` gates, conversational questions, or any in-run input request. The CLI is opt-in by virtue of the user running `npx`; further confirmation adds friction to a non-interactive bootstrap. The interactive surface for brain wiring is `/aide:brain config` inside Claude Code, not the CLI."
+    - "Adding flags that gate behavior unrelated to selecting a methodology-layer artifact bundle — verbosity toggles, dry-run, force-overwrite, framework selection, dotfile discovery, network opt-in, telemetry. The non-help flag surface is reserved exclusively for power-user shortcuts that select which bundle scaffolds (`--ide <choice>` for IDE preview wiring, `--brain <integration>` for the bundled `brain.aide` template). Anything else is scope creep that drags the cold-start CLI toward a general-purpose configuration tool it must not become."
+    - "The CLI aborts the whole install on the first per-file failure. An unwritable agent file must not prevent the methodology stub, the slash commands, the MCP merge, the bundled `brain.aide`, and the launcher from being installed — failed writes go into the final warning alongside skipped files, and the CLI continues."
     - "The CLI reaches for the network. Every artifact it writes is checked into the package; an offline machine must get the same result as an online one."
-    - "The terminal warning, the per-file log, the `--help` output, or any other CLI-emitted text directs the user to a removed or non-existent slash command (e.g., `/aide:init`). Every follow-up surface named in CLI output must resolve to a currently-shipped surface: `/aide` (the orchestrator's inline-recovery flow handles missing vault path), re-running the CLI itself with `--ide <choice>` for IDE configuration, or `/aide:upgrade` for reconciling skipped shipped artifacts. Naming a removed surface looks helpful but leaves the user chasing a command that no longer exists."
-    - "The CLI computes the brain MCP entry by calling a hardcoded launcher constant (such as `obsidianMcpEntry()`, a `@bitbonsai/mcpvault`-shaped object literal, or any in-code launcher table) instead of deriving it from the scaffolded `.aide/config/brain.aide` via `parseBrainAideFromString` + `interpolateArgs`. The scaffolded file is the canonical source of truth for the launcher shape; a hardcoded constant bypasses user ownership and contradicts the `.aide/config/brain.aide`-as-source-of-truth invariant the parent spec establishes. The same prohibition applies to introspecting `mcpServerConfig.args` to extract a vault path, statting it for validation, or branching on connector identity inferred from the args shape — path validation is the launcher's job at MCP server startup, not the CLI's."
-    - "The CLI writes `.mcp.json` (or mutates any MCP entry) through any path other than the shared `writeMcpEntry` helper. All `.mcp.json` mutations in the CLI — `aide` entry, `brain` entry, legacy `obsidian` key removal — must flow through the shared helper to guarantee uniform key-preservation semantics and the abort-on-malformed-JSON contract."
-    - "The CLI scaffolds `.aide/config/brain.aide` with a frontmatter shape that drifts from the canonical schema — adding back retired fields (`connector`, `rootPath`, `entryFile`, `tools`), borrowing intent-spec frontmatter conventions (`scope`, `intent`, `outcomes`, `status`), or omitting either of the two load-bearing fields (`name`, `mcpServerConfig`). The scaffolded file's frontmatter must contain exactly `name` and `mcpServerConfig.{command, args}` and nothing else; the brain's interface contract lives in the prose body, not in frontmatter declarations the runtime never consumes."
-    - "The CLI scaffolds `.aide/config/brain.aide` with a launcher other than the canonical `@bitbonsai/mcpvault` default, hardcodes the launcher bytes anywhere outside `obsidianBrainAideTemplate`, or leaves a literal `${rootPath}` (or any other unsubstituted placeholder) in the scaffolded file's `mcpServerConfig.args`. The default scaffold carries the supplied `--vault-path` value inline byte-for-byte in `args`, with no install-time interpolation surface required for the default case."
+    - "The terminal warning, the per-file log, the `--help` output, or any other CLI-emitted text directs the user to a removed or non-existent slash command (e.g., `/aide:init`, or `/aide` as a brain-wiring inline-recovery entry). Every follow-up surface named in CLI output must resolve to a currently-shipped surface: `/aide:brain config` for brain wiring, re-running the CLI itself with `--ide <choice>` for IDE configuration, or `/aide:upgrade` for reconciling skipped shipped artifacts. Naming a removed surface looks helpful but leaves the user chasing a command that no longer exists."
+    - "The CLI writes `.mcp.json` (or mutates any MCP entry) through any path other than the shared `writeMcpEntry` helper. All `.mcp.json` mutations in the CLI must flow through the shared helper to guarantee uniform key-preservation semantics and the abort-on-malformed-JSON contract."
 ---
 
 ## Context
 
-Every AIDE adoption runs into the same chicken-and-egg: the interactive bootstrap tool that would normally set up a project (`aide_init`) lives behind the MCP server, and the MCP server cannot be invoked until it has been registered in the project's MCP config. Before any agent session can help, something else must place those first files — and that something has to run in a plain terminal, before any Claude Code session, with no agent available to interview the user. The CLI bootstrapper is that something.
+Every AIDE adoption runs into the same chicken-and-egg: the interactive bootstrap tool that would normally set up a project (`aide_init`) lives behind the MCP server, and the MCP server cannot be invoked until it has been registered in the project's MCP config. Before any agent session can help, something else must place those first files — and that something has to run in a plain terminal, before any Claude Code session, with no agent available to interview the user. The CLI bootstrapper is that something. It is the sole cold-start surface that turns an empty directory into a methodology-ready project end-to-end, the only step in the lifecycle that runs without an agent on the other end of the wire, and the only hop where the user is reachable solely through stdout and exit codes.
 
-The prior shape of this CLI installed only a three-artifact minimum: the `aide` MCP entry, an initial command stub, and the `aide-tree` launcher. On paper that was enough to unblock the interactive bootstrap; in practice it was the wrong contract. A user who ran `npx` and got three lines of output reasonably concluded their project was ready to use — then hit a missing methodology stub, a missing pipeline slash command, or a missing agent file the first time they actually invoked a pipeline phase, and had no way to tell whether that was a bug, an incomplete install, or a step they forgot. The CLI had quietly delegated the rest of the install to a follow-up surface but said nothing about it, so users discovered the gap by tripping on it. The sister intent shift in `src/tools/init` made this worse: `aide_init` now runs silently through any category whose steps are all creates, which means the user can run the full chain and never see the artifacts they are missing.
+That terminal-only context drives the whole shape of the contract. There is no agent to hold a conversation with the user, no MCP tool surface to call, no `AskUserQuestion` channel to gather the kind of structured information a backend needs to be wired. The CLI cannot interview, cannot probe, cannot even safely guess: any datum that requires a backend-specific decision (an absolute brain path, an API token, a connection URI, a vault root) has to come from somewhere with more bandwidth than a one-shot `npx` invocation. That somewhere is the first `/aide` run inside Claude Code, where the agent sits inside a session that can read tools, call `AskUserQuestion`, hold state across turns, and run a multi-step wiring flow. The cold-start CLI's job is everything that *can* be done without that bandwidth — the methodology layer — and the single follow-up surface its terminal warning routes to (`/aide:brain config`) is where everything that *needs* that bandwidth gets done.
 
-The frontmatter's new contract repositions the CLI as a **cold-start installer**, not a minimum bootstrap. Everything the CLI can safely write without a user to consult — every canonical artifact whose content is pure methodology with no user decision attached — gets installed on the `npx` run. Only the categories that truly require an interview (brain wiring, which combines the vault path, the dependent `.aide/config/brain.aide` scaffold, and the brain MCP entry derived from it into a single user-owned decision; plus IDE choice) are deferred to per-category follow-up surfaces: brain wiring defers to the orchestrator's inline-recovery flow (open Claude Code and run `/aide`; the orchestrator prompts for the vault path, scaffolds `.aide/config/brain.aide`, and tells you to run `npx aidemd-mcp sync`); IDE defers to re-running the CLI with `--ide <choice>`; drift in shipped artifacts defers to `/aide:upgrade`. The root revision that landed `.aide/config/` as a user-owned directory tightened this further: the CLI scaffolds files inside `.aide/config/` once if absent and never on subsequent runs, regardless of byte drift from the canonical default — the directory path itself is the ownership signal, not a per-file allowlist. And because the CLI cannot prompt mid-run, its only safe branches remain skip or abort: it never overwrites, it never patches user-owned config, it aborts without writing on a malformed `.mcp.json`, and anything it skipped or deferred is surfaced in a terminal warning loud enough that a user cannot walk away thinking the install is finished when it is not.
+The methodology layer is package-owned and identical for every host: the framework pointer stub the agent reads first, the methodology doc hub at `.aide/docs/`, the full set of pipeline slash commands, the full set of pipeline agent definitions, the skill templates, the `aide` MCP server entry merged additively into `.mcp.json`, the `aide-tree` launcher script, and IDE preview wiring when `--ide` is supplied. Every one of these artifacts has the same shape across every host project the package will ever be installed into; none of them carry a backend-specific value or branch on which brain the user will eventually choose. They are exactly the artifacts the cold-start CLI can safely write without an agent in the loop.
+
+The brain layer is the opposite. It carries values that are inherently per-host (which backend, where its data lives, what credentials it needs), and the canonical home for those values — the user-owned `.aide/config/` directory established by the parent intent — carries a directory-as-ownership-boundary guarantee: any file landed inside that directory belongs to the user the moment it touches disk, and no install or upgrade tool ever patches, migrates, or rewrites it on a subsequent run regardless of byte drift from the canonical default. Starting that ownership clock at cold install would mean either (a) the CLI lands the file with backend-specific values it has no way to obtain, or (b) the CLI lands the file with placeholders the user has to come back and fix. Both options force the cold-start surface to know which backends exist and what each one needs — exactly the storage-agnostic invariant the parent intent rules out — and option (b) in particular re-creates a literal-placeholder design the parent's `outcomes.undesired` retires explicitly. The clean solution is to skip the brain layer entirely at cold start, leave `.aide/config/` empty, and route the user to the surface that has the bandwidth to do the wiring properly.
+
+That surface is `/aide:brain config` on the first `/aide` run. The integration's own `config` body section inside the brain template owns asking for whatever the chosen backend needs, scaffolding `brain.aide` under `.aide/config/` (where the directory's ownership clock starts the moment the file lands, exactly as the parent intent specifies), deriving the `.mcp.json` brain entry through `cli/sync`, and emitting the restart message. The cold-start CLI's job ends one hop before any of that — it ships the methodology layer, prints a per-file log, surfaces a prominent terminal warning naming the right follow-up surface per category, and exits. The user runs `npx`, then opens Claude Code and runs `/aide`, then `/aide:brain config` runs the wiring, then the work begins. Three steps, each with one job, each owned by the surface that has the right bandwidth for it.
 
 ## Strategy
 
-**The canonical-artifact matrix splits by decision, not by file type.** Every category in `src/service/install` falls into one of two bins. CLI-installable (pure canonical content, zero inherent decisions): the methodology pointer stub, the methodology doc hub under `.aide/docs/`, every pipeline slash command enumerated in `scaffoldCommands/index.ts`' `COMMANDS` registry, every pipeline agent enumerated in `initContent/index.ts`' `AGENT_DOCS`, every skill template enumerated in `SKILL_DOCS`, the `aide` MCP entry (additively merged), and the `aide-tree` launcher. When `--vault-path` is supplied, `.aide/config/brain.aide` and the derived brain MCP entry also land in this bin: the CLI writes `.aide/config/brain.aide` first (from `obsidianBrainAideTemplate`, which produces the canonical Obsidian default with the `@bitbonsai/mcpvault` launcher and the supplied vault path inlined byte-for-byte in `mcpServerConfig.args`), then derives and merges the brain entry via `parseBrainAideFromString` + `interpolateArgs`. Deferred to per-category follow-up surfaces (inherent decisions only a user can resolve): when `--vault-path` is absent, brain wiring defers as one combined item (the user-owned `.aide/config/brain.aide` and the derived MCP entry are two halves of one decision) — the orchestrator's inline-recovery flow handles it (open Claude Code and run `/aide`; the orchestrator prompts for the vault path, scaffolds `.aide/config/brain.aide`, and tells you to run `npx aidemd-mcp sync`); IDE choice routes to re-running the CLI with `--ide <choice>`. The CLI never attempts to resolve these inherent decisions — guessing a brain path from a sibling folder or an env var is exactly the undesired behavior the frontmatter calls out. The split mirrors the rule the sister spec codifies: prompts exist for overwrites and for inherent decisions, and since the CLI cannot prompt, it can only own the non-inherent, no-overwrite surface.
+**The cold install ships the methodology layer only; brain wiring is fully delegated to `/aide:brain config` on first `/aide` run.** Cold install is the surface with no agent on the wire and no user-bandwidth channel beyond stdout — every artifact it writes has to be safe under that constraint. The methodology-layer artifacts (the framework pointer stub, the `.aide/docs/` hub, every pipeline slash command, every pipeline agent definition, every skill template, the `aide` MCP server entry, the `aide-tree` launcher, IDE preview wiring) are package-owned, identical for every host, and carry no backend-specific values; they meet that bar. Brain artifacts (`.aide/config/brain.aide`, the `.mcp.json` `brain` entry, the brain root directory) carry per-host backend-specific values; they fail that bar by construction. The clean partition is to ship every methodology-layer artifact at install time and ship no brain artifact at all, then route the user to a surface that has the bandwidth to do the wiring — `/aide:brain config` on the first `/aide` run inside Claude Code, where `aide_init({ category: "brain" })` seeds the brain template and entry-point seed artifacts and `aide_brain({ kind: "config" })` returns the integration's wiring prose the agent executes verbatim. This is the explicit ask in the frontmatter (`The CLI writes no brain surfaces of any kind on cold install...`) and the direct counter to the entire `cli/init writing any brain surface during install` regression class enumerated in the parent's `outcomes.undesired`.
 
-**Reuse the imperative write paths from each `src/service/install/*` category; do not pull the `InitStep` planning machinery.** The existing `installMethodologyDocs`, `installAgents`, `installSkills`, and `scaffoldCommands` helpers are planners — they return `InitStep[]` for an agent-driven `applySteps` pass. The CLI is imperative: read state, decide, write, print, continue. The cleanest reuse is the leaf-level primitives those planners depend on — `readCanonicalDoc` for content resolution, `listMethodologyDocs`/`listAgents`/`listSkills`/`COMMANDS` for the canonical enumerations, `mcpEntry()` and the dual-key check from `wireMcp`, and `composeStub`/`getMethodologyMarker` from `writeMethodology` for the pointer stub. A thin per-artifact helper in `src/cli/init/` (modeled on the existing `writeMcpEntry`, `writeInitCommand`, `writeAideTree`) wraps each reused primitive in a stat-then-write-or-skip flow and returns a `{ status, message }` result the orchestrator can print in one line. Importing the planners themselves would drag in `InitStep` typing, `applySteps` batching, and the `would-*` status vocabulary — all of which exist so the MCP tool can hand off decisions to an agent, and none of which the CLI needs.
+**No brain-shaped flag in the current shape; storage-agnostic is enforced at the flag surface, not just at the write surface.** A flag like `--brain-path <path>` looks innocuous — it pre-fills a value the user would otherwise supply later — but it forces the CLI to know the shape of at least one backend's wiring (an absolute path, in the Obsidian case), which is the exact storage-agnostic invariant the parent intent rules out. Worse, accepting one backend's flag biases the CLI toward making "Obsidian's path slot" feel canonical, leaving every other backend (Notion API token, Logseq graph URI, custom connector with three positional args) as a second-class shape the CLI has no place for. The forbidden flag class is the whole shape, not a list of names: `--brain-path`, `--vault-path`, `--brain-root`, `--brain-token`, `--brain-url`, `--brain-name`, and any other flag whose value is a backend-specific datum are all out, in their current shape. The single forward-compatible escape hatch the parent intent reserves is `--brain <integration>`, whose effect is *template-bundle selection only* — choosing which bundled template `/aide:brain config` will scaffold on first run, with no backend-specific values exchanged at install time. That flag, if and when it lands, does not let the CLI ask the user for a path or token; it only lets the user tell the CLI which template to ship in the bundle so the agent's first `/aide:brain config` run picks the right starting bytes. Everything else stays behind the agent-session bandwidth boundary.
 
-**Skip-on-exists is the only safe branch, per-file — and `.aide/config/` carries an even stronger guarantee.** Every package-owned artifact follows the same three-step shape: resolve the absolute host path (joining `projectRoot` with the canonical relative path), `fs.access` the path, and if present record a skip with a stable reason string and move on. If absent, create the parent directory tree, read the canonical content via `readCanonicalDoc`, write the file, and record a create. The frontmatter's `outcomes.desired` "never overwrites" contract is the governing constraint: the CLI has no user to consent to an overwrite, so the only safe branch is skip. Files inside `.aide/config/` (currently `.aide/config/brain.aide`) inherit the same skip-on-exists shape from their first scaffold but additionally fall under the parent intent's user-owned directory invariant: once written, the bytes belong to the user forever and the CLI must not patch, migrate, or rewrite them on any subsequent run regardless of byte drift from the canonical default. The directory path is the ownership signal — no per-file allowlist — so any new user-owned config file added later inherits the same semantics automatically. This matches the shape `writeInitCommand` and `writeAideTree` already use and extends it across the full artifact set with the user-owned directory carved out as untouchable after first write. Any artifact whose canonical read fails (e.g., `readCanonicalDoc` throws because the package is partially unpacked) records a skip with the error message as its reason — it must not crash the whole run.
+**The terminal warning is the single follow-up surface routing layer; it owns the hand-off from CLI to agent.** Because the CLI does not write any brain artifact, every cold install with brain category in scope finishes with brain wiring genuinely undone, and the user has to be told. The terminal warning is that telling. Its design has to break the visual rhythm of the per-file log enough that a user skimming `[created]`/`[exists]` lines cannot miss it: a loud ASCII-bordered block, an uppercase heading like `SETUP INCOMPLETE — ACTION REQUIRED`, clear separation from routine status lines, and a per-category follow-up entry naming the right surface inline. Brain wiring routes exclusively to `/aide:brain config`; deferred IDE choice routes to re-running the CLI with `--ide <choice>`; skipped shipped artifacts (already-present canonical files that may have drifted from the package's current canonical content) route to `/aide:upgrade`. Each follow-up surface owns one category, no overlap, no fallback to a removed slash command — the parent's "directs the user to a removed slash command" undesired outcome rules out naming `/aide` itself for brain wiring (the orchestrator does not own brain-wiring inline recovery; `/aide:brain config` does) or naming any retired surface like a hypothetical `/aide:init`. When the install pass has nothing to warn about — every artifact reported `[exists]` and no inherent-decision category remains unresolved — the warning block is omitted entirely and a plain `Already set up.` or `Install complete.` line prints instead, because an empty loud box trains users to ignore the warning surface and destroys its signal in the runs that genuinely need it.
 
-**MCP merge is read-parse-merge-write with dual-key existence check and abort-on-parse-failure.** The existing `writeMcpEntry` already implements the correct shape: read `.mcp.json` (treat `ENOENT` as an empty `{}`), parse JSON, check `"aide" in servers || "aidemd-mcp" in servers` (matching the contract `wireMcp/index.ts` enforces at line 47), and if neither key is present, spread the existing `mcpServers` into a new object with `aide: mcpEntry()` appended. Serialize with 2-space indent and a trailing newline, write. If the file exists but fails `JSON.parse`, throw a clear error that names the file and instructs the user to fix the syntax — the CLI's outer `try/catch` converts the throw into a stderr error line and exits non-zero without writing a byte. This directly guards against the "clobber a malformed config" and "destroy existing entries" undesired outcomes and lets the user's other MCP servers (`github`, custom servers, a user-managed `obsidian` entry from their own setup) survive every run untouched.
+**`.aide/config/` is the user-owned directory the cold-start CLI never touches; the boundary is the directory path, not a per-file allowlist.** The parent intent establishes that any file under `.aide/config/` belongs to the user the moment it lands and stays untouched on every subsequent install or upgrade run, regardless of byte drift from the canonical default. That guarantee is forward-compatible: today the only file inside is `brain.aide` (scaffolded at first `/aide:brain config`, not at cold install), but any future user-owned config file added later inherits the same semantics automatically because the directory path itself is the ownership signal. From the cold-start CLI's perspective the rule is simpler still: do not write *anything* under `.aide/config/`. There is no first-write step here for the directory's ownership clock to start; the clock starts at first `/aide:brain config`. The CLI has no business introspecting the directory, no business creating it as a side-effect, and no business reading any of its contents — the directory is owned by the agent-session surface that knows what to put there.
 
-**Per-file failures roll into the warning, never abort the run.** The `outcomes.undesired` contract is explicit: an unwritable agent file must not prevent the methodology stub, slash commands, MCP merge, and launcher from being installed. Each per-artifact helper returns a result object rather than throwing for routine failures (missing canonical content, EACCES on a single write, etc.); the orchestrator logs the failure line, appends the artifact to the skipped/failed list for the warning, and continues with the next artifact. The only conditions that abort the whole run are malformed `.mcp.json` (because continuing would write the MCP entry into a corrupted file tree) and unrecoverable process-level failures (uncaught exceptions from the Node runtime itself). This decision flows directly from the "unwritable per-file failure must not cascade" item in the undesired outcomes.
+**Skip-on-exists is the only safe branch for shipped artifacts; reconciling drift is `/aide:upgrade`'s job.** Every package-owned methodology-layer artifact follows the same three-step shape: resolve the absolute host path, `fs.access` the path, and if present record a skip with a stable reason string. If absent, create the parent directory tree, read the canonical content from the package, write the file, and record a create. Overwriting an existing file because the on-disk copy *might* be stale is forbidden: the CLI has no user to consent to an overwrite, no UI to surface a diff, and no signal to distinguish a hand-customized doc from a stale canonical default. Drift in shipped artifacts is reconciled through `/aide:upgrade`, which runs inside an agent session that *can* surface a diff and ask for consent. The CLI's role is just to log the skip and route the user there through the warning. Any artifact whose canonical read fails (e.g., the package is partially unpacked) records a skip with the error message as its reason and does not crash the rest of the run.
 
-**The warning block is a loud ASCII-bordered region printed once after every per-file line, never inline with them.** The frontmatter calls the warning "hard-to-miss" and "unmissable" — the per-file log uses `[created]`/`[exists]` status prefixes with no decoration, so the warning has to break that visual rhythm to register. The layout is a rectangular box drawn with heavy ASCII borders (`=`/`|` or `█`, not the light `─`/`│` used by some TUIs), an uppercase heading like `SETUP INCOMPLETE — ACTION REQUIRED`, a numbered list of every skipped file path (one per line, prefixed with the reason: "already present" vs "write failed: <error>"), and a numbered list of every deferred category — each entry carrying its own follow-up surface inline (brain wiring: open Claude Code and run `/aide`, the orchestrator prompts for the vault path, scaffolds `.aide/config/brain.aide`, and tells you to run sync; IDE: re-run the CLI with `--ide <choice>`). There is no single closing instruction line naming one command, because the deferred categories now route to different surfaces. The block goes after the last per-file line and before the exit so the user's eye lands on it as the final terminal state. Reserving ASCII bordering for this one block keeps the signal: the per-file log uses bare status prefixes, and the loud region is the only place the user's scan catches. This is the direct counter to the "quiet warning inline with log lines" undesired outcome.
+**MCP merge is read-parse-merge-write with the dual-key existence check and abort-on-parse-failure.** The cold-start MCP write is the `aide` entry only — additively merged into `.mcp.json` under the key `"aide"`, with the dual-key existence check `"aide" in servers || "aidemd-mcp" in servers` so a re-run on a project that already has the entry reports `[exists]` instead of adding a duplicate. The merge is purely additive: every existing server entry (`github`, custom servers, a legacy `obsidian` key from a pre-rework install) is preserved byte-for-byte. If `.mcp.json` exists but contains malformed JSON, the CLI prints a clear error naming the file, exits non-zero, and writes nothing — clobbering a broken config would leave the user in a worse state than they started. The brain entry is *not* written by the CLI under any circumstance; it lands later via `cli/sync` invoked from the integration's `config` prose during `/aide:brain config`, after `brain.aide` has been scaffolded and the user has filled the null slot(s). All `.mcp.json` mutations in the CLI flow through the shared `writeMcpEntry` helper to guarantee uniform key-preservation semantics and the abort-on-malformed-JSON contract.
 
-**Warning suppression has one exact condition: zero skips and zero deferrals.** A fully installed project where every artifact is `[exists]` and no inherent-decision category remains unresolved prints the plain `Already set up.` line — no border, no warning. A cold-start install that wrote every artifact successfully but still needs to hand off brain/IDE decisions to the per-category follow-up surfaces must print the warning, because "deferred categories" is non-empty by definition on any first run. The CLI prints `Already set up.` only on a run where nothing is skipped and nothing is deferred; what changes is that any skipped or failed artifact, regardless of how many artifacts succeeded, flips the output to the warning-block form. An empty warning block printed over an all-clean run is the specific failure mode the undesired outcome "warning printed even when there is nothing to warn about" names.
+**Per-file failures roll into the warning; only malformed `.mcp.json` aborts the whole run.** An unwritable agent file must not prevent the methodology stub, slash commands, MCP merge, and launcher from being installed. Each per-artifact helper returns a result object rather than throwing for routine failures; the orchestrator logs the failure line, appends the artifact to the skipped/failed list for the warning, and continues with the next artifact. The user gets a partial install plus a warning enumerating exactly what failed and how to finish it, rather than a full abort that left the project in a half-installed state with no log of how far it got. The only condition that aborts the whole run is malformed `.mcp.json` — because continuing past a parse failure would write the `aide` entry into the wrong place — plus unrecoverable process-level failures (out of disk, signal interrupt). Exit code 0 covers the install-completed-with-skips case; non-zero is reserved for actual failures.
 
-**Per-file log is terse and color-free.** One line per artifact, status prefix first (`[created]` or `[exists]`; `[failed]` on a per-file write failure that rolls into the warning), host-relative path next, short reason last. No colors, no spinners, no progress bars, no ASCII art in the per-file lines — the loud ASCII is reserved for the final warning so it stands out against this flat log. This matches the format the current `runInit` in `src/cli/init/index.ts` already uses (`write(\`[${result.status}] ${LABEL} — ${result.message}\`)`) and extends it across the full artifact set with no visual change per line.
+**Per-file log is terse and color-free; loud ASCII is reserved for the warning block.** One line per artifact, status prefix first (`[created]` or `[exists]`; `[failed]` on a per-file write failure that rolls into the warning), host-relative path next, short reason last. No colors, no spinners, no progress bars, no ASCII art in the per-file lines. The flat log is what makes the warning's loud border register — visual rhythm is a budget, and the warning gets all of it.
 
-**Framework targeting is Claude Code only, at fixed paths.** The CLI writes to `.claude/commands/aide/` for slash commands, `.claude/agents/aide/` for pipeline agents, `.claude/skills/` for skill templates, `.mcp.json` for MCP config, `CLAUDE.md` (or the existing host config the stub discovers) for the methodology pointer, `.aide/docs/` for the methodology hub, and `.aide/bin/aide-tree.mjs` for the launcher. Multi-framework detection (Cursor, Windsurf, Zed, Copilot) is out of scope at cold-start: the CLI runs before any agent session exists, and there is no user to confirm a detected framework choice. Any other framework's user opens their framework and `aide_init` handles it from there — which is the right place for framework choice, because it's an inherent decision the same way brain and IDE are. This narrows the CLI's contract to exactly the surface a Claude Code cold start needs.
+**Framework targeting is Claude Code only at fixed paths; multi-framework probing is deferred.** The CLI writes to `.claude/commands/aide/` for slash commands, `.claude/agents/aide/` for pipeline agents, `.claude/skills/` for skill templates, `.mcp.json` for MCP config, `CLAUDE.md` (or the existing host config the stub discovers) for the methodology pointer, `.aide/docs/` for the methodology hub, and `.aide/bin/aide-tree.mjs` for the launcher. The cold-start CLI never touches `.aide/config/`. Multi-framework detection (Cursor, Windsurf, Zed, Copilot) is out of scope at cold-start because the CLI runs before any agent session exists and there is no user-bandwidth channel to confirm a detected framework choice — IDE selection is the one inherent decision the CLI surfaces, and it does so through an explicit `--ide <choice>` flag, never through a filesystem probe.
 
-**The CLI remains a single async IIFE with a tiny, hand-parsed flag surface.** The entry shape from `src/cli/init/index.ts` — sequential `await` calls per artifact, `write(line)` for every per-file status, final summary line — scales to the full canonical-artifact set without requiring Commander, Yargs, or any argument-parsing framework. The recognized flags are `--help`, `--vault-path <path>` (also `--vault-path=<path>`), and `--ide <choice>` — each parsed inline by a small reader function with no third-party dependency. Zero prompts, regardless of which flags were supplied. The `npx` invocation is itself the opt-in; re-confirming with a `y/N` gate is the exact friction the frontmatter's undesired outcome rules out.
+**The CLI remains a single async IIFE with a tiny, hand-parsed flag surface and zero interactive prompts.** The recognized flags are `--help` plus `--ide <choice>`, each parsed inline by a small reader function with no third-party dependency. The `--brain <integration>` knob the parent intent reserves for future template-bundle selection is forward-compatible at the parser layer but ships unrecognized in the current shape. Zero prompts, zero `y/N` gates, zero in-run input requests; the `npx` invocation is itself the opt-in. The non-interactive shape is what makes the CLI safe to run unattended and what forces every backend-specific decision into the `/aide:brain config` agent-session surface where it belongs.
 
 ## Good examples
 
-A developer runs the installer in a cold project with no `.mcp.json` and no `.claude/` tree yet. The per-file log streams as each artifact is placed, then a warning block announces the work the CLI could not do:
+A developer runs the installer in a cold project with no flags. The methodology layer lands in full, no brain artifact is touched, and the warning routes the user to `/aide:brain config` and to a CLI re-run for IDE:
 
 ```
-$ npx @aidemd-mcp/server init
+$ npx aidemd-mcp init
 [created] CLAUDE.md — AIDE methodology pointer stub
 [created] .aide/docs/index.md — methodology hub index
 [created] .aide/docs/aide-spec.md — canonical AIDE spec
@@ -200,6 +219,7 @@ $ npx @aidemd-mcp/server init
 [created] .claude/commands/aide/update-playbook.md — /aide:update-playbook
 [created] .claude/commands/aide/refactor.md — /aide:refactor
 [created] .claude/commands/aide/align.md — /aide:align
+[created] .claude/commands/aide/brain.md — /aide:brain
 [created] .claude/agents/aide/aide-spec-writer.md — pipeline agent
 [created] .claude/agents/aide/aide-domain-expert.md — pipeline agent
 [created] .claude/agents/aide/aide-strategist.md — pipeline agent
@@ -218,171 +238,184 @@ $ npx @aidemd-mcp/server init
   SETUP INCOMPLETE — ACTION REQUIRED
 ============================================================
 
-  The installer placed every file it could safely write, but
-  some setup steps require decisions only you can make. Those
-  were NOT done by this command.
+  The installer placed every methodology-layer artifact it
+  could safely write. Brain wiring and IDE configuration
+  require decisions made inside an agent session and were
+  NOT done by this command.
 
   Deferred (each item names how to finish it):
-    1. Brain wiring (.aide/config/brain.aide + derived brain MCP entry) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold .aide/config/brain.aide, and tell you to run npx aidemd-mcp sync (which writes the derived brain entry into .mcp.json)
+    1. Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will scaffold .aide/config/brain.aide, ask for whatever your chosen backend needs, derive the brain MCP entry, and emit a restart message.
     2. IDE configuration — re-run: npx aidemd-mcp init --ide <choice>
 
 ============================================================
 ```
 
-Exit code 0. Every canonical artifact is on disk; the only incomplete pieces are the inherent-decision categories deferred to their per-category follow-up surfaces.
+Exit code 0. The post-install state on disk:
 
-A developer runs the installer in a project that already has the methodology stub, some slash commands, and an `.mcp.json` with a `github` server entry from an earlier setup:
+- `.aide/docs/`, `.claude/commands/aide/`, `.claude/agents/aide/`, `.claude/skills/`, `.aide/bin/aide-tree.mjs`, `CLAUDE.md`, and `.mcp.json` all exist with the methodology layer in place.
+- `.aide/config/` does not exist. The CLI did not create the directory and did not write any file inside it.
+- `.mcp.json` contains exactly one server entry: `{ "mcpServers": { "aide": { /* ... */ } } }`. There is no `brain` key. There is no placeholder of any shape inside the file.
+
+The user opens Claude Code, runs `/aide`, and the orchestrator routes the first-run brain wiring through `/aide:brain config`. The integration's `config` body section asks for whatever its backend needs (an absolute brain path, an API token, a connection URI), edits the just-scaffolded `brain.aide` to fill the null slot(s), runs `cli/sync` to derive the `.mcp.json` `brain` entry, and emits the restart message. From that point forward the project is fully wired.
+
+A developer runs the installer with `--ide zed` on a cold project. The methodology layer lands, IDE preview is wired up, the warning's IDE entry is omitted, and the brain entry still routes to `/aide:brain config`:
 
 ```
-$ npx @aidemd-mcp/server init
+$ npx aidemd-mcp init --ide zed
+[created] CLAUDE.md — AIDE methodology pointer stub
+... (per-file log continues for every methodology-layer artifact)
+[created] .mcp.json — aide MCP server entry
+[created] .aide/bin/aide-tree.mjs — aide-tree launcher
+[created] .zed/settings.json — IDE preview wiring (zed)
+
+============================================================
+  SETUP INCOMPLETE — ACTION REQUIRED
+============================================================
+
+  Deferred (each item names how to finish it):
+    1. Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will scaffold .aide/config/brain.aide and walk you through wiring your chosen brain backend.
+
+============================================================
+```
+
+The IDE category was resolved up-front by the flag, so the warning has nothing to say about it. Brain wiring is still deferred because the cold-start CLI does not touch any brain surface regardless of which methodology-layer flags were supplied. `.aide/config/` is still empty after this run.
+
+A developer runs the installer a second time on a project where the methodology layer was already installed and the user has since run `/aide:brain config` to wire their brain:
+
+```
+$ npx aidemd-mcp init --ide zed
 [exists] CLAUDE.md — AIDE methodology pointer stub already present
-[created] .aide/docs/index.md — methodology hub index
+[exists] .aide/docs/index.md — already present
 [exists] .aide/docs/aide-spec.md — already present
-[created] .aide/docs/aide-template.md — canonical AIDE template
-[exists] .aide/docs/progressive-disclosure.md — already present
-[created] .aide/docs/agent-readable-code.md — canonical agent-readable-code doc
-[created] .aide/docs/automated-qa.md — canonical automated-qa doc
-[created] .aide/docs/plan-aide.md — canonical plan.aide doc
-[created] .aide/docs/todo-aide.md — canonical todo.aide doc
-[created] .aide/docs/cascading-alignment.md — canonical cascading-alignment doc
-[created] .claude/commands/aide.md — /aide orchestrator
-[exists] .claude/commands/aide/research.md — already present
-[exists] .claude/commands/aide/spec.md — already present
-[created] .claude/commands/aide/synthesize.md — /aide:synthesize
-[created] .claude/commands/aide/plan.md — /aide:plan
-[created] .claude/commands/aide/build.md — /aide:build
-[created] .claude/commands/aide/qa.md — /aide:qa
-[created] .claude/commands/aide/fix.md — /aide:fix
-[created] .claude/commands/aide/upgrade.md — /aide:upgrade
-[created] .claude/commands/aide/update-playbook.md — /aide:update-playbook
-[created] .claude/commands/aide/refactor.md — /aide:refactor
-[created] .claude/commands/aide/align.md — /aide:align
-[created] .claude/agents/aide/aide-spec-writer.md — pipeline agent
-...
-[created] .mcp.json — aide MCP server entry (merged with 1 existing server)
+... (every methodology artifact reports [exists])
+[exists] .mcp.json — aide MCP server entry already present
+[exists] .aide/bin/aide-tree.mjs — aide-tree launcher already present
+[exists] .zed/settings.json — IDE preview wiring (zed) already present
+
+Already set up.
+```
+
+No files were modified. The CLI did not introspect `.aide/config/brain.aide` (which exists at this point because `/aide:brain config` scaffolded it), did not introspect the existing `.mcp.json` `brain` entry, and did not stat `.aide/config/` at all. Every methodology artifact reported `[exists]`, no inherent-decision category remains unresolved, so the warning block is suppressed and the plain completion line prints. Exit code 0.
+
+A developer runs the installer against a project whose `.mcp.json` has a trailing comma from a hand-edit mistake:
+
+```
+$ npx aidemd-mcp init
+Error: .mcp.json exists but contains invalid JSON. Fix the syntax error and re-run.
+```
+
+Exit code 1. No files were written. Not the methodology stub, not the doc hub, not the slash commands, not the agents, not the launcher — the CLI aborts the whole run because continuing would write the `aide` entry into a project whose MCP wiring is already broken. The user fixes the syntax and re-runs; the second run installs cleanly.
+
+A developer runs the installer against a project that already has `github` and a custom `local-llm` MCP server in `.mcp.json`:
+
+```
+$ npx aidemd-mcp init
+... (per-file log)
+[created] .mcp.json — aide MCP server entry merged
+... (per-file log continues)
+
+============================================================
+  SETUP INCOMPLETE — ACTION REQUIRED
+============================================================
+  ...
+============================================================
+```
+
+The post-merge `.mcp.json` carries `github`, `local-llm`, *and* `aide` — every existing entry preserved byte-for-byte, with `aide` added beside them. There is no `brain` key (cold install does not write one). The merge was purely additive, exactly as the parent intent's `.mcp.json` semantics require.
+
+## Bad examples
+
+The CLI scaffolds `.aide/config/brain.aide` from inside the cold-start install path:
+
+```
+$ npx aidemd-mcp init
+[created] CLAUDE.md — AIDE methodology pointer stub
+... (per-file log continues)
+[created] .aide/config/brain.aide — Brain config (Obsidian default)
+[created] .mcp.json — aide and brain MCP server entries
 [created] .aide/bin/aide-tree.mjs — aide-tree launcher
 
 ============================================================
   SETUP INCOMPLETE — ACTION REQUIRED
 ============================================================
 
-  The installer placed every file it could safely write, but
-  some files already existed (skipped, never overwritten) and
-  some setup steps require decisions only you can make.
-
-  Skipped files (already on disk or write failed — not overwritten):
-    1. CLAUDE.md — AIDE methodology pointer stub already present
-    2. .aide/docs/aide-spec.md — already present
-    3. .aide/docs/progressive-disclosure.md — already present
-    4. .claude/commands/aide/research.md — already present
-    5. .claude/commands/aide/spec.md — already present
-
   Deferred (each item names how to finish it):
-    1. Brain wiring (.aide/config/brain.aide + derived brain MCP entry) — open Claude Code and run /aide; the orchestrator will prompt for the vault path, scaffold .aide/config/brain.aide, and tell you to run npx aidemd-mcp sync (which writes the derived brain entry into .mcp.json)
+    1. Brain wiring — open Claude Code and run /aide:brain config to fill the unwired slot in .aide/config/brain.aide.
     2. IDE configuration — re-run: npx aidemd-mcp init --ide <choice>
 
 ============================================================
 ```
 
-The existing `github` MCP server entry survives untouched. The five pre-existing files are explicitly named in the warning so the user can investigate whether their on-disk versions are current.
+The CLI wrote `.aide/config/brain.aide` and merged a `brain` entry into `.mcp.json` from inside the cold-start pipeline. This re-creates the regression class the parent intent retires explicitly: brain scaffolding is the responsibility of `aide_init({ category: "brain" })` driven by `/aide:brain config` on the first `/aide` run, never the cold-start CLI. Writing the file from `cli/init` forces the cold-start surface to know about brain backends it must stay agnostic about, starts the user-owned `.aide/config/` ownership clock at the wrong surface (cold install instead of first agent session), and means every host project carries CLI-authored bytes inside the directory the parent intent reserves for the user. The cold install must never write any file under `.aide/config/`.
 
-A developer runs the installer a second time on a project where every canonical artifact is already present:
-
-```
-$ npx @aidemd-mcp/server init
-[exists] CLAUDE.md — AIDE methodology pointer stub already present
-[exists] .aide/docs/index.md — already present
-[exists] .aide/docs/aide-spec.md — already present
-...
-[exists] .mcp.json — aide server already configured
-[exists] .aide/bin/aide-tree.mjs — aide-tree launcher already present
-
-Already set up.
-```
-
-No files were modified and no categories remained deferred in this run (brain wiring was resolved in a prior `--vault-path` run that scaffolded `.aide/config/brain.aide` and merged the derived `brain` MCP entry; IDE was resolved in a prior `--ide` run), so the warning block is suppressed and the plain completion line is printed instead. Exit code 0. This is the idempotency contract the frontmatter requires. Note that even on this fully-clean rerun, the CLI did not touch `.aide/config/brain.aide` — that file is user-owned the moment it lands and stays out of the install path forever.
-
-A developer runs the installer with `--vault-path` on a cold project. The CLI scaffolds `.aide/config/brain.aide` from the canonical Obsidian template and derives the `brain` MCP entry from it:
+The CLI writes a `.mcp.json` brain entry without scaffolding `brain.aide`:
 
 ```
-$ npx @aidemd-mcp/server init --vault-path D:/notes/my-vault
+$ npx aidemd-mcp init
+... (per-file log)
+[created] .mcp.json — aide and brain MCP server entries
+... (no .aide/config/brain.aide line)
+```
+
+The CLI added a `brain` key to `.mcp.json` even though no `brain.aide` exists on disk to derive it from. This leaves `.mcp.json` carrying a brain entry that does not derive from a `.aide/config/brain.aide` on disk — exactly the invariant the parent intent calls out. The brain MCP entry is written by `cli/sync` invoked from `/aide:brain config` after the integration's prose has scaffolded `brain.aide` and the user has filled the unwired slot(s); the cold-start CLI must never write the entry directly.
+
+The CLI accepts `--brain-path`:
+
+```
+$ npx aidemd-mcp init --brain-path D:/notes/my-vault
+... (per-file log)
 [created] .aide/config/brain.aide — Brain config (Obsidian default)
 [created] .mcp.json — aide and brain MCP server entries
+```
+
+The CLI grew a brain-shaped flag in its current shape, accepted an absolute path as a backend-specific value at install time, and used it to write brain artifacts from inside the cold-start install pass. Three failures stack: the CLI now knows about Obsidian-shaped backends (failing the storage-agnostic invariant), the install pass writes inside `.aide/config/` (failing the user-owned directory invariant), and the flag class itself is forbidden by the parent's "any brain-shaped flag in its current shape" undesired outcome. The forbidden class is the whole shape, not specific names: `--brain-path`, `--vault-path`, `--brain-root`, `--brain-token`, `--brain-url`, `--brain-name`, and any other flag whose value is a backend-specific datum are all out. The single forward-compatible escape hatch is `--brain <integration>` for template-bundle selection only — and even then, no backend-specific values are exchanged at install time.
+
+The CLI prompts the user for a brain path interactively:
+
+```
+$ npx aidemd-mcp init
 [created] CLAUDE.md — AIDE methodology pointer stub
-... (per-file log continues for every shipped artifact)
-
-============================================================
-  SETUP INCOMPLETE — ACTION REQUIRED
-============================================================
-
-  Deferred (each item names how to finish it):
-    1. IDE configuration — re-run: npx aidemd-mcp init --ide <choice>
-
-============================================================
+Where is your brain located? Enter an absolute path: _
 ```
 
-The scaffolded `.aide/config/brain.aide` looks like this — frontmatter contains exactly `name` and `mcpServerConfig.{command, args}`, with the supplied vault path inlined byte-for-byte in `args` (no `${rootPath}` substitution surface in the default scaffold), and the prose body the agent reads verbatim:
+The CLI surfaced an `--interactive` mode (or read stdin without a flag, or popped an `AskUserQuestion`-shaped terminal prompt) and asked the user for a backend-specific value at install time. The cold-start CLI runs in a plain terminal without an agent on the other end of the wire, has no UI to surface a structured question, and must complete its happy path with zero interaction beyond running `npx` itself. Backend-specific values belong to the integration's prose surfaced through `/aide:brain config` inside an agent session that can hold a conversation, not to a one-shot terminal invocation that cannot. Every prompt-shaped surface — stdin reads, `--interactive` flags, env-var reads with confirmation — is forbidden.
+
+The CLI creates the brain root directory on cold install:
 
 ```
----
-name: obsidian
-mcpServerConfig:
-  command: npx
-  args:
-    - "@bitbonsai/mcpvault"
-    - "D:/notes/my-vault"
----
-
-## Prose
-
-Your brain is an Obsidian vault. Use `mcp__brain__read_note` to open files by
-their vault-relative path. Use `mcp__brain__search_notes` for keyword queries
-across every note in the vault. (...remainder of the canonical hand-written
-prose body...)
+$ npx aidemd-mcp init
+... (per-file log)
+[created] D:/Users/dev/Documents/aide-brain/ — created brain root directory
+[created] .aide/config/brain.aide — Brain config pointing at brain root
 ```
 
-The corresponding `.mcp.json` `brain` entry is `{ command: "npx", args: ["@bitbonsai/mcpvault", "D:/notes/my-vault"] }` — derived from the scaffolded file via `parseBrainAideFromString` + `interpolateArgs` (with no placeholders to interpolate in the default), never from a hardcoded launcher constant. On every subsequent run, `.aide/config/brain.aide` reports `[exists]` and the CLI does not touch it — even if the user has retargeted the vault path, swapped the launcher to a different command, or rewritten the prose body.
+The CLI reached outside the host project root, picked a default location based on the OS, and created an empty directory there as the future brain root. This combines two failures: it picks a backend-specific value (an absolute filesystem path) without the bandwidth to confirm it with the user, and it touches filesystem state outside the host project on a tool the user invoked from inside the host project. The cold-start CLI's filesystem write surface is bounded to the host project root; brain root creation is the integration's responsibility and happens later through `/aide:brain config` after the user has chosen and configured a backend.
 
-A developer runs the installer against a project whose `.mcp.json` has a trailing comma from a hand-edit mistake:
+The CLI guesses a default brain path on a no-flag run:
 
 ```
-$ npx @aidemd-mcp/server init
-Error: .mcp.json exists but contains invalid JSON. Fix the syntax error and re-run.
+$ npx aidemd-mcp init
+... (per-file log)
+[created] .aide/config/brain.aide — Brain config (auto-detected vault at a sibling brain folder)
+[created] .mcp.json — aide and brain MCP server entries
+Detected brain vault at a sibling brain folder — wired brain MCP server
 ```
 
-Exit code 1. No files were written. Not even the methodology stub, the doc hub, the commands, the agents, or the launcher — the CLI aborts the whole run because continuing would write into a project whose MCP wiring is already broken. The user fixes the syntax and re-runs; the second run installs cleanly.
-
-## Bad examples
+The folder the CLI discovered is actually the user's spouse's personal journal vault, not an AIDE brain. The CLI found it from a filesystem scan, landed the path inside `mcpServerConfig.args`, and silently committed the user's pipeline to writing research notes into a vault they never consented to. There is no correct fallback here: filesystem scans, env-var reads, platform defaults, sibling-folder probes — every form of guessing-without-asking is wrong. The cold-start CLI does not write any brain artifact at all; the user's brain location is asked-for and confirmed inside the agent session via `/aide:brain config`.
 
 The CLI silently replaces the user's existing `.mcp.json`:
 
 ```
-$ npx @aidemd-mcp/server init
+$ npx aidemd-mcp init
 [created] .mcp.json — aide MCP server entry
-...
-Done. Open Claude Code and run /aide:upgrade to reconcile any existing files.
 ```
 
-The user had `github`, a legacy `obsidian` key from a pre-migration install, and two custom MCP servers configured. All of them are gone, overwritten by a fresh file containing only the `aide` entry. The CLI decided the on-disk config was stale and assumed it could replace it — the exact failure mode the frontmatter's "never overwrites" contract exists to prevent. (The legacy `obsidian` key, in particular, must survive untouched here — the install service's `provisionBrain` is the one place migration to the fixed `brain` key happens, never the CLI silently.) The user has no way of knowing until their other MCP servers stop appearing in Claude Code.
+The user had `github`, a legacy `obsidian` key from a pre-migration install, and two custom MCP servers configured. All of them are gone, overwritten by a fresh file containing only the `aide` entry. The CLI decided the on-disk config was stale and assumed it could replace it — the exact failure mode the parent intent's "never overwrites" contract exists to prevent. The merge must be additive: every existing entry preserved byte-for-byte, with `aide` added beside them. The legacy `obsidian` key in particular must survive untouched here; migration to the fixed `brain` key happens through `/aide:brain config` (or a deliberate user edit), never silently in the cold-start CLI.
 
-The CLI finishes with files skipped but never surfaces the skip list:
-
-```
-$ npx @aidemd-mcp/server init
-[created] .aide/docs/aide-template.md — canonical AIDE template
-[exists] .aide/docs/aide-spec.md — already present
-[created] .claude/agents/aide/aide-architect.md — pipeline agent
-[exists] .claude/agents/aide/aide-spec-writer.md — already present
-...
-Done.
-```
-
-Three files were skipped across methodology, agents, and commands. The user sees `[exists]` markers in the stream but no summary — scrolling back through 35 lines to reconstruct the skip list is the kind of work the warning block is supposed to do for them. They walk away thinking the install is complete, then trip on an outdated agent file a week later and have no record of which files the CLI did not write.
-
-The CLI surfaces skips inline with the log instead of as a loud block:
+The CLI surfaces skips inline with the per-file log instead of as a loud block:
 
 ```
-$ npx @aidemd-mcp/server init
+$ npx aidemd-mcp init
 [created] .aide/docs/aide-template.md — canonical AIDE template
 [exists] .aide/docs/aide-spec.md — already present
 WARNING: skipped because file exists
@@ -393,53 +426,68 @@ WARNING: skipped because file exists
 Done. Open Claude Code and run /aide:upgrade to reconcile skipped files.
 ```
 
-The warnings are structurally inline with the `[created]`/`[exists]` lines, using the same font weight, the same indentation, and the same width as the rest of the log. A user skimming the output reads every line as routine status and never registers that the install is incomplete. This is the "quiet warning" failure mode the undesired outcomes explicitly name — the warning has to break the log's visual rhythm with borders and uppercase heading to register.
+The warnings are structurally inline with the `[created]`/`[exists]` lines, using the same font weight, the same indentation, and the same width as the rest of the log. A user skimming the output reads every line as routine status and never registers that the install is incomplete. The warning has to break the log's visual rhythm with borders and uppercase heading to register, and it has to appear once at the end with all skipped files and deferred categories aggregated, not interleaved with routine status lines.
+
+The CLI routes the warning's brain item to `/aide` instead of `/aide:brain config`:
+
+```
+============================================================
+  SETUP INCOMPLETE — ACTION REQUIRED
+============================================================
+
+  Deferred (each item names how to finish it):
+    1. Brain wiring — open Claude Code and run /aide; the orchestrator will detect that your brain is not wired and walk you through configuration.
+    2. IDE configuration — re-run: npx aidemd-mcp init --ide <choice>
+
+============================================================
+```
+
+The warning names `/aide` itself as the brain follow-up surface, implying the orchestrator owns brain-wiring inline recovery. The orchestrator does not own that responsibility — `/aide:brain config` does. Naming `/aide` for brain wiring leaves the user running the orchestrator and waiting for an interview that never comes (because the orchestrator forwards brain wiring to `/aide:brain config` itself). Every CLI-emitted reference to a brain follow-up must name `/aide:brain config` directly so the user lands on the surface that has the wiring flow. The same rule applies to any other removed slash command — the parent intent's "directs the user to a removed slash command" undesired outcome rules out naming any non-shipped surface, with brain-wiring routing being the most common failure mode.
 
 The CLI aborts the entire run on a single file's write failure:
 
 ```
-$ npx @aidemd-mcp/server init
+$ npx aidemd-mcp init
 [created] CLAUDE.md — AIDE methodology pointer stub
 [created] .aide/docs/index.md — methodology hub index
 Error: EACCES: permission denied, open '.aide/docs/aide-spec.md'
 ```
 
-Exit code 1. The methodology stub made it in, nothing else did — not the rest of the doc hub, not the slash commands, not the agents, not the MCP entry, not the launcher. The user has to chase down the permission issue and re-run before they can open Claude Code and start using `/aide`. A single per-file failure must roll into the warning alongside skipped files and let the rest of the install continue.
+Exit code 1. The methodology stub made it in, nothing else did — not the rest of the doc hub, not the slash commands, not the agents, not the MCP entry, not the launcher. A single per-file failure must roll into the warning alongside skipped files and let the rest of the install continue; only malformed `.mcp.json` and unrecoverable process-level failures abort the whole run.
 
-The CLI attempts to guess a brain vault path:
-
-```
-$ npx @aidemd-mcp/server init
-[created] .mcp.json — aide and brain MCP server entries
-Detected brain vault at ../my-brain — wired brain MCP server
-Done.
-```
-
-The user's sibling `../my-brain` directory is actually their spouse's personal journal vault, not an AIDE brain. The CLI discovered it from a filesystem scan, wired the `brain` entry to point at it, and silently committed the user's pipeline to writing research notes into a vault they never consented to. Brain vault is an inherent decision — the CLI has no business resolving it, and the frontmatter explicitly forbids guessing from a sibling folder, env var, or platform default.
-
-The CLI prompts the user mid-run:
+The CLI prints the warning block over an all-clean re-run:
 
 ```
-$ npx @aidemd-mcp/server init
+$ npx aidemd-mcp init
+[exists] CLAUDE.md — AIDE methodology pointer stub already present
+... (every artifact reports [exists])
+[exists] .mcp.json — aide MCP server entry already present
+[exists] .aide/bin/aide-tree.mjs — aide-tree launcher already present
+
+============================================================
+  SETUP INCOMPLETE — ACTION REQUIRED
+============================================================
+
+  (no skipped files, no deferred categories)
+
+============================================================
+```
+
+Every artifact is `[exists]`, IDE was resolved in a prior run — there is genuinely nothing to warn about. The CLI prints an empty warning box anyway. The warning suppression rule is exact: when the skip/failed list is empty AND no inherent-decision category is unresolved, print `Already set up.` (or `Install complete.`). Printing an empty loud box trains users to ignore the warning surface, which destroys its signal in the runs that genuinely need it. (The brain wiring follow-up is owned by `/aide:brain config` regardless of CLI state — the warning does not get a brain entry just because the CLI did not write any brain artifact, because not writing a brain artifact is the CLI's permanent contract, not a deferral state.)
+
+The CLI prompts the user mid-run for any reason:
+
+```
+$ npx aidemd-mcp init
 [created] CLAUDE.md — AIDE methodology pointer stub
 The .aide/docs/ hub will contain the canonical methodology files. Continue? [y/N]
 ```
 
-The happy path must be zero-interaction. The `npx` invocation is the opt-in; a confirmation prompt adds friction to a command whose whole purpose is to be runnable unattended, and it violates the frontmatter contract that the CLI cannot prompt because there is no UI for it.
+The happy path must be zero-interaction. The `npx` invocation is the opt-in; a confirmation prompt adds friction to a command whose whole purpose is to be runnable unattended. The interactive surface for any decision the cold-start CLI cannot make alone is the agent session reachable through the warning's follow-up surfaces, not the terminal.
 
 ## References
 
-- `src/service/install/.aide` (install service) -- confirms the shared overarching semantic: prompts are reserved for overwrites and inherent decisions, silent-on-create is the fast-path rule. The CLI adaptation is skip-or-abort because terminal context has no UI to prompt with — the content of this spec's "skip-on-exists as only safe branch" strategy paragraph.
-- `src/.aide` -- parent spec; source of the "two delivery channels" frame and the idempotency-as-invariant contract that carries down into the CLI's repeated-run behavior and the `Already set up.` suppression rule.
-- `src/cli/init/index.ts` -- current `runInit` shape: sequential per-artifact `await`, status-prefixed log lines, final completion line. The strategy extends this shape to the full canonical-artifact set without changing the log format.
-- `src/cli/init/writeMcpEntry/index.ts` -- the CLI-local thin wrapper around the shared `cli/shared/writeMcpEntry` helper. Adds CLI-specific concerns (the `WriteMcpEntryResult` shape, the message composition, the aide entry build, and the brain-entry-derived-from-`.aide/config/brain.aide` step) on top of the shared mutation helper.
-- `src/service/install/wireMcp/index.ts` -- `mcpEntry()` returns the platform-branching `aide` server entry the CLI writes verbatim; the dual-key check is the contract `writeMcpEntry` matches so subsequent `aide_init` MCP steps report `exists` instead of adding a duplicate. (Moved from `src/tools/init/` during the install-service refactor.)
-- `src/service/install/initContent/index.ts` -- `readCanonicalDoc` is the content-resolution primitive; `DOC_PATHS` is the canonical-name-to-path registry; `listMethodologyDocs`/`listAgents`/`listSkills` are the canonical enumerations the CLI iterates to install each category. The strategy reuses these directly, bypassing the planner helpers built on top of them.
-- `src/service/install/installMethodologyDocs/index.ts`, `src/service/install/installAgents/index.ts`, `src/service/install/installSkills/index.ts`, `src/service/install/scaffoldCommands/index.ts` -- planner helpers that return `InitStep[]` for agent-driven application. The CLI also uses these planners (filtering `would-create` only) so the partition is the apply-side enforcement of skip-on-exists.
-- `src/service/install/writeMethodology/index.ts` -- source of `composeStub` and the `METHODOLOGY_MARKER` constant via `getMethodologyMarker`; the CLI uses both to compose the pointer stub and detect the marker for skip-on-exists on the host config file.
-- `src/service/install/scaffoldCommands/index.ts` -- `COMMANDS` registry enumerates the pipeline slash commands the CLI installs; the `hostPath` field defines the `.claude/commands/aide/<phase>.md` layout.
-- `src/service/install/provisionBrain/obsidianBrainAideTemplate/index.ts` -- single source of canonical Obsidian `brain.aide` bytes. The CLI imports this when `--vault-path` is supplied and writes the result to `.aide/config/brain.aide`; the launcher shape (`@bitbonsai/mcpvault`) and the platform-branching `command`/`args` shape live here and nowhere else in the CLI.
-- `src/service/parseBrainAide/index.ts` -- `parseBrainAideFromString` and `interpolateArgs` are the consumers the CLI uses to derive the `brain` MCP entry from the scaffolded (or pre-existing user-edited) `.aide/config/brain.aide`.
-- `src/cli/shared/writeMcpEntry/index.ts` -- shared `.mcp.json` mutation helper that both `cli/init` and `cli/sync` route through; carries the dual-key existence check, the additive merge semantics, and the abort-on-malformed-JSON contract.
-- `.aide/docs/aide-template.md` -- canonical body-section contract for the spec itself: Context explains why the module exists, Strategy distills decisions with inline citations, Good/Bad examples are real output, References logs what was actually used during synthesis.
-- `.aide/docs/progressive-disclosure.md` and `.aide/docs/aide-spec.md` -- methodology docs that establish the "read specs before code" and "stub-in-config, hub-on-disk" patterns the pointer-stub + doc-hub install enacts at the delivery layer.
+- `.aide/intent.aide` -- root project intent; source of the "cold-install CLI is argument-less and brain-agnostic" outcome that drives the entire methodology-only-install partition, the directory-as-ownership-boundary guarantee for `.aide/config/`, the `cli/init writing any brain surface during install` undesired-outcome enumeration the Bad examples directly mirror, the storage-agnostic invariant that rules out the entire brain-shaped flag class, and the future `--brain <integration>` template-bundle-selection forward-compatibility note.
+- `src/.aide` -- parent spec; source of the "two delivery channels" frame (handshake teaching surface plus install action) and the install-action-with-two-entry-points-into-a-shared-service shape that scopes what the CLI is responsible for at the cold-start hop.
+- `BRAIN-CONFIG-REWORK-PLAN.md` -- design source for the post-rework `/aide:brain config` flow. The "New `.claude/commands/aide/brain.md` Mode 2 flow" section establishes `/aide:brain config` as the thin shipped router that forwards `$ARGUMENTS` opaquely to the integration's `config` prose section in `brain.aide`, calls `aide_init({ category: "brain" })` with no backend-specific values to land the brain template and seed artifacts, and lets the integration's prose own asking-the-user, editing the file, running sync, and emitting the restart message. This is the surface the cold-start CLI's terminal warning routes brain wiring to.
+- `.aide/docs/aide-template.md` -- canonical body-section contract for the spec itself: Context explains why the module exists, Strategy distills decisions, Good/Bad examples are real output, References logs what was actually used during synthesis.

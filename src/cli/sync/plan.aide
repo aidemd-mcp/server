@@ -2,29 +2,30 @@
 
 ---
 intent: >
-  Re-align the existing `npx aidemd-mcp sync` verb to the post-collapse
-  brain.aide schema and path. Sync now reads `.aide/config/brain.aide`
-  (was `.aide/brain.aide`); takes the parsed `mcpServerConfig` as its
-  derived MCP entry (no `rootPath`/`entryFile`-specific handling); surfaces
-  the new path in every error string. The verb's contract — read brain.aide,
-  derive entry, write `.mcp.json` under the fixed `brain` key, idempotent,
-  legacy `obsidian` key removal in the same write — is unchanged in shape.
-  The shared `writeMcpEntry` helper at `src/cli/shared/writeMcpEntry/`
-  needs no edits; it already takes an entries map and works against the
-  collapsed schema unchanged.
+  Stage 4 re-align of the `npx aidemd-mcp sync` verb. Two structural shifts:
+  (1) Insert a null-bearing-args precondition at the boundary, BEFORE any
+  `.mcp.json` mutation — when the post-interpolation `mcpServerConfig.args`
+  contains JS `null` at any index, sync exits non-zero, names every
+  offending index in stderr, routes the user to `/aide:brain config`, and
+  leaves `.mcp.json` untouched. (2) Remove every trace of the legacy
+  `mcpServers.obsidian` migration: the `entries["obsidian"] = "delete"`
+  call, the `Removed legacy \`obsidian\` ...` stdout line, the file-level
+  JSDoc reference, and the dedicated migration test (3c). The byte-faithful
+  propagation contract for fully-wired configs, the idempotency contract,
+  the existing exit-code map (0 success / 1 file failure / 2 help), the
+  exclusive-mutation-surface invariant, and the read/merge/write helper
+  call site stay unchanged in shape.
 ---
 
 ## Project Structure
 
-This is an additive/edit plan against an existing module. The folder
-shape is unchanged from the prior `plan.aide`; only the contents of
-`index.ts` and `index.test.ts` shift to track the post-collapse contract.
+This is an additive/edit plan against an existing module. The folder shape
+is unchanged; only `index.ts` and `index.test.ts` are edited.
 
 ```
 src/cli/sync/
-├── .aide                        ← [existing — already aligned for the new path/schema]
+├── .aide                        ← [existing — Stage 3 rewrite already in place]
 ├── plan.aide                    ← [this file — rewritten]
-├── todo.aide                    ← [existing — every drift item resolved]
 ├── index.ts                     ← [edit] CLI entry point
 │                                   exports:
 │                                     export async function runSync(
@@ -32,424 +33,611 @@ src/cli/sync/
 │                                       write?: (line: string) => void,
 │                                       writeErr?: (line: string) => void,
 │                                     ): Promise<number>
-│                                   IIFE at file bottom dispatches argv:
-│                                     --help → usage prose, exit 2
-│                                     <no flags> → call runSync(process.cwd()),
-│                                                  exit with returned code
-│                                   The IIFE's --help text and runSync's stderr
-│                                   strings ALL name `.aide/config/brain.aide`
-│                                   (was `.aide/brain.aide`). The pipeline body
-│                                   is otherwise unchanged: parse → derive entry
-│                                   → call shared writeMcpEntry → report.
-└── index.test.ts                ← [edit] co-located tests; every fixture
-                                   rewrites to the two-field schema (`name` +
-                                   `mcpServerConfig`), uses `@bitbonsai/mcpvault`
-                                   as the launcher, embeds the path inline in
-                                   args (no `${rootPath}` placeholder), and
-                                   writes brain.aide to `.aide/config/brain.aide`.
-                                   Test 3j is replaced (the default scaffold no
-                                   longer exercises interpolation). Legacy
-                                   `obsidian` migration test is preserved
-                                   unchanged in intent — the migration contract
-                                   is unchanged.
+│                                   Pipeline (post-edit):
+│                                     1. parseBrainAide(cwd) — branch on missing /
+│                                        malformed-frontmatter / malformed-body, each
+│                                        emits its own stderr line and returns 1.
+│                                     2. Compute post-interpolation args:
+│                                          args = interpolateArgs({ name, mcpServerConfig })
+│                                        Type: (string | null)[]  (per parseBrainAide
+│                                        prerequisite — see § Prerequisites).
+│                                     3. NEW — Null-bearing-args precondition. Walk
+│                                        `args` element-by-element with `=== null`
+│                                        identity comparison, collecting every index
+│                                        whose element is null. If any index is null,
+│                                        emit a single stderr line naming every
+│                                        offending index and routing to
+│                                        `/aide:brain config`, return 1.
+│                                        `.mcp.json` is NOT read or written on this
+│                                        path.
+│                                     4. Compose expectedEntry = { command, args }
+│                                        (args are guaranteed string[] post-step-3).
+│                                     5. writeMcpEntry(cwd, { brain: expectedEntry })
+│                                        — REMOVED: the prior `obsidian: "delete"`
+│                                        entry. The entries map now contains exactly
+│                                        one key: `brain`.
+│                                     6. Translate the helper's invalid-JSON throw to
+│                                        a user-facing stderr line; return 1.
+│                                     7. Report — Read stdout line, Wrote/already-in-
+│                                        sync line, command/args dump, Done. The
+│                                        `Removed legacy \`obsidian\` ...` line is
+│                                        REMOVED.
+│                                   Module-level JSDoc has the legacy-obsidian
+│                                   sentence removed and the null-refusal precondition
+│                                   added to the exit-code contract.
+└── index.test.ts                ← [edit] co-located vitest suite
+                                   - Test 3c (legacy obsidian migration) DELETED in
+                                     full — including the describe block, helper
+                                     pre-write of `mcpServers.obsidian`, and the
+                                     migration-output assertion.
+                                   - Test 3b (idempotent re-run) loses its inline
+                                     comment about "obsidian absent" but keeps its
+                                     pre-write of just the brain entry.
+                                   - NEW test group 3l — null-bearing args refusal,
+                                     covering: single-null exit-1 + stderr names
+                                     index, multi-null stderr names every index in
+                                     one line, .mcp.json is untouched after refusal
+                                     (both byte-equal-after and absent-not-created
+                                     subcases), null-refusal stderr routes to
+                                     `/aide:brain config`.
+                                   - All other test groups (3a, 3d–3k) keep their
+                                     intent; only the EXPECTED_BRAIN_ENTRY shape and
+                                     args fixtures stay aligned with the broadened
+                                     `(string | null)[]` parser contract (no test
+                                     edits required since the existing all-string
+                                     fixtures remain valid input).
 ```
 
-This plan does NOT touch any of the following — they are already correct
-or owned by other plans:
+This plan does NOT touch:
 
-- `src/cli/shared/writeMcpEntry/index.ts` — the shared helper takes an
-  entries map and is schema-agnostic. The change does not reach it.
-- `src/cli/shared/writeMcpEntry/index.test.ts` — same; helper tests
-  are independent of brain.aide schema.
-- `src/types/index.ts` — `BrainAideConfig` collapses inside the
-  parseBrainAide plan (Plan 2 in that module). This plan consumes the
-  collapsed type but does not edit it.
+- `src/cli/shared/writeMcpEntry/index.ts` — the helper takes an entries map
+  and is schema-agnostic. No edit needed; the entries map this plan passes
+  drops the `obsidian: "delete"` key but the helper handles a single-key
+  map identically.
+- `src/cli/shared/writeMcpEntry/index.test.ts` — helper tests still cover
+  the `"delete"` sentinel; whether sync exercises it is sync's concern,
+  not the helper's.
+- `src/types/index.ts` — the `(string | null)[]` broadening lands inside
+  the parseBrainAide plan (declared as a Prerequisite below). Sync
+  consumes the broadened type via `ParseBrainAideResult`, never imports
+  `BrainAideMcpServerConfig` directly.
+- `src/service/parseBrainAide/index.ts` — the parser owns the
+  `(string | null)[]` typing and `interpolateArgs`'s null-passthrough
+  semantics. Sync calls them at the same call sites as today.
 
 ## Prerequisites
 
-This plan depends on the post-collapse contract of `parseBrainAide`. The
-following must be true before this plan's steps execute:
+This plan depends on `src/service/parseBrainAide/` shipping the broadened
+args type. The following must be true before this plan's steps execute:
 
-**`src/service/parseBrainAide/`** (Plan 2 in that module — see
-`src/service/parseBrainAide/plan.aide`) must export the post-collapse
-contract:
+**`src/service/parseBrainAide/`** must export:
 
-- `parseBrainAide(root: string)` reads from `join(root, ".aide", "config",
-  "brain.aide")` (was `.aide/brain.aide`). Returns the same
-  `ParseBrainAideResult` discriminated union: `ok | missing |
-  malformed-frontmatter | malformed-body`.
-- The `ok` variant carries a `config: BrainAideConfig` shape that is
-  exactly `{ name: string; mcpServerConfig: { command: string; args:
-  string[] } }` — no `connector`, `rootPath`, `entryFile`, or `tools`
-  fields.
-- `interpolateArgs(config)` continues to exist and walks any
-  `${<key>}` placeholder against top-level frontmatter fields; with
-  the collapsed schema the only resolvable placeholder is `${name}`,
-  and the default scaffold contains no placeholders so the helper is
-  a no-op for default installs. Sync calls it unchanged.
-- The `malformed-frontmatter` variant's `reason` string names every
-  deprecated field encountered (`connector`, `rootPath`, `entryFile`,
-  `tools`) when present, so sync can pass the reason through verbatim
-  and the user sees exactly which stale fields to remove.
+- `parseBrainAide(root: string)` returning a `ParseBrainAideResult` whose
+  `ok` variant carries `mcpServerConfig: { command: string; args: (string |
+  null)[] }`. YAML null in the args sequence parses to JS `null` and is
+  preserved verbatim through to the result — no coercion to empty string,
+  no rejection as malformed-frontmatter.
+- `interpolateArgs(config: BrainAideConfig): (string | null)[]` — walks the
+  `args` array element-by-element, performs `${...}` substitution against
+  top-level frontmatter fields on string entries, and passes null entries
+  through unchanged. Return type matches the input element type.
 
-**`src/types/index.ts`** must export the collapsed `BrainAideConfig` and
-`BrainAideMcpServerConfig` types. This plan reads those types via
-`ParseBrainAideResult` from the parser module — it does not import them
-directly, but the type narrowing through `result.config.mcpServerConfig`
-relies on the collapse having landed.
+**`src/types/index.ts`** must export `BrainAideMcpServerConfig` such that
+`args: (string | null)[]`, with `BrainAideConfig` and the `kind: "ok"`
+variant of `ParseBrainAideResult` consuming that broadened type.
 
-If parseBrainAide is still on the legacy schema when this plan runs,
-the test fixtures in step 2 will fail to parse (deprecated-field
-rejection) and step 1's `expectedEntry` derivation will type-error on
-the missing `BrainAideConfig` fields. Run parseBrainAide's plan first.
+If parseBrainAide is still on `args: string[]` when this plan runs:
+
+- Step 2's null-detection step will type-error against `args.some((a) => a
+  === null)` because TS will narrow the comparison to always-false on a
+  `string[]`.
+- The new test 3l fixtures will fail to parse (the parser will emit a
+  malformed-frontmatter for "args contained a non-string element").
+
+Run the parseBrainAide broadening plan first.
 
 ## Plan
 
-### 1. Edit error strings and pipeline references in `runSync`
+### 1. Insert the null-bearing-args precondition into `runSync`
 
-Read: `coding-playbook/foundations/conventions`, `coding-playbook/agentic/command-modules`
+Read: `coding-playbook/foundations/conventions`,
+`coding-playbook/services/error-handling`,
+`coding-playbook/agentic/command-modules`
 
-- [x] Open `src/cli/sync/index.ts`. Replace every literal occurrence
-      of `` `.aide/brain.aide` `` (in stderr lines, the `--help` usage
-      prose, and any inline comments) with `` `.aide/config/brain.aide` ``.
-      The strings to update appear in:
+Per spec `outcomes.desired[2]` and `outcomes.desired[3]`: sync refuses
+null-bearing args at the boundary. The check is a precondition — it does
+not coerce, drop, or substitute — and it runs BEFORE any `.mcp.json`
+read or write. Per spec Strategy paragraph "Null-refusal precondition at
+the boundary, not transformation": the args array written to `.mcp.json`
+is either the full post-interpolation array byte-for-byte (every slot a
+string) or no write happens at all.
 
-      - The `result.kind === "missing"` stderr line ("No
-        `.aide/config/brain.aide` found. Run `npx aidemd-mcp init`
-        to scaffold it, or create the file by hand.").
-      - The `result.kind === "malformed-frontmatter"` stderr line
-        ("`.aide/config/brain.aide` frontmatter is malformed:
-        `<reason>`. Fix the YAML and re-run sync.").
-      - The `result.kind === "malformed-body"` stderr line
-        ("`.aide/config/brain.aide` is missing the `## Prose` section:
-        `<reason>`. Fix the file and re-run sync.").
-      - The success stdout line preceding the entry write
-        ("Read .aide/config/brain.aide").
-      - The IIFE's `--help` usage prose paragraph that names the
-        conventional brain.aide path
-        (`brain.aide  →  <cwd>/.aide/config/brain.aide`).
-      - Any inline comments that reference the old path (e.g. step
-        comments narrating the parseBrainAide pipeline).
+- [ ] 1a. Open `src/cli/sync/index.ts`. After the existing parseBrainAide
+      result branching (the missing / malformed-frontmatter / malformed-body
+      block) and after the existing line that computes the post-interpolation
+      args via `interpolateArgs(...)`, insert a new precondition step. The
+      step must execute BEFORE the `writeMcpEntry` call site; no `.mcp.json`
+      I/O may occur on the null-refusal path.
 
-      The malformed-frontmatter line continues to interpolate the
-      parser's `result.reason` byte-for-byte. Per the spec
-      `outcomes.desired[0]`, the parser names every deprecated field
-      it found in the reason; sync passes that reason through
-      verbatim. No paraphrase, no wrapping that would obscure which
-      stale fields the user must remove.
+      The precondition computes the list of null-valued indexes by walking
+      `args` element-by-element and collecting every index `i` where
+      `args[i] === null`. The check uses JS strict-identity `=== null` —
+      not `typeof a === "object"`, not `!a`, not string equality against
+      the literal `"null"`. Per the spec post-mortem on the retired
+      `<BRAIN_PATH>` literal sentinel, the unwired-slot signal is JS null
+      and only JS null. Treating any other value as the signal would
+      reintroduce the literal-sentinel regression class.
 
-- [x] Confirm the `expectedEntry` derivation in `runSync` reads
-      ONLY from `result.config.mcpServerConfig`:
+- [ ] 1b. When the collected null-index list is non-empty, emit ONE stderr
+      line and return 1. The line shape:
+
+      `` `.aide/config/brain.aide` has unwired slots: args[<i>] is null<, args[<j>] is null...>. Run `/aide:brain config` to fill the unwired slot(s). ``
+
+      Single-index case: `... args[3] is null. Run /aide:brain config ...`
+      Multi-index case: `... args[3] is null, args[5] is null. Run
+      /aide:brain config ...`
+
+      Wording is fixed per the spec Strategy block "Failure messages are
+      short, name the file, name the action" and the example in
+      Good-examples ("Sync hard-fails on a null-bearing args array").
+      The terminating sentence "Run `/aide:brain config` to fill the
+      unwired slot(s)." is verbatim per the spec Strategy paragraph "The
+      stderr message names the index explicitly and routes to
+      /aide:brain config." When the offending count is one, "slot(s)"
+      stays as "slot(s)" — the parenthetical handles both arities; do
+      not branch the suffix on count.
+
+- [ ] 1c. After the null-refusal precondition, the existing
+      `expectedEntry` shape is still `{ command: ..., args: ... }`. Per the
+      Prerequisites section, `interpolateArgs` returns `(string | null)[]`,
+      so the `args` field on `expectedEntry` is still typed `(string |
+      null)[]` from TypeScript's perspective at this point in the
+      function. The null-refusal precondition has narrowed at the value
+      level but not at the type level. Resolve via a type-narrowing
+      pattern that preserves the precondition's load-bearing role:
+      either a type-guard helper (`function isAllStrings(args: (string |
+      null)[]): args is string[]`) called inside the precondition, or
+      assign the precondition's filtered/checked output to a `string[]`
+      variable derived from the `every`/index-walk result. Whichever
+      pattern is chosen, the final `expectedEntry.args` value passed to
+      `writeMcpEntry` MUST be typed `string[]` — the helper's `entries`
+      map signature is `Record<string, McpServerEntry | "delete">` and
+      `McpServerEntry.args: string[]`. Do not coerce the broadened type
+      to `string[]` via `as string[]` cast; the precondition has done
+      real runtime work and the type system should follow it.
+
+      The contract this step preserves: from the spec
+      `outcomes.desired[1]`: "computes the expected MCP entry as `{
+      command: config.mcpServerConfig.command, args: interpolateArgs(config)
+      }` and writes it into the host's `.mcp.json` under the fixed
+      `brain` key, leaving every other key in `mcpServers` ... untouched."
+
+- [ ] 1d. Confirm the existing `try/catch` around `writeMcpEntry` (which
+      translates the helper's invalid-JSON throw to the action-naming
+      stderr line) is unchanged. The null-refusal precondition lives
+      BEFORE this try/catch and runs first; writeMcpEntry is never
+      reached on the null-refusal path. Per the spec
+      `outcomes.desired[2]` "`.mcp.json` is not touched on this path"
+      — the precondition's return-1 short-circuits the entire write
+      pipeline, including the read that `writeMcpEntry` performs to
+      compute structural equality.
+
+- [ ] 1e. Confirm the exit-code contract is preserved:
+      - 0 on successful write OR no-change ("already in sync" remains
+        success per spec `outcomes.desired[4]`).
+      - 1 on missing brain.aide, malformed-frontmatter, malformed-body,
+        null-bearing args (NEW source of exit-1 added by step 1b),
+        malformed `.mcp.json`, any uncaught throw at the IIFE boundary.
+      - 2 on `--help` or invalid argv (handled by the IIFE before
+        runSync is called; unchanged).
+
+      Per spec Strategy paragraph "Sync exits zero on success, non-zero
+      on every other path" and "The null-refusal path uses exit code 1
+      alongside the other brain.aide failure modes" — the precondition
+      reuses exit code 1 because from the user's perspective it is the
+      same action class: the source file isn't ready, fix it and re-run.
+
+### 2. Remove the legacy `obsidian` migration code from `runSync`
+
+Read: `coding-playbook/foundations/conventions`,
+`coding-playbook/foundations/anti-patterns` (by reference — anti-pattern
+is "code paths that exist only to handle dead schemas")
+
+Per the architect instruction: the legacy `mcpServers.obsidian`
+migration was dropped entirely from the design. No transitional path,
+no fallback. Sync writes only `mcpServers.brain` and never inspects or
+deletes any other key.
+
+- [ ] 2a. In `src/cli/sync/index.ts`, locate the entries-map construction
+      (currently lines ~65–68 in the existing file, the block that builds
+      `Record<string, typeof expectedEntry | "delete">` with both `brain`
+      and `obsidian` keys). Remove the `obsidian: "delete"` entry from
+      the map. The map now carries exactly one key: `brain`.
+
+      Also remove the inline comment that justified the unconditional
+      delete ("Always set brain; always request obsidian deletion. The
+      helper treats 'delete a key that isn't present' as a no-op, so
+      including obsidian unconditionally is safe.") — the rationale is
+      no longer relevant.
+
+      The `Record` type annotation on `entries` still accepts a `"delete"`
+      sentinel because the helper's signature does, but the map this
+      file constructs no longer uses it. The type can stay as
+      `Record<string, McpServerEntry>` (drop the `| "delete"` from the
+      local annotation) since the call site no longer constructs delete
+      sentinels. If keeping the broader type is more ergonomic for
+      future-proofing, that's acceptable — the focus is removing the
+      runtime `"delete"` value, not narrowing the type.
+
+- [ ] 2b. In the report block (currently lines ~92–98), remove the
+      conditional that fires the migration-message line:
 
       ```
-      expectedEntry = {
-        command: result.config.mcpServerConfig.command,
-        args: interpolateArgs(result.config),
+      if (writeResult.deleted.includes("obsidian")) {
+        write("Removed legacy `obsidian` MCP key (migrated to `brain`)");
       }
       ```
 
-      No reads of `result.config.rootPath`, `result.config.entryFile`,
-      `result.config.connector`, or `result.config.tools` — those
-      fields are removed from the collapsed `BrainAideConfig`. The
-      current code already matches this shape (it only touches
-      `mcpServerConfig.command` and feeds the full config to
-      `interpolateArgs`); this step's job is to verify that and fix
-      the moment if any leftover reference appears.
+      Delete both the if-statement and its body. The `writeResult.deleted`
+      field still exists on the helper's return shape but sync no longer
+      reads it (the entries map carries no delete sentinels, so
+      `deleted` is always empty on this code path).
 
-- [x] The shared `writeMcpEntry(cwd, entries)` call site is unchanged.
-      The entries map continues to set `brain: expectedEntry` and
-      always include `obsidian: "delete"` (the helper treats
-      "delete a key that isn't present" as a no-op). This is the
-      load-bearing migration surface and stays exactly as today.
+- [ ] 2c. In the module-level JSDoc at the top of `index.ts`, remove the
+      sentence: "Also removes the legacy `obsidian` key when present
+      (one-way migration)." The remaining JSDoc continues to describe
+      sync's role as the byte-faithful brain-entry propagator and the
+      visible-command-boundary invariant.
 
-- [x] The malformed-JSON catch (the `try/catch` around `writeMcpEntry`
-      that translates the helper's invalid-JSON throw to an
-      action-naming stderr line) is unchanged. The helper's error
-      message has not moved.
+      Also add a sentence to the JSDoc describing the null-refusal
+      precondition behavior, mirroring the spec's
+      `outcomes.desired[2]`: "Refuses null-bearing args at the boundary
+      — when any element of `mcpServerConfig.args` is null after
+      interpolation, exits non-zero and names the offending index(es)
+      in stderr, routing the user to `/aide:brain config`. `.mcp.json`
+      is not touched on this path." Keep the existing exit-code
+      contract block but extend the exit-1 enumeration to include
+      null-bearing args.
 
-- [x] Confirm `runSync`'s exit-code contract is preserved:
-      - 0 on success (write OR no-change — "already in sync" is
-        success).
-      - 1 on operational failure (missing brain.aide,
-        malformed-frontmatter, malformed-body, malformed `.mcp.json`,
-        any uncaught throw at the IIFE boundary).
-      - 2 on `--help` (handled by the IIFE before `runSync` is
-        called).
+- [ ] 2d. Grep the file (and only this file) one more time for the
+      string `obsidian` to confirm zero remaining references. The
+      module-level JSDoc, the entries map, the report block, and any
+      stray inline comment must all be free of the word. Test fixtures
+      are handled in step 4; this step is scoped to `index.ts`.
 
-      Per the spec `outcomes.desired[5]` and the Strategy paragraph
-      "Exit codes follow Unix convention," any change to this map is
-      a regression. Step 1 only edits strings; the control flow
-      stays.
+### 3. Add the null-bearing-args refusal test group
 
-### 2. Update test fixtures to the two-field schema and new path
+Read: `coding-playbook/workflow/testing`,
+`coding-playbook/foundations/conventions`
 
-Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+Per spec `outcomes.desired[2]`, `outcomes.desired[3]`, and the
+Good-examples block "Sync hard-fails on a null-bearing args array":
+add a new describe block covering single-null, multi-null, exit code,
+stderr message shape, and `.mcp.json` untouched-after-refusal.
 
-- [x] Open `src/cli/sync/index.test.ts`. The current `VALID_BRAIN_AIDE`
-      fixture renders the legacy five-field schema (`connector`,
-      `rootPath`, `entryFile`, `mcpServerConfig` with `obsidian-mcp`,
-      `tools.read`/`tools.search`). The new fixture must collapse to
-      the two-field shape that the post-collapse parser accepts. Use
-      the canonical Good-example bytes from the parent spec
-      (`src/cli/sync/.aide` → "A user retargets their vault and runs
-      sync"; mirrored in `.aide/docs/brain-aide.md` § Format).
+- [ ] 3a. Open `src/cli/sync/index.test.ts`. Add a new describe block
+      after test 3k (no prose interpolation), labeled `3l — null-bearing
+      args refusal`. The block contains four `it` blocks, each
+      independently verifying one facet of the precondition.
 
-      The new fixture shape (illustrative — the exact bytes are the
-      test author's; only field shape matters):
+      Test 1 — "single null at args[3] exits 1 and stderr names the
+      index": pre-write a brain.aide whose `mcpServerConfig.args`
+      contains one YAML null at index 3 (the others are valid strings).
+      The fixture must use the canonical six-section body schema (orientation
+      + config + playbook-index + study-playbook + update-playbook +
+      research-index marker pairs) so the parser does not reject it for
+      malformed-body before the null-refusal precondition fires. The
+      YAML representation of null-at-index-3 is a bare hyphen on its
+      own line in the args sequence (e.g., `args:\n - 'a'\n - 'b'\n
+      - 'c'\n -\n` — the trailing `-` followed by a newline parses to
+      `null` per YAML 1.2).
 
-      ```
-      ---
-      name: obsidian
-      mcpServerConfig:
-        command: npx
-        args:
-          - "@bitbonsai/mcpvault"
-          - "<TEST_VAULT_PATH>"
-      ---
+      Assertions:
+      - exit code === 1
+      - stderr contains the substring `args[3] is null`
+      - stderr contains the substring `/aide:brain config`
+      - `.mcp.json` was NOT created (file does not exist post-call when
+        not pre-written) OR is byte-identical to its pre-write state
+        when the test pre-writes one — pick one subcase per `it` block.
 
-      ## Prose
+      Test 2 — "multiple nulls at args[2] and args[4] are all named in
+      stderr": pre-write a brain.aide with two YAML nulls at indexes 2
+      and 4. After running sync, assert stderr contains BOTH
+      `args[2] is null` and `args[4] is null` substrings, on the same
+      line (the spec mandates a single stderr line naming all offending
+      indexes per the Strategy paragraph "When multiple indexes are
+      null, the message names all of them in one line"). Exit code 1.
 
-      <hand-written prose body — used as-is by tests verifying
-      no-prose-mutation; can be the canonical fixture from the
-      brain-aide.md doc>
-      ```
+      Test 3 — "null-refusal does not touch existing `.mcp.json`":
+      pre-write a brain.aide with one null in args AND a pre-existing
+      `.mcp.json` containing arbitrary `mcpServers` entries (e.g.,
+      `mcpServers.aide` with an entry plus `mcpServers.brain` with
+      stale-but-valid bytes from a prior sync). Read `.mcp.json` bytes
+      before runSync; after runSync, read again; assert byte-equality.
+      Per spec `outcomes.desired[2]` "`.mcp.json` is not touched on
+      this path" — every key, including any prior `mcpServers.brain`
+      entry from a previous successful sync, remains exactly as it
+      was.
 
-      Update the corresponding `EXPECTED_BRAIN_ENTRY` constant to
-      match the collapsed args shape (no `-y`, no `obsidian-mcp`;
-      `@bitbonsai/mcpvault` plus the path inline byte-for-byte).
-      The `-y` flag is gone — sync writes whichever args the user
-      authored in their `brain.aide`, and the canonical default
-      uses `@bitbonsai/mcpvault` directly.
+      Test 4 — "null-refusal does not coerce, drop, or substitute":
+      pre-write a brain.aide with one null at args[3]. After runSync,
+      open the brain.aide on disk and assert it is byte-identical to
+      the pre-write state (the null is still null, not `""`, not the
+      literal `"null"`, not a sentinel string). Sync must not have
+      attempted to mutate brain.aide on the null-refusal path either —
+      that is part of the spec's `undesired[7]` ("A sync verb that
+      mutates anything under `.aide/config/`"). This test is the
+      load-bearing structural assertion that the regression class
+      retired in the parent spec's `<BRAIN_PATH>` post-mortem cannot
+      reappear via sync's transformation surface.
 
-- [x] Update the `writeBrainAide` helper's filesystem layout so it
-      writes to `.aide/config/brain.aide` instead of `.aide/brain.aide`:
+- [ ] 3b. The test fixtures in 3l reuse the existing `writeBrainAide`
+      and `writeMcpJson` helpers from the test file. The
+      `makeCapture()` helper captures stdout and stderr per call so
+      tests can assert the substring patterns above against `errLines`.
 
-      The helper currently does:
-      `await mkdir(join(root, ".aide"), { recursive: true });`
-      `await writeFile(join(root, ".aide", "brain.aide"), ...);`
+      Each test must use a fresh tempDir per `beforeEach` so the
+      pre-write state is isolated (the existing `beforeEach`
+      lifecycle handles this; no new lifecycle is needed).
 
-      Update to:
-      `await mkdir(join(root, ".aide", "config"), { recursive: true });`
-      `await writeFile(join(root, ".aide", "config", "brain.aide"), ...);`
+      The fixtures' frontmatter `name` field can be any string — the
+      tests do not branch on it. The args list before the null
+      indexes can carry any byte-valid strings; the spec invariant
+      tested is the null-detection mechanism, not the value of
+      surrounding strings. Use the same `@bitbonsai/mcpvault`-style
+      args used elsewhere in the file for consistency.
 
-      Every test that pre-writes a brain.aide via this helper now
-      lands the file at the new path. The path move is end-to-end:
-      the parser reads from the new path, the test setup writes to
-      the new path.
-
-- [x] Update the malformed-fixture string literals in tests 3f
-      (malformed frontmatter) and 3g (missing prose body) to use the
-      two-field schema as their starting point:
-
-      - 3f's `badFrontmatter` should start from the collapsed shape
-        (`name: obsidian` + `mcpServerConfig:` block) and corrupt
-        ONE thing — e.g. an unclosed bracket inside `args`. The
-        legacy `connector: obsidian` / `rootPath: ...` / `tools:`
-        lines must be removed; the parser will reject those as
-        deprecated even when the YAML is otherwise valid, and the
-        test would erroneously pass for the wrong reason.
-      - 3g's `noProseBody` should also use the collapsed shape and
-        omit only the `## Prose` heading. Same rationale.
-
-- [x] Update test 3k (no prose interpolation) to use the collapsed
-      schema. The prose body keeps its `${rootPath}` and `${entryFile}`
-      literal characters — the test's load-bearing assertion is that
-      the prose body is byte-unchanged after sync, which is unaffected
-      by the schema collapse. The placeholders in the prose body
-      remain literal characters; the parser does not touch the prose
-      body, and `interpolateArgs` does not see the prose body. Even
-      though `${rootPath}` and `${entryFile}` are no longer
-      resolvable frontmatter fields, leaving them in the prose body
-      asserts the no-prose-mutation rule against placeholder strings
-      that COULD have been resolvable — a stronger test than using
-      arbitrary placeholders.
-
-### 3. Replace test 3j (args interpolation) with a default-scaffold no-op assertion
+### 4. Remove the legacy `obsidian` migration test group
 
 Read: `coding-playbook/workflow/testing`
 
-- [x] Test 3j currently exercises `interpolateArgs` by writing a
-      brain.aide with a `${rootPath}` placeholder in args and asserting
-      the literal `rootPath` value gets substituted into the
-      `.mcp.json` brain entry. Under the collapsed schema, the default
-      scaffold makes no use of substitution (the path lives byte-inline
-      in args), and the only resolvable placeholder is `${name}`.
-      Replace 3j with a test that asserts the default-scaffold args
-      pass through `interpolateArgs` unchanged:
+Per the architect instruction: the obsidian-key migration is dropped
+from the design. The test that exercises it must be removed in full —
+not converted to a skip, not replaced with a "verifies obsidian is
+preserved" anti-test, not retained as documentation.
 
-      Test name: "default-scaffold args pass through verbatim
-      (interpolateArgs is a no-op)"
+- [ ] 4a. In `src/cli/sync/index.test.ts`, locate the describe block
+      labeled `3c — legacy obsidian migration` (currently lines
+      ~152–177 in the existing file). Delete the entire describe
+      block, including:
 
-      Setup: pre-write a brain.aide with the canonical two-field
-      shape — `name: obsidian`, `mcpServerConfig.args` of
-      `["@bitbonsai/mcpvault", "/literal/inline/path"]`, no `${...}`
-      placeholders anywhere in args.
+      - The `describe("3c — legacy obsidian migration", () => { ... })`
+        wrapper.
+      - The single `it("removes obsidian key, writes brain, exits 0,
+        output mentions migration", ...)` block inside it.
+      - The pre-write of `mcpServers.obsidian` inside that `it`.
+      - The post-sync assertions on `written.mcpServers.obsidian` and
+        the migration-message substring.
 
-      Assertion: after `runSync`, `.mcp.json`'s `mcpServers.brain.args`
-      equals `["@bitbonsai/mcpvault", "/literal/inline/path"]`
-      byte-for-byte. No substitution happened because no placeholder
-      was present. This locks in the spec's `outcomes.desired[1]`
-      ("`interpolateArgs` is a no-op for the default scaffold").
+      The section divider comments (`// 3c. Legacy obsidian migration`
+      block) must also be removed.
 
-- [x] (Optional, only if the test author wants explicit coverage of
-      the advanced-user opt-in surface): add a SEPARATE test that
-      writes a brain.aide whose `mcpServerConfig.args` contains a
-      `${name}` placeholder, and assert sync writes the literal
-      `name` value (e.g. `"obsidian"`) into the corresponding args
-      slot. This is not strictly required — the parseBrainAide
-      module's tests already cover `interpolateArgs` against
-      arbitrary frontmatter fields — but it documents at the sync
-      level that the advanced-user surface still works end-to-end.
+- [ ] 4b. Walk the remaining test file for any incidental `obsidian`
+      references that are now dead:
 
-      If added, name the test: "advanced-user `${name}` placeholder
-      resolves at sync time."
+      - The shared comment in test 3b ("Pre-write .mcp.json with the
+        already-correct brain entry (and obsidian absent)") — drop the
+        parenthetical "(and obsidian absent)" since the legacy
+        migration is no longer documented behavior. The pre-write
+        itself stays unchanged.
+      - The `name: obsidian` field in fixture frontmatter — KEEP these
+        unchanged. The frontmatter `name` field is the user-supplied
+        descriptive label; "obsidian" is a valid label for the bundled
+        Obsidian default and is what real users carry. The label name
+        is not the same concept as the legacy `mcpServers.obsidian`
+        key migration. Per the spec `undesired[3]` "A sync verb that
+        branches on `name`": the test file's use of `name: obsidian`
+        in fixtures is the expected baseline; sync ignores it.
 
-### 4. Verify legacy `obsidian` migration is unaffected
+      The test file's only legitimate `obsidian` references after this
+      step are: (1) the `name: obsidian` fixture lines, which are
+      user-label content unrelated to the legacy key migration.
 
-Read: `coding-playbook/workflow/testing`
-
-- [x] The legacy `obsidian` key migration test (3c) is unchanged in
-      intent — sync still removes `mcpServers.obsidian` when present,
-      writes `mcpServers.brain` from the parsed `brain.aide`, and the
-      `Removed legacy \`obsidian\` MCP key (migrated to \`brain\`)`
-      stdout line still fires only when a deletion actually
-      occurred. Per the spec's `outcomes.desired[4]`, the migration
-      contract has not moved.
-
-      This step is a READ-and-VERIFY pass: open test 3c, confirm its
-      pre-write of `mcpServers.obsidian` (the entry shape — `command`
-      and `args` — is incidental; sync writes a fresh `brain` entry
-      regardless of what was in `obsidian`), confirm the post-sync
-      assertions still apply (`mcpServers.brain` matches
-      `EXPECTED_BRAIN_ENTRY`, `mcpServers.obsidian` is absent, output
-      mentions migration). The only edit needed in this test is the
-      shared updates from step 2: the new path for `writeBrainAide`
-      and the new `EXPECTED_BRAIN_ENTRY` shape.
-
-      The `obsidian` entry the test pre-writes can stay as
-      `{ command: "npx", args: ["-y", "obsidian-mcp", "/old/vault"] }`
-      — its bytes are irrelevant since sync deletes it. Or update to
-      `@bitbonsai/mcpvault` for cosmetic consistency; behavior is
-      identical either way.
+- [ ] 4c. Renumber test groups if test numbering matters for the
+      project's conventions. Looking at the existing file, test
+      headings are labeled `3a`–`3k` as section comments. Removing
+      `3c` produces a gap. The project's convention here is the
+      simpler one: section labels are descriptive comments, not load-
+      bearing identifiers — leaving a gap is acceptable, OR
+      renumbering 3d→3c, 3e→3d, etc. is acceptable. Pick one;
+      consistency within the file is the goal. The default choice:
+      leave the gap to avoid touching every test header for a
+      cosmetic shift, matching the philosophy of conservative diffs
+      in this stage of the rework.
 
 ### 5. Final verification
 
-Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
+Read: `coding-playbook/workflow/testing`,
+`coding-playbook/foundations/conventions`
 
-- [x] 5a. Run the type-checker:
+Verifies the edits compile, tests pass, and no leftover legacy
+references survive.
+
+- [ ] 5a. Run the type-checker:
 
       ```
       npx tsc --noEmit
       ```
 
-      Expected: zero errors. The collapsed `BrainAideConfig` (Plan 2
-      output) drops `rootPath`, `entryFile`, `connector`, `tools`;
-      this plan's edits should not produce any reads of those fields
-      from `result.config`. If tsc reports a missing-field error
-      against `result.config.<deprecated>`, the offending reference
-      is the bug — remove it.
+      Expected: zero errors. The `(string | null)[]` broadening from
+      parseBrainAide flows into `runSync`'s post-interpolation `args`
+      variable; step 1c's narrowing pattern must produce a `string[]`
+      typed value before `writeMcpEntry` is called. If tsc reports
+      `Type '(string | null)[]' is not assignable to type 'string[]'`
+      at the writeMcpEntry call site, step 1c's narrowing was either
+      omitted or implemented as a cast — fix by introducing the
+      runtime type guard described in 1c.
 
-- [x] 5b. Run the sync verb's tests:
+- [ ] 5b. Run the sync verb's tests:
 
       ```
       npm test -- cli/sync
       ```
 
-      Expected: every test passes. Failures fall into three
-      categories that map back to the steps above:
+      Expected: every test passes. The legacy 3c test is gone; the new
+      3l test group is present and green. Failures map to:
 
-      - "ENOENT: .aide/brain.aide" → step 2's `writeBrainAide` path
-        update was missed in some test.
-      - "malformed-frontmatter: deprecated fields present:
-        connector, rootPath, ..." → step 2's fixture rewrite was
-        incomplete; some test still pre-writes the legacy schema.
-      - "expected `.aide/config/brain.aide`, got `.aide/brain.aide`"
-        in stderr substring assertions → step 1's string edits
-        missed a stderr line OR a test still expects the old path
-        in its assertion. Either fix the runSync string OR update
-        the test's substring.
+      - "expected exit 1, got 0 on null-args fixture" → step 1's
+        precondition was either omitted, fired in the wrong order
+        (after `writeMcpEntry`), or used a non-strict null check
+        (e.g. `!a` matches the empty string).
+      - "stderr did not contain `args[3] is null`" → step 1b's
+        message format diverged from spec wording.
+      - "`.mcp.json` differs after refusal" → step 1's precondition
+        ran AFTER `writeMcpEntry`, or the precondition was placed
+        inside the try/catch that runs writeMcpEntry's read-merge-
+        write path.
+      - "Cannot find name `obsidian` in test 3c" → 4a's deletion was
+        partial (left a dangling reference); finish removing.
 
-- [x] 5c. (Defensive) Run the full project test suite to verify the
-      sync-module changes haven't tripped a sibling consumer:
+- [ ] 5c. Defensive — run the full project test suite:
 
       ```
       npm test
       ```
 
-      The shared `writeMcpEntry` helper, the cold-start CLI, and
-      `provisionBrain` should all stay green. If any of them fail,
-      the failure traces back to a downstream dependency this plan
-      didn't change — escalate rather than patch in this module.
+      `writeMcpEntry`, `provisionBrain`, `cli/init`, `buildBrainState`
+      should all stay green. If `provisionBrain` fails because IT
+      writes the obsidian-delete entry through writeMcpEntry, that
+      failure traces to a separate plan (provisionBrain's plan owns
+      its own legacy-obsidian removal); escalate rather than patch.
+
+- [ ] 5d. Manual grep over `src/cli/sync/` for the word `obsidian`,
+      excluding `name: obsidian` fixture lines and the `name`-field
+      JSDoc references in any comments. Expected post-edit hits:
+
+      - Test fixtures' `name: obsidian` frontmatter (legitimate user
+        label).
+      - Nothing in `index.ts`.
+      - Nothing in `plan.aide` body except the historical references
+        in the Decisions section explaining why the migration was
+        removed.
+
+      Any remaining `obsidian` reference in `index.ts` (JSDoc, code,
+      comments) is a leftover from step 2 — remove.
 
 ## Decisions
 
-- **Edit-not-rewrite scope.** The original `plan.aide` shipped this
-  module greenfield, including the shared helper extraction. Both
-  shipped — the module exists at `src/cli/sync/`, the shared helper
-  exists at `src/cli/shared/writeMcpEntry/`, and the cold-start CLI
-  has been refactored to consume the shared helper. This plan is the
-  RE-ALIGNMENT pass for the path move + schema collapse. Treating it
-  as an edit (rather than a rewrite) keeps the surface area small
-  and the diff reviewable. The contract — visible-command-boundary,
-  idempotency, legacy-obsidian deletion, exit codes, no-flags — is
-  unchanged in shape; only the path strings and the test fixtures
-  shift.
-- **Shared `writeMcpEntry` is untouched.** The helper takes an
-  entries map and a `projectRoot`, and writes whichever keys the
-  caller names. It does not know about brain.aide, parseBrainAide,
-  or the schema collapse. Editing it would be scope creep. Sync
-  consumes its existing API — `entries["brain"] = entry` and
-  `entries["obsidian"] = "delete"` — exactly as today.
-- **`parseBrainAide` is the load-bearing dependency.** This plan
-  cannot land before the parseBrainAide refactor: the new path
-  (`.aide/config/brain.aide`) lives in the parser, the deprecated-
-  field rejection lives in the parser, and the collapsed
-  `BrainAideConfig` type lives in `src/types/index.ts` (collapsed by
-  the parseBrainAide plan). Sync consumes those changes; sync does
-  not produce them. The Prerequisites section names this dependency
-  explicitly so the orchestrator runs the parseBrainAide plan first.
-- **Test 3j (interpolation) is replaced, not deleted.** The original
-  test exercised `${rootPath}` substitution into args. With
-  `rootPath` removed from the schema, that exact assertion is no
-  longer expressible. Replacing it with the default-scaffold no-op
-  assertion keeps test coverage of the same code path
-  (`interpolateArgs` is called from sync's pipeline) but reframes
-  the assertion to reflect the new contract: under the default
-  scaffold, the helper is a no-op and args pass through verbatim.
-  An optional advanced-user-opt-in test for `${name}` is offered
-  but not required — `parseBrainAide`'s tests already cover the
-  interpolation engine; sync's tests need only verify sync calls
-  it (via the no-op pass-through assertion).
-- **Error message wording is preserved verbatim where possible.**
-  The spec's Good-examples block names exact stderr strings ("No
-  `.aide/config/brain.aide` found. Run `npx aidemd-mcp init` ..."
-  etc.). Step 1's string edits adjust ONLY the path token; the
-  surrounding prose is unchanged. The user-visible terminal
-  surface is a contract — even small wording shifts force the
-  user (and any documentation that quotes them) to re-learn the
-  vocabulary.
-- **Malformed-frontmatter `reason` is passed through verbatim.**
-  Per the spec's Strategy paragraph "When the parser's reason
-  names a deprecated field (`connector`, `rootPath`, `entryFile`,
-  `tools`), sync passes the parser's reason through verbatim — the
-  user reads exactly which stale fields to remove." Sync wraps the
-  reason in surrounding action-naming prose (the path, the "Fix
-  the YAML and re-run sync" suffix) but does not paraphrase the
-  reason itself. The current code already does this via template
-  interpolation (`${result.reason}`); step 1's verification pass
-  confirms it stays.
-- **Legacy `obsidian` deletion stays unconditional.** Sync always
-  passes `obsidian: "delete"` in the entries map. The shared
-  helper treats "delete a key that isn't present" as a no-op.
-  This keeps a branch out of sync's logic and matches the spec's
-  `outcomes.desired[4]` ("the second sync invocation finds
-  `obsidian` already gone and `brain` already correct, so it's a
-  no-op"). The migration message ("Removed legacy `obsidian` ...")
-  fires only when the helper reports `deleted.includes("obsidian")`,
-  so the line is suppressed on idempotent re-runs and on cold
-  installs that never had `obsidian` in the first place.
+- **Edit-not-rewrite scope.** The module already exists and works for
+  fully-wired configs and the legacy-key migration. Stage 4's job is two
+  surgical edits: insert a precondition, delete the legacy migration.
+  The byte-faithful propagation contract, the idempotency contract, the
+  exit-code map, the IIFE argv handling, and the read/merge/write helper
+  call site are all unchanged in shape. Treating it as an edit (not a
+  rewrite) keeps the diff reviewable and the risk surface small.
+
+- **Precondition placement: after interpolation, before writeMcpEntry.**
+  Per spec `outcomes.desired[2]` "if any element of `mcpServerConfig.args`
+  is null at sync time (after interpolation), sync exits non-zero." The
+  check runs against the `interpolateArgs(...)` output, not the raw
+  parser output, because the substitution pass might (in some advanced-
+  user configurations) replace a null entry with a string. Placing the
+  check after interpolation is the spec-mandated order. Placing it
+  before `writeMcpEntry` ensures `.mcp.json` is never read or written on
+  the null-refusal path — per spec `outcomes.desired[2]` "`.mcp.json`
+  is not touched on this path."
+
+- **Strict `=== null` identity, not truthiness or string equality.** Per
+  the spec post-mortem on the retired `<BRAIN_PATH>` literal sentinel:
+  the unwired-slot signal is JS null and only JS null. Treating empty
+  string, undefined, the literal `"null"`, or any other value as the
+  signal would re-introduce the literal-sentinel regression class. The
+  parser preserves YAML null as JS null; the precondition tests JS null
+  with `=== null`.
+
+- **Single stderr line names every null index.** Per spec Strategy
+  paragraph "When multiple indexes are null, the message names all of
+  them in one line." A single line is easier to grep, easier to
+  cross-reference against the per-integration `config` body section
+  (which names which arg indexes mean what), and matches the cold-start
+  CLI's per-action log-line conventions.
+
+- **Fixed terminating sentence "Run `/aide:brain config` to fill the
+  unwired slot(s)."** Per spec Strategy paragraph "That phrasing matches
+  the orchestrator routing the boot reporter uses for the
+  `no-mcp-entry` brain status state, so the user sees the same recovery
+  path from both surfaces." Reusing the verbatim phrase keeps the user-
+  visible vocabulary consistent across stderr lines, boot reporter
+  output, and the `/aide:brain config` command surface.
+
+- **Null-refusal reuses exit code 1 alongside other brain.aide failures.**
+  Per spec Strategy paragraph "The null-refusal path uses exit code 1
+  alongside the other brain.aide failure modes, because from the user's
+  perspective it's the same action class: the source file isn't ready,
+  fix it and re-run." Introducing a new exit code for null-bearing args
+  would split a single user-facing concept ("brain.aide isn't usable
+  yet") into two terminal contracts. The orchestrator routing is
+  already differentiated at the prose layer (the `no-mcp-entry` brain
+  status state covers the null case); the CLI exit code stays unified.
+
+- **Type narrowing via runtime guard, not `as string[]` cast.** Step
+  1c calls for either a type-guard helper or an index-walk that
+  produces a `string[]` typed value. Casting via `as string[]` would
+  satisfy the type-checker without doing the runtime work; the guard
+  pattern keeps the precondition's load-bearing status visible in the
+  type system. Per the playbook entry
+  `coding-playbook/foundations/conventions` § "Don't Guard Against
+  Impossible States" — the type system follows the runtime check, not
+  the other way around.
+
+- **Legacy `obsidian` migration is removed entirely, not deprecated.**
+  The architect instruction is unambiguous: "the legacy
+  `mcpServers.obsidian` migration was dropped entirely (frontmatter and
+  body both scrubbed)." Leaving the migration as a soft-deprecation
+  (warn-but-don't-delete, or delete-but-don't-warn) is contradictory to
+  the design. The entries map drops the `obsidian: "delete"` key
+  entirely; the report no longer fires the migration line; the
+  module-level JSDoc no longer documents the behavior. Future host
+  projects upgrading from a pre-collapse version will retain their
+  `mcpServers.obsidian` entry as inert configuration — sync neither
+  reads nor mutates it. If hosts want it gone, they edit `.mcp.json`
+  by hand (which is the visible-command-boundary stance the parent
+  spec mandates anyway).
+
+- **The matching test (3c) is deleted, not converted.** A converted
+  test that asserts "obsidian is preserved" would be a new behavioral
+  contract the spec does not request; sync's contract is "writes
+  brain, leaves every other key untouched." That contract is already
+  covered by test 3d ("preserve other keys"), which exercises the
+  preservation invariant against `aide` and `custom-mcp` entries.
+  Adding an `obsidian`-named entry to 3d would be redundant — sync
+  treats every non-`brain` key identically (per the helper's merge
+  semantics). The cleanest move is to delete 3c with no replacement.
+
+- **Test numbering keeps the gap when 3c is removed.** Renumbering
+  3d→3c, 3e→3d, etc. would touch every test header for a cosmetic
+  shift. Section labels in this file are descriptive comments, not
+  load-bearing identifiers; preserving the gap is the conservative
+  diff. If the project's convention later mandates contiguous
+  numbering, that's a separate cleanup pass.
+
+- **Brain.aide is read-only on the null-refusal path.** Per spec
+  `undesired[10]` "A sync verb that mutates anything under
+  `.aide/config/`": sync may read brain.aide but never write to it,
+  never patch it, never tidy its formatting, never fill a null slot
+  directly. Test 3l's fourth assertion ("brain.aide is byte-identical
+  after null refusal") is the structural lock against this regression.
+  This is the same class of failure as the MCP server silently
+  rewriting `.mcp.json`.
+
+- **The `--help` and IIFE argv handling are unchanged.** Per spec
+  `outcomes.desired[6]` "The CLI accepts no flags except `--help`."
+  This stage adds no new flags, no new argv parsing, and no new
+  behaviors visible to argv. The null-refusal precondition fires
+  inside `runSync` after `parseBrainAide`; the IIFE's only job
+  remains argv dispatch + exit-code propagation.
+
+- **Path migrations remain in the Stage 3 plan; this stage does not
+  re-touch them.** Stage 3 of this module's plan rewrote the path
+  references from `.aide/brain.aide` to `.aide/config/brain.aide`
+  and aligned the test fixtures to the two-field schema. Stage 4 (this
+  plan) inherits that work; no further path or schema edits are
+  needed in this pass. The diff Stage 4 produces is scoped to:
+  inserting one precondition step, removing one map entry, removing
+  one stdout line, removing one JSDoc sentence, adding one test
+  group, removing one test group.
 
 
 ---
-Siblings: src/cli/sync/.aide, src/cli/sync/todo.aide
+Siblings: src/cli/sync/.aide
 Links: none

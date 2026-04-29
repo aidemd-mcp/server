@@ -4,58 +4,80 @@ import { platform } from "node:os";
  * Returns the complete canonical bundled `brain.aide` file content as a string,
  * ready to write to disk at `.aide/config/brain.aide` in the host project root.
  *
- * The returned string has four body sections in this order:
+ * The returned string has six body sections in this order:
  *
- * 1. **`<!-- aide-prose-start -->`** — Agent-facing instructions for navigating the
- *    brain. Names the `mcp__brain__read_note` and `mcp__brain__search_notes`
- *    tools and describes how to follow linked files, including the three
+ * 1. **`<!-- aide-orientation-start -->`** — Agent-facing runtime briefing for navigating
+ *    the brain. Names the `mcp__brain__read_note` and `mcp__brain__search_notes`
+ *    tools and describes how to follow linked files, including the four
  *    entry-point artifacts at `coding-playbook/coding-playbook.md`,
- *    `coding-playbook/study-playbook.md`, and `research/research.md`.
+ *    `coding-playbook/study-playbook.md`, `coding-playbook/update-playbook.md`,
+ *    and `research/research.md`. Read live by `aide_brain` at runtime.
  *    User-editable post-scaffold.
  *
- * 2. **`<!-- aide-playbook-start -->`** — Seed bytes for the coding-playbook
+ * 2. **`<!-- aide-config-start -->`** — Integration-specific wiring flow for
+ *    `/aide:brain config`. Describes how to read `brain.aide`, decide the target
+ *    vault path (from `$ARGUMENTS`, interactively, or STOP if already wired),
+ *    edit `brain.aide`, sync, and emit the restart message. Read live by
+ *    `aide_brain({ kind: "config" })` at runtime. User-editable post-scaffold.
+ *
+ * 3. **`<!-- aide-playbook-index-start -->`** — Seed bytes for the coding-playbook
  *    entry-point file scaffolded into the user's brain on cold install
  *    (`coding-playbook/coding-playbook.md`). Structural scaffolding plus universal
  *    navigation doctrine: intro paragraph, Task Routing (table skeleton with
  *    instructional preamble), How to Use This Index (with nested Always Read First
- *    placeholder references), Sections, Prime Examples, and Contents. User-editable
- *    post-scaffold; the template seeds once.
+ *    placeholder references), Sections, Prime Examples, and Contents. Install-time
+ *    seed only — read once by the install service. User-editable post-scaffold.
  *
- * 3. **`<!-- aide-study-playbook-start -->`** — Seed bytes for the study-playbook
+ * 4. **`<!-- aide-study-playbook-start -->`** — Seed bytes for the study-playbook
  *    entry-point file scaffolded into the user's brain on cold install
  *    (`coding-playbook/study-playbook.md`). Contains the multi-month-tested navigation
  *    methodology: the Step 1/2/3 process, Navigation Rules with depth-counting example,
- *    link-traversal semantics, never-re-read rule, and stay-in-scope rule. Sourced
- *    from the pre-collapse `.claude/skills/study-playbook/SKILL.md` (skill-self-referential
- *    preambles dropped; tool-name references stripped so the seed is self-contained
- *    navigation doctrine that does not assume any specific brain backend).
- *    User-editable post-scaffold; the template seeds once.
+ *    link-traversal semantics, never-re-read rule, and stay-in-scope rule. Install-time
+ *    seed only — read once by the install service. User-editable post-scaffold.
  *
- * 4. **`<!-- aide-research-start -->`** — Seed bytes for the research entry-point file
- *    scaffolded into the user's brain on cold install (`research/research.md`).
- *    User-editable post-scaffold; the template seeds once.
+ * 5. **`<!-- aide-update-playbook-start -->`** — Seed bytes for the playbook-maintenance
+ *    methodology file scaffolded into the user's brain on cold install
+ *    (`coding-playbook/update-playbook.md`). Contains the identify-read-apply-drift-
+ *    check-confirm methodology with routing-table drift detection. Install-time seed
+ *    only — read once by the install service. The shipped `/aide:update-playbook`
+ *    command points at this on-disk artifact after install (same pointer pattern as
+ *    the `study-playbook` skill). User-editable post-scaffold.
+ *
+ * 6. **`<!-- aide-research-index-start -->`** — Seed bytes for the research entry-point
+ *    file scaffolded into the user's brain on cold install (`research/research.md`).
+ *    Install-time seed only — read once by the install service. User-editable
+ *    post-scaffold.
  *
  * Load-bearing constraints:
  * - Frontmatter is exactly `name` + `mcpServerConfig` — minimum schema is the
  *   maximum schema. The parser rejects any additional top-level field as
  *   `malformed-frontmatter`.
- * - The brain root path is inlined byte-for-byte as the last element of `args`.
- *   This template does NOT use `${rootPath}` or any other placeholder — the
- *   package does not own the substitution path for the default scaffold.
+ * - When `brainPath` is provided, it is inlined byte-for-byte as the last element
+ *   of `args`. When `brainPath` is omitted, the literal string `<BRAIN_PATH>` is
+ *   substituted in the same position. The placeholder is a parser-blind literal —
+ *   not a `${...}` interpolation target — so `interpolateArgs` passes it through
+ *   unchanged. The user supplies the real path later via `/aide:brain config`.
  * - Platform branching: Windows uses `command: cmd` with `["/c", "npx", ...]`
  *   args to work around Windows shell constraints. POSIX uses `command: npx`
  *   directly. The platform check is isolated here and nowhere else in this module.
- * - Heading levels: the playbook and study-playbook sections use `## ` for top-level
- *   sub-sections under their `# ` title, since these sections are seeded into
- *   standalone files (`coding-playbook/coding-playbook.md`, `coding-playbook/study-playbook.md`)
- *   where `## ` is the natural sub-heading level. The research section keeps `### ` only
- *   (its top-level structure is shallow). The prose section has no headings.
+ * - Heading levels: the playbook-index and study-playbook sections use `## ` for
+ *   top-level sub-sections under their `# ` title, since these sections are seeded
+ *   into standalone files where `## ` is the natural sub-heading level. The
+ *   update-playbook section uses `## ` sub-sections under `# Update Playbook`.
+ *   The research-index section keeps `### ` only (its top-level structure is shallow).
+ *   The orientation and config sections have no headings.
+ * - Retired marker names (`aide-prose-*`, `aide-playbook-*` without `-index`,
+ *   `aide-research-*` without `-index`) are gone. The parser treats them as plain
+ *   bytes and returns `malformed-body` (missing markers) for any brain.aide that
+ *   still uses the old four-section grammar.
  */
-export default function obsidianBrainAideTemplate(rootPath: string): string {
+export default function obsidianBrainAideTemplate(brainPath?: string): string {
+	const pathArg = brainPath !== undefined ? brainPath : "<BRAIN_PATH>";
+
 	const mcpServerConfig =
 		platform() === "win32"
-			? `mcpServerConfig:\n  command: cmd\n  args:\n    - '/c'\n    - 'npx'\n    - '@bitbonsai/mcpvault'\n    - '${rootPath}'`
-			: `mcpServerConfig:\n  command: npx\n  args:\n    - '@bitbonsai/mcpvault'\n    - '${rootPath}'`;
+			? `mcpServerConfig:\n  command: cmd\n  args:\n    - '/c'\n    - 'npx'\n    - '@bitbonsai/mcpvault'\n    - '${pathArg}'`
+			: `mcpServerConfig:\n  command: npx\n  args:\n    - '@bitbonsai/mcpvault'\n    - '${pathArg}'`;
 
 	return (
 		`---\n` +
@@ -63,20 +85,50 @@ export default function obsidianBrainAideTemplate(rootPath: string): string {
 		`${mcpServerConfig}\n` +
 		`---\n` +
 		`\n` +
-		`<!-- aide-prose-start -->\n` +
+		`<!-- aide-orientation-start -->\n` +
 		`\n` +
 		`Your brain is an Obsidian-backed knowledge store. Use \`mcp__brain__read_note\` to\n` +
 		`open files by their brain-relative path. Use \`mcp__brain__search_notes\` for\n` +
-		`keyword queries across every note in the store. The store has three entry-point\n` +
+		`keyword queries across every note in the store. The store has four entry-point\n` +
 		`artifacts: the coding-playbook index at \`coding-playbook/coding-playbook.md\`, the\n` +
-		`study-playbook navigation guide at \`coding-playbook/study-playbook.md\`, and the\n` +
+		`study-playbook navigation guide at \`coding-playbook/study-playbook.md\`, the\n` +
+		`update-playbook maintenance guide at \`coding-playbook/update-playbook.md\`, and the\n` +
 		`research index at \`research/research.md\`. Start from the relevant entry-point for\n` +
 		`your task, follow the references it lists to deepen context, and check those\n` +
-		`files' links too. Stay in scope; don't follow links into unrelated topics.\n` +
+		`files' references too. Stay in scope; don't follow references into unrelated topics.\n` +
 		`\n` +
-		`<!-- aide-prose-end -->\n` +
+		`<!-- aide-orientation-end -->\n` +
 		`\n` +
-		`<!-- aide-playbook-start -->\n` +
+		`<!-- aide-config-start -->\n` +
+		`\n` +
+		`You are completing the wiring of an Obsidian brain. The required value is the\n` +
+		`absolute path to the user's Obsidian vault, landed as the last entry of\n` +
+		`\`mcpServerConfig.args\` in \`brain.aide\`.\n` +
+		`\n` +
+		`Argument shape (Obsidian only): \`/aide:brain config [<absolute-path>]\`. When\n` +
+		`\`$ARGUMENTS\` is non-empty, treat it as the absolute path the user wants to wire\n` +
+		`(initial wiring) or re-wire to (re-point). Empty \`$ARGUMENTS\` means "ask\n` +
+		`interactively" on a fresh wire and "STOP, nothing to do" against an already-wired\n` +
+		`brain.\n` +
+		`\n` +
+		`1. Read \`brain.aide\`. Extract the current path entry from \`mcpServerConfig.args\`\n` +
+		`   (the literal \`<BRAIN_PATH>\` placeholder means un-wired; any other string means\n` +
+		`   already wired).\n` +
+		`2. Decide the target path:\n` +
+		`   - \`$ARGUMENTS\` non-empty → use it as the target path.\n` +
+		`   - \`$ARGUMENTS\` empty AND current entry is \`<BRAIN_PATH>\` → ask the user where\n` +
+		`     their vault lives. Use \`AskUserQuestion\` with \`aide_info.brain.hints\` as\n` +
+		`     suggestions plus a "Different location" entry.\n` +
+		`   - \`$ARGUMENTS\` empty AND current entry is a real path → STOP, nothing to do.\n` +
+		`3. Edit \`brain.aide\` — replace the current entry with the target path.\n` +
+		`4. Sync — read \`.mcp.json["mcpServers"]["aide"]\`, take its command and args, append\n` +
+		`   \`"sync"\`, run via Bash. On exit 0 continue; on non-zero surface stderr and stop.\n` +
+		`5. Emit the restart message verbatim: "Sync wrote the brain entry. Restart Claude\n` +
+		`   Code so the brain MCP server picks up the new entry, then re-run /aide."\n` +
+		`\n` +
+		`<!-- aide-config-end -->\n` +
+		`\n` +
+		`<!-- aide-playbook-index-start -->\n` +
 		`\n` +
 		`# Coding Playbook\n` +
 		`\n` +
@@ -118,7 +170,7 @@ export default function obsidianBrainAideTemplate(rootPath: string): string {
 		`\n` +
 		`## Contents\n` +
 		`\n` +
-		`<!-- aide-playbook-end -->\n` +
+		`<!-- aide-playbook-index-end -->\n` +
 		`\n` +
 		`<!-- aide-study-playbook-start -->\n` +
 		`\n` +
@@ -194,7 +246,33 @@ export default function obsidianBrainAideTemplate(rootPath: string): string {
 		`\n` +
 		`<!-- aide-study-playbook-end -->\n` +
 		`\n` +
-		`<!-- aide-research-start -->\n` +
+		`<!-- aide-update-playbook-start -->\n` +
+		`\n` +
+		`# Update Playbook\n` +
+		`\n` +
+		`Maintenance methodology for the coding playbook. Use \`mcp__brain__read_note\` to read\n` +
+		`entries, \`mcp__brain__patch_note\` or \`mcp__brain__write_note\` to edit them. Playbook\n` +
+		`entries live under \`coding-playbook/<section>/\`; the index sits at\n` +
+		`\`coding-playbook/coding-playbook.md\`.\n` +
+		`\n` +
+		`1. Identify the change — new convention, modification to an existing one, section\n` +
+		`   rename, section removal, or general audit. Skip this step if the user already\n` +
+		`   named the change.\n` +
+		`2. Read \`coding-playbook/coding-playbook.md\` to identify the relevant section, or\n` +
+		`   confirm no section yet exists for a new convention.\n` +
+		`3. Apply the change with \`mcp__brain__patch_note\` or \`mcp__brain__write_note\`. If a\n` +
+		`   section was added, renamed, or removed, offer to reorganize adjacent sections under\n` +
+		`   a new or updated domain grouping if it would improve navigability.\n` +
+		`4. **Routing-table drift check (required):** Compare the playbook entry-point's task\n` +
+		`   routing table against the actual sections that now exist. For each row: does the\n` +
+		`   section it points to still exist under that name? For each section: does the routing\n` +
+		`   table cover it? Offer to reconcile any drift.\n` +
+		`5. Apply any routing-table changes the user approves. Confirm the final state — what\n` +
+		`   was changed in the playbook, what was changed in the routing table.\n` +
+		`\n` +
+		`<!-- aide-update-playbook-end -->\n` +
+		`\n` +
+		`<!-- aide-research-index-start -->\n` +
 		`\n` +
 		`# Research\n` +
 		`\n` +
@@ -213,6 +291,6 @@ export default function obsidianBrainAideTemplate(rootPath: string): string {
 		`\n` +
 		`### Contents\n` +
 		`\n` +
-		`<!-- aide-research-end -->`
+		`<!-- aide-research-index-end -->`
 	);
 }

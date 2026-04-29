@@ -9,20 +9,50 @@ mcpServerConfig:
     - 'D:\Code\Me\my-brain'
 ---
 
-<!-- aide-prose-start -->
+<!-- aide-orientation-start -->
 
 Your brain is an Obsidian-backed knowledge store. Use `mcp__brain__read_note` to
 open files by their brain-relative path. Use `mcp__brain__search_notes` for
-keyword queries across every note in the store. The store has three entry-point
+keyword queries across every note in the store. The store has four entry-point
 artifacts: the coding-playbook index at `coding-playbook/coding-playbook.md`, the
-study-playbook navigation guide at `coding-playbook/study-playbook.md`, and the
+study-playbook navigation guide at `coding-playbook/study-playbook.md`, the
+update-playbook maintenance guide at `coding-playbook/update-playbook.md`, and the
 research index at `research/research.md`. Start from the relevant entry-point for
 your task, follow the references it lists to deepen context, and check those
-files' links too. Stay in scope; don't follow links into unrelated topics.
+files' references too. Stay in scope; don't follow references into unrelated topics.
 
-<!-- aide-prose-end -->
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
+<!-- aide-config-start -->
+
+You are completing the wiring of an Obsidian brain. The required value is the
+absolute path to the user's Obsidian vault, landed as the last entry of
+`mcpServerConfig.args` in `brain.aide`.
+
+Argument shape (Obsidian only): `/aide:brain config [<absolute-path>]`. When
+`$ARGUMENTS` is non-empty, treat it as the absolute path the user wants to wire
+(initial wiring) or re-wire to (re-point). Empty `$ARGUMENTS` means "ask
+interactively" on a fresh wire and "STOP, nothing to do" against an already-wired
+brain.
+
+1. Read `brain.aide`. Extract the current path entry from `mcpServerConfig.args`
+   (the literal `<BRAIN_PATH>` placeholder means un-wired; any other string means
+   already wired).
+2. Decide the target path:
+   - `$ARGUMENTS` non-empty → use it as the target path.
+   - `$ARGUMENTS` empty AND current entry is `<BRAIN_PATH>` → ask the user where
+     their vault lives. Use `AskUserQuestion` with `aide_info.brain.hints` as
+     suggestions plus a "Different location" entry.
+   - `$ARGUMENTS` empty AND current entry is a real path → STOP, nothing to do.
+3. Edit `brain.aide` — replace the current entry with the target path.
+4. Sync — read `.mcp.json["mcpServers"]["aide"]`, take its command and args, append
+   `"sync"`, run via Bash. On exit 0 continue; on non-zero surface stderr and stop.
+5. Emit the restart message verbatim: "Sync wrote the brain entry. Restart Claude
+   Code so the brain MCP server picks up the new entry, then re-run /aide."
+
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
 
 # Coding Playbook
 
@@ -64,7 +94,7 @@ Add links to reference codebases that demonstrate these patterns in practice.
 
 ## Contents
 
-<!-- aide-playbook-end -->
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 
@@ -140,7 +170,33 @@ These contain the concrete patterns and code examples to follow.
 
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
+<!-- aide-update-playbook-start -->
+
+# Update Playbook
+
+Maintenance methodology for the coding playbook. Use `mcp__brain__read_note` to read
+entries, `mcp__brain__patch_note` or `mcp__brain__write_note` to edit them. Playbook
+entries live under `coding-playbook/<section>/`; the index sits at
+`coding-playbook/coding-playbook.md`.
+
+1. Identify the change — new convention, modification to an existing one, section
+   rename, section removal, or general audit. Skip this step if the user already
+   named the change.
+2. Read `coding-playbook/coding-playbook.md` to identify the relevant section, or
+   confirm no section yet exists for a new convention.
+3. Apply the change with `mcp__brain__patch_note` or `mcp__brain__write_note`. If a
+   section was added, renamed, or removed, offer to reorganize adjacent sections under
+   a new or updated domain grouping if it would improve navigability.
+4. **Routing-table drift check (required):** Compare the playbook entry-point's task
+   routing table against the actual sections that now exist. For each row: does the
+   section it points to still exist under that name? For each section: does the routing
+   table cover it? Offer to reconcile any drift.
+5. Apply any routing-table changes the user approves. Confirm the final state — what
+   was changed in the playbook, what was changed in the routing table.
+
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
 
 # Research
 
@@ -159,4 +215,4 @@ Add domain hubs here as your research grows. Each hub lives at `<domain>/<domain
 
 ### Contents
 
-<!-- aide-research-end -->
+<!-- aide-research-index-end -->

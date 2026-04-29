@@ -180,10 +180,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_brain",
 			description:
-				"On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every /aide boot. Boot-time brain precondition state is already reported by aide_info.brain.status; firing aide_brain at boot duplicates that work unnecessarily.\n\nNo parameters — uses the server's working directory.\n\n**Response shape: `{ status, instructions }` — exactly two fields. No `backend`, no `connector`, no `name`.**\n\n`status` — mirrors the `BrainState` tagged union from `buildBrainState`. The four-state vocabulary: `ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`. An agent that already saw boot-time brain state does not learn new terms here. Branch on `status` alone — no other discriminant is present.\n\n`instructions` — always non-empty on every branch. Act on this field directly:\n- On `ok`: the verbatim prose body from the host's `.aide/config/brain.aide`, byte-identical to what the user wrote. No trimming, no normalization, no `${...}` substitution. The user's prose takes over from here — the tool has no further role in brain navigation.\n- On `no-brain-aide`: fixed remediation prose directing the user to run `npx aidemd-mcp init`. Do not proceed as if the brain were available.\n- On `no-mcp-entry`: fixed remediation prose directing the user to run `npx aidemd-mcp sync` and restart Claude Code. Do not proceed as if the brain were available.\n- On `mcp-drift`: fixed remediation prose directing the user to run `npx aidemd-mcp sync` and restart Claude Code, explicitly forbidding the agent from patching `.mcp.json` itself.",
+				"On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every /aide boot. Boot-time brain precondition state is already reported by aide_info.brain.status; firing aide_brain at boot duplicates that work unnecessarily.\n\n**Optional `kind` parameter** — closed two-value vocabulary: `\"orientation\"` (default) or `\"config\"`.\n- `\"orientation\"` — returns the orientation section: a runtime briefing delivered when an agent reaches for the brain mid-task. Omitting `kind` is equivalent to passing `\"orientation\"`.\n- `\"config\"` — returns the integration-specific wiring flow, used by `/aide:brain config` to walk through brain setup.\n\nInstall-time seed sections (`playbookIndex`, `studyPlaybook`, `updatePlaybook`, `researchIndex`) are NOT surfaced via this tool — agents reach those via the brain's read tool against the on-disk seed files.\n\n**Response shape: `{ status, instructions }` — exactly two fields. No `backend`, no `connector`, no `name`, no `kind`.**\n\n`status` — mirrors the `BrainState` tagged union from `buildBrainState`. The four-state vocabulary: `ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`. Branch on `status` alone — no other discriminant is present.\n\n`instructions` — always non-empty on every branch. Act on this field directly:\n- On `ok`: the verbatim bytes of the selected section from the host's `.aide/config/brain.aide`, byte-identical to what the user wrote between that section's markers. No trimming, no normalization, no `${...}` substitution. The selected section takes over from here — the tool has no further role.\n- On `no-brain-aide`: fixed remediation prose directing the user to run `npx aidemd-mcp init`. Do not proceed as if the brain were available.\n- On `no-mcp-entry`: fixed remediation prose directing the user to run `npx aidemd-mcp sync` and restart Claude Code. Do not proceed as if the brain were available.\n- On `mcp-drift`: fixed remediation prose directing the user to run `npx aidemd-mcp sync` and restart Claude Code, explicitly forbidding the agent from patching `.mcp.json` itself.\n\nNon-ok remediation prose is identical regardless of `kind` — the file is broken for both sections in the same way.",
 			inputSchema: {
 				type: "object" as const,
-				properties: {},
+				properties: {
+					kind: {
+						type: "string",
+						enum: ["orientation", "config"],
+						description:
+							"Which section of brain.aide to return. `\"orientation\"` (default when omitted) returns the runtime briefing for mid-task brain access. `\"config\"` returns the integration-specific wiring flow used by `/aide:brain config`.",
+					},
+				},
 			},
 		},
 		{
@@ -326,8 +333,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		case "aide_brain": {
-			BrainInput.parse(args);
-			const result = await brain(root);
+			const parsed = BrainInput.parse(args);
+			const result = await brain(root, parsed);
 			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}
 		case "aide_inspect": {

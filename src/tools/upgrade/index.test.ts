@@ -118,11 +118,14 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 	});
 	vi.mocked(parseBrainAide).mockResolvedValue({
 		kind: "ok",
-		config: { name: "obsidian", mcpServerConfig: { command: "x", args: [] } },
-		prose: "",
-		playbook: "",
+		name: "obsidian",
+		mcpServerConfig: { command: "x", args: [] },
+		orientation: "",
+		config: "",
+		playbookIndex: "",
 		studyPlaybook: "",
-		research: "",
+		updatePlaybook: "",
+		researchIndex: "",
 	});
 }
 

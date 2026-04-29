@@ -6,18 +6,18 @@ import parseBrainAide, { parseBrainAideFromString, interpolateArgs } from "./ind
 import type { BrainAideConfig } from "@/types/index.js";
 
 // ---------------------------------------------------------------------------
-// 3a. Shared fixture: the canonical brain.aide with all four required sections.
+// 3a. Shared fixture: the canonical brain.aide with all six required sections.
 //
 // The fixture mirrors the spec's "Good examples" block. It exercises:
-//   - All four required marker pairs in fixed order (prose, playbook,
-//     studyPlaybook, research).
+//   - All six required marker pairs in fixed order (orientation, config,
+//     playbookIndex, studyPlaybook, updatePlaybook, researchIndex).
 //   - A note-to-self ABOVE the first opener (between frontmatter and
-//     <!-- aide-prose-start -->) so bytes-outside-pairs silent-ignore is
+//     <!-- aide-orientation-start -->) so bytes-outside-pairs silent-ignore is
 //     observed end-to-end on the happy path.
 //   - Non-trivial multi-paragraph content inside each section, including
 //     markdown features the parser must NOT interpret: literal `#` H1 headings,
 //     `##` and `###` headings, and literal `${name}`-shaped placeholders.
-//     These prove the marker walker matches only the eight exact byte sequences
+//     These prove the marker walker matches only the twelve exact byte sequences
 //     and treats every other byte as section content.
 //
 // Vocabulary: storage-agnostic framing throughout — "external knowledge store",
@@ -36,15 +36,29 @@ mcpServerConfig:
 A note-to-self above the first opener — silently ignored by the
 parser; the user can keep scratch text here without warning.
 
-<!-- aide-prose-start -->
+<!-- aide-orientation-start -->
 Your brain is an external knowledge store reached through MCP tools.
-Use \`mcp__brain__read_note\` to open files by their brain-root-relative
-path. Use \`mcp__brain__search_notes\` for keyword queries across the
+Use the read-note tool to open files by their brain-root-relative
+path. Use the search-notes tool for keyword queries across the
 brain. The brain's entry file is \`CLAUDE.md\` at the brain root — read
 that first; it lists the inline references your task may need.
-<!-- aide-prose-end -->
 
-<!-- aide-playbook-start -->
+Entry-point artifacts:
+- \`coding-playbook/coding-playbook.md\` — root hub for coding conventions
+- \`coding-playbook/study-playbook.md\` — how to navigate the playbook
+- \`coding-playbook/update-playbook.md\` — how to maintain the playbook
+- \`research/research.md\` — entry point for domain research
+<!-- aide-orientation-end -->
+
+<!-- aide-config-start -->
+This brain is wired through an MCP server that exposes read and search
+tools. The MCP server is configured in \`mcpServerConfig\` above with the
+command and arguments needed to launch it. The wiring connects your
+agent harness to the brain's file system at the path specified in the
+args array, enabling tool-based access without direct filesystem reads.
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
 # Coding playbook
 
 An entry point for coding conventions, patterns, and architecture
@@ -62,7 +76,7 @@ matches your task.
 
 (Add sections here as your playbook grows. Each section reference
 uses a path like \${name}/section-name for advanced templating.)
-<!-- aide-playbook-end -->
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 # Study playbook
@@ -76,7 +90,17 @@ when the next link diverges from the domain you are working in.
 Never re-read a note you already have in context.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
+<!-- aide-update-playbook-start -->
+When a coding pattern changes or a new convention is established,
+update the playbook so the next agent session benefits from it.
+Open the relevant playbook section hub, locate the appropriate child
+note, and edit the content in place. If the pattern is genuinely new,
+add a new child note and register it in the section hub. Keep entries
+concise: state the rule, show a minimal example, and link related notes.
+Commit the playbook update alongside the code change that motivated it.
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
 # Research
 
 An entry point for domain research material. Each subdirectory holds
@@ -91,7 +115,7 @@ drilling into individual files.
 
 A \${name} placeholder here proves verbatim pass-through in the
 research section.
-<!-- aide-research-end -->
+<!-- aide-research-index-end -->
 `;
 
 // 3a. CANONICAL_CONFIG — frontmatter shape unchanged; name updated to "my-brain"
@@ -114,20 +138,32 @@ const CANONICAL_CONFIG: BrainAideConfig = {
 // bytes between them (open.index + open.length) → close.index.
 // ---------------------------------------------------------------------------
 
-const MARKER_OPENERS: Record<"prose" | "playbook" | "studyPlaybook" | "research", string> = {
-	prose: "<!-- aide-prose-start -->",
-	playbook: "<!-- aide-playbook-start -->",
+const MARKER_OPENERS: Record<
+	"orientation" | "config" | "playbookIndex" | "studyPlaybook" | "updatePlaybook" | "researchIndex",
+	string
+> = {
+	orientation: "<!-- aide-orientation-start -->",
+	config: "<!-- aide-config-start -->",
+	playbookIndex: "<!-- aide-playbook-index-start -->",
 	studyPlaybook: "<!-- aide-study-playbook-start -->",
-	research: "<!-- aide-research-start -->",
+	updatePlaybook: "<!-- aide-update-playbook-start -->",
+	researchIndex: "<!-- aide-research-index-start -->",
 };
-const MARKER_CLOSERS: Record<"prose" | "playbook" | "studyPlaybook" | "research", string> = {
-	prose: "<!-- aide-prose-end -->",
-	playbook: "<!-- aide-playbook-end -->",
+const MARKER_CLOSERS: Record<
+	"orientation" | "config" | "playbookIndex" | "studyPlaybook" | "updatePlaybook" | "researchIndex",
+	string
+> = {
+	orientation: "<!-- aide-orientation-end -->",
+	config: "<!-- aide-config-end -->",
+	playbookIndex: "<!-- aide-playbook-index-end -->",
 	studyPlaybook: "<!-- aide-study-playbook-end -->",
-	research: "<!-- aide-research-end -->",
+	updatePlaybook: "<!-- aide-update-playbook-end -->",
+	researchIndex: "<!-- aide-research-index-end -->",
 };
 
-function extractCanonicalSection(name: "prose" | "playbook" | "studyPlaybook" | "research"): string {
+function extractCanonicalSection(
+	name: "orientation" | "config" | "playbookIndex" | "studyPlaybook" | "updatePlaybook" | "researchIndex",
+): string {
 	// Reconstruct the body the same way parseBrainAideFromString does:
 	// drop opening `---`, find closing `\n---`, take everything after it,
 	// then strip one leading `\n`.
@@ -154,24 +190,28 @@ async function writeBrainAide(root: string, content: string): Promise<void> {
 }
 
 /**
- * Build a minimal valid four-section brain.aide content string using
- * the marker-pair body grammar. All four required marker pairs are present
- * in the correct prose-then-playbook-then-studyPlaybook-then-research order.
+ * Build a minimal valid six-section brain.aide content string using
+ * the marker-pair body grammar. All six required marker pairs are present
+ * in the correct orientation-then-config-then-playbookIndex-then-studyPlaybook-then-updatePlaybook-then-researchIndex order.
  */
 function makeCanonicalContent(overrides?: {
 	name?: string;
 	extraFrontmatterLines?: string[];
-	proseBody?: string;
-	playbookBody?: string;
+	orientationBody?: string;
+	configBody?: string;
+	playbookIndexBody?: string;
 	studyPlaybookBody?: string;
-	researchBody?: string;
+	updatePlaybookBody?: string;
+	researchIndexBody?: string;
 }): string {
 	const name = overrides?.name ?? "my-brain";
 	const extra = overrides?.extraFrontmatterLines ?? [];
-	const prose = overrides?.proseBody ?? "Some prose body.\n";
-	const playbook = overrides?.playbookBody ?? "Some playbook body.\n";
+	const orientation = overrides?.orientationBody ?? "Some orientation body.\n";
+	const config = overrides?.configBody ?? "Some config body.\n";
+	const playbookIndex = overrides?.playbookIndexBody ?? "Some playbook index body.\n";
 	const studyPlaybook = overrides?.studyPlaybookBody ?? "Some study playbook body.\n";
-	const research = overrides?.researchBody ?? "Some research body.\n";
+	const updatePlaybook = overrides?.updatePlaybookBody ?? "Some update playbook body.\n";
+	const researchIndex = overrides?.researchIndexBody ?? "Some research index body.\n";
 
 	const frontmatterLines = [
 		`name: ${name}`,
@@ -185,10 +225,12 @@ function makeCanonicalContent(overrides?: {
 
 	return (
 		`---\n${frontmatterLines.join("\n")}\n---\n\n` +
-		`<!-- aide-prose-start -->\n${prose}<!-- aide-prose-end -->\n\n` +
-		`<!-- aide-playbook-start -->\n${playbook}<!-- aide-playbook-end -->\n\n` +
+		`<!-- aide-orientation-start -->\n${orientation}<!-- aide-orientation-end -->\n\n` +
+		`<!-- aide-config-start -->\n${config}<!-- aide-config-end -->\n\n` +
+		`<!-- aide-playbook-index-start -->\n${playbookIndex}<!-- aide-playbook-index-end -->\n\n` +
 		`<!-- aide-study-playbook-start -->\n${studyPlaybook}<!-- aide-study-playbook-end -->\n\n` +
-		`<!-- aide-research-start -->\n${research}<!-- aide-research-end -->\n`
+		`<!-- aide-update-playbook-start -->\n${updatePlaybook}<!-- aide-update-playbook-end -->\n\n` +
+		`<!-- aide-research-index-start -->\n${researchIndex}<!-- aide-research-index-end -->\n`
 	);
 }
 
@@ -207,11 +249,11 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3b. Happy path — asserts on all four body fields (marker grammar)
+// 3b. Happy path — asserts on all six body fields (marker grammar)
 // ---------------------------------------------------------------------------
 
 describe("3a — happy path", () => {
-	it("returns ok with two-field config and all four body sections", async () => {
+	it("returns ok with flattened frontmatter fields and all six body sections", async () => {
 		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
 
 		const result = await parseBrainAide(tempDir);
@@ -219,30 +261,36 @@ describe("3a — happy path", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config.name).toBe("my-brain");
-		expect(result.config.mcpServerConfig.command).toBe("npx");
-		expect(result.config.mcpServerConfig.args).toEqual(["@example/mcp-launcher", "D:/brains/my-brain"]);
+		expect(result.name).toBe("my-brain");
+		expect(result.mcpServerConfig.command).toBe("npx");
+		expect(result.mcpServerConfig.args).toEqual(["@example/mcp-launcher", "D:/brains/my-brain"]);
 
-		// prose: verbatim bytes between <!-- aide-prose-start --> and <!-- aide-prose-end -->
-		expect(result.prose).toBe(extractCanonicalSection("prose"));
-		expect(result.prose).toMatch(/Your brain is an external knowledge store/);
+		// orientation: verbatim bytes between <!-- aide-orientation-start --> and <!-- aide-orientation-end -->
+		expect(result.orientation).toBe(extractCanonicalSection("orientation"));
+		expect(result.orientation).toMatch(/Your brain is an external knowledge store/);
 
-		// playbook: verbatim bytes between <!-- aide-playbook-start --> and <!-- aide-playbook-end -->
-		expect(result.playbook).toBe(extractCanonicalSection("playbook"));
+		// config: verbatim bytes between <!-- aide-config-start --> and <!-- aide-config-end -->
+		expect(result.config).toBe(extractCanonicalSection("config"));
+
+		// playbookIndex: verbatim bytes between <!-- aide-playbook-index-start --> and <!-- aide-playbook-index-end -->
+		expect(result.playbookIndex).toBe(extractCanonicalSection("playbookIndex"));
 
 		// studyPlaybook: verbatim bytes between <!-- aide-study-playbook-start --> and <!-- aide-study-playbook-end -->
 		expect(result.studyPlaybook).toBe(extractCanonicalSection("studyPlaybook"));
 		expect(result.studyPlaybook).toMatch(/Start at the playbook hub/);
 
-		// research: verbatim bytes between <!-- aide-research-start --> and <!-- aide-research-end -->
-		expect(result.research).toBe(extractCanonicalSection("research"));
+		// updatePlaybook: verbatim bytes between <!-- aide-update-playbook-start --> and <!-- aide-update-playbook-end -->
+		expect(result.updatePlaybook).toBe(extractCanonicalSection("updatePlaybook"));
+
+		// researchIndex: verbatim bytes between <!-- aide-research-index-start --> and <!-- aide-research-index-end -->
+		expect(result.researchIndex).toBe(extractCanonicalSection("researchIndex"));
 	});
 
 	it("literal # H1 and ## headings inside sections pass through verbatim — marker grammar is bytes not lines", async () => {
 		// The CANONICAL_BRAIN_AIDE fixture includes `# Coding playbook` (H1) and `## Task routing`
-		// and `### Sections` inside the playbook section, plus `# Study playbook` (H1) inside the
+		// and `### Sections` inside the playbookIndex section, plus `# Study playbook` (H1) inside the
 		// studyPlaybook section, plus `# Research`, `## Domains`, and `### Example domain` inside the
-		// research section. The marker walker slices between marker byte offsets — it never inspects
+		// researchIndex section. The marker walker slices between marker byte offsets — it never inspects
 		// line structure, so these heading characters are content.
 		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
 		const result = await parseBrainAide(tempDir);
@@ -250,13 +298,13 @@ describe("3a — happy path", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.playbook).toContain("# Coding playbook");
-		expect(result.playbook).toContain("## Task routing");
-		expect(result.playbook).toContain("### Sections");
+		expect(result.playbookIndex).toContain("# Coding playbook");
+		expect(result.playbookIndex).toContain("## Task routing");
+		expect(result.playbookIndex).toContain("### Sections");
 		expect(result.studyPlaybook).toContain("# Study playbook");
-		expect(result.research).toContain("# Research");
-		expect(result.research).toContain("## Domains");
-		expect(result.research).toContain("### Example domain");
+		expect(result.researchIndex).toContain("# Research");
+		expect(result.researchIndex).toContain("## Domains");
+		expect(result.researchIndex).toContain("### Example domain");
 	});
 });
 
@@ -273,7 +321,7 @@ describe("3b — missing file", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3c. Malformed YAML — fixture body updated to use four marker pairs
+// 3c. Malformed YAML — fixture body updated to use six marker pairs
 // ---------------------------------------------------------------------------
 
 describe("3c — malformed YAML frontmatter", () => {
@@ -283,21 +331,29 @@ mcpServerConfig:
   args: [unclosed bracket
 ---
 
-<!-- aide-prose-start -->
-Some prose.
-<!-- aide-prose-end -->
+<!-- aide-orientation-start -->
+Some orientation.
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
-Some playbook.
-<!-- aide-playbook-end -->
+<!-- aide-config-start -->
+Some config.
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
+Some playbook index.
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 Some study playbook.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
-Some research.
-<!-- aide-research-end -->
+<!-- aide-update-playbook-start -->
+Some update playbook.
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
+Some research index.
+<!-- aide-research-index-end -->
 `;
 		await writeBrainAide(tempDir, badYaml);
 
@@ -310,7 +366,7 @@ Some research.
 });
 
 // ---------------------------------------------------------------------------
-// 3d. Missing required field (parameterized) — bodies updated to four marker pairs
+// 3d. Missing required field (parameterized) — bodies updated to six marker pairs
 // ---------------------------------------------------------------------------
 
 describe("3d — missing required field", () => {
@@ -352,10 +408,12 @@ describe("3d — missing required field", () => {
 
 		return (
 			`---\n${frontmatterLines.join("\n")}\n---\n\n` +
-			`<!-- aide-prose-start -->\nSome prose body.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook body.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation body.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config body.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index body.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook body.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research body.\n<!-- aide-research-end -->\n`
+			`<!-- aide-update-playbook-start -->\nSome update playbook body.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index body.\n<!-- aide-research-index-end -->\n`
 		);
 	}
 
@@ -376,7 +434,7 @@ describe("3d — missing required field", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3d'. Deprecated-field rejection (parameterized) — bodies updated to four marker pairs
+// 3d'. Deprecated-field rejection (parameterized) — bodies updated to six marker pairs
 // ---------------------------------------------------------------------------
 
 describe("3d' — deprecated field rejection", () => {
@@ -437,10 +495,12 @@ describe("3d' — deprecated field rejection", () => {
 		const frontmatter = [...requiredLines, ...extraLines].join("\n");
 		const content =
 			`---\n${frontmatter}\n---\n\n` +
-			`<!-- aide-prose-start -->\nSome prose body.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook body.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation body.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config body.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index body.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook body.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research body.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook body.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index body.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 
@@ -473,26 +533,35 @@ describe("3e — missing required sections (parameterized)", () => {
 
 	// Missing-pair cases: all markers present except the named pair(s).
 	const allMarkers = [
-		"<!-- aide-prose-start -->",
-		"<!-- aide-prose-end -->",
-		"<!-- aide-playbook-start -->",
-		"<!-- aide-playbook-end -->",
+		"<!-- aide-orientation-start -->",
+		"<!-- aide-orientation-end -->",
+		"<!-- aide-config-start -->",
+		"<!-- aide-config-end -->",
+		"<!-- aide-playbook-index-start -->",
+		"<!-- aide-playbook-index-end -->",
 		"<!-- aide-study-playbook-start -->",
 		"<!-- aide-study-playbook-end -->",
-		"<!-- aide-research-start -->",
-		"<!-- aide-research-end -->",
+		"<!-- aide-update-playbook-start -->",
+		"<!-- aide-update-playbook-end -->",
+		"<!-- aide-research-index-start -->",
+		"<!-- aide-research-index-end -->",
 	];
 
 	const missingPairCases: Array<[string, string, string]> = [
 		[
-			"missing prose pair only",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("prose"))),
-			"missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->",
+			"missing orientation pair only",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("orientation"))),
+			"missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->",
 		],
 		[
-			"missing playbook pair only",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("aide-playbook-"))),
-			"missing markers: <!-- aide-playbook-start -->, <!-- aide-playbook-end -->",
+			"missing config pair only",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("aide-config-"))),
+			"missing markers: <!-- aide-config-start -->, <!-- aide-config-end -->",
+		],
+		[
+			"missing playbookIndex pair only",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("playbook-index"))),
+			"missing markers: <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->",
 		],
 		[
 			"missing studyPlaybook pair only",
@@ -500,39 +569,44 @@ describe("3e — missing required sections (parameterized)", () => {
 			"missing markers: <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->",
 		],
 		[
-			"missing research pair only",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("research"))),
-			"missing markers: <!-- aide-research-start -->, <!-- aide-research-end -->",
+			"missing updatePlaybook pair only",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("update-playbook"))),
+			"missing markers: <!-- aide-update-playbook-start -->, <!-- aide-update-playbook-end -->",
 		],
 		[
-			"missing prose and research pairs",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("prose") && !m.includes("research"))),
-			"missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->, <!-- aide-research-start -->, <!-- aide-research-end -->",
+			"missing researchIndex pair only",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("research-index"))),
+			"missing markers: <!-- aide-research-index-start -->, <!-- aide-research-index-end -->",
 		],
 		[
-			"missing prose and playbook pairs",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("prose") && !m.includes("aide-playbook-"))),
-			"missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->, <!-- aide-playbook-start -->, <!-- aide-playbook-end -->",
+			"missing orientation and researchIndex pairs",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("orientation") && !m.includes("research-index"))),
+			"missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->, <!-- aide-research-index-start -->, <!-- aide-research-index-end -->",
 		],
 		[
-			"missing playbook and research pairs",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("aide-playbook-") && !m.includes("research"))),
-			"missing markers: <!-- aide-playbook-start -->, <!-- aide-playbook-end -->, <!-- aide-research-start -->, <!-- aide-research-end -->",
+			"missing orientation and playbookIndex pairs",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("orientation") && !m.includes("playbook-index"))),
+			"missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->, <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->",
 		],
 		[
-			"missing prose and studyPlaybook pairs",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("prose") && !m.includes("study-playbook"))),
-			"missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->",
+			"missing playbookIndex and researchIndex pairs",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("playbook-index") && !m.includes("research-index"))),
+			"missing markers: <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->, <!-- aide-research-index-start -->, <!-- aide-research-index-end -->",
 		],
 		[
-			"missing playbook and studyPlaybook pairs",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("aide-playbook-") && !m.includes("study-playbook"))),
-			"missing markers: <!-- aide-playbook-start -->, <!-- aide-playbook-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->",
+			"missing orientation and studyPlaybook pairs",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("orientation") && !m.includes("study-playbook"))),
+			"missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->",
 		],
 		[
-			"missing studyPlaybook and research pairs",
-			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("study-playbook") && !m.includes("research"))),
-			"missing markers: <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->, <!-- aide-research-start -->, <!-- aide-research-end -->",
+			"missing playbookIndex and studyPlaybook pairs",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("playbook-index") && !m.includes("study-playbook"))),
+			"missing markers: <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->",
+		],
+		[
+			"missing studyPlaybook and researchIndex pairs",
+			validFrontmatter + bodyWithMarkers(allMarkers.filter((m) => !m.includes("study-playbook") && !m.includes("research-index"))),
+			"missing markers: <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->, <!-- aide-research-index-start -->, <!-- aide-research-index-end -->",
 		],
 	];
 
@@ -546,13 +620,15 @@ describe("3e — missing required sections (parameterized)", () => {
 	});
 
 	// Unmatched-opener case: opener present, closer missing.
-	it("prose opener present but closer missing → unmatched opening marker", async () => {
+	it("orientation opener present but closer missing → unmatched opening marker", async () => {
 		const content =
 			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 		const result = await parseBrainAide(tempDir);
@@ -560,18 +636,20 @@ describe("3e — missing required sections (parameterized)", () => {
 		expect(result.kind).toBe("malformed-body");
 		if (result.kind !== "malformed-body") return;
 		expect(result.reason).toBe(
-			"unmatched opening marker: <!-- aide-prose-start --> has no matching <!-- aide-prose-end -->",
+			"unmatched opening marker: <!-- aide-orientation-start --> has no matching <!-- aide-orientation-end -->",
 		);
 	});
 
 	// Unmatched-closer case: closer present, opener missing.
-	it("prose closer present but opener missing → unmatched closing marker", async () => {
+	it("orientation closer present but opener missing → unmatched closing marker", async () => {
 		const content =
 			validFrontmatter +
-			`Some prose content without an opener.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`Some orientation content without an opener.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 		const result = await parseBrainAide(tempDir);
@@ -579,7 +657,7 @@ describe("3e — missing required sections (parameterized)", () => {
 		expect(result.kind).toBe("malformed-body");
 		if (result.kind !== "malformed-body") return;
 		expect(result.reason).toBe(
-			"unmatched closing marker: <!-- aide-prose-end --> appeared without a prior <!-- aide-prose-start -->",
+			"unmatched closing marker: <!-- aide-orientation-end --> appeared without a prior <!-- aide-orientation-start -->",
 		);
 	});
 
@@ -587,10 +665,12 @@ describe("3e — missing required sections (parameterized)", () => {
 	it("studyPlaybook opener present but closer missing → unmatched opening marker", async () => {
 		const content =
 			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 		const result = await parseBrainAide(tempDir);
@@ -606,10 +686,12 @@ describe("3e — missing required sections (parameterized)", () => {
 	it("studyPlaybook closer present but opener missing → unmatched closing marker", async () => {
 		const content =
 			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`Some study playbook content without an opener.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 		const result = await parseBrainAide(tempDir);
@@ -627,7 +709,7 @@ describe("3e — missing required sections (parameterized)", () => {
 //
 // Parameterized it.each over the case set from the spec's "Bad examples" block.
 // Each fixture has valid frontmatter and a body where one recognized marker is
-// replaced by a malformed variant; the other seven recognized markers are correctly
+// replaced by a malformed variant; the other eleven recognized markers are correctly
 // present and paired. Each case asserts kind === "malformed-body" and the reason
 // matches the literal "unknown marker: <as-written>" format.
 // ---------------------------------------------------------------------------
@@ -637,86 +719,94 @@ describe("3f — malformed/typo'd marker rejection", () => {
 		`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n`;
 
 	/**
-	 * Build a body where the prose opener is replaced by the given malformed marker.
-	 * The remaining seven recognized markers are correctly present and paired, so the
+	 * Build a body where the orientation opener is replaced by the given malformed marker.
+	 * The remaining eleven recognized markers are correctly present and paired, so the
 	 * only failure is the substituted malformed token.
 	 */
-	function bodyWithMalformedProseOpener(malformedMarker: string): string {
+	function bodyWithMalformedOrientationOpener(malformedMarker: string): string {
 		return (
-			`${malformedMarker}\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`${malformedMarker}\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`
 		);
 	}
 
 	/**
 	 * Build a body where the study-playbook opener is replaced by the given malformed marker.
-	 * The remaining seven recognized markers are correctly present and paired, so the
+	 * The remaining eleven recognized markers are correctly present and paired, so the
 	 * only failure is the substituted malformed token.
 	 */
 	function bodyWithMalformedStudyPlaybookOpener(malformedMarker: string): string {
 		return (
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`${malformedMarker}\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`
 		);
 	}
 
 	const malformedCases: Array<[string, string, string]> = [
 		[
 			"uppercase variant",
-			bodyWithMalformedProseOpener("<!-- AIDE-PROSE-START -->"),
-			"unknown marker: <!-- AIDE-PROSE-START -->",
+			bodyWithMalformedOrientationOpener("<!-- AIDE-ORIENTATION-START -->"),
+			"unknown marker: <!-- AIDE-ORIENTATION-START -->",
 		],
 		[
 			"mixed-case variant",
-			bodyWithMalformedProseOpener("<!-- Aide-prose-start -->"),
-			"unknown marker: <!-- Aide-prose-start -->",
+			bodyWithMalformedOrientationOpener("<!-- Aide-orientation-start -->"),
+			"unknown marker: <!-- Aide-orientation-start -->",
 		],
 		[
 			"no surrounding spaces",
-			bodyWithMalformedProseOpener("<!--aide-prose-start-->"),
-			"unknown marker: <!--aide-prose-start-->",
+			bodyWithMalformedOrientationOpener("<!--aide-orientation-start-->"),
+			"unknown marker: <!--aide-orientation-start-->",
 		],
 		[
 			"extra internal whitespace (trailing)",
-			bodyWithMalformedProseOpener("<!-- aide-prose-start  -->"),
-			"unknown marker: <!-- aide-prose-start  -->",
+			bodyWithMalformedOrientationOpener("<!-- aide-orientation-start  -->"),
+			"unknown marker: <!-- aide-orientation-start  -->",
 		],
 		[
 			"extra internal whitespace (leading)",
-			bodyWithMalformedProseOpener("<!--  aide-prose-start -->"),
-			"unknown marker: <!--  aide-prose-start -->",
+			bodyWithMalformedOrientationOpener("<!--  aide-orientation-start -->"),
+			"unknown marker: <!--  aide-orientation-start -->",
 		],
 		[
 			"missing aide- prefix",
-			bodyWithMalformedProseOpener("<!-- prose-start -->"),
-			"unknown marker: <!-- prose-start -->",
+			bodyWithMalformedOrientationOpener("<!-- orientation-start -->"),
+			"unknown marker: <!-- orientation-start -->",
 		],
 		[
 			"typo in token (strart)",
-			bodyWithMalformedProseOpener("<!-- aide-prose-strart -->"),
-			"unknown marker: <!-- aide-prose-strart -->",
+			bodyWithMalformedOrientationOpener("<!-- aide-orientation-strart -->"),
+			"unknown marker: <!-- aide-orientation-strart -->",
 		],
 		[
-			"typo in section name (playboook)",
+			"typo in section name (playbook-iindex)",
 			(
-				`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-				`<!-- aide-playboook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+				`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+				`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+				`<!-- aide-playbook-iindex-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 				`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-				`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`
+				`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+				`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`
 			),
-			"unknown marker: <!-- aide-playboook-start -->",
+			"unknown marker: <!-- aide-playbook-iindex-start -->",
 		],
 		[
 			"typo in study-playbook section name (study-pllaybook)",
 			(
-				`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-				`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+				`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+				`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+				`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 				`<!-- aide-study-pllaybook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-				`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`
+				`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+				`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`
 			),
 			"unknown marker: <!-- aide-study-pllaybook-start -->",
 		],
@@ -739,30 +829,32 @@ describe("3f — malformed/typo'd marker rejection", () => {
 	});
 
 	it("left-to-right ordering: two malformed markers — reason names the FIRST encountered", async () => {
-		// Body has two malformed markers: an uppercase prose opener AND a mixed-case
-		// playbook opener. The parser surfaces one error per parse; it must name the
+		// Body has two malformed markers: an uppercase orientation opener AND a mixed-case
+		// config opener. The parser surfaces one error per parse; it must name the
 		// first malformed marker encountered left-to-right in document order.
 		const content =
 			validFrontmatter +
-			`<!-- AIDE-PROSE-START -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- Aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- AIDE-ORIENTATION-START -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- Aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 		const result = await parseBrainAide(tempDir);
 
 		expect(result.kind).toBe("malformed-body");
 		if (result.kind !== "malformed-body") return;
-		// The first malformed marker left-to-right is <!-- AIDE-PROSE-START -->.
-		expect(result.reason).toBe("unknown marker: <!-- AIDE-PROSE-START -->");
+		// The first malformed marker left-to-right is <!-- AIDE-ORIENTATION-START -->.
+		expect(result.reason).toBe("unknown marker: <!-- AIDE-ORIENTATION-START -->");
 	});
 });
 
 // ---------------------------------------------------------------------------
 // 3g. Marker order violation.
 //
-// Parameterized cases for every wrong order. Each fixture has all four pairs
+// Parameterized cases for wrong order. Each fixture has all six pairs
 // present and correctly matched; only the ORDER is wrong. Each case asserts
 // kind === "malformed-body" and the literal reason.
 // ---------------------------------------------------------------------------
@@ -773,49 +865,70 @@ describe("3g — marker order violation", () => {
 
 	const orderCases: Array<[string, string, string]> = [
 		[
-			"playbook before prose",
+			"config before orientation",
 			validFrontmatter +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`,
-			"marker order violation: <!-- aide-playbook-start --> appeared before <!-- aide-prose-start -->",
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"marker order violation: <!-- aide-config-start --> appeared before <!-- aide-orientation-start -->",
 		],
 		[
-			"research before playbook (prose first, correctly)",
+			"researchIndex before playbookIndex (orientation and config first, correctly)",
 			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
-			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n`,
-			"marker order violation: <!-- aide-research-start --> appeared before <!-- aide-playbook-start -->",
-		],
-		[
-			"research first (before prose and playbook)",
-			validFrontmatter +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n\n` +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
-			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n`,
-			"marker order violation: <!-- aide-research-start --> appeared before <!-- aide-prose-start -->",
-		],
-		[
-			"study-playbook before playbook",
-			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`,
-			"marker order violation: <!-- aide-study-playbook-start --> appeared before <!-- aide-playbook-start -->",
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n`,
+			"marker order violation: <!-- aide-research-index-start --> appeared before <!-- aide-playbook-index-start -->",
 		],
 		[
-			"research before study-playbook",
+			"researchIndex first (before orientation and config)",
 			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n\n` +
-			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n`,
-			"marker order violation: <!-- aide-research-start --> appeared before <!-- aide-study-playbook-start -->",
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n`,
+			"marker order violation: <!-- aide-research-index-start --> appeared before <!-- aide-orientation-start -->",
+		],
+		[
+			"studyPlaybook before playbookIndex",
+			validFrontmatter +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"marker order violation: <!-- aide-study-playbook-start --> appeared before <!-- aide-playbook-index-start -->",
+		],
+		[
+			"researchIndex before studyPlaybook",
+			validFrontmatter +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n`,
+			"marker order violation: <!-- aide-research-index-start --> appeared before <!-- aide-study-playbook-start -->",
+		],
+		[
+			"updatePlaybook before studyPlaybook",
+			validFrontmatter +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"marker order violation: <!-- aide-update-playbook-start --> appeared before <!-- aide-study-playbook-start -->",
 		],
 	];
 
@@ -833,7 +946,7 @@ describe("3g — marker order violation", () => {
 // ---------------------------------------------------------------------------
 // 3h. Nested marker rejection.
 //
-// Parameterized cases covering each nesting class. Each fixture has all eight
+// Parameterized cases covering each nesting class. Each fixture has all twelve
 // recognized marker tokens present and well-formed in document order; only
 // the BYTE OFFSETS put one marker (or pair) inside another pair's span.
 // Each case asserts kind === "malformed-body" and the literal reason.
@@ -845,75 +958,126 @@ describe("3h — nested marker rejection", () => {
 
 	const nestingCases: Array<[string, string, string]> = [
 		[
-			"playbook pair nested inside prose pair",
+			"playbookIndex pair nested inside config pair",
+			// orientation pair, then config opener, then playbookIndex pair fully nested inside
+			// the config span (openers in document order: orientation, config, playbookIndex —
+			// correct required order, so the order check passes), then config closer, then the
+			// remaining sections. The nesting check fires on playbookIndex inside config.
 			validFrontmatter +
-			`<!-- aide-prose-start -->\n` +
-			`Some prose content.\n` +
-			`<!-- aide-playbook-start -->\nNested playbook.\n<!-- aide-playbook-end -->\n` +
-			`More prose content.\n` +
-			`<!-- aide-prose-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\n` +
+			`Some config content.\n` +
+			`<!-- aide-playbook-index-start -->\nNested playbook index.\n<!-- aide-playbook-index-end -->\n` +
+			`More config content.\n` +
+			`<!-- aide-config-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`,
-			"nested marker: <!-- aide-playbook-start --> appeared inside the prose section",
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"nested marker: <!-- aide-playbook-index-start --> appeared inside the config section",
 		],
 		[
-			"research pair nested inside study-playbook pair",
+			"config-start nested inside orientation pair",
 			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook content.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\n` +
+			`Some orientation content.\n` +
+			`<!-- aide-config-start -->\n` +
+			`More orientation content.\n` +
+			`<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"nested marker: <!-- aide-config-start --> appeared inside the orientation section",
+		],
+		[
+			"updatePlaybook pair nested inside studyPlaybook pair",
+			// orientation, config, playbookIndex pairs, then studyPlaybook opener, then
+			// updatePlaybook pair fully nested inside the studyPlaybook span (openers in
+			// document order: orientation, config, playbookIndex, studyPlaybook, updatePlaybook,
+			// researchIndex — correct required order, order check passes), then studyPlaybook
+			// closer, then researchIndex pair. The nesting check fires on updatePlaybook inside
+			// studyPlaybook.
+			validFrontmatter +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\n` +
 			`Some study playbook content.\n` +
-			`<!-- aide-research-start -->\nNested research.\n<!-- aide-research-end -->\n` +
+			`<!-- aide-update-playbook-start -->\nNested update playbook.\n<!-- aide-update-playbook-end -->\n` +
 			`More study playbook content.\n` +
-			`<!-- aide-study-playbook-end -->\n`,
-			"nested marker: <!-- aide-research-start --> appeared inside the studyPlaybook section",
+			`<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"nested marker: <!-- aide-update-playbook-start --> appeared inside the studyPlaybook section",
 		],
 		[
-			"stray playbook closer inside research pair",
-			// All eight markers present in correct order; research's content span
-			// contains a duplicate playbook closer. Openers in document order:
-			// prose-start, playbook-start, study-playbook-start, research-start — correct order
+			"stray playbookIndex closer inside researchIndex pair",
+			// All twelve markers present in correct order; researchIndex's content span
+			// contains a duplicate playbookIndex closer. Openers in document order:
+			// orientation-start, config-start, playbookIndex-start, studyPlaybook-start,
+			// updatePlaybook-start, researchIndex-start — correct order
 			// (no order violation). Unmatched-closer check passes because seenOpeners already
-			// has "playbook" when the inner playbook-end is encountered. The nesting
-			// check fires because the inner playbook-end falls inside the research span.
+			// has "playbookIndex" when the inner playbook-index-end is encountered. The nesting
+			// check fires because the inner playbook-index-end falls inside the researchIndex span.
 			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\n` +
 			`Some research content.\n` +
-			`<!-- aide-playbook-end -->\n` +
+			`<!-- aide-playbook-index-end -->\n` +
 			`More research.\n` +
-			`<!-- aide-research-end -->\n`,
-			"nested marker: <!-- aide-playbook-end --> appeared inside the research section",
+			`<!-- aide-research-index-end -->\n`,
+			"nested marker: <!-- aide-playbook-index-end --> appeared inside the researchIndex section",
 		],
 		[
 			"single stray inner opener (no full inner pair) inside a pair",
 			validFrontmatter +
-			`<!-- aide-prose-start -->\n` +
-			`Some prose content.\n` +
-			`<!-- aide-playbook-start -->\n` +
-			`Stray opener, no matching closer inside prose.\n` +
-			`<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\n` +
+			`Some orientation content.\n` +
+			`<!-- aide-config-start -->\n` +
+			`Stray opener, no matching closer inside orientation.\n` +
+			`<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`,
-			"nested marker: <!-- aide-playbook-start --> appeared inside the prose section",
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"nested marker: <!-- aide-config-start --> appeared inside the orientation section",
 		],
 		[
-			"study-playbook pair nested inside playbook pair",
+			"studyPlaybook pair nested inside playbookIndex pair",
 			// The navigation prose belongs with the playbook — a tempting containment the spec names.
-			// prose pair, then playbook opener, then study-playbook pair fully nested inside the playbook
-			// span, then playbook closer, then research pair.
+			// orientation pair, then playbookIndex opener, then studyPlaybook pair fully nested inside
+			// the playbookIndex span, then playbookIndex closer, then config pair, then researchIndex pair.
 			validFrontmatter +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\n` +
-			`Some playbook content.\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\n` +
+			`Some playbook index content.\n` +
 			`<!-- aide-study-playbook-start -->\nNested study playbook.\n<!-- aide-study-playbook-end -->\n` +
-			`More playbook content.\n` +
-			`<!-- aide-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`,
-			"nested marker: <!-- aide-study-playbook-start --> appeared inside the playbook section",
+			`More playbook index content.\n` +
+			`<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"nested marker: <!-- aide-study-playbook-start --> appeared inside the playbookIndex section",
+		],
+		[
+			"updatePlaybook-start nested inside studyPlaybook pair",
+			validFrontmatter +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\n` +
+			`Some study playbook content.\n` +
+			`<!-- aide-update-playbook-start -->\n` +
+			`More study playbook content.\n` +
+			`<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`,
+			"nested marker: <!-- aide-update-playbook-start --> appeared inside the studyPlaybook section",
 		],
 	];
 
@@ -933,7 +1097,7 @@ describe("3h — nested marker rejection", () => {
 //
 // A brain.aide whose frontmatter is valid but whose body uses the OLD heading-based
 // schema (## Prose / ## Playbook section / ## Research section) with NO marker pairs
-// anywhere returns malformed-body naming all eight missing markers.
+// anywhere returns malformed-body naming all twelve missing markers.
 //
 // This test is tied to preventing the regression described in the spec's "Bad examples":
 // "A parser that auto-fills missing required body sections from package defaults."
@@ -942,7 +1106,7 @@ describe("3h — nested marker rejection", () => {
 // ---------------------------------------------------------------------------
 
 describe("3i — strict-failure migration: pre-pivot heading-based body", () => {
-	it("heading-based body with no marker pairs returns malformed-body naming all eight missing markers", async () => {
+	it("heading-based body with no marker pairs returns malformed-body naming all twelve missing markers", async () => {
 		// This fixture uses the OLD heading-based schema — the body shape that predates
 		// the marker-pair pivot. The frontmatter is valid; the body has zero marker pairs.
 		const prePivotContent = `---
@@ -972,12 +1136,12 @@ An entry point for domain research.
 
 		// The parser does NOT auto-detect the old heading-based shape.
 		// It does NOT auto-rewrite; it does NOT silently default the missing sections.
-		// Strict failure: all eight missing markers listed in one reason so the user
+		// Strict failure: all twelve missing markers listed in one reason so the user
 		// fixes them all in one edit.
 		expect(result.kind).toBe("malformed-body");
 		if (result.kind !== "malformed-body") return;
 		expect(result.reason).toBe(
-			"missing markers: <!-- aide-prose-start -->, <!-- aide-prose-end -->, <!-- aide-playbook-start -->, <!-- aide-playbook-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->, <!-- aide-research-start -->, <!-- aide-research-end -->",
+			"missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->, <!-- aide-config-start -->, <!-- aide-config-end -->, <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->, <!-- aide-update-playbook-start -->, <!-- aide-update-playbook-end -->, <!-- aide-research-index-start -->, <!-- aide-research-index-end -->",
 		);
 	});
 });
@@ -985,56 +1149,43 @@ An entry point for domain research.
 // ---------------------------------------------------------------------------
 // 3i'. Strict-failure migration: pre-pivot three-pair marker-bounded body.
 //
-// Spec outcome #7: "a brain.aide carrying the prior three-pair marker-bounded
-// body returns malformed-body with a reason naming the missing study-playbook
-// markers specifically."
-//
-// This test PINS the strict-failure contract against future "helpful" three-pair-
-// tolerant fallbacks. The spec's "Bad examples" block calls this anti-pattern out
-// by name: a parser that detects a three-pair body and silently defaults the
-// missing studyPlaybook section to an empty string is wrong. The parser does NOT
-// auto-detect the three-pair shape, does NOT auto-rewrite, does NOT silently
-// default the missing studyPlaybook section to an empty string, and there is no
-// aide_upgrade carve-out — strict failure is the only resolution path.
+// A brain.aide carrying the OLD three-pair marker-bounded body (aide-prose-*,
+// aide-playbook-*, aide-research-*) returns malformed-body listing all twelve
+// new markers as missing. The retired marker tokens are NOT recognized by the
+// candidate regexes (they were removed from the alternation in Step 2d), so
+// they fall through to the missing-markers check.
 //
 // Without this test a future maintainer might delete 3e's "missing studyPlaybook
-// pair only" case as redundant — but that case uses a four-marker body with one
+// pair only" case as redundant — but that case uses a six-marker body with one
 // pair removed, while this case uses the exact three-pair body shape that predates
-// the four-section grammar. The distinction matters: a "helpful" parser might
-// special-case the three-pair shape without being caught by the four-minus-one test.
+// the six-section grammar.
 // ---------------------------------------------------------------------------
 
 describe("3i' — strict-failure migration: pre-pivot three-pair body", () => {
-	it("three-pair marker-bounded body (prose + playbook + research, no studyPlaybook) returns malformed-body naming the missing study-playbook markers", async () => {
+	it("three-pair marker-bounded body (prose + playbook + research, using retired marker names) returns malformed-body naming all twelve missing markers", async () => {
 		// This fixture is the exact three-pair body shape that predates the four-section
-		// grammar. Build it by concatenating the three marker-pair blocks from
-		// MARKER_OPENERS / MARKER_CLOSERS in the correct prose-then-playbook-then-research
-		// order — the same order the old grammar required.
+		// grammar and the six-section grammar. The retired aide-prose-*, aide-playbook-*,
+		// and aide-research-* markers are no longer recognized by the parser — they are
+		// plain bytes that fall through to the missing-markers check.
 		const validFrontmatter =
 			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n`;
 		const threePairBody =
-			`${MARKER_OPENERS.prose}\nSome prose content.\n${MARKER_CLOSERS.prose}\n\n` +
-			`${MARKER_OPENERS.playbook}\nSome playbook content.\n${MARKER_CLOSERS.playbook}\n\n` +
-			`${MARKER_OPENERS.research}\nSome research content.\n${MARKER_CLOSERS.research}\n`;
+			`<!-- aide-prose-start -->\nSome prose content.\n<!-- aide-prose-end -->\n\n` +
+			`<!-- aide-playbook-start -->\nSome playbook content.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-research-start -->\nSome research content.\n<!-- aide-research-end -->\n`;
 		const prePivotThreePairContent = validFrontmatter + threePairBody;
 
 		await writeBrainAide(tempDir, prePivotThreePairContent);
 
 		const result = await parseBrainAide(tempDir);
 
-		// Spec outcome #7: "a brain.aide carrying the prior three-pair marker-bounded body
-		// returns malformed-body with a reason naming the missing study-playbook markers
-		// specifically."
-		//
-		// The parser does NOT auto-detect the three-pair shape, does NOT auto-rewrite,
-		// does NOT silently default the missing studyPlaybook section to an empty string,
-		// and there is no aide_upgrade carve-out — strict failure is the only resolution
-		// path. This test exists to PIN that contract against future "helpful" fallbacks
-		// that would be indistinguishable from a green test in 3e's parameterized suite.
+		// The retired marker tokens are not in the recognized set AND are not in the
+		// candidate regex alternations, so they fall through to missing-markers.
+		// All twelve new markers are listed as missing — the actionable migration message.
 		expect(result.kind).toBe("malformed-body");
 		if (result.kind !== "malformed-body") return;
 		expect(result.reason).toBe(
-			"missing markers: <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->",
+			"missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->, <!-- aide-config-start -->, <!-- aide-config-end -->, <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->, <!-- aide-study-playbook-start -->, <!-- aide-study-playbook-end -->, <!-- aide-update-playbook-start -->, <!-- aide-update-playbook-end -->, <!-- aide-research-index-start -->, <!-- aide-research-index-end -->",
 		);
 	});
 });
@@ -1046,63 +1197,77 @@ describe("3i' — strict-failure migration: pre-pivot three-pair body", () => {
 // between the frontmatter and the first opener, between pairs, and after the
 // last closer. Also includes the marker-shaped-content-outside-pairs edge case.
 //
-// With four sections there are now FIVE gap positions:
-//   1. frontmatter → prose
-//   2. prose closer → playbook opener
-//   3. playbook closer → study-playbook opener
-//   4. study-playbook closer → research opener
-//   5. after research closer
+// With six sections there are now SEVEN gap positions:
+//   1. frontmatter → orientation
+//   2. orientation closer → config opener
+//   3. config closer → playbookIndex opener
+//   4. playbookIndex closer → studyPlaybook opener
+//   5. studyPlaybook closer → updatePlaybook opener
+//   6. updatePlaybook closer → researchIndex opener
+//   7. after researchIndex closer
 //
 // Contract decision for the marker-shaped-outside case:
 //   The malformed-marker scan respects pair boundaries — only marker-shaped tokens
-//   that are NOT inside any recognized matched pair AND are not one of the eight exact
+//   that are NOT inside any recognized matched pair AND are not one of the twelve exact
 //   recognized sequences are flagged as malformed. A token like `<!-- aide-misc -->`
 //   between two recognized pairs is treated as plain bytes (per the spec's
 //   "Bytes outside any marker pair are silently ignored" rule) because the scan
 //   excludes regions inside recognized pairs and the token does not match any of
-//   the eight exact recognized forms.
+//   the twelve exact recognized forms.
 // ---------------------------------------------------------------------------
 
 describe("3j — bytes outside marker pairs are silently ignored", () => {
 	const validFrontmatter =
 		`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n`;
 
-	const proseSection = `<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->`;
-	const playbookSection = `<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->`;
+	const orientationSection = `<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->`;
+	const configSection = `<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->`;
+	const playbookIndexSection = `<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->`;
 	const studyPlaybookSection = `<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->`;
-	const researchSection = `<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->`;
+	const updatePlaybookSection = `<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->`;
+	const researchIndexSection = `<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->`;
 
 	const outsideCases: Array<[string, string]> = [
 		[
-			"scratch text between frontmatter and prose opener",
+			"scratch text between frontmatter and orientation opener",
 			validFrontmatter +
 			`A note-to-self before the first section.\n\n` +
-			`${proseSection}\n\n${playbookSection}\n\n${studyPlaybookSection}\n\n${researchSection}\n`,
+			`${orientationSection}\n\n${configSection}\n\n${playbookIndexSection}\n\n${studyPlaybookSection}\n\n${updatePlaybookSection}\n\n${researchIndexSection}\n`,
 		],
 		[
-			"scratch text between prose closer and playbook opener",
+			"scratch text between orientation closer and config opener",
 			validFrontmatter +
-			`${proseSection}\n\nScratch text between prose and playbook.\n\n${playbookSection}\n\n${studyPlaybookSection}\n\n${researchSection}\n`,
+			`${orientationSection}\n\nScratch text between orientation and config.\n\n${configSection}\n\n${playbookIndexSection}\n\n${studyPlaybookSection}\n\n${updatePlaybookSection}\n\n${researchIndexSection}\n`,
 		],
 		[
-			"scratch text between playbook closer and study-playbook opener",
+			"scratch text between config closer and playbookIndex opener",
 			validFrontmatter +
-			`${proseSection}\n\n${playbookSection}\n\nScratch text between playbook and study-playbook.\n\n${studyPlaybookSection}\n\n${researchSection}\n`,
+			`${orientationSection}\n\n${configSection}\n\nScratch text between config and playbookIndex.\n\n${playbookIndexSection}\n\n${studyPlaybookSection}\n\n${updatePlaybookSection}\n\n${researchIndexSection}\n`,
 		],
 		[
-			"scratch text between study-playbook closer and research opener",
+			"scratch text between playbookIndex closer and studyPlaybook opener",
 			validFrontmatter +
-			`${proseSection}\n\n${playbookSection}\n\n${studyPlaybookSection}\n\nScratch text between study-playbook and research.\n\n${researchSection}\n`,
+			`${orientationSection}\n\n${configSection}\n\n${playbookIndexSection}\n\nScratch text between playbookIndex and studyPlaybook.\n\n${studyPlaybookSection}\n\n${updatePlaybookSection}\n\n${researchIndexSection}\n`,
 		],
 		[
-			"trailing comment after the research closer",
+			"scratch text between studyPlaybook closer and updatePlaybook opener",
 			validFrontmatter +
-			`${proseSection}\n\n${playbookSection}\n\n${studyPlaybookSection}\n\n${researchSection}\n\nA trailing comment after all sections.\n`,
+			`${orientationSection}\n\n${configSection}\n\n${playbookIndexSection}\n\n${studyPlaybookSection}\n\nScratch text between studyPlaybook and updatePlaybook.\n\n${updatePlaybookSection}\n\n${researchIndexSection}\n`,
 		],
 		[
-			"all five gap positions populated simultaneously",
+			"scratch text between updatePlaybook closer and researchIndex opener",
 			validFrontmatter +
-			`Before prose.\n\n${proseSection}\n\nBetween prose and playbook.\n\n${playbookSection}\n\nBetween playbook and study-playbook.\n\n${studyPlaybookSection}\n\nBetween study-playbook and research.\n\n${researchSection}\n\nAfter research.\n`,
+			`${orientationSection}\n\n${configSection}\n\n${playbookIndexSection}\n\n${studyPlaybookSection}\n\n${updatePlaybookSection}\n\nScratch text between updatePlaybook and researchIndex.\n\n${researchIndexSection}\n`,
+		],
+		[
+			"trailing comment after the researchIndex closer",
+			validFrontmatter +
+			`${orientationSection}\n\n${configSection}\n\n${playbookIndexSection}\n\n${studyPlaybookSection}\n\n${updatePlaybookSection}\n\n${researchIndexSection}\n\nA trailing comment after all sections.\n`,
+		],
+		[
+			"all seven gap positions populated simultaneously",
+			validFrontmatter +
+			`Before orientation.\n\n${orientationSection}\n\nBetween orientation and config.\n\n${configSection}\n\nBetween config and playbookIndex.\n\n${playbookIndexSection}\n\nBetween playbookIndex and studyPlaybook.\n\n${studyPlaybookSection}\n\nBetween studyPlaybook and updatePlaybook.\n\n${updatePlaybookSection}\n\nBetween updatePlaybook and researchIndex.\n\n${researchIndexSection}\n\nAfter researchIndex.\n`,
 		],
 		[
 			"marker-shaped content outside pairs is treated as plain bytes",
@@ -1113,7 +1278,7 @@ describe("3j — bytes outside marker pairs are silently ignored", () => {
 			// (Note: if the implementation scans the whole body for malformed markers without
 			// respecting pair boundaries, this test will catch the regression.)
 			validFrontmatter +
-			`${proseSection}\n\n<!-- aide-misc -->\n\n${playbookSection}\n\n${studyPlaybookSection}\n\n${researchSection}\n`,
+			`${orientationSection}\n\n<!-- aide-misc -->\n\n${configSection}\n\n${playbookIndexSection}\n\n${studyPlaybookSection}\n\n${updatePlaybookSection}\n\n${researchIndexSection}\n`,
 		],
 	];
 
@@ -1126,21 +1291,24 @@ describe("3j — bytes outside marker pairs are silently ignored", () => {
 		if (result.kind !== "ok") return;
 
 		// Each section contains only its own bytes — none of the outside text leaks in.
-		expect(result.prose).toBe("\nSome prose.\n");
-		expect(result.playbook).toBe("\nSome playbook.\n");
+		expect(result.orientation).toBe("\nSome orientation.\n");
+		expect(result.config).toBe("\nSome config.\n");
+		expect(result.playbookIndex).toBe("\nSome playbook index.\n");
 		expect(result.studyPlaybook).toBe("\nSome study playbook.\n");
-		expect(result.research).toBe("\nSome research.\n");
+		expect(result.updatePlaybook).toBe("\nSome update playbook.\n");
+		expect(result.researchIndex).toBe("\nSome research index.\n");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 3k. Verbatim invariant extends to all four body sections (no substitution).
-// Four sub-tests, one per section: prose, playbook, studyPlaybook, research.
+// 3k. Verbatim invariant extends to all six body sections (no substitution).
+// Six sub-tests, one per section: orientation, config, playbookIndex,
+// studyPlaybook, updatePlaybook, researchIndex.
 // ---------------------------------------------------------------------------
 
 describe("3k — all body sections returned verbatim (no-substitution invariant)", () => {
-	it("prose containing literal ${name} and ${rootPath} passes through byte-identical", async () => {
-		const literalProseBody = `This is a prose body with a literal \${name} placeholder.
+	it("orientation containing literal ${name} and ${rootPath} passes through byte-identical", async () => {
+		const literalOrientationBody = `This is an orientation body with a literal \${name} placeholder.
 
 It also has **markdown** and a [link](https://example.com).
 
@@ -1148,10 +1316,12 @@ The \${rootPath} value is also here for good measure.
 `;
 		const content =
 			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n` +
-			`<!-- aide-prose-start -->\n${literalProseBody}<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook content.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\n${literalOrientationBody}<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config content.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index content.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook content.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research content.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook content.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index content.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 
@@ -1159,26 +1329,28 @@ The \${rootPath} value is also here for good measure.
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
-		// The prose must contain the literal ${name} unchanged — no substitution.
-		expect(result.prose).toContain("${name}");
-		// ${rootPath} in prose is body text, not a deprecated frontmatter field — passes through.
-		expect(result.prose).toContain("${rootPath}");
-		expect(result.prose).toContain("**markdown**");
+		// The orientation must contain the literal ${name} unchanged — no substitution.
+		expect(result.orientation).toContain("${name}");
+		// ${rootPath} in orientation is body text, not a deprecated frontmatter field — passes through.
+		expect(result.orientation).toContain("${rootPath}");
+		expect(result.orientation).toContain("**markdown**");
 		// Full byte-identity: slice starts at opener.index + opener.length.
-		expect(result.prose).toBe(`\n${literalProseBody}`);
+		expect(result.orientation).toBe(`\n${literalOrientationBody}`);
 	});
 
-	it("playbook containing literal ${name} passes through byte-identical", async () => {
-		const playbookBody = `This playbook section contains \${name} literally.
+	it("config containing literal ${name} passes through byte-identical", async () => {
+		const configBody = `This config section contains \${name} literally.
 
 The \${name} placeholder should not be substituted here.
 `;
 		const content =
 			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n` +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\n${playbookBody}<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\n${configBody}<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index content.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook content.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook content.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index content.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 
@@ -1186,10 +1358,36 @@ The \${name} placeholder should not be substituted here.
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
-		// The playbook must contain the literal ${name} unchanged.
-		expect(result.playbook).toContain("${name}");
+		// The config must contain the literal ${name} unchanged.
+		expect(result.config).toContain("${name}");
 		// Substitution only runs on mcpServerConfig.args — not on any body section.
-		expect(result.playbook).not.toContain("my-brain");
+		expect(result.config).not.toContain("my-brain");
+	});
+
+	it("playbookIndex containing literal ${name} passes through byte-identical", async () => {
+		const playbookIndexBody = `This playbook index section contains \${name} literally.
+
+The \${name} placeholder should not be substituted here.
+`;
+		const content =
+			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\n${playbookIndexBody}<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook content.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook content.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index content.\n<!-- aide-research-index-end -->\n`;
+
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		// The playbookIndex must contain the literal ${name} unchanged.
+		expect(result.playbookIndex).toContain("${name}");
+		// Substitution only runs on mcpServerConfig.args — not on any body section.
+		expect(result.playbookIndex).not.toContain("my-brain");
 	});
 
 	it("studyPlaybook containing literal ${name} passes through byte-identical", async () => {
@@ -1201,10 +1399,12 @@ The \${rootPath} value is also here for good measure.
 `;
 		const content =
 			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n` +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\n${studyPlaybookBody}<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nSome research.\n<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\nSome update playbook content.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 
@@ -1220,17 +1420,19 @@ The \${rootPath} value is also here for good measure.
 		expect(result.studyPlaybook).toBe(`\n${studyPlaybookBody}`);
 	});
 
-	it("research containing literal ${name} passes through byte-identical", async () => {
-		const researchBody = `This research section contains \${name} literally.
+	it("updatePlaybook containing literal ${name} passes through byte-identical", async () => {
+		const updatePlaybookBody = `This update playbook section contains \${name} literally.
 
-The \${name} placeholder should not be substituted here either.
+The \${name} placeholder should not be substituted here.
 `;
 		const content =
 			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n` +
-			`<!-- aide-prose-start -->\nSome prose.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nSome playbook.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\n${researchBody}<!-- aide-research-end -->\n`;
+			`<!-- aide-update-playbook-start -->\n${updatePlaybookBody}<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`;
 
 		await writeBrainAide(tempDir, content);
 
@@ -1238,25 +1440,53 @@ The \${name} placeholder should not be substituted here either.
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
-		// The research must contain the literal ${name} unchanged.
-		expect(result.research).toContain("${name}");
+		// The updatePlaybook must contain the literal ${name} unchanged.
+		expect(result.updatePlaybook).toContain("${name}");
 		// Substitution only runs on mcpServerConfig.args — not on any body section.
-		expect(result.research).not.toContain("my-brain");
+		expect(result.updatePlaybook).not.toContain("my-brain");
+	});
+
+	it("researchIndex containing literal ${name} passes through byte-identical", async () => {
+		const researchIndexBody = `This research index section contains \${name} literally.
+
+The \${name} placeholder should not be substituted here either.
+`;
+		const content =
+			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n` +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\n${researchIndexBody}<!-- aide-research-index-end -->\n`;
+
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		// The researchIndex must contain the literal ${name} unchanged.
+		expect(result.researchIndex).toContain("${name}");
+		// Substitution only runs on mcpServerConfig.args — not on any body section.
+		expect(result.researchIndex).not.toContain("my-brain");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 3l. Name is metadata, not dispatched on — fixtures rebuilt with four marker pairs.
+// 3l. Name is metadata, not dispatched on — fixtures rebuilt with six marker pairs.
 // ---------------------------------------------------------------------------
 
 describe("3l — name is metadata, not dispatched on", () => {
 	function makeContentWithName(name: string): string {
 		return (
 			`---\nname: ${name}\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n` +
-			`<!-- aide-prose-start -->\nProse body for ${name} brain.\n<!-- aide-prose-end -->\n\n` +
-			`<!-- aide-playbook-start -->\nPlaybook body for ${name} brain.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-orientation-start -->\nOrientation body for ${name} brain.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nConfig body for ${name} brain.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nPlaybook index body for ${name} brain.\n<!-- aide-playbook-index-end -->\n\n` +
 			`<!-- aide-study-playbook-start -->\nStudy playbook body for ${name} brain.\n<!-- aide-study-playbook-end -->\n\n` +
-			`<!-- aide-research-start -->\nResearch body for ${name} brain.\n<!-- aide-research-end -->\n`
+			`<!-- aide-update-playbook-start -->\nUpdate playbook body for ${name} brain.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nResearch index body for ${name} brain.\n<!-- aide-research-index-end -->\n`
 		);
 	}
 
@@ -1277,17 +1507,17 @@ describe("3l — name is metadata, not dispatched on", () => {
 			if (resultA.kind !== "ok" || resultB.kind !== "ok") return;
 
 			// Both have the same shape — only name value and body content differ.
-			expect(resultA.config.name).toBe("brain-a");
-			expect(resultB.config.name).toBe("brain-b");
+			expect(resultA.name).toBe("brain-a");
+			expect(resultB.name).toBe("brain-b");
 
 			// mcpServerConfig is identical — name did not influence it.
-			expect(resultA.config.mcpServerConfig).toEqual(resultB.config.mcpServerConfig);
+			expect(resultA.mcpServerConfig).toEqual(resultB.mcpServerConfig);
 
-			// Both prose bodies pass through verbatim (no name-based rewriting).
-			// The slice starts immediately after the prose opener byte sequence,
+			// Both orientation bodies pass through verbatim (no name-based rewriting).
+			// The slice starts immediately after the orientation opener byte sequence,
 			// so the leading \n (newline after the opener) is included verbatim.
-			expect(resultA.prose).toBe("\nProse body for brain-a brain.\n");
-			expect(resultB.prose).toBe("\nProse body for brain-b brain.\n");
+			expect(resultA.orientation).toBe("\nOrientation body for brain-a brain.\n");
+			expect(resultB.orientation).toBe("\nOrientation body for brain-b brain.\n");
 		} finally {
 			await rm(brainADir, { recursive: true, force: true });
 			await rm(brainBDir, { recursive: true, force: true });
@@ -1375,31 +1605,39 @@ describe("3m'' — interpolateArgs does not touch the body sections", () => {
 		expect(parseResult.kind).toBe("ok");
 		if (parseResult.kind !== "ok") return;
 
-		const proseBeforeInterpolation = parseResult.prose;
-		const playbookBeforeInterpolation = parseResult.playbook;
+		const orientationBeforeInterpolation = parseResult.orientation;
+		const configBeforeInterpolation = parseResult.config;
+		const playbookIndexBeforeInterpolation = parseResult.playbookIndex;
 		const studyPlaybookBeforeInterpolation = parseResult.studyPlaybook;
-		const researchBeforeInterpolation = parseResult.research;
+		const updatePlaybookBeforeInterpolation = parseResult.updatePlaybook;
+		const researchIndexBeforeInterpolation = parseResult.researchIndex;
 
-		// interpolateArgs only accepts config — body sections are structurally excluded from its signature.
-		const interpolated = interpolateArgs(parseResult.config);
+		// interpolateArgs only accepts a BrainAideConfig — body sections are structurally
+		// excluded from its signature. Pass the frontmatter fields directly.
+		const interpolated = interpolateArgs({
+			name: parseResult.name,
+			mcpServerConfig: parseResult.mcpServerConfig,
+		});
 
 		// Calling interpolateArgs did not affect any body string.
-		expect(parseResult.prose).toBe(proseBeforeInterpolation);
-		expect(parseResult.playbook).toBe(playbookBeforeInterpolation);
+		expect(parseResult.orientation).toBe(orientationBeforeInterpolation);
+		expect(parseResult.config).toBe(configBeforeInterpolation);
+		expect(parseResult.playbookIndex).toBe(playbookIndexBeforeInterpolation);
 		expect(parseResult.studyPlaybook).toBe(studyPlaybookBeforeInterpolation);
-		expect(parseResult.research).toBe(researchBeforeInterpolation);
+		expect(parseResult.updatePlaybook).toBe(updatePlaybookBeforeInterpolation);
+		expect(parseResult.researchIndex).toBe(researchIndexBeforeInterpolation);
 		// The interpolated result is the args array — no body strings in the return value.
 		expect(Array.isArray(interpolated)).toBe(true);
-		expect(interpolated).not.toContain(proseBeforeInterpolation);
+		expect(interpolated).not.toContain(orientationBeforeInterpolation);
 	});
 });
 
 // ---------------------------------------------------------------------------
 // 3n. parseBrainAideFromString parity tests.
-//
-// Fixtures rebuilt with four marker pairs; noPlaybookContent updated to include
-// the study-playbook pair. The malformed-body parity sub-test asserts that disk
-// and string paths produce the same reason for a missing pair.
+// Fixtures rebuilt with six marker pairs; noPlaybookIndexContent updated to
+// include all six pairs except the one being tested. The malformed-body parity
+// sub-test asserts that disk and string paths produce the same reason for a
+// missing pair.
 // ---------------------------------------------------------------------------
 
 describe("3n — parseBrainAideFromString parses bytes identically to parseBrainAide from disk", () => {
@@ -1425,21 +1663,29 @@ mcpServerConfig:
   args: [unclosed
 ---
 
-<!-- aide-prose-start -->
-Prose.
-<!-- aide-prose-end -->
+<!-- aide-orientation-start -->
+Orientation.
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
-Playbook.
-<!-- aide-playbook-end -->
+<!-- aide-config-start -->
+Config.
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
+Playbook index.
+<!-- aide-playbook-index-end -->
 
 <!-- aide-study-playbook-start -->
 Study playbook.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
-Research.
-<!-- aide-research-end -->
+<!-- aide-update-playbook-start -->
+Update playbook.
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
+Research index.
+<!-- aide-research-index-end -->
 `;
 		await writeBrainAide(tempDir, badYaml);
 
@@ -1451,10 +1697,11 @@ Research.
 		expect(fromDisk).toEqual(fromString);
 	});
 
-	it("malformed-body — missing playbook pair parses identically via both paths", async () => {
-		// Body has prose, study-playbook, and research marker pairs but is missing the playbook pair —
-		// both disk and string paths must return the same malformed-body reason.
-		const noPlaybookContent = `---
+	it("malformed-body — missing playbookIndex pair parses identically via both paths", async () => {
+		// Body has orientation, config, studyPlaybook, updatePlaybook, and researchIndex
+		// marker pairs but is missing the playbookIndex pair — both disk and string paths
+		// must return the same malformed-body reason.
+		const noPlaybookIndexContent = `---
 name: my-brain
 mcpServerConfig:
   command: npx
@@ -1463,38 +1710,46 @@ mcpServerConfig:
     - "D:/brains/my-brain"
 ---
 
-<!-- aide-prose-start -->
-Some prose.
-<!-- aide-prose-end -->
+<!-- aide-orientation-start -->
+Some orientation.
+<!-- aide-orientation-end -->
+
+<!-- aide-config-start -->
+Some config.
+<!-- aide-config-end -->
 
 <!-- aide-study-playbook-start -->
 Some study playbook.
 <!-- aide-study-playbook-end -->
 
-<!-- aide-research-start -->
-Some research.
-<!-- aide-research-end -->
+<!-- aide-update-playbook-start -->
+Some update playbook.
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
+Some research index.
+<!-- aide-research-index-end -->
 `;
-		await writeBrainAide(tempDir, noPlaybookContent);
+		await writeBrainAide(tempDir, noPlaybookIndexContent);
 
 		const fromDisk = await parseBrainAide(tempDir);
-		const fromString = parseBrainAideFromString(noPlaybookContent);
+		const fromString = parseBrainAideFromString(noPlaybookIndexContent);
 
 		expect(fromDisk.kind).toBe("malformed-body");
 		expect(fromString.kind).toBe("malformed-body");
 		if (fromDisk.kind !== "malformed-body" || fromString.kind !== "malformed-body") return;
 		// Both paths return the same reason naming the missing pair.
 		expect(fromDisk.reason).toBe(
-			"missing markers: <!-- aide-playbook-start -->, <!-- aide-playbook-end -->",
+			"missing markers: <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->",
 		);
 		expect(fromDisk).toEqual(fromString);
 	});
 
 	it("malformed-body — missing studyPlaybook pair parses identically via both paths", async () => {
-		// Mirror the noPlaybookContent fixture: body has prose, playbook, and research marker
-		// pairs but is missing the study-playbook pair. Both disk and string paths must return
-		// the same malformed-body reason naming the missing study-playbook markers specifically.
-		// This proves the disk and string paths agree on the new pair's missing-pair detection.
+		// Mirror the noPlaybookIndexContent fixture: body has orientation, config,
+		// playbookIndex, updatePlaybook, and researchIndex marker pairs but is missing
+		// the study-playbook pair. Both disk and string paths must return the same
+		// malformed-body reason naming the missing study-playbook markers specifically.
 		const noStudyPlaybookContent = `---
 name: my-brain
 mcpServerConfig:
@@ -1504,17 +1759,25 @@ mcpServerConfig:
     - "D:/brains/my-brain"
 ---
 
-<!-- aide-prose-start -->
-Some prose.
-<!-- aide-prose-end -->
+<!-- aide-orientation-start -->
+Some orientation.
+<!-- aide-orientation-end -->
 
-<!-- aide-playbook-start -->
-Some playbook.
-<!-- aide-playbook-end -->
+<!-- aide-config-start -->
+Some config.
+<!-- aide-config-end -->
 
-<!-- aide-research-start -->
-Some research.
-<!-- aide-research-end -->
+<!-- aide-playbook-index-start -->
+Some playbook index.
+<!-- aide-playbook-index-end -->
+
+<!-- aide-update-playbook-start -->
+Some update playbook.
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
+Some research index.
+<!-- aide-research-index-end -->
 `;
 		await writeBrainAide(tempDir, noStudyPlaybookContent);
 
@@ -1546,15 +1809,16 @@ Some research.
 });
 
 // ---------------------------------------------------------------------------
-// 3o. Per-section ownership: result.config does NOT contain prose/playbook/studyPlaybook/research.
+// 3o. Per-section ownership: result no longer has a config wrapper.
 //
-// Asserts the type boundary: body sections are siblings on the ok variant,
-// NOT properties of config. Also confirms the renamed fields (playbook, studyPlaybook,
-// research) are present as siblings rather than the retired playbookHub/researchHub names.
+// Asserts the flattened-frontmatter shape: on the ok variant, name, mcpServerConfig,
+// and all six body sections are siblings at the top level. The body section literally
+// named `config` is a string, not the parsed BrainAideConfig object. There is no
+// result.config.name / result.config.mcpServerConfig nesting any more.
 // ---------------------------------------------------------------------------
 
-describe("3o — per-section ownership: body fields are siblings of config, not properties of it", () => {
-	it("result.config does not contain prose, playbook, studyPlaybook, or research; all four are string siblings", async () => {
+describe("3o — per-section ownership: all fields are top-level siblings on the flattened ok variant", () => {
+	it("result.name, result.mcpServerConfig, and all six body sections are top-level siblings; result.config is a string", async () => {
 		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
 
 		const result = await parseBrainAide(tempDir);
@@ -1562,19 +1826,265 @@ describe("3o — per-section ownership: body fields are siblings of config, not 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		// Body sections are siblings on the ok variant, NOT properties of config.
-		// A consumer that does `result.config.prose` is reaching into the wrong nesting level.
-		// This test makes that contract visible so a future refactor that moves body sections
-		// into config will fail visibly.
-		expect(Object.prototype.hasOwnProperty.call(result.config, "prose")).toBe(false);
-		expect(Object.prototype.hasOwnProperty.call(result.config, "playbook")).toBe(false);
-		expect(Object.prototype.hasOwnProperty.call(result.config, "studyPlaybook")).toBe(false);
-		expect(Object.prototype.hasOwnProperty.call(result.config, "research")).toBe(false);
+		// Frontmatter fields are flattened directly onto the ok result.
+		expect(typeof result.name).toBe("string");
+		expect(typeof result.mcpServerConfig).toBe("object");
+		expect(typeof result.mcpServerConfig.command).toBe("string");
+		expect(Array.isArray(result.mcpServerConfig.args)).toBe(true);
 
-		// Verify the body fields ARE present on result as string siblings of config.
-		expect(typeof result.prose).toBe("string");
-		expect(typeof result.playbook).toBe("string");
+		// Body section fields are string siblings of the frontmatter fields.
+		expect(typeof result.orientation).toBe("string");
+		expect(typeof result.playbookIndex).toBe("string");
 		expect(typeof result.studyPlaybook).toBe("string");
-		expect(typeof result.research).toBe("string");
+		expect(typeof result.updatePlaybook).toBe("string");
+		expect(typeof result.researchIndex).toBe("string");
+
+		// The body section literally named `config` is a STRING — not the parsed
+		// BrainAideConfig object. This locks in the spec's invariant: the body field
+		// named `config` (the integration's wiring-flow prose) sits as a peer of the
+		// frontmatter fields rather than nested under any `config` wrapper.
+		expect(typeof result.config).toBe("string");
+
+		// Verify the body sections are non-empty and contain expected content.
+		expect(result.orientation.length).toBeGreaterThan(0);
+		expect(result.config.length).toBeGreaterThan(0);
+		expect(result.playbookIndex.length).toBeGreaterThan(0);
+		expect(result.studyPlaybook.length).toBeGreaterThan(0);
+		expect(result.updatePlaybook.length).toBeGreaterThan(0);
+		expect(result.researchIndex.length).toBeGreaterThan(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 4a. Happy-path verbatim-slicing invariant for the two new sections.
+//
+// Extends the 3a happy-path assertions by confirming that result.config (string)
+// and result.updatePlaybook (string) are byte-identical to the canonical section
+// extracted from the fixture by extractCanonicalSection. Confirms the two new
+// sections participate in the verbatim-slicing invariant on equal footing with
+// the four pre-existing ones.
+// ---------------------------------------------------------------------------
+
+describe("4a — new sections participate in the verbatim-slicing invariant", () => {
+	it("result.config is byte-identical to extractCanonicalSection(\"config\")", async () => {
+		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		// Byte-identical to the verbatim slice from the canonical fixture.
+		expect(result.config).toBe(extractCanonicalSection("config"));
+	});
+
+	it("result.updatePlaybook is byte-identical to extractCanonicalSection(\"updatePlaybook\")", async () => {
+		await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		// Byte-identical to the verbatim slice from the canonical fixture.
+		expect(result.updatePlaybook).toBe(extractCanonicalSection("updatePlaybook"));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 4d. Marker-order violation: playbookIndex opener appears before config opener.
+//
+// The config section is required at position 2 (between orientation and
+// playbookIndex). A fixture that writes playbookIndex third (after orientation)
+// and config second-but-placed-third returns malformed-body naming the violation.
+// ---------------------------------------------------------------------------
+
+describe("4d — marker order violation: playbookIndex before config", () => {
+	it("playbookIndex opener appearing before config opener → malformed-body naming the violation", async () => {
+		const validFrontmatter =
+			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n`;
+
+		// The user wrote orientation → playbookIndex → config → studyPlaybook → updatePlaybook → researchIndex.
+		// config is required at position 2; playbookIndex appeared first (position 2 slot),
+		// so the order check fires: playbookIndex-start appeared before config-start.
+		const content =
+			validFrontmatter +
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`;
+
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("malformed-body");
+		if (result.kind !== "malformed-body") return;
+		expect(result.reason).toBe(
+			"marker order violation: <!-- aide-playbook-index-start --> appeared before <!-- aide-config-start -->",
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 4g. Malformed-marker cases for the new section markers.
+//
+// At least one case per new section marker (config-start, config-end,
+// update-playbook-start, update-playbook-end). Each fixture has valid
+// frontmatter and a body where one new-section marker is replaced by a
+// malformed variant; the other eleven recognized markers are correctly
+// present and paired. Each case asserts kind === "malformed-body" and
+// reason starting with "unknown marker: " plus the offending byte sequence.
+// ---------------------------------------------------------------------------
+
+describe("4g — malformed/typo'd new-section marker rejection", () => {
+	const validFrontmatter =
+		`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n`;
+
+	/**
+	 * Build a body where the config opener is replaced by the given malformed marker.
+	 * All other eleven recognized markers are correctly present and paired.
+	 */
+	function bodyWithMalformedConfigOpener(malformedMarker: string): string {
+		return (
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`${malformedMarker}\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`
+		);
+	}
+
+	/**
+	 * Build a body where the config closer is replaced by the given malformed marker.
+	 * All other eleven recognized markers are correctly present and paired.
+	 */
+	function bodyWithMalformedConfigCloser(malformedMarker: string): string {
+		return (
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n${malformedMarker}\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`
+		);
+	}
+
+	/**
+	 * Build a body where the update-playbook opener is replaced by the given malformed marker.
+	 * All other eleven recognized markers are correctly present and paired.
+	 */
+	function bodyWithMalformedUpdatePlaybookOpener(malformedMarker: string): string {
+		return (
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`${malformedMarker}\nSome update playbook.\n<!-- aide-update-playbook-end -->\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`
+		);
+	}
+
+	/**
+	 * Build a body where the update-playbook closer is replaced by the given malformed marker.
+	 * All other eleven recognized markers are correctly present and paired.
+	 */
+	function bodyWithMalformedUpdatePlaybookCloser(malformedMarker: string): string {
+		return (
+			`<!-- aide-orientation-start -->\nSome orientation.\n<!-- aide-orientation-end -->\n\n` +
+			`<!-- aide-config-start -->\nSome config.\n<!-- aide-config-end -->\n\n` +
+			`<!-- aide-playbook-index-start -->\nSome playbook index.\n<!-- aide-playbook-index-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-update-playbook-start -->\nSome update playbook.\n${malformedMarker}\n\n` +
+			`<!-- aide-research-index-start -->\nSome research index.\n<!-- aide-research-index-end -->\n`
+		);
+	}
+
+	const newSectionMalformedCases: Array<[string, string, string]> = [
+		[
+			"uppercase config-start: <!-- AIDE-CONFIG-START -->",
+			bodyWithMalformedConfigOpener("<!-- AIDE-CONFIG-START -->"),
+			"unknown marker: <!-- AIDE-CONFIG-START -->",
+		],
+		[
+			"typo in config-end: <!-- aide-config-ennd -->",
+			bodyWithMalformedConfigCloser("<!-- aide-config-ennd -->"),
+			"unknown marker: <!-- aide-config-ennd -->",
+		],
+		[
+			"typo in update-playbook-start: <!-- aide-update-playbook-strart -->",
+			bodyWithMalformedUpdatePlaybookOpener("<!-- aide-update-playbook-strart -->"),
+			"unknown marker: <!-- aide-update-playbook-strart -->",
+		],
+		[
+			"uppercase update-playbook-end: <!-- AIDE-UPDATE-PLAYBOOK-END -->",
+			bodyWithMalformedUpdatePlaybookCloser("<!-- AIDE-UPDATE-PLAYBOOK-END -->"),
+			"unknown marker: <!-- AIDE-UPDATE-PLAYBOOK-END -->",
+		],
+	];
+
+	it.each(newSectionMalformedCases)("%s → malformed-body with unknown marker reason", async (_description, body, expectedReason) => {
+		const content = validFrontmatter + body;
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("malformed-body");
+		if (result.kind !== "malformed-body") return;
+		expect(result.reason).toBe(expectedReason);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 4h. Strict-failure migration: four-pair pre-rework body.
+//
+// A brain.aide carrying the four pre-rework marker pairs in their correct relative
+// order — aide-prose-*, aide-playbook-*, aide-study-playbook-*, aide-research-* —
+// returns malformed-body listing every new marker that is missing or retired-named.
+//
+// The retired marker tokens (aide-prose-*, aide-playbook-* without -index, and
+// aide-research-* without -index) are NOT in the candidate regex alternation after
+// the Step 2d update, so they fall through to the missing-markers check along with
+// the brand-new aide-config-* and aide-update-playbook-* pairs. The studyPlaybook
+// pair carries through unchanged, so its markers are NOT listed as missing.
+//
+// Expected reason lists ten markers in fixed scan order (five pairs × two tokens):
+//   orientation-start, orientation-end, config-start, config-end,
+//   playbook-index-start, playbook-index-end,
+//   update-playbook-start, update-playbook-end,
+//   research-index-start, research-index-end.
+// ---------------------------------------------------------------------------
+
+describe("4h — strict-failure migration: four-pair pre-rework body", () => {
+	it("four-pair pre-rework body (prose + playbook + studyPlaybook + research, using retired marker names) returns malformed-body listing the ten new/renamed markers as missing", async () => {
+		const validFrontmatter =
+			`---\nname: my-brain\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\n    - "D:/brains/my-brain"\n---\n\n`;
+
+		// The four pre-rework pairs in correct relative order.
+		// aide-study-playbook-* carries through unchanged — it is the only pair the user
+		// already has by the correct name and is therefore NOT listed as missing.
+		// The retired aide-prose-*, aide-playbook-* (without -index), and aide-research-*
+		// (without -index) tokens are no longer in the candidate regex alternations after
+		// Step 2d, so they fall through to the missing-markers check.
+		const fourPairBody =
+			`<!-- aide-prose-start -->\nSome prose content.\n<!-- aide-prose-end -->\n\n` +
+			`<!-- aide-playbook-start -->\nSome playbook content.\n<!-- aide-playbook-end -->\n\n` +
+			`<!-- aide-study-playbook-start -->\nSome study playbook content.\n<!-- aide-study-playbook-end -->\n\n` +
+			`<!-- aide-research-start -->\nSome research content.\n<!-- aide-research-end -->\n`;
+
+		await writeBrainAide(tempDir, validFrontmatter + fourPairBody);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("malformed-body");
+		if (result.kind !== "malformed-body") return;
+		// The reason lists every new/renamed marker the user must add, in fixed scan order.
+		// studyPlaybook is NOT listed — the user already has that pair by the correct name.
+		expect(result.reason).toBe(
+			"missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->, <!-- aide-config-start -->, <!-- aide-config-end -->, <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->, <!-- aide-update-playbook-start -->, <!-- aide-update-playbook-end -->, <!-- aide-research-index-start -->, <!-- aide-research-index-end -->",
+		);
 	});
 });

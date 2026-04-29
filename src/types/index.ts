@@ -529,22 +529,33 @@ export type BrainAideConfig = {
  * The discriminant is `kind`. Consumers narrow on `kind` to handle each outcome:
  *
  * - `"ok"` — the file was found, frontmatter parsed cleanly, all required fields
- *   validated, and the body contained exactly the four required marker-pair
- *   sections in their required order. `config` is the full parsed frontmatter.
- *   `prose`, `playbook`, `studyPlaybook`, and `research` each carry the verbatim
- *   bytes between their opening marker and matching closing marker — byte-identical
- *   to what the user wrote between those bounds. No substitution runs on any body
- *   field.
+ *   validated, and the body contained exactly the six required marker-pair sections
+ *   in their required order. `name` and `mcpServerConfig` are the flattened
+ *   frontmatter fields sitting as siblings of the body fields. `orientation`,
+ *   `config`, `playbookIndex`, `studyPlaybook`, `updatePlaybook`, and `researchIndex`
+ *   each carry the verbatim bytes between their opening marker and matching closing
+ *   marker — byte-identical to what the user wrote between those bounds. No
+ *   substitution runs on any body field.
  *
- *   The four recognized marker pairs, in required order:
- *   - `<!-- aide-prose-start -->` / `<!-- aide-prose-end -->`
- *   - `<!-- aide-playbook-start -->` / `<!-- aide-playbook-end -->`
+ *   The six recognized marker pairs, in required order:
+ *   - `<!-- aide-orientation-start -->` / `<!-- aide-orientation-end -->`
+ *     (`orientation` carries the verbatim bytes between these markers, byte-identical
+ *     to user input, with no substitution applied.)
+ *   - `<!-- aide-config-start -->` / `<!-- aide-config-end -->`
+ *     (`config` carries the verbatim bytes between these markers, byte-identical
+ *     to user input, with no substitution applied.)
+ *   - `<!-- aide-playbook-index-start -->` / `<!-- aide-playbook-index-end -->`
+ *     (`playbookIndex` carries the verbatim bytes between these markers, byte-identical
+ *     to user input, with no substitution applied.)
  *   - `<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->`
- *   - `<!-- aide-research-start -->` / `<!-- aide-research-end -->`
- *
- *   `studyPlaybook` carries the verbatim bytes between
- *   `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->`,
- *   byte-identical to user input, with no substitution applied.
+ *     (`studyPlaybook` carries the verbatim bytes between these markers, byte-identical
+ *     to user input, with no substitution applied.)
+ *   - `<!-- aide-update-playbook-start -->` / `<!-- aide-update-playbook-end -->`
+ *     (`updatePlaybook` carries the verbatim bytes between these markers, byte-identical
+ *     to user input, with no substitution applied.)
+ *   - `<!-- aide-research-index-start -->` / `<!-- aide-research-index-end -->`
+ *     (`researchIndex` carries the verbatim bytes between these markers, byte-identical
+ *     to user input, with no substitution applied.)
  *
  *   Marker tokens are lowercase, case-sensitive, with the literal shape
  *   `<!-- <token>-start -->` / `<!-- <token>-end -->` exactly. Bytes outside any
@@ -564,9 +575,9 @@ export type BrainAideConfig = {
  * - `"malformed-body"` — frontmatter is valid but the body fails the closed
  *   marker-pair grammar. `reason` names the violating marker. Violation classes:
  *   - Missing pair → `"missing markers: <opener>, <closer>"` (lists every absent
- *     marker in fixed prose-then-playbook-then-studyPlaybook-then-research scan
- *     order, open before close within each section; any of the four required pairs
- *     missing produces this form).
+ *     marker in fixed orientation-then-config-then-playbookIndex-then-studyPlaybook-
+ *     then-updatePlaybook-then-researchIndex scan order, open before close within
+ *     each section; any of the six required pairs missing produces this form).
  *   - Malformed or typo'd marker token (uppercase, mixed-case, missing internal
  *     spaces, extra internal whitespace, typo, missing `aide-` prefix) →
  *     `"unknown marker: <as-written>"`.
@@ -575,7 +586,9 @@ export type BrainAideConfig = {
  *   - Opening marker without a closer →
  *     `"unmatched opening marker: <opener> has no matching <expected-closer>"`.
  *   - Wrong section order →
- *     `"marker order violation: <out-of-order-opener> appeared before <expected-prior-opener>"`.
+ *     `"marker order violation: <out-of-order-opener> appeared before <expected-prior-opener>"`
+ *     (e.g. `<!-- aide-update-playbook-start -->` appearing before
+ *     `<!-- aide-study-playbook-start -->`).
  *   - Nested markers (any marker inside another pair's opener-closer span) →
  *     `"nested marker: <inner-opener> appeared inside the <outer-token> section"`.
  *
@@ -584,7 +597,25 @@ export type BrainAideConfig = {
  *   `cli/sync` to compose branch-specific remediation prose.
  */
 export type ParseBrainAideResult =
-	| { kind: "ok"; config: BrainAideConfig; prose: string; playbook: string; studyPlaybook: string; research: string }
+	| {
+			kind: "ok";
+			/** User-supplied descriptive label from brain.aide frontmatter; never dispatched on by the package. */
+			name: string;
+			/** MCP server configuration from brain.aide frontmatter, with args that may contain `${name}` placeholders. */
+			mcpServerConfig: BrainAideMcpServerConfig;
+			/** Verbatim bytes between `<!-- aide-orientation-start -->` and `<!-- aide-orientation-end -->`, byte-identical to user input, no substitution. */
+			orientation: string;
+			/** Verbatim bytes between `<!-- aide-config-start -->` and `<!-- aide-config-end -->`, byte-identical to user input, no substitution. */
+			config: string;
+			/** Verbatim bytes between `<!-- aide-playbook-index-start -->` and `<!-- aide-playbook-index-end -->`, byte-identical to user input, no substitution. */
+			playbookIndex: string;
+			/** Verbatim bytes between `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->`, byte-identical to user input, no substitution. */
+			studyPlaybook: string;
+			/** Verbatim bytes between `<!-- aide-update-playbook-start -->` and `<!-- aide-update-playbook-end -->`, byte-identical to user input, no substitution. */
+			updatePlaybook: string;
+			/** Verbatim bytes between `<!-- aide-research-index-start -->` and `<!-- aide-research-index-end -->`, byte-identical to user input, no substitution. */
+			researchIndex: string;
+	  }
 	| { kind: "missing" }
 	| { kind: "malformed-frontmatter"; reason: string }
 	| { kind: "malformed-body"; reason: string };
