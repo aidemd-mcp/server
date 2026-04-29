@@ -24,12 +24,12 @@ import { platform } from "node:os";
  *
  * 2. **`<!-- aide-config-start -->`** — Integration-specific wiring flow for
  *    `/aide:brain config`. Describes how to read `brain.aide`, detect YAML null
- *    at `args[3]` as the unwired-state signal, decide the target path (from
- *    `$ARGUMENTS`, interactively, or STOP if already wired), edit `brain.aide`
- *    to replace null with the absolute path, run sync, seed the four entry-point
- *    artifacts via `mcp__brain__write_note`, and emit the restart message. Read
- *    live by `aide_brain({ kind: "config" })` at runtime. User-editable
- *    post-scaffold.
+ *    at the last entry of `mcpServerConfig.args` as the unwired-state signal,
+ *    decide the target path (from `$ARGUMENTS`, interactively, or STOP if already
+ *    wired), edit `brain.aide` to replace null with the absolute path, run sync
+ *    via the agent's Bash tool, seed the four entry-point artifacts via
+ *    `mcp__brain__write_note`, and emit the restart message. Read live by
+ *    `aide_brain({ kind: "config" })` at runtime. User-editable post-scaffold.
  *
  * 3. **`<!-- aide-playbook-index-start -->`** — Seed bytes for the coding-playbook
  *    entry-point file scaffolded into the user's brain on cold install
@@ -111,40 +111,93 @@ export default function obsidianBrainAideTemplate(): string {
 		`<!-- aide-config-start -->\n` +
 		`\n` +
 		`You are completing the wiring of an Obsidian brain. The required value is the\n` +
-		`absolute path to the user's Obsidian vault, to be placed at \`args[3]\` of\n` +
-		`\`mcpServerConfig.args\` in \`brain.aide\`. YAML null at \`args[3]\` is the\n` +
+		`absolute path to the user's Obsidian vault, to be placed at the last entry of\n` +
+		`\`mcpServerConfig.args\` in \`brain.aide\`. YAML null at that position is the\n` +
 		`unwired-state signal — it means the brain path has not yet been filled in.\n` +
 		`\n` +
-		`Argument shape (Obsidian only): \`/aide:brain config [<absolute-path>]\`. When\n` +
-		`\`$ARGUMENTS\` is non-empty, treat it as the absolute path the user wants to wire\n` +
-		`(initial wiring) or re-wire to (re-point). Empty \`$ARGUMENTS\` means "ask\n` +
-		`interactively" on a fresh wire and "STOP, nothing to do" against an already-wired\n` +
-		`brain.\n` +
+		`Argument shape (Obsidian only): \`/aide:brain config [<absolute-path>]\`.\n` +
 		`\n` +
-		`1. Read \`brain.aide\`. Inspect \`mcpServerConfig.args[3]\`.\n` +
-		`   YAML null at that position means un-wired; any string value means already wired.\n` +
-		`2. Decide the target path:\n` +
-		`   - \`$ARGUMENTS\` non-empty → use it as the target path.\n` +
-		`   - \`$ARGUMENTS\` empty AND \`null at args[3]\` → ask the user where\n` +
-		`     their vault lives. Use \`AskUserQuestion\` with \`aide_info.brain.hints\` as\n` +
-		`     suggestions plus a "Different location" entry.\n` +
-		`   - \`$ARGUMENTS\` empty AND current entry is a real path → STOP, nothing to do.\n` +
-		`3. Edit \`brain.aide\` — replace the null at \`args[3]\` with the absolute path.\n` +
-		`4. Sync — read \`.mcp.json["mcpServers"]["aide"]\`, take its command and args, append\n` +
-		`   \`"sync"\`, run via Bash. On exit 0 continue; on non-zero surface stderr and stop.\n` +
-		`5. Seed the four entry-point artifacts into the brain. Read \`brain.aide\` via the\n` +
-		`   brain's read tool. For each artifact listed below that does not already exist,\n` +
-		`   write it via \`mcp__brain__write_note\` at the named path using the seed bytes\n` +
-		`   from brain.aide's corresponding section (read via parseBrainAide's typed keys):\n` +
+		`This flow has two paths that NEVER overlap in the same session: WIRING and\n` +
+		`SEEDING. Wiring edits \`brain.aide\` and runs sync, then STOPS — the brain MCP\n` +
+		`server only loads at session start, so any newly-wired brain entry is\n` +
+		`unreachable until the user restarts Claude Code. Seeding writes the\n` +
+		`entry-point artifacts via the brain MCP tools, which only works when the brain\n` +
+		`is already wired AND the session has the brain MCP server loaded — i.e., on a\n` +
+		`run AFTER the wiring restart.\n` +
+		`\n` +
+		`1. **Read \`brain.aide\` now and quote the last entry of \`mcpServerConfig.args\`.**\n` +
+		`   Open \`brain.aide\` and locate the final entry in the \`mcpServerConfig.args\`\n` +
+		`   list. Quote the literal value you observe — either YAML null (an empty entry,\n` +
+		`   written as a bare dash with no value) or a string. **Do not proceed without\n` +
+		`   quoting it.** YAML null means un-wired; any string value means already wired.\n` +
+		`\n` +
+		`2. Decide which flow runs:\n` +
+		`   - \`$ARGUMENTS\` non-empty → **WIRING** flow. Use \`$ARGUMENTS\` as the target\n` +
+		`     path (initial wiring or re-point). Proceed to Step 3.\n` +
+		`   - \`$ARGUMENTS\` empty AND last entry is YAML null → **WIRING** flow. Ask the\n` +
+		`     user where their vault lives via \`AskUserQuestion\` with \`aide_info.brain.hints\`\n` +
+		`     as suggestions plus a "Different location" entry. Use the answer as the\n` +
+		`     target path. Proceed to Step 3.\n` +
+		`   - \`$ARGUMENTS\` empty AND last entry is a string path → **SEEDING** flow.\n` +
+		`     The brain is already wired; skip Steps 3 and 4 entirely and jump to Step 5.\n` +
+		`\n` +
+		`### WIRING flow — Steps 3, 4 (then STOP at end of 4)\n` +
+		`\n` +
+		`3. Edit \`brain.aide\` — replace the null at the last entry of \`mcpServerConfig.args\`\n` +
+		`   with the absolute path.\n` +
+		`\n` +
+		`4. **Run sync now via Bash.** Read \`.mcp.json["mcpServers"]["aide"]\`, take its\n` +
+		`   \`command\` and \`args\`, append the literal string \`"sync"\`, and execute the\n` +
+		`   resulting command via the Bash tool. Quote the exit code. On non-zero, surface\n` +
+		`   stderr and stop. On exit 0:\n` +
+		`\n` +
+		`   **STOP HERE in the WIRING flow.** Do not proceed to Step 5 in the same\n` +
+		`   session. The brain MCP server was not loaded at session start (it did not\n` +
+		`   exist yet), and sync just wrote the entry; the running session cannot see\n` +
+		`   it. Emit this message verbatim and end the flow:\n` +
+		`\n` +
+		`   > Sync wrote the brain entry. Restart Claude Code so the brain MCP server\n` +
+		`   > picks up the new entry, then re-run \`/aide:brain config\` to seed the\n` +
+		`   > entry-point artifacts into your brain.\n` +
+		`\n` +
+		`   **Do not output the sync command for the user to run** — \`/aide:brain config\`\n` +
+		`   completes wiring inside the slash-command session, never by handing the user\n` +
+		`   a homework command.\n` +
+		`\n` +
+		`### SEEDING flow — Step 5\n` +
+		`\n` +
+		`5. **Seed the four entry-point artifacts into the brain via the brain MCP tools.**\n` +
+		`\n` +
+		`   First verify the brain MCP write/list tools are available in this session\n` +
+		`   (\`mcp__brain__write_note\`, \`mcp__brain__list_directory\`, etc.). If they are\n` +
+		`   NOT available, the brain MCP server has not been loaded in this session. Emit\n` +
+		`   this message verbatim and STOP:\n` +
+		`\n` +
+		`   > The brain MCP server is not loaded in this session. Restart Claude Code,\n` +
+		`   > then re-run \`/aide:brain config\` to seed the entry-point artifacts.\n` +
+		`\n` +
+		`   **Never fall back to native filesystem tools** (Read, Write, Bash \`ls\`,\n` +
+		`   Glob, etc.) to inspect or write the brain. The brain is a backend-agnostic\n` +
+		`   abstraction; the filesystem is just one possible backing store. Other backends\n` +
+		`   (hosted, Mem0, etc.) have no local filesystem at all. If the brain MCP tools\n` +
+		`   are unreachable, the correct response is to STOP and ask the user to restart,\n` +
+		`   never to improvise via the filesystem.\n` +
+		`\n` +
+		`   When the brain MCP tools ARE available, for each artifact below: presence-check\n` +
+		`   via \`mcp__brain__list_directory\` (or read tool) at the named path; if absent,\n` +
+		`   write it via \`mcp__brain__write_note\` using the seed bytes from brain.aide's\n` +
+		`   corresponding section (read via parseBrainAide's typed keys):\n` +
 		`   - \`playbookIndex\` → \`coding-playbook/coding-playbook.md\`\n` +
 		`   - \`studyPlaybook\` → \`coding-playbook/study-playbook.md\`\n` +
 		`   - \`updatePlaybook\` → \`coding-playbook/update-playbook.md\`\n` +
 		`   - \`researchIndex\` → \`research/research.md\`\n` +
-		`   For any artifact that already exists, skip it (presence-only check — do not\n` +
-		`   overwrite user-edited content). On subsequent \`/aide:brain config\` runs this\n` +
-		`   same loop seeds any artifact that was deleted or is missing.\n` +
-		`6. Emit the restart message verbatim: "Sync wrote the brain entry. Restart Claude\n` +
-		`   Code so the brain MCP server picks up the new entry, then re-run /aide."\n` +
+		`   Skip any artifact that already exists (presence-only check — do not overwrite\n` +
+		`   user-edited content).\n` +
+		`\n` +
+		`   After the seeding loop completes, emit a brief completion summary naming\n` +
+		`   each artifact and whether it was seeded or already present. Do not emit a\n` +
+		`   restart message — the brain is fully wired and seeded; the user can now use\n` +
+		`   \`/aide\` normally.\n` +
 		`\n` +
 		`<!-- aide-config-end -->\n` +
 		`\n` +

@@ -472,14 +472,14 @@ describe("config section ships the Obsidian wiring flow", () => {
 		expect(result.config).toContain("YAML null");
 	});
 
-	it("config describes null at args[3] as the unwired-state signal", async () => {
+	it("config describes the last entry of mcpServerConfig.args as the unwired-state signal", async () => {
 		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config).toContain("args[3]");
+		expect(result.config).toContain("last entry of `mcpServerConfig.args`");
 	});
 
 	it("config mentions /aide:brain config (the argument shape for Obsidian wiring)", async () => {
