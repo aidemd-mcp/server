@@ -848,37 +848,54 @@ storage shape), those artifacts land at
 they manifest in any other storage is the user's `brain.aide`
 concern, not the package's. Every artifact's bytes flow from a body
 section through the parser, never from a code-level constant. Once
-the install service has scaffolded an artifact into the brain, the
-brain owns it: subsequent edits happen in the brain file, not in the
-seed section, and the package never re-reads or re-overwrites the
-on-disk artifact on later runs.
+the integration's `config` body section prose has seeded an artifact
+into the brain, the brain owns it: subsequent edits happen in the
+brain file, not in the seed section, and no shipped code path
+re-reads or re-overwrites the on-disk artifact on later runs.
+`provisionBrain` itself never writes these artifacts — the package's
+code path stops at scaffolding the bundled `brain.aide` template plus
+planning the `.mcp.json` brain entry; everything downstream of that
+lives in user-owned prose.
 
-Brain wiring is delegated to the first `/aide` run after install,
-not done at install time. The cold-install CLI is argument-less and
-brain-agnostic: `npx aidemd-mcp init` accepts no brain-shaped flag
-of any kind. It installs the methodology layer only (methodology
-docs, pipeline agent files, slash commands, skills, the framework
-pointer stub, the IDE preview wiring) and touches no brain surface:
-it does not write `.aide/config/brain.aide`, does not write a
-`.mcp.json` brain entry, does not call the brain provisioner, does
-not create the brain root directory, does not ask the user for any
-backend-specific value. The cold install's terminal warning routes
-the user to `/aide:brain config` for brain wiring, and that is the
-surface where wiring happens.
+Brain MCP wiring and entry-point artifact seeding are delegated to
+the first `/aide` run after install, not done at install time. The
+cold-install CLI accepts exactly one optional argument — `--brain
+<integration>`, defaulting to `obsidian` — that selects which bundled
+`brain.aide` template scaffolds. It installs the methodology layer
+(methodology docs, pipeline agent files, slash commands, skills, the
+framework pointer stub, the IDE preview wiring), writes the bundled
+`brain.aide` template selected by `--brain` into
+`.aide/config/brain.aide` with YAML null at every unwired slot in
+`mcpServerConfig.args`, and writes the `aide` MCP server entry into
+`.mcp.json`. It does NOT write a `.mcp.json` entry under
+`mcpServers["brain"]`. It does NOT scaffold any of the four
+entry-point artifacts. It does NOT create the brain root directory.
+It does NOT ask the user for a brain path, an API token, a connection
+URI, a brain name, or any other backend-specific value at install
+time. The single sanctioned brain-shaped argument — `--brain
+<integration>` — selects WHICH bundled template scaffolds; it does
+not collect a backend-specific value. The cold install's terminal
+warning routes the user to `/aide:brain config` for the brain MCP
+entry and entry-point artifact seeding, and that is the surface
+where wiring happens.
 
 `/aide:brain config` is a thin router that calls `aide_init({
 category: "brain" })` unconditionally on every invocation. The call
 is not gated on the brain's status, not branched on whether
-`brain.aide` already exists, not skipped when entry-point files are
-already on disk. The unconditional call is what makes missing-file
-recovery self-heal: a user who deleted a seed artifact, whose prior
-install was interrupted, or whose template version added a section
-gets the missing artifacts re-seeded in place by the brain
-provisioner's presence-only idempotency on every `/aide:brain
-config` invocation. After the unconditional call, the router pulls
-the integration's wiring prose via `aide_brain({ kind: "config" })`
-and executes the returned instructions verbatim, forwarding any
-user `$ARGUMENTS` opaquely. The shipped command never parses
+`brain.aide` already exists, not skipped when entry-point seed
+artifacts already exist on disk. The unconditional call is what
+enables missing-`brain.aide` recovery: `provisionBrain`'s
+presence-only idempotency re-scaffolds the bundled template in place
+when absent, without touching an existing one. Missing entry-point
+artifact recovery is a separate self-heal loop owned by the
+integration's `config` body section prose: the prose's seeding step
+runs every `/aide:brain config`, presence-checks each of the four
+entry-point artifacts in the brain, and re-seeds any that are
+missing from the seed-section bytes — `provisionBrain` plays no part
+in entry-point recovery. After the unconditional call, the router
+pulls the integration's wiring prose via `aide_brain({ kind:
+"config" })` and executes the returned instructions verbatim,
+forwarding any user `$ARGUMENTS` opaquely. The shipped command never parses
 `$ARGUMENTS`, never branches on backend identity, never hardcodes a
 backend's argument shape — the integration's `config` body section
 is the only place that documents what users can put after
@@ -1087,28 +1104,37 @@ consistency-with-study-playbook decision is load-bearing precisely
 because the user's mental model for "where do I edit this" must
 extend cleanly across both methodologies.
 
-**The cold-install CLI is argument-less and brain-agnostic.** `npx
-aidemd-mcp init` accepts no brain-shaped flag of any kind. It
-installs the methodology layer only — methodology docs, pipeline
-agent files, slash commands, skills, the framework pointer stub, and
-the IDE preview wiring — and touches no brain surface. It does not
-write `.aide/config/brain.aide`. It does not write a `.mcp.json`
-entry under `mcpServers["brain"]`. It does not call the brain
-provisioner. It does not create the brain root directory. It does
-not ask the user for a brain path, an API token, or any other
-backend-specific value. Brain wiring is a separate user-driven
-action on the first `/aide` run, and the cold install's terminal
-warning routes the user there explicitly. Splitting wiring out of
-install is what lets the install path stay backend-agnostic across
-the catalog of brains the user could possibly wire — an install path
-that knows about path slots is an install path that has to know
-about token slots, page-id slots, and connection-uri slots the
-moment the catalog grows. Future integration-selection at install
-time (an `npx aidemd-mcp init --brain <integration>` form that
-selects which bundled template scaffolds on first config) is a
-forward-compatible extension that still leaves slot-filling to
-`/aide:brain config` — the install path never collects
-backend-specific values.
+**The cold-install CLI takes one optional integration-selector
+argument and writes the bundled `brain.aide` template, but never
+collects backend-specific values.** `npx aidemd-mcp init` accepts
+exactly one optional argument — `--brain <integration>`, defaulting
+to `obsidian` — and no other arguments of any kind, ever. It
+installs the methodology layer (methodology docs, pipeline agent
+files, slash commands, skills, the framework pointer stub, the IDE
+preview wiring), writes the bundled `brain.aide` template selected
+by `--brain` into `.aide/config/brain.aide` with YAML null at every
+unwired slot, and writes the `aide` MCP server entry into
+`.mcp.json` under `mcpServers["aide"]`. It does NOT write a
+`.mcp.json` entry under `mcpServers["brain"]`. It does NOT scaffold
+any of the four entry-point artifacts. It does NOT create the brain
+root directory. It does NOT call any seeding code path. It does NOT
+ask the user for a brain path, an API token, a connection URI, a
+brain name, a brain URL, or any other backend-specific value at
+install time. The single sanctioned brain-shaped argument — `--brain
+<integration>` — selects WHICH bundled template scaffolds; it does
+not collect a backend-specific value. Brain MCP entry wiring and
+entry-point artifact seeding are separate user-driven actions on the
+first `/aide` run, and the cold install's terminal warning routes
+the user to `/aide:brain config` explicitly. Splitting backend-value
+collection out of install is what lets the install path stay
+backend-agnostic across the catalog of brains the user could
+possibly wire — an install path that knows about path slots is an
+install path that has to know about token slots, page-id slots, and
+connection-uri slots the moment the catalog grows. The `--brain
+<integration>` argument is forward-compatible: future integrations
+land their own bundled templates and become valid `--brain` values
+without changing the install path's contract that no
+backend-specific value is ever collected at cold start.
 
 **Brain wiring is `/aide:brain config`'s job, and `aide_init({
 category: "brain" })` is unconditional inside that router.** The
@@ -1116,18 +1142,27 @@ shipped `/aide:brain config` calls `aide_init({ category: "brain"
 })` at the top of every invocation. The call is not gated on the
 brain's status, not branched on whether `brain.aide` already exists,
 not skipped when entry-point seed artifacts already exist on disk.
-The unconditional call is what makes missing-file recovery
-self-heal: the brain provisioner's presence-only idempotency
-re-seeds any missing artifact in place without touching anything
-that already exists. After the unconditional call the router pulls
-integration-specific wiring instructions via `aide_brain({ kind:
-"config" })` and executes them verbatim, forwarding any user
-`$ARGUMENTS` opaquely. Folding recovery into `config`'s preamble
-keeps the brain command surface minimal at one verb — there is no
-`doctor`, no `repair`, no `status` subcommand the agent has to know
-to invoke. A conditional call would push recovery into a separate
-verb the user and agent both have to discover; the unconditional
-call hides recovery behind the verb they already know to run.
+The unconditional call is what makes missing-`brain.aide` recovery
+self-heal: `provisionBrain`'s presence-only idempotency re-scaffolds
+the bundled template in place when absent, without touching an
+existing one. `provisionBrain`'s pipeline shrinks to exactly two
+`InitStep`s — scaffold `.aide/config/brain.aide` from the bundled
+template, and plan the `.mcp.json` brain entry — and writes nothing
+else. Missing entry-point artifact recovery is owned by a different
+self-heal loop entirely: the integration's `config` body section
+prose runs a presence-check on each of the four entry-point
+artifacts in the brain on every `/aide:brain config` invocation and
+re-seeds any that are missing from the seed-section bytes via the
+brain's own MCP write tool. After the unconditional `aide_init`
+call, the router pulls integration-specific wiring instructions via
+`aide_brain({ kind: "config" })` and executes them verbatim,
+forwarding any user `$ARGUMENTS` opaquely. Folding recovery into
+`config`'s preamble keeps the brain command surface minimal at one
+verb — there is no `doctor`, no `repair`, no `status` subcommand the
+agent has to know to invoke. A conditional call would push recovery
+into a separate verb the user and agent both have to discover; the
+unconditional call hides recovery behind the verb they already know
+to run.
 
 **YAML null is the unwired-slot signal, not a string.** The bundled
 template's `mcpServerConfig.args` is typed `(string | null)[]` —
@@ -1240,42 +1275,49 @@ missing marker, plus the user hand-editing, is the only acceptable
 migration path.
 
 **Storage-agnostic vocabulary across every code surface this package
-authors, with four explicit carve-outs and no fifth.** The forbidden
-tokens — `vault`, `obsidian`, `note` (as a synonym for "file"),
-`wikilink`, `hub note`, `hub` — must not appear in any user-facing
-prose surface this package authors (MCP tool descriptions, the
-README, canonical methodology docs, slash-command prompts, agent
-definitions, every `.aide` spec authored in this repo) nor in code
-identifiers, comments, or string constants project-wide. The four
-allowed exceptions each name a legitimate non-branching anchor: the
+authors, with three explicit carve-outs plus one user-facing argument
+value, and no further exceptions.** The forbidden tokens — `vault`,
+`obsidian`, `note` (as a synonym for "file"), `wikilink`, `hub note`,
+`hub` — must not appear in any user-facing prose surface this
+package authors (MCP tool descriptions, the README, canonical
+methodology docs, slash-command prompts, agent definitions, every
+`.aide` spec authored in this repo) nor in code identifiers,
+comments, or string constants project-wide. The three allowed
+exceptions each name a legitimate non-branching anchor: the
 `obsidianBrainAideTemplate` helper folder name (describes bundled
 template content, not a dispatch axis), the `.obsidian` directory
 heuristic comment in `brainRootExists` (an honestly-labeled
-implementation detail in a single helper), the legacy `obsidian`
-MCP key referenced inside migration branches (the key being
-migrated away from), and the body section bytes of the bundled
-`obsidianBrainAideTemplate` helper itself across all six named
-sections. The fourth carve-out exists because the bundled template
-IS the obsidian default: those bytes ship obsidian-flavored
-content by design across every section, they become user-owned the
-moment they are scaffolded onto disk or seeded into the brain, and
-any host that wires a different brain edits the section bytes in
-their own `brain.aide`. The bundled-template-body-bytes carve-out
-is scoped exactly: it covers the bytes inside the template's body
-section literals only — NOT the JSDoc, identifiers, parameter
-names, or function names in the template module's `index.ts`, NOT
-string constants anywhere outside the body section literals, NOT
-anti-example bullets in undesired-outcome blocks (those have their
-own anti-example carve-out), and NOT any other bundled template
-should one ever exist unless it is explicitly named as another
-connector-flavored default. Anti-example occurrences inside
-undesired-outcome blocks are also allowed — naming a forbidden
-token to forbid it is the mechanism, not a violation. The safe-list
-of storage-agnostic body-field names is exactly `orientation`,
-`config`, `playbookIndex`, `studyPlaybook`, `updatePlaybook`,
-`researchIndex`; the `Hub`-suffix regression class extends across
-every seed-section field. Every other appearance of the forbidden
-tokens, in code or prose, is a regression.
+implementation detail in a single helper), and the body section
+bytes of the bundled `obsidianBrainAideTemplate` helper itself
+across all six named sections. The third carve-out exists because
+the bundled template IS the obsidian default: those bytes ship
+obsidian-flavored content by design across every section, they
+become user-owned the moment they are scaffolded onto disk or
+seeded into the brain, and any host that wires a different brain
+edits the section bytes in their own `brain.aide`. Additionally,
+the integration name `obsidian` is permitted as a value of the
+`cli/init --brain <integration>` argument — a user-facing argument
+value that selects which bundled template scaffolds and never
+reaches a code dispatch axis. The legacy `mcpServers.obsidian`
+migration carve-out present pre-rework is dropped: legacy migration
+itself is dropped, and pre-rework hosts with that key keep it as
+user data, untouched by this package. The
+bundled-template-body-bytes carve-out is scoped exactly: it covers
+the bytes inside the template's body section literals only — NOT
+the JSDoc, identifiers, parameter names, or function names in the
+template module's `index.ts`, NOT string constants anywhere outside
+the body section literals, NOT anti-example bullets in
+undesired-outcome blocks (those have their own anti-example
+carve-out), and NOT any other bundled template should one ever
+exist unless it is explicitly named as another connector-flavored
+default. Anti-example occurrences inside undesired-outcome blocks
+are also allowed — naming a forbidden token to forbid it is the
+mechanism, not a violation. The safe-list of storage-agnostic
+body-field names is exactly `orientation`, `config`, `playbookIndex`,
+`studyPlaybook`, `updatePlaybook`, `researchIndex`; the
+`Hub`-suffix regression class extends across every seed-section
+field. Every other appearance of the forbidden tokens, in code or
+prose, is a regression.
 
 **Migration from the brain is one-way.** Every doc that lands in
 this repo is deleted or archived from the brain on the same commit.
@@ -1306,19 +1348,24 @@ edit in one file, full propagation, zero paraphrasing, and the stub
 inside each host's config file keeps pointing at the same hub path it
 always did.
 
-An agent in a cold host project is told only "run aide_init." It does,
-reads back a summary naming the pointer stub in the config file, the
-installed host-side doc hub with every canonical methodology doc by
-name, the pipeline slash commands, the MCP registration, and the
-IDE configuration, plus a terminal warning that brain wiring still
-needs to happen via `/aide:brain config` on the first `/aide` run.
-At no point in that sequence did a human tell the agent what AIDE
-is, what a `.aide` file is, or how the phases fit together — every
-piece came through the tooling. The summary is honest about what the
-install did and did not do: the methodology layer is in place,
-`brain.aide` does not yet exist, the `.mcp.json` brain entry has not
-been written, and the next step is the user-facing one the warning
-named.
+An agent in a cold host project is told only "run aide_init." It
+does, reads back a summary naming the pointer stub in the config
+file, the installed host-side doc hub with every canonical
+methodology doc by name, the pipeline slash commands, the MCP
+registration of the `aide` server, the bundled `brain.aide`
+template scaffolded into `.aide/config/brain.aide` with YAML null
+at the unwired slot, and the IDE configuration, plus a terminal
+warning that the brain MCP entry and the four entry-point artifacts
+still need to be wired via `/aide:brain config` on the first
+`/aide` run. At no point in that sequence did a human tell the
+agent what AIDE is, what a `.aide` file is, or how the phases fit
+together — every piece came through the tooling. The summary is
+honest about what the install did and did not do: the methodology
+layer plus the bundled `brain.aide` template plus the `aide` MCP
+server entry are in place; the `.mcp.json` brain entry has not been
+written, the four entry-point artifacts have not been seeded, the
+brain root directory has not been created, and the next step is
+the user-facing one the warning named.
 
 An agent opens a host project to implement a new feature unrelated to
 AIDE. Its first read is the host's config file, which contains a short
@@ -1342,39 +1389,35 @@ between methodology phases and tools, client parity, idempotency,
 progressive disclosure in the code, cascading intent in the spec.
 A small number of reads, full contract, no source files opened.
 
-The user runs `npx aidemd-mcp init` in a brand-new host project. The
-CLI installs the methodology layer end-to-end: writes the pointer
-stub into the framework config file, lands the canonical methodology
-doc set under `.aide/docs/`, scaffolds the pipeline slash commands
-under `.claude/commands/aide/`, installs the pipeline agent files
-under `.claude/agents/aide/`, installs the generic `study-playbook`
-skill, writes the `aide` MCP server entry into `.mcp.json`, configures
-IDE preview wiring. It does not write `.aide/config/brain.aide`. It
-does not write a `.mcp.json` entry under `mcpServers["brain"]`. It
-does not create a brain root directory. The terminal output ends
+The user runs `npx aidemd-mcp init` in a brand-new host project.
+The CLI accepts no brain-shaped flag other than the optional
+`--brain <integration>` (defaulting to `obsidian` when omitted),
+and installs end-to-end: writes the pointer stub into the framework
+config file, lands the canonical methodology doc set under
+`.aide/docs/`, scaffolds the pipeline slash commands under
+`.claude/commands/aide/`, installs the pipeline agent files under
+`.claude/agents/aide/`, installs the generic `study-playbook`
+skill, scaffolds the bundled `brain.aide` template selected by
+`--brain` into `.aide/config/brain.aide` with YAML null at the
+unwired slot in `mcpServerConfig.args`, writes the `aide` MCP
+server entry into `.mcp.json` under `mcpServers["aide"]`, and
+configures IDE preview wiring. It does NOT write a `.mcp.json`
+entry under `mcpServers["brain"]`. It does NOT scaffold any of the
+four entry-point artifacts. It does NOT create the brain root
+directory. It does NOT ask the user for a brain path, a token, a
+URL, or any other backend-specific value. The terminal output ends
 with a warning that names `/aide:brain config` as the surface to
-run on first `/aide` to wire the brain, plus any IDE-choice or
-upgrade follow-ups the install deferred. The user closes the
-terminal knowing exactly what was done and what is left.
-
-The user runs `/aide` for the first time in the same project. The
-orchestrator reads boot state, sees brain status `no-brain-aide`,
-and routes to `/aide:brain config`. The shipped `/aide:brain config`
-router calls `aide_init({ category: "brain" })` unconditionally as
-its first step. The brain provisioner runs its presence-only
-idempotency check across its seven plan steps, and because nothing
-brain-shaped exists yet, it scaffolds `.aide/config/brain.aide`
-with the bundled obsidian default, ensures the brain root
-directories exist, seeds the four entry-point artifacts from the
-template's seed sections, and writes the `.mcp.json` brain entry
-derived from the scaffolded `brain.aide` via the parser. The
-scaffolded `brain.aide` lands with two top-level frontmatter fields
-and a body laid out as six marker-bounded sections in the required
-order — `orientation`, `config`, `playbookIndex`, `studyPlaybook`,
-`updatePlaybook`, `researchIndex` — each opened and closed by its
-own pair of HTML-comment markers. The frontmatter has YAML null at
-the path slot of `mcpServerConfig.args`, since the user has not yet
-supplied a brain root path:
+run on first `/aide` to fill the unwired slot and seed the four
+entry-point artifacts, plus any IDE-choice or upgrade follow-ups
+the install deferred. The user closes the terminal knowing exactly
+what was done and what is left. The scaffolded `brain.aide` lands
+with two top-level frontmatter fields and a body laid out as six
+marker-bounded sections in the required order — `orientation`,
+`config`, `playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+`researchIndex` — each opened and closed by its own pair of
+HTML-comment markers. The frontmatter has YAML null at the path
+slot of `mcpServerConfig.args`, since the user has not yet supplied
+a brain root path:
 
 ```
 ---
@@ -1491,32 +1534,55 @@ six-pair order. The body text inside each pair is connector-flavored
 by design here because the bundled template IS the obsidian default —
 the carve-out for the template's body section literals legitimately
 permits the obsidian vocabulary across all six sections. `aide_brain`
-reads the `orientation` and `config` sections live; the brain
-provisioner reads the `playbookIndex`, `studyPlaybook`,
-`updatePlaybook`, and `researchIndex` sections once at install time
-to scaffold the four entry-point artifacts inside the brain. After
-install, the brain owns those four files; the seed sections in
-`brain.aide` are dormant. The MCP entry the brain provisioner
-writes to `.mcp.json` is byte-faithful to `mcpServerConfig` from
-the scaffolded `brain.aide` — null at `args[3]` carries through to
-`.mcp.json` unchanged at this point, because filling the slot is
-the next user-facing step in the same flow, not a sync operation.
+reads the `orientation` and `config` sections live at runtime; the
+integration's `config` body section prose reads the `playbookIndex`,
+`studyPlaybook`, `updatePlaybook`, and `researchIndex` sections
+itself at first `/aide:brain config` (after the user fills the
+unwired slot and runs sync) to seed the four entry-point artifacts
+into the brain via the brain's own MCP write tool. `provisionBrain`
+itself never reads or writes those four sections — its code path
+stops at scaffolding `brain.aide` plus planning the `.mcp.json`
+brain entry. After the integration prose has seeded an entry-point
+artifact, the brain owns the on-disk file; the seed section in
+`brain.aide` is dormant. The provisioner's two-step pipeline is
+exactly that: scaffold `brain.aide`, then plan a `.mcp.json` brain
+entry derived from the scaffolded `brain.aide` via the parser. The
+planned MCP entry carries null at `args[3]` through unchanged at
+this stage; the actual `.mcp.json` write is sync's job, and sync
+will refuse the null arg until the user fills it.
 
-The same `/aide:brain config` invocation continues past its
-unconditional `aide_init` call: it pulls the integration's wiring
-instructions via `aide_brain({ kind: "config" })`, executes them
-verbatim with `$ARGUMENTS` forwarded. The integration's prose
-inspects `args[3]`, sees null, recognizes the user's
-`$ARGUMENTS` as the target absolute path (or asks for one if
-`$ARGUMENTS` is empty), edits `brain.aide` to replace null with
-the supplied path string, and runs sync via the `mcpServers.aide`
-invocation it pulled from `.mcp.json`. Sync reads the now-fully-
-populated `mcpServerConfig`, sees no null entries, writes the
-launch command into `.mcp.json` byte-for-byte, and exits clean.
+The user runs `/aide` for the first time in the same project. The
+orchestrator reads boot state, sees brain status `no-mcp-entry`
+(because `brain.aide` exists from the cold install but its
+`mcpServerConfig.args` carries null at the path slot, and
+`buildBrainState` collapses null-bearing args into `no-mcp-entry`),
+and routes to `/aide:brain config`. The shipped `/aide:brain
+config` router calls `aide_init({ category: "brain" })`
+unconditionally as its first step. `provisionBrain`'s presence-only
+idempotency check confirms `.aide/config/brain.aide` already
+exists (cold install scaffolded it) and leaves it untouched. The
+router then pulls the integration's wiring instructions via
+`aide_brain({ kind: "config" })` and executes them verbatim with
+`$ARGUMENTS` forwarded. The integration's prose inspects `args[3]`,
+sees null, recognizes the user's `$ARGUMENTS` as the target
+absolute path (or asks for one if `$ARGUMENTS` is empty), edits
+`brain.aide` to replace null with the supplied path string, and
+runs sync via the `mcpServers.aide` invocation it pulled from
+`.mcp.json`. Sync reads the now-fully-populated `mcpServerConfig`,
+sees no null entries, writes the launch command into `.mcp.json`
+byte-for-byte, and exits clean. The same prose then reads the four
+seed-section bytes from `brain.aide` via `parseBrainAide`'s typed
+keys (`playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+`researchIndex`), presence-checks the corresponding entry-point
+paths in the brain, and writes any missing ones via
+`mcp__brain__write_note` at the paths the prose names
+(`coding-playbook/coding-playbook.md`,
+`coding-playbook/study-playbook.md`,
+`coding-playbook/update-playbook.md`, `research/research.md`).
 The shipped `/aide:brain config` file never parsed the path
 argument, never named a backend, never inspected which arg index
-was the path slot — the integration's `config` prose did all of
-it.
+was the path slot, never wrote to the brain — the integration's
+`config` prose did all of it.
 
 An agent connects to the host's MCP server at session start and
 calls `aide_brain()` with no arguments. The tool defaults `kind` to
@@ -1753,23 +1819,35 @@ of storage-agnostic body-field names is exactly `orientation`,
 `researchIndex`; the `Hub` suffix is wrong wherever it lands.
 
 `cli/init` accepts a brain-shaped path flag that, when set, writes
-`.aide/config/brain.aide` with the supplied path inline in
-`mcpServerConfig.args` and writes a matching `.mcp.json` brain
-entry as part of the cold install. The motivation reads as
-"convenience for the power user who already knows their brain
-root." The failure mode is structural: collecting a backend-
+the supplied path inline into `mcpServerConfig.args` of the
+scaffolded `.aide/config/brain.aide` and writes a matching
+`.mcp.json` brain entry as part of the cold install. The motivation
+reads as "convenience for the power user who already knows their
+brain root." The failure mode is structural: collecting a backend-
 specific value at install time forces the install path to know
 about path slots, and a path slot is a path slot is a path slot
 until the catalog of brains the user could possibly wire grows
 to include token slots and connection-uri slots. The argument
 shape that worked for one bundled default becomes the argument
 shape every future bundled integration has to fight against. The
-brain-agnostic install path is structural: it ships only the
-methodology layer, and brain wiring lives downstream of the
-first `/aide` run where `/aide:brain config` owns it. Forms of
-the same regression include any path-shaped flag, any token-
-shaped flag for a hosted backend, an MCP-config-blob flag, and
-any other backend-shaped flag on the install CLI under any name.
+no-backend-value-collection rule on the install path is structural:
+`cli/init` writes the methodology layer, the bundled `brain.aide`
+template (with YAML null at every unwired slot), and the `aide`
+MCP server entry — and nothing else brain-shaped. The brain MCP
+entry under `mcpServers["brain"]` and the four entry-point
+artifacts live downstream of the first `/aide` run where
+`/aide:brain config` owns them. Forms of the same regression
+include any path-shaped flag (`--brain-path`, `--vault-path`,
+`--brain-root`), any token-shaped flag (`--brain-token`), any
+URL-shaped flag (`--brain-url`), any name-shaped flag
+(`--brain-name`), an MCP-config-blob flag, and any other
+backend-shaped flag on the install CLI under any name. The
+single sanctioned brain-shaped argument — `--brain <integration>`
+selecting which bundled template scaffolds — never collects a
+backend-specific value, never asks the user a question, and never
+writes a `.mcp.json` brain entry; conflating its forward-compatible
+integration-selection role with backend-value collection
+re-introduces this same regression in a different shape.
 
 The bundled obsidian template emits `mcpServerConfig.args` with a
 recognizable literal string at the path slot when the brain has
@@ -1817,21 +1895,28 @@ patching of broken state.
 A `/aide:brain config` router that calls `aide_init({ category:
 "brain" })` only when `aide_info.brain.status` is
 `no-brain-aide`, skipping the call when `brain.aide` already
-exists or when the four entry-point artifacts are already on
-disk. The motivation reads as "avoid redundant work — the brain
-provisioner has nothing to do if the artifacts exist." The
-failure mode is that a user who deleted a seed artifact, whose
-prior install was interrupted, or whose template version added a
-section gets no recovery: the conditional skips the
-provisioner's presence-only idempotency check, the missing
-artifact stays missing, and the user has to discover a separate
-recovery verb. The unconditional call is what makes recovery
-self-heal. A conditional call pushes recovery into a `doctor` /
+exists. The motivation reads as "avoid redundant work — the
+provisioner has nothing to do if `brain.aide` exists." The
+failure mode is that a user whose prior install was interrupted,
+whose `brain.aide` was deleted, or whose template version changed
+gets no missing-`brain.aide` recovery: the conditional skips the
+provisioner's presence-only idempotency check, `brain.aide` stays
+missing, and the user has to discover a separate recovery verb.
+The unconditional call is what makes missing-`brain.aide`
+self-heal — `provisionBrain`'s two-step pipeline re-scaffolds the
+bundled template in place when absent and leaves it untouched when
+present. (Missing entry-point artifact recovery is a separate
+self-heal loop owned by the integration's `config` body section
+prose, which presence-checks each of the four entry-point
+artifacts in the brain on every `/aide:brain config` invocation
+and re-seeds any that are missing from the seed-section bytes —
+that loop runs after the unconditional call and is independent of
+it.) A conditional call pushes recovery into a `doctor` /
 `repair` / `status` subcommand the agent has to know to invoke,
-splitting the brain command surface and forcing every documentation
-surface to teach the conditional. The brain command surface stays
-minimal at one verb (`config`); recovery folds into that verb's
-preamble.
+splitting the brain command surface and forcing every
+documentation surface to teach the conditional. The brain command
+surface stays minimal at one verb (`config`); recovery folds into
+that verb's preamble.
 
 A boot reporter or `buildBrainState` mapping that introduces a
 fifth status state for null-armed args — `unwired`,
@@ -1854,28 +1939,59 @@ arg index in `mcpServerConfig.args` means what — a switch on
 matcher recognizing token-shaped strings at `args[2]`, an
 `argSlots` frontmatter field declaring "this index is a path,"
 a `/aide:brain config` router that introspects which slots are
-null to decide what to ask the user for. The motivation reads as
-"validate the slot before sync runs." The failure mode is the
-same as every previous registry regression: the package now has
-an opinion about which slots in which integrations mean what,
-and that opinion has to be updated every time a new integration's
-slot map changes. Slot semantics live exclusively in the
-per-integration `config` body section — the package never
-inspects which slot is which. A command or code path that grows
-arg-index awareness is the in-code backend registry coming back
-through the slot surface.
+null to decide what to ask the user for, a `PATH_SLOT_INDEX = 3`
+constant in `provisionBrain`, a `resolveBrainRoot(projectRoot,
+brainAideStep)` helper that reads `args[N]` to extract a path.
+The motivation reads as "validate the slot before sync runs" or
+"derive the brain root from the args we just emitted." The
+failure mode is the same as every previous registry regression:
+the package now has an opinion about which slots in which
+integrations mean what, and that opinion has to be updated every
+time a new integration's slot map changes. Slot semantics live
+exclusively in the per-integration `config` body section — the
+package never inspects which slot is which. A command or code
+path that grows arg-index awareness is the in-code backend
+registry coming back through the slot surface.
+
+A `provisionBrain` plan that adds a third `InitStep` to write an
+entry-point artifact to the brain — a `buildPlaybookStep`,
+`buildStudyPlaybookStep`, `buildUpdatePlaybookStep`,
+`buildResearchStep`, `buildBrainRootStep`, or any successor under
+a renamed identifier carrying the same shape (a step that reads
+a seed body section and writes it to a path inside the brain, or
+a step that creates the brain root directory). The motivation
+reads as "the package already has the seed bytes parsed; surely
+the install service is the right layer to write them to disk."
+The failure mode is structural: writing a seed-section artifact
+from `provisionBrain` requires knowing where to write it, and
+the destination paths are integration-specific (one integration
+puts entry-point artifacts in `coding-playbook/`, another puts
+them at API endpoints addressed by token, a third writes to a
+hosted page tree). Encoding any one integration's path layout in
+`provisionBrain` either hardcodes that integration's storage
+shape across the install path or forces `provisionBrain` to read
+slot semantics out of `mcpServerConfig.args` (the
+`PATH_SLOT_INDEX` regression in different clothing).
+`provisionBrain` shrinks to exactly two `InitStep`s — scaffold
+`brain.aide`, plan the `.mcp.json` brain entry — and writes
+nothing else. The four entry-point artifacts are seeded by the
+integration's `config` body section prose at first `/aide:brain
+config`, after the user fills the unwired slot(s) and runs sync,
+via the brain's own MCP write tool at paths the integration's
+prose names. Restoring any of the retired step builders — under
+any name — is the same regression as restoring the registry.
 
 ## References
 
-- `D:/Code/Me/aidemd-mcp/.aide/intent.aide` (frontmatter, lines 1-704) -- the source-of-truth contract this body synthesizes from. Every Strategy decision traces to a frontmatter outcome: the YAML-null-as-unwired-slot-signal paragraph traces to the args-typed `(string | null)[]` outcome and the no-literal-sentinel undesired outcome; the cli/init brain-agnostic paragraph traces to the cold-install-CLI-is-argument-less outcome and the cli/init-writing-brain-surface undesired outcome; the unconditional-`aide_init` paragraph traces to the shipped-pipeline-commands outcome; the per-integration arg-index slot semantics paragraph traces to the corresponding outcome of the same name; the sync-refusal paragraph traces to the `brain.aide`-and-`.mcp.json`-stay-in-sync outcome and the cli/sync-null-bearing-args undesired outcome; the closed-four-state paragraph traces to the no-`rootPath`-no-fifth-state outcome and the boot-reporter-fifth-state undesired outcome.
+- `D:/Code/Me/aidemd-mcp/.aide/intent.aide` (frontmatter, lines 1-788) -- the source-of-truth contract this body synthesizes from. Every Strategy decision traces to a frontmatter outcome: the YAML-null-as-unwired-slot-signal paragraph traces to the args-typed `(string | null)[]` outcome and the no-literal-sentinel undesired outcome; the cli/init `--brain <integration>` paragraph traces to the cold-install-CLI outcome (root #19) and the cli/init-writing-brain-surface undesired outcome; the unconditional-`aide_init` paragraph traces to the shipped-pipeline-commands outcome (now naming `provisionBrain`'s presence-only idempotency for `brain.aide` self-heal and the integration prose's presence-check loop for entry-point artifact recovery); the provisionBrain-shrinks-to-two-steps paragraph and the matching Bad example trace to the `provisionBrain`-step undesired outcome and root outcomes #7, #8, #9, #24; the per-integration arg-index slot semantics paragraph traces to the corresponding outcome of the same name; the sync-refusal paragraph traces to the `brain.aide`-and-`.mcp.json`-stay-in-sync outcome and the cli/sync-null-bearing-args undesired outcome; the closed-four-state paragraph traces to the no-`rootPath`-no-fifth-state outcome and the boot-reporter-fifth-state undesired outcome; the storage-agnostic-vocabulary three-carve-outs-plus-argument-value paragraph traces to root outcome #19 (legacy `mcpServers.obsidian` migration carve-out dropped).
 - `.aide/docs/aide-spec.md` -- canonical AIDE spec format conventions: required body sections, frontmatter rules, the rule that strategy decisions trace to outcomes, and the decisions-not-descriptions standard for `## Strategy` paragraphs. Informed the per-paragraph rewrite shape: each strategy paragraph leads with the decision and follows with the reasoning.
 - `.aide/docs/index.md` -- canonical doc set inventory; informed the implicit commitment that `brain-aide.md` tracks the six-section / four-artifact contract and that `brain.aide` is a documented AIDE file type alongside `intent.aide`, `plan.aide`, `todo.aide`, `research.aide`.
-- `src/cli/init/.aide` -- sibling spec for the cold-install CLI whose own description was rewritten to "argument-less, brain-agnostic" in the same Stage 1 frontmatter rewrite. Confirmed the framing for the brain-agnostic-install Strategy paragraph: methodology-only install, no brain surfaces, terminal warning routes to `/aide:brain config`.
+- `src/cli/init/.aide` -- sibling spec for the cold-install CLI whose description was rewritten to "accepts exactly one optional argument — `--brain <integration>`, defaulting to `obsidian` — and ships the methodology layer plus the bundled `brain.aide` template selected by `--brain` plus the `aide` MCP server entry, while never writing a `.mcp.json` brain entry, never scaffolding entry-point artifacts, never creating the brain root directory, never asking the user for backend-specific values." Confirmed the framing for the cold-install Strategy paragraph and Good example: methodology layer + bundled `brain.aide` template + `aide` MCP entry on cold install; brain MCP entry plus entry-point artifact seeding deferred to `/aide:brain config`; terminal warning routes the user there explicitly.
 - `src/cli/sync/.aide` -- sibling spec for the sync verb whose description was rewritten to "refuses to write null-bearing args" in the same Stage 1 rewrite. Confirmed the sync-refusal Strategy paragraph's "exit non-zero, name the offending index, route to `/aide:brain config`" remedy is the contract the sync module enforces.
 - `src/service/buildBrainState/.aide` -- sibling spec for the brain-state detector whose description was rewritten to "returns `no-mcp-entry` immediately when any element of the parsed `mcpServerConfig.args` is null" in the same Stage 1 rewrite. Confirmed the closed-four-state Strategy paragraph's null-collapses-to-`no-mcp-entry` mapping is the contract `buildBrainState` enforces and that the null check runs before drift comparison.
 - `src/service/parseBrainAide/.aide` -- sibling spec for the parser whose description names `mcpServerConfig.args` typed `(string | null)[]` with null preserved verbatim through to consumers. Confirmed the YAML-null Strategy paragraph's parser-level contract: null is part of the args type, the parser does not coerce or reject, downstream consumers decide per their own contracts.
-- `src/service/install/provisionBrain/.aide` -- sibling spec for the brain provisioner whose description names presence-only idempotency, the seven-step plan, and brain-root-path derivation via `parseBrainAide`. Confirmed the unconditional-`aide_init` Strategy paragraph's recovery-self-heals mechanism: the provisioner's idempotency is what makes the unconditional call free when nothing is missing.
+- `src/service/install/provisionBrain/.aide` -- sibling spec for the brain provisioner whose description was rewritten to "Plans the brain-layer scaffolding as exactly TWO InitStep items — writes nothing to disk directly. Step 1 scaffolds `.aide/config/brain.aide` from the bundled template (with YAML null at every unwired slot in `mcpServerConfig.args`). Step 2 plans the `.mcp.json` brain entry derived from the scaffolded brain.aide via parseBrainAide + interpolateArgs. The four entry-point artifacts and the brain root directory are NOT scaffolded by this module — they are seeded by the integration's `config` body section prose at first `/aide:brain config` via the brain's own MCP write tools." Confirmed the unconditional-`aide_init` Strategy paragraph's recovery scope (the provisioner's idempotency only re-scaffolds `brain.aide` itself) and confirmed the dedicated Bad example forbidding any successor under any rename of the retired step builders (`buildPlaybookStep`, `buildStudyPlaybookStep`, `buildUpdatePlaybookStep`, `buildResearchStep`, `buildBrainRootStep`).
 - `src/tools/brain/.aide` -- sibling spec for the `aide_brain` MCP tool whose description names the closed two-value `kind` discriminator and the response shape that carries only `status` + `instructions`. Confirmed the closed-`kind` Strategy paragraph's enforcement: the schema's split is enforceable at the tool surface or it is not enforced at all.
-- `.aide/handoff.aide` -- architectural decision sign-off captured during the rework. Carries the anti-regression invariants every build phase must hold (no transitional read paths, no silent acceptance of marker-layout violations, no introspection of `mcpServerConfig.args`, no reading another consumer's owned body section, no shipped pipeline command file documenting integration-specific argument shape, no hardcoded sync invocation in any skill or command prompt). Informed the bad-examples set's anti-pattern catalog.
+- `.aide/handoff.aide` -- architectural decision sign-off captured mid-rework. Documents the silent-failure-at-launch bug the literal-sentinel design produced (`<BRAIN_PATH>` propagating byte-for-byte into both `brain.aide` and `.mcp.json`, drift detector returning `ok`, brain MCP server failing silently at launch) and the architectural fix that informed the body rewrite — `provisionBrain` shrinking to two `InitStep`s, the four entry-point artifacts seeded by integration prose at first `/aide:brain config`, slot semantics living exclusively in per-integration `config` body sections, the `PATH_SLOT_INDEX` constant explicitly forbidden. Carries the anti-regression invariants every build phase must hold (no transitional read paths, no silent acceptance of marker-layout violations, no introspection of `mcpServerConfig.args`, no reading another consumer's owned body section, no shipped pipeline command file documenting integration-specific argument shape, no hardcoded sync invocation in any skill or command prompt). Informed the bad-examples set's anti-pattern catalog, including the new `provisionBrain` step-builder Bad example.
 
-(External domain research was not drawn for this rework. The design conclusions were specified directly in the frontmatter rewrite — the body's job is to surface the why behind each frontmatter decision. The methodology-delivery Strategy paragraphs that survived from prior spec rounds stand on the canonical doc set itself.)
+(External domain research was not drawn for this rework. The design conclusions were specified directly in the frontmatter rewrite and the handoff document — the body's job is to surface the why behind each frontmatter decision. The methodology-delivery Strategy paragraphs that survived from prior spec rounds stand on the canonical doc set itself.)

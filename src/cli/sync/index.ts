@@ -1,15 +1,25 @@
 import parseBrainAide, { interpolateArgs } from "@/service/parseBrainAide/index.js";
 import writeMcpEntry from "@/cli/shared/writeMcpEntry/index.js";
 
+/** Type guard that narrows `(string | null)[]` to `string[]` after the null-refusal precondition has verified every element is non-null. */
+function isAllStrings(args: (string | null)[]): args is string[] {
+	return args.every((a) => a !== null);
+}
+
 /**
  * Propagates `.aide/config/brain.aide` into the host's `.mcp.json` under the fixed
- * `brain` key. Also removes the legacy `obsidian` key when present (one-way
- * migration).
+ * `brain` key.
+ *
+ * Refuses null-bearing args at the boundary — when any element of
+ * `mcpServerConfig.args` is null after interpolation, exits non-zero and names the
+ * offending index(es) in stderr, routing the user to `/aide:brain config`.
+ * `.mcp.json` is not touched on this path.
  *
  * Exit-code contract:
  * - 0 on success, including the no-change case ("already in sync" is success).
- * - 1 on any file failure: brain.aide missing/malformed, `.mcp.json` invalid JSON,
- *   or write error.
+ * - 1 on any file failure: brain.aide missing/malformed, null-bearing args,
+ *   `.mcp.json` invalid JSON, or write error.
+ * - 2 on `--help` or invalid argv (handled by the IIFE before `runSync` is called).
  *
  * Visible-command-boundary invariant: this is the ONLY path in the package that
  * mutates `.mcp.json`'s `brain` entry. The MCP server never rewrites the file
@@ -52,19 +62,49 @@ export async function runSync(
 		return 1;
 	}
 
-	// Step 2 — Compute the expected MCP entry. interpolateArgs substitutes
+	// Step 2 — Compute the post-interpolation args. interpolateArgs substitutes
 	// any ${<key>} placeholders in mcpServerConfig.args against frontmatter fields.
+	const args = interpolateArgs({ name: result.name, mcpServerConfig: result.mcpServerConfig });
+
+	// Step 3 — Null-bearing-args precondition. Walk args element-by-element and
+	// collect every index whose element is null. The check uses strict identity
+	// (=== null) — not truthiness, not string equality against the literal "null".
+	// YAML null is JS null and only JS null; any other test would reintroduce the
+	// retired literal-sentinel regression class.
+	//
+	// This precondition runs BEFORE any .mcp.json I/O. `.mcp.json` is not read or
+	// written on the null-refusal path.
+	const nullIndexes: number[] = [];
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === null) nullIndexes.push(i);
+	}
+	if (nullIndexes.length > 0) {
+		const slots = nullIndexes.map((i) => `args[${i}] is null`).join(", ");
+		writeErr(
+			`\`.aide/config/brain.aide\` has unwired slots: ${slots}. Run \`/aide:brain config\` to fill the unwired slot(s).`,
+		);
+		return 1;
+	}
+
+	// Step 4 — Compose expectedEntry. The null-refusal precondition above has
+	// verified at runtime that every element is non-null; isAllStrings narrows the
+	// type from (string | null)[] to string[] so writeMcpEntry's McpServerEntry
+	// contract is satisfied without an unsafe cast.
+	if (!isAllStrings(args)) {
+		// Unreachable: the nullIndexes check above returns 1 when any null is present.
+		// TypeScript cannot see through the early return, so this branch satisfies
+		// narrowing. It is never executed.
+		throw new Error("invariant violated: null entry in args after null-refusal precondition");
+	}
+
 	const expectedEntry = {
 		command: result.mcpServerConfig.command,
-		args: interpolateArgs({ name: result.name, mcpServerConfig: result.mcpServerConfig }),
+		args,
 	};
 
-	// Step 3 — Build the entries map. Always set brain; always request obsidian
-	// deletion. The helper treats "delete a key that isn't present" as a no-op,
-	// so including obsidian unconditionally is safe.
-	const entries: Record<string, typeof expectedEntry | "delete"> = {
+	// Step 5 — Build the entries map. The map carries exactly one key: `brain`.
+	const entries: Record<string, typeof expectedEntry> = {
 		brain: expectedEntry,
-		obsidian: "delete",
 	};
 
 	// Step 4 — Write (or confirm no-op). Catch the malformed-JSON throw and
@@ -92,9 +132,6 @@ export async function runSync(
 	write("Wrote brain MCP entry into .mcp.json");
 	write(`  command: ${expectedEntry.command}`);
 	write(`  args: [${expectedEntry.args.join(", ")}]`);
-	if (writeResult.deleted.includes("obsidian")) {
-		write("Removed legacy `obsidian` MCP key (migrated to `brain`)");
-	}
 	write("Done.");
 	return 0;
 }

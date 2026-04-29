@@ -128,7 +128,7 @@ describe("3a — happy path", () => {
 describe("3b — idempotent re-run", () => {
 	it("exits 0, does not mutate the file, output says 'already in sync'", async () => {
 		await writeBrainAide(tempDir, VALID_BRAIN_AIDE);
-		// Pre-write .mcp.json with the already-correct brain entry (and obsidian absent).
+		// Pre-write .mcp.json with the already-correct brain entry.
 		await writeMcpJson(tempDir, { mcpServers: { brain: EXPECTED_BRAIN_ENTRY } });
 
 		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
@@ -145,34 +145,6 @@ describe("3b — idempotent re-run", () => {
 
 		expect(lines.join("\n")).toContain("Read .aide/config/brain.aide");
 		expect(lines.join("\n")).toContain("already in sync");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// 3c. Legacy obsidian migration
-// ---------------------------------------------------------------------------
-
-describe("3c — legacy obsidian migration", () => {
-	it("removes obsidian key, writes brain, exits 0, output mentions migration", async () => {
-		await writeBrainAide(tempDir, VALID_BRAIN_AIDE);
-		await writeMcpJson(tempDir, {
-			mcpServers: {
-				obsidian: { command: "npx", args: ["-y", "obsidian-mcp", "/old/vault"] },
-			},
-		});
-
-		const { lines, errLines, write, writeErr } = makeCapture();
-		const code = await runSync(tempDir, write, writeErr);
-
-		expect(code).toBe(0);
-		expect(errLines).toHaveLength(0);
-
-		const written = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8"));
-		expect(written.mcpServers.brain).toEqual(EXPECTED_BRAIN_ENTRY);
-		expect(written.mcpServers.obsidian).toBeUndefined();
-
-		expect(lines.join("\n")).toContain("obsidian");
-		expect(lines.join("\n")).toContain("migrated to");
 	});
 });
 
@@ -463,6 +435,130 @@ The research section lives here.
 			"--profile",
 			"my-vault",
 		]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3l. Null-bearing args refusal
+// ---------------------------------------------------------------------------
+
+describe("3l — null-bearing args refusal", () => {
+	// Helper: build a brain.aide with the canonical six-section body schema where
+	// the args list is provided by the caller. Uses the @bitbonsai/mcpvault style
+	// consistent with the rest of the file.
+	function makeNullArgsBrainAide(args: string): string {
+		return `---
+name: obsidian
+mcpServerConfig:
+  command: npx
+  args:
+${args}---
+
+<!-- aide-orientation-start -->
+Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
+<!-- aide-orientation-end -->
+
+<!-- aide-config-start -->
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
+The coding-playbook section lives here.
+<!-- aide-playbook-index-end -->
+
+<!-- aide-study-playbook-start -->
+The study-playbook hub lives here.
+<!-- aide-study-playbook-end -->
+
+<!-- aide-update-playbook-start -->
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
+The research section lives here.
+<!-- aide-research-index-end -->
+`;
+	}
+
+	it("single null at args[3] exits 1 and stderr names the index", async () => {
+		// args[0..2] are valid strings; args[3] is YAML null (bare `-` on its own line).
+		const content = makeNullArgsBrainAide(
+			"    - '-y'\n    - '@bitbonsai/mcpvault'\n    - '--rootDir'\n    -\n",
+		);
+		await writeBrainAide(tempDir, content);
+
+		const { errLines, write, writeErr } = makeCapture();
+		const code = await runSync(tempDir, write, writeErr);
+
+		expect(code).toBe(1);
+		expect(errLines.join("\n")).toContain("args[3] is null");
+		expect(errLines.join("\n")).toContain("/aide:brain config");
+
+		// .mcp.json was NOT created (no pre-write; file must not exist post-call).
+		await expect(readFile(join(tempDir, ".mcp.json"), "utf-8")).rejects.toThrow();
+	});
+
+	it("multiple nulls at args[2] and args[4] are all named in stderr on one line", async () => {
+		// args[0..1] valid, args[2] null, args[3] valid, args[4] null.
+		const content = makeNullArgsBrainAide(
+			"    - '-y'\n    - '@bitbonsai/mcpvault'\n    -\n    - '--rootDir'\n    -\n",
+		);
+		await writeBrainAide(tempDir, content);
+
+		const { errLines, write, writeErr } = makeCapture();
+		const code = await runSync(tempDir, write, writeErr);
+
+		expect(code).toBe(1);
+		// Both null indexes must appear in the same error line.
+		expect(errLines).toHaveLength(1);
+		expect(errLines[0]).toContain("args[2] is null");
+		expect(errLines[0]).toContain("args[4] is null");
+	});
+
+	it("null-refusal does not touch existing .mcp.json", async () => {
+		// Pre-write a brain.aide with one null in args AND a pre-existing .mcp.json
+		// containing arbitrary mcpServers entries plus a prior brain entry.
+		const content = makeNullArgsBrainAide(
+			"    - '-y'\n    - '@bitbonsai/mcpvault'\n    - '--rootDir'\n    -\n",
+		);
+		await writeBrainAide(tempDir, content);
+		await writeMcpJson(tempDir, {
+			mcpServers: {
+				aide: { command: "npx", args: ["-y", "aidemd-mcp"] },
+				brain: { command: "npx", args: ["-y", "@bitbonsai/mcpvault", "--rootDir", "/old/path"] },
+			},
+		});
+
+		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+
+		const { write, writeErr } = makeCapture();
+		const code = await runSync(tempDir, write, writeErr);
+
+		expect(code).toBe(1);
+
+		// Every byte of .mcp.json must be identical — including any prior brain entry.
+		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+		expect(after).toBe(before);
+	});
+
+	it("null-refusal does not coerce, drop, or substitute — brain.aide is byte-identical after refusal", async () => {
+		// Pre-write brain.aide with one null at args[3]. After runSync, open
+		// brain.aide and assert it is byte-identical to the pre-write state.
+		// Sync must not have mutated .aide/config/brain.aide on the null-refusal path.
+		const content = makeNullArgsBrainAide(
+			"    - '-y'\n    - '@bitbonsai/mcpvault'\n    - '--rootDir'\n    -\n",
+		);
+		await writeBrainAide(tempDir, content);
+
+		const brainAidePath = join(tempDir, ".aide", "config", "brain.aide");
+		const brainBefore = await readFile(brainAidePath, "utf-8");
+
+		const { write, writeErr } = makeCapture();
+		const code = await runSync(tempDir, write, writeErr);
+
+		expect(code).toBe(1);
+
+		// brain.aide must be byte-identical after the refusal — sync never writes to .aide/config/.
+		const brainAfter = await readFile(brainAidePath, "utf-8");
+		expect(brainAfter).toBe(brainBefore);
 	});
 });
 

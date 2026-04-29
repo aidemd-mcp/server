@@ -91,7 +91,7 @@ post-prior-rework shape, so consumer plans do not need to migrate.
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error-handling`
 
-- [ ] Locate the existing pipeline boundary in `src/service/buildBrainState/index.ts`
+- [x] Locate the existing pipeline boundary in `src/service/buildBrainState/index.ts`
       between Step 3 (the `parseBrainAide` call and its `kind !== "ok"`
       branch) and Step 4 (the `readFile(mcpConfigPath, "utf-8")` try/catch).
       The new step is inserted as a structural check on the parsed
@@ -190,7 +190,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/services/error
 
 Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/data-flow`
 
-- [ ] Update the JSDoc block above the default export so the numbered
+- [x] Update the JSDoc block above the default export so the numbered
       pipeline narrative reflects the new step ordering. The existing
       JSDoc enumerates nine steps; with the null pre-check inserted
       between steps 3 and 4, the narrative grows to ten steps. Choose
@@ -277,7 +277,7 @@ Read: `coding-playbook/foundations/conventions`, `coding-playbook/architecture/d
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] Add three new test cases to the existing test file. The cases
+- [x] Add three new test cases to the existing test file. The cases
       land in their own `describe` blocks, named with continuation
       letters from the existing suite (the file currently runs cases
       3a–3o; the new cases are 3p, 3q, 3r). The new cases do NOT
@@ -435,7 +435,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
 
 Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventions`
 
-- [ ] Run `rtk vitest run src/service/buildBrainState`. All existing
+- [x] Run `rtk vitest run src/service/buildBrainState`. All existing
       tests (3a–3o) and the three new tests (3p, 3q, 3r) must pass.
       Pay particular attention to case 3q — if it returns `ok` or
       `mcp-drift` instead of `no-mcp-entry`, the null pre-check is
@@ -443,7 +443,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
       diagnose to root cause and fix in Step 1, never patch the
       test to match a buggy implementation.
 
-- [ ] Run `rtk tsc` (or `rtk npx tsc --noEmit`). Expected outcome:
+- [x] Run `rtk tsc` (or `rtk npx tsc --noEmit`). Expected outcome:
       this module compiles cleanly. Errors in OTHER files (`src/tools/info`,
       `src/tools/brain`, `src/cli/sync`, `src/service/install/provisionBrain`,
       etc.) are dependency-contract failures owned by the
@@ -453,7 +453,7 @@ Read: `coding-playbook/workflow/testing`, `coding-playbook/foundations/conventio
       execution log so the orchestrator can verify the prerequisite
       and the consumer plans.
 
-- [ ] Sanity grep `src/service/buildBrainState/`:
+- [x] Sanity grep `src/service/buildBrainState/`:
 
       - Confirm exactly one `.some(a => a === null)` (or equivalent
         identity-against-null predicate) appears in `index.ts`. More

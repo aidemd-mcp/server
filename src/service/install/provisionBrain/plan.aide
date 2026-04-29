@@ -1,818 +1,871 @@
 ---
 intent: >
-  Drop `brainPath` at every layer of provisionBrain (orchestrator, every step
-  builder, the bundled `obsidianBrainAideTemplate` helper). The bundled
-  template emits YAML null at the path slot of `mcpServerConfig.args` — no
-  literal-string sentinel anywhere in the chain. The brain root path
-  reaches dependent steps by reading the on-disk brain.aide via
-  parseBrainAide; when the path slot reports null the brain root is unknown
-  and the dependent steps reflect that. Drop legacy `obsidian`-keyed
-  migration logic from the MCP step entirely — only the four post-rework
-  branches remain (cold install, brain present + matches, brain present +
-  drift, malformed JSON). Update the test suites to remove every test
-  exercising `brainPath` provided/absent paths, every test asserting
-  `<BRAIN_PATH>` placeholder, and every test for legacy obsidian-key
-  migration; add tests for YAML-null emission, null propagation through
-  the MCP prescription, and seven-step idempotency under the new contract.
+  Collapse provisionBrain from a seven-step pipeline (with brainPath
+  parameter, retired step builders for brain root and four entry-point
+  artifacts, legacy obsidian-key migration, and a literal `<BRAIN_PATH>`
+  sentinel) to a two-step pipeline whose only outputs are the
+  brain.aide scaffold step and the MCP entry plan step. Drop the
+  brainPath parameter at every layer (orchestrator, the bundled
+  `obsidianBrainAideTemplate` helper, every step builder). The bundled
+  template emits YAML null at the unwired path slot of
+  `mcpServerConfig.args`; the null propagates verbatim through
+  parseBrainAide and interpolateArgs into the MCP step's prescription.
+  Delete the five retired step builders, the legacy obsidian-key
+  migration code in the MCP step, the `resolveBrainAideBody` helper
+  and its consumers, the `BRAIN_ROOT_DIRS` constant, and the
+  `brainRootExists` helper. Forbid `PATH_SLOT_INDEX` constants,
+  `resolveBrainRoot` helpers, and any other arg-introspection code.
+  Update the `obsidianBrainAideTemplate` config-section body bytes to
+  describe the new flow: identify YAML null at the path slot, fill
+  via direct edit, run sync, then seed the four entry-point artifacts
+  via the brain's MCP write tool by reading the seed-section bytes
+  through parseBrainAide's typed keys. Drop the `brainPath` argument
+  at the one external caller site (`src/service/install/index.ts`)
+  so this module's two-argument signature compiles end-to-end.
 ---
 
 ## Project Structure
 
-The plan governs the `provisionBrain/` module only. Every file in the tree
-below already exists; this plan modifies files in place — no files are
-added or deleted. The module's directory layout is fixed by the
-orchestrator/helper convention (every helper in its own subfolder); this
-plan does not introduce new helper subfolders because `buildUpdatePlaybookStep`
-already lives inline as a sibling of the other four artifact-step builders
-in `index.ts` (the prior cycle established that ordering and the strategy
-section here keeps it).
+This plan governs the `provisionBrain/` module only. After execution,
+the tree below is the complete state of the module — every file
+listed exists; nothing else does. Files marked MODIFIED are rewritten
+in place; nothing is added or deleted at the file level.
 
 ```
-provisionBrain/
-├── .aide                                        ← intent spec (existing — rewritten Stage 1+3, not touched here)
-├── plan.aide                                    ← this plan (rewritten this cycle)
-├── todo.aide                                    ← from prior cycle (informational; not touched by this plan)
-├── index.ts                                     ← orchestrator (existing — modified)
+src/service/install/provisionBrain/
+├── .aide                                  ← intent spec (existing — refreshed Stage 1+3, not touched here)
+├── plan.aide                              ← THIS plan (rewritten this cycle, replacing the stale 6-step variant)
+├── todo.aide                              ← prior-cycle carry-forward (informational; not touched by this plan)
+├── index.ts                               ← orchestrator + helpers — MODIFIED
 │   ├── provisionBrain(projectRoot: string, mcpConfigPath: string): Promise<InitStep[]>
-│   │     — orchestrates the seven InitSteps in fixed order; signature drops
-│   │       brainPath
+│   │     — orchestrator. Returns exactly TWO InitStep records in fixed order:
+│   │       [brainAideStep, mcpStep]. No `brainPath` parameter, no
+│   │       `effectiveBrainPath` derivation, no slot-position introspection.
 │   ├── buildBrainAideStep(projectRoot: string): Promise<InitStep>
-│   │     — invokes obsidianBrainAideTemplate() with no arguments; emits
-│   │       seed-semantic InitStep
-│   ├── resolveBrainRoot(projectRoot, brainAideStep): Promise<string | null>
-│   │     [NEW helper]
-│   │     — single point that reads the scaffolded or on-disk brain.aide,
-│   │       extracts mcpServerConfig.args[<path-slot>], returns the string when
-│   │       the slot carries a real path or null when the slot carries YAML null
-│   │       (or the parse fails — null collapses both unwired and unparseable
-│   │       cases since the four dependent steps treat both the same: brain
-│   │       root unknown). The path-slot index is read from a module-local
-│   │       constant (PATH_SLOT_INDEX = 3) rather than introspected, matching
-│   │       the spec's "package never introspects slot semantics" rule. The
-│   │       constant's source of truth is the integration's body section in
-│   │       brain.aide, copied verbatim into the bundled obsidian template;
-│   │       the package code uses 3 because that is what the bundled template
-│   │       emits, not because the package picked a slot semantic.
-│   ├── buildBrainRootStep(brainRoot: string | null): Promise<InitStep>
-│   │     — accepts the resolved brain root path or null; null routes to
-│   │       a would-skip step naming the unwired brain configuration; a
-│   │       string routes to the existing presence-or-create logic
-│   ├── buildPlaybookStep(brainRoot: string | null, brainAideStep): Promise<InitStep>
-│   │     — same null-aware gating as buildBrainRootStep; reads body.playbookIndex
-│   ├── buildStudyPlaybookStep(brainRoot: string | null, brainAideStep): Promise<InitStep>
-│   │     — same null-aware gating; reads body.studyPlaybook
-│   ├── buildUpdatePlaybookStep(brainRoot: string | null, brainAideStep): Promise<InitStep>
-│   │     — same null-aware gating; reads body.updatePlaybook
-│   ├── buildResearchStep(brainRoot: string | null, brainAideStep): Promise<InitStep>
-│   │     — same null-aware gating; reads body.researchIndex
-│   ├── buildBrainMcpStep(projectRoot, brainAideStep, mcpConfigPath): Promise<InitStep>
-│   │     — only four branches survive: cold install (no `brain` key) →
-│   │       would-create; brain key present + entry matches → exists;
-│   │       brain key present + entry differs → would-overwrite; malformed
-│   │       JSON → would-create with configMalformed: true. The
-│   │       hasObsidian inspection, the legacy-only branch, and the
-│   │       both-keys transitional branch are all removed. Args carrying
-│   │       null entries propagate verbatim through the prescription
-│   │       (no defensive substitution).
-│   ├── resolveBrainAideBody(projectRoot, brainAideStep):
-│   │     Promise<{ playbookIndex: string; studyPlaybook: string;
-│   │                updatePlaybook: string; researchIndex: string } | null>
-│   │     — unchanged from prior cycle; destructures only the four install-time-
-│   │       seed keys
-│   ├── resolveBrainAideConfig(projectRoot, brainAideStep):
-│   │     Promise<{ command: string; args: (string | null)[] } | null>
-│   │     — return type widened: args is now (string | null)[]; behaviour
-│   │       unchanged otherwise (delegates to interpolateArgs which already
-│   │       passes null through under the broadened parser contract)
-│   ├── exists(path: string): Promise<boolean>                                ← unchanged
-│   ├── brainRootExists(brainPath: string): Promise<boolean>                  ← unchanged
-│   ├── safeReadFile(path: string): Promise<string>                           ← unchanged
-│   ├── BRAIN_ROOT_DIRS: readonly ["research", "process/retro", "coding-playbook"] ← unchanged
-│   └── PATH_SLOT_INDEX: 3 (module-local constant)                            [NEW]
-│         — index into mcpServerConfig.args at which the bundled obsidian
-│           template lands the path. Used only by resolveBrainRoot; never
-│           introspected, never branched on. Source of truth is the
-│           integration's body section bytes in brain.aide; this constant is
-│           a mirror of those bytes for the bundled obsidian default.
-├── index.test.ts                                ← test suite (existing — modified)
-│       — every test that calls provisionBrain(projectRoot, brainPath, mcpPath)
-│         updated to the two-argument shape provisionBrain(projectRoot, mcpPath)
-│       — every test asserting <BRAIN_PATH> in args or in step content removed
-│       — every test asserting legacy obsidian-key migration behaviour removed
-│         (the "5e: legacy obsidian-only .mcp.json" test, the
-│         "transitional install (both brain and obsidian keys)" test)
-│       — fixtures reading brain.aide from disk: the path slot in
-│         mcpServerConfig.args is YAML null (a bare `-` line in YAML), and
-│         tests using makeSixSectionBrainAide accept an args parameter that
-│         may contain the literal value null
-│       — new tests cover: (a) bundled template emits YAML null at args[3];
-│         (b) cold install: derived MCP prescription carries null verbatim
-│         at args[3]; (c) brain root path is read from on-disk brain.aide
-│         when present (not from a parameter); (d) when brain.aide path slot
-│         is null, dependent artifact steps return would-skip; (e) when
-│         brain.aide path slot is a real string, all four artifact steps
-│         flow as before; (f) seven-step idempotency holds under the new
-│         contract for both unwired (path-slot null) and wired (path-slot
-│         filled) brain.aide files
+│   │     — presence-only idempotency on `.aide/config/brain.aide`. Absent
+│   │       → `would-create` with the bundled template bytes from
+│   │       `obsidianBrainAideTemplate()` (called with no arguments).
+│   │       Present → `exists` with no `content` field. Never returns
+│   │       `would-overwrite` for any path under `.aide/config/`.
+│   ├── buildBrainMcpStep(projectRoot: string, brainAideStep: InitStep, mcpConfigPath: string): Promise<InitStep>
+│   │     — derives the prescription from the just-scaffolded (or
+│   │       on-disk) brain.aide via `resolveBrainAideConfig`, then
+│   │       handles exactly four on-disk states of `.mcp.json`:
+│   │       (1) file absent or empty → `would-create`;
+│   │       (2) `mcpServers.brain` absent → `would-create`;
+│   │       (3) `mcpServers.brain` present and matches → `exists`;
+│   │       (4) `mcpServers.brain` present and differs → `would-overwrite`;
+│   │       malformed JSON → `would-create` with `configMalformed: true`.
+│   │       Args carrying `null` entries from a partially-wired
+│   │       brain.aide propagate verbatim into `prescription.entry.args`;
+│   │       the comparison treats null structurally (`null === null`,
+│   │       `null === "string"` false).
+│   ├── resolveBrainAideConfig(projectRoot: string, brainAideStep: InitStep): Promise<{ command: string; args: (string | null)[] } | null>
+│   │     — single source of the derived MCP entry. Same in-memory-vs-on-disk
+│   │       dispatch as before: `would-create` + `content` defined →
+│   │       `parseBrainAideFromString(content)`; otherwise → `parseBrainAide(projectRoot)`.
+│   │       On non-ok parse → `null`. On `kind === "ok"` → returns
+│   │       `{ command, args }` from `interpolateArgs({ name, mcpServerConfig })`,
+│   │       with `args` typed `(string | null)[]` (the broadened parser
+│   │       contract preserves null entries verbatim).
+│   ├── exists(path: string): Promise<boolean>                          ← unchanged
+│   └── safeReadFile(path: string): Promise<string>                     ← unchanged
 └── obsidianBrainAideTemplate/
-    ├── index.ts                                 ← template helper (existing — modified)
-    │     └── obsidianBrainAideTemplate(): string
-    │           — signature drops the brainPath parameter entirely; called
-    │             with no arguments
-    │           — emits YAML null at args[3] (POSIX) or args[3] (win32; same
-    │             slot index after the cmd /c npx prefix). YAML null is
-    │             produced by emitting a bare `- ` line with no scalar after
-    │             the dash; YAML 1.1/1.2 parses that to JS `null`
-    │           — every other body byte unchanged from prior cycle (six
-    │             marker-bounded sections in fixed order, four entry-point
-    │             artifacts referenced in orientation, etc.)
-    │           — config-section prose: the `<BRAIN_PATH>` literal-placeholder
-    │             references in the existing config-section bytes describe an
-    │             unwired-state SIGNAL the agent looks for. The new contract
-    │             replaces those references with prose describing YAML null at
-    │             args[3] as the unwired-state signal. The bytes between
-    │             `<!-- aide-config-start -->` and `<!-- aide-config-end -->`
-    │             are fully package-authored methodology under the
-    │             user-owned-section-bytes carve-out, and revising that prose
-    │             to match the new contract is in scope here.
-    └── index.test.ts                            ← template helper test suite (existing — modified)
-            — every test asserting `<BRAIN_PATH>` in args or in section bytes
-              is removed or rewritten to assert YAML null and the new prose
-            — every test calling obsidianBrainAideTemplate(brainPath) is
-              updated to obsidianBrainAideTemplate() (no arguments)
-            — new assertions cover: (a) helper signature takes no parameters;
-              (b) parsed args[3] is exactly JS null on POSIX; (c) parsed
-              args[3] is exactly JS null on win32; (d) the literal string
-              `<BRAIN_PATH>` does not appear anywhere in the template
-              output; (e) config-section bytes mention "YAML null" or
-              "null" in lieu of the retired sentinel; (f) parser round-trip
-              continues to succeed under the broadened (string | null)[]
-              args contract
+    ├── index.ts                           ← bundled template — MODIFIED
+    │   └── obsidianBrainAideTemplate(): string
+    │         — no parameters. Emits the canonical six-section brain.aide
+    │           bytes with `mcpServerConfig.args` ending in a bare-dash
+    │           YAML null line (parses to JS `null`) at the path slot.
+    │           POSIX shape: `["@bitbonsai/mcpvault", null]`. Win32 shape:
+    │           `["/c", "npx", "@bitbonsai/mcpvault", null]`. The literal
+    │           token `<BRAIN_PATH>` appears nowhere in the output.
+    │           The `<!-- aide-config-start -->` body section carries
+    │           prose describing (a) YAML null at `args[3]` (win32 shape;
+    │           the bundled Obsidian default's path slot) as the
+    │           unwired-state signal, and (b) the post-sync entry-point-
+    │           artifact seeding flow: agent reads the four seed sections
+    │           from brain.aide via parseBrainAide's typed keys
+    │           (`playbookIndex`, `studyPlaybook`, `updatePlaybook`,
+    │           `researchIndex`) and writes each at its named path
+    │           (`coding-playbook/coding-playbook.md`, `coding-playbook/study-playbook.md`,
+    │           `coding-playbook/update-playbook.md`, `research/research.md`)
+    │           via `mcp__brain__write_note`.
+    └── index.test.ts                      ← bundled template tests — MODIFIED
+          — every `getTemplate(brainPath, ...)` call drops the brainPath
+            argument; `getTemplate()` and `getTemplate(undefined, "win32")`
+            are the only call shapes. Every assertion against `<BRAIN_PATH>`
+            is removed; new assertions check that args[1] (POSIX) /
+            args[3] (win32) parse as JS `null` strictly. The config-section
+            assertion suite asserts the new prose mentioning YAML null
+            and the entry-point seeding step.
 ```
+
+The module's test entry point at `index.test.ts` lives directly under
+`provisionBrain/` (already present); it is rewritten to the
+two-step contract — see Step 2 for the test matrix.
 
 ## Prerequisites
 
 The following work must complete before this plan's steps run.
 
-- `src/service/parseBrainAide` must export the broadened
-  `mcpServerConfig.args: (string | null)[]` typed contract from
-  `parseBrainAide` and `parseBrainAideFromString` (both ok-variant
-  returns), and the `interpolateArgs` helper must accept the broadened
-  args type and pass null entries through verbatim (every null in the
-  input lands at the same index in the output, no `replace` call on
-  null). The shared types in `src/types/index.ts`
-  (`BrainAideMcpServerConfig.args`, `McpPrescription.entry.args`,
-  `McpServerEntry.args`) are widened to `(string | null)[]` so the
-  parser's typed result, the `interpolateArgs` return value, and the
-  prescription shape all agree at compile time. This plan assumes all
-  three are widened together — `provisionBrain` consumes
-  `parseBrainAide`'s ok-variant directly and forwards the args array
-  into `prescription.entry.args` without copying or coercion, so a
-  type mismatch at any of these three boundaries would prevent this
-  plan's edits from compiling.
+- `src/service/parseBrainAide` exports the broadened
+  `mcpServerConfig.args: (string | null)[]` typed contract from both
+  `parseBrainAide` and `parseBrainAideFromString` (ok-variant returns).
+  `interpolateArgs` accepts the broadened args type and forwards null
+  entries verbatim — every null in the input lands at the same index in
+  the output, with no replace call running on null. The shared types in
+  `src/types/index.ts` (`BrainAideMcpServerConfig.args`,
+  `McpPrescription.entry.args`, `McpServerEntry.args`) are widened to
+  `(string | null)[]` so the parser's typed result, the `interpolateArgs`
+  return value, and the prescription shape agree at compile time.
+  This module forwards the args array into `prescription.entry.args`
+  without copying or coercion; a type mismatch at any of these
+  boundaries would prevent this plan's edits from compiling.
 
-- The shared `InitStep`-emitting contract in `src/types/index.ts`
-  continues to support the four existing statuses
-  (`would-create`, `would-overwrite`, `would-skip`, `exists`); no new
-  status is needed. The `would-skip` status with an `instructions`
-  field is the path used when the brain root is unknown
-  (path-slot null) — same shape this module already uses for the
-  parse-failure branch.
+- The shared `InitStep` and `InitStepStatus` shapes in `src/types/index.ts`
+  remain unchanged — the four planning statuses (`would-create`,
+  `would-overwrite`, `would-skip`, `exists`) cover everything this
+  module emits. No new status is needed; `would-skip` is not used by
+  this module under the new contract (the dependent artifact-step
+  builders that previously used it are gone).
+
+- `src/service/install/index.ts` continues to call this module from the
+  `brainPath !== undefined` branch with three arguments; that call site
+  is updated in this plan (Step 3) to drop the third argument so the
+  module's new two-argument signature compiles end-to-end.
 
 ## Plan
 
-### 1. Drop the `brainPath` parameter from `obsidianBrainAideTemplate` and emit YAML null at the path slot
+### 1. Rewrite the bundled template helper to take no arguments and emit YAML null at the path slot
 
 Read: `coding-playbook/foundations/conventions`,
-`coding-playbook/architecture/folder-structure`
+`coding-playbook/architecture/folder-structure`,
+`coding-playbook/foundations/anti-patterns`
 
-The bundled template is the single source of launcher bytes and all six
-body section bytes. This step rewrites it to take no arguments and to
-emit YAML null at the path slot. Two equally-valid YAML idioms parse to
-JS `null`: a bare `- ` (dash + space + nothing) line, or a bare `-`
-(dash + newline) line. Either is acceptable; pick the form whose
-indentation lines up cleanly under the surrounding `args:` block in the
-emitted bytes. Both Windows and POSIX branches lose the `'${pathArg}'`
-quoted-string entry and gain the bare-dash null entry in the same args
-position. The path-slot index that results is 3 — the same index
-documented in the integration's body section bytes for the bundled
-Obsidian default.
+The bundled template is the single source of launcher bytes and all
+six body section bytes. This step rewrites it to take no arguments
+and to emit YAML null at the path slot, plus updates the
+`<!-- aide-config-start -->` body section prose to describe the new
+flow (identify-null → ask → edit → sync → seed-entry-points). Helper
+and its tests change together — they are coupled because the test
+suite asserts directly on the helper's output bytes, and a parameter
+rename plus YAML emission change cannot be observed in isolation.
 
-- [ ] 1a. Change the helper signature in
+- [x] 1a. Change the helper signature in
   `obsidianBrainAideTemplate/index.ts` from
   `obsidianBrainAideTemplate(brainPath?: string): string` to
   `obsidianBrainAideTemplate(): string`. Remove the `pathArg` local
   variable, the `<BRAIN_PATH>` fallback expression, and every
-  `${pathArg}` interpolation in the emitted YAML.
+  `${pathArg}` interpolation in the emitted YAML. Drop every
+  reference to a `brainPath` parameter from JSDoc and any inline
+  comments.
 
-- [ ] 1b. Update the `mcpServerConfig` YAML emission in both
-  platform branches so the args list ends with a bare-dash YAML null
-  entry instead of a quoted path string. Concretely: each platform's
-  `args` block now ends with a `    -` line (four spaces of indent
-  matching the surrounding indent + dash + newline; no scalar after
-  the dash). The win32 branch continues to emit `'/c'`, `'npx'`,
-  `'@bitbonsai/mcpvault'` as the first three entries; the POSIX
-  branch continues to emit `'@bitbonsai/mcpvault'` as the first
-  entry. The path slot becomes the bare-dash null entry in the
-  position previously held by the quoted `${pathArg}` entry.
+- [x] 1b. Update the `mcpServerConfig` YAML emission in both platform
+  branches so the `args:` block ends with a bare-dash line that YAML
+  parses to JS `null`. Pick one form consistently (a bare `-` line
+  with no scalar after the dash, indented to match the surrounding
+  `args:` block). Each platform's args list ends with that
+  null-emitting line:
+  - POSIX branch: `'@bitbonsai/mcpvault'` then a bare-dash null line.
+    Parsed `args` is `["@bitbonsai/mcpvault", null]`.
+  - Win32 branch: `'/c'`, `'npx'`, `'@bitbonsai/mcpvault'`, then a
+    bare-dash null line. Parsed `args` is
+    `["/c", "npx", "@bitbonsai/mcpvault", null]`.
 
-- [ ] 1c. Rewrite the `<!-- aide-config-start -->` /
-  `<!-- aide-config-end -->` body section bytes so the prose
-  describes the unwired-slot signal as YAML null at `args[3]` rather
-  than the literal `<BRAIN_PATH>` placeholder string. Every reference
-  to the literal `<BRAIN_PATH>` token in the config-section prose is
-  replaced with a description in terms of YAML null. The five-step
-  Obsidian wiring flow keeps its identify→ask→edit→sync→restart
-  shape; only the wording about how to detect the unwired state and
-  what to write into the path slot changes. Source-of-truth note:
-  the worked good-example in the spec's Strategy section shows what
-  the new prose looks like (the Step 1 brain.aide block);
-  paraphrase that prose into the bundled template's config section.
+  No quoted empty string `''`, no literal `<BRAIN_PATH>`, no
+  `${rootPath}` interpolation, no other in-band string the package
+  recognizes — the unwired-slot signal is YAML null, full stop.
 
-- [ ] 1d. Update the JSDoc on `obsidianBrainAideTemplate` to (i)
-  document the no-argument signature; (ii) describe the path slot as
+- [x] 1c. Rewrite the bytes between `<!-- aide-config-start -->` and
+  `<!-- aide-config-end -->` so the prose describes (i) the
+  unwired-state signal as YAML null at `args[3]` for the bundled
+  Obsidian default (the win32 shape is the canonical reference;
+  POSIX's path slot is at `args[1]` but the integration prose names
+  the win32 index because the bundled template's documented arg
+  position is `args[3]`); (ii) the five-step wiring flow under the
+  new contract: read brain.aide, decide the target path
+  (`$ARGUMENTS` non-empty / null at args[3] / real path already
+  there), edit `brain.aide` to replace the null with the absolute
+  path, run sync, then SEED the four entry-point artifacts before
+  emitting the restart message. The seed sub-step is new in this
+  prose: the agent (a) reads brain.aide via the brain's read tool;
+  (b) extracts the four seed-section bytes via parseBrainAide's
+  typed keys (`playbookIndex` → `coding-playbook/coding-playbook.md`,
+  `studyPlaybook` → `coding-playbook/study-playbook.md`,
+  `updatePlaybook` → `coding-playbook/update-playbook.md`,
+  `researchIndex` → `research/research.md`); (c) writes each
+  artifact via `mcp__brain__write_note` at the path the prose names.
+  The presence-check + re-seed loop (skip already-existing artifacts,
+  write the missing ones) owns missing-artifact recovery on
+  subsequent `/aide:brain config` runs. After seeding, the prose
+  emits the restart message verbatim.
+
+  Storage-agnostic vocabulary applies to this prose's package-authored
+  text outside the user-owned-section-bytes carve-out boundary, but
+  the carve-out lets the bundled Obsidian default's prose mention
+  Obsidian by name and reference `mcp__brain__write_note` (the
+  Obsidian-flavored write tool) — the spec explicitly carves the
+  bundled template's body section bytes out of the storage-agnostic
+  rule. The forbidden token `<BRAIN_PATH>` does NOT carve out; it is
+  the retired sentinel and must not appear anywhere in the new
+  prose.
+
+- [x] 1d. Rewrite the JSDoc on `obsidianBrainAideTemplate` to
+  document (i) the no-argument signature; (ii) the path slot
   carrying YAML null in every emission, with the integration's
-  `config` body section telling the agent which arg index means what
-  for the bundled Obsidian default (`args[3]`); (iii) drop every
-  mention of the retired `<BRAIN_PATH>` literal-string placeholder
-  including the "When `brainPath` is omitted" / "When `brainPath` is
-  provided" branches; (iv) keep the marker-name and section-order
-  documentation as-is.
+  `config` body section telling the agent what `args[3]` means for
+  the bundled Obsidian default; (iii) the
+  agent-fills-then-syncs-then-seeds-entry-points flow as the
+  hand-off owned by the integration prose, not by this helper;
+  (iv) drop every reference to the retired `<BRAIN_PATH>`
+  literal-string placeholder, including the "When `brainPath` is
+  omitted" / "When `brainPath` is provided" branches; (v) keep the
+  marker-name and section-order documentation as-is (six sections,
+  fixed order, the four install-time-seed sections that the
+  integration prose reads downstream).
 
-- [ ] 1e. Verify by hand that the literal string `<BRAIN_PATH>` does
-  not appear anywhere in the modified template helper's source — not
-  in code, not in the body-section bytes, not in JSDoc. Use a quick
-  text search across `obsidianBrainAideTemplate/index.ts`. Any
-  remaining occurrence is a bug.
+- [x] 1e. Update the test suite at
+  `obsidianBrainAideTemplate/index.test.ts`:
+  - Update the `getTemplate(brainPath?, mockedPlatform?)` helper so
+    it takes only `mockedPlatform?: "win32" | "posix"`. Every call
+    site that passes `"/foo/my-vault"`, `"C:\\Users\\test\\my-vault"`,
+    or `undefined` for a brain path is rewritten to call
+    `getTemplate()` or `getTemplate("win32")` with no path argument.
+  - Remove the entire `path is inlined, no placeholder` describe
+    block — the contract no longer inlines a path at any layer.
+  - Remove the entire `optional brainPath — placeholder sentinel
+    behaviour` describe block — the contract no longer has a
+    placeholder sentinel.
+  - Remove the entire `Windows path round-trip (backslash regression)`
+    describe block — there is no caller-supplied path to round-trip.
+  - Update `platform branching — Windows`: drop the
+    `args are [/c, npx, @bitbonsai/mcpvault, brainPath] on win32`
+    test and replace it with a test asserting that
+    `parseBrainAideFromString(getTemplate("win32")).mcpServerConfig.args`
+    deep-equals `["/c", "npx", "@bitbonsai/mcpvault", null]` with
+    the literal `null` at index 3. The `command is cmd on win32`
+    test stays unchanged.
+  - Update `platform branching — POSIX`: drop the
+    `args are [@bitbonsai/mcpvault, brainPath] on linux` test and
+    replace it with a test asserting that the parsed args
+    deep-equal `["@bitbonsai/mcpvault", null]` with the literal
+    `null` at index 1. The `command is npx on linux` test stays
+    unchanged.
+  - Update the round-trip describe block: drop the `brainPath`
+    arguments from `getTemplate(brainPath)` calls. The
+    `parseBrainAideFromString` round-trip continues to assert
+    `kind === "ok"` and the four `*Index`-or-`-playbook` length
+    checks.
+  - Rewrite the `config section ships the Obsidian wiring flow`
+    describe block. The retired test
+    `config mentions the <BRAIN_PATH> placeholder (detecting the
+    un-wired state)` is replaced with a test asserting the new
+    prose: `result.config` contains a load-bearing substring from
+    the new prose (e.g. `"YAML null"`, `"null at args[3]"`, or
+    similar — pick one substring that is part of the new
+    package-authored prose). Drop the assertion that
+    `result.config` contains the literal token `"<BRAIN_PATH>"`.
+    Add an assertion that `result.config` mentions
+    `mcp__brain__write_note` (the entry-point seeding tool the new
+    prose names). Add an assertion that `result.config` mentions at
+    least one of the four artifact paths
+    (`coding-playbook/coding-playbook.md`,
+    `coding-playbook/study-playbook.md`,
+    `coding-playbook/update-playbook.md`,
+    `research/research.md`) so the seeding step is verifiable. The
+    existing `/aide:brain config` and `Restart` assertions stay.
+  - Update `interpolateArgs is a no-op on the default scaffold`:
+    drop the `brainPath` arguments from `getTemplate(...)` calls.
+    The deep-equal assertion now compares args with a `null` entry
+    at the path slot (the literal JS `null`), and `interpolateArgs`
+    must preserve the null at the same index without coercing it
+    to string or dropping it. The "no `${...}` placeholder in any
+    arg element" assertion stays — it is the regression guard
+    against `${rootPath}` etc.
+  - Update `schema does not include intent-spec or deprecated
+    fields`: drop the `brainPath` argument from `getTemplate(...)`
+    calls. The frontmatter-block assertions stay.
+  - Update `orientation body uses storage-agnostic vocabulary and
+    lists all four entry-point artifacts`: drop the `brainPath`
+    arguments. The seven assertions about `mcp__brain__read_note`,
+    `mcp__brain__search_notes`, the four entry-point artifact
+    paths, and the three forbidden-token negations
+    (`/\bvault\b/i`, `/\bwikilinks?\b/i`, `/\bhub\b/i`) all stay.
+  - Add a new describe block `path slot is YAML null in every
+    emission`. Tests:
+    - On POSIX: parsed args at the last index is exactly `null`
+      (`expect(args[1]).toBeNull()`).
+    - On win32: parsed args at index 3 is exactly `null`
+      (`expect(args[3]).toBeNull()`).
+    - The literal substring `"<BRAIN_PATH>"` does not appear
+      anywhere in the unparsed template output
+      (`expect(content).not.toContain("<BRAIN_PATH>")`).
+    - `interpolateArgs(parsed)` returns an array whose null entry
+      is preserved at the same index (not coerced to empty string,
+      not skipped).
 
-### 2. Update the template helper's test suite for the no-argument signature and YAML-null path slot
+- [x] 1f. Verify by hand-search that the literal token
+  `<BRAIN_PATH>` does not appear anywhere in
+  `obsidianBrainAideTemplate/index.ts` or
+  `obsidianBrainAideTemplate/index.test.ts` after the edits land —
+  not in code, not in body-section bytes, not in JSDoc, not in
+  test fixtures, not in test descriptions. Any remaining
+  occurrence is a regression.
 
-Read: `coding-playbook/workflow/testing`,
-`coding-playbook/foundations/conventions`
-
-Tests assert against the parser's typed-key values, not against
-hand-rolled byte matches in the test file. The retired
-`<BRAIN_PATH>` token must not appear in any assertion or fixture;
-the path-slot null must be asserted as a strict JS `null`
-(`expect(x).toBe(null)` or `expect(x).toBeNull()`), not as falsy or
-empty string.
-
-- [ ] 2a. Update the `getTemplate(brainPath?, mockedPlatform?)` test
-  helper in `obsidianBrainAideTemplate/index.test.ts` so it takes only
-  `mockedPlatform?: "win32" | "posix"` (drop the `brainPath`
-  parameter). Every call site that passes `"/foo/my-vault"`,
-  `"C:\\Users\\test\\my-vault"`, or `undefined` for a brain path is
-  rewritten to call `getTemplate()` or `getTemplate(undefined,
-  "win32")` with no path argument.
-
-- [ ] 2b. Remove the entire `path is inlined, no placeholder
-  (brainPath supplied)` describe block — the contract no longer
-  inlines a path at any layer.
-
-- [ ] 2c. Remove the entire `optional brainPath — placeholder
-  sentinel behaviour` describe block — the contract no longer has a
-  placeholder sentinel.
-
-- [ ] 2d. Remove the entire `Windows path round-trip (backslash
-  regression)` describe block — there is no caller-supplied path to
-  round-trip.
-
-- [ ] 2e. Update `platform branching — Windows`: drop the second
-  test (`args are [/c, npx, @bitbonsai/mcpvault, brainPath] on
-  win32`) and replace it with a test asserting the args are
-  `["/c", "npx", "@bitbonsai/mcpvault", null]` after a parser pass
-  on win32 — element-by-element equality or `toEqual` with the
-  literal `null` at index 3. The `command is cmd on win32` test is
-  unchanged.
-
-- [ ] 2f. Update `platform branching — POSIX`: drop the second
-  test (`args are [@bitbonsai/mcpvault, brainPath] on linux`) and
-  replace it with a test asserting the args are
-  `["@bitbonsai/mcpvault", null]` — `toEqual` with the literal
-  `null` at the last index. The `command is npx on linux` test is
-  unchanged.
-
-- [ ] 2g. Update the `round-trip parses cleanly under the new
-  schema` block: every test still passes `brainPath` to
-  `getTemplate` — drop those arguments. The
-  `parseBrainAideFromString` round-trip continues to assert
-  `kind === "ok"`; assertions on `result.playbookIndex.length > 0`
-  and `result.researchIndex.length > 0` remain unchanged.
-
-- [ ] 2h. Update the `config section ships the Obsidian wiring
-  flow` block: rename or rewrite the test currently called
-  `config mentions the <BRAIN_PATH> placeholder (detecting the
-  un-wired state)` so it asserts the new prose instead. The
-  replacement assertion checks that `result.config` contains
-  prose naming the unwired-slot signal as YAML null at args[3]
-  (a substring like `"YAML null"` or `"null at"` — pick a load-
-  bearing substring from the new prose). Also drop the
-  assertion that the prose contains the literal token
-  `"<BRAIN_PATH>"`.
-
-- [ ] 2i. Add a new test block `path slot is YAML null in every
-  emission`. Tests:
-  - on POSIX: `parseBrainAideFromString(template).mcpServerConfig.args[1]`
-    is exactly `null` (last index for the POSIX shape).
-  - on win32: `parseBrainAideFromString(template).mcpServerConfig.args[3]`
-    is exactly `null` (last index for the win32 shape).
-  - the literal string `<BRAIN_PATH>` does not appear anywhere in
-    the unparsed template output (`expect(content).not.toContain("<BRAIN_PATH>")`).
-  - calling `interpolateArgs(parsed)` returns an array whose null
-    entry is preserved at the same index (not coerced to empty
-    string, not skipped).
-
-- [ ] 2j. Update the `interpolateArgs is a no-op on the default
-  scaffold` block: every test still passes a `brainPath` — drop
-  those calls. The assertions about the interpolated args being
-  deep-equal to original args continue to hold (the args carry a
-  null entry; `toEqual` matches the literal null at the same
-  index).
-
-- [ ] 2k. Update the `schema does not include intent-spec or
-  deprecated fields` block: every test still passes
-  `getTemplate("/vault")` — drop the path argument.
-
-- [ ] 2l. Update the `orientation body uses storage-agnostic
-  vocabulary and lists all four entry-point artifacts` block:
-  every test still passes a `brainPath` — drop those calls. The
-  prose-content assertions continue to hold.
-
-### 3. Drop the `brainPath` parameter from `provisionBrain` and every step builder; introduce `resolveBrainRoot` and the null-aware artifact-step gating
+### 2. Rewrite the orchestrator to two steps; delete every retired step builder, helper, and constant; rewrite the test suite
 
 Read: `coding-playbook/foundations/conventions`,
-`coding-playbook/architecture/folder-structure`
-
-The orchestrator and its step builders move to a no-`brainPath`
-shape in lockstep. The brain root path is read from the on-disk (or
-in-memory scaffolded) brain.aide via parseBrainAide, surfaced as
-`string | null`, and threaded through the brain-root-dependent step
-builders. When the path is null, the dependent steps emit
-`would-skip` with a fixed `instructions` string explaining that the
-brain root is unwired; when the path is a string, the existing
-presence-or-create logic applies unchanged.
-
-- [ ] 3a. Change the `provisionBrain` export signature in
-  `index.ts` from
-  `provisionBrain(projectRoot: string, brainPath: string | undefined,
-  mcpConfigPath: string)` to
-  `provisionBrain(projectRoot: string, mcpConfigPath: string)`. Drop
-  the `brainPath` parameter and the `effectiveBrainPath = brainPath ?? ""`
-  computation. Update the function-level JSDoc to (i) document the
-  two-argument signature, (ii) name the seven-step output in fixed
-  order, (iii) describe the YAML-null contract (the bundled template
-  emits null at args[3]; the null propagates verbatim through the
-  derived MCP entry and into `prescription.entry.args`), (iv) drop
-  every `<BRAIN_PATH>` reference, (v) drop every reference to legacy
-  obsidian-key migration.
-
-- [ ] 3b. Update `buildBrainAideStep` to accept only `projectRoot:
-  string`. The body calls `obsidianBrainAideTemplate()` with no
-  arguments. The seed-semantic idempotency rule is unchanged:
-  presence at `.aide/config/brain.aide` returns `exists`; absence
-  returns `would-create` with template bytes. The JSDoc loses every
-  reference to the optional `brainPath` parameter and the
-  `<BRAIN_PATH>` sentinel.
-
-- [ ] 3c. Add a new helper `resolveBrainRoot(projectRoot: string,
-  brainAideStep: InitStep): Promise<string | null>` between
-  `resolveBrainAideConfig` and `buildBrainAideStep` in source order
-  (function-ordering convention: helpers above the orchestrator at
-  the top of the file; orchestrator at the bottom). Behaviour: the
-  helper invokes the same in-memory-vs-on-disk dispatch as
-  `resolveBrainAideBody` and `resolveBrainAideConfig` (use
-  `parseBrainAideFromString(brainAideStep.content)` when
-  `brainAideStep.status === "would-create"` and
-  `brainAideStep.content !== undefined`; otherwise
-  `parseBrainAide(projectRoot)`). On a non-ok parse result, return
-  `null`. On `kind === "ok"`, read
-  `parseResult.mcpServerConfig.args[PATH_SLOT_INDEX]` and return it
-  as-is when it is a string, or `null` when it is `null`. The helper
-  does not introspect the args list further, does not attempt to
-  guess a path slot from frontmatter, and never substitutes a
-  fallback. JSDoc notes that the path-slot index is a constant
-  mirror of the integration's body-section claim about which arg
-  index means what for the bundled Obsidian default; the package
-  never introspects slot semantics.
-
-- [ ] 3d. Add a module-local constant
-  `const PATH_SLOT_INDEX = 3 as const` at the top of `index.ts`
-  alongside `BRAIN_ROOT_DIRS`. JSDoc names the source of truth
-  (the integration's `<!-- aide-config-* -->` body section) and
-  states that the package never introspects which slot is which
-  — the constant exists because the bundled obsidian template
-  hard-codes the path at args[3], not because the package picked
-  a slot semantic.
-
-- [ ] 3e. Update `buildBrainRootStep`'s signature to accept
-  `brainRoot: string | null`. New behaviour: when `brainRoot` is
-  `null`, return a `would-skip` step with `name: "Brain root
-  directories"`, `category: "brain"`, `filePath: ""`, and a fixed
-  `instructions` string of the form `"Brain root path is unwired.
-  Run /aide:brain config to fill the path slot in brain.aide."`
-  When `brainRoot` is a string, call `brainRootExists(brainRoot)`
-  and emit the existing `exists` / `would-create` steps unchanged.
-  The internal `brainRootExists` helper still takes `string`; the
-  null gating happens one layer up.
-
-- [ ] 3f. Update `buildPlaybookStep`'s signature to accept
-  `brainRoot: string | null` (rename the parameter from
-  `brainPath` to `brainRoot` to match the new naming —
-  storage-agnostic and aligned with `BRAIN_ROOT_DIRS`). New
-  behaviour: when `brainRoot` is `null`, return a `would-skip`
-  step with `name: "Playbook entry-point"`, `category: "brain"`,
-  `filePath: ""`, and the same fixed `instructions` string as
-  step 3e. When `brainRoot` is a string, the existing logic
-  applies — presence check at `join(brainRoot, "coding-playbook",
-  "coding-playbook.md")`, `resolveBrainAideBody` for content,
-  the existing parse-failure → `would-skip` path. JSDoc updated
-  to name `playbookIndex` and the new marker pair
-  (`aide-playbook-index-*`); update the prose to mention the
-  null-gating behaviour as the upstream contract.
-
-- [ ] 3g. Update `buildStudyPlaybookStep`'s signature, body, and
-  JSDoc to mirror 3f (parameter renamed to `brainRoot:
-  string | null`; null routes to `would-skip`; string routes to
-  the existing presence-or-create logic at
-  `join(brainRoot, "coding-playbook", "study-playbook.md")`;
-  reads `body.studyPlaybook`).
-
-- [ ] 3h. Update `buildUpdatePlaybookStep`'s signature, body, and
-  JSDoc to mirror 3f (parameter renamed; null routes to
-  `would-skip`; string routes to the existing logic at
-  `join(brainRoot, "coding-playbook", "update-playbook.md")`;
-  reads `body.updatePlaybook`).
-
-- [ ] 3i. Update `buildResearchStep`'s signature, body, and JSDoc
-  to mirror 3f (parameter renamed; null routes to `would-skip`;
-  string routes to the existing logic at
-  `join(brainRoot, "research", "research.md")`; reads
-  `body.researchIndex`).
-
-- [ ] 3j. Update the orchestrator body in `provisionBrain` to (i)
-  call `buildBrainAideStep(projectRoot)` first; (ii) call the new
-  `resolveBrainRoot(projectRoot, brainAideStep)` to get
-  `brainRoot: string | null`; (iii) thread `brainRoot` through
-  `buildBrainRootStep`, `buildPlaybookStep`,
-  `buildStudyPlaybookStep`, `buildUpdatePlaybookStep`, and
-  `buildResearchStep`; (iv) call `buildBrainMcpStep(projectRoot,
-  brainAideStep, mcpConfigPath)` last. The returned array length
-  is exactly 7 in fixed order (brain config, brain root,
-  playbook, study-playbook, update-playbook, research, MCP).
-  Every comment-block above each builder call updates to drop
-  the `brainPath ?? ""` rationale paragraph and to describe
-  the null-aware gating instead.
-
-- [ ] 3k. Update `resolveBrainAideConfig` to return
-  `Promise<{ command: string; args: (string | null)[] } | null>`.
-  The body change is a single type assertion or signature edit:
-  the call to `interpolateArgs({ name, mcpServerConfig })` already
-  returns `(string | null)[]` under the prerequisite-broadened
-  contract; the return-type annotation just lifts. Update JSDoc
-  to mention that args may carry null entries (forwarded verbatim
-  from the on-disk or in-memory brain.aide).
-
-### 4. Drop legacy `obsidian`-key migration logic from `buildBrainMcpStep`; only the four post-rework branches remain
-
-Read: `coding-playbook/foundations/conventions`,
+`coding-playbook/architecture/folder-structure`,
+`coding-playbook/architecture/data-flow`,
 `coding-playbook/foundations/anti-patterns`
 
-The MCP step's six-state on-disk handling is collapsed to four. The
-`hasObsidian` inspection, the legacy-only branch, and the both-keys
-transitional branch are removed. The remaining branches are: cold
-install (no `brain` key) → `would-create`; brain key present and
-matches → `exists`; brain key present and differs → `would-overwrite`;
-malformed JSON → `would-create` with `configMalformed: true`. Args
-carrying null entries propagate verbatim into the prescription;
-`buildBrainMcpStep` does not inspect or substitute the null.
+The orchestrator at `src/service/install/provisionBrain/index.ts`
+shrinks dramatically. Two step builders survive
+(`buildBrainAideStep`, `buildBrainMcpStep`), one helper survives
+(`resolveBrainAideConfig`, with its return type widened to
+`(string | null)[]`), and two utility helpers survive (`exists`,
+`safeReadFile`). Everything else is deleted. The test suite is
+rewritten to the two-step contract: every test that calls
+`provisionBrain(projectRoot, brainPath, mcpPath)` becomes
+`provisionBrain(projectRoot, mcpPath)`; tests for the four
+artifact-step builders, the brain-root step, the `<BRAIN_PATH>`
+sentinel, and the legacy obsidian-key migration are removed; new
+tests cover the two-step shape, YAML-null propagation, the MCP
+step's four branches, and the directory-wide ownership rule on
+`.aide/config/`.
 
-- [ ] 4a. In `buildBrainMcpStep`, drop the `const hasObsidian =
-  "obsidian" in servers;` line. Drop the `if (hasBrain && hasObsidian)`
-  branch entirely. Drop the `if (hasObsidian)` legacy-migration
-  branch entirely. After the edit, the function reads only
-  `servers.brain` and ignores any other keys present in
-  `mcpServers`. The presence of an `obsidian` key in the user's
-  `.mcp.json` is no longer this module's concern; sync owns
-  `.mcp.json` writes and only writes the `brain` key.
+This is one delegation unit because every sub-step touches the
+orchestrator's shape together: deleting a step builder shrinks the
+orchestrator; deleting a helper requires deleting its consumers;
+rewriting the test suite cannot stand alone if the production code
+still has the old shape.
 
-- [ ] 4b. Update the function's JSDoc to enumerate the four
-  remaining branches (cold install, exists, drift, malformed JSON).
-  Drop every reference to the legacy obsidian-only and transitional
-  both-keys branches, and the `hasObsidian` inspection. Add a
-  sentence stating that the prescription's args may contain `null`
-  entries when the brain.aide path slot is YAML null, and that the
-  step emits the same shape regardless — sync (downstream) refuses
-  to write null-bearing args to `.mcp.json`, so a partially-wired
-  brain configuration cannot silently land.
+- [x] 2a. In `src/service/install/provisionBrain/index.ts`, delete
+  the following code surfaces entirely:
+  - The `buildBrainRootStep` function (no consumer remains; the
+    brain root directory step is gone from this module's pipeline).
+  - The `buildPlaybookStep` function.
+  - The `buildStudyPlaybookStep` function.
+  - The `buildUpdatePlaybookStep` function.
+  - The `buildResearchStep` function.
+  - The `resolveBrainAideBody` helper (no consumer remains after
+    the four artifact-step builders are gone).
+  - The `BRAIN_ROOT_DIRS` constant (no consumer remains).
+  - The `brainRootExists` helper (no consumer remains).
+  - The `readdir` import from `node:fs/promises` (no consumer
+    remains after `brainRootExists` is gone). Verify by Grep that
+    `readdir` is unreferenced after the deletions and remove it.
 
-- [ ] 4c. Update `prescription` typing inside `buildBrainMcpStep` so
-  `prescription.entry.args` carries `(string | null)[]` rather than
-  `string[]`. The code change is a single type-annotation tweak — the
-  values flow through unchanged. The fallback `{ command: "", args: [] }`
-  on parse-failure stays; it is an empty array, which type-checks as
-  `(string | null)[]`.
+  Forbidden additions (must NEVER appear in this file under any
+  rename): a `PATH_SLOT_INDEX` constant, a `BRAIN_ROOT_ARG`
+  constant, a `VAULT_PATH_INDEX` constant, a `resolveBrainRoot`
+  helper, an `extractBrainPath` helper, a `getBrainRoot` helper, a
+  `pickPathSlot` helper, a `readBrainRootFromArgs` helper, an
+  `argSlots` reference, any `args[N]` switch on a named integer
+  N, any matcher recognizing token-shaped strings at a specific
+  index, any code path that reads `mcpServerConfig.args[N]` for any
+  reason other than byte-faithful forwarding through interpolateArgs.
+  This is the structural anti-regression rule the spec pins
+  (outcomes.undesired item on arg-slot introspection).
 
-- [ ] 4d. The `existing_entry.args` element-by-element comparison
-  inside the drift branch already uses `===` between `unknown` array
-  elements; that comparison handles `null` correctly without code
-  change (`null === null` is true; `null === "/some/path"` is false).
-  Verify by reading the current code that no implicit string coercion
-  is applied during the comparison; if `args.every((a, i) => a === prescription.entry.args[i])`
-  is the current shape, leave it as-is. The drift branch correctly
-  reports drift whenever a previously-null on-disk arg is now a
-  string in the prescription (or vice versa).
+- [x] 2b. Rewrite the `provisionBrain` orchestrator export. The new
+  signature is
+  `provisionBrain(projectRoot: string, mcpConfigPath: string): Promise<InitStep[]>`
+  — no `brainPath` parameter, no `effectiveBrainPath` derivation,
+  no fallback string. The body has exactly three statements:
+  - `const brainAideStep = await buildBrainAideStep(projectRoot);`
+  - `const mcpStep = await buildBrainMcpStep(projectRoot, brainAideStep, mcpConfigPath);`
+  - `return [brainAideStep, mcpStep];`
 
-### 5. Update `provisionBrain/index.test.ts`: drop legacy obsidian-key tests, rewrite to call the two-argument `provisionBrain`, add YAML-null assertions
+  Update the function's JSDoc to (i) document the two-argument
+  signature; (ii) state that the returned array length is exactly
+  2 in fixed order (brain config first, MCP second); (iii)
+  describe the YAML-null contract — the bundled template emits
+  null at unwired slots, the null propagates verbatim through
+  parseBrainAide and interpolateArgs into the MCP step's
+  prescription, sync downstream refuses to write null-bearing
+  args; (iv) state that the four entry-point artifacts and the
+  brain root directory are NOT this module's responsibility — they
+  are seeded by the integration's `aide-config` body section
+  prose at first `/aide:brain config` via the brain's MCP write
+  tool, after the user fills the null slot and runs sync; (v)
+  drop every `<BRAIN_PATH>` reference, every reference to legacy
+  obsidian-key migration, every reference to `brainPath`, every
+  reference to a brain root directory step, every reference to
+  artifact-step builders.
 
-Read: `coding-playbook/workflow/testing`,
-`coding-playbook/foundations/conventions`
+- [x] 2c. Update `buildBrainAideStep` to accept only
+  `projectRoot: string` (drop the `brainPath: string | undefined`
+  parameter). The body calls `obsidianBrainAideTemplate()` with
+  no arguments. The seed-semantic idempotency rule is unchanged:
+  presence at `.aide/config/brain.aide` returns `exists` with no
+  `content` field; absence returns `would-create` with the bundled
+  template bytes as `content`. The JSDoc loses every reference to
+  the optional `brainPath` parameter and the `<BRAIN_PATH>`
+  sentinel; the directory-wide-ownership-of-`.aide/config/`
+  paragraph stays as-is.
 
-Every existing test that passes `brainPath` to `provisionBrain`
-becomes a two-argument call. Every fixture that hand-rolls a
-brain.aide string in the test file lands YAML null at the path slot
-of `mcpServerConfig.args` (a bare-dash line in the YAML body). Every
-test exercising legacy obsidian-key migration is removed. New tests
-cover: bundled template emits YAML null; cold install propagates
-null verbatim; brain root is read from the on-disk brain.aide path
-slot; null path slot routes dependent artifact steps to
-`would-skip`; full seven-step idempotency under both unwired and
-wired brain.aide files.
+- [x] 2d. Update `resolveBrainAideConfig` to declare its return
+  type as
+  `Promise<{ command: string; args: (string | null)[] } | null>`.
+  The body change is a single type annotation lift — the call to
+  `interpolateArgs({ name, mcpServerConfig })` already returns
+  `(string | null)[]` under the prerequisite-broadened parser
+  contract; the return-type annotation widens to match. Update
+  the JSDoc to mention that `args` may carry null entries
+  forwarded verbatim from the on-disk or in-memory brain.aide,
+  and that the helper does not introspect or substitute null at
+  any index.
 
-- [ ] 5a. Rewrite every `await provisionBrain(projectRoot, brainPath,
-  mcpPath)` call in the file to
-  `await provisionBrain(projectRoot, mcpPath)`. The local
-  `brainPath` and `makeBrainPath()` references stay around inside
-  test bodies that need to assert artifact paths or pre-create files
-  (since `tempDir/brain` is the value the bundled template's path
-  slot would land in after wiring), but no `brainPath` argument is
-  ever passed to `provisionBrain` itself.
+- [x] 2e. Rewrite `buildBrainMcpStep` to handle exactly four
+  branches plus the malformed-JSON branch:
+  - Compute `expectedEntry = await resolveBrainAideConfig(projectRoot, brainAideStep)`
+    once at the top.
+  - Build the `prescription` as
+    `{ key: "brain", entry: expectedEntry ?? { command: "", args: [] } }`.
+    The empty-array fallback type-checks as `(string | null)[]`.
+  - Read the existing `.mcp.json` via `safeReadFile(mcpConfigPath)`.
+  - **No file** (empty string from `safeReadFile`) →
+    `{ name: "MCP config (brain)", status: "would-create", category: "mcp", filePath: mcpConfigPath, prescription }`.
+  - **Malformed JSON** (the `JSON.parse` catch branch) →
+    `{ name: "MCP config (brain)", status: "would-create", category: "mcp", filePath: mcpConfigPath, prescription, configMalformed: true }`.
+  - **`mcpServers.brain` absent** → same shape as the no-file
+    branch (`would-create`).
+  - **`mcpServers.brain` present** → element-by-element comparison
+    of `existing_entry.command` against `prescription.entry.command`,
+    plus deep array equality on `args` (length match plus
+    element-by-element `===`). When all elements match → `exists`
+    with no `content` and no `prescription` fields; when anything
+    differs → `would-overwrite` with the prescription set.
 
-- [ ] 5b. Remove the entire `Cold install with omitted brainPath
-  propagates the placeholder` describe block — the contract no
-  longer has a placeholder.
+  Element-by-element `===` correctly handles `null`: `null === null`
+  is `true`, `null === "string"` is `false`, so a previously-null
+  on-disk arg compared against a now-string prescription arg
+  reports drift and vice versa. No additional null-handling code
+  is needed.
 
-- [ ] 5c. Remove the test `5e: legacy obsidian-only .mcp.json — MCP
-  step is would-overwrite with key brain` — the legacy migration is
-  retired.
+  Forbidden code paths inside `buildBrainMcpStep` (the structural
+  anti-regression):
+  - The `const hasObsidian = "obsidian" in servers` line — gone.
+  - The `if (hasBrain && hasObsidian)` transitional both-keys
+    branch — gone.
+  - The `if (hasObsidian)` legacy-only branch — gone.
+  - Any introspection of `args[N]` for any N other than
+    byte-faithful element-by-element comparison.
+  - Any defensive substitution of null in `prescription.entry.args`
+    (no replacing null with empty string, no dropping null entries,
+    no converting null to a literal-string sentinel).
 
-- [ ] 5d. Remove the test `transitional install (both brain and
-  obsidian keys) yields would-overwrite with key brain` — the
-  transitional state is retired.
+  Update the JSDoc to enumerate the four branches plus malformed-JSON.
+  Drop every reference to legacy obsidian-key migration, the
+  `hasObsidian` inspection, the both-keys transitional branch, and
+  the `<BRAIN_PATH>` sentinel. Add a sentence stating that
+  `prescription.entry.args` may contain `null` entries when the
+  brain.aide path slot is YAML null, and that the step emits the
+  same shape regardless — sync (downstream) refuses to write
+  null-bearing args, so a partially-wired brain configuration
+  cannot silently land in `.mcp.json`.
 
-- [ ] 5e. Update `makeSixSectionBrainAide` so the default args
-  arguments use a YAML null entry at the path slot rather than the
-  current `'${brainPath}'` quoted string. The fixture's default
-  `args` becomes
-  `[\`'@bitbonsai/mcpvault'\`, "-"]` on POSIX (the second entry is
-  the bare-dash line that YAML parses to null) — note: the array
-  passed in builds YAML lines via `args.map((a) => \`    - ${a}\`)`,
-  so emitting a bare-dash line means the array element is the empty
-  string and the `- ${a}` template becomes `- ` (dash + space +
-  nothing). Pick the simplest representation: change the
-  array-to-YAML-line construction so an array element of literal
-  `null` (JS) emits a `    -` line (no scalar after the dash), then
-  use `null` at the path slot. Keep all four `*Content` parameters
-  unchanged. Fixtures that previously asserted a specific
-  `brainPath` string at the last args index now assert literal JS
-  `null`.
+- [x] 2f. Rewrite `src/service/install/provisionBrain/index.test.ts`
+  to the two-step contract. Delete the following test blocks
+  outright:
+  - The seven `name` assertions in test `5a` that referenced step
+    indices 1–5 (Brain root directories, Playbook, Study-playbook,
+    Update-playbook, Research). Replace `expect(results).toHaveLength(7)`
+    with `expect(results).toHaveLength(2)`. The two surviving name
+    assertions are `results[0].name === "Brain config (brain.aide)"`
+    and `results[1].name === "MCP config (brain)"`.
+  - The entire `Cold-install: entry-point artifacts source content
+    from scaffolded brain.aide` describe block (four tests for
+    playbookIndex / studyPlaybook / updatePlaybook / researchIndex
+    body bytes flowing into artifact steps). The artifact steps
+    are gone.
+  - The entire `Existing brain.aide: entry-point artifacts source
+    from on-disk file` describe block (four tests). Same reason.
+  - The `Malformed brain.aide: entry-point steps surface as
+    would-skip` describe block. The artifact steps are gone; the
+    malformed-body branch is now a parser-level concern surfaced
+    via `resolveBrainAideConfig` returning null and the MCP step
+    handling that fallback. Replace with a single test asserting
+    that a malformed-body brain.aide on disk yields `mcpStep` with
+    `prescription.entry.command === ""` and
+    `prescription.entry.args === []` (the empty-fallback prescription),
+    confirming the parser-failure path produces a benign MCP step
+    rather than crashing.
+  - Test `5e: legacy obsidian-only .mcp.json` — the legacy
+    migration is retired.
+  - Test `transitional install (both brain and obsidian keys)
+    yields would-overwrite with key brain` — the transitional
+    state is retired.
+  - The `Cold install with omitted brainPath propagates the
+    placeholder` describe block (three tests for `<BRAIN_PATH>`
+    placeholder propagation on POSIX, win32, and through the MCP
+    step). The placeholder is retired; replacement tests are
+    added below in 2g.
+  - The brain-root-directory tests (`brain root directories step
+    is would-create`, `brain root is fully populated when .obsidian
+    dir is present`, `brain root is fully populated when directory
+    is non-empty`) — the brain-root step is gone.
+  - The four artifact-step `would-create with content` tests and
+    the four artifact-step `exists when file is present
+    (seed-semantic — no byte comparison)` tests — the artifact
+    steps are gone.
+  - The `seed files never would-overwrite [<scenario>]` parameterized
+    block (four tests across two scenarios) — the artifact and
+    brain-root steps are gone, and the surviving brain.aide step
+    already has its own dedicated test asserting it never returns
+    `would-overwrite`.
 
-- [ ] 5f. Update the `5d: existing brain.aide with custom args —
-  MCP entry reflects user's config, not canonical template` test:
-  the custom `args` value now lands a real string at the path slot
-  (e.g. `[\`"/custom/path/to/launcher.js"\`, brainPath]`) so the
-  test exercises the wired-state branch. The assertion that the
-  derived prescription's args equal `["/custom/path/to/launcher.js",
-  brainPath]` continues to hold.
+  Update every surviving test that called `provisionBrain(projectRoot,
+  brainPath, mcpPath)` to call `provisionBrain(projectRoot, mcpPath)`.
+  The local `brainPath` and `makeBrainPath()` references stay
+  available for tests that need to construct fixture content (e.g.
+  custom args containing a real path string), but no `brainPath`
+  argument is ever passed to `provisionBrain`.
 
-- [ ] 5g. Update the `5f: fully provisioned project — all seven
-  steps return exists` test: the fixture pre-writes a brain.aide
-  via `obsidianBrainAideTemplate()` (no argument) AND then patches
-  the path slot to a real string before writing the file (since
-  the bundled template's null at args[3] would otherwise route the
-  artifact steps to `would-skip`, not `exists`). The simplest
-  patching approach: read the bundled template bytes, replace the
-  bare-dash line at the args[3] position with a real-path line
-  (`    - '${brainPath}'`), write the resulting bytes. After the
-  patch, the brain root is `tempDir/brain`, all four artifact
-  files are pre-created at the bundled-template-implied paths, and
-  the `.mcp.json` brain entry matches the patched derived entry.
-  Assertions: results length 7; every step `exists`.
+  Update `makeSixSectionBrainAide` so the default `args` value
+  carries a YAML null at the path slot. The simplest representation:
+  change the line-construction expression from
+  `args.map((a) => \`    - ${a}\`)` to a per-element conditional
+  that emits `    -` (bare dash, no scalar) when the array element
+  is the literal JS `null`, and `    - ${a}` otherwise. Then change
+  the helper's default args from `[\`'@bitbonsai/mcpvault'\`,
+  \`'${brainPath}'\`]` to `[\`'@bitbonsai/mcpvault'\`, null]`
+  (with a JS null literal at the path slot). Tests that need a
+  wired brain.aide pass `args:
+  [\`'@bitbonsai/mcpvault'\`, \`'${brainPath}'\`]` explicitly.
 
-- [ ] 5h. Add a new test `cold install — bundled template emits
-  YAML null at args[3] and the MCP prescription carries null
-  verbatim`. Setup: no fixtures (cold install). Call
-  `provisionBrain(projectRoot, mcpPath)`. Assertions:
-  - `results[0].status === "would-create"` (brain config)
-  - parsed `results[0].content` has
-    `mcpServerConfig.args[3] === null` on win32 and
-    `mcpServerConfig.args[1] === null` on POSIX
-  - `results[6].prescription.entry.args` carries the same null at
-    the same index as the parsed brain.aide
-  - the literal string `"<BRAIN_PATH>"` does not appear anywhere
-    in `results[0].content` or in any element of
-    `results[6].prescription.entry.args`
+  Update test `5d: existing brain.aide with custom args` so the
+  custom args list a real string at the path slot
+  (`["\"/custom/path/to/launcher.js\"", `${brainPath}`]`). Drop
+  the `brainPath` argument from the `provisionBrain` call. The MCP
+  step assertion that
+  `prescription.entry.args === ["/custom/path/to/launcher.js", brainPath]`
+  continues to hold; the `command` is "node", not "npx".
 
-- [ ] 5i. Add a new test `cold install — dependent artifact steps
-  are would-skip when path slot is YAML null`. Setup: no fixtures
-  (cold install). Call `provisionBrain(projectRoot, mcpPath)`.
-  Assertions:
-  - `results[1].status === "would-skip"` (brain root)
-  - `results[2].status === "would-skip"` (playbook)
-  - `results[3].status === "would-skip"` (study-playbook)
-  - `results[4].status === "would-skip"` (update-playbook)
-  - `results[5].status === "would-skip"` (research)
-  - each of the five carries a non-empty `instructions` string
-  - `results[6]` (MCP) is `would-create` regardless — the MCP step
-    plans the entry shape even when null is in the args, because
-    the actual write happens via sync downstream
+  Update test `5f: fully provisioned project — all seven steps
+  return exists` to the two-step contract: rename to
+  `fully provisioned project — both steps return exists`. The
+  fixture pre-writes brain.aide and a `.mcp.json` whose `brain`
+  entry matches. Drop every artifact-file pre-creation; only the
+  brain.aide and the `.mcp.json` matter. Assertions:
+  `expect(results).toHaveLength(2)`,
+  `expect(results[0].status).toBe("exists")` (brain config),
+  `expect(results[1].status).toBe("exists")` (MCP). The
+  `mockPlatform.mockReturnValue("linux")` line stays so the
+  template bytes are deterministic; the `.mcp.json` brain entry
+  must match the derived entry from the linux template (which now
+  carries the path string the test wires into brain.aide via the
+  fixture).
 
-- [ ] 5j. Add a new test `wired brain.aide — dependent artifact
-  steps proceed normally when path slot is a real string`. Setup:
-  pre-write a brain.aide whose path slot at `args[3]` (win32) or
-  `args[1]` (posix) is a real string equal to `brainPath`
-  (`tempDir/brain`); use the on-disk path
-  `.aide/config/brain.aide`. Call `provisionBrain(projectRoot,
-  mcpPath)`. Assertions:
-  - `results[0].status === "exists"` (brain config)
-  - `results[1].status === "would-create"` (brain root — directory
-    not yet on disk; the brain root path was readable from
-    brain.aide)
-  - `results[2].status === "would-create"` (playbook — derived
-    content)
-  - `results[3].status === "would-create"` (study-playbook)
-  - `results[4].status === "would-create"` (update-playbook)
-  - `results[5].status === "would-create"` (research)
-  - `results[6].status === "would-create"` (MCP — `.mcp.json` not
-    yet on disk)
+  Update test `5g: brain key present with drifted entry` to drop
+  the `brainPath` argument from the `provisionBrain` call. Every
+  other assertion in the test continues to hold. The brain.aide
+  written via `obsidianBrainAideTemplate()` (no argument) carries
+  null at the path slot, so the prescription's args also carry
+  null at the path slot; the on-disk drifted entry has a real
+  string at the path slot; the comparison reports drift; the test
+  passes.
 
-- [ ] 5k. Update the `Cold-install: entry-point artifacts source
-  content from scaffolded brain.aide` block: every test inside
-  this block currently calls `provisionBrain(projectRoot,
-  brainPath, mcpPath)` and asserts `results[i].status ===
-  "would-create"` for the artifact step. Under the new contract,
-  on cold install the path slot is YAML null and the artifact
-  steps are `would-skip`. Two options: (a) rewrite the block's
-  assertions to expect `would-skip` and verify that the step's
-  `instructions` is non-empty; (b) keep the block's intent
-  (proving artifact-step content flows from the scaffolded
-  brain.aide's body sections) but rewrite the setup so the
-  brain.aide on disk has a real path at the path slot — then the
-  artifact steps fire with content. Option (b) preserves the test
-  block's coverage value better; pick option (b). Concretely: each
-  test in the block now writes a brain.aide to disk with the path
-  slot filled in, then calls `provisionBrain(projectRoot,
-  mcpPath)`, then asserts the artifact step's content equals the
-  expected body section bytes.
+  Update test `cold install (no brain, no obsidian key in existing
+  .mcp.json) yields would-create with key brain` to drop the
+  `brainPath` argument.
 
-- [ ] 5l. Update the `Existing brain.aide: entry-point artifacts
-  source content from on-disk file` block: every test currently
-  writes a brain.aide via `makeSixSectionBrainAide(brainPath,
-  ...)`. Under the updated `makeSixSectionBrainAide` (step 5e),
-  the default args carries null at the path slot. These tests
-  currently expect the artifact step to be `would-create` with
-  user-edited content; that requires a wired brain.aide. Update
-  each test to pass an `args` argument with a real string at the
-  path slot
-  (`args: [\`'@bitbonsai/mcpvault'\`, \`'${brainPath}'\`]` on
-  POSIX). The four content-edit assertions continue to hold.
+  Update test `malformed .mcp.json yields would-create with
+  configMalformed: true` to drop the `brainPath` argument.
 
-- [ ] 5m. Update the `Malformed brain.aide: entry-point steps
-  surface as would-skip` test: the existing test pre-writes a
-  brain.aide whose body has no markers (forces `malformed-body`).
-  Under the new contract, that fixture's frontmatter has the path
-  slot as a real string (the current fixture writes `'${brainPath}'`
-  at the last args index), so the malformed-body branch is
-  reached via the body parse failure independently of the path
-  slot. The four `would-skip` assertions on the artifact steps
-  continue to hold. The MCP-step assertion `mcpStep.prescription`
-  is defined continues to hold. Drop any `<BRAIN_PATH>` references
-  from the test if present.
+  Update test `never writes to disk` to call
+  `provisionBrain(projectRoot, mcpPath)`. The seven existing
+  filesystem-non-existence assertions reduce to two: `.mcp.json`
+  must not exist, and `.aide/config/brain.aide` must not exist.
+  The five artifact/brain-root assertions are dropped (those
+  artifacts are no longer planned by this module).
 
-- [ ] 5n. Update the `seed files never would-overwrite` parameterized
-  block: every test calls `provisionBrain(projectRoot, brainPath,
-  mcpPath)` — drop the `brainPath` argument. The `setup` functions
-  are unchanged (they pre-create files in `brainPath`). The
-  assertions `results[i].status !== "would-overwrite"` continue to
-  hold whether the artifact step is `would-skip`, `exists`, or
-  `would-create`.
+- [x] 2g. Add new tests covering the two-step contract and the
+  YAML-null propagation:
+  - **`provisionBrain returns exactly two InitStep items in fixed
+    order`**: setup is no fixtures (cold install). Call
+    `provisionBrain(projectRoot, mcpPath)`. Assert
+    `expect(results).toHaveLength(2)`. Assert
+    `results[0].name === "Brain config (brain.aide)"` and
+    `results[0].category === "brain"` and
+    `results[0].filePath === join(projectRoot, ".aide", "config", "brain.aide")`.
+    Assert `results[1].name === "MCP config (brain)"` and
+    `results[1].category === "mcp"`.
+  - **`cold install — bundled template emits YAML null at the path
+    slot and the MCP prescription carries null verbatim`**: setup
+    is no fixtures. Mock platform to `"linux"`. Call
+    `provisionBrain(projectRoot, mcpPath)`. Assertions:
+    - `results[0].status === "would-create"` (brain config).
+    - `parseBrainAideFromString(results[0].content!).mcpServerConfig.args[1]`
+      is exactly `null` (POSIX shape, last index).
+    - `results[1].status === "would-create"` (MCP).
+    - `results[1].prescription!.entry.args[1]` is exactly `null`
+      (same index, propagated verbatim).
+    - The literal string `"<BRAIN_PATH>"` does not appear anywhere
+      in `results[0].content!` or in any element of
+      `results[1].prescription!.entry.args`.
 
-- [ ] 5o. Update the `never writes to disk` test: drop the
-  `brainPath` argument from the `provisionBrain` call. The seven
-  filesystem-non-existence assertions stay; add an assertion that
-  brain.aide is also not written under `.aide/config/`.
+    Repeat with `mockPlatform.mockReturnValue("win32")` asserting
+    `args[3]` instead of `args[1]`.
+  - **`MCP step is exists when .mcp.json's brain entry matches the
+    derived entry under the new YAML-null contract`**: pre-write
+    a brain.aide via `obsidianBrainAideTemplate()` (mock platform
+    to linux). Pre-write `.mcp.json` with a `brain` entry whose
+    `command` is "npx" and whose `args` is
+    `["@bitbonsai/mcpvault", null]` (literal JS `null` in the
+    JSON-parsed shape after `JSON.stringify` round-trip — JSON
+    serializes JS null as the literal token `null`). Call
+    `provisionBrain(projectRoot, mcpPath)`. Assert
+    `results[1].status === "exists"`. This proves the
+    null-on-both-sides equality branch reports `exists` (the user
+    has not yet wired the brain; both brain.aide and `.mcp.json`
+    carry null at the path slot; sync's null-refusal contract
+    catches the partially-wired state at write time, not here).
+  - **`MCP step is would-overwrite when on-disk brain entry is
+    null but the derived prescription has a real string`**: this
+    is the recovery shape after the user filled brain.aide's null
+    slot with a real path but never re-ran sync. Pre-write a
+    brain.aide whose path slot is a real string (use
+    `makeSixSectionBrainAide(brainPath, { args: [\`'@bitbonsai/mcpvault'\`,
+    \`'${brainPath}'\`] })`). Pre-write `.mcp.json` with a `brain`
+    entry whose `args` is `["@bitbonsai/mcpvault", null]`
+    (literal JS null at index 1). Call `provisionBrain`. Assert
+    `results[1].status === "would-overwrite"` and
+    `results[1].prescription!.entry.args` deep-equals
+    `["@bitbonsai/mcpvault", brainPath]` (no nulls — the
+    prescription matches the wired brain.aide, the on-disk
+    `.mcp.json` is the stale shape).
+  - **`brain.aide step never returns would-overwrite under any
+    condition`**: pre-write a brain.aide whose bytes are nothing
+    like the bundled template (e.g. valid frontmatter + body but
+    arbitrary user-customized content). Call `provisionBrain`.
+    Assert `results[0].status === "exists"`. Repeat with a
+    brain.aide whose body is malformed (no markers); the file
+    presence still drives the brain.aide step to `exists` (the
+    spec's directory-wide ownership rule is enforced at the step
+    level, not at the body-validity level). Assert
+    `results[1]` (MCP) is `would-create` with the empty-fallback
+    prescription (parser failed, so resolveBrainAideConfig returns
+    null, so the prescription is `{ command: "", args: [] }`).
+  - **`provisionBrain forwards null entries verbatim — no
+    defensive substitution`**: pre-write a brain.aide whose path
+    slot is YAML null (use `makeSixSectionBrainAide` with default
+    args). Call `provisionBrain`. Assert
+    `results[1].prescription!.entry.args` contains a literal JS
+    `null` at the path-slot index. This is the regression guard
+    for the spec's "defensive null-replacement at plan time"
+    Bad-example.
 
-- [ ] 5p. Run the full test suite for this module
-  (`rtk vitest run src/service/install/provisionBrain`) and
-  confirm every test passes. No tests outside this module are
-  expected to break by these edits except `service/install/index.ts`
-  (which calls `provisionBrain` with three arguments today). The
-  user has explicitly excluded fixing the install/index.ts caller
-  from this plan; if its tests break, surface them as a follow-up
-  plan rather than fixing inline.
+- [x] 2h. After the test suite is updated, run
+  `rtk vitest run src/service/install/provisionBrain` and confirm
+  every test passes. Failures fall into three categories: stale
+  `brainPath` references in test bodies (delete the argument);
+  stale name assertions on retired step indices (delete the
+  assertion); leaked imports of retired surfaces
+  (`buildBrainRootStep`, `BRAIN_ROOT_DIRS`, `brainRootExists`,
+  `resolveBrainAideBody`) — delete the import. The single
+  external caller (`src/service/install/index.ts`) will fail to
+  compile here because it still passes three arguments; that is
+  Step 3's concern.
 
-### 6. Verify the seven-step ordering and the path-propagation invariants end-to-end
+### 3. Update the one external caller's invocation site
+
+Read: `coding-playbook/foundations/conventions`,
+`coding-playbook/architecture/data-flow`
+
+The only external caller of `provisionBrain` in the repo is
+`src/service/install/index.ts` at the `brainPath !== undefined`
+branch. Step 2's signature change breaks this call site at compile
+time — `provisionBrain(projectRoot, brainPath, brainMcpPath)` no
+longer type-checks against `provisionBrain(projectRoot, mcpConfigPath)`.
+This step closes the gap so the project compiles end-to-end with
+the new contract, without expanding scope into the caller's own
+shape (whether and how `aide_init`'s `brainPath` parameter
+survives is the install service's own concern, tracked in its
+own spec).
+
+- [x] 3a. In `src/service/install/index.ts`, locate the line
+  `brainSteps = await provisionBrain(projectRoot, brainPath, brainMcpPath);`
+  inside the `brainPath !== undefined` branch and change it to
+  `brainSteps = await provisionBrain(projectRoot, brainMcpPath);`.
+  The `brainPath` argument is dropped; the rest of the
+  surrounding code (the placeholder-steps `else` branch, the
+  comment block above the call, the `brainHints` consumption)
+  is unchanged.
+
+- [x] 3b. Update the JSDoc above the call (the comment that says
+  "Delegate to provisionBrain with all three inputs: the host
+  project root (where .aide/brain.aide lives), the brain root
+  location, and the MCP config path") to drop the
+  brain-root-location reference. The new comment names the two
+  inputs the helper accepts: the host project root and the MCP
+  config path. The `brainPath` parameter on `init`'s signature
+  itself stays — it is part of `aide_init`'s public input
+  schema (the agent uses it to confirm or override discovered
+  brain hints), even though provisionBrain no longer consumes
+  it. The unused-but-still-public `brainPath` is a known,
+  acceptable shape under this plan; the wider question of
+  whether to retire it from `aide_init`'s input schema is the
+  install service's own concern, not this module's.
+
+- [x] 3c. Run `rtk tsc` on the workspace and confirm zero type
+  errors anywhere — both the `provisionBrain` module and its
+  caller compile under the new two-argument contract. Run
+  `rtk vitest run src/service/install` and confirm the install
+  service's own test suite still passes (it exercises
+  `aide_init`'s end-to-end shape; the caller-site edit must not
+  regress those tests).
+
+### 4. End-to-end verification
 
 Read: `coding-playbook/workflow/testing`
 
-A brief verification step — no new code or tests; just walk the
-output of the seven-step pipeline by hand against the spec's
-worked good-example to catch regressions the unit tests might
-miss.
+A targeted verification step covering the two structural
+invariants the spec pins (the two-step contract and the
+no-arg-introspection rule). No new code or tests; this is a
+hand-trace and a Grep pass to catch regressions the unit tests
+might miss.
 
-- [ ] 6a. Manually trace a cold-install pass through `provisionBrain`
-  in the implementor's head against the spec's "Step 1 / Step 2 /
-  ... / Step 7" worked good-example block. Confirm: step 1 is
-  `would-create` with the bundled template bytes; step 2 is
-  `would-skip` (path slot null); steps 3-6 are `would-skip` (same
-  reason); step 7 is `would-create` with prescription args carrying
-  null verbatim at the path-slot index. The names, categories, and
-  filePaths line up with the spec.
+- [x] 4a. Manually trace a cold-install pass through
+  `provisionBrain(projectRoot, mcpPath)` against the spec's
+  `Good examples` section. Setup: no fixtures. Confirm: `results`
+  has length 2; `results[0]` is `would-create` with the bundled
+  template bytes; `results[1]` is `would-create` with a
+  prescription whose args carry `null` at the path-slot index;
+  the names, categories, and filePaths line up with the spec's
+  worked example (Step 1 / Step 2 frontmatter + body bytes
+  description).
 
-- [ ] 6b. Manually trace a self-heal pass (per the spec's "Self-heal
-  scenario" block). Setup: brain.aide on disk with path slot filled,
-  brain root present, three of four entry-point artifacts present,
-  one missing. Confirm: step 1 `exists`; step 2 `exists`; the three
-  present-artifact steps `exists`; the one missing-artifact step
-  `would-create`; step 7 matches → `exists`.
+- [x] 4b. Manually trace a steady-state pass (per the spec's
+  `Steady-state: brain wired, user re-runs /aide:brain config
+  with no arguments` block). Setup: brain.aide on disk with the
+  user's path string at the path slot, `.mcp.json` brain entry
+  matching. Confirm: `results` has length 2; both steps are
+  `exists`.
 
-- [ ] 6c. Run `rtk tsc` on the workspace and confirm no type errors
-  introduced by this plan's edits (in `provisionBrain/`,
-  `obsidianBrainAideTemplate/`, the test files, or in
-  `provisionBrain`'s callers — note: `service/install/index.ts`
-  will fail to compile here because it still passes three
-  arguments; that compile error is the surface signal the
-  follow-up plan needs to land. Capture the error message and
-  report it to the user as a follow-up, do NOT fix it inline).
+- [x] 4c. Manually trace an MCP-drift pass (per the spec's
+  `MCP drift: user hand-edited .mcp.json brain entry` block).
+  Setup: brain.aide on disk wired correctly, `.mcp.json` brain
+  entry differs. Confirm: `results[0]` is `exists`,
+  `results[1]` is `would-overwrite` with the prescription
+  matching the on-disk brain.aide.
+
+- [x] 4d. Run `rtk grep --type ts "PATH_SLOT_INDEX|resolveBrainRoot|extractBrainPath|getBrainRoot|pickPathSlot|readBrainRootFromArgs|argSlots|<BRAIN_PATH>|buildBrainRootStep|buildPlaybookStep|buildStudyPlaybookStep|buildUpdatePlaybookStep|buildResearchStep|BRAIN_ROOT_DIRS|brainRootExists|resolveBrainAideBody|hasObsidian" src/service/install/provisionBrain/`.
+  Expect zero hits across every file in this scope — including
+  the rewritten `plan.aide` is fine in principle, but the source
+  and test files must show zero. Any hit is a regression that
+  must be fixed before this step is checked off.
+
+- [x] 4e. Run `rtk grep --type ts "brainPath" src/service/install/provisionBrain/`.
+  Expect zero hits in source and test files. Test fixture
+  variables that happen to be named `brainPath` (representing the
+  abstract concept of "the absolute path the user would put in
+  brain.aide") are acceptable as local-variable names inside a
+  test body — but they must NEVER be passed to `provisionBrain`,
+  `obsidianBrainAideTemplate`, `buildBrainAideStep`, or any other
+  function in this module. Verify by reading the surviving test
+  bodies; flag any leaked argument as a regression.
+
+- [x] 4f. Run `rtk vitest run` at the workspace root and confirm
+  every test in every module passes. The build phase declares
+  this plan complete only when the project-wide test suite is
+  green; an isolated test failure outside this module's scope
+  may indicate a contract drift the prerequisite plans
+  (parseBrainAide, buildBrainState, cli/sync, cli/init) need to
+  address before this plan re-runs.
 
 ## Decisions
 
+- **provisionBrain shrinks to exactly two InitStep records — the
+  brain.aide scaffold step first, the MCP entry plan step second
+  — and nothing else.** The spec is explicit (Strategy: "Two
+  planning steps in fixed order"; outcomes.desired enumerates
+  exactly those two); the rework was driven by a structural
+  failure mode the previous seven-step shape carried (the
+  PATH_SLOT_INDEX / resolveBrainRoot proposal). The four
+  entry-point artifacts and the brain root directory move
+  entirely to the integration's `aide-config` body section
+  prose, where slot-semantics, file-path, and write-tool-name
+  knowledge ALL live in user-owned text. provisionBrain becomes
+  backend-blind at the slot level. Restoring any of the five
+  retired step builders (`buildBrainRootStep`, `buildPlaybookStep`,
+  `buildStudyPlaybookStep`, `buildUpdatePlaybookStep`,
+  `buildResearchStep`) under any rename is the structural
+  regression this spec forbids — it is the same shape regardless
+  of identifier (`seedPlaybook`, `writePlaybookArtifact`,
+  `scaffoldPlaybookIndex`, `seedBrainRoot`, `ensureBrainRoot`,
+  etc. all encode the same regression).
+
+- **NO `PATH_SLOT_INDEX` constant, NO `resolveBrainRoot` helper,
+  NO arg-index introspection of any kind.** The handoff document
+  pinned this as the load-bearing rule that drove the rework.
+  The previous architect's plan introduced both as a
+  bounded-concession workaround for the seven-step shape; the
+  user explicitly rejected that and chose the structural-fix
+  alternative (provisionBrain shrinks; the integration prose
+  owns the slot semantics). This plan forbids them by name AND
+  by shape — any module-local constant whose value is an
+  `args` index, any helper whose body reads `args[N]` for any
+  named integer N, any switch on a slot position, any matcher
+  recognizing token-shaped strings at a specific index, any
+  `argSlots` frontmatter field. Slot semantics live exclusively
+  in the per-integration `config` body section, owned by the
+  user; the package never inspects which slot is which. This
+  decision is the architect-level rule that drives every step
+  in the plan.
+
+- **The unwired-slot signal is YAML null, not a literal-string
+  sentinel.** `mcpServerConfig.args` is typed `(string | null)[]`,
+  the typing is the contract, and YAML null is the explicit
+  structural unwired-slot signal carried by the schema itself.
+  The retired `<BRAIN_PATH>` literal-sentinel design produced
+  the byte-for-byte-agreement-passes-drift-check silent-failure
+  bug confirmed in `D:\Code\Me\aide-fresh` (handoff Stage 1
+  notes); structural null closes that trap at the schema layer.
+  No package code recognizes a string the template chose as the
+  "unwired" marker; the typed schema carries the signal directly.
+  Sync's null-refusal contract at `.mcp.json` write time is the
+  load-bearing safety net that catches partially-wired
+  configurations loudly.
+
+- **The `<!-- aide-config-start -->` body bytes get rewritten in
+  this plan rather than deferred.** The user-owned-section-bytes
+  carve-out (root spec) permits the bundled obsidian-flavored
+  default to ship package-authored prose inside the seed
+  sections. The current config-section prose references the
+  retired `<BRAIN_PATH>` literal as the unwired-state signal;
+  under the new contract that signal is YAML null. Leaving the
+  prose unchanged would ship a bundled default whose `config`
+  body section instructs the agent to look for a string sentinel
+  that never lands, breaking the wiring flow on first run.
+  Rewriting the prose in this plan keeps the bundled template's
+  install-time and agent-runtime contracts coherent. The new
+  prose ALSO carries the entry-point-artifact-seeding step
+  (read seed sections via parseBrainAide's typed keys, write
+  via the brain's MCP write tool), which is the load-bearing
+  hand-off that lets the four artifacts move out of
+  provisionBrain's pipeline without losing the install-time
+  recovery story.
+
 - **`brainPath` is removed entirely from every signature in this
-  module — there is no two-argument-vs-three-argument compatibility
-  shim, no rest-parameter trick, no overload set. The spec is
-  explicit (Strategy: "Signature takes `projectRoot` and
-  `mcpConfigPath` only", outcomes.undesired: "Carrying a
-  `brainPath` parameter on the orchestrator signature, on any
-  per-step builder, or on the bundled template helper").** Adding
-  any compatibility shim would re-couple the install pipeline to a
-  caller-supplied path and break the
+  module — there is no two-argument-vs-three-argument
+  compatibility shim, no rest-parameter trick, no overload set.**
+  Adding any compatibility shim would re-couple the install
+  pipeline to a caller-supplied path and break the
   cli/init-is-brain-agnostic invariant on the next refactor. The
-  one external caller (`service/install/index.ts`) is explicitly
-  out of scope; its compile error is the surface signal that the
-  follow-up plan needs to land.
+  one external caller (`service/install/index.ts`) is updated in
+  Step 3 to drop the third argument; the install service's own
+  `brainPath` parameter on the `init` function stays intact (it
+  is part of `aide_init`'s public input schema, used by the
+  agent to confirm or override discovered brain hints) but is
+  no longer forwarded into provisionBrain — that is acceptable
+  because provisionBrain's spec is explicit that the bundled
+  template emits YAML null regardless of caller input.
 
-- **`buildBrainRootStep` and the four artifact-step builders take
-  `brainRoot: string | null` rather than each builder owning its
-  own parse-and-resolve logic.** A single new helper
-  (`resolveBrainRoot`) reads brain.aide once and returns the path
-  slot's value (or null) to the orchestrator; the orchestrator
-  threads that value into the five dependent builders. This
-  preserves the
-  one-parser-pass-per-orchestrator-invocation invariant (the
-  builders share the same parsed `brainAideStep.content`),
-  keeps each builder's body simple
-  (a `if (brainRoot === null)` early return → would-skip, then the
-  existing logic), and matches the
-  `resolveBrainAideBody`/`resolveBrainAideConfig` helper pattern
-  that already lives in the file. The alternative (each builder
-  re-parses brain.aide for itself) would multiply parser calls
-  and fan out the null-detection logic across five sites instead
-  of one.
-
-- **`PATH_SLOT_INDEX = 3` is a module-local constant whose source
-  of truth is the integration's body-section bytes in brain.aide,
-  copied into the bundled obsidian template.** The package never
-  introspects which slot is which — it uses 3 because the bundled
-  template emits null at args[3]. The constant lives in `index.ts`
-  (not in a separate file or in the template helper) because
-  it's a one-liner, used in exactly one helper
-  (`resolveBrainRoot`), and the JSDoc above it documents the
-  source-of-truth chain. Hoisting the constant out of the
-  function body keeps `resolveBrainRoot`'s code free of magic
-  numbers without inflating the module's surface area. (For a
-  hypothetical second integration whose path slot lives at a
-  different index, the constant would need to be revisited; that
-  is acceptable because the spec's design is explicit that the
-  bundled obsidian default is the only integration the package
-  ships, and any future integration would land its own path-slot
-  index in its own body section bytes — at which point this
-  constant graduates into a dispatch axis the package owns. That
-  refactor is not in this plan's scope.)
-
-- **Null-aware gating in the artifact-step builders uses
-  `would-skip` with an `instructions` string rather than a new
-  status.** The existing `InitStepStatus` union already supports
-  `would-skip` with `instructions`; that shape is exactly what
-  `buildPlaybookStep` (and its three siblings) currently emit on
-  parse failure. Reusing it for the path-slot-null case keeps the
-  status vocabulary closed and lets the install service's apply
-  layer keep its existing handling of `would-skip` (no write,
-  surface the instructions to the user). A new status would be
-  cosmetic — it does not unlock any apply-layer behaviour the
-  existing one doesn't.
-
-- **Legacy obsidian-key migration is removed in one pass, not
-  gated behind a transitional read path.** The user's instructions
-  are explicit: drop legacy migration entirely. There is no
+- **Legacy `obsidian`-key migration is removed in one pass, not
+  gated behind a transitional read path.** The handoff is
+  explicit: drop legacy migration entirely. There is no
   `obsidian`-to-`brain` rename heuristic, no warning log, no
   "we noticed you have an obsidian key" branch. The user's
   `.mcp.json` may carry an `obsidian` key indefinitely from a
@@ -820,80 +873,145 @@ miss.
   and sync's narrow contract (write only `mcpServers.brain`)
   preserves it. If the user wants the orphan obsidian key gone
   they remove it themselves; the package no longer offers
-  migration.
+  migration. The corresponding storage-agnostic-vocabulary
+  carve-out for the legacy obsidian-key migration code was
+  dropped in the root spec's #19 carve-outs list.
 
-- **The `<!-- aide-config-start -->` body-section bytes get
-  rewritten in this plan rather than deferred to a later
-  follow-up.** The spec's user-owned-section-bytes carve-out
-  permits the bundled obsidian-flavored default to ship
-  package-authored prose inside the seed sections. The current
-  config-section prose references the literal `<BRAIN_PATH>`
-  placeholder as the unwired-state signal; under the new
-  contract, that signal is YAML null. Leaving the prose
-  unchanged would ship a bundled default whose `config` body
-  section instructs the agent to look for a string sentinel
-  that never lands, breaking the wiring flow on first run.
-  Rewriting the prose in this plan keeps the bundled template's
-  install-time and agent-runtime contracts coherent; the
-  rewrite stays inside the same template helper file so the
-  one-cycle-one-source-of-truth rule for these bytes holds.
+- **`would-skip` is no longer used by this module.** The retired
+  step builders used `would-skip` to signal both the
+  parse-failure case and (in the prior plan) the unwired-path
+  case. Both consumers are gone. The brain.aide step uses
+  `exists` / `would-create`; the MCP step uses `exists` /
+  `would-create` / `would-overwrite` plus the malformed-JSON
+  `configMalformed: true` flag; neither emits `would-skip`. The
+  `InitStepStatus` union still carries `would-skip` for other
+  modules' use.
+
+- **`buildBrainMcpStep` reuses element-by-element `===` for null
+  comparison.** The current `args.every((a, i) => a === prescription.entry.args[i])`
+  expression handles `null` correctly without code change:
+  `null === null` is `true`, `null === "string"` is `false`. A
+  `Boolean(...)` truthiness check or a `JSON.stringify` round-trip
+  comparison would silently drop drift between null and empty
+  string and is forbidden. The strict-equality semantics of `===`
+  is the correct shape; the spec's outcomes.undesired item on
+  defensive null-replacement covers this regression class.
 
 - **Tests assert path-slot null with strict `null` equality
-  (`expect(x).toBe(null)` or `toEqual` with literal `null`)
+  (`expect(x).toBeNull()` or `toEqual` with literal `null`)
   rather than truthiness or empty-string equality.** The spec is
   explicit (outcomes.undesired: "Substituting any other shape
-  for the YAML null at the path slot of `mcpServerConfig.args`
-  — replacing null with an empty string, dropping the null
-  entry from the array entirely, or converting it into a
-  literal-string sentinel ... anywhere along the chain"). A
-  truthiness check would silently pass if the path slot were
+  for the YAML null at any unwired slot of `mcpServerConfig.args`").
+  A truthiness check would silently pass if the path slot were
   coerced to empty string; a `null` strict-equality check
   catches that regression. The same applies to the
   `args[i] !== null` versus `Boolean(args[i])` distinction in
-  the test expectations.
+  every test expectation.
 
-- **No new constants are introduced for the artifact paths
-  (`coding-playbook/coding-playbook.md`, etc.).** The
-  individual artifact builders continue to inline the
-  `join(brainRoot, "coding-playbook", "coding-playbook.md")`
-  shape. Hoisting these to a const map would obscure the
-  one-builder-one-artifact-path invariant and make the
-  storage-shape contract less visible at the call site. The
-  paths already appear once each in the file; that is the right
-  number.
+- **`makeSixSectionBrainAide` is updated to handle a null array
+  element rather than requiring tests to construct the YAML
+  bytes manually.** Two options were considered: (a) update the
+  fixture helper so a JS `null` at an args index emits a
+  bare-dash YAML line; (b) keep the current string-only fixture
+  and have tests pass a manually-built array containing a literal
+  `"null"` string at the path slot (which the YAML parser would
+  parse as the string `"null"`, not as YAML null). Option (a)
+  preserves the test-fixture-as-typed-shape contract (tests pass
+  the same JS values they want to assert on); option (b) breaks
+  it (tests pass a string, the parser returns a different
+  string, the assertion fails). Option (a) is the right shape;
+  the fixture helper's line-construction expression takes a
+  per-element conditional that emits `    -` (bare dash) for JS
+  `null` and `    - ${a}` for any string.
 
-- **The malformed-body fallback in artifact-step builders
-  (`would-skip` with a parse-failure `instructions`) is reused
-  unchanged for the unwired-path-slot case** — both surface the
-  same `would-skip` status with the same shape. The two
-  failure modes (parse failure vs unwired path slot) carry
-  distinct `instructions` strings so the user can tell them
-  apart in the install summary, but the status discriminant is
-  shared. This keeps the apply layer's `would-skip` handling
-  identical regardless of upstream cause.
+- **Test for `MCP step is exists when both sides carry null at
+  the path slot` is the regression guard against double-null
+  drift collapsing to `would-overwrite` accidentally.** The
+  scenario: cold install, brain.aide carries null at args[1],
+  prior `.mcp.json` brain entry also carries null at args[1].
+  The MCP step compares args element-by-element; null === null
+  is true; the step reports `exists`. This is correct per the
+  spec — the user has not yet wired the brain, both sides agree
+  on the null, the step plans no change. Sync's null-refusal at
+  write time catches the partially-wired state when the agent
+  would actually try to write; the planning surface itself is
+  benign here. The test exists to document and guard this
+  intentional shape; without it, a refactor that swaps the
+  comparison for a `JSON.stringify` round-trip (for example)
+  would silently regress the `exists` branch into `would-overwrite`.
 
-- **The `BRAIN_ROOT_DIRS` constant stays unchanged** — the
-  three required directories
-  (`research`, `process/retro`, `coding-playbook`) accommodate
-  every entry-point artifact path in the bundled obsidian
-  default. No change to the directory contract is implied by
-  the YAML-null pivot.
+- **Test for `MCP step is would-overwrite when brain.aide is
+  wired but .mcp.json is still null` is the recovery-shape
+  regression guard.** The scenario: user filled brain.aide's
+  null slot with a real path but never re-ran sync. brain.aide
+  carries `["@bitbonsai/mcpvault", "/real/path"]`; `.mcp.json`
+  brain entry carries `["@bitbonsai/mcpvault", null]`. The MCP
+  step compares args element-by-element; `"/real/path" === null`
+  is false; the step reports `would-overwrite` with the wired
+  prescription. This is the recovery-by-sync shape that lets a
+  partially-wired user re-converge by running sync; without the
+  test, a refactor that defensively coerced one side or the
+  other would silently mask the recovery path.
 
-- **Storage-agnostic identifier renaming (`brainPath` →
-  `brainRoot`) lands inside the artifact-step builders in this
-  plan** because the parameter rename happens at the same time
-  the parameter type changes (`string` → `string | null`); a
-  dual-rename keeps the change atomic per builder. The
-  `brainRoot` name aligns with the existing `BRAIN_ROOT_DIRS`
-  constant and the spec's "brain root" vocabulary; the
-  retired `brainPath` name carried connector-specific
-  baggage (path-on-the-filesystem-of-an-Obsidian-vault) that
-  the new shape does not assume.
+- **No new helpers in this scope.** The plan reuses every
+  surviving helper (`exists`, `safeReadFile`, `resolveBrainAideConfig`)
+  and the surviving step builders. No new orchestrator-level
+  helper is needed — the change is helper deletion, not
+  addition. Adding a helper purely to "branch on the parse
+  result" or "compose the prescription" would violate the
+  playbook's "extract helpers into subfolders only when they
+  have independent reasons to exist" rule. The
+  `obsidianBrainAideTemplate` helper folder stays as the only
+  subfolder; it is the bundled-template-content carve-out from
+  the storage-agnostic naming rule.
 
-- **The bundled obsidian template helper folder name
-  (`obsidianBrainAideTemplate/`) stays as-is.** The spec
-  carves this folder name out as the only allowed
-  storage-specific identifier — it describes bundled template
-  content, not a code-level dispatch axis. Renaming it (e.g.
-  to `defaultBrainAideTemplate/`) is its own refactor across
-  the install service and is outside this plan's scope.
+- **The `obsidianBrainAideTemplate/` folder name stays as-is.**
+  The spec carves this folder name out as the only allowed
+  storage-specific identifier in this module — it describes
+  bundled template content, not a code-level dispatch axis.
+  Renaming it (e.g. to `defaultBrainAideTemplate/`) is its own
+  refactor across the install service and is outside this
+  plan's scope.
+
+- **The single external caller's invocation site is updated in
+  this plan rather than treated as a follow-up.** The previous
+  cycle's plan deferred fixing `service/install/index.ts` to a
+  follow-up plan, accepting the compile error as a "surface
+  signal" the follow-up needs to land. That approach forces the
+  build phase to land a known-broken intermediate state where
+  `provisionBrain`'s tests pass but the workspace `tsc` fails.
+  The fix is one-line and has no design surface; landing it in
+  this plan keeps the workspace compiling end-to-end and lets
+  the orchestrator declare the cycle done with a green
+  project-wide test suite. The scope expansion is bounded — the
+  edit is mechanical, the test surface is unchanged, and the
+  install service's own spec does not need amending (its
+  `brainPath` parameter on `init`'s signature stays as part of
+  `aide_init`'s public input schema; only the forwarded
+  argument into provisionBrain drops).
+
+- **Verification step (Step 4) is a Grep + hand-trace pass, not
+  a new test.** The two structural invariants the spec pins
+  (two-step contract, no arg-introspection) are best caught at
+  the source-code level by Grep against the forbidden tokens —
+  unit tests can be made to pass with a regression in place if
+  the test was written before the regression was discovered.
+  Step 4d's Grep against `PATH_SLOT_INDEX|resolveBrainRoot|...`
+  catches structural regressions the unit tests might miss
+  (a hidden constant in a comment block, a helper added in a
+  refactor that survived test deletion). The hand-trace
+  sub-steps (4a/4b/4c) walk the spec's worked Good-examples to
+  catch behavioral drift that compiles-and-passes-tests but
+  diverges from the documented shape.
+
+- **The plan does not modify the install service's `aide_init`
+  caller-shape (`brainPath` parameter on `init`).** The
+  `aide_init({ category: "brain" })` flow passes `brainPath`
+  into `init`, which previously forwarded it into
+  `provisionBrain`. Step 3 drops the forwarding but keeps the
+  parameter on `init`'s signature so the install service's own
+  spec and its public input schema do not break. The wider
+  question of whether `aide_init` should retire the
+  `brainPath` input entirely (since no consumer in the new
+  contract reads it) is the install service's concern,
+  tracked in the install service's own spec, not this plan.

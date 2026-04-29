@@ -45,17 +45,18 @@ Return what you found, or write what they asked you to write, synthesized in res
 
 When `$ARGUMENTS` starts with `config`, run the brain wiring flow. This is a thin router — it does not parse `$ARGUMENTS` or branch on backend identity. Every integration-specific decision (what arguments mean, how to ask the user, how to edit `brain.aide`, how to run sync) lives in the integration's `config` section inside `brain.aide`. This command retrieves that section and executes it verbatim.
 
-### Step 1 — Call `aide_info`, branch on `brain.status`
+### Step 1 — Call `aide_info`
 
-Call `aide_info` and read `brain.status`.
+Call `aide_info`. Read `brain.status` and `brain.hints`. Both fields are **informational only** — `brain.status` does NOT gate the next step, and `brain.hints` is a candidate path list the integration's prose may consult later when asking the user for a brain root. Do not branch on `brain.status`.
 
-- **`ok`** — `brain.aide` exists and `.mcp.json` is in sync. Forward `$ARGUMENTS` and fall through to Step 3. The integration's config prose decides what to do (typical case: re-point if `$ARGUMENTS` is non-empty, STOP otherwise).
-- **`no-brain-aide`** — `brain.aide` does not exist. Continue to Step 2.
-- **`no-mcp-entry`** / **`mcp-drift`** — `brain.aide` exists but `.mcp.json` is out of sync. Skip Step 2 and go directly to Step 3.
+### Step 2 — Call `aide_init({ category: "brain" })` UNCONDITIONALLY
 
-### Step 2 — Ensure `brain.aide` exists
+Call `aide_init({ category: "brain" })`. This call runs every time `/aide:brain config` is invoked, regardless of `brain.status`. The call:
 
-Call `aide_init({ category: "brain" })` with **no** `brainPath` argument. The scaffold lands a `<BRAIN_PATH>` placeholder inside `mcpServerConfig.args`. After this call, `brain.aide` exists on disk and `aide_brain` can be called.
+- Scaffolds `.aide/config/brain.aide` from the bundled template if absent — emitting YAML null at unwired slots in `mcpServerConfig.args`. YAML null is the structural unwired-slot signal; there is no literal-string placeholder.
+- Is a no-op if `brain.aide` already exists — `provisionBrain`'s presence-only idempotency leaves the user-owned file untouched.
+
+Missing-`brain.aide` recovery folds into this call; there is no separate `doctor`, `repair`, or `status` verb. Missing entry-point artifact recovery is owned by the integration's prose's presence-check + re-seed loop in Step 4 — not by this call.
 
 ### Step 3 — Pull integration-specific config prose
 
@@ -63,7 +64,7 @@ Call `aide_brain({ kind: "config" })`. It returns the verbatim `<!-- aide-config
 
 ### Step 4 — Execute the returned instructions verbatim
 
-Follow the instructions returned in Step 3 exactly. The integration's config prose owns everything from here: deciding what `$ARGUMENTS` means for this backend, asking the user for whatever else it needs (using `AskUserQuestion` plus `aide_info.brain.hints` when appropriate), editing `brain.aide` to land the resolved values, running sync via the Bash command recovered from `.mcp.json["mcpServers"]["aide"]`, and emitting the restart message.
+Follow the instructions returned in Step 3 exactly. The integration's config prose owns everything from here: deciding what `$ARGUMENTS` means for this backend, asking the user for whatever else it needs (using `AskUserQuestion` plus `aide_info.brain.hints` when appropriate), editing `brain.aide` to land the resolved values into the YAML-null slots, running sync via the Bash command recovered from `.mcp.json["mcpServers"]["aide"]`, seeding the four entry-point artifacts into the brain via the brain's own MCP write tool from the seed-section bytes (presence-check + re-seed any missing), and emitting the restart message.
 
 ### Step 5 — STOP
 
@@ -77,7 +78,7 @@ If the `aide_init` call in Step 2 throws or the scaffold fails, do NOT retry inl
 >
 > Run `npx aidemd-mcp init` in this project's terminal to retry the setup with full per-file logging, then restart Claude Code and re-run `/aide`.
 
-Sync failure is handled inside Step 4's verbatim instructions — the integration's prose owns the sync invocation and its error recovery.
+Sync failure and entry-point seeding failures are handled inside Step 4's verbatim instructions — the integration's prose owns those flows and their error recovery.
 
 ---
 

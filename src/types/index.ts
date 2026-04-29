@@ -132,8 +132,13 @@ export interface FrameworkConfig {
 export interface McpPrescription {
 	/** The mcpServers key name (e.g. "aide", "brain"). */
 	key: string;
-	/** The server entry to merge into mcpServers. */
-	entry: { command: string; args: string[] };
+	/**
+	 * The server entry to merge into mcpServers. `args` is `(string | null)[]` — null
+	 * entries at any index are the explicit unwired-slot signal forwarded verbatim from
+	 * brain.aide via parseBrainAide + interpolateArgs. Sync refuses to write a null-bearing
+	 * entry; the null must be filled by the user before sync runs.
+	 */
+	entry: { command: string; args: (string | null)[] };
 }
 
 /**
@@ -350,7 +355,12 @@ export type TreeNode =
  */
 export type McpServerEntry = {
 	command: string;
-	args: string[];
+	/**
+	 * Args typed `(string | null)[]` to match the broadened parser contract.
+	 * Null entries are unwired-slot signals forwarded verbatim from brain.aide;
+	 * sync refuses to write null-bearing entries.
+	 */
+	args: (string | null)[];
 };
 
 /**
@@ -490,17 +500,25 @@ export type InspectResult = {
 };
 
 /**
- * The `mcpServerConfig` block parsed from `brain.aide` frontmatter. Mirrors
- * the shape of `McpServerEntry` but is kept as a separate type because `args`
- * may contain `${name}` placeholder strings pre-interpolation — that semantic
- * detail is visible at the type boundary and documents that callers must run
- * `interpolateArgs` before writing the entry to `.mcp.json`. Consumed by
- * `parseBrainAide` (parsing and validation) and `interpolateArgs`
- * (substitution).
+ * The `mcpServerConfig` block parsed from `brain.aide` frontmatter. Kept as a
+ * separate type from `McpServerEntry` because `args` is `(string | null)[]` at
+ * parse time — every element is either a fully-formed argument string OR YAML
+ * null. A null at any index is the explicit unwired-slot signal, replacing the
+ * retired literal-sentinel design (no `<BRAIN_PATH>`, `<API_TOKEN>`, magic
+ * UUIDs, or other string sentinels are recognized at any layer). The parser
+ * preserves null entries verbatim at their original indexes; downstream
+ * consumers branch on null structurally per their own contracts: sync refuses
+ * to proceed when any arg is null, `buildBrainState` maps any null entry to
+ * the `no-mcp-entry` semantic, and `interpolateArgs` passes null through
+ * unchanged at its original index. Callers must run `interpolateArgs` before
+ * writing the entry to `.mcp.json` — the post-interpolation shape that sync
+ * writes is `McpServerEntry`, which carries `args: string[]` and only ever
+ * holds fully-resolved values. Consumed by `parseBrainAide` (parsing and
+ * validation) and `interpolateArgs` (substitution).
  */
 export type BrainAideMcpServerConfig = {
 	command: string;
-	args: string[];
+	args: (string | null)[];
 };
 
 /**
@@ -514,13 +532,24 @@ export type BrainAideMcpServerConfig = {
  * `aide_info` output. It is never branched on by any package code; different
  * brains may share names without affecting behavior.
  *
+ * `mcpServerConfig.args` is `(string | null)[]` — every element is either a
+ * fully-formed argument string OR YAML null. A null at any index is the
+ * explicit unwired-slot signal; the parser preserves null entries verbatim at
+ * their original indexes through to consumers. Downstream consumers
+ * (`cli/sync`'s null-refusal, `buildBrainState`'s null-detection,
+ * `interpolateArgs`'s null-passthrough) branch on null structurally.
+ *
  * Consumed by `buildBrainState`, the brain tool, `provisionBrain`, and
  * `cli/sync`.
  */
 export type BrainAideConfig = {
 	/** User-supplied descriptive label for the brain; never dispatched on by the package. */
 	name: string;
-	/** MCP server configuration, with args that may contain `${name}` placeholders. */
+	/**
+	 * MCP server configuration, with args typed `(string | null)[]`. String elements
+	 * may contain `${name}` placeholders resolved by `interpolateArgs`; null elements
+	 * are unwired-slot signals that pass through unchanged at their original index.
+	 */
 	mcpServerConfig: BrainAideMcpServerConfig;
 };
 

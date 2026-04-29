@@ -20,7 +20,7 @@ describe("renderWarning", () => {
 
     it("deferred-only: block contains heading, deferred list, and next-step line but no skipped-files heading", () => {
         const deferred = [
-            "Brain wiring — .aide/config/brain.aide was scaffolded with a <BRAIN_PATH> placeholder in mcpServerConfig.args. The brain MCP server will not launch successfully until the placeholder is replaced. Open Claude Code and run /aide:brain config <absolute-path-to-your-brain>.",
+            "Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
             "IDE configuration",
         ];
         const result = renderWarning({ skipped: [], failed: [], deferredCategories: deferred });
@@ -32,7 +32,7 @@ describe("renderWarning", () => {
             BORDER,
             "",
             "  Deferred (each item names how to finish it):",
-            "    1. Brain wiring — .aide/config/brain.aide was scaffolded with a <BRAIN_PATH> placeholder in mcpServerConfig.args. The brain MCP server will not launch successfully until the placeholder is replaced. Open Claude Code and run /aide:brain config <absolute-path-to-your-brain>.",
+            "    1. Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
             "    2. IDE configuration",
             "",
             BORDER,
@@ -86,7 +86,7 @@ describe("renderWarning", () => {
         const skipped = [makeSkipped(".claude/CLAUDE.md", "already present")];
         const failed = [makeFailed(".aide/docs/index.md", "write failed")];
         const deferred = [
-            "Brain wiring — .aide/config/brain.aide was scaffolded with a <BRAIN_PATH> placeholder in mcpServerConfig.args. The brain MCP server will not launch successfully until the placeholder is replaced. Open Claude Code and run /aide:brain config <absolute-path-to-your-brain>.",
+            "Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
         ];
 
         const result = renderWarning({ skipped, failed, deferredCategories: deferred });
@@ -102,7 +102,7 @@ describe("renderWarning", () => {
             "    2. .aide/docs/index.md — write failed",
             "",
             "  Deferred (each item names how to finish it):",
-            "    1. Brain wiring — .aide/config/brain.aide was scaffolded with a <BRAIN_PATH> placeholder in mcpServerConfig.args. The brain MCP server will not launch successfully until the placeholder is replaced. Open Claude Code and run /aide:brain config <absolute-path-to-your-brain>.",
+            "    1. Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
             "",
             BORDER,
         ].join("\n");

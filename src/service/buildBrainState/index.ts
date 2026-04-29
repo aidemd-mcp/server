@@ -25,30 +25,39 @@ import type { BrainHint, BrainState } from "@/types/index.js";
  *    ("fix or create the file") and `no-brain-aide` carries no `name` because
  *    there is nothing readable to label.
  *
- * 4. **Read `.mcp.json`** at `mcpConfigPath` via `readFile`. ENOENT or any I/O
+ * 4. **Null-args structural pre-check.** Scan `parseResult.mcpServerConfig.args`
+ *    for any JS `null`. Any match returns `{ status: "no-mcp-entry", name, hints }`
+ *    immediately, before any `.mcp.json` read. Detection is structural
+ *    (`a === null`), never string-matching. Null in args means the launch command
+ *    is unwireable, which is exactly what `no-mcp-entry` already means; collapsing
+ *    into the existing status keeps the four-state vocabulary closed. The check
+ *    runs BEFORE the byte-for-byte drift comparison so two equally null-bearing
+ *    files do NOT agree their way past as `ok`.
+ *
+ * 5. **Read `.mcp.json`** at `mcpConfigPath` via `readFile`. ENOENT or any I/O
  *    failure → `no-mcp-entry`. Carries `config.name` so the orchestrator can
  *    name the wired brain in remediation prose.
  *
- * 5. **Parse `.mcp.json` JSON**. Parse failure → `no-mcp-entry`. Same
+ * 6. **Parse `.mcp.json` JSON**. Parse failure → `no-mcp-entry`. Same
  *    remediation as I/O failure.
  *
- * 6. **Look up `mcpServers.brain`**. Any structural miss — `mcpServers` absent
+ * 7. **Look up `mcpServers.brain`**. Any structural miss — `mcpServers` absent
  *    or not an object, `brain` key absent, `brain` value not an object, `command`
  *    not a string, `args` not an array → `no-mcp-entry`. NO fallback to any
  *    legacy key under any circumstance.
  *
- * 7. **Compute the expected entry** from the parsed brain.aide:
+ * 8. **Compute the expected entry** from the parsed brain.aide:
  *    `expectedCommand = config.mcpServerConfig.command`,
  *    `expectedArgs = interpolateArgs(config)`. The `interpolateArgs` call is
  *    unconditional — in the default scaffold (no placeholders) it returns args
  *    unchanged; advanced users who use `${name}` rely on the call running.
  *
- * 8. **Structural drift comparison** — `command` (string equality), `args`
+ * 9. **Structural drift comparison** — `command` (string equality), `args`
  *    (length then element-by-element string equality). Both sides are in-memory
  *    objects so whitespace and key ordering in the serialized `.mcp.json` are
  *    invisible to this check. Either mismatch → `mcp-drift`.
  *
- * 9. **Happy path** — everything agrees → `ok`.
+ * 10. **Happy path** — everything agrees → `ok`.
  *
  * Hard invariants:
  * - The detector NEVER throws. Every failure mode collapses to a structured BrainState.
@@ -57,9 +66,21 @@ import type { BrainHint, BrainState } from "@/types/index.js";
  * - The detector NEVER branches on `config.name` or any value derived from it.
  * - The detector NEVER auto-syncs `.mcp.json` on drift. No writes from this module.
  * - The detector NEVER falls back to a legacy `mcpServers.obsidian` key.
- * - The detector NEVER introspects `mcpServerConfig.args` beyond element-by-element equality.
+ * - The detector NEVER introspects `mcpServerConfig.args` beyond null-presence and
+ *   element-by-element equality comparison — never extracts a path, infers brand
+ *   identity, derives a logical root, or sanity-checks the user's launcher
+ *   invocation. The args list is opaque to the detector except for the null-presence
+ *   check (Step 4) and the drift-equality comparison (Step 9).
  * - Pipeline order is fixed: brain.aide first, then `.mcp.json`. Inverting the order
  *   would invert the source-of-truth direction.
+ * - The detector NEVER pattern-matches string contents to detect unwired slots.
+ *   Detection is structural via JS `=== null` against the parsed `mcpServerConfig.args`.
+ *   The retired sentinel design (`<BRAIN_PATH>`, `<API_TOKEN>`, magic UUIDs,
+ *   angle-bracket-wrapped tokens) is forbidden.
+ * - The detector NEVER reaches `.mcp.json` on a null-armed config. The null-args
+ *   pre-check short-circuits the pipeline before any byte-for-byte drift comparison
+ *   runs. Two null-bearing files agreeing byte-for-byte must NOT surface as `ok` —
+ *   the structural unwired-slot signal takes precedence.
  */
 export default async function buildBrainState(root: string): Promise<BrainState> {
 	// Step 1 — Resolve the framework-specific MCP config path.
@@ -82,7 +103,20 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 	}
 	const { name, mcpServerConfig } = parseResult;
 
-	// Step 4 — Read .mcp.json at the framework-derived path. ENOENT and all
+	// Step 4 — Null-args structural pre-check. Scan the parsed args list for any
+	// JS null value produced by parseBrainAide when it encounters a bare `-` (no
+	// scalar after the dash) in YAML args. Detection is structural (`a === null`),
+	// never string-matching on `"null"`, `"~"`, `"<BRAIN_PATH>"`, or any other
+	// in-band sentinel. The check runs BEFORE the .mcp.json read so a null-bearing
+	// brain.aide matched byte-for-byte by an equally null-bearing .mcp.json does
+	// NOT slip through as ok — bytes that agree on null have agreed on broken state,
+	// not health. This is the exact regression the precedence ordering exists to
+	// prevent: two equally null-bearing files agreeing their way past as `ok`.
+	if (mcpServerConfig.args.some((a) => a === null)) {
+		return { status: "no-mcp-entry", name, hints };
+	}
+
+	// Step 5 — Read .mcp.json at the framework-derived path. ENOENT and all
 	// other I/O failures collapse to no-mcp-entry: the user has a brain.aide but
 	// no .mcp.json yet — remediation is to run `npx aidemd-mcp sync`.
 	let raw: string;
@@ -92,7 +126,7 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 		return { status: "no-mcp-entry", name, hints };
 	}
 
-	// Step 5 — Parse .mcp.json JSON. Parse failure maps to no-mcp-entry for
+	// Step 6 — Parse .mcp.json JSON. Parse failure maps to no-mcp-entry for
 	// the same reason: remediation is identical to "entry absent".
 	let mcpConfig: unknown;
 	try {
@@ -101,7 +135,7 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 		return { status: "no-mcp-entry", name, hints };
 	}
 
-	// Step 6 — Look up mcpServers.brain. Any structural miss → no-mcp-entry.
+	// Step 7 — Look up mcpServers.brain. Any structural miss → no-mcp-entry.
 	// No fallback to any legacy key — the fixed "brain" key is settled at install.
 	const servers =
 		mcpConfig !== null && typeof mcpConfig === "object" && "mcpServers" in mcpConfig
@@ -126,14 +160,14 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 		return { status: "no-mcp-entry", name, hints };
 	}
 
-	// Step 7 — Compute the expected entry from the parsed brain.aide.
+	// Step 8 — Compute the expected entry from the parsed brain.aide.
 	// interpolateArgs is called unconditionally per the spec's "always interpolate,
 	// then compare" contract — a no-op for default installs (no placeholders), but
 	// required for advanced users who use ${name} in their args.
 	const expectedCommand = mcpServerConfig.command;
 	const expectedArgs = interpolateArgs({ name, mcpServerConfig });
 
-	// Step 8 — Structural drift comparison. Both sides are in-memory objects so
+	// Step 9 — Structural drift comparison. Both sides are in-memory objects so
 	// whitespace and key ordering in the serialized .mcp.json are invisible to
 	// this check.
 	const commandMatches = actualCommand === expectedCommand;
@@ -145,7 +179,7 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 		return { status: "mcp-drift", name, hints };
 	}
 
-	// Step 9 — Happy path: brain.aide parsed, .mcp.json brain entry present and
+	// Step 10 — Happy path: brain.aide parsed, .mcp.json brain entry present and
 	// structurally matches the interpolated mcpServerConfig.
 	return { status: "ok", name, hints };
 }

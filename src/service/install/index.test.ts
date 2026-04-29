@@ -267,24 +267,25 @@ describe("init — structured JSON result", () => {
 		}
 	});
 
-	it("explicit brainPath: brain root step has that path, brainHints still returned", async () => {
+	it("explicit brainPath: brain config step exists, brainHints still returned", async () => {
 		const confirmedPath = join(tempDir, "confirmed-vault");
 		const result = await init(tempDir, undefined, undefined, confirmedPath);
 
-		// The brain root step must use the confirmed path
-		const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
-		expect(brainRootStep).toBeDefined();
-		expect(brainRootStep?.filePath).toBe(confirmedPath);
+		// provisionBrain now returns two steps: brain.aide scaffold + MCP entry plan.
+		// The retired "Brain root directories" step is gone — provisionBrain no longer
+		// creates brain root directories; that responsibility moved to the integration's
+		// aide-config prose at /aide:brain config.
+		const brainAideStep = result.steps.find((s) => s.name === "Brain config (brain.aide)");
+		expect(brainAideStep).toBeDefined();
+		expect(brainAideStep?.category).toBe("brain");
 
 		// brainHints still present at top level (agent interview material)
 		expect(result).toHaveProperty("brainHints");
 		expect(Array.isArray(result.brainHints)).toBe(true);
 
-		// Brain MCP prescription uses the confirmed path
+		// Brain MCP step is still present
 		const brainMcpStep = result.steps.find((s) => s.name === "MCP config (brain)");
-		expect(brainMcpStep?.prescription).toBeDefined();
-		const lastArg = brainMcpStep?.prescription?.entry.args?.at(-1);
-		expect(lastArg).toBe(confirmedPath);
+		expect(brainMcpStep).toBeDefined();
 	});
 
 	it("idempotency — re-running on initialized content returns exists steps", async () => {
@@ -466,22 +467,26 @@ describe("init — apply mode (category call)", () => {
 		expect(applied.some((s) => s.status === "created")).toBe(true);
 	});
 
-	it("brain category with brainPath: brain root directories are created, brain step has status created", async () => {
+	it("brain category with brainPath: brain.aide scaffold step is created after apply", async () => {
 		const brainPath = join(tempDir, "my-vault");
 		const result = await init(tempDir, undefined, undefined, brainPath);
 		const brainSteps = result.steps.filter((s) => s.category === "brain");
 		expect(brainSteps.length).toBeGreaterThan(0);
 
-		const applied = await applySteps(brainSteps);
-		const brainRootStep = applied.find((s) => s.name === "Brain root directories");
+		// Only apply the brain.aide-scaffold step (would-create file steps).
+		// The MCP entry plan step carries a prescription and is intentionally not
+		// applied by applySteps (it passes through unchanged).
+		const fileSteps = brainSteps.filter((s) => s.status === "would-create" && !s.prescription);
+		const applied = await applySteps(fileSteps);
+		const brainAideStep = applied.find((s) => s.name === "Brain config (brain.aide)");
 
-		expect(brainRootStep).toBeDefined();
-		expect(brainRootStep?.status).toBe("created");
-		expect(brainRootStep).not.toHaveProperty("content");
+		expect(brainAideStep).toBeDefined();
+		expect(brainAideStep?.status).toBe("created");
+		expect(brainAideStep).not.toHaveProperty("content");
 
-		// The brain root directories should exist on disk
-		expect(await pathExists(join(brainPath, "research"))).toBe(true);
-		expect(await pathExists(join(brainPath, "coding-playbook"))).toBe(true);
+		// The brain.aide file should exist on disk at the expected path
+		const brainAidePath = join(tempDir, ".aide", "config", "brain.aide");
+		expect(await pathExists(brainAidePath)).toBe(true);
 	});
 
 	it("MCP steps in a category call: prescription is preserved in the returned manifest", async () => {

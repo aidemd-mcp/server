@@ -286,25 +286,40 @@ function extractMarkerSections(body: string):
  * current schema resolves; unknown keys (any `${something-not-in-the-map}`) pass through
  * verbatim.
  *
- * The default scaffold contains no placeholders — this helper is a no-op for the canonical
- * install. Advanced users can embed `${name}` in their `args` to inject the brain's name
- * at install time (e.g. `["some-launcher", "--profile", "${name}"]`).
+ * The helper walks args element-by-element:
+ * - String elements: `${fieldName}` placeholder substitution is applied. Unknown keys pass
+ *   through verbatim (the `${...}` token is left as-is in the output).
+ * - Null elements: passed through unchanged at their original index — there is no string to
+ *   substitute into. Null is the explicit unwired-slot signal; coercing it here would silently
+ *   break sync's null-refusal downstream.
  *
- * Audience: install-time callers only — this is the `.mcp.json`-writer surface, never
- * the agent-facing surface. It is the ONLY substitution surface in the package:
- * no other function in the codebase replaces placeholders in brain.aide content.
- * The prose body is never passed through here and must never be interpolated.
+ * The return type is `(string | null)[]`. Array length is always equal to the input length —
+ * null entries do NOT compact away. The element at each index in the output corresponds to
+ * the element at the same index in the input.
+ *
+ * The default scaffold contains no `${...}` placeholders and may carry one or more nulls at
+ * unwired-slot indexes. For that scaffold this helper is structurally a no-op — output
+ * deep-equals input. Advanced users can embed `${name}` in string args to inject the brain's
+ * name at install time (e.g. `["some-launcher", "--profile", "${name}", null]`); null entries
+ * at adjacent indexes continue to pass through unchanged.
+ *
+ * Audience: install-time callers only — this is the `.mcp.json`-writer surface, never the
+ * agent-facing surface. Consumers running `interpolateArgs` and then sync handle null-refusal
+ * in sync, never in this helper. It is the ONLY substitution surface in the package: no other
+ * function in the codebase replaces placeholders in brain.aide content. The prose body is
+ * never passed through here and must never be interpolated.
  */
-export function interpolateArgs(config: BrainAideConfig): string[] {
+export function interpolateArgs(config: BrainAideConfig): (string | null)[] {
 	const substitutions: Record<string, string> = {
 		name: config.name,
 	};
 
-	return config.mcpServerConfig.args.map((arg) =>
-		arg.replace(/\$\{(\w+)\}/g, (match, key: string) => {
+	return config.mcpServerConfig.args.map((arg) => {
+		if (arg === null) return null;
+		return arg.replace(/\$\{(\w+)\}/g, (match, key: string) => {
 			return Object.prototype.hasOwnProperty.call(substitutions, key) ? substitutions[key] : match;
-		}),
-	);
+		});
+	});
 }
 
 /**
@@ -321,8 +336,13 @@ export function interpolateArgs(config: BrainAideConfig): string[] {
  * 1. Required frontmatter fields (`name`, `mcpServerConfig`, `mcpServerConfig.command`,
  *    `mcpServerConfig.args`) — a missing required field is surfaced before any deprecated-
  *    field error.
- * 2. Deprecated fields (`connector`, `rootPath`, `entryFile`, `tools`) — rejected with a
- *    reason listing every stale field found, in deprecated-set order.
+ *    Step 4 — args validation: `mcpServerConfig.args` must be an array whose every element
+ *    is a string OR null. Null at any index is the explicit unwired-slot signal — it is part
+ *    of the args contract, NOT a malformed value. Any element of any other type (number,
+ *    boolean, object, undefined) returns `malformed-frontmatter` with a reason naming the
+ *    field and the accepted set (strings and null).
+ * 2. Step 4b — Deprecated fields (`connector`, `rootPath`, `entryFile`, `tools`) — rejected
+ *    with a reason listing every stale field found, in deprecated-set order.
  * 3. Body grammar — the closed-vocabulary marker walker (`extractMarkerSections`) checks
  *    that every required marker pair is present and well-formed; every marker-layout
  *    violation class returns `malformed-body` naming the offending marker. Step 5:
@@ -387,8 +407,8 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		return { kind: "malformed-frontmatter", reason: "mcpServerConfig.command is required and must be a non-empty string" };
 	}
 
-	if (!Array.isArray(mcpServerConfig["args"]) || !mcpServerConfig["args"].every((a) => typeof a === "string")) {
-		return { kind: "malformed-frontmatter", reason: "mcpServerConfig.args is required and must be an array of strings" };
+	if (!Array.isArray(mcpServerConfig["args"]) || !mcpServerConfig["args"].every((a) => typeof a === "string" || a === null)) {
+		return { kind: "malformed-frontmatter", reason: "mcpServerConfig.args is required and must be an array of strings or null" };
 	}
 
 	// Step 4b: Reject deprecated fields. Runs AFTER required-field validation so a user
@@ -407,7 +427,7 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		name: fm["name"],
 		mcpServerConfig: {
 			command: mcpServerConfig["command"],
-			args: mcpServerConfig["args"] as string[],
+			args: mcpServerConfig["args"] as (string | null)[],
 		},
 	};
 
@@ -467,6 +487,9 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
  *   content between their marker boundaries. Call `interpolateArgs` separately when writing
  *   the MCP entry.
  * - Never branches on `name` — the field is surfaced unchanged for consumers to use.
+ * - `mcpServerConfig.args` is typed `(string | null)[]` — null entries are preserved verbatim
+ *   at their original indexes. Null at any index is the explicit unwired-slot signal; there is
+ *   no literal-string sentinel recognized at any layer of the package.
  */
 export default async function parseBrainAide(root: string): Promise<ParseBrainAideResult> {
 	// Step 1: Read the file. ENOENT and other I/O failures both collapse to `missing` —

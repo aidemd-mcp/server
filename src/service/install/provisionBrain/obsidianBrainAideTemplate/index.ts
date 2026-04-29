@@ -4,6 +4,14 @@ import { platform } from "node:os";
  * Returns the complete canonical bundled `brain.aide` file content as a string,
  * ready to write to disk at `.aide/config/brain.aide` in the host project root.
  *
+ * Takes no arguments. The path slot in `mcpServerConfig.args` is always YAML null
+ * in the emitted output — the structural unwired-slot signal carried by the typed
+ * `(string | null)[]` schema. The agent fills the null slot with the user's real
+ * path via `/aide:brain config`, then runs sync; sync writes the wired entry to
+ * `.mcp.json` and refuses to write null-bearing args. The integration's
+ * `<!-- aide-config-start -->` body section carries the full wiring flow prose,
+ * including the post-sync entry-point artifact seeding step.
+ *
  * The returned string has six body sections in this order:
  *
  * 1. **`<!-- aide-orientation-start -->`** — Agent-facing runtime briefing for navigating
@@ -15,10 +23,13 @@ import { platform } from "node:os";
  *    User-editable post-scaffold.
  *
  * 2. **`<!-- aide-config-start -->`** — Integration-specific wiring flow for
- *    `/aide:brain config`. Describes how to read `brain.aide`, decide the target
- *    vault path (from `$ARGUMENTS`, interactively, or STOP if already wired),
- *    edit `brain.aide`, sync, and emit the restart message. Read live by
- *    `aide_brain({ kind: "config" })` at runtime. User-editable post-scaffold.
+ *    `/aide:brain config`. Describes how to read `brain.aide`, detect YAML null
+ *    at `args[3]` as the unwired-state signal, decide the target path (from
+ *    `$ARGUMENTS`, interactively, or STOP if already wired), edit `brain.aide`
+ *    to replace null with the absolute path, run sync, seed the four entry-point
+ *    artifacts via `mcp__brain__write_note`, and emit the restart message. Read
+ *    live by `aide_brain({ kind: "config" })` at runtime. User-editable
+ *    post-scaffold.
  *
  * 3. **`<!-- aide-playbook-index-start -->`** — Seed bytes for the coding-playbook
  *    entry-point file scaffolded into the user's brain on cold install
@@ -52,11 +63,11 @@ import { platform } from "node:os";
  * - Frontmatter is exactly `name` + `mcpServerConfig` — minimum schema is the
  *   maximum schema. The parser rejects any additional top-level field as
  *   `malformed-frontmatter`.
- * - When `brainPath` is provided, it is inlined byte-for-byte as the last element
- *   of `args`. When `brainPath` is omitted, the literal string `<BRAIN_PATH>` is
- *   substituted in the same position. The placeholder is a parser-blind literal —
- *   not a `${...}` interpolation target — so `interpolateArgs` passes it through
- *   unchanged. The user supplies the real path later via `/aide:brain config`.
+ * - The path slot in `mcpServerConfig.args` is a bare-dash YAML null line in
+ *   every emission. POSIX: `args` parses to `["@bitbonsai/mcpvault", null]`.
+ *   Win32: `args` parses to `["/c", "npx", "@bitbonsai/mcpvault", null]`. No
+ *   quoted empty string, no literal-string sentinel, no `${...}` interpolation
+ *   at the unwired slot. The user fills the slot via `/aide:brain config`.
  * - Platform branching: Windows uses `command: cmd` with `["/c", "npx", ...]`
  *   args to work around Windows shell constraints. POSIX uses `command: npx`
  *   directly. The platform check is isolated here and nowhere else in this module.
@@ -71,13 +82,11 @@ import { platform } from "node:os";
  *   bytes and returns `malformed-body` (missing markers) for any brain.aide that
  *   still uses the old four-section grammar.
  */
-export default function obsidianBrainAideTemplate(brainPath?: string): string {
-	const pathArg = brainPath !== undefined ? brainPath : "<BRAIN_PATH>";
-
+export default function obsidianBrainAideTemplate(): string {
 	const mcpServerConfig =
 		platform() === "win32"
-			? `mcpServerConfig:\n  command: cmd\n  args:\n    - '/c'\n    - 'npx'\n    - '@bitbonsai/mcpvault'\n    - '${pathArg}'`
-			: `mcpServerConfig:\n  command: npx\n  args:\n    - '@bitbonsai/mcpvault'\n    - '${pathArg}'`;
+			? `mcpServerConfig:\n  command: cmd\n  args:\n    - '/c'\n    - 'npx'\n    - '@bitbonsai/mcpvault'\n    -`
+			: `mcpServerConfig:\n  command: npx\n  args:\n    - '@bitbonsai/mcpvault'\n    -`;
 
 	return (
 		`---\n` +
@@ -102,8 +111,9 @@ export default function obsidianBrainAideTemplate(brainPath?: string): string {
 		`<!-- aide-config-start -->\n` +
 		`\n` +
 		`You are completing the wiring of an Obsidian brain. The required value is the\n` +
-		`absolute path to the user's Obsidian vault, landed as the last entry of\n` +
-		`\`mcpServerConfig.args\` in \`brain.aide\`.\n` +
+		`absolute path to the user's Obsidian vault, to be placed at \`args[3]\` of\n` +
+		`\`mcpServerConfig.args\` in \`brain.aide\`. YAML null at \`args[3]\` is the\n` +
+		`unwired-state signal — it means the brain path has not yet been filled in.\n` +
 		`\n` +
 		`Argument shape (Obsidian only): \`/aide:brain config [<absolute-path>]\`. When\n` +
 		`\`$ARGUMENTS\` is non-empty, treat it as the absolute path the user wants to wire\n` +
@@ -111,19 +121,29 @@ export default function obsidianBrainAideTemplate(brainPath?: string): string {
 		`interactively" on a fresh wire and "STOP, nothing to do" against an already-wired\n` +
 		`brain.\n` +
 		`\n` +
-		`1. Read \`brain.aide\`. Extract the current path entry from \`mcpServerConfig.args\`\n` +
-		`   (the literal \`<BRAIN_PATH>\` placeholder means un-wired; any other string means\n` +
-		`   already wired).\n` +
+		`1. Read \`brain.aide\`. Inspect \`mcpServerConfig.args[3]\`.\n` +
+		`   YAML null at that position means un-wired; any string value means already wired.\n` +
 		`2. Decide the target path:\n` +
 		`   - \`$ARGUMENTS\` non-empty → use it as the target path.\n` +
-		`   - \`$ARGUMENTS\` empty AND current entry is \`<BRAIN_PATH>\` → ask the user where\n` +
+		`   - \`$ARGUMENTS\` empty AND \`null at args[3]\` → ask the user where\n` +
 		`     their vault lives. Use \`AskUserQuestion\` with \`aide_info.brain.hints\` as\n` +
 		`     suggestions plus a "Different location" entry.\n` +
 		`   - \`$ARGUMENTS\` empty AND current entry is a real path → STOP, nothing to do.\n` +
-		`3. Edit \`brain.aide\` — replace the current entry with the target path.\n` +
+		`3. Edit \`brain.aide\` — replace the null at \`args[3]\` with the absolute path.\n` +
 		`4. Sync — read \`.mcp.json["mcpServers"]["aide"]\`, take its command and args, append\n` +
 		`   \`"sync"\`, run via Bash. On exit 0 continue; on non-zero surface stderr and stop.\n` +
-		`5. Emit the restart message verbatim: "Sync wrote the brain entry. Restart Claude\n` +
+		`5. Seed the four entry-point artifacts into the brain. Read \`brain.aide\` via the\n` +
+		`   brain's read tool. For each artifact listed below that does not already exist,\n` +
+		`   write it via \`mcp__brain__write_note\` at the named path using the seed bytes\n` +
+		`   from brain.aide's corresponding section (read via parseBrainAide's typed keys):\n` +
+		`   - \`playbookIndex\` → \`coding-playbook/coding-playbook.md\`\n` +
+		`   - \`studyPlaybook\` → \`coding-playbook/study-playbook.md\`\n` +
+		`   - \`updatePlaybook\` → \`coding-playbook/update-playbook.md\`\n` +
+		`   - \`researchIndex\` → \`research/research.md\`\n` +
+		`   For any artifact that already exists, skip it (presence-only check — do not\n` +
+		`   overwrite user-edited content). On subsequent \`/aide:brain config\` runs this\n` +
+		`   same loop seeds any artifact that was deleted or is missing.\n` +
+		`6. Emit the restart message verbatim: "Sync wrote the brain entry. Restart Claude\n` +
 		`   Code so the brain MCP server picks up the new entry, then re-run /aide."\n` +
 		`\n` +
 		`<!-- aide-config-end -->\n` +

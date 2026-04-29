@@ -17,6 +17,30 @@ import scaffoldReadme from "./scaffoldReadme/index.js";
 import compareBytes from "./shared/compareBytes/index.js";
 
 /**
+ * Plan the brain-layer scaffolding for the given integration and return the two
+ * InitStep records — brain.aide-scaffold step first, MCP-entry-plan step second.
+ *
+ * This is the entry point cli/init calls to obtain the brain.aide-scaffold step
+ * it applies via `applySteps`. cli/init discards the MCP-entry-plan step; only
+ * the brain.aide-scaffold step is applied at install time (sync owns the MCP
+ * entry write after the user has filled the null slot).
+ *
+ * Today `integration` must be `"obsidian"` (the only registered template). The
+ * parameter is accepted now so cli/init's call site is forward-compatible with
+ * future integrations that land their own bundled templates.
+ *
+ * @param projectRoot - Host project root (where `.aide/config/brain.aide` lives).
+ * @param _integration - Integration name selecting which bundled template scaffolds.
+ *   Currently only `"obsidian"` is valid; the parameter is accepted for
+ *   forward-compatibility and reserved for future integration routing.
+ */
+export async function planBrainCategory(projectRoot: string, _integration: string): Promise<InitStep[]> {
+	const config = await detectFramework(projectRoot);
+	const mcpConfigPath = join(projectRoot, config.mcpConfigPath);
+	return provisionBrain(projectRoot, mcpConfigPath);
+}
+
+/**
  * Input schema for aide_init.
  *
  * `skipIde` was removed: IDE configuration is presented per-category during
@@ -82,9 +106,9 @@ export default async function init(
 	const brainMcpPath = join(projectRoot, config.mcpConfigPath);
 	let brainSteps: InitStep[];
 	if (brainPath !== undefined) {
-		// Delegate to provisionBrain with all three inputs: the host project root
-		// (where .aide/brain.aide lives), the brain root location, and the MCP config path.
-		brainSteps = await provisionBrain(projectRoot, brainPath, brainMcpPath);
+		// Delegate to provisionBrain with two inputs: the host project root
+		// (where .aide/config/brain.aide lives) and the MCP config path.
+		brainSteps = await provisionBrain(projectRoot, brainMcpPath);
 	} else {
 		// No explicit brainPath — the agent must ask the user. Return placeholder
 		// steps with empty filePaths. The MCP step prescription is omitted: without

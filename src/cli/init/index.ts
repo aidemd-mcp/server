@@ -1,11 +1,9 @@
 #!/usr/bin/env node
-import { join, dirname } from "node:path";
-import { writeFile, access, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import path from "node:path";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
 import type { InstallResult } from "./types/index.js";
-import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
 import writeMethodology from "@/service/install/writeMethodology/index.js";
 import installMethodologyDocs from "@/service/install/installMethodologyDocs/index.js";
 import scaffoldCommands from "@/service/install/scaffoldCommands/index.js";
@@ -14,140 +12,144 @@ import installSkills from "@/service/install/installSkills/index.js";
 import installAideTree from "@/service/install/installAideTree/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import applySteps from "@/service/install/applySteps/index.js";
+import { planBrainCategory } from "@/service/install/index.js";
 import detectFramework from "@/service/install/detectFramework/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import compareBytes from "@/service/install/shared/compareBytes/index.js";
 import type { InitStep, FrameworkConfig } from "@/types/index.js";
 
 /**
+ * Registered brain integrations. Today only "obsidian" is valid. Future
+ * integrations land their own bundled templates and add their name here.
+ *
+ * This registry lives at the cli/init argument boundary — validation happens
+ * here, before the install service is called. The install service and
+ * provisionBrain do not validate integration names; that is cli/init's job.
+ */
+const BRAIN_INTEGRATIONS = ["obsidian"] as const;
+
+/**
+ * Flags whose presence at install time is forbidden. Every flag in this set
+ * accepts a backend-specific datum (path, token, URI, vault root) and is
+ * replaced by `/aide:brain config` inside an agent session.
+ */
+const FORBIDDEN_BRAIN_FLAGS = [
+	"--brain-path",
+	"--vault-path",
+	"--brain-root",
+	"--brain-token",
+	"--brain-url",
+	"--brain-name",
+] as const;
+
+/**
  * Returns the list of deferred-category descriptions to pass to `renderWarning`.
  * Each string is self-contained guidance that names the per-category follow-up
  * surface inline.
  *
- * Brain wiring is no longer a "category absent because the flag wasn't supplied."
- * It is a category that FINISHED scaffolding but still has a `<BRAIN_PATH>`
- * placeholder in `mcpServerConfig.args`, routed exclusively to `/aide:brain config`.
- * The brain item MUST NEVER name `/aide` or any orchestrator inline-recovery
- * surface — doing so violates the spec's undesired outcome: "directs the user to
- * a removed slash command." Only `/aide:brain config` is the correct follow-up.
+ * Brain wiring is always deferred — cli/init scaffolds the bundled `brain.aide`
+ * template with YAML null at the unwired slot but never fills it, never derives
+ * the brain MCP entry, and never seeds the four entry-point artifacts. Those steps
+ * belong exclusively to `/aide:brain config` on the first `/aide` run.
  *
- * - Brain wiring (when `--brain-path` is omitted): `.aide/config/brain.aide` was
- *   scaffolded with a `<BRAIN_PATH>` placeholder in `mcpServerConfig.args`. The
- *   brain MCP server will not launch successfully until the placeholder is replaced.
- *   Open Claude Code and run `/aide:brain config <absolute-path-to-your-brain>`.
- * - IDE configuration (always present): re-run the CLI with `--ide <choice>`.
+ * The brain entry MUST name `/aide:brain config` as the wiring surface and MUST
+ * NOT name `/aide` as the wiring surface. Naming `/aide` for brain wiring violates
+ * the spec's undesired outcome "directs the user to a removed slash command" —
+ * `/aide` routes to `/aide:brain config`; it does not own brain-wiring inline
+ * recovery.
  *
- * When `--brain-path` IS provided, the brain entry in `.mcp.json` carries the real
- * path so only IDE remains deferred.
- *
- * Single source of truth: passed as data to `renderWarning` so the renderer
- * remains reusable by any caller with a different deferred set.
+ * IDE configuration always defers — cli/init never guesses, defaults, or scans
+ * the filesystem for IDE choice. Re-run with `--ide <choice>` to resolve.
  */
-function deferredCategories(brainPath: string | undefined): readonly string[] {
-	if (brainPath) {
-		return [
-			"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
-		];
-	}
+function deferredCategories(): readonly string[] {
 	return [
-		"Brain wiring — .aide/config/brain.aide was scaffolded with a <BRAIN_PATH> placeholder in mcpServerConfig.args. The brain MCP server will not launch successfully until the placeholder is replaced. Open Claude Code and run /aide:brain config <absolute-path-to-your-brain>.",
+		"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
 		"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
 	];
 }
 
 /**
- * Orchestrates the full cold-start install pipeline using planning-helper reuse:
+ * Orchestrates the full cold-start install pipeline:
  *
- * 1. **Brain.aide scaffold** — `.aide/config/brain.aide` does not yet exist, writes
- *    the canonical Obsidian template to disk. Seed-semantic: never overwrites. Logs
- *    `[created]` or `[exists]`. This step runs BEFORE `writeMcpEntry` because
- *    `writeMcpEntry` reads brain.aide from disk to derive the brain MCP entry.
- *    When `--brain-path` is absent, the template lands the literal `<BRAIN_PATH>`
- *    placeholder in `mcpServerConfig.args`.
+ * 1. **Brain.aide scaffold** — delegates to the install service's
+ *    `planBrainCategory` to obtain the two InitStep records returned by
+ *    `provisionBrain`. Applies ONLY the brain.aide-scaffold InitStep via
+ *    `applySteps`; the MCP-entry-plan InitStep is deliberately discarded.
+ *    cli/init never touches `.aide/config/` directly. The applied step's
+ *    status becomes the first element of the per-file log.
  *
- * 2. **`writeMcpEntry` runs second** — it is the ONLY abort trigger. If `.mcp.json`
- *    is malformed, this function throws immediately (only the brain.aide scaffold
- *    may have run). The top-level IIFE's catch block converts the throw to a stderr
- *    error line and exits 1.
+ *    `options.brain` selects which bundled template scaffolds (default
+ *    `"obsidian"`). No `brainPath` field exists on `options` under any rename.
  *
- * 3. **`detectFramework`** resolves canonical Claude paths (`CLAUDE.md`,
- *    `.claude/commands`, `.claude/agents`, `.claude/skills`, `.aide/docs`, `.mcp.json`).
- *    The CLI is Claude-only; passing `"claude"` explicitly skips the detection walk.
+ * 2. **`writeMcpEntry` runs second** — it is the ONLY abort trigger. If
+ *    `.mcp.json` is malformed, this function throws immediately. The top-level
+ *    IIFE's catch block converts the throw to a stderr error line and exits 1.
  *
- * 4. **Planning helpers** (`writeMethodology`, `installMethodologyDocs`,
- *    `scaffoldCommands`, `installAgents`, `installSkills`, `installAideTree`,
- *    `scaffoldReadme`, plus an inline `versions.json` step) collect `InitStep[]`.
- *    These are planners — they never write to disk.
+ * 3. **`detectFramework`** resolves canonical Claude paths. The CLI is
+ *    Claude-only; passing `"claude"` skips the detection walk.
  *
- * 5. **Partition** by status: `toApply` (`would-create` only — enforces skip-on-exists),
- *    `skipped` (`would-overwrite` | `would-skip` — surfaces in the warning),
- *    `alreadyExists` (`exists` — logs `[exists]`, does NOT appear in the warning).
+ * 4. **Planning helpers** collect `InitStep[]`. These planners never write
+ *    to disk.
  *
- * 6. **`applySteps(toApply)`** writes only the `would-create` steps. The
- *    `would-create`-only filter is the mechanical invariant for "never overwrites".
+ * 5. **Partition** by status: `toApply` (`would-create` only — enforces
+ *    skip-on-exists), `skipped` (`would-overwrite` | `would-skip`).
  *
- * 7. **Per-file log** — one `[status] displayPath — message` line per artifact in
- *    original `plannedSteps` order, with the brain.aide and MCP results prepended.
+ * 6. **`applySteps(toApply)`** writes only the `would-create` steps.
+ *
+ * 7. **Per-file log** — one `[status] displayPath — message` line per
+ *    artifact in original order, with the brain.aide result prepended.
  *
  * 8. **Warning block** — `renderWarning` receives every `skipped-drift` and
- *    `skipped-missing-canonical` result as `skipped`, an empty `failed` array, and
- *    always `DEFERRED_CATEGORIES`. Non-empty → print the block. Empty → print the
- *    plain completion line.
+ *    `skipped-missing-canonical` result, an empty `failed` array, and the
+ *    two-item `deferredCategories()` array.
  *
- * **Exit-code contract:** returns `0` unconditionally. The only non-zero exit path
- * is the top-level IIFE's `catch` block.
+ * **Exit-code contract:** returns `0` unconditionally. The only non-zero exit
+ * path is the top-level IIFE's `catch` block.
  *
  * @param cwd - Project root to install artifacts into.
  * @param write - Line-writer injected for testability; defaults to stdout.
+ * @param options - Optional. `brain` selects the bundled template (default
+ *   `"obsidian"`). No `brainPath` parameter exists on this object under any
+ *   rename — the install service accepts only the integration name, not a
+ *   backend-specific datum.
  */
 export async function runInit(
 	cwd: string,
 	write: (line: string) => void = (line) => process.stdout.write(line + "\n"),
-	options: { brainPath?: string } = {},
+	options: { brain?: string } = {},
 ): Promise<number> {
-	// Step 1 — Brain.aide scaffold: seed-semantic write that must happen BEFORE
-	// writeMcpEntry because writeMcpEntry reads brain.aide from disk to derive the
-	// brain MCP entry. Runs unconditionally — without a brainPath the template lands
-	// the <BRAIN_PATH> placeholder; the category is deferred to /aide:brain config.
-	//
-	// Files inside `.aide/config/` are user-owned per the root spec — this scaffold
-	// runs once on first cold start where the file is absent and never touches the
-	// file again on any subsequent run, regardless of byte drift from the canonical
-	// default.
-	const brainAidePath = join(cwd, ".aide", "config", "brain.aide");
-	let brainAideExists = false;
-	try {
-		await access(brainAidePath);
-		brainAideExists = true;
-	} catch {
-		// ENOENT — file does not exist, proceed to create.
-	}
+	const integration = options.brain ?? "obsidian";
 
-	const brainAideResult: InstallResult = brainAideExists
-		? {
-				status: "exists",
-				displayPath: ".aide/config/brain.aide",
-				message: "already present",
-			}
-		: await (async () => {
-				const content = obsidianBrainAideTemplate(options.brainPath);
-				await mkdir(dirname(brainAidePath), { recursive: true });
-				await writeFile(brainAidePath, content, "utf-8");
-				return {
-					status: "created" as const,
-					displayPath: ".aide/config/brain.aide",
-					message: options.brainPath
-						? "Brain config (Obsidian default)"
-						: "Brain config (Obsidian default, <BRAIN_PATH> placeholder)",
-				};
-			})();
+	// Step 1 — Brain.aide scaffold: delegate to the install service. Obtain both
+	// steps provisionBrain returns, apply only the brain.aide-scaffold step (first
+	// in fixed order), and discard the MCP-entry-plan step. The MCP entry is owned
+	// by cli/sync invoked from /aide:brain config after the user has filled the null
+	// slot(s) — applying it here would land a null-bearing brain entry that sync
+	// refuses at its boundary.
+	const brainSteps = await planBrainCategory(cwd, integration);
+	const brainAideStep = brainSteps.find((s) => s.category === "brain" && s.name === "Brain config (brain.aide)");
+	const brainScaffoldResult: InstallResult = await (async () => {
+		if (!brainAideStep) {
+			// Defensive: planBrainCategory always returns this step; this branch should
+			// never fire in practice. Report as exists so the log isn't confusing.
+			return { status: "exists" as const, displayPath: ".aide/config/brain.aide", message: "already present" };
+		}
+		if (brainAideStep.status === "exists") {
+			return { status: "exists" as const, displayPath: ".aide/config/brain.aide", message: "already present" };
+		}
+		// would-create — apply this single step to disk.
+		await applySteps([brainAideStep]);
+		return {
+			status: "created" as const,
+			displayPath: ".aide/config/brain.aide",
+			message: `bundled brain template (--brain obsidian default; args[3] is YAML null until /aide:brain config fills it)`,
+		};
+	})();
 
 	// Step 2 — MCP entry: the only helper that can throw (malformed JSON). Runs
-	// AFTER the brain.aide scaffold so brain.aide is on disk when brainPath is
-	// supplied — writeMcpEntry reads it to derive the brain entry. If it throws,
-	// propagate immediately; the IIFE catch block converts the throw to a stderr
-	// error line and exits 1.
-	const mcpRaw = await writeMcpEntry(cwd, options.brainPath);
+	// AFTER the brain.aide scaffold. If it throws, propagate immediately; the IIFE
+	// catch block converts the throw to a stderr error line and exits 1.
+	const mcpRaw = await writeMcpEntry(cwd);
 	const mcpResult: InstallResult = { ...mcpRaw, displayPath: ".mcp.json" };
 
 	// Step 3 — Resolve framework config. Explicit "claude" skips the detection
@@ -167,8 +169,8 @@ export async function runInit(
 
 	// Inline versions.json step — mirrors how src/tools/init/index.ts builds
 	// `versionsStep`: compute the host path, read the manifest, stringify it,
-	// compare bytes, and map "would-skip" → "exists" (bytes already match).
-	const versionsHostPath = join(cwd, dirname(config.docHubDir), "versions.json");
+	// compare bytes, and map "would-skip" → "exists".
+	const versionsHostPath = join(cwd, path.dirname(config.docHubDir), "versions.json");
 	const versionsManifest = readVersionsManifest();
 	const versionsJson = JSON.stringify(versionsManifest, null, 2) + "\n";
 	const versionsBytesResult = await compareBytes(versionsHostPath, versionsJson);
@@ -202,22 +204,17 @@ export async function runInit(
 
 	// Step 6 — Apply only the would-create steps. applySteps returns the same
 	// steps with status flipped to "created" (for writes that succeeded).
-	const applied = await applySteps(toApply);
+	await applySteps(toApply);
 
-	// Step 6 (now 7) — Build the per-file log input. Brain.aide result is first
-	// (always present — scaffold is unconditional), MCP result is second, then
-	// every planned step in original order. Status is adapted from InitStep status
-	// to InstallStatus.
-	const results: InstallResult[] = [brainAideResult, mcpResult];
+	// Step 7 — Build the per-file log input. Brain.aide result is first
+	// (always present), MCP result is second, then every planned step in order.
+	const results: InstallResult[] = [brainScaffoldResult, mcpResult];
 
 	for (const step of plannedSteps) {
 		const displayPath = path.relative(cwd, step.filePath).split(path.sep).join("/");
 
 		if (step.status === "would-create") {
-			// This branch is only reached for would-create steps sent to applySteps;
-			// report them as created.
-			const postStatus = "created";
-			results.push({ status: postStatus, displayPath, message: step.name });
+			results.push({ status: "created", displayPath, message: step.name });
 			continue;
 		}
 
@@ -263,13 +260,12 @@ export async function runInit(
 	);
 	const warningFailed: InstallResult[] = [];
 
-	// Step 10 — Render and write the warning block. Deferred categories depend on
-	// whether the user supplied `--brain-path`: with a path, only IDE defers;
-	// without, the brain placeholder item routes to /aide:brain config.
+	// Step 10 — Render and write the warning block. Brain wiring and IDE
+	// configuration are always deferred via the two-item deferredCategories() array.
 	const warning = renderWarning({
 		skipped: warningSkipped,
 		failed: warningFailed,
-		deferredCategories: deferredCategories(options.brainPath),
+		deferredCategories: deferredCategories(),
 	});
 
 	if (warning) {
@@ -283,60 +279,130 @@ export async function runInit(
 }
 
 /**
- * Parse `--brain-path=<path>` or `--brain-path <path>` from argv. Returns
- * the resolved path string or `undefined` if the flag is absent. Strings
- * are trimmed; an empty value after trimming is treated as absent.
+ * Parse `--brain <name>` or `--brain=<name>` from argv. Returns the validated
+ * integration name, defaulting to `"obsidian"` when the flag is absent.
+ *
+ * Throws on empty value or on an unknown integration name not in
+ * `BRAIN_INTEGRATIONS`.
  */
-function parseBrainPath(argv: readonly string[]): string | undefined {
-	const equalsForm = argv.find((a) => a.startsWith("--brain-path="));
+function parseBrain(argv: readonly string[]): string {
+	const equalsForm = argv.find((a) => a.startsWith("--brain="));
 	if (equalsForm) {
-		const value = equalsForm.slice("--brain-path=".length).trim();
-		return value.length > 0 ? value : undefined;
+		const value = equalsForm.slice("--brain=".length).trim();
+		if (value.length === 0) {
+			throw new Error(
+				`--brain requires a value. Registered integrations: ${BRAIN_INTEGRATIONS.join(", ")}.`,
+			);
+		}
+		if (!(BRAIN_INTEGRATIONS as readonly string[]).includes(value)) {
+			throw new Error(
+				`Unknown --brain value "${value}". Registered integrations: ${BRAIN_INTEGRATIONS.join(", ")}.`,
+			);
+		}
+		return value;
 	}
-	const idx = argv.indexOf("--brain-path");
-	if (idx !== -1 && idx + 1 < argv.length) {
+
+	const idx = argv.indexOf("--brain");
+	if (idx !== -1) {
+		if (idx + 1 >= argv.length || argv[idx + 1].startsWith("-")) {
+			throw new Error(
+				`--brain requires a value. Registered integrations: ${BRAIN_INTEGRATIONS.join(", ")}.`,
+			);
+		}
 		const value = argv[idx + 1].trim();
-		return value.length > 0 ? value : undefined;
+		if (value.length === 0) {
+			throw new Error(
+				`--brain requires a value. Registered integrations: ${BRAIN_INTEGRATIONS.join(", ")}.`,
+			);
+		}
+		if (!(BRAIN_INTEGRATIONS as readonly string[]).includes(value)) {
+			throw new Error(
+				`Unknown --brain value "${value}". Registered integrations: ${BRAIN_INTEGRATIONS.join(", ")}.`,
+			);
+		}
+		return value;
 	}
-	return undefined;
+
+	return "obsidian";
+}
+
+/**
+ * Scan argv for any forbidden brain-shaped flag whose value is a backend-specific
+ * datum. On detection, throw a clear error naming the offending flag and routing
+ * the user to `/aide:brain config`.
+ *
+ * The forbidden set covers every flag the old install accepted plus common variants.
+ * Both the bare-flag form (`--brain-path`) and the equals form
+ * (`--brain-path=/foo`) are matched.
+ *
+ * Does NOT consume `--brain` (without a hyphen suffix) — that is `parseBrain`'s
+ * flag.
+ */
+function assertNoForbiddenFlags(argv: readonly string[]): void {
+	for (const arg of argv) {
+		for (const flag of FORBIDDEN_BRAIN_FLAGS) {
+			if (arg === flag || arg.startsWith(`${flag}=`)) {
+				throw new Error(
+					`Backend-specific flag ${flag} is not accepted at install time. Run /aide:brain config inside Claude Code on the first /aide run to wire the brain.`,
+				);
+			}
+		}
+	}
 }
 
 (async () => {
 	if (process.argv.includes("--help")) {
 		process.stdout.write(
-			"Usage: npx @aidemd-mcp/server init [--brain-path <path>]\n\n" +
-				"Full cold-start installer for AIDE. Installs the complete non-interactive\n" +
-				"footprint into the current project: methodology pointer stub, methodology doc\n" +
-				"directory (.aide/docs/), all pipeline slash commands, all pipeline agent definitions,\n" +
-				"all skill templates, .aide/config/brain.aide (always scaffolded), aide and brain\n" +
-				"MCP server entries (additively merged into .mcp.json), and the aide-tree launcher.\n" +
-				"Never overwrites existing files — skip-on-exists is the only safe branch.\n\n" +
-				"Flags:\n" +
-				"  --brain-path <path>   Set the brain root path at install time. When supplied,\n" +
-				"                        the CLI inlines the path byte-for-byte as the last entry\n" +
-				"                        of mcpServerConfig.args in .aide/config/brain.aide, and\n" +
-				"                        derives the brain MCP entry from it. When omitted, the\n" +
-				"                        scaffold still lands but with a <BRAIN_PATH> placeholder\n" +
-				"                        in mcpServerConfig.args; replace it later with:\n" +
-				"                        /aide:brain config <absolute-path-to-your-brain>.\n" +
-				"                        `--brain-path=<path>` also works.\n\n" +
-				"Post-install brain edits (retargeting the brain root path inline in mcpServerConfig.args,\n" +
-				"swapping the launcher command, renaming the brain via the name field) propagate\n" +
-				"to .mcp.json via: npx aidemd-mcp sync\n\n" +
-				"When --brain-path is not provided, .aide/config/brain.aide is scaffolded with a\n" +
-				"<BRAIN_PATH> placeholder in mcpServerConfig.args. The brain MCP server will not\n" +
-				"launch successfully until the placeholder is replaced via:\n" +
-				"  /aide:brain config <absolute-path-to-your-brain>\n" +
-				"IDE configuration always defers to re-running this CLI with --ide <choice>.\n" +
-				"After the install pass, a terminal warning lists anything skipped or deferred,\n" +
-				"with each entry naming its own follow-up surface.\n",
+			"Usage: npx aidemd-mcp init [--brain <integration>] [--ide <choice>]\n\n" +
+				"What it installs:\n" +
+				"  The complete methodology layer into the current project: the methodology\n" +
+				"  pointer stub, the methodology doc set under .aide/docs/, every pipeline\n" +
+				"  slash command under .claude/commands/aide/, every pipeline agent definition\n" +
+				"  under .claude/agents/aide/, every skill template under .claude/skills/, the\n" +
+				"  aide MCP server entry additively merged into .mcp.json, the aide-tree\n" +
+				"  launcher at .aide/bin/aide-tree.mjs, the README badge, and the bundled\n" +
+				"  brain.aide template selected by --brain at .aide/config/brain.aide (with\n" +
+				"  YAML null at the unwired slot). Never overwrites existing files.\n\n" +
+				"What it does NOT do:\n" +
+				"  Never writes a .mcp.json brain entry (sync owns that, after the null slot\n" +
+				"  is filled). Never seeds the four entry-point artifacts (coding-playbook,\n" +
+				"  study-playbook, update-playbook, research index). Never creates the brain\n" +
+				"  root directory. Never asks for a brain path, token, connection URI, or any\n" +
+				"  other backend-specific value. Never accepts any backend-shaped flag\n" +
+				"  (--brain-path, --vault-path, --brain-root, --brain-token, --brain-url,\n" +
+				"  --brain-name).\n\n" +
+				"Recognized flags:\n" +
+				"  --help                  Print this message and exit.\n" +
+				"  --brain <integration>   Select which bundled template scaffolds. Today the\n" +
+				"                          only valid value is obsidian (the default when\n" +
+				"                          --brain is omitted). Future integrations land their\n" +
+				"                          own bundled templates and become valid --brain values\n" +
+				"                          without changing this contract.\n" +
+				"  --ide <choice>          Select which IDE preview wiring scaffolds. (Not yet\n" +
+				"                          implemented; see todo.aide.)\n\n" +
+				"Post-install follow-up:\n" +
+				"  Brain wiring       — open Claude Code and run /aide; on the first run,\n" +
+				"                       /aide:brain config will fill the unwired slot in\n" +
+				"                       .aide/config/brain.aide, derive the brain MCP entry\n" +
+				"                       through cli/sync, and seed the four entry-point\n" +
+				"                       artifacts into your brain.\n" +
+				"  Deferred IDE       — re-run: npx aidemd-mcp init --ide <choice>\n" +
+				"  Skipped artifacts  — run /aide:upgrade for guided reconciliation.\n",
 		);
 		process.exit(0);
 	}
 
 	try {
-		const brainPath = parseBrainPath(process.argv.slice(2));
-		const code = await runInit(process.cwd(), undefined, { brainPath });
+		assertNoForbiddenFlags(process.argv.slice(2));
+	} catch (err: unknown) {
+		const message = err instanceof Error ? err.message : String(err);
+		process.stderr.write(`Error: ${message}\n`);
+		process.exit(1);
+	}
+
+	try {
+		const brain = parseBrain(process.argv.slice(2));
+		const code = await runInit(process.cwd(), undefined, { brain });
 		process.exit(code);
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);

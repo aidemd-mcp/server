@@ -193,10 +193,18 @@ async function writeBrainAide(root: string, content: string): Promise<void> {
  * Build a minimal valid six-section brain.aide content string using
  * the marker-pair body grammar. All six required marker pairs are present
  * in the correct orientation-then-config-then-playbookIndex-then-studyPlaybook-then-updatePlaybook-then-researchIndex order.
+ *
+ * The optional `argsLines` override replaces the default two-element args block
+ * (lines `    - "@example/mcp-launcher"` and `    - "D:/brains/my-brain"`) with
+ * the caller-supplied indented YAML lines. Use this to inject YAML null entries
+ * (bare `-` with no scalar) or arbitrary args shapes without touching any other
+ * fixture property. Each element of `argsLines` must be a string of the form
+ * `    - <value>` (four-space indent, matching the enclosing frontmatter block).
  */
 function makeCanonicalContent(overrides?: {
 	name?: string;
 	extraFrontmatterLines?: string[];
+	argsLines?: string[];
 	orientationBody?: string;
 	configBody?: string;
 	playbookIndexBody?: string;
@@ -213,13 +221,15 @@ function makeCanonicalContent(overrides?: {
 	const updatePlaybook = overrides?.updatePlaybookBody ?? "Some update playbook body.\n";
 	const researchIndex = overrides?.researchIndexBody ?? "Some research index body.\n";
 
+	const defaultArgsLines = ['    - "@example/mcp-launcher"', '    - "D:/brains/my-brain"'];
+	const argsBlock = (overrides?.argsLines ?? defaultArgsLines).join("\n");
+
 	const frontmatterLines = [
 		`name: ${name}`,
 		"mcpServerConfig:",
 		"  command: npx",
 		"  args:",
-		'    - "@example/mcp-launcher"',
-		'    - "D:/brains/my-brain"',
+		argsBlock,
 		...extra,
 	];
 
@@ -2086,5 +2096,221 @@ describe("4h — strict-failure migration: four-pair pre-rework body", () => {
 		expect(result.reason).toBe(
 			"missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->, <!-- aide-config-start -->, <!-- aide-config-end -->, <!-- aide-playbook-index-start -->, <!-- aide-playbook-index-end -->, <!-- aide-update-playbook-start -->, <!-- aide-update-playbook-end -->, <!-- aide-research-index-start -->, <!-- aide-research-index-end -->",
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// args type contract — string | null
+//
+// 3a–3d: parsing cases asserting null entries in mcpServerConfig.args are
+// preserved verbatim at their original indexes.
+// ---------------------------------------------------------------------------
+
+describe("args type contract — string | null", () => {
+	// 3a. Single null at the last position of the args list.
+	// Maps to the spec's "A null-armed brain.aide... parses with a YAML null preserved
+	// at the unwired index" Good example.
+	it("single null at last args index is preserved verbatim — no compaction", async () => {
+		const content = makeCanonicalContent({
+			argsLines: [
+				'    - "@example/mcp-launcher"',
+				'    - "D:/brains/my-brain"',
+				"    -",
+			],
+		});
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.mcpServerConfig.args.length).toBe(3);
+		expect(result.mcpServerConfig.args[0]).toBe("@example/mcp-launcher");
+		expect(result.mcpServerConfig.args[1]).toBe("D:/brains/my-brain");
+		expect(result.mcpServerConfig.args[2]).toBeNull();
+	});
+
+	// 3b. Multiple nulls at non-adjacent indexes.
+	// Locks in the structural-null invariant: multiple nulls at arbitrary indexes
+	// preserve their indexes one-to-one with the source YAML.
+	// Per the spec's "A parser that drops null entries from args or compacts the array"
+	// undesired outcome.
+	it("two nulls at non-adjacent indexes (positions 1 and 3 of a four-entry list) are both preserved", async () => {
+		const content = makeCanonicalContent({
+			argsLines: [
+				'    - "launcher"',
+				"    -",
+				'    - "config"',
+				"    -",
+			],
+		});
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.mcpServerConfig.args.length).toBe(4);
+		expect(result.mcpServerConfig.args[0]).toBe("launcher");
+		expect(result.mcpServerConfig.args[1]).toBeNull();
+		expect(result.mcpServerConfig.args[2]).toBe("config");
+		expect(result.mcpServerConfig.args[3]).toBeNull();
+	});
+
+	// 3c. All entries are YAML nulls.
+	// The parser's contract is per-element: every element passes through verbatim,
+	// regardless of mix. Strict equality per index pinpoints the offending index on failure.
+	it("all-null args list — every element is JS null at its original index", async () => {
+		const content = makeCanonicalContent({
+			argsLines: [
+				"    -",
+				"    -",
+				"    -",
+			],
+		});
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.mcpServerConfig.args.length).toBe(3);
+		expect(result.mcpServerConfig.args[0]).toBeNull();
+		expect(result.mcpServerConfig.args[1]).toBeNull();
+		expect(result.mcpServerConfig.args[2]).toBeNull();
+	});
+
+	// 3d. Regression-prevention: null mixed with strings must NOT return malformed-frontmatter.
+	// Null is part of the args contract, not a malformed value. This case is the regression
+	// bumper for the spec's "A parser that rejects null entries in args as malformed-frontmatter"
+	// undesired outcome.
+	it("null entry mixed with strings returns ok — null is part of the args contract, not a malformed value", async () => {
+		const content = makeCanonicalContent({
+			argsLines: [
+				'    - "@example/mcp-launcher"',
+				"    -",
+				'    - "D:/brains/my-brain"',
+			],
+		});
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 4b — interpolateArgs null-passthrough
+//
+// 3e–3f: null entries in args pass through unchanged at their original index.
+// ---------------------------------------------------------------------------
+
+describe("4b — interpolateArgs null-passthrough", () => {
+	// 3e. Null-passthrough happy path: no placeholders, null at index 1 passes through.
+	// Maps to the spec's "interpolateArgs against a null-armed config preserves the null
+	// at its index" Good example.
+	it("null at index 1 passes through unchanged — strings without placeholders also pass through", () => {
+		const config: BrainAideConfig = {
+			name: "my-brain",
+			mcpServerConfig: {
+				command: "npx",
+				args: ["a", null, "b"],
+			},
+		};
+
+		const result = interpolateArgs(config);
+
+		expect(result).toEqual(["a", null, "b"]);
+		expect(result.length).toBe(3);
+		expect(result[1]).toBeNull();
+	});
+
+	// 3f. Mixed substitution and null: ${name} is substituted, adjacent null passes through.
+	// Maps to the spec's "An advanced user opts into interpolation by referencing ${name};
+	// null entries continue to pass through" Good example.
+	it("${name} at index 2 is substituted; null at index 3 passes through unchanged", () => {
+		const config: BrainAideConfig = {
+			name: "dev-brain",
+			mcpServerConfig: {
+				command: "npx",
+				args: ["some-launcher", "--profile", "${name}", null],
+			},
+		};
+
+		const result = interpolateArgs(config);
+
+		expect(result).toEqual(["some-launcher", "--profile", "dev-brain", null]);
+		expect(result[3]).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// args type contract round-trip
+//
+// 3g. A YAML null at args index 3 survives the full parser → interpolateArgs pipeline
+// at the same index. Proves the spec's "Null passthrough is mandatory and tested at
+// every transformation the parser exposes" Strategy paragraph end-to-end.
+// ---------------------------------------------------------------------------
+
+describe("args type contract round-trip — null survives parser and interpolateArgs at the same index", () => {
+	it("null at args index 3 in source YAML is null at index 3 after parse and after interpolateArgs", async () => {
+		const content = makeCanonicalContent({
+			argsLines: [
+				'    - "@example/mcp-launcher"',
+				'    - "--profile"',
+				'    - "dev-brain"',
+				"    -",
+			],
+		});
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.mcpServerConfig.args[3]).toBeNull();
+
+		const interpolated = interpolateArgs({
+			name: result.name,
+			mcpServerConfig: result.mcpServerConfig,
+		});
+
+		expect(interpolated.length).toBe(4);
+		expect(interpolated[3]).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3h — parseBrainAideFromString null-armed parity
+//
+// Both the disk path (parseBrainAide) and the string path (parseBrainAideFromString)
+// must agree on null-armed input. Extends the 3n parity family.
+// ---------------------------------------------------------------------------
+
+describe("3h — parseBrainAideFromString null-armed parity", () => {
+	it("null-armed content string parses identically via disk and string paths — null index identical on both", async () => {
+		const nullArmedContent = makeCanonicalContent({
+			argsLines: [
+				'    - "@example/mcp-launcher"',
+				'    - "D:/brains/my-brain"',
+				"    -",
+			],
+		});
+		await writeBrainAide(tempDir, nullArmedContent);
+
+		const fromDisk = await parseBrainAide(tempDir);
+		const fromString = parseBrainAideFromString(nullArmedContent);
+
+		expect(fromDisk).toEqual(fromString);
+		expect(fromDisk.kind).toBe("ok");
+		if (fromDisk.kind !== "ok" || fromString.kind !== "ok") return;
+
+		expect(fromDisk.mcpServerConfig.args[2]).toBeNull();
+		expect(fromString.mcpServerConfig.args[2]).toBeNull();
 	});
 });

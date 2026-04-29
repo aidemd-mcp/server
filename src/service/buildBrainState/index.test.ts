@@ -42,9 +42,11 @@ function makeBrainAideContent({
 }: {
 	name?: string;
 	command?: string;
-	args?: string[];
+	args?: (string | null)[];
 }): string {
-	const argsYaml = args.map((a) => `    - "${a}"`).join("\n");
+	// Null entries emit as a bare dash (YAML null) so parseBrainAide produces JS null.
+	// String entries emit quoted so the parser preserves them as strings.
+	const argsYaml = args.map((a) => (a === null ? "    -" : `    - "${a}"`)).join("\n");
 	return [
 		"---",
 		`name: ${name}`,
@@ -79,7 +81,7 @@ function makeBrainAideContent({
 }
 
 /** Build a .mcp.json whose mcpServers.brain entry carries the given command/args. */
-function makeMcpJson(brainEntry: { command: string; args: string[] }): string {
+function makeMcpJson(brainEntry: { command: string; args: (string | null)[] }): string {
 	return JSON.stringify({ mcpServers: { brain: brainEntry } }, null, 2);
 }
 
@@ -642,4 +644,126 @@ describe("buildBrainState — detector never throws (3o)", () => {
 		await writeMcpJson(makeMcpJson({ command: "npx", args: ["@bitbonsai/mcpvault", "/x/vault"] }));
 		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "ok" });
 	});
+});
+
+// ---------------------------------------------------------------------------
+// 3p. Null-armed brain.aide with no .mcp.json returns no-mcp-entry.
+// Anchors the basic null-detection branch: pre-check fires before any .mcp.json read.
+// ---------------------------------------------------------------------------
+
+describe("buildBrainState — null-armed args: no .mcp.json (3p)", () => {
+	it("returns no-mcp-entry when brain.aide args contain a null and .mcp.json is absent", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({
+				name: "obsidian",
+				command: "npx",
+				args: ["@bitbonsai/mcpvault", null],
+			}),
+		);
+		// No .mcp.json written — the null pre-check should short-circuit before any read.
+
+		const result = await buildBrainState(tempRoot);
+
+		expect(result.status).toBe("no-mcp-entry");
+		if (result.status === "no-mcp-entry") {
+			expect(result.name).toBe("obsidian");
+			expect(result.hints).toEqual([]);
+		}
+		// Retired fields must not exist anywhere on the returned shape.
+		expect(result).not.toHaveProperty("rootPath");
+		expect(result).not.toHaveProperty("connector");
+		expect(result).not.toHaveProperty("entryFile");
+		expect(result).not.toHaveProperty("tools");
+		expect(result).not.toHaveProperty("backend");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3q. Null-armed brain.aide with a matching null-armed .mcp.json returns
+// no-mcp-entry, NOT ok.
+//
+// This is the canonical regression-prevention case. The two files agree
+// byte-for-byte at the null position — the structural drift comparison from
+// Step 9 would return ok if it were allowed to run. The null pre-check from
+// Step 4 must short-circuit before that comparison fires.
+//
+// Without this test, a future contributor moving the null check below the
+// .mcp.json read would silently regress the detector and the suite would
+// still go green. This test makes that regression a hard failure.
+//
+// Spec reference: Bad examples — "Returning `ok` when both sides match
+// byte-for-byte on null."
+// ---------------------------------------------------------------------------
+
+describe("buildBrainState — null-armed args: matching null-armed .mcp.json (3q)", () => {
+	it("returns no-mcp-entry, NOT ok, when brain.aide and .mcp.json agree byte-for-byte on null args", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({
+				name: "obsidian",
+				command: "npx",
+				args: ["@bitbonsai/mcpvault", null],
+			}),
+		);
+		// .mcp.json whose mcpServers.brain.args is byte-identical to the brain.aide-derived
+		// array — both have a JSON null at position 1. The drift comparison would return ok
+		// if it ran; the null pre-check must prevent it from ever running.
+		await writeMcpJson(
+			makeMcpJson({ command: "npx", args: ["@bitbonsai/mcpvault", null] }),
+		);
+
+		const result = await buildBrainState(tempRoot);
+
+		// The null pre-check takes precedence over the drift comparison.
+		// Bytes that agree on null have agreed on broken state, not health.
+		expect(result.status).toBe("no-mcp-entry");
+		expect(result.status).not.toBe("ok");
+		expect(result.status).not.toBe("mcp-drift");
+		if (result.status === "no-mcp-entry") {
+			expect(result.name).toBe("obsidian");
+			expect(result.hints).toEqual([]);
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3r. Non-null brain.aide with matching .mcp.json returns ok.
+// Anchors the negative case — null pre-check does NOT fire when no nulls
+// are present. Also guards against wrong predicates (e.g. a === "null").
+// ---------------------------------------------------------------------------
+
+describe("buildBrainState — null-armed args: no nulls present, ok path (3r)", () => {
+	it.each([
+		["single non-null arg", ["@bitbonsai/mcpvault"]],
+		["two non-null args", ["@bitbonsai/mcpvault", "/x/vault"]],
+		["three non-null args", ["@bitbonsai/mcpvault", "/x/vault", "--flag"]],
+		[
+			'literal string "null" is NOT JS null and must not trigger the pre-check',
+			["@bitbonsai/mcpvault", "null"],
+		],
+		[
+			'literal string "~" is NOT JS null and must not trigger the pre-check',
+			["@bitbonsai/mcpvault", "~"],
+		],
+	])(
+		"returns ok when args contain %s and .mcp.json matches exactly",
+		async (_desc, args) => {
+			await writeBrainAide(
+				makeBrainAideContent({
+					name: "obsidian",
+					command: "npx",
+					args,
+				}),
+			);
+			await writeMcpJson(makeMcpJson({ command: "npx", args }));
+
+			const result = await buildBrainState(tempRoot);
+
+			// The null pre-check must NOT fire on fully-wired (null-free) configs.
+			expect(result.status).toBe("ok");
+			if (result.status === "ok") {
+				expect(result.name).toBe("obsidian");
+				expect(result.hints).toEqual([]);
+			}
+		},
+	);
 });

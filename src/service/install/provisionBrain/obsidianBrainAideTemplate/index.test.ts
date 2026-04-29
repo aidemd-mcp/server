@@ -37,13 +37,13 @@ afterEach(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getTemplate(brainPath?: string, mockedPlatform?: "win32" | "posix"): Promise<string> {
+async function getTemplate(mockedPlatform?: "win32" | "posix"): Promise<string> {
 	const { platform } = await import("node:os");
 	if (mockedPlatform !== undefined) {
 		vi.mocked(platform).mockReturnValue(mockedPlatform === "win32" ? "win32" : "linux");
 	}
 	const { default: obsidianBrainAideTemplate } = await import("./index.js");
-	return obsidianBrainAideTemplate(brainPath);
+	return obsidianBrainAideTemplate();
 }
 
 async function writeBrainAide(root: string, content: string): Promise<void> {
@@ -52,13 +52,61 @@ async function writeBrainAide(root: string, content: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// path slot is YAML null in every emission
+// ---------------------------------------------------------------------------
+
+describe("path slot is YAML null in every emission", () => {
+	it("on POSIX: parsed args at index 1 is exactly null", async () => {
+		const content = await getTemplate("posix");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.mcpServerConfig.args[1]).toBeNull();
+	});
+
+	it("on win32: parsed args at index 3 is exactly null", async () => {
+		const content = await getTemplate("win32");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.mcpServerConfig.args[3]).toBeNull();
+	});
+
+	it("the literal token '<BRAIN_PATH>' does not appear anywhere in the template output", async () => {
+		const posixContent = await getTemplate("posix");
+		expect(posixContent).not.toContain("<BRAIN_PATH>");
+
+		const win32Content = await getTemplate("win32");
+		expect(win32Content).not.toContain("<BRAIN_PATH>");
+	});
+
+	it("interpolateArgs preserves null at the path slot — not coerced to empty string, not skipped", async () => {
+		const content = await getTemplate("posix");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const brainAideConfig: BrainAideConfig = { name: result.name, mcpServerConfig: result.mcpServerConfig };
+		const interpolated = interpolateArgs(brainAideConfig);
+
+		// null at args[1] for POSIX — must be null, not "" and not absent
+		expect(interpolated[1]).toBeNull();
+		expect(interpolated).toHaveLength(result.mcpServerConfig.args.length);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Round-trip parses cleanly under the new schema
 // ---------------------------------------------------------------------------
 
 describe("round-trip parses cleanly under the new schema", () => {
 	it("template output round-trips through parseBrainAide with kind ok", async () => {
-		const brainPath = "/foo/my-vault";
-		const content = await getTemplate(brainPath);
+		const content = await getTemplate();
 
 		await writeBrainAide(tempDir, content);
 		const result = await parseBrainAide(tempDir);
@@ -72,8 +120,7 @@ describe("round-trip parses cleanly under the new schema", () => {
 	});
 
 	it("parseBrainAideFromString produces the same ok result as writing to disk", async () => {
-		const brainPath = "/foo/my-vault";
-		const content = await getTemplate(brainPath);
+		const content = await getTemplate();
 
 		await writeBrainAide(tempDir, content);
 		const fromDisk = await parseBrainAide(tempDir);
@@ -91,14 +138,14 @@ describe("round-trip parses cleanly under the new schema", () => {
 
 describe("six-section body shape", () => {
 	it("result.kind is ok — parser accepts the six-section body grammar", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 	});
 
 	it("orientation is a non-empty string", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -109,7 +156,7 @@ describe("six-section body shape", () => {
 	});
 
 	it("config is a non-empty string", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -120,7 +167,7 @@ describe("six-section body shape", () => {
 	});
 
 	it("playbookIndex is a non-empty string", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -131,7 +178,7 @@ describe("six-section body shape", () => {
 	});
 
 	it("studyPlaybook is a non-empty string", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -142,7 +189,7 @@ describe("six-section body shape", () => {
 	});
 
 	it("updatePlaybook is a non-empty string", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -153,7 +200,7 @@ describe("six-section body shape", () => {
 	});
 
 	it("researchIndex is a non-empty string", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -164,7 +211,7 @@ describe("six-section body shape", () => {
 	});
 
 	it("all six body sections are pairwise byte-distinct", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -193,7 +240,7 @@ describe("six-section body shape", () => {
 
 describe("Playbook-index section preserves sentinel structure", () => {
 	it("playbookIndex contains the H1 title '# Coding Playbook'", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -203,7 +250,7 @@ describe("Playbook-index section preserves sentinel structure", () => {
 	});
 
 	it("playbookIndex contains '## Task Routing' (top-level sub-section under # Coding Playbook)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -213,7 +260,7 @@ describe("Playbook-index section preserves sentinel structure", () => {
 	});
 
 	it("playbookIndex contains '[[your-conventions-note]]'", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -223,7 +270,7 @@ describe("Playbook-index section preserves sentinel structure", () => {
 	});
 
 	it("playbookIndex contains '[[your-folder-structure-note]]'", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -233,7 +280,7 @@ describe("Playbook-index section preserves sentinel structure", () => {
 	});
 
 	it("playbookIndex contains '## How to Use This Index' (parent for Always Read First)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -243,7 +290,7 @@ describe("Playbook-index section preserves sentinel structure", () => {
 	});
 
 	it("playbookIndex does NOT contain procedural Step-1/Step-2/Step-3 narration", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -261,7 +308,7 @@ describe("Playbook-index section preserves sentinel structure", () => {
 
 describe("studyPlaybook section ships the navigation methodology", () => {
 	it("studyPlaybook starts with an H1 heading", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -271,7 +318,7 @@ describe("studyPlaybook section ships the navigation methodology", () => {
 	});
 
 	it("studyPlaybook contains 'Step 1' procedural marker", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -281,7 +328,7 @@ describe("studyPlaybook section ships the navigation methodology", () => {
 	});
 
 	it("studyPlaybook contains 'Step 2' procedural marker", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -291,7 +338,7 @@ describe("studyPlaybook section ships the navigation methodology", () => {
 	});
 
 	it("studyPlaybook contains 'Step 3' procedural marker", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -301,7 +348,7 @@ describe("studyPlaybook section ships the navigation methodology", () => {
 	});
 
 	it("studyPlaybook contains 'Navigation Rules' heading", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -311,7 +358,7 @@ describe("studyPlaybook section ships the navigation methodology", () => {
 	});
 
 	it("studyPlaybook contains the depth-counting example anchor", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -322,7 +369,7 @@ describe("studyPlaybook section ships the navigation methodology", () => {
 	});
 
 	it("studyPlaybook contains the [[wikilink]] literal substring (user-owned-section carve-out)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -339,7 +386,7 @@ describe("studyPlaybook section ships the navigation methodology", () => {
 
 describe("updatePlaybook section ships the playbook-maintenance methodology", () => {
 	it("updatePlaybook is non-empty and contains '# Update Playbook'", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -350,7 +397,7 @@ describe("updatePlaybook section ships the playbook-maintenance methodology", ()
 	});
 
 	it("updatePlaybook contains mcp__brain__patch_note (Obsidian connector-specific edit tool)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -360,7 +407,7 @@ describe("updatePlaybook section ships the playbook-maintenance methodology", ()
 	});
 
 	it("updatePlaybook contains mcp__brain__write_note (Obsidian connector-specific write tool)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -370,7 +417,7 @@ describe("updatePlaybook section ships the playbook-maintenance methodology", ()
 	});
 
 	it("updatePlaybook contains the routing-table drift-check anchor string", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -380,7 +427,7 @@ describe("updatePlaybook section ships the playbook-maintenance methodology", ()
 	});
 
 	it("updatePlaybook is byte-distinct from studyPlaybook", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -396,7 +443,7 @@ describe("updatePlaybook section ships the playbook-maintenance methodology", ()
 
 describe("config section ships the Obsidian wiring flow", () => {
 	it("config is non-empty", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -405,8 +452,8 @@ describe("config section ships the Obsidian wiring flow", () => {
 		expect(result.config.trim().length).toBeGreaterThan(0);
 	});
 
-	it("config mentions mcpServerConfig.args (the field that carries the vault path)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+	it("config mentions mcpServerConfig.args (the field that carries the brain path)", async () => {
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -415,18 +462,28 @@ describe("config section ships the Obsidian wiring flow", () => {
 		expect(result.config).toContain("mcpServerConfig.args");
 	});
 
-	it("config mentions the <BRAIN_PATH> placeholder (detecting the un-wired state)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+	it("config describes YAML null as the unwired-state signal", async () => {
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config).toContain("<BRAIN_PATH>");
+		expect(result.config).toContain("YAML null");
+	});
+
+	it("config describes null at args[3] as the unwired-state signal", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.config).toContain("args[3]");
 	});
 
 	it("config mentions /aide:brain config (the argument shape for Obsidian wiring)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -436,13 +493,49 @@ describe("config section ships the Obsidian wiring flow", () => {
 	});
 
 	it("config contains a restart-style instruction", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
 		expect(result.config).toContain("Restart");
+	});
+
+	it("config mentions mcp__brain__write_note (the entry-point seeding tool)", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.config).toContain("mcp__brain__write_note");
+	});
+
+	it("config mentions at least one of the four artifact paths", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		const mentionsArtifact =
+			result.config.includes("coding-playbook/coding-playbook.md") ||
+			result.config.includes("coding-playbook/study-playbook.md") ||
+			result.config.includes("coding-playbook/update-playbook.md") ||
+			result.config.includes("research/research.md");
+
+		expect(mentionsArtifact).toBe(true);
+	});
+
+	it("config does not contain the retired <BRAIN_PATH> sentinel", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.config).not.toContain("<BRAIN_PATH>");
 	});
 });
 
@@ -452,7 +545,7 @@ describe("config section ships the Obsidian wiring flow", () => {
 
 describe("Research-index section ships structural seed", () => {
 	it("researchIndex contains the H1 title '# Research'", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -462,7 +555,7 @@ describe("Research-index section ships structural seed", () => {
 	});
 
 	it("researchIndex contains '### Domains' (nested heading at H3)", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -472,7 +565,7 @@ describe("Research-index section ships structural seed", () => {
 	});
 
 	it("researchIndex contains '### Domain Hubs'", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -482,7 +575,7 @@ describe("Research-index section ships structural seed", () => {
 	});
 
 	it("researchIndex does NOT contain '## Domains' at the start of a line", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -492,7 +585,7 @@ describe("Research-index section ships structural seed", () => {
 	});
 
 	it("researchIndex does NOT contain '## Domain Hubs' at the start of a line", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -502,7 +595,7 @@ describe("Research-index section ships structural seed", () => {
 	});
 
 	it("researchIndex has no top-level '## ' heading at all", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -518,7 +611,7 @@ describe("Research-index section ships structural seed", () => {
 
 describe("no nested '## ' headings inside orientation or researchIndex sections", () => {
 	it("orientation contains no '^## .+$' lines", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -528,7 +621,7 @@ describe("no nested '## ' headings inside orientation or researchIndex sections"
 	});
 
 	it("researchIndex contains no '^## .+$' lines", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -544,7 +637,7 @@ describe("no nested '## ' headings inside orientation or researchIndex sections"
 
 describe("parsed frontmatter contains exactly the new flat fields", () => {
 	it("name is obsidian", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -554,7 +647,7 @@ describe("parsed frontmatter contains exactly the new flat fields", () => {
 	});
 
 	it("mcpServerConfig.command is a non-empty string", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -564,22 +657,22 @@ describe("parsed frontmatter contains exactly the new flat fields", () => {
 		expect(result.mcpServerConfig.command.length).toBeGreaterThan(0);
 	});
 
-	it("mcpServerConfig.args is a non-empty string array", async () => {
-		const content = await getTemplate("/foo/my-vault");
+	it("mcpServerConfig.args is a non-empty array with null at the last (path) slot", async () => {
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(Array.isArray(result.mcpServerConfig.args)).toBe(true);
-		expect(result.mcpServerConfig.args.length).toBeGreaterThan(0);
-		for (const arg of result.mcpServerConfig.args) {
-			expect(typeof arg).toBe("string");
-		}
+		const { args } = result.mcpServerConfig;
+		expect(Array.isArray(args)).toBe(true);
+		expect(args.length).toBeGreaterThan(0);
+		// Last element is null — the unwired-path slot
+		expect(args[args.length - 1]).toBeNull();
 	});
 
 	it("result has no connector, rootPath, entryFile, or tools keys on the ok variant", async () => {
-		const content = await getTemplate("/foo/my-vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -593,123 +686,12 @@ describe("parsed frontmatter contains exactly the new flat fields", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Path is inlined, no placeholder (brainPath supplied)
-// ---------------------------------------------------------------------------
-
-describe("path is inlined, no placeholder", () => {
-	it("last arg equals the brainPath value byte-for-byte", async () => {
-		const brainPath = "/foo/my-vault";
-		const content = await getTemplate(brainPath);
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		const args = result.mcpServerConfig.args;
-		expect(args[args.length - 1]).toBe(brainPath);
-	});
-
-	it("last arg is not the literal string ${brainPath}", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		const args = result.mcpServerConfig.args;
-		expect(args[args.length - 1]).not.toBe("${brainPath}");
-	});
-
-	it("no arg element contains a ${...} placeholder", async () => {
-		const content = await getTemplate("/foo/my-vault");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		for (const arg of result.mcpServerConfig.args) {
-			expect(arg).not.toMatch(/\$\{.+\}/);
-		}
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Optional brainPath — placeholder sentinel behaviour
-// ---------------------------------------------------------------------------
-
-describe("optional brainPath — placeholder sentinel behaviour", () => {
-	it("calling with no argument parses cleanly with kind ok", async () => {
-		const content = await getTemplate();
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-	});
-
-	it("last arg is the literal string '<BRAIN_PATH>' when brainPath is omitted", async () => {
-		const content = await getTemplate();
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		const args = result.mcpServerConfig.args;
-		expect(args[args.length - 1]).toBe("<BRAIN_PATH>");
-	});
-
-	it("on posix, args take the ['@bitbonsai/mcpvault', '<BRAIN_PATH>'] shape when brainPath is omitted", async () => {
-		const content = await getTemplate(undefined, "posix");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", "<BRAIN_PATH>"]);
-	});
-
-	it("on win32, args take the ['/c', 'npx', '@bitbonsai/mcpvault', '<BRAIN_PATH>'] shape when brainPath is omitted", async () => {
-		const content = await getTemplate(undefined, "win32");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		expect(result.mcpServerConfig.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", "<BRAIN_PATH>"]);
-	});
-
-	it("interpolateArgs is a no-op on the placeholder — '<BRAIN_PATH>' passes through unchanged", async () => {
-		const content = await getTemplate();
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		const brainAideConfig: BrainAideConfig = { name: result.name, mcpServerConfig: result.mcpServerConfig };
-		const interpolated = interpolateArgs(brainAideConfig);
-		const args = result.mcpServerConfig.args;
-		expect(interpolated[interpolated.length - 1]).toBe("<BRAIN_PATH>");
-		expect(interpolated).toEqual(args);
-	});
-
-	it("no arg element matches the ${...} regex (placeholder is not an interpolation target)", async () => {
-		const content = await getTemplate();
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		for (const arg of result.mcpServerConfig.args) {
-			expect(arg).not.toMatch(/\$\{.+\}/);
-		}
-	});
-});
-
-// ---------------------------------------------------------------------------
 // Platform branching — Windows
 // ---------------------------------------------------------------------------
 
 describe("platform branching — Windows", () => {
 	it("command is cmd on win32", async () => {
-		const content = await getTemplate("/vault", "win32");
+		const content = await getTemplate("win32");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -718,45 +700,14 @@ describe("platform branching — Windows", () => {
 		expect(result.mcpServerConfig.command).toBe("cmd");
 	});
 
-	it("args are [/c, npx, @bitbonsai/mcpvault, brainPath] on win32", async () => {
-		const brainPath = "/vault";
-		const content = await getTemplate(brainPath, "win32");
+	it("args deep-equal ['/c', 'npx', '@bitbonsai/mcpvault', null] on win32", async () => {
+		const content = await getTemplate("win32");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.mcpServerConfig.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", brainPath]);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Windows path round-trip (regression for backslash YAML escape bug)
-// ---------------------------------------------------------------------------
-
-describe("Windows path round-trip (backslash regression)", () => {
-	it("win32 branch: Windows path with backslashes parses cleanly and round-trips byte-for-byte", async () => {
-		const brainPath = "C:\\Users\\test\\my-vault";
-		const content = await getTemplate(brainPath, "win32");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		const args = result.mcpServerConfig.args;
-		expect(args[args.length - 1]).toBe(brainPath);
-	});
-
-	it("posix branch: Windows-formatted path string parses cleanly and round-trips byte-for-byte", async () => {
-		const brainPath = "C:\\Users\\test\\my-vault";
-		const content = await getTemplate(brainPath, "posix");
-		const result = parseBrainAideFromString(content);
-
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
-
-		const args = result.mcpServerConfig.args;
-		expect(args[args.length - 1]).toBe(brainPath);
+		expect(result.mcpServerConfig.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", null]);
 	});
 });
 
@@ -766,7 +717,7 @@ describe("Windows path round-trip (backslash regression)", () => {
 
 describe("platform branching — POSIX", () => {
 	it("command is npx on linux", async () => {
-		const content = await getTemplate("/vault", "posix");
+		const content = await getTemplate("posix");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -775,15 +726,14 @@ describe("platform branching — POSIX", () => {
 		expect(result.mcpServerConfig.command).toBe("npx");
 	});
 
-	it("args are [@bitbonsai/mcpvault, brainPath] on linux", async () => {
-		const brainPath = "/vault";
-		const content = await getTemplate(brainPath, "posix");
+	it("args deep-equal ['@bitbonsai/mcpvault', null] on linux", async () => {
+		const content = await getTemplate("posix");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", brainPath]);
+		expect(result.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", null]);
 	});
 });
 
@@ -793,7 +743,7 @@ describe("platform branching — POSIX", () => {
 
 describe("orientation body uses storage-agnostic vocabulary and lists all four entry-point artifacts", () => {
 	it("orientation is non-empty", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -803,7 +753,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation contains mcp__brain__read_note", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -813,7 +763,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation contains mcp__brain__search_notes", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -823,7 +773,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation contains coding-playbook/coding-playbook.md", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -833,7 +783,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation contains coding-playbook/study-playbook.md", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -843,7 +793,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation contains coding-playbook/update-playbook.md (new fourth entry-point artifact)", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -853,7 +803,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation contains research/research.md", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -863,7 +813,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation does not contain the word 'vault'", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -873,7 +823,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation does not contain the word 'wikilink'", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -883,7 +833,7 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 	});
 
 	it("orientation does not contain the standalone word 'hub'", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -894,13 +844,12 @@ describe("orientation body uses storage-agnostic vocabulary and lists all four e
 });
 
 // ---------------------------------------------------------------------------
-// interpolateArgs is a no-op on the default scaffold (brainPath supplied)
+// interpolateArgs is a no-op on the default scaffold
 // ---------------------------------------------------------------------------
 
 describe("interpolateArgs is a no-op on the default scaffold", () => {
-	it("interpolated args are deep-equal to original args (no placeholders to replace)", async () => {
-		const brainPath = "/home/user/vault";
-		const content = await getTemplate(brainPath);
+	it("interpolated args deep-equal original args — null preserved at path slot", async () => {
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -911,8 +860,22 @@ describe("interpolateArgs is a no-op on the default scaffold", () => {
 		expect(interpolated).toEqual(result.mcpServerConfig.args);
 	});
 
+	it("no arg element matches the ${...} regex (null is not an interpolation target)", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		for (const arg of result.mcpServerConfig.args) {
+			if (arg !== null) {
+				expect(arg).not.toMatch(/\$\{.+\}/);
+			}
+		}
+	});
+
 	it("interpolateArgs does not mutate the parsed config args", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
@@ -931,13 +894,13 @@ describe("interpolateArgs is a no-op on the default scaffold", () => {
 
 describe("schema does not include intent-spec or deprecated fields", () => {
 	it("content.split('\\n---\\n') yields at least frontmatter + body", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 
 		expect(content.split("\n---\n").length).toBeGreaterThanOrEqual(2);
 	});
 
 	it("frontmatter block contains name and mcpServerConfig", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const frontmatterBlock = content.split("\n---\n")[0];
 
 		expect(frontmatterBlock).toMatch(/^name:/m);
@@ -945,7 +908,7 @@ describe("schema does not include intent-spec or deprecated fields", () => {
 	});
 
 	it("frontmatter block does not contain intent-spec fields", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const frontmatterBlock = content.split("\n---\n")[0];
 
 		expect(frontmatterBlock).not.toMatch(/^scope:/m);
@@ -955,7 +918,7 @@ describe("schema does not include intent-spec or deprecated fields", () => {
 	});
 
 	it("frontmatter block does not contain deprecated schema fields", async () => {
-		const content = await getTemplate("/vault");
+		const content = await getTemplate();
 		const frontmatterBlock = content.split("\n---\n")[0];
 
 		expect(frontmatterBlock).not.toMatch(/^connector:/m);

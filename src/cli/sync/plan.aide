@@ -152,7 +152,7 @@ the boundary, not transformation": the args array written to `.mcp.json`
 is either the full post-interpolation array byte-for-byte (every slot a
 string) or no write happens at all.
 
-- [ ] 1a. Open `src/cli/sync/index.ts`. After the existing parseBrainAide
+- [x] 1a. Open `src/cli/sync/index.ts`. After the existing parseBrainAide
       result branching (the missing / malformed-frontmatter / malformed-body
       block) and after the existing line that computes the post-interpolation
       args via `interpolateArgs(...)`, insert a new precondition step. The
@@ -168,7 +168,7 @@ string) or no write happens at all.
       and only JS null. Treating any other value as the signal would
       reintroduce the literal-sentinel regression class.
 
-- [ ] 1b. When the collected null-index list is non-empty, emit ONE stderr
+- [x] 1b. When the collected null-index list is non-empty, emit ONE stderr
       line and return 1. The line shape:
 
       `` `.aide/config/brain.aide` has unwired slots: args[<i>] is null<, args[<j>] is null...>. Run `/aide:brain config` to fill the unwired slot(s). ``
@@ -187,7 +187,7 @@ string) or no write happens at all.
       stays as "slot(s)" — the parenthetical handles both arities; do
       not branch the suffix on count.
 
-- [ ] 1c. After the null-refusal precondition, the existing
+- [x] 1c. After the null-refusal precondition, the existing
       `expectedEntry` shape is still `{ command: ..., args: ... }`. Per the
       Prerequisites section, `interpolateArgs` returns `(string | null)[]`,
       so the `args` field on `expectedEntry` is still typed `(string |
@@ -212,7 +212,7 @@ string) or no write happens at all.
       }` and writes it into the host's `.mcp.json` under the fixed
       `brain` key, leaving every other key in `mcpServers` ... untouched."
 
-- [ ] 1d. Confirm the existing `try/catch` around `writeMcpEntry` (which
+- [x] 1d. Confirm the existing `try/catch` around `writeMcpEntry` (which
       translates the helper's invalid-JSON throw to the action-naming
       stderr line) is unchanged. The null-refusal precondition lives
       BEFORE this try/catch and runs first; writeMcpEntry is never
@@ -222,7 +222,7 @@ string) or no write happens at all.
       pipeline, including the read that `writeMcpEntry` performs to
       compute structural equality.
 
-- [ ] 1e. Confirm the exit-code contract is preserved:
+- [x] 1e. Confirm the exit-code contract is preserved:
       - 0 on successful write OR no-change ("already in sync" remains
         success per spec `outcomes.desired[4]`).
       - 1 on missing brain.aide, malformed-frontmatter, malformed-body,
@@ -248,7 +248,7 @@ migration was dropped entirely from the design. No transitional path,
 no fallback. Sync writes only `mcpServers.brain` and never inspects or
 deletes any other key.
 
-- [ ] 2a. In `src/cli/sync/index.ts`, locate the entries-map construction
+- [x] 2a. In `src/cli/sync/index.ts`, locate the entries-map construction
       (currently lines ~65–68 in the existing file, the block that builds
       `Record<string, typeof expectedEntry | "delete">` with both `brain`
       and `obsidian` keys). Remove the `obsidian: "delete"` entry from
@@ -269,7 +269,7 @@ deletes any other key.
       future-proofing, that's acceptable — the focus is removing the
       runtime `"delete"` value, not narrowing the type.
 
-- [ ] 2b. In the report block (currently lines ~92–98), remove the
+- [x] 2b. In the report block (currently lines ~92–98), remove the
       conditional that fires the migration-message line:
 
       ```
@@ -283,7 +283,7 @@ deletes any other key.
       reads it (the entries map carries no delete sentinels, so
       `deleted` is always empty on this code path).
 
-- [ ] 2c. In the module-level JSDoc at the top of `index.ts`, remove the
+- [x] 2c. In the module-level JSDoc at the top of `index.ts`, remove the
       sentence: "Also removes the legacy `obsidian` key when present
       (one-way migration)." The remaining JSDoc continues to describe
       sync's role as the byte-faithful brain-entry propagator and the
@@ -299,7 +299,7 @@ deletes any other key.
       contract block but extend the exit-1 enumeration to include
       null-bearing args.
 
-- [ ] 2d. Grep the file (and only this file) one more time for the
+- [x] 2d. Grep the file (and only this file) one more time for the
       string `obsidian` to confirm zero remaining references. The
       module-level JSDoc, the entries map, the report block, and any
       stray inline comment must all be free of the word. Test fixtures
@@ -315,7 +315,7 @@ Good-examples block "Sync hard-fails on a null-bearing args array":
 add a new describe block covering single-null, multi-null, exit code,
 stderr message shape, and `.mcp.json` untouched-after-refusal.
 
-- [ ] 3a. Open `src/cli/sync/index.test.ts`. Add a new describe block
+- [x] 3a. Open `src/cli/sync/index.test.ts`. Add a new describe block
       after test 3k (no prose interpolation), labeled `3l — null-bearing
       args refusal`. The block contains four `it` blocks, each
       independently verifying one facet of the precondition.
@@ -371,7 +371,7 @@ stderr message shape, and `.mcp.json` untouched-after-refusal.
       retired in the parent spec's `<BRAIN_PATH>` post-mortem cannot
       reappear via sync's transformation surface.
 
-- [ ] 3b. The test fixtures in 3l reuse the existing `writeBrainAide`
+- [x] 3b. The test fixtures in 3l reuse the existing `writeBrainAide`
       and `writeMcpJson` helpers from the test file. The
       `makeCapture()` helper captures stdout and stderr per call so
       tests can assert the substring patterns above against `errLines`.
@@ -396,7 +396,7 @@ from the design. The test that exercises it must be removed in full —
 not converted to a skip, not replaced with a "verifies obsidian is
 preserved" anti-test, not retained as documentation.
 
-- [ ] 4a. In `src/cli/sync/index.test.ts`, locate the describe block
+- [x] 4a. In `src/cli/sync/index.test.ts`, locate the describe block
       labeled `3c — legacy obsidian migration` (currently lines
       ~152–177 in the existing file). Delete the entire describe
       block, including:
@@ -412,7 +412,7 @@ preserved" anti-test, not retained as documentation.
       The section divider comments (`// 3c. Legacy obsidian migration`
       block) must also be removed.
 
-- [ ] 4b. Walk the remaining test file for any incidental `obsidian`
+- [x] 4b. Walk the remaining test file for any incidental `obsidian`
       references that are now dead:
 
       - The shared comment in test 3b ("Pre-write .mcp.json with the
@@ -433,7 +433,7 @@ preserved" anti-test, not retained as documentation.
       step are: (1) the `name: obsidian` fixture lines, which are
       user-label content unrelated to the legacy key migration.
 
-- [ ] 4c. Renumber test groups if test numbering matters for the
+- [x] 4c. Renumber test groups if test numbering matters for the
       project's conventions. Looking at the existing file, test
       headings are labeled `3a`–`3k` as section comments. Removing
       `3c` produces a gap. The project's convention here is the
@@ -453,7 +453,7 @@ Read: `coding-playbook/workflow/testing`,
 Verifies the edits compile, tests pass, and no leftover legacy
 references survive.
 
-- [ ] 5a. Run the type-checker:
+- [x] 5a. Run the type-checker:
 
       ```
       npx tsc --noEmit
@@ -468,7 +468,7 @@ references survive.
       omitted or implemented as a cast — fix by introducing the
       runtime type guard described in 1c.
 
-- [ ] 5b. Run the sync verb's tests:
+- [x] 5b. Run the sync verb's tests:
 
       ```
       npm test -- cli/sync
@@ -490,7 +490,7 @@ references survive.
       - "Cannot find name `obsidian` in test 3c" → 4a's deletion was
         partial (left a dangling reference); finish removing.
 
-- [ ] 5c. Defensive — run the full project test suite:
+- [x] 5c. Defensive — run the full project test suite:
 
       ```
       npm test
@@ -502,7 +502,7 @@ references survive.
       failure traces to a separate plan (provisionBrain's plan owns
       its own legacy-obsidian removal); escalate rather than patch.
 
-- [ ] 5d. Manual grep over `src/cli/sync/` for the word `obsidian`,
+- [x] 5d. Manual grep over `src/cli/sync/` for the word `obsidian`,
       excluding `name: obsidian` fixture lines and the `name`-field
       JSDoc references in any comments. Expected post-edit hits:
 
