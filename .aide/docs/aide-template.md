@@ -47,6 +47,20 @@ outcomes:
     - <Additional failure modes as needed up to 6 total.>
 ---
 
+<!--
+  Body sections below are OPTIONAL. They exist only when the orchestrator
+  routes through synthesize (the strategist agent fills them).
+
+  - If the strategist will run: keep all five sections (Context, Strategy,
+    Good examples, Bad examples, References) and fill them — partial bodies
+    are not permitted.
+  - If the orchestrator skips synthesize and goes straight to plan:
+    DELETE the entire block from "## Context" through the closing markdown
+    of "## References" inclusive. The frontmatter alone is a valid spec.
+
+  See aide-spec.md "Body sections (conditional)" for the full rule.
+-->
+
 ## Context
 
 <!-- REPLACE THIS COMMENT with the Context body. Cap: ≤ ~250 words. Rules:

@@ -32,9 +32,9 @@ The orchestrator owns the user conversation. Your job is to take the context it 
    - `scope` — the module path this spec governs
    - `description` — **one sentence, ≤ 200 characters.** What the module does in domain terms. NO type signatures, file paths, exact strings, argument indexes, marker enumerations.
    - `intent` — **one paragraph, ≤ 100 words.** Plain-language ten-second north star.
-   - `outcomes.desired` — **3-4 items, ≤ 2 sentences each.** Falsifiable domain success criteria. Outcomes name the *what*, not the *how*.
-   - `outcomes.undesired` — **3-4 items, ≤ 2 sentences each.** Domain failure modes — especially the almost-right-but-wrong kind.
-4. Leave body sections (`## Context`, `## Strategy`, `## Good examples`, `## Bad examples`) as empty placeholders for the strategist.
+   - `outcomes.desired` — **3-6 items, ≤ 2 sentences each.** Falsifiable domain success criteria. Outcomes name the *what*, not the *how*.
+   - `outcomes.undesired` — **3-6 items, ≤ 2 sentences each.** Domain failure modes — especially the almost-right-but-wrong kind.
+4. **Body sections are conditional.** Most specs are frontmatter-only navigation stubs — body sections only appear if the orchestrator routes through synthesize. Default: produce a frontmatter-only file with NO body section headings. If the orchestrator's delegation context explicitly says "synthesize will run", then preserve the empty body section placeholders for the strategist; otherwise omit them entirely. The orchestrator decides — see "Return Format" below for how you signal whether synthesis is needed.
 5. Every `outcomes` entry must trace back to the `intent` paragraph.
 6. **Quote any YAML list item containing `: ` (colon-space).** The YAML parser treats `: ` as a mapping key delimiter even inside what looks like plain text — backtick code spans like `` `scope: path` `` or prose like `sets status: aligned` will break parsing. Wrap the entire item in double quotes whenever its text contains `: ` anywhere: `- "Render scope: path inline in the ancestor chain"`. This applies to all `outcomes.desired` and `outcomes.undesired` entries. When in doubt, quote.
 
@@ -44,7 +44,7 @@ Brevity is load-bearing — `.aide` files are the **intent tree** agents walk vi
 
 - Count characters in `description` (cap 200).
 - Count words in `intent` (cap 100).
-- Count items in each outcomes list (cap 4) and sentences per item (cap 2).
+- Count items in each outcomes list (cap 6) and sentences per item (cap 2).
 
 If you're at or near a cap, push back. Re-read the user's intent context and find the words that are doing the most work — strip the rest. The first draft will always be too long; the second pass cuts it in half.
 
@@ -72,7 +72,7 @@ When you catch yourself writing an outcome that names a type, a field list, a ma
 
 ### When the scope is too wide — suggest child specs
 
-If you cannot fit the intent into a single ≤ 100-word paragraph with 3-4 outcomes per list, the scope is too wide. **Do not relax the caps. Suggest child specs to the orchestrator.**
+If you cannot fit the intent into a single ≤ 100-word paragraph with 3-6 outcomes per list, the scope is too wide. **Do not relax the caps. Suggest child specs to the orchestrator.**
 
 Trigger conditions:
 - A single outcome covers a sub-pipeline with its own success criteria
@@ -87,8 +87,9 @@ When triggered, return to the orchestrator with a decomposition proposal: the pr
 When you finish, return:
 - **File created**: path to the `.aide` file
 - **Frontmatter summary**: the scope, intent, and outcome count
-- **Research needed**: yes/no — whether the domain requires research before synthesis
-- **Recommended next step**: `/aide:research` or `/aide:synthesize`
+- **Research needed**: yes/no — whether the domain requires research before any plan can be made (genuinely unknown territory, the user can't describe the right answer themselves)
+- **Strategy needed**: yes/no — whether the spec body should be filled by the strategist. Yes when the *domain* has non-obvious decisions, tradeoffs, or examples that should persist alongside the spec. No when the user has implementation context in mind and the architect can plan from frontmatter + playbook + user instructions alone. Default to NO unless the interview surfaces genuine domain complexity — most modules are navigation stubs.
+- **Recommended next step**: `/aide:research` (research needed) | `/aide:synthesize` (strategy needed but not research) | `/aide:plan` (skip both — orchestrator passes user implementation context to architect)
 
 Present the frontmatter to the user for confirmation before finalizing.
 

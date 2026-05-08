@@ -2,7 +2,11 @@
 
 > **Agent:** This command is executed by the `aide-strategist` agent.
 
-Read the intent spec's frontmatter and the brain's research, then fill in the `.aide` body sections (Context, Strategy, Good examples, Bad examples). This is a fresh strategist session — it did not run the research phase and carries no prior context.
+Read the intent spec's frontmatter and the brain's research, then fill in the `.aide` body sections (Context, Strategy, Good examples, Bad examples, References) AND author the sibling `brief.aide`. This is a fresh strategist session — it did not run the research phase and carries no prior context.
+
+**Synthesize is conditional in the AIDE pipeline.** It runs only when the orchestrator routes through this phase — either because the spec-writer signaled "Strategy needed" or the user explicitly asked for synthesis. Most modules skip synthesize and go straight to `/aide:plan` as frontmatter-only navigation stubs.
+
+**All-or-nothing rule:** if you produce a body, you fill all five sections. Partial bodies (Context filled but Strategy empty, etc.) are forbidden. If the available research isn't sufficient to fill all five, escalate back to `/aide:research` rather than producing a thin body.
 
 ## Checklist
 

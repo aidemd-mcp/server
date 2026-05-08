@@ -90,7 +90,7 @@ See [Progressive Disclosure](./progressive-disclosure.md) for the full pattern: 
 
 ## Spec Structure
 
-Every `.aide` file follows the same structure. **Frontmatter is required, and the five body sections below are required.** Without structure, agents generate freeform specs that don't scale — repeatability comes from the template.
+Every `.aide` file follows the same structure. **Frontmatter is always required. Body sections are conditional** — they exist only when the orchestrator routes through synthesize. When body sections are present, the same five always appear together (no partial bodies). Without structure, agents generate freeform specs that don't scale — repeatability comes from the template.
 
 The canonical template lives at [AIDE Template](./aide-template.md). Agents should read the template before writing a new spec.
 
@@ -182,9 +182,15 @@ A child spec should **not**:
 
 **Outcomes cascade strictly.** A child's outcomes don't replace the parent's — they narrow them. Every ancestor's `outcomes.desired` and `outcomes.undesired` still apply to the child's output. A submodule whose local output satisfies its own outcomes but violates a parent's intent is wrong in the context of the whole application. Agents must walk the full intent tree from root to leaf (via `aide_discover`) before judging whether a module's output is valid — local validity is necessary but not sufficient.
 
-### Body sections (required)
+### Body sections (conditional)
 
-Every spec has the same five body sections. See [AIDE Template](./aide-template.md) for the full template with inline guidance.
+Body sections are **optional**. A `.aide` file with only frontmatter is a valid, complete spec — a navigation stub that names the module's intent and outcomes for the cascading tree, with no further elaboration. Most modules don't need more than that.
+
+Body sections are filled by the strategist during synthesize when — and only when — the module needs domain context that isn't already obvious from intent + outcomes + parent specs. The orchestrator decides whether synthesize runs (see [orchestrator routing](../../.claude/commands/aide.md)). If the strategist is invoked, **all five body sections must be filled** — partial bodies are not permitted. If the strategist is skipped, the body section headings should not appear in the file at all.
+
+When present, body sections persist — they are the durable domain contract, just like frontmatter. Unlike `plan.aide` / `todo.aide` / `brief.aide` (ephemeral pipeline state), filled body sections are not deleted post-QA.
+
+The five sections, when filled:
 
 - **`## Context`** — Why this module exists and the domain-level background an agent needs to make good decisions. No code.
 - **`## Strategy`** — The synthesized approach. How this module honors its `intent` and achieves its `outcomes.desired`. Research pulled from the brain gets distilled here into decisions — specific tactics, thresholds, structural choices, and the reasoning behind each one. Write in decision form ("do X because Y"), not description form. Cite data inline. No code.
@@ -192,14 +198,16 @@ Every spec has the same five body sections. See [AIDE Template](./aide-template.
 - **`## Bad examples`** — Concrete domain output that illustrates failure, especially the almost-right-but-wrong cases. Expands on `outcomes.undesired` with recognizable failure material.
 - **`## References`** — A flat list of brain entries the synthesis agent read during strategy writing, each as a path plus a one-line description of what was drawn from it. Its purpose is human auditability: a reviewer can trace every strategy decision back to the research that informed it without re-running the pipeline. Populated by the synthesis agent as a side effect of normal synthesis — not filled manually after the fact. Paths are not required to be valid links; the description is the fallback by design.
 
-Additional sections (constraints, state machine, etc.) are allowed when the module needs them. These five are the floor.
+Additional sections (constraints, state machine, etc.) are allowed when the module needs them — but only as part of a full body, not as standalone additions to a frontmatter-only spec.
 
 ### Frontmatter vs Strategy — what each layer owns
 
-- **Frontmatter (`intent` + `outcomes`)** declares *what* the module is for and *what* counts as success or failure. It is a contract — short, falsifiable, machine-readable.
-- **`## Strategy` body** answers *how* — the intent combined with research from the brain, compressed into actionable decisions the architect can turn into a plan and the implementor can execute without re-reading the sources.
+- **Frontmatter (`intent` + `outcomes`)** declares *what* the module is for and *what* counts as success or failure. It is a contract — short, falsifiable, machine-readable. **Always present.**
+- **`## Strategy` body** (when filled) answers *how* — the intent combined with research from the brain, compressed into actionable decisions the architect can turn into a plan and the implementor can execute without re-reading the sources. **Optional — present only when the orchestrator routed through synthesize.**
 
 If the strategy contradicts the intent, the intent wins and the strategy is wrong. If a new research finding changes the strategy but not the intent, rewrite the strategy in place. If the intent itself changes, the scope and identity of the spec have changed — consider whether it should be a new spec entirely.
+
+**When body sections aren't filled, where does "how" live?** In the user's implementation context to the orchestrator (which the orchestrator hands directly to the architect), the brain's coding playbook (which the architect consults), and the architect's `plan.aide` itself. The body sections only earn their place when the *domain* — not the implementation — has reasoning that needs to persist alongside the spec.
 
 ## Writing Standards
 
