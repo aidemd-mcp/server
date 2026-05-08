@@ -50,11 +50,12 @@ describe("installSkills", () => {
 
 		const results = await installSkills(skillDir);
 
-		expect(results).toHaveLength(2);
+		expect(results).toHaveLength(3);
 		expect(results.every((r) => r.status === "would-create")).toBe(true);
 		expect(results.map((r) => r.name)).toEqual([
 			"skills/study-playbook/SKILL.md",
 			"skills/brain/SKILL.md",
+			"skills/aide/SKILL.md",
 		]);
 	});
 
@@ -89,6 +90,7 @@ describe("installSkills", () => {
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get("skills/study-playbook/SKILL.md")).toBe("would-overwrite");
 		expect(byName.get("skills/brain/SKILL.md")).toBe("would-create");
+		expect(byName.get("skills/aide/SKILL.md")).toBe("would-create");
 	});
 
 	it("would-overwrite step carries canonical content", async () => {
@@ -123,6 +125,7 @@ describe("installSkills", () => {
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get("skills/study-playbook/SKILL.md")).toBe("exists");
 		expect(byName.get("skills/brain/SKILL.md")).toBe("would-create");
+		expect(byName.get("skills/aide/SKILL.md")).toBe("would-create");
 	});
 
 	it("exists steps have no content field", async () => {
@@ -181,10 +184,11 @@ describe("installSkills", () => {
 		const { default: installSkillsFresh } = await import("./index.js");
 		const results = await installSkillsFresh(skillDir);
 
-		expect(results).toHaveLength(2);
+		expect(results).toHaveLength(3);
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get("skills/study-playbook/SKILL.md")).toBe("would-skip");
 		expect(byName.get("skills/brain/SKILL.md")).toBe("would-create");
+		expect(byName.get("skills/aide/SKILL.md")).toBe("would-create");
 
 		vi.doUnmock("@/service/install/initContent/index.js");
 		vi.resetModules();
@@ -199,6 +203,7 @@ describe("installSkills — parameterized outcome shapes", () => {
 	it.each([
 		["skills/study-playbook/SKILL.md", "study-playbook/SKILL.md"] as const,
 		["skills/brain/SKILL.md", "brain/SKILL.md"] as const,
+		["skills/aide/SKILL.md", "aide/SKILL.md"] as const,
 	])("missing %s → would-create with content", async (displayName, relPath) => {
 		const skillDir = join(tempDir, "skills");
 
@@ -212,6 +217,7 @@ describe("installSkills — parameterized outcome shapes", () => {
 	it.each([
 		["skills/study-playbook/SKILL.md", "study-playbook/SKILL.md"] as const,
 		["skills/brain/SKILL.md", "brain/SKILL.md"] as const,
+		["skills/aide/SKILL.md", "aide/SKILL.md"] as const,
 	])("byte-identical %s on disk → exists with no content", async (displayName, relPath) => {
 		const skillDir = join(tempDir, "skills");
 		const dirPath = join(skillDir, relPath.split("/")[0]!);
@@ -230,6 +236,7 @@ describe("installSkills — parameterized outcome shapes", () => {
 	it.each([
 		["skills/study-playbook/SKILL.md", "study-playbook/SKILL.md"] as const,
 		["skills/brain/SKILL.md", "brain/SKILL.md"] as const,
+		["skills/aide/SKILL.md", "aide/SKILL.md"] as const,
 	])("drifted %s on disk → would-overwrite with canonical content", async (displayName, relPath) => {
 		const skillDir = join(tempDir, "skills");
 		const dirPath = join(skillDir, relPath.split("/")[0]!);

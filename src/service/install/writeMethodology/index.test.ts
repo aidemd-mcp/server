@@ -150,4 +150,24 @@ describe("writeMethodology", () => {
 
 		expect(result.content).not.toContain("Intel-Driven");
 	});
+
+	/**
+	 * Regression guard for the /aide skill-routing directive. The slash-command
+	 * file at .claude/commands/aide.md is a thin signpost; the orchestrator
+	 * prose and the MANDATORY BOOT SEQUENCE live in .claude/skills/aide/SKILL.md.
+	 * The host CLAUDE.md stub must tell the agent to invoke the skill on every
+	 * /aide* invocation — without this, an agent might read the thin command
+	 * file, infer it has nothing to do, and skip boot. That regression has
+	 * already been observed once in a downstream project; this test exists so
+	 * a future stub-template refactor cannot silently drop the directive.
+	 */
+	it("stub directs the agent to invoke the aide skill on /aide invocation", async () => {
+		const configPath = join(tempDir, "CLAUDE.md");
+
+		const result = await writeMethodology(configPath, HUB_DIR);
+
+		expect(result.content).toContain('Skill(skill="aide"');
+		expect(result.content).toContain("MANDATORY BOOT SEQUENCE");
+		expect(result.content).toContain(".claude/skills/aide/SKILL.md");
+	});
 });

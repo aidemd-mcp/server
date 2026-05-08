@@ -66,6 +66,7 @@ const DOC_PATHS = {
 	"cascading-alignment": ".aide/docs/cascading-alignment.md",
 	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
 	"skills/brain": ".claude/skills/brain/SKILL.md",
+	"skills/aide": ".claude/skills/aide/SKILL.md",
 	"bin/aide-tree": ".aide/bin/aide-tree.mjs",
 } as const;
 
@@ -145,6 +146,7 @@ const AGENT_DOCS: readonly AgentDocEntry[] = [
 const SKILL_DOCS: readonly SkillDocEntry[] = [
 	{ canonical: "skills/study-playbook", hostPath: "study-playbook/SKILL.md" },
 	{ canonical: "skills/brain", hostPath: "brain/SKILL.md" },
+	{ canonical: "skills/aide", hostPath: "aide/SKILL.md" },
 ];
 
 /** Per-process cache. Populated from disk reads in this process only — never

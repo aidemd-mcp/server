@@ -42,6 +42,8 @@ wrong by definition.
 - \`aide_validate\` — check spec layout for drift or issues
 - \`aide_init\` — bootstrap AIDE into a new project (first-time setup)
 - \`aide_upgrade\` — update/sync/refresh AIDE docs, commands, agents, and skills to the latest canonical versions (use this when asked to "update AIDE", "update the docs", or "sync the methodology")
+
+**Invoking \`/aide\` and \`/aide:*\`:** when the user invokes any AIDE slash command, your **first action** must be to invoke the matching skill via the \`Skill\` tool — for \`/aide\`, that is \`Skill(skill="aide", args=...)\`. The slash-command file at \`.claude/commands/aide.md\` is a thin signpost; the orchestrator prose and the **MANDATORY BOOT SEQUENCE** live in the \`aide\` skill (\`.claude/skills/aide/SKILL.md\`). Do NOT attempt to handle the request from the command file alone, do NOT skip the skill, and do NOT respond to the user's request before the boot sequence completes — skipping boot means orchestrating a methodology you don't know.
 `;
 
 /** Read a file, returning empty string if it doesn't exist. */
