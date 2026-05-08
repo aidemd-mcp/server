@@ -1,5 +1,6 @@
 ---
 scope: src/tools/inspect
+status: misaligned
 description: Code introspection tool that returns JSDoc, signature, and kind for named symbols without opening full files
 intent: >
   aide_inspect gives agents Tier 2 progressive disclosure for code — the ability

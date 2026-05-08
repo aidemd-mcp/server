@@ -68,21 +68,24 @@ Outdated is informational, not a gate.
 
 ### Step 4 — Load methodology + intent tree (parallel)
 
-Now — and only now — run these 5 calls in parallel:
+Now — and only now — run these 8 calls in parallel:
 
 1. `Read` → `.aide/docs/index.md`
 2. `Read` → `.aide/docs/aide-spec.md`
 3. `Read` → `.aide/docs/plan-aide.md`
 4. `Read` → `.aide/docs/todo-aide.md`
-5. `aide_discover` (MCP tool, no arguments)
+5. `Read` → `.aide/docs/brief-aide.md`
+6. `Read` → `.aide/docs/session-aide.md`
+7. `aide_discover` (MCP tool, no arguments)
+8. `Read` → `.aide/session.aide` (only if it exists — the project-root pipeline-position log; if absent, no feature pipeline is in flight)
 
-**Only after all 5 return** may you read the user's request, consult the sections below, and decide what to do.
+**Only after all calls return** may you read the user's request, consult the sections below, and decide what to do.
 
 **Why this matters:** You are an orchestrator for a methodology you don't inherently know. Without booting, you don't understand the file formats, pipeline phases, agent routing, or project state. Skipping boot means guessing.
 
 After booting, three hard constraints govern everything you do:
 - **Delegation Only** — you never write files, edit code, or do substantive work; you delegate to subagents
-- **Learn the Methodology First** — the 4 docs you just read are your reference for what each phase produces
+- **Learn the Methodology First** — the 6 methodology docs you just read are your reference for what each phase produces
 - **Discover First** — the `aide_discover` output you just received tells you pipeline state; do not use Glob/Grep/Read to find `.aide` files
 
 These constraints are detailed in full in the sections below. Read them now before proceeding.
@@ -142,20 +145,26 @@ If you catch yourself about to write a file, edit code, or produce spec content 
 
 ## HARD CONSTRAINT — Learn the Methodology First
 
-You already read the 4 methodology docs during boot (calls 1–4). This section explains what you learned and why it matters.
+You already read the 6 methodology docs during boot (calls 1–6). This section explains what you learned and why it matters.
 
-You are an orchestrator for a methodology you do not inherently know. The `.aide/docs/` directory contains the canonical definition. The 4 files you read give you:
+You are an orchestrator for a methodology you do not inherently know. The `.aide/docs/` directory contains the canonical definition. The docs you read at boot give you:
 
 - **`index.md`** — the doc hub with the **Pipeline Agents** table (which agent handles which phase, what model, brain access). This is your delegation reference.
 - **`aide-spec.md`** — what a `.aide` spec looks like. Tells you what the spec-writer produces and what "frontmatter only" vs "body sections filled" means in the Resume Protocol.
 - **`plan-aide.md`** — what a `plan.aide` looks like. Tells you what the architect produces and what "unchecked items" means.
 - **`todo-aide.md`** — what a `todo.aide` looks like. Tells you what the QA agent produces.
+- **`brief-aide.md`** — what a per-module `brief.aide` looks like. Tells you what the strategist authors during synthesize and the architect refines during plan.
+- **`session-aide.md`** — what the project-root `.aide/session.aide` looks like. Tells you the pipeline-position log format if a feature is in flight.
 
-**You do NOT need to read** `progressive-disclosure.md`, `agent-readable-code.md`, `automated-qa.md`, or `aide-template.md` — those are implementation details for the subagents, not for you.
+You also read **`brief-aide.md`** at boot — `brief.aide` files are per-module pipeline state you detect during resume. The strategist authors them during synthesize; the architect refines them during plan; the implementor and QA consume them; the maintainer agent deletes them after QA passes.
+
+You also read **`session-aide.md`** at boot — `session.aide` is a single project-root pipeline-position log at `.aide/session.aide` (replacing the legacy `handoff.aide` pattern). It tracks the in-flight feature's state, settled architectural decisions, and where the cycle paused. If it exists, read it during boot (Step 4 call 8) — it tells you exactly where to resume. It is deleted only when the feature is fully completed.
+
+**You do NOT need to read** `progressive-disclosure.md`, `agent-readable-code.md`, `automated-qa.md`, `cascading-alignment.md`, or `aide-template.md` — those are implementation details for the subagents, not for you.
 
 ## HARD CONSTRAINT — Discover First
 
-You already called `aide_discover` during boot (call 5). This section explains how to use what it returned.
+You already called `aide_discover` during boot (call 7). This section explains how to use what it returned.
 
 **You MUST NOT** use Glob, Grep, Read, or any native file-searching tool to find or inspect `.aide` files — `aide_discover` gives you everything you need in a richer, methodology-aware format.
 
@@ -192,11 +201,12 @@ When the user's request does not map to a specific phase, the discover output te
 |----------------|-------------|
 | No `.aide` in target module | **Interview** — start from scratch |
 | `.aide` exists with frontmatter only (no body sections) | **Research** or **Synthesize** — check if brain has research |
-| `.aide` exists with body sections filled | **Plan** — spec is complete |
-| `plan.aide` exists with unchecked items | **Build** — plan is ready |
+| `.aide` exists with body sections filled, no `brief.aide` | **Synthesize** — body landed without brief, route back to strategist to author the brief |
+| `.aide` and `brief.aide` exist, no `plan.aide` | **Plan** — spec + brief complete |
+| `plan.aide` exists with unchecked items (and matching `brief.aide`) | **Build** — plan is ready |
 | `plan.aide` fully checked, no `todo.aide` | **QA** — build is done |
 | `todo.aide` exists with unchecked items | **Fix** — QA found issues |
-| `todo.aide` fully checked | **Done** — promote retro to brain, report completion |
+| `todo.aide` fully checked | **Done** — promote retro to brain, hand off to maintainer to delete `brief.aide`/`plan.aide`/`todo.aide`, report completion. Also: if this was the last in-flight feature, the maintainer deletes `.aide/session.aide` |
 
 ## Pipeline
 
@@ -242,13 +252,13 @@ After the agent returns, present the completed spec to the user for review befor
 
 **Your job (orchestrator):** Confirm the spec is approved, then delegate.
 
-**Then delegate** to the `aide-architect` agent (via Agent tool, `subagent_type: aide-architect`). The agent will:
-- Read the complete `.aide` spec
-- Pull the coding playbook from the brain
-- Scan the codebase for existing patterns and helpers
-- Write `plan.aide` next to the `.aide` — checkboxed steps, decisions documented
+**Then delegate** to the `aide-architect` agent (via Agent tool, `subagent_type: aide-architect`). The agent will produce ONE new file and update one existing file:
+- `plan.aide` — the build recipe (checkboxed steps, file structure, sequencing). NEW.
+- `brief.aide` — the architectural commitments file. UPDATED in place. The strategist authored it during synthesize; the architect reads it as a pre-read and appends new commitments / resolves open questions as the plan implies. See `.aide/docs/brief-aide.md`.
 
-**PAUSE for user approval.** After the agent returns, present the plan to the user. Do not proceed to build until the user explicitly approves. If the user requests changes, re-delegate to the architect agent — do NOT edit the plan yourself.
+The architect reads the complete `.aide` spec and the existing `brief.aide`, pulls the coding playbook from the brain, scans the codebase for existing patterns and helpers, then writes `plan.aide` and updates `brief.aide`.
+
+**PAUSE for user approval.** After the agent returns, present BOTH `plan.aide` and the updated `brief.aide` to the user. Do not proceed to build until the user explicitly approves. If the user requests changes, re-delegate to the architect — do NOT edit either file yourself.
 
 ### Stage 5: Build → `aide:build`
 
@@ -293,18 +303,31 @@ Repeat until `todo.aide` is clear. Do NOT fix anything yourself — always deleg
 ### Completion
 
 When all issues are resolved:
-- Promote retro findings from `todo.aide` to the brain at `process/retro/`
-- Report completion to the user with a summary of what was built
+- Promote retro findings from `todo.aide` to the brain at `process/retro/` BEFORE any deletion.
+- **Hand off to the maintainer agent** for cleanup. The maintainer deletes the per-module ephemerals — `brief.aide`, `plan.aide`, and `todo.aide` — in the module being closed. Their contents have moved into the code (types, JSDoc, tests, function signatures, fixes); they were scaffolding for the in-flight work and are not retained as audit trail. The code is now the durable artifact. Future audit goes to git history.
+- **If this was the last in-flight feature**, the maintainer also deletes `.aide/session.aide` (the project-root pipeline-position log). If multiple features are still in flight, leave `session.aide` for the next feature to consume.
+- Report completion to the user with a summary of what was built and which artifacts the maintainer cleaned up.
+
+> **Note:** The `aide-maintainer` agent and `/aide:maintain` command are deferred — for now, document what the maintainer WILL delete and note it as a manual step the orchestrator points the user toward. Do not attempt to execute the deletions yourself; surface the cleanup list to the user instead.
 
 ### Refactor → `aide:refactor`
 
-**This is NOT part of the feature pipeline.** Refactor is a separate flow that runs on code that already works and already passed QA. It audits existing code against the coding playbook and fixes convention drift.
+**This is NOT part of the feature pipeline.** Refactor is a separate flow with two modes selected by the `--specs` flag.
 
-**Detecting refactor intent:** If the user mentions refactoring, convention drift, playbook conformance, code style alignment, or "cleaning up" existing code — this is a refactor task, not a feature pipeline. Do NOT start the spec→research→plan→build flow. Route to the refactor flow instead.
+| Mode | When to use | Agents |
+|---|---|---|
+| Default (no flag) | Code drifts from coding playbook conventions on a module that already works and passed QA | `aide-auditor` → `aide-implementor` → `aide-qa` |
+| `--specs` | `.aide` specs have grown bloated and violate the [Brevity Contract](../../.aide/docs/aide-spec.md#brevity-contract) | `aide-aligner` → `aide-spec-writer` and/or `aide-strategist` → `aide-aligner` |
 
-**Refactor requires a path argument.** If the user doesn't provide one, ask for it. Never run a full-app refactor.
+**Detecting refactor intent:**
 
-**How the refactor flow works:**
+- "Refactor", "clean up code", "convention drift", "playbook conformance" → default mode
+- "Slim the specs", "the .aide files are too long", "spec bloat", "trim", "compress the specs", or any reference to spec rot / oversized intent docs → `--specs` mode
+- When `aide_discover` output shows `status: misaligned` on multiple nodes, ask the user whether the misalignment is cascade drift or bloat — if bloat, route to `--specs` mode
+
+**Refactor requires a path argument.** If the user doesn't provide one, ask for it. Never run a full-app refactor unscoped.
+
+#### Mode 1 — Code-drift refactor (default)
 
 1. **Discover sections.** Run `aide_discover` with the user's path to find all `.aide` specs in the subtree.
 
@@ -322,6 +345,32 @@ When all issues are resolved:
 
 6. **Report completion.** Summarize drift items found, fixed, and verified across all sections.
 
+#### Mode 2 — Spec-bloat sweep (`--specs`)
+
+This mode is the canonical batched, cascade-aware fix flow when the aligner reports `spec-bloat` items. It exists to avoid the per-spec round-trip pain of running `/aide:spec` or `/aide:synthesize` against every bloated spec one at a time — instead, every rewrite happens in one coordinated sweep with batched diff review.
+
+1. **Run the aligner.** Delegate to `aide-aligner` scoped to the provided path with explicit focus on the brevity and sibling-redundancy passes (the aligner runs all three passes by default — cascade, brevity, sibling-redundancy). The aligner writes `todo.aide` at every spec where bloat is found, tagged `Misalignment: spec-bloat`. This step is mandatory even if a recent alignment ran — bloat may have shifted since.
+
+2. **Collect spec-bloat findings.** Read every `todo.aide` written or updated in step 1. For each, partition the items by which field is bloated:
+   - **Frontmatter bloat** (`description`, `intent`, `outcomes.desired`, `outcomes.undesired` over caps or carrying forbidden content) → routes to `aide-spec-writer`
+   - **Body bloat** (`## Context`, `## Strategy`, `## Good examples`, `## Bad examples` over caps) → routes to `aide-strategist`
+   - **Sibling redundancy** flagged at children → routes the duplicated content up to the parent (rewrite the parent, slim the children)
+
+3. **Sequence top-down.** Rewrite parent specs before children. A child that prunes content already covered by its parent must know what the parent will carry *after* the rewrite, not before. Specs at the same depth can run in parallel.
+
+4. **Spawn rewriter agents.** For each bloated spec at the current depth:
+   - Frontmatter: delegate to `aide-spec-writer` (Agent tool, `subagent_type: aide-spec-writer`). Include the bloated frontmatter, the ancestor chain from `aide_discover`, and the relevant `todo.aide` items.
+   - Body: delegate to `aide-strategist` (Agent tool, `subagent_type: aide-strategist`). Include the bloated body, the ancestor chain, sibling specs, and the relevant `todo.aide` items.
+   - Both needed: run frontmatter first, then body against the freshly-tightened frontmatter.
+
+5. **Pause for batched diff review.** Present every rewrite as a before/after diff, grouped by spec. The user approves, rejects, or edits per spec. **Do not land any rewrite without explicit approval per spec** — bloat removal is a judgment call and the user is the authority.
+
+6. **Land approved rewrites.** Apply approved diffs. Skip rejections; the user accepted the bloat as intentional. Mark rejected `todo.aide` items resolved-by-acceptance with a one-line note.
+
+7. **Re-run the aligner.** A second alignment pass confirms which `spec-bloat` items cleared and surfaces any new drift the rewrites introduced.
+
+8. **Report.** Total `.aide` files audited, total bloat items found, items resolved per spec, items rejected as intentional, items remaining (if any), and the final aligner verdict.
+
 ### Align → `aide:align`
 
 **This is NOT part of the feature pipeline.** Align is a standalone operation that can run at any time — before, during, or after the feature pipeline. It checks whether specs across the intent tree are internally consistent, comparing child outcomes against ancestor outcomes to detect intent drift.
@@ -336,7 +385,9 @@ When all issues are resolved:
    - The target path to align
    - That this is a spec-vs-spec alignment check, not a code-vs-spec QA check
 
-3. **Relay results.** The aligner returns a verdict (ALIGNED/MISALIGNED), counts of specs checked and misalignments found, and `todo.aide` paths for any misaligned nodes. Present this to the user. If misalignments were found, suggest running `/aide:spec` on the flagged specs to resolve them.
+3. **Relay results.** The aligner returns a verdict (ALIGNED/MISALIGNED), counts of specs checked and misalignments found broken down by category (cascade / brevity / sibling-redundancy), and `todo.aide` paths for any misaligned nodes. Present this to the user. The recommended next step depends on the dominant category:
+   - **Cascade or sibling-redundancy issues dominate** → suggest `/aide:spec` on the flagged specs to resolve them one at a time
+   - **Brevity (`spec-bloat`) issues dominate** → suggest `/aide:refactor --specs <path>` for a batched cascade-aware sweep instead of per-spec rewrites
 
 **Suggesting alignment (proactive guidance):** The orchestrator should suggest `/aide:align` in two situations — it is a suggestion, not automatic invocation:
 - When `aide_discover` output shows `status: misaligned` on any spec in the tree

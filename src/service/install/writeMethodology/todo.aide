@@ -1,50 +1,67 @@
 ---
 description: >
-  Alignment drift after the cold-start install refactor: stale scope path
-  and identity-locked references to "aide_init" as the sole caller.
+  Brevity-sweep audit of `src/service/install/writeMethodology/.aide` — frontmatter close to caps; 5 desired outcomes (cap 4), Strategy at 4 decisions but each carries paragraphs of rationale that duplicate parent install-service invariants.
 intent: >
-  writeMethodology's scope still names the old path; the spec describes
-  itself as a helper of "aide_init" rather than as a helper of the
-  install service that aide_init and the CLI both consume.
+  writeMethodology installs the host-side pointer stub. Spec is moderately
+  bounded but redundant with the parent install service's idempotency,
+  surgical-insert, and marker-based invariants. Outcome 1 is implementation
+  guidance not domain criterion.
 misalignment:
-  - spec-gap
+  - spec-bloat
 ---
 
 ## Issues
 
-- [ ] `src/service/install/writeMethodology/.aide` frontmatter
-  `scope: src/tools/init/writeMethodology`
-  Stale path — module moved to `src/service/install/writeMethodology/`.
-  Traces to: physical move; ancestor `.aide/intent.aide` ->
-  outcomes.desired[4] (folder tree as architecture).
-  Misalignment: spec-gap
+- [ ] `description` is 151 chars (under cap, fine).
 
-- [ ] `src/service/install/writeMethodology/.aide` Good examples:
-  "A host project runs `aide_init` for the first time..."
-  Identity drift — the example narrates the MCP tool path, not the
-  install service. With two consumers (MCP tool and npx CLI) the
-  example should narrate the service contract once and call out the
-  consumer-specific shape, or distinguish the two narrations.
-  Traces to: parent `src/service/install/.aide` identity drift;
-  ancestor `.aide/intent.aide` -> outcomes.desired[1] (two delivery
-  channels).
-  Misalignment: spec-gap
+- [ ] `intent` is 129 words (over cap 100). Trim regression-history aside.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
 
-- [ ] `src/service/install/writeMethodology/.aide` Strategy: "The
-  parent spec's renderer invariants still govern..."
-  References "the parent spec" generically; with the install service
-  now sitting between this helper and `src/.aide`, the renderer
-  invariants come from two ancestors (the install service and the
-  trunk), not one. The spec should name which invariant comes from
-  which ancestor or stop pinning to a single "parent".
-  Traces to: parent `src/service/install/.aide` (misaligned — see its
-  todo); ancestor `src/.aide` -> outcomes.desired[2] (no AIDE doctrine
-  as string literals).
+- [ ] `outcomes.desired` has 5 items (cap 4). Item 1 ("the stub's text is
+  inlined in this helper's source as framework plumbing") is implementation
+  guidance — not a domain criterion.
+  Traces to: `outcomes.desired` | Brevity Contract caps + outcomes-purpose test
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.undesired` has 5 paragraph-length items, mostly restating
+  parent's "no overwrite" / "marker-bounded surgical insert" rules.
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Sibling-redundancy
+  Misalignment: spec-bloat
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `## Strategy` has 4 decisions (under cap) but each runs 100+ words and
+  duplicates parent's progressive-disclosure-at-delivery, surgical-insert,
+  marker-based-idempotency, framework-plumbing-vs-doctrine rules.
+  Traces to: `## Strategy` | Brevity Contract per-decision ≤80 words + Sibling-redundancy
+  Misalignment: spec-bloat
+  Category: Brevity, Sibling-redundancy
+
+- [ ] Sibling redundancy with parent install service and trunk: "progressive
+  disclosure at delivery" is a trunk-level commitment; "marker-based
+  idempotency" is the parent's surgical-insert pattern; the
+  doctrine-lives-in-canonical-docs rule is the project root.
+  Traces to: outcomes, Strategy | Sibling-redundancy doctrine
   Misalignment: spec-gap
+  Category: Sibling-redundancy
+
+- [ ] `## Good examples` and `## Bad examples` are reasonable size but
+  reproduce specific framework config-file mention (`CLAUDE.md`,
+  `.cursorrules`) and exact pointer-stub framing. Forbidden content
+  (file paths, exact strings).
+  Traces to: examples sections | Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] Carry-forward (prior cycle): 3 unchecked items. Re-walk after rewrite.
 
 ## Retro
 
-Architectural-shift drift. The "the tool runs aide_init" framing in the
-Good examples is the highest-friction part of every moved spec — it
-locks the narrative to a single consumer when the install service
-should be consumer-neutral.
+writeMethodology is moderately bloated because most of its content is
+already in the parent install service spec and the project trunk. The fix
+is to commit to "writes the marker-bounded pointer stub into the host's
+framework config file; idempotent, surgical insert, never replaces user
+content outside the markers" and let the parent carry the surgical-insert
+mechanism.

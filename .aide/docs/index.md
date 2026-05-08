@@ -4,6 +4,8 @@
 - [aide-template.md](./aide-template.md)
 - [plan-aide.md](./plan-aide.md)
 - [todo-aide.md](./todo-aide.md)
+- [brief-aide.md](./brief-aide.md) — per-module architect's pre-read (deleted post-QA)
+- [session-aide.md](./session-aide.md) — root-level pipeline-position log (replaces legacy `handoff.aide`)
 - [brain-aide.md](./brain-aide.md)
 - [progressive-disclosure.md](./progressive-disclosure.md)
 - [agent-readable-code.md](./agent-readable-code.md)

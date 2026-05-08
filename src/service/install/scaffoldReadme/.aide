@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/scaffoldReadme
-status: aligned
+status: misaligned
 description: >
   Install category that ensures the host project has a README.md with the AIDE
   badge at the top — creating a minimal README when none exists, or injecting

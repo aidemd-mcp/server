@@ -1,0 +1,92 @@
+---
+description: >
+  Brevity-sweep audit of `src/service/parseBrainAide/.aide` — 1,940 lines / 107KB. Description ~1,685 chars (8x cap), intent ~532 words (5x cap), 15 desired outcomes, body Strategy with ~12 decisions. Among the worst-bloated leaves; saturated with marker tokens, type signatures, and parser implementation contracts.
+intent: >
+  parseBrainAide is the canonical reader for `.aide/config/brain.aide`. The
+  spec balloons because every named body section, every marker token pair,
+  every typed-result variant, every retired-field rejection rule, and every
+  substitution-surface partition has its own outcome. Frontmatter and body
+  both saturated with code-level invariants. Wholesale rewrite required.
+misalignment:
+  - spec-bloat
+---
+
+## Issues
+
+- [ ] `description` is ~1,685 chars (cap 200) — packs the parser scope, the
+  two-field frontmatter schema, the six body sections by name, the marker
+  token format spec, the typed-result discriminant, and the never-throws
+  invariant. Trim to ≤200 chars naming the parser's domain purpose.
+  Traces to: `description` field | Brevity Contract caps + Forbidden content (marker tokens, exact strings, type signatures)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `intent` is ~532 words (cap 100). Restates the parser's contract end-to-end:
+  source-of-truth file, frontmatter schema, body marker grammar, tagged-result
+  variants, interpolation surface partition, no-throws invariant, deprecated-
+  fields rejection, retired marker grammar rejection. Trim to ≤100 words.
+  Traces to: `intent` field | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.desired` has 15 items (cap 4); each is paragraph length and
+  encodes implementation contracts: every named body section is its own
+  field on the parsed result, marker tokens are recognized lowercase and
+  case-sensitive, deprecated fields rejected by name, result variants
+  enumerated. Most are unit-test-territory.
+  Traces to: `outcomes.desired` | Brevity Contract caps + outcomes-purpose test
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.undesired` has ~12 paragraph-length items, almost all citing
+  retired schema names (`connector`, `rootPath`, `entryFile`, `tools`),
+  retired marker grammars (`aide-prose-*`, `aide-playbook-*`, `aide-research-*`,
+  three-section pre-amendment, four-section pre-rework), retired sentinel
+  designs. Forbidden content (retired prior designs, migration history).
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## Context` is ~700+ words (cap ~150). Recapitulates the parser's role,
+  the consumer roster, the marker grammar history, the typed-key boundary,
+  the substitution-surface partition.
+  Traces to: `## Context` | Brevity Contract caps + Sibling-redundancy
+  Misalignment: spec-bloat
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `## Strategy` has ~12 paragraph-length decisions (cap ~5 ≤80 words). Each
+  encodes implementation contracts: which fields land on the result variant,
+  which markers populate which keys, the strict-failure rejection rule for
+  each retired pattern, the kebab-to-camel-case mapping rule.
+  Traces to: `## Strategy` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `## Good examples` and `## Bad examples` reproduce TypeScript code
+  showing exact `parseBrainAide` return shapes, exact YAML frontmatter
+  shapes with all six section markers, exact deprecated-field rejection
+  messages. Cap is 2-3 brief examples; forbidden content saturated.
+  Traces to: examples sections | Forbidden content (TypeScript code, type signatures, exact strings, marker tokens)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] Sibling redundancy with project root and brain-related submodule specs:
+  every named body section's existence, the live-vs-seed split, the no-substitution-on-body-sections
+  rule, the closed-vocabulary rejection rules — all restated verbatim from
+  parents.
+  Traces to: outcomes, Strategy, Bad examples | Sibling-redundancy
+  Misalignment: spec-gap
+  Category: Sibling-redundancy
+
+## Retro
+
+parseBrainAide is the textbook example of a parser spec that became a code
+contract document. The right scope for this spec is "the canonical reader
+for the user-owned brain config; returns a tagged-result variant; never
+throws; preserves null in args verbatim; rejects retired schemas with a
+specific reason." Everything else — exact field names, exact marker tokens,
+exact rejection rule shapes — lives in code with focused unit tests asserting
+the rejection behavior.
+
+After the brain-layer parent is introduced, this spec shrinks to ≤100 lines
+total. The 12+ retired-pattern Bad examples are git history.

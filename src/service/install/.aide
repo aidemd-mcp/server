@@ -1,5 +1,6 @@
 ---
 scope: src/service/install
+status: misaligned
 description: >
   Install service — the consumer-agnostic core that turns a cold project into an
   AIDE-ready project, shared by the `aide_init` MCP tool and the npx CLI. Writes

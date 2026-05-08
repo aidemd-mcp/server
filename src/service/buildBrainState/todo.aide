@@ -1,118 +1,105 @@
 ---
+description: >
+  Brevity-sweep audit of `src/service/buildBrainState/.aide` — description ~870 chars, intent ~334 words, 18 desired outcomes (cap 4) most encoding type-system / unit-test invariants, plus a vast Bad examples block with TypeScript code snippets reproducing forbidden anti-patterns verbatim.
 intent: >
-  Active drift after the root revision (2026-04-25): the spec authors a
-  five-state tagged union (`ok`, `no-brain-aide`, `no-mcp-entry`,
-  `invalid-path`, `mcp-drift`), stats `rootPath` as a load-bearing
-  detection step, and threads `connector` as descriptive metadata on
-  every returned shape. Under the new root, `rootPath` is removed from
-  the brain.aide schema, the `invalid-path` state goes away with it,
-  the package never stats a path, and `connector` is renamed to `name`.
+  buildBrainState is the brain-state detector — a small structural-classification
+  function whose spec balloons into 561 lines because every retired regression
+  has its own outcome, its own Bad example, and its own restatement. Frontmatter
+  caps blown across the board, body Bad examples reproduce TypeScript code
+  snippets the contract forbids — the worst kind of forbidden-content saturation.
 misalignment:
-  - spec-gap
+  - spec-bloat
 ---
 
 ## Issues
 
-### Active (alignment pass 2026-04-25 — root revision: schema collapse removes invalid-path state)
+- [ ] `description` is ~870 chars (cap 200) — packs four contract paragraphs
+  (parseBrainAide as source of truth, null-args structural early-return,
+  byte-for-byte drift comparison, four-state vocabulary, ordering precedence,
+  no-stat invariant). Trim to "structural classifier for brain wiring state,
+  returns a closed four-state union, never mutates."
+  Traces to: `description` field | Brevity Contract caps + Forbidden content (function names, type signatures)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-- [x] `src/service/buildBrainState/.aide` description: "...stats the declared `rootPath`, compares the parsed `mcpServerConfig` against the host's `.mcp.json` brain entry for drift, and returns a five-state tagged union (`ok`, `no-brain-aide`, `no-mcp-entry`, `invalid-path`, `mcp-drift`)..."
-  Two structural drifts: (1) the package never stats a path under the new root — path validation is the launcher's job at MCP server startup, and (2) the state count drops to four with `invalid-path` removed. The description encodes both removed surfaces as load-bearing.
-  Traces to: `.aide/intent.aide` outcomes.desired ("`brain.aide` carries no `rootPath` field — the brain's location lives exactly once, inline in `mcpServerConfig.args`. The package never derives a logical root from args, never stats a path to validate it... Boot reporter brain status states are reduced to `ok`, `no-brain-aide`, `no-mcp-entry`, and `mcp-drift` — the prior `invalid-path` state goes away with `rootPath`"); outcomes.undesired ("Reintroducing a `rootPath` field, an `invalid-path` boot state, or any per-connector path validation is the same regression in different clothing").
+- [ ] `intent` is ~334 words (cap 100) and restates the description with
+  added paragraphs about precedence ordering, no-registry-import,
+  no-name-branching, no-re-implementation-of-parsing, no-pattern-matching-for-sentinels.
+  Most of this is Strategy.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `outcomes.desired` has 18 items (cap 4) — by far the worst desired-list
+  count in the tree. Each item is paragraph length encoding code-level
+  invariants: `interpolateArgs` is unconditional, structural equality not byte
+  equality, no-throws guarantee, single-positional `(root: string)` signature,
+  shared `BrainState` type module location, `hints` populated unconditionally,
+  hints shape and origin unchanged. Almost every item fails the outcomes-purpose
+  test — type checker / unit test catches all of these.
+  Traces to: `outcomes.desired` | Brevity Contract caps + outcomes-purpose test (most items are code-level invariants)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.undesired` has ~16 items, all paragraph length, each enumerating
+  a retired regression class by exact identifier name (`resolveBackend`,
+  `getDriverById`, `brainBackends`, retired `<BRAIN_PATH>` sentinel, retired
+  `invalid-path` state, byte-equality drift, etc.). Forbidden content (retired
+  prior designs, migration history).
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## Strategy` has 11 paragraph-length decisions (cap ~5). Most encode
+  control-flow ordering ("parse → null-check → compare"), the exact precedence
+  rule, the no-path-validation rule, the structural-vs-byte equality rule,
+  the unconditional-interpolation rule, the name-as-metadata rule. These are
+  plan/code-level decisions.
+  Traces to: `## Strategy` | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Bad examples` reproduces ~10 TypeScript code snippets verbatim,
+  showing the exact pattern the contract forbids. Per the Brevity Contract,
+  function bodies, type signatures, and exact strings are forbidden in `.aide`.
+  These code snippets are the textbook anti-pattern of bloat — the spec is
+  doubling as a code-style document. Compress to brief prose descriptions
+  of each anti-pattern.
+  Traces to: `## Bad examples` | Brevity Contract caps + Forbidden content (TypeScript code, function signatures)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## Good examples` reproduces full JSON `BrainState` returns with exact
+  brand strings, exact paths, exact field counts. Per the contract, examples
+  should be brief and pattern-illustrative.
+  Traces to: `## Good examples` | Forbidden content (exact strings, JSON shapes)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] Sibling redundancy with the project root and `src/.aide`: the four-state
+  vocabulary, no-stat-invariant, source-of-truth-direction, no-auto-repair-on-drift,
+  YAML-null-as-unwired-slot signal, parser-as-canonical-reader rule are all
+  restated verbatim from parents. Most of `outcomes.undesired` is "don't do X"
+  rules where X is already forbidden by ancestors.
+  Traces to: outcomes, Strategy, Bad examples | Sibling-redundancy
   Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` intent paragraph: "...stats the declared `rootPath`, reads `.mcp.json` and looks up the fixed `brain` key, and structurally compares the parsed `mcpServerConfig` (with `${rootPath}` interpolated via `interpolateArgs`) against the actual `.mcp.json` brain entry. Every failure mode collapses to one of five structured statuses..."
-  Same drift: no stat, no `${rootPath}` interpolation in the default flow, four states. The structural-equality comparison and the source-of-truth direction (brain.aide canonical, .mcp.json derived) are unchanged.
-  Traces to: `.aide/intent.aide` outcomes.desired (no rootPath, no invalid-path, no path validation; default scaffold no substitution).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.desired ("Returns `status: invalid-path` when brain.aide parses successfully but the declared `rootPath` does not resolve..."): the entire branch is removed under the new root.
-  Traces to: `.aide/intent.aide` outcomes.desired (no `invalid-path` state; no path stat).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.desired (every `ok`, `no-mcp-entry`, `mcp-drift` shape): each carries `rootPath` and `connector` on the returned shape. With `rootPath` removed and `connector` renamed to `name`, the shapes carry only `name` (and possibly the inline path string from args, if the orchestrator wants to surface it for display).
-  Traces to: `.aide/intent.aide` outcomes.desired (schema collapse, field rename).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.desired ("Drift detection is structural-equality on the in-memory entry shape... element-by-element equality on `args` (same length, same value at every position)"): the structural-equality contract is unchanged, but the args list under the default scaffold now carries a byte-inline path rather than a `${rootPath}` placeholder. The comparison is identical in shape; only the bytes being compared change.
-  Traces to: `.aide/intent.aide` outcomes.desired (default scaffold byte-inline path).
-  Misalignment: spec-gap (prose-clarity, not contract drift)
-
-- [x] `src/service/buildBrainState/.aide` outcomes.desired ("The detector never branches on `connector`"): rule is correct and load-bearing, but the field name is stale. Should read "never branches on `name`" — same rule, renamed field.
-  Traces to: `.aide/intent.aide` outcomes.desired (rename).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.desired ("The detector never re-implements `${rootPath}` interpolation — it calls `interpolateArgs(config)`"): the interpolation call is still load-bearing for advanced-user scaffolds that exercise the engine, but the default scaffold doesn't substitute anything (no placeholders). The outcome should clarify this.
-  Traces to: `.aide/intent.aide` outcomes.desired (default scaffold no substitution; engine still supported for advanced users).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.desired ("Pure detection. The detector reads brain.aide (via the parser), stats `rootPath`, and reads `.mcp.json`"): the stat call is removed under the new root. The detector reads brain.aide and reads .mcp.json — that's it.
-  Traces to: `.aide/intent.aide` outcomes.desired (package never stats a path).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.desired ("`hints` populated unconditionally on every returned state, including `no-brain-aide`"): structurally fine, but the `invalid-path` mention here is stale because the state is removed.
-  Traces to: `.aide/intent.aide` outcomes.desired (no `invalid-path` state).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.undesired ("Branching on `config.connector`..."): rename — `config.name`. Same structural rule.
-  Traces to: `.aide/intent.aide` outcomes.desired (rename).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.undesired ("Returning the old three-state vocabulary (`ok`, `no-mcp-entry`, `invalid-path` only)"): the rule is internally inconsistent under the new root because the new vocabulary is four states (`ok`, `no-mcp-entry`, `no-brain-aide`, `mcp-drift`), and `invalid-path` is now the OLD state, not a state in the current contract. The undesired-outcome should be rewritten to forbid the new collapse pattern (e.g., collapsing `no-brain-aide` and `no-mcp-entry`).
-  Traces to: `.aide/intent.aide` outcomes.desired (state count reduces to four).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` outcomes.undesired ("Statting `rootPath` before parsing brain.aide"): the rule was about pipeline order, but the underlying step (statting `rootPath`) is gone. The pipeline-order rule should be restated against the actual remaining steps (brain.aide first, .mcp.json second; never reverse).
-  Traces to: `.aide/intent.aide` outcomes.desired (no path stat).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Strategy ("Pipeline order encodes the source-of-truth direction. brain.aide first, then stat `rootPath`, then `.mcp.json`"): the stat step is gone. Pipeline order is brain.aide first, .mcp.json second. The source-of-truth direction (brain.aide canonical, .mcp.json derived) is unchanged.
-  Traces to: `.aide/intent.aide` outcomes.desired (no path stat).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Strategy ("`connector` is metadata, not dispatch"): rename — `name`. Same rule.
-  Traces to: `.aide/intent.aide` outcomes.desired (rename).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Strategy ("Pure read-side detection... reads brain.aide via the parser, stats `rootPath`, and reads `.mcp.json`"): same stat removal.
-  Traces to: `.aide/intent.aide` outcomes.desired (no path stat).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Good examples (`ok` example): carries `rootPath`, `connector` fields on the returned shape; renders the args list with `${rootPath}` interpolated to the resolved path. With the schema collapse and rename, the shape carries `name` (renamed from `connector`) and the args list under the default scaffold carries the path inline byte-for-byte.
-  Traces to: `.aide/intent.aide` outcomes.desired (schema collapse, field rename, byte-inline path).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Good examples (`mcp-drift` example): "expected `args[2]` was `D:/notes/new-vault`; the actual `args[2]` was `D:/notes/old-vault`. Element-by-element comparison flagged the mismatch and returned `mcp-drift`." The comparison logic is correct and unchanged; the example renders `connector` on the shape, which should be `name`.
-  Traces to: `.aide/intent.aide` outcomes.desired (rename).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Good examples (`invalid-path` example): the entire example must be deleted because the state no longer exists.
-  Traces to: `.aide/intent.aide` outcomes.desired (no `invalid-path` state).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Bad examples ("Hardcoding `backend: \"obsidian\"` on the `ok` branch"): the rule is correct; the field name on the shape should be `name`, not `connector`. Should read "ignores brain.aide's `name` and writes a backend identifier."
-  Traces to: `.aide/intent.aide` outcomes.desired (rename).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Bad examples ("Branching on `connector` to vary the comparison"): rename — `name`.
-  Traces to: `.aide/intent.aide` outcomes.desired (rename).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` Bad examples ("Returning the old three-state vocabulary"): the bad-example narrative collapses `no-brain-aide` into `no-mcp-entry` and `mcp-drift` into `invalid-path` — but `invalid-path` doesn't exist as a target to collapse into. The narrative should be rewritten to forbid the new collapse risk (e.g., collapsing `no-brain-aide` and `no-mcp-entry`).
-  Traces to: `.aide/intent.aide` outcomes.desired (state count change).
-  Misalignment: spec-gap
-
-- [x] `src/service/buildBrainState/.aide` references the brain.aide path as `.aide/brain.aide` throughout. Every prose mention should update.
-  Traces to: `.aide/intent.aide` outcomes.desired (path move).
-  Misalignment: spec-gap
+  Category: Sibling-redundancy
 
 ## Retro
 
-### Active cycle (2026-04-25 — root revision: schema collapse removes invalid-path state)
+The buildBrainState spec is the canonical example of a code-level invariant
+list masquerading as outcomes. 18 desired bullets is structurally impossible
+to defend as domain success criteria — domain success has 3-4 things you'd
+ship a release on; everything beyond that is implementation invariant.
 
-This spec authors the five-state tagged union at the detector layer — and is therefore the deepest cascade target for the `invalid-path` state removal. The detector's pipeline collapses from three steps (parse, stat, read mcp.json) to two (parse, read mcp.json), the state count drops from five to four, the stat call is removed, and every shape that carried `connector` now carries `name`.
+The Bad examples reproduce TypeScript anti-patterns verbatim. The defense
+against `args.some(a => a.includes("<BRAIN_PATH>"))` is a unit test asserting
+that pattern is absent, not a Bad example with the snippet inline. The
+spec should commit to "detection is structural via JS `=== null`, never
+pattern-matching string contents" and let a unit test pin the rule.
 
-The structural contract is largely intact: the detector still consumes brain.aide via the parser, structurally compares the parsed `mcpServerConfig` against `.mcp.json`'s brain entry, and returns plain-data state. The source-of-truth direction (brain.aide canonical, `.mcp.json` derived) is preserved. The hard-halt-on-drift contract is preserved. What changes is the failure-mode roster (one fewer state, no path validation) and the field names on every returned shape.
-
-The deepest content drift is in the Good/Bad examples block, which renders the literal returned shapes including the `invalid-path` example that no longer corresponds to a real state. That example must be deleted; the surrounding narrative needs to be rewritten to forbid the new risk shape (collapsing the four states the wrong way) rather than the old risk shape (returning the three-state vocabulary).
-
-What would have caught this earlier: the same `/aide:align` pass at the moment the root settled `rootPath` removal. The detector and the boot reporter (`src/tools/info/.aide`) carry the same five-state vocabulary in mirror; they cascade together.
+After the brain-layer parent is introduced and rooted, this spec shrinks to:
+"structural classifier for brain wiring state; returns the closed
+four-state union; reads brain.aide first; null in args short-circuits to
+no-mcp-entry." Most of the 18 outcomes collapse into invariants that already
+live at the parent.

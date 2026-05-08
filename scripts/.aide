@@ -1,5 +1,6 @@
 ---
 scope: scripts/export-pdf
+status: misaligned
 description: PDF export script that consolidates the full AIDE methodology into a single document for copyright registration
 intent: >
   Produce a single, well-structured PDF that bundles every published artifact of

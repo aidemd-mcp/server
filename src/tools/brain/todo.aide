@@ -1,0 +1,83 @@
+---
+description: >
+  Brevity-sweep audit of `src/tools/brain/.aide` — description ~458 chars (2x cap), intent ~224 words (2x cap), 12 desired outcomes; body Strategy 5 decisions but each runs paragraphs encoding the closed `kind` enum, response shape, schema-level rejection, and verbatim-bytes invariant.
+intent: >
+  aide_brain is the runtime brain entry-point tool. Spec is bloated because
+  the closed `kind` enum, the verbatim-bytes invariant, the response shape
+  partition, and the schema-level enforcement get their own outcomes plus
+  their own restated negative bullets.
+misalignment:
+  - spec-bloat
+---
+
+## Issues
+
+- [ ] `description` is ~458 chars (cap 200) — packs the runtime tool scope,
+  the closed `kind` enum, the verbatim-bytes contract, and the negative-shape
+  list (no `backend`, no `connector`, no `name`). Trim.
+  Traces to: `description` field | Brevity Contract caps + Forbidden content (exact strings)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `intent` is ~224 words (cap 100). Restates description with added
+  paragraphs about live-vs-seed, on-demand-only invocation, status branch
+  shape. Trim.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `outcomes.desired` has 12 items (cap 4); each is paragraph length and
+  encodes type-system / schema-level invariants: response shape exactly
+  `{ status, instructions }`, closed `kind` vocabulary, verbatim-section-bytes
+  on `ok`, fixed-remediation-prose on each non-ok branch, single
+  `parseBrainAide` call per `ok` invocation, status-vocabulary-mirrors-`BrainState`.
+  Most are unit-testable.
+  Traces to: `outcomes.desired` | Brevity Contract caps + outcomes-purpose test
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.undesired` has ~13 paragraph-length items enumerating retired
+  regressions (registry dispatch, seed-section exposure under any `kind`,
+  schema-level `kind` rejection bypass, response-shape discriminants,
+  description-vs-handler drift). Forbidden content.
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## Context` is ~500 words (cap ~150). Recapitulates the live-vs-seed
+  split, the response-shape partition, the on-demand-only-invocation rule.
+  Most duplicates project root.
+  Traces to: `## Context` | Brevity Contract caps + Sibling-redundancy
+  Misalignment: spec-bloat
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `## Strategy` has 6 paragraph-length decisions (cap ~5 ≤80 words). Each
+  encodes schema-level enforcement, response-shape stability, kind-agnostic
+  remediation prose, single-parse-per-call rule, defensive-fallback rule.
+  Traces to: `## Strategy` | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Good examples` and `## Bad examples` reproduce TypeScript handler
+  bodies, exact JSON return shapes with all string fields filled, exact
+  remediation prose strings. Cap is 2-3 brief; forbidden content saturated.
+  Traces to: examples sections | Forbidden content (TypeScript code, exact strings)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] Sibling redundancy with project root: the live-vs-seed split, the
+  closed-`kind` enum, the verbatim-bytes invariant, the response-shape
+  partition, the no-registry-dispatch rule are all restated from parent.
+  Traces to: outcomes, Strategy, Bad examples | Sibling-redundancy
+  Misalignment: spec-gap
+  Category: Sibling-redundancy
+
+## Retro
+
+aide_brain spec is bloated because the strategist treated every defense
+against connector-dispatch as needing both an outcome and a Bad example.
+The schema-level rejection of unknown `kind` values is unit-testable. The
+verbatim-bytes invariant is unit-testable. The response-shape stability is
+unit-testable. The spec should commit to "agent-facing brain entry point;
+returns the live section bytes verbatim or a fixed remediation; closed
+two-value `kind` enum" and let unit tests own the rest.

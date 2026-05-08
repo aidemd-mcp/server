@@ -1,50 +1,61 @@
 ---
 description: >
-  Alignment drift after the cold-start install refactor: stale scope path
-  and References pointing at moved sibling specs.
+  Brevity-sweep audit of `src/service/install/scaffoldReadme/.aide` — 5 desired outcomes (cap 4), body Good/Bad examples reproduce verbatim Markdown READMEs with exact badge URLs.
 intent: >
-  scaffoldReadme's scope still names the old path and its References
-  section enumerates sibling specs at their pre-move locations.
+  scaffoldReadme handles README presence and badge injection. Frontmatter
+  close to caps but body examples reproduce full Markdown templates verbatim,
+  saturating forbidden content.
 misalignment:
-  - spec-gap
+  - spec-bloat
 ---
 
 ## Issues
 
-- [ ] `src/service/install/scaffoldReadme/.aide` frontmatter
-  `scope: src/tools/init/scaffoldReadme`
-  Stale path — module moved to `src/service/install/scaffoldReadme/`.
-  Traces to: physical move; ancestor `.aide/intent.aide` ->
-  outcomes.desired[4] (folder tree as architecture).
-  Misalignment: spec-gap
+- [ ] `description` is 184 chars (under cap, fine).
 
-- [ ] `src/service/install/scaffoldReadme/.aide` References list:
-  every reference points at `src/tools/init/...`
-  All four references (`src/tools/init/injectBadge/.aide`,
-  `src/tools/init/.aide`, `src/tools/init/writeMethodology/.aide`,
-  `src/tools/init/provisionBrain/.aide`) name files that have moved to
-  `src/service/install/...`. References are hints not contracts, but a
-  reader following them lands on dead paths and has to back-derive the
-  current locations.
-  Traces to: physical move; ancestor `.aide/intent.aide` ->
-  outcomes.undesired[3] (aspirational docs that describe behavior the
-  server does not deliver).
-  Misalignment: spec-gap
+- [ ] `intent` is 144 words (over cap 100). Drop injectBadge merge history.
+  Traces to: `intent` field | Brevity Contract caps + Forbidden content (migration history)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-- [ ] `src/service/install/scaffoldReadme/.aide` Strategy: "The parent
-  init spec's requirement that every init category have an upgrade path
-  applies here."
-  The "parent init spec" terminology hardcodes the parent's identity as
-  the init tool. After the refactor, the parent is the install service;
-  the upgrade-path requirement is correct but scoped to the wrong
-  parent identity.
-  Traces to: parent `src/service/install/.aide` (currently misaligned —
-  this leaf inherits the parent's stale "init tool" framing).
-  Misalignment: spec-gap
+- [ ] `outcomes.desired` has 5 items (cap 4). Items 0 and 1 collapse. Item 4
+  ("status reports skip when present") is install-service parent invariant.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Sibling-redundancy
+  Misalignment: spec-bloat
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `outcomes.undesired` has 5 paragraph-length items with exact before/after
+  Markdown shown inline. Trim to 3-4 ≤2 sentences.
+  Traces to: `outcomes.undesired` | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Strategy` has ~7 decisions (over cap ~5). One ("category absorbs
+  injectBadge and retires it") is migration history; another ("README
+  creation derives project name from package.json first") encodes specific
+  data sources.
+  Traces to: `## Strategy` | Brevity Contract caps + Forbidden content (migration history)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `## Good examples` and `## Bad examples` reproduce full Markdown READMEs
+  verbatim including the badge URL with exact `img.shields.io/badge/AIDE`
+  path, exact heading levels, exact placeholder description text. Cap is
+  2-3 brief examples; forbidden content (exact strings, URLs).
+  Traces to: examples sections | Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## References` has 4 paragraph-length entries. Trim to "path + one-line".
+  Traces to: `## References` | Brevity Contract format
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] Carry-forward (prior cycle): 3 unchecked items. Re-walk after rewrite.
 
 ## Retro
 
-Architectural-shift drift. The References section is the most fragile
-part of any moved spec — every wikilink-style path becomes stale on a
-rename. A spec-mover would benefit from a sanity check that grep-finds
-References lines pointing at the spec's old path.
+This spec is moderately bloated by Markdown-template reproduction in
+examples. The badge URL is a code-level constant; the examples should
+illustrate the placement pattern (badge above heading, after frontmatter,
+appended to existing badge strip) without showing the bytes.

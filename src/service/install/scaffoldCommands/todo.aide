@@ -1,73 +1,66 @@
 ---
 description: >
-  Alignment drift after the cold-start install refactor: stale scope path
-  and parent-framing references that name the old "init" module identity.
-  Prior cycle's command-roster enumeration drift (resolved) preserved
-  below for retro context.
+  Brevity-sweep audit of `src/service/install/scaffoldCommands/.aide` — 6 desired outcomes (cap 4), Strategy at 6 decisions, body has paragraphs about study-playbook + update-playbook coupling that are sibling-redundant with parent and brain-layer specs.
 intent: >
-  scaffoldCommands' scope still names src/tools/init/scaffoldCommands.
-  The current spec correctly avoids hardcoding command counts (post-prior
-  cycle), but its surrounding terminology still frames the parent module
-  as the init tool. Under the install-service-with-two-consumers shape,
-  the parent is the install service and the spec should describe the
-  command surface at the service level.
+  scaffoldCommands installs canonical slash commands. Frontmatter mostly
+  in caps but `outcomes.desired` is over and Strategy decisions exceed
+  ≤80 words. Body documents study-playbook/update-playbook coupling that
+  duplicates parent and brain-layer spec content.
 misalignment:
-  - spec-gap
+  - spec-bloat
 ---
 
 ## Issues
 
-### Active (alignment pass — post-move drift)
+- [ ] `description` is 116 chars (under cap, fine).
 
-- [ ] `src/service/install/scaffoldCommands/.aide` frontmatter
-  `scope: src/tools/init/scaffoldCommands`
-  Stale path — module moved to `src/service/install/scaffoldCommands/`.
-  Traces to: physical move; ancestor `.aide/intent.aide` ->
-  outcomes.desired[4] (folder tree as architecture).
+- [ ] `intent` is 126 words (just over cap 100). Trim study-playbook /
+  update-playbook framing.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `outcomes.desired` has 6 items (cap 4). Items 0 and 4-5 are study-playbook
+  and update-playbook specific — that material belongs in the brain-layer
+  doctrine, not in the slash-command scaffolder spec. Items 1-3 collapse.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Sibling-redundancy
+  Misalignment: spec-bloat, spec-gap
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `outcomes.undesired` has 8 paragraph-length items including ASCII
+  folder-path bullets and a count-pinning warning that itself enumerates
+  by example. Trim.
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content (file paths)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `## Context` mixes scaffold mechanics with brain-layer
+  study-playbook/update-playbook content. Push the brain-layer content out.
+  Traces to: `## Context` | Sibling-redundancy
   Misalignment: spec-gap
+  Category: Sibling-redundancy
 
-- [ ] `src/service/install/scaffoldCommands/.aide` Good examples:
-  "A host project runs `aide_init` for the first time..."
-  Identity drift — examples narrate the MCP tool path. With two
-  consumers (MCP tool and npx CLI) the examples should narrate the
-  service contract once or distinguish the two consumer shapes
-  explicitly.
-  Traces to: parent `src/service/install/.aide` identity drift;
-  ancestor `.aide/intent.aide` -> outcomes.desired[1] (two delivery
-  channels).
-  Misalignment: spec-gap
+- [ ] `## Strategy` has 6 decisions (just over cap). Strategy 4 ("commands
+  enumerated from a fixed registry") and Strategy 5 (study-playbook
+  navigation) are restatements of outcomes. Compress.
+  Traces to: `## Strategy` | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
 
-### Resolved (prior QA cycle — kept for retro context)
+- [ ] `## Good examples` and `## Bad examples` reproduce specific paths
+  (`.claude/commands/aide/build.md`), specific framework conventions, and
+  specific shell-line content. Forbidden content.
+  Traces to: examples sections | Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
 
-- [x] `src/tools/init/scaffoldCommands/.aide` outcomes.desired[0]: "One slash command file is scaffolded per pipeline phase: research, spec, synthesize, plan, build, qa, fix, plus the update-playbook maintenance command"
-  The actual COMMANDS array in scaffoldCommands/index.ts includes 13 entries: aide (orchestrator), research, spec, synthesize, plan, build, qa, fix, upgrade, init, update-playbook, refactor, align. The spec's enumeration omits the orchestrator, upgrade, init, refactor, and align. The spec should enumerate the full set or describe the enumeration mechanism without a hardcoded count.
-  Traces to: .aide/docs/index.md -> Pipeline Agents table (eight agents = eight phases including align and refactor); .aide/intent.aide -> outcomes.desired[1] (two delivery channels covering the full lifecycle)
-  Misalignment: spec-gap
-
-- [x] `src/tools/init/scaffoldCommands/.aide` Good examples section: status report shows "the eight pipeline phase commands plus the update-playbook maintenance command"
-  The actual scaffolded set is 13 commands. The good example's status report shape no longer matches what the tool actually produces.
-  Traces to: .aide/intent.aide -> outcomes.undesired[3] (a canonical doc that describes behavior the server does not actually deliver)
-  Misalignment: spec-gap
-
-- [x] `src/tools/init/scaffoldCommands/.aide` Strategy section: "research, spec, synthesize, plan, build, qa, fix, plus the update-playbook maintenance command"
-  Strategy's fixed-list description omits the same five commands as the outcomes. The "eight" count in the strategy ("the other six commands also report exists") is also stale.
-  Traces to: .aide/docs/index.md -> Pipeline Agents table (canonical pipeline surface)
-  Misalignment: spec-gap
+- [ ] Carry-forward (prior cycle): 2 unchecked items. Re-walk after rewrite.
 
 ## Retro
 
-Two layers of drift in this spec:
-
-1. **Architectural-shift drift (current):** Folder rename plus CLI
-   consumer addition should have triggered a `/aide:spec` pass. Examples
-   still narrate the MCP-tool agent path.
-
-2. **Prior cycle (resolved):** The command-roster enumeration drift was
-   a recurring pattern — every time a new command was added to the
-   COMMANDS array, the spec's enumeration in outcomes/Strategy/Good
-   examples drifted silently. This is the canonical example of
-   `feedback_enumeration_drift.md`: child specs that hardcode counts
-   or enumerate by name drift the moment the canonical source changes.
-   The post-resolution spec correctly describes coverage abstractly
-   ("one-to-one with the registry, no overlap, no extras") and points
-   at the registry as the source of truth.
+This spec mixes two concerns: scaffolding slash commands (the actual scope)
+and study-playbook/update-playbook navigation (a brain-layer concern). Push
+the playbook material out — into the brain-layer parent or into separate
+skill/command specs. Slash-command scaffolding itself is small: byte-faithful
+template render through initContent into the right namespace folder, per-file
+idempotency.

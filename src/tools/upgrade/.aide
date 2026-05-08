@@ -1,6 +1,6 @@
 ---
 scope: src/tools/upgrade
-status: aligned
+status: misaligned
 description: >
   Agent-driven interactive upgrade tool that compares host project artifacts against canonical AIDE files and applies drifted categories on user confirmation.
 intent: >

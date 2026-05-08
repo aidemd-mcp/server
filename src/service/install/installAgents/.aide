@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/installAgents
-status: aligned
+status: misaligned
 description: >
   Installs the canonical AIDE pipeline agent files (and any non-pipeline
   read-only investigators that ship alongside them) plus the generic

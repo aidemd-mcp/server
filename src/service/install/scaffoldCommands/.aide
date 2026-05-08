@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/scaffoldCommands
-status: aligned
+status: misaligned
 description: >
   Installs the AIDE slash commands into the host project's command directory
   from canonical templates via initContent.

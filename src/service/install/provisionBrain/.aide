@@ -1,5 +1,6 @@
 ---
 scope: src/service/install/provisionBrain
+status: misaligned
 description: >
   Plans the brain-layer scaffolding as exactly TWO InitStep items —
   writes nothing to disk directly. Step 1 scaffolds

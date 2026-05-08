@@ -1,160 +1,67 @@
 ---
 description: >
-  Four drift cycles documented. Cycles 1+2+3 (fixed-`brain`-key drift,
-  agent enumeration, post-move identity) are resolved. Cycle 4 —
-  post-schema-collapse drift — is active. The schema collapse retired
-  backend identity from package code, but this spec still teaches
-  "Obsidian today, others tomorrow" / "regardless of which backend
-  driver sits under it" / "AIDE is opinionated about the knowledge
-  layer: Obsidian today" framings.
+  Brevity-sweep audit of `src/service/install/installAgents/.aide` — 9 desired outcomes (cap 4), 8 undesired, body Strategy enumerates per-agent model assignments and the entire MCP-key-as-fixed-`brain` doctrine.
 intent: >
-  After the schema-collapse settlement in `.aide/intent.aide`, the
-  package no longer recognizes "backends" at all — backend identity
-  inference, the registry, and dispatch on connector identity are
-  retired entirely. This spec, stamped aligned in a prior cycle, still
-  carries fossilized backend-aware language in its intent paragraph,
-  Context, Strategy, and Bad examples. The phrasings are not
-  load-bearing for the helper's behavior (the helper installs canonical
-  agent files verbatim and the `mcpServers: [brain]` frontmatter rule
-  is correct) but they teach a model the root spec retired, which lets
-  future reviewers re-litigate decisions the architecture has settled.
+  installAgents installs canonical pipeline agent files. Spec is bloated by
+  enumerating per-agent model assignments, fixed-`brain` MCP key contracts,
+  and the same brain-as-fixed-key doctrine restated from parent specs.
 misalignment:
-  - spec-gap
+  - spec-bloat
 ---
 
 ## Issues
 
-### Active (alignment pass — post-schema-collapse drift)
+- [ ] `description` is 209 chars (just over cap 200) — includes parenthetical
+  about non-pipeline read-only investigators. Trim.
+  Traces to: `description` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
 
-- [ ] `src/service/install/installAgents/.aide` intent paragraph ("...declared by name reference as `mcpServers: [brain]`, matching the fixed `brain` MCP key the host project wires under in `.mcp.json`...") combined with outcomes.desired ("regardless of which backend driver sits under it"): the intent and that outcome carry "backend driver" language. Per `.aide/intent.aide` outcomes.desired[15] (the in-code backend registry and drivers are fully retired) the package no longer has a notion of a "backend driver." The host's brain.aide IS the configuration; there is no driver layer the package recognizes. The MCP key invariant (`mcpServers: [brain]`) is correct; the framing that something is "the driver underneath the key" is the retired model.
-  Traces to: `.aide/intent.aide` outcomes.desired[15] (registry retired, "Adding a new brain is a user-side edit, never a code-level extension to this package."); `src/service/parseBrainAide/.aide` outcomes.undesired ("Branching on `name`... re-introduces the identity-inference anti-pattern the brainBackends retirement was meant to delete").
+- [ ] `intent` is 152 words (cap 100). Drop per-agent model-routing detail
+  and the fixed-`brain`-key restatement.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `outcomes.desired` has 9 items (cap 4). Most encode contract details:
+  registry-driven enumeration, exact frontmatter field list, `mcpServers:
+  [brain]` declaration syntax, model-per-task-shape rule, methodology-docs-name-the-roster
+  rule, command-references-agents-by-name rule. Plan/code-level.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.undesired` has 8 paragraph-length items, mostly enumerating
+  retired regressions. Compress to 3-4.
+  Traces to: `outcomes.undesired` | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Strategy` has 5 decisions (at cap) but each runs 150+ words.
+  Trim to ≤80 words each.
+  Traces to: `## Strategy` | Brevity Contract per-decision caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Good examples` reproduces multi-line install summary verbatim with
+  exact agent names; `## Bad examples` reproduces inline MCP-config
+  anti-patterns. Forbidden content.
+  Traces to: examples sections | Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] Sibling redundancy with parent install service: registry-iteration,
+  skip-existing-files, per-file status reporting, initContent chokepoint —
+  parent-level invariants.
+  Traces to: outcomes, Strategy | Sibling-redundancy
   Misalignment: spec-gap
+  Category: Sibling-redundancy
 
-- [ ] `src/service/install/installAgents/.aide` Context paragraph ("...the host project wires whichever backend (Obsidian today, others tomorrow) under the fixed `brain` MCP key in `.mcp.json`, and agents reference the brain by that fixed key"): the parenthetical "(Obsidian today, others tomorrow)" is the same backend-aware framing. The user wires WHATEVER they wired — the package never enumerates "which backend" or maintains a roster of valid ones. Suggested rephrase: drop the parenthetical entirely, or replace with "regardless of how the user has configured their brain.aide."
-  Traces to: `.aide/intent.aide` outcomes.desired[15] (no enumeration of connectors); outcomes.undesired[5] (no branching on connector identity).
-  Misalignment: spec-gap
-
-- [ ] `src/service/install/installAgents/.aide` Strategy ("Agents declare MCP servers by name reference, not inline config. An agent that needs brain access declares `mcpServers: [brain]` — the literal `brain` is the fixed MCP key the host project wires under in `.mcp.json`, regardless of which backend (Obsidian today, others tomorrow) sits in the entry's command/args. This keeps agents portable across vaults *and* across backends: the agent never names a specific backend; the host project picks the backend by what they wire under the `brain` key."): "regardless of which backend" / "across backends" / "picks the backend" all carry the retired backend-resolution frame. The fixed-key invariant is correct; the agnosticism the helper provides is across user configurations, not across packaged backends. (The package has no backends — only a parser that reads whatever the user wrote.)
-  Traces to: `.aide/intent.aide` outcomes.desired[15], outcomes.undesired[5]; `.aide/intent.aide` Strategy paragraph "Brain configuration is user-owned, not code-owned."
-  Misalignment: spec-gap
-
-- [ ] `src/service/install/installAgents/.aide` Bad example ("...names a specific backend (e.g., `mcpServers: [obsidian]`) instead of the fixed `brain` key. Both fail the same portability rule — the host project has a different vault and may wire a different backend under the `brain` key. The agent fails on first brain access."): "may wire a different backend" — same framing. The example's structural point (use `[brain]`, not a connector-specific name) is correct; the explanatory frame ("may wire a different backend") teaches the retired model.
-  Traces to: `.aide/intent.aide` outcomes.desired[15].
-  Misalignment: spec-gap
-
-### Resolved (prior alignment pass — fixed-`brain`-key drift)
-
-- [x] `src/service/install/installAgents/.aide` outcomes.desired ("Obsidian MCP is declared in `mcpServers` for agents that need brain access — domain-expert (write), strategist (read), architect (read), auditor (read). The declaration is portable (server name reference, not inline config) so the host project provides its own Obsidian MCP wiring."): the agent frontmatter now declares `mcpServers: [brain]`, not `mcpServers: [obsidian]`, per `.aide/handoff.aide` Key-architectural-decisions ("agent frontmatter becomes a universal `mcpServers: [brain]` with no per-backend rewrite at install time").
-  Traces to: `.aide/handoff.aide` (settled) -> agent frontmatter is `mcpServers: [brain]`; Remaining-work -> "Every agent definition under `.claude/agents/` and `.claude/skills/` that declares `mcpServers: [obsidian]` becomes `mcpServers: [brain]`."
-  Misalignment: spec-gap
-
-- [x] `src/service/install/installAgents/.aide` outcomes.undesired ("An install that wires Obsidian MCP inline in every agent's mcpServers field with full connection config..."): again names "Obsidian MCP" — should read "the brain MCP." The structural rule (declare by name reference, not inline config) still holds; the name has changed.
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/installAgents/.aide` Strategy ("Agents declare MCP servers by name reference, not inline config. An agent that needs Obsidian declares `mcpServers: [obsidian]`. The host project's `.mcp.json` provides the actual Obsidian server config..."): the example pin `mcpServers: [obsidian]` is now stale — the canonical declaration is `mcpServers: [brain]` because the MCP key is fixed at `brain` regardless of which backend the host project wired underneath it.
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/installAgents/.aide` Strategy ("AIDE is opinionated about the knowledge layer: Obsidian MCP is the brain. The domain expert writes to it..."): "Obsidian MCP is the brain" pins one backend as the canonical brain. The handoff settled that the brain layer is backend-agnostic — Obsidian is one driver in the registry, not the singular brain. The strategy paragraph teaches the wrong abstraction.
-  Traces to: `.aide/handoff.aide` (settled) -> backend identity inferred from command/args shape; "the brain owns its own navigation rules after the entry-point" — agnostic about which backend is wired.
-  Misalignment: spec-gap
-
-- [x] `src/service/install/installAgents/.aide` Bad example ("An agent file that hardcodes `d:/Code/Me/my-brain` as the vault path. The host project has a different vault. The agent fails on first brain access."): the example is correct in shape but the surrounding paragraphs frame it as Obsidian-specific. The post-handoff framing should be backend-agnostic.
-  Traces to: `.aide/handoff.aide` (settled).
-  Misalignment: spec-gap
-
-### Active (alignment pass — agent enumeration drift)
-
-- [x] `src/service/install/installAgents/.aide` description ("Installs the eight canonical AIDE pipeline agent files...") and outcomes.desired ("Eight agent files are installed to `.claude/agents/aide/`: aide-spec-writer, aide-domain-expert, aide-strategist, aide-architect, aide-implementor, aide-qa, aide-aligner, aide-auditor"): the canonical roster discoverable via `aide_discover` and the MCP server's tool list now includes nine agents — `aide-explorer` is registered alongside the eight named here. The spec's hardcoded count and explicit roster pin a snapshot that the canonical surface has moved past. This is the enumeration-drift pattern from `feedback_enumeration_drift.md`.
-  Traces to: project-root canonical roster in `.aide/docs/index.md` (Pipeline Agents table); `aide_discover` output enumerating nine agents on disk.
-  Misalignment: spec-gap
-
-- [x] `src/service/install/installAgents/.aide` Context ("eight phases (spec, research, synthesize, plan, build, QA/fix, align, refactor)"): the phase enumeration is structurally correct in count (eight phases is canonical) but the parenthetical roster omits explore. If aide-explorer is a real agent shipped through this helper, the phase enumeration should account for whatever phase it serves, or the strategy section should explain why an agent without a phase is in the roster.
-  Traces to: canonical Pipeline Agents table.
-  Misalignment: spec-gap
-
-### Active (alignment pass — post-move drift)
-
-- [x] `src/service/install/installAgents/.aide` frontmatter
-  `scope: src/tools/init/installAgents`
-  Stale path — module moved to `src/service/install/installAgents/`.
-  Traces to: physical move (git rename
-  `src/tools/init/installAgents/.aide -> src/service/install/installAgents/.aide`);
-  ancestor `.aide/intent.aide` -> outcomes.desired[4] (folder tree as
-  architecture).
-  Misalignment: spec-gap
-
-- [x] `src/service/install/installAgents/.aide` Strategy: "Agent files
-  flow through the initContent chokepoint... The `installAgents` helper
-  reads them through `readCanonicalDoc()` and writes them to the host's
-  `.claude/agents/`. Same byte-faithful copy pattern as methodology docs
-  and commands."
-  Reference to "the initContent chokepoint" still matches sibling name
-  (good), but the surrounding "init" terminology in this spec frames the
-  parent module as the init tool rather than as the install service.
-  When this spec talks about "the init orchestrator's reporting pattern"
-  in outcomes.desired[7], the orchestrator it names is the MCP tool's
-  orchestrator — but the install service now serves two consumers and
-  the reporting contract should be described at the service level.
-  Traces to: parent `src/service/install/.aide` (misaligned — install
-  service identity drift).
-  Misalignment: spec-gap
-
-### Resolved (prior QA cycle — kept for retro context)
-
-- [x] `src/tools/init/installAgents/.aide` outcomes.desired[0]: "Six agent files are installed: aide-spec-writer, aide-researcher, aide-domain-expert, aide-architect, aide-implementor, aide-qa"
-  The canonical Pipeline Agents table (.aide/docs/index.md) defines eight agents. Two are missing from this spec: aide-aligner and aide-auditor. The spec also uses stale names: "aide-researcher" no longer exists (renamed to aide-domain-expert), and the old "aide-domain-expert" was renamed to aide-strategist.
-  Traces to: .aide/docs/index.md -> Pipeline Agents table (eight agents, current names)
-  Misalignment: spec-gap
-
-- [x] `src/tools/init/installAgents/.aide` outcomes.desired[4]: "opus for deep reasoning (spec-writer, domain-expert, architect), sonnet for throughput (researcher, implementor, QA)"
-  The canonical table assigns: opus to spec-writer, strategist, architect, aligner, auditor; sonnet to domain-expert, implementor, QA. The spec has domain-expert on opus (should be sonnet) and researcher on sonnet (agent no longer exists; domain-expert is the research agent and is sonnet). The model assignment description is inverted for the renamed roles.
-  Traces to: .aide/docs/index.md -> Pipeline Agents table (model column)
-  Misalignment: spec-gap
-
-- [x] `src/tools/init/installAgents/.aide` outcomes.desired[2]: "Obsidian MCP is declared for agents that need brain access -- researcher (write), domain-expert (read), architect (read)"
-  The canonical table shows brain access for: domain-expert (write), strategist (read), architect (read + playbook), auditor (read + playbook). The spec uses stale names and omits auditor entirely.
-  Traces to: .aide/docs/index.md -> Pipeline Agents table (Brain Access column)
-  Misalignment: spec-gap
-
-- [x] `src/tools/init/installAgents/.aide` intent paragraph: "spec-writer, researcher, domain-expert, architect, implementor, QA"
-  Lists six roles with stale names. Should list eight roles with current names: spec-writer, domain-expert, strategist, architect, implementor, QA, aligner, auditor.
-  Traces to: .aide/docs/index.md -> Pipeline Agents table
-  Misalignment: spec-gap
-
-- [x] `src/tools/init/installAgents/.aide` Strategy section: "Seven agents map to the seven distinct roles"
-  The canonical pipeline has eight agents. The strategy also describes "researcher and domain expert" as separate agents, but these are now "domain-expert" (research phase) and "strategist" (synthesize phase).
-  Traces to: .aide/docs/index.md -> Pipeline Agents table (eight rows)
-  Misalignment: spec-gap
-
-- [x] `src/tools/init/installAgents/.aide` Context section: "seven phases (spec, research, synthesize, plan, build, QA/fix, refactor)"
-  The canonical pipeline includes the align phase. Eight phases total, not seven.
-  Traces to: .aide/docs/index.md -> Pipeline Agents table (align phase present)
-  Misalignment: spec-gap
+- [ ] Carry-forward (prior cycle): 4 unchecked items. Re-walk after rewrite.
 
 ## Retro
 
-### Cycle 4 (post-schema-collapse)
-
-The schema-collapse refactor (Apr 24-26) retired the brainBackends
-registry and every package-level notion of "backend identity," but
-this spec was not re-walked. The fixed-`brain`-key cycle correctly
-updated agent frontmatter from `[obsidian]` to `[brain]`, but the
-*explanation* — Strategy paragraphs, Context, and Bad examples — still
-frames the abstraction as "the agent declares `[brain]` so the host
-can wire any backend underneath." The post-collapse model is stronger:
-the package has no concept of "backend" at all; the user wires whatever
-they wire, and the helper has no opinion about it. The spec's invariants
-(declare by name, never inline config, never hardcode vault paths) are
-still correct; the *frame* that explains why teaches a model the root
-spec retired. Pattern matches `feedback_schema_collapse_amplifies_cascade.md`:
-once-aligned specs accumulate fossil framings during multi-axis root
-revisions even when their behavioral invariants are still load-bearing.
-
-The fix is a `/aide:spec` pass that rewrites Context, Strategy, and the
-Bad-example explanation to drop "backend driver underneath," "Obsidian
-today, others tomorrow," and "regardless of which backend" — replacing
-them with framing that reflects the user-owned brain.aide model.
-
-### Cycle 3 (prior — agent rename + post-move)
+installAgents bloated because the strategist treated the fixed-`brain`-MCP-key
+contract as a per-agent invariant. The contract is project-wide; it lives
+at the parent (or in a brain-layer parent), not in every leaf that touches
+agents.

@@ -1,28 +1,125 @@
 ---
 description: >
-  QA log for src/index.ts and src/types/index.ts against src/.aide — two unregistered tools (aide_info, aide_inspect) absent from the spec's tool-surface enumeration, same spec-gap class as the prior closed issue.
+  Brevity-sweep audit of `src/.aide` — 704-line spec restating brain-layer doctrine end-to-end, with paragraph-length outcomes and 14+ Strategy decisions including extensive code-level invariants and exact-string commitments.
 intent: >
-  src/.aide outcomes.desired[0] enumerates six lifecycle tools (discover, read,
-  scaffold, validate, init, upgrade). The server registers eight: the six plus
-  aide_info and aide_inspect. Neither of the additional tools is named in the spec,
-  and no outcome justifies their presence or shows the responsibility could not be
-  absorbed by an existing tool. The spec also warns explicitly against adding tools
-  whose responsibility "didn't quite fit" an existing tool.
+  `src/.aide` is the trunk spec for the MCP server. Frontmatter is close to
+  caps but body is severely bloated and duplicates root-level brain doctrine
+  near-verbatim. Most Strategy decisions encode implementation contracts
+  rather than domain strategy. Carry-forward QA finding (aide_info /
+  aide_inspect not in tool surface enumeration) remains open from prior
+  alignment cycle.
 misalignment:
+  - spec-bloat
   - spec-gap
 ---
 
 ## Issues
 
-- [x] `src/.aide` outcomes.desired[0]: prior issue — spec enumerated five tools, server shipped six (aide_upgrade missing).
-  Resolved: src/.aide was updated to enumerate upgrade as the sixth lifecycle phase.
-  Traces to: outcomes.desired[0]
-  Misalignment: spec-gap
+### Bloat findings (this brevity sweep)
 
-- [ ] `src/index.ts` lines 17–18, 148–196: `aide_info` and `aide_inspect` are registered and fully described in the handshake but are absent from `src/.aide` outcomes.desired[0]'s tool-surface enumeration. The spec states: "Each tool covers a distinct lifecycle phase with no overlap between them" and the undesired block explicitly warns against tools added because a responsibility "didn't quite fit" an existing tool. Neither aide_info nor aide_inspect is named in the spec, and no outcome text justifies why they cannot be absorbed or explains what distinct lifecycle phase each covers. The spec's tool-surface enumeration has drifted behind the implementation a second time.
-  Traces to: outcomes.desired[0] (tool surface must cover full AIDE lifecycle with no overlap), outcomes.undesired[6] (tool added because responsibility didn't fit, when it could be absorbed — or in this case, when no spec rationale exists at all)
+- [ ] `description` is ~289 chars (cap 200) and packs three sentences into one
+  block: the two delivery channels, the two install entry points, and a
+  parenthetical about the install service. Trim to a single ≤200-char sentence
+  naming the trunk's two delivery channels.
+  Traces to: `description` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `intent` is ~137 words (cap 100). Compresses fine — the second half
+  describing per-tool teaching weight is Strategy material, not intent.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `outcomes` total has 4 desired + ~6 undesired, but each item is paragraph
+  length. Outcome 5 ("install action turns a cold host project AIDE-ready")
+  enumerates pointer-stub, doc-set, slash-commands, MCP wiring, IDE wiring as
+  a phase list — that is implementation contract, not domain success criterion.
+  Traces to: `outcomes` items | Brevity Contract per-item ≤2 sentences + outcomes-purpose test
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Context` is ~600 words (cap ~150). Roughly two-thirds of it explains
+  brain-layer doctrine: brain-config-as-user-owned, six body sections, sync
+  contract, four-state vocabulary, drift-as-hard-halt, `.aide/config/`
+  ownership boundary. All of this duplicates content already in the (rewritten)
+  root and in the brain-related submodule specs. Per the sibling-redundancy
+  doctrine, push it to the brain layer's own parent and prune from the trunk.
+  Traces to: `## Context` | Brevity Contract caps + Sibling-redundancy doctrine
+  Misalignment: spec-bloat, spec-gap
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `## Strategy` has 14+ paragraph-length decisions (cap ~5, ≤80 words each):
+  tool-list-as-teaching-artifact, uneven teaching weight, docs-as-source-of-truth,
+  progressive disclosure at file layer, no-tool-overlap, client parity,
+  two-install-entry-points, idempotency, brain-config-user-owned, per-consumer
+  ownership of brain.aide, sync-as-only-mutation-surface, four-state vocabulary,
+  substitution-partitioned, `.aide/config/` user-owned, CLI cold-start vs MCP
+  agent-mediated. Half of these are brain-layer doctrine duplicating the root.
+  The trunk's actual strategy is smaller: two delivery channels, progressive
+  disclosure at delivery, no-overlap tool surface, client parity, idempotency.
+  Brain-related decisions should live under a brain-layer parent.
+  Traces to: `## Strategy` | Brevity Contract caps + "split, don't expand" + Sibling-redundancy
+  Misalignment: spec-bloat, spec-gap
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `## Bad examples` has 10+ scenarios with embedded code blocks containing
+  exact prose, exact connector launcher invocations, exact key-name strings,
+  exact JSON shapes. Cap is 2-3 brief examples; forbidden content rule forbids
+  exact strings, file paths, and JSON shapes.
+  Traces to: `## Bad examples` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `## Good examples` includes a long block of exact orientation-section text
+  in TypeScript-like prose form, exact MCP write-tool names, exact bullet-style
+  reasoning the agent would follow. These are domain examples in name only;
+  they're implementation example bytes for the bundled obsidian template — the
+  same forbidden-content as the root.
+  Traces to: `## Good examples` | Forbidden content (exact strings, exact bytes)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## References` has 9 paragraph-length bullets; per the contract a bullet
+  is "path + one-line description of what was drawn." Compress.
+  Traces to: `## References` | Brevity Contract format
+  Misalignment: spec-bloat
+  Category: Brevity
+
+### Carry-forward (prior alignment cycle, still relevant)
+
+- [ ] `src/index.ts` lines 17–18, 148–196: `aide_info` and `aide_inspect` are
+  registered and fully described in the handshake but are absent from
+  `src/.aide` outcomes.desired[0]'s tool-surface enumeration. The spec states:
+  "Each tool covers a distinct lifecycle phase with no overlap between them"
+  and the undesired block warns against tools added because a responsibility
+  "didn't quite fit" an existing tool. Neither aide_info nor aide_inspect is
+  named in the spec, and no outcome justifies why they cannot be absorbed.
+  This is the same drift class flagged in the prior cycle for `aide_upgrade`
+  (since closed). The fix is to align the spec with what the server ships
+  AFTER pruning the explicit-roster-enumeration pattern that keeps inviting
+  this drift in the first place.
+  Traces to: outcomes.desired (one tool per lifecycle phase, no overlap), outcomes.undesired (forbidden count-pinning and roster enumeration)
   Misalignment: spec-gap
 
 ## Retro
 
-The same drift pattern recurred: a tool was added to the registered surface without updating `src/.aide`'s tool-surface outcome. The prior issue introduced a fix for aide_upgrade but did not introduce a process gate to prevent the same gap for future tools. Any commit that adds a new `case` to the `CallToolRequestSchema` handler in `src/index.ts` should trigger a review of `src/.aide` outcomes.desired[0] to confirm the enumeration still matches. The spec-writer should run `aide_discover` on the tools/ subtree after any tool addition and verify the parent outcome still covers what's shipped.
+The trunk spec restates the parent's brain doctrine because brain-layer
+narrative was put on the project root instead of being given its own
+intermediate parent. The cleanup is structural: introduce a brain-layer
+parent (e.g. push the brain doctrine into `.aide/brain/.aide` or into the
+`src/service/` and `src/cli/` parents that own brain wiring code paths),
+then prune both the root and this trunk to the doctrine that genuinely
+applies project-wide.
+
+The carry-forward tool-roster gap is a recurring drift class. The undesired
+outcome that forbids count-pinning and roster enumeration is the right
+defense; the desired outcome that enumerates tools nullifies it. Pick one:
+keep the roster out of the spec entirely and let the actual server's
+registered tool list be the authoritative surface, with QA verifying
+"every lifecycle phase the methodology defines has at most one tool dedicated
+to it" without naming any specific tool.
+
+Recommended sequence: trim trunk after root is rewritten, in tandem with
+the brain-layer-parent introduction. The aide_info/aide_inspect gap closes
+when the roster enumeration is dropped from the trunk.

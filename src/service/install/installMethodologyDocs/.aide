@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/installMethodologyDocs
-status: aligned
+status: misaligned
 description: >
   Installs the full AIDE methodology doc hub onto the host project's disk as
   individually idempotent, verbatim copies of every canonical doc from docs/.

@@ -1,5 +1,6 @@
 ---
 scope: src/cli/init
+status: misaligned
 description: >
   Cold-start installer that accepts exactly one optional argument —
   `--brain <integration>`, defaulting to `obsidian` — and ships the

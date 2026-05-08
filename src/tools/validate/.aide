@@ -1,5 +1,6 @@
 ---
 scope: src/tools/validate
+status: misaligned
 description: >
   Health-check tool that surfaces naming conflicts, orphaned research, missing specs, and broken relative links so agents can fix spec layout drift before it accumulates.
 intent: >

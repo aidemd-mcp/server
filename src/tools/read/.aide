@@ -1,5 +1,6 @@
 ---
 scope: src/tools/read
+status: misaligned
 description: >
   Drill-in tool that returns a spec's raw content alongside its type, sibling specs, and extracted links so agents know what to read next from a single call.
 intent: >

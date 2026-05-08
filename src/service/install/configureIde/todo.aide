@@ -1,48 +1,56 @@
 ---
 description: >
-  Alignment drift after the cold-start install refactor: stale scope path and
-  identity-locked references to "aide_init" as the sole caller.
+  Brevity-sweep audit of `src/service/install/configureIde/.aide` — close to caps in frontmatter but Strategy carries detailed Zed/VS-Code extension-API rationale that crosses into forbidden content (vendor-API technical detail).
 intent: >
-  configureIde's spec scope still names the old path and the intent
-  paragraph names "aide_init" as the helper's caller. With the install
-  service now consumed by both the MCP tool and the CLI, identity-locked
-  caller references at the leaf undermine the multi-consumer story the
-  parent service must adopt.
+  configureIde is one of the better-bounded specs in the tree but body sections
+  exceed the brevity caps. Strategy carries detailed extension-API rationale
+  that belongs in code comments or a brain research note. Examples reproduce
+  installer log lines.
 misalignment:
-  - spec-gap
+  - spec-bloat
 ---
 
 ## Issues
 
-- [ ] `src/service/install/configureIde/.aide` frontmatter
-  `scope: src/tools/init/configureIde`
-  Stale path — module moved to `src/service/install/configureIde/`. The
-  scope field is a positional commitment that no longer matches reality.
-  Traces to: physical move (git rename
-  `src/tools/init/configureIde/.aide -> src/service/install/configureIde/.aide`);
-  ancestor `.aide/intent.aide` -> outcomes.desired[4] (folder tree as
-  architecture).
-  Misalignment: spec-gap
+- [ ] `description` is 153 chars (under cap, fine).
 
-- [ ] `src/service/install/configureIde/.aide` intent paragraph:
-  "configureIde is the execution site for AIDE's IDE-integration strategy:
-  the helpers **aide_init calls** to make `.aide` files render as Markdown
-  in every supported editor."
-  Identity drift — names `aide_init` as the caller, but the install
-  service is now also called by the CLI. The helper itself is
-  caller-agnostic; the spec should describe it as a service helper of
-  the install module, not of the MCP tool.
-  Traces to: parent `src/service/install/.aide` (currently misaligned —
-  see its todo for the install-service identity issue); ancestor
-  `src/.aide` -> outcomes.desired[3] (client-specific logic confined to
-  aide_init) — this caller-agnostic helper should be unaffected by which
-  consumer triggers it.
-  Misalignment: spec-gap
+- [ ] `intent` is 56 words (under cap, fine).
+
+- [ ] `outcomes.desired` has 6 items (cap 4); items 4-5 (".vsix lives in-repo
+  resolved by filename" and "malformed `.zed/settings.json` is reported as
+  `skipped`") are implementation-contract detail. Compress to 3-4.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Forbidden content (file paths)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.undesired` has 6 paragraph-length items including
+  vendor-extension-API rationale. Compress.
+  Traces to: `outcomes.undesired` | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Strategy` has ~5 decisions (at cap) but each runs 100+ words and
+  carries Zed-extension-API technical detail (custom language pointed at
+  Markdown grammar, bundled query files, reusing the Markdown grammar by
+  name). This is implementation-research; belongs in a brain note with a
+  one-line References pointer.
+  Traces to: `## Strategy` | Brevity Contract per-decision ≤80 words + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `## Good examples` and `## Bad examples` reproduce exact installer log
+  lines and exact failure-mode prose. Compress.
+  Traces to: examples sections | Forbidden content (exact strings)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] Carry-forward (prior cycle): 2 unchecked items re stale-path drift.
+  Re-walk after rewrite.
 
 ## Retro
 
-Same root cause as the parent: a folder-rename plus a new consumer should
-have triggered a `/aide:spec` pass on every node in the moved subtree.
-The "aide_init calls" phrase in the intent paragraph is a small textual
-edit but a load-bearing identity claim — every caller-agnostic helper
-under the install service needs the same edit.
+configureIde is closer to the bar than most specs but pays a Strategy bloat
+cost from research-grade rationale on Zed's extension API. The right home
+for that material is a brain research note; the spec commits to the decision
+("Zed = config patch, VS Code = bundled extension") and references the
+research. Trim Strategy ≤80 words per decision.

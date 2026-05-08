@@ -1,40 +1,61 @@
 ---
 description: >
-  Block-body arrow functions leak their implementation body; interfaces and classes lose all members from their signature.
-intent:
-  - "Returning the function body along with the signature. The entire point is Tier 2 — contract without implementation. Including the body defeats progressive disclosure and burns context the agent did not ask for."
-  - "An agent that calls inspect and gets a result back has enough information to decide whether to read the full file or to use the symbol based on its contract alone."
+  Brevity-sweep audit of `src/tools/inspect/.aide` — frontmatter close to caps; 6 desired outcomes (cap 4) including a long MCP-tool-description meta-outcome that enumerates exact file extensions and exact return-field names.
+intent: >
+  aide_inspect is the symbol-introspection tool. Spec is mostly bounded
+  but `outcomes.desired[5]` is a description-vs-handler-drift meta-outcome
+  that enumerates exact return-field shape, supported file extensions, and
+  optional-parameter naming — forbidden content saturating one outcome.
 misalignment:
-  - implementation-drift
-  - test-gap
+  - spec-bloat
 ---
-
-# QA Re-alignment Document
 
 ## Issues
 
-- [x] `src/tools/inspect/parseSymbols/index.ts` line 32–49 — `truncateBeforeBody` misidentifies the `>` in `=>` as a closing generic angle bracket, decrementing depth to -1 before the body `{` is reached. Block-body arrow functions (e.g. `const fn = (x: number): number => { return x; }`) return a signature that contains the full implementation body.
-  Traces to: undesired outcome 1 — "Returning the function body along with the signature."
-  Misalignment: implementation-drift
+- [ ] `description` is 108 chars (under cap, fine).
 
-- [x] `src/tools/inspect/parseSymbols/index.ts` lines 164–175 and 150–162 — `truncateBeforeBody` is applied to `InterfaceDeclaration` and `ClassDeclaration` nodes, stripping everything after the opening `{` of the body. For interfaces this leaves only `export interface Config` — no members. An agent cannot determine the contract from a name alone.
-  Traces to: desired outcome 3 — "An agent that calls inspect and gets a result back has enough information to decide whether to read the full file or to use the symbol based on its contract alone."
-  Misalignment: implementation-drift
+- [ ] `intent` is 92 words (under cap 100, fine).
 
-- [x] `src/tools/inspect/index.test.ts` — no test case covers a block-body arrow function (e.g. `const fn = (x: number): number => { return x; }`). The existing arrow test uses only an expression-body arrow (`a + b`), which never exercises the body-truncation path and does not trip the depth-tracking bug.
-  Traces to: undesired outcome 1 — "Returning the function body along with the signature."
-  Misalignment: test-gap
+- [ ] `outcomes.desired` has 6 items (cap 4). Items 0 and 5 carry the same
+  return-shape contract ("returns kind, file, line, signature, jsdoc"); item
+  5 is a meta-outcome about the MCP tool description with exhaustive enumeration
+  of return fields, supported extensions (`ts`, `tsx`, `js`, `jsx`, `mjs`,
+  `cjs`), and optional-parameter rules. Most of this is unit-test territory
+  (description-vs-handler-drift detection is naturally a unit test on the
+  registered description).
+  Traces to: `outcomes.desired` | Brevity Contract caps + outcomes-purpose test + Forbidden content (file extensions, exact strings)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-- [x] `src/tools/inspect/index.test.ts` — no test case asserts on interface or class signature content. The interface and class tests check only `kind` and `name`, so the lossy truncation of interface members passes tests silently.
-  Traces to: desired outcome 3 — "enough information to decide whether to read the full file or to use the symbol based on its contract alone."
-  Misalignment: test-gap
+- [ ] `outcomes.undesired` has 5 paragraph-length items including the MCP-tool-description
+  drift meta-rule (item 4) which restates item 5 of desired. Compress to
+  3-4 falsifiable failure modes.
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content (file extensions, function names)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] No body sections at all (no `## Context`, `## Strategy`, `## Good
+  examples`, `## Bad examples`, `## References`). The Brevity Contract
+  requires the five body sections. This is a structural spec gap, not bloat
+  per se — though the absence is what's letting the frontmatter carry all
+  the weight that should be in body.
+  Traces to: body section completeness | spec-gap (missing required body sections)
+  Misalignment: spec-gap
+  Category: structural-gap
+
+- [ ] Carry-forward (prior cycle): 0 unchecked items (existing todo's items
+  are checked).
 
 ## Retro
 
-Both bugs share a root cause: `truncateBeforeBody` was designed for function and method declarations (where `{` at depth 0 unambiguously opens the body), but was applied uniformly to all symbol kinds without considering the structural differences.
+aide_inspect's bloat is concentrated in one meta-outcome that tries to
+enforce description-vs-handler-drift detection at the spec level. That's a
+unit-test concern; the spec should commit to "the agent reads the registered
+MCP description and gets the same expectations as a reader of this spec"
+without enumerating the contract surface byte-for-byte.
 
-**Block-body arrow:** The `>` in `=>` is a language keyword token, not a generic closing bracket. The depth tracker has no way to distinguish `=>` from `>`. Either the depth model needs to be extended (scan for the literal `=>` sequence before tracking depth, then advance past it), or `truncateBeforeBody` should not be called on the arrow initializer at all — instead, the signature should be built from the text up to and including the `=>` token only.
-
-**Interface and class body:** These declarations' bodies ARE their contract. The fix is to not call `truncateBeforeBody` on `InterfaceDeclaration` nodes — include the full text. For `ClassDeclaration` the tradeoff is different: a class body can be very large, so truncating before `{` (and noting "see file for members") may be intentional. However, the current behavior strips everything silently with no indication that members exist. This needs a deliberate decision: either include the full class body, or append a truncation marker like ` { ... }` so the agent knows members exist but were not shown.
-
-**What would have caught this earlier:** A plan-stage checklist item requiring the implementor to test every symbol kind with a signature-content assertion (not just `kind` and `name`) would have caught the interface case. A block-body arrow test case in the plan's test checklist would have caught the arrow case. The plan lists "signature truncation" as a test concern (item 7, test case 10) but scopes it only to function declarations — it does not require the same check for arrow functions with block bodies.
+The structural gap (no body sections) means an aligner walking the tree gets
+no Strategy or examples on this leaf — the spec exists as frontmatter only.
+The fix is to add the five body sections, each within caps, and let them
+carry the spec's shape; the meta-outcome about description drift collapses
+into a single Strategy paragraph naming the contract surface.

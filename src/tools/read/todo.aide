@@ -1,0 +1,51 @@
+---
+description: >
+  Brevity-sweep audit of `src/tools/read/.aide` — frontmatter close to caps; 5 desired outcomes (cap 4) including a long description-vs-handler-drift meta-outcome.
+intent: >
+  aide_read is the drill-in tool. Spec is mostly bounded but the
+  description-vs-handler-drift meta-outcome (item 4) carries exact return-field
+  enumerations and the silence-as-success contract verbatim — forbidden
+  content in one outcome.
+misalignment:
+  - spec-bloat
+---
+
+## Issues
+
+- [ ] `description` is 155 chars (under cap, fine).
+
+- [ ] `intent` is 75 words (under cap, fine).
+
+- [ ] `outcomes.desired` has 5 items (cap 4). Item 4 is a meta-outcome about
+  the MCP tool description and enumerates the four-field return shape
+  (`content`, `type`, `siblings`, `links`), the type vocabulary
+  (`intent`, `research`, `plan`, `todo`), and the missing-path-as-text
+  contract verbatim. Trim or fold into a single item.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Forbidden content (exact field names, exact strings)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.undesired` has 5 paragraph-length items including the MCP
+  tool description drift meta-rule. Compress.
+  Traces to: `outcomes.undesired` | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Strategy` has 4 decisions (under cap) with reasonable length —
+  acceptable.
+
+- [ ] `## Good examples` reproduces specific paths (`src/tools/discover/.aide`,
+  `progressive-disclosure`) — file paths forbidden.
+  Traces to: `## Good examples` | Forbidden content (file paths)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## Bad examples` is reasonable.
+
+## Retro
+
+aide_read is one of the better-sized specs in the tree but trips the
+forbidden-content scan on file paths in examples and an MCP-tool-description
+meta-outcome that enumerates the contract surface verbatim. The right level
+of commitment is "the agent gets the same expectations from the registered
+description as from this spec" without listing every field.

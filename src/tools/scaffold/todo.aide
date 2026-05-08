@@ -1,0 +1,55 @@
+---
+description: >
+  Brevity-sweep audit of `src/tools/scaffold/.aide` — 9 desired outcomes (cap 4) restating each `type` value's behavior; otherwise close to caps.
+intent: >
+  aide_scaffold is the .aide file creation tool. Spec is bloated by 9
+  outcomes that each describe one branch of the `type` enum's behavior;
+  collapse to a single outcome about the auto-rename contract.
+misalignment:
+  - spec-bloat
+---
+
+## Issues
+
+- [ ] `description` is 176 chars (under cap, fine).
+
+- [ ] `intent` is 77 words (under cap, fine).
+
+- [ ] `outcomes.desired` has 9 items (cap 4). Items 0-5 enumerate one branch
+  of `type` per outcome (intent-no-research, intent-with-research, research,
+  both, todo, plan). Item 7 is the report-actions-as-prose contract (more
+  Strategy than outcome). Item 8 is the MCP-tool-description-drift
+  meta-outcome enumerating the 5 `type` values and the auto-rename rule
+  verbatim. Compress to 3-4 domain criteria.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Forbidden content (CLI flag enumerations, function names)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `outcomes.undesired` has 5 paragraph-length items including the MCP
+  description drift meta-rule. Compress.
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Good examples` reproduces exact prose-style action reports verbatim
+  with exact filename strings (`Created .aide`, `Renamed .aide → intent.aide`,
+  `Created research.aide`). Forbidden content (exact strings).
+  Traces to: `## Good examples` | Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## Bad examples` reproduces a verbatim JSON envelope showing the
+  forbidden shape. Forbidden content (JSON).
+  Traces to: `## Bad examples` | Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+## Retro
+
+aide_scaffold's bloat is in the per-`type` enumeration: 6 outcomes each
+restating one branch is the textbook anti-pattern of treating each switch
+arm as a separate domain criterion. The contract is one outcome: "the
+auto-rename rule (`research.aide` introduction renames any existing `.aide`
+to `intent.aide`) is enforced; existing files are skipped, never overwritten."
+The five `type` values and their per-arm behavior are unit-testable and
+documented in code.

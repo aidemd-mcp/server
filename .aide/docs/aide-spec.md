@@ -21,8 +21,10 @@ AIDE is a three-layer model:
 | `.aide`         | The intent spec. Default and sufficient for most modules.                                                                                                                                                                                                               |
 | `intent.aide`   | Same as `.aide`, renamed for disambiguation when a `research.aide` exists in the same folder.                                                                                                                                                                           |
 | `research.aide` | Optional. Co-located research fallback when no external brain is available. Prefer external memory (brain, MCP) over this — every file in the repo fills context whether the agent reads it or not, and agents don't always honor "skip this" instructions.              |
-| `plan.aide`     | The architect's implementation plan. Checkboxed steps the implementor executes top-to-bottom. Lives next to the `.aide` it implements. See [plan.aide spec](./plan-aide.md).                                                                                             |
-| `todo.aide`     | QA re-alignment document. Captures where implementation drifted from intent, with per-issue misalignment tags and a retro section. One `todo.aide` per QA loop. See [todo.aide spec](./todo-aide.md).                                                                    |
+| `brief.aide`    | Per-module ephemeral pre-read for the architect. Carries the architectural commitments, type-level contracts, exact strings, schema details, cross-module contracts, open questions, and any mid-flight rework state the architect, implementor, and QA need but that are NOT durable intent. Created by the strategist during synthesize, lives through plan/build/QA/fix, deleted by the maintainer agent after QA passes. Not bound by the Brevity Contract. See [brief.aide spec](./brief-aide.md). |
+| `plan.aide`     | The architect's implementation plan. Checkboxed steps the implementor executes top-to-bottom. Lives next to the `.aide` it implements. Ephemeral — deleted by the maintainer agent after QA passes. See [plan.aide spec](./plan-aide.md).                              |
+| `todo.aide`     | QA re-alignment document. Captures where implementation drifted from intent, with per-issue misalignment tags and a retro section. One `todo.aide` per QA loop. Ephemeral — deleted by the maintainer agent after QA passes; the retro is promoted to brain at `process/retro/` before deletion. See [todo.aide spec](./todo-aide.md). |
+| `session.aide`  | Project-root pipeline-position log. One file at `.aide/session.aide`, replaces the legacy `handoff.aide` pattern. Tracks the in-flight feature's current pipeline state, settled architectural decisions, anti-regression invariants, where the cycle paused. Survives multiple build/QA/fix cycles within a single feature lifecycle; deleted when the feature is fully completed. See [session.aide spec](./session-aide.md). |
 
 **Default to `.aide` alone.** Push research out to the brain or an MCP memory store. Only split into `research.aide` + `intent.aide` when the research genuinely can't live elsewhere. Never have both `.aide` and `intent.aide` in the same folder.
 
@@ -97,10 +99,10 @@ The canonical template lives at [AIDE Template](./aide-template.md). Agents shou
 | Field | Required | Purpose |
 |-------|----------|---------|
 | `scope` | Yes | The module path this spec governs. One spec, one scope. |
-| `description` | Yes | One-line purpose statement. Makes ancestor chains in `aide_discover` self-contained — agents reading the chain understand what each spec governs without opening it. |
-| `intent` | Yes | One paragraph, plain language: what this module is *for*. The north star every other field serves. Written so a human reading it cold understands the purpose in ten seconds. Everything in `outcomes` must be traceable back to this sentence. |
-| `outcomes.desired` | Yes | The success criteria. One or more statements describing what the module should produce. The QA agent measures actual output against this list. Keep it short — every extra entry dilutes the intent. |
-| `outcomes.undesired` | Yes | The failure modes. Outputs that look correct but violate intent — the green-tests-bad-output failures. The QA agent checks these explicitly even when tests pass. |
+| `description` | Yes | **One sentence, ≤ 200 characters.** What the module does in domain terms. Makes ancestor chains in `aide_discover` self-contained — agents reading the chain understand what each spec governs without opening it. Domain vocabulary (entity names, status enums, field names) is welcome; type signatures, file paths, and argument indexes are not — see [Brevity Contract](#brevity-contract). |
+| `intent` | Yes | **One paragraph, ≤ 100 words.** Plain language: what this module is *for*. The ten-second north star every other field serves. Everything in `outcomes` must be traceable back to it. |
+| `outcomes.desired` | Yes | **3-6 items, ≤ 2 sentences each.** Falsifiable domain success criteria. The QA agent measures actual output against this list. Outcomes name the *what*, not the *how* — implementation contracts belong in code, plan, or brain. |
+| `outcomes.undesired` | Yes | **3-6 items, ≤ 2 sentences each.** Domain failure modes — especially the almost-right-but-wrong outputs that pass tests. The QA agent checks these explicitly even when tests pass. |
 | `status` | No | Alignment state set by tooling, not by the spec writer. Omit for pending (default — no review has happened). Set to `aligned` by the aligner agent after verification; set to `misaligned` by the QA agent when drift is detected. Surfaced inline in `aide_discover` output so agents reading the ancestor chain see alignment state without opening each spec. |
 
 **Scope, description, intent, outcomes. That's the whole contract.** `status` is the one lifecycle field that exists, added alongside the tooling that reads it — the `aide_discover` ancestor chain surfaces it inline, and `aide_validate` warns when it is absent. Its three states are implicit pending (field absent — no review has happened), `aligned` (set by the aligner agent after verification), and `misaligned` (set by the QA agent when drift is detected). The field is never set by the spec writer directly; it is a tool-verified signal. No other lifecycle fields exist — `revision` and similar state encodings are deliberately omitted. Git history tracks change; the rule "if the intent changes, it's a new spec" is the forcing function.
@@ -108,6 +110,55 @@ The canonical template lives at [AIDE Template](./aide-template.md). Agents shou
 `intent` states the purpose; `outcomes` is the intent-engineering contract that operationalizes it — desired is the target, undesired is the tripwire. Both outcome lists are two sides of the same declaration, and both must serve the intent above them.
 
 **YAML safety rule for outcomes:** Any `outcomes.desired` or `outcomes.undesired` list item whose text contains a colon followed by a space (`: `) must be wrapped in double quotes. YAML treats `: ` as a mapping key delimiter even inside plain scalars — backtick code spans like `` `scope: path` `` or prose like `sets status: aligned` will silently break frontmatter parsing, causing all fields to appear missing to tooling. When in doubt, quote the item.
+
+### Brevity Contract
+
+The caps below are hard limits. The aligner enforces them; violations land in `todo.aide` as `spec-bloat`.
+
+| Field | Hard cap |
+|---|---|
+| `description` | ≤ 200 characters, single sentence |
+| `intent` | ≤ 100 words, single paragraph |
+| `outcomes.desired` | 3-6 items, ≤ 2 sentences per item |
+| `outcomes.undesired` | 3-6 items, ≤ 2 sentences per item |
+| `## Context` | ≤ ~250 words. Only domain background not inherited from the parent. |
+| `## Strategy` | One paragraph per decision, ≤ ~80 words each. ~7 decisions max — beyond that, the scope is too wide; split it. |
+| `## Good examples` / `## Bad examples` | 2-3 examples each, brief. Pattern material, not enumeration. |
+| `## References` | One bullet per brain entry actually used: path + one-line description of what was drawn. |
+| **Whole-file size** | **~150 lines is the target. ~175 lines is a refactor signal — beyond that, the scope is too wide and splitting is overdue.** Section caps catch field-level bloat; the whole-file signal catches the case where every section is technically under cap but the spec has still ballooned. |
+
+#### Forbidden content (anywhere in the file)
+
+These belong in code, in `plan.aide`, in `brief.aide`, or in the brain — never in `.aide`:
+
+- **Type signatures** (e.g. `(string | null)[]`, `Record<K, V>`)
+- **File paths and folder layouts**
+- **Argument-index or position-based contracts** (e.g. `args[3]`, "the third element"), and **schema cardinality assertions** (e.g. "exactly six sections", "at most three fields")
+- **Migration history, deprecation notes, "retired" prior designs** — git tracks change; the spec describes the current contract
+- **Long justifications, asides, or commentary** annotating the contract — if a sentence exists to defend or footnote another sentence, cut both
+- **Function-name enumerations standing in for outcomes** — a spec describes what the module accomplishes in the domain, not which exported symbols exist
+
+#### Domain vocabulary IS allowed and expected
+
+Specs are written in the language of the domain, not the codebase. The following are welcome whenever they describe the system the way a non-engineer who knows the business would describe it:
+
+- **Entity names** (e.g. `OutreachThread`, `Sequence`, `Attempt`)
+- **Status enum values** (e.g. `ACTIVE`, `COMPLETED`, `CANCELLED`, `BLACKLISTED`)
+- **Field names that name a domain concept** (e.g. `generationContext`, `nextFollowUpAt`)
+- **Domain enum values** (e.g. `INDEXABILITY`, `TRAFFIC`, `SECURITY`)
+- **Specific numbers tied to domain decisions** (e.g. "3-email cap", "7-day interval")
+
+**The test:** if the term would land for a non-engineer who understands the business, it's domain vocabulary and belongs. If only a developer reading the code would recognize it, it's an implementation contract — keep it out. If the implementation were rewritten from scratch in a different language and the term still made sense, the spec should survive untouched.
+
+#### When the scope is too wide — suggest child specs
+
+If you cannot fit the intent into a single ≤ 100-word paragraph with 3-6 outcomes per list, the scope is too wide. **Do not relax the caps. Split into child specs.** Trigger conditions:
+
+- A single outcome covers a sub-pipeline with its own success criteria
+- The Strategy has more than ~7 distinct decisions
+- The Good/Bad examples cluster around two or more distinct domain concerns
+- The Context paragraph keeps wanting to grow because the module has multiple sub-domains
+- The whole file is creeping past ~175 lines
 
 ### Cascading intent tree
 

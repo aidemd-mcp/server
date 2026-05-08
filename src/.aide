@@ -1,704 +1,76 @@
 ---
 scope: src
-description: >
-  MCP server implementing the two delivery channels — handshake teaching surface and the install action — that carry AIDE doctrine from canonical docs into host projects. The install action has two entry points (the `aide_init` MCP tool and the npx CLI) into a single shared install service.
+status: misaligned
+description: "MCP server that delivers AIDE methodology to host projects through two channels — a live handshake teaching surface and an install action that scaffolds the methodology onto the host's disk."
 intent: >
-  src/ is the MCP server that implements aidemd-mcp's two delivery channels.
-  Channel one is the handshake itself: the tool list is read verbatim by
-  every connecting client, and tool descriptions teach AIDE concepts at
-  invocation time — heaviest in `aide_discover` and `aide_scaffold`, lighter
-  in the operational tools. Channel two is the install action, exposed via
-  the `aide_init` MCP tool and the npx CLI as two entry points into a single
-  shared install service. The install service reads the canonical doc files
-  under docs/ and installs them into a host project as a pointer stub in the
-  host's config file, a progressively-disclosed methodology doc set on the
-  host's disk, pipeline slash commands, MCP wiring, and IDE preview. Both
-  channels pull from the same canonical docs — no AIDE doctrine is allowed
-  to live inside this submodule's source code.
+  src/ implements the two delivery channels through which aidemd-mcp carries
+  AIDE doctrine from canonical docs into host projects. The handshake channel
+  teaches AIDE at session start through tool descriptions every connecting
+  client reads verbatim. The install channel scaffolds AIDE onto a host
+  project's disk, exposed through two entry points — an MCP tool and a
+  terminal command — that share a single install service so on-disk results
+  match. Both channels read from one canonical doc set; no AIDE doctrine
+  lives as source-code strings. Everything the server ships practices the
+  proportional-cost and centralized-authoring promises the parent makes.
 outcomes:
   desired:
-    - Every lifecycle phase the AIDE methodology defines has a tool
-      dedicated to it, and no two tools cover the same phase. The surface
-      is verifiable as a one-to-one mapping between methodology phases and
-      tool responsibilities — adding a new phase to the methodology is the
-      only event that should require adding a tool.
-    - Every tool description is complete enough to teach the convention it
-      invokes on its own. An agent reading only the tool list learns what
-      `.aide` files are, the file types that exist, the never-both-.aide-
-      and-intent.aide naming rule, the next-to-orchestrators placement
-      rule, and the read-specs-before-code workflow. No "see docs", no
-      abbreviation, no assumed prior knowledge.
-    - Tool descriptions, the pointer stub aide_init writes into the
-      host's config file, and the methodology doc set aide_init
-      installs onto the host's disk are all composed from the canonical
-      doc files under docs/ at build or init time. The server's source
-      code contains no AIDE doctrine as string literals, so a doc edit
-      is the only way to change what this submodule ships.
-    - Behavior is identical across every supported MCP client (Claude
-      Code, Cursor, Windsurf, Copilot, Zed). Client-specific logic is
-      confined to aide_init; every other tool is client-agnostic.
-    - The install action turns a cold host project AIDE-ready in one
-      invocation and is safely re-runnable, regardless of whether the
-      entry point was the `aide_init` MCP tool or the npx CLI. Pointer
-      stub written to the host's config file, methodology doc set
-      installed onto the host's disk, slash commands scaffolded for
-      every pipeline phase, MCP server wired into the project's MCP
-      config, IDE file associations configured. The stub names the
-      doc-set path the installer writes into, so the two sides cannot
-      drift. Every step is idempotent.
+    - Every methodology phase is covered by at most one tool in the handshake surface, and tool responsibilities do not overlap. Adding a phase to the methodology is the only event that grows the tool surface.
+    - Each tool description teaches the slice of AIDE it invokes well enough that an agent reading only the handshake learns the convention. Descriptions never defer to external docs for load-bearing rules.
+    - Tool descriptions and every artifact the install action lands on the host's disk are composed from the canonical doc set at build or install time. AIDE doctrine never appears as a string literal in this submodule's source.
+    - The install action makes a cold host project AIDE-ready in one invocation, is safely re-runnable, and produces an identical on-disk result regardless of which entry point the user chose. Idempotency lives at the shared install service so both entry points inherit it.
+    - The install action delivers the methodology through progressive disclosure — a short pointer surface the host agent reads every session, plus a deep doc set the agent crawls only when its current task touches AIDE. Eager-loading the full methodology defeats the parent's proportional-cost outcome.
+    - Behavior across supported MCP clients is identical for every tool except install. Client-specific scaffolding is confined to the install action; every other surface is client-agnostic.
   undesired:
-    - A tool description that points at an external document or says the
-      agent should "read CLAUDE.md for details." The handshake is the
-      only documentation surface this channel is guaranteed to deliver.
-    - A tool description, pointer-stub teaching sentence, or
-      methodology doc hand-written as a string literal in this
-      submodule's source, duplicating content that lives in docs/. The
-      duplicate drifts on the first edit to either side and breaks the
-      single-source-of-truth invariant inherited from the parent.
-    - A pointer stub that names a host-side doc-set path different
-      from the path the installer actually writes into. The two sides
-      must derive from a single shared source inside this submodule;
-      any arrangement that admits drift between them is broken on
-      arrival even if it passes its unit tests.
-    - Divergent behavior between MCP clients on the same input. If Claude
-      Code and Cursor see different results from `aide_discover`, the
-      server has failed its client-parity invariant.
-    - An install run that is not idempotent — a project initialized
-      twice, through either entry point, with stacked pointer stubs,
-      duplicated doc-set files, duplicated slash commands, or a broken
-      .mcp.json is a corrupted project, not an initialized one. The
-      idempotency invariant lives at the install-service layer so both
-      the `aide_init` MCP tool and the npx CLI inherit it identically.
-    - Two tools whose responsibilities overlap on the same lifecycle
-      phase, regardless of how the overlap was introduced — a new tool
-      added because an existing one "didn't quite fit," or an existing
-      tool quietly extended to cover a phase another tool already owns.
-      Overlap fragments the handshake and forces agents to guess which
-      tool to call, and is the only tool-surface change that should
-      register as drift. Adding a tool for a phase no existing tool covers
-      is not drift; it is the surface tracking the methodology.
-    - A spec, test, or description that pins a specific count of tools or
-      enumerates the tool roster as part of the contract. The count is an
-      implementation detail of the current methodology snapshot, not an
-      invariant — encoding it guarantees drift the moment a new lifecycle
-      phase is added.
-    - Truncated descriptions justified by "token budget." Tokens spent
-      teaching are recovered every time an agent doesn't have to fetch
-      an external doc or silently violate the convention.
+    - "A spec, test, description, or contract that pins a specific count of tools or enumerates the tool roster. The roster is a snapshot of the current methodology, not an invariant — encoding it guarantees drift the moment a phase is added."
+    - Two tools whose responsibilities overlap on the same methodology phase, regardless of how the overlap was introduced. Overlap forces agents to guess which tool to call and dilutes the handshake's teaching value.
+    - A tool description that defers a load-bearing rule to an external document, or that was written as a hand-typed string duplicating doctrine that lives in the canonical doc set. Either form breaks the single-source-of-truth invariant the parent commits to.
+    - An install run that is not idempotent through either entry point — stacked pointer surfaces, duplicated scaffolded files, or divergent on-disk results between the two entry points. The install service is the contract; the entry points are wire shapes that must not be allowed to diverge.
+    - The install action eagerly inlining the methodology into the host's always-loaded session-start surface instead of writing a shallow pointer plus an on-demand doc set. This silently reverses progressive disclosure at the delivery layer.
+    - A second mutation surface for any host file the install action wrote, added inside the server runtime to "save the user a command." Visible-command-boundary invariants belong to the install and sync surfaces only; the runtime tools are read-only against the host's wired files.
 ---
 
 ## Context
 
-This submodule implements both delivery channels the parent spec requires
-and the runtime supporting plumbing the methodology depends on once the
-host project is wired. The handshake channel matters because the tool
-list is the only documentation surface a compliant MCP client is required
-to present to the model verbatim, in every session, in every project,
-without user action. The install action matters because a one-command
-bootstrap is the only onboarding path that does not depend on the
-installing agent remembering or paraphrasing what AIDE is — and that one
-command is reachable two ways: the `aide_init` MCP tool when the user is
-talking to an agent connected to this server, and the npx CLI when the
-user has nothing connected yet. Both routes invoke the same install
-service; neither route teaches AIDE doctrine. Between the handshake
-(teaching) and the install action (artifact delivery), the parent's "no
-paraphrasing, no per-project drift" guarantee lives or dies here.
+The trunk is the first level where AIDE meets a wire. The root commits to delivering methodology as a product; this level commits to *how* it reaches a host project. Two facts about MCP shape the answer. Every connecting client reads tool descriptions verbatim at session start — the only surface guaranteed to land in an agent's always-on context regardless of host configuration. And MCP carries handshake and tool calls only; persistent on-disk scaffolding requires a separate, host-side action. The trunk therefore commits to two delivery channels: a handshake that teaches AIDE through tool descriptions, and an install action that writes the durable methodology onto the host's disk.
 
-Around those two channels sit the runtime and configuration surfaces that
-make the methodology work after install. The runtime brain entry-point
-tool reads the host's user-owned brain configuration file at
-`.aide/config/brain.aide` and returns its hand-written agent-facing
-prose section verbatim — the package no longer enumerates connectors,
-infers brain identity from MCP entry shape, or composes per-connector
-prose from inline templates. The npx CLI exposes a second verb,
-`sync`, that propagates the user's `brain.aide` frontmatter into the
-host's `.mcp.json` brain entry; it is the only path in the package that
-mutates the host's MCP wiring, because every load-bearing contract
-surface needs a visible command boundary the user typed. The MCP server
-itself never silently rewrites `.mcp.json`. A boot-time probe surfaces
-a four-state union (`ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`)
-that the orchestrator consumes to decide whether the pipeline can
-proceed or must halt and direct the user to recover. Drift between
-`brain.aide` and `.mcp.json` is a hard halt — the package never
-auto-repairs it.
-
-Everything else — how many tools, how descriptions are written, how the
-install action handles idempotency, how brain configuration is parsed,
-how sync writes — is in service of keeping the teaching, install,
-runtime, and configuration surfaces faithful to the canonical docs and
-to the user's own configuration file.
+Adopters arrive in two starting states — already inside an agent session, or sitting at a fresh terminal with no agent yet — so the install action exposes two entry points that share one service. The parent's proportional-cost outcome forces a delivery shape: eagerly inlining the methodology into the host's session-start surface would tax every chat regardless of task, so the install lands a shallow pointer surface plus an on-demand doc set. The parent's reversibility outcome forces client parity: behavior must not depend on which MCP client connected, except where wiring conventions legitimately differ.
 
 ## Strategy
 
-**The tool list is the primary teaching artifact for channel one, not an
-API reference.** Each description introduces the concept it invokes before
-invoking it: `aide_discover` explains what `.aide` files are and why you
-read them before code; `aide_scaffold` explains the naming-conflict rule
-before it describes its `type` enum. An agent that only ever reads the
-tool list must still come away with the full convention. The cost of a
-longer description is recovered every time an agent doesn't need to fetch
-an external doc, and dwarfed by the cost of an agent silently violating
-the convention.
+**The handshake's tool list is the teaching surface.** MCP guarantees clients read tool descriptions at session start; nothing else has that property. Tool descriptions therefore carry load-bearing AIDE rules, not pointers to external docs — an agent that only reads the handshake still learns the convention well enough to act. This serves the desired outcome that the handshake teaches AIDE, and guards against the undesired outcome where descriptions defer load-bearing rules to documents the agent may never open.
 
-**The teaching weight across tool descriptions is uneven, and that is
-deliberate.** `aide_discover` and `aide_scaffold` carry most of the
-load — they introduce the file types, the placement and naming rules,
-the read-before-code workflow. The remaining tool descriptions
-(`aide_read`, `aide_validate`, `aide_upgrade`, `aide_info`,
-`aide_inspect`, `aide_brain`, and the `aide_init` description itself)
-are mostly operational, naming what the tool does without re-teaching
-the methodology behind it. This is acceptable because the handshake is
-not the only teaching surface. The install action installs a short
-pointer stub into the host's framework config file (`CLAUDE.md` for
-Claude Code, equivalent files for other clients) that the host agent
-reads at session-start on every session, AIDE-related or not, and that
-stub names the on-disk methodology doc set the agent crawls when a task
-actually touches `.aide` material. Tool descriptions reinforce the
-doctrine when an agent invokes a specific tool; the always-on
-session-start teaching comes from the stub-plus-doc-set that channel
-two installs. A tool description that is light on methodology is fine
-when the channel-two installation is doing its job.
+**One tool per methodology phase, no overlap.** The methodology's lifecycle phases are countable and each has a clear home; overlap forces the agent to guess which tool to call and dilutes every tool's teaching weight. The tool count is therefore a function of the methodology, not a configuration knob, and adding a phase is the only event that grows the surface. Specs, tests, and prose in this submodule never pin a count or enumerate the roster — that snapshot guarantees drift the moment a phase is added.
 
-**Tool descriptions and host-installed methodology artifacts are composed
-from `docs/`, never hand-written.** The canonical doc files under
-`.aide/docs/` are read at build time (for tool description text) and at
-install time (for both the pointer stub the install service writes into
-the host's framework config file and the doc set it lands on the host's
-disk). No AIDE doctrine lives as a string literal in this submodule's
-source — doctrine lives in `docs/`, and this submodule is a renderer.
-This is how the parent's single-source-of-truth invariant survives
-contact with the server's runtime.
+**Two install entry points, one install service.** Adopters arrive either with an agent already connected or at a fresh terminal without one; forcing one entry point splits adopters by their starting state. The MCP tool covers the with-agent case; a terminal command covers the cold-start case. Idempotency and on-disk parity live at the shared service, not at the entry points — so the wire shapes are thin adapters and the contract for what AIDE-ready means cannot diverge between channels.
 
-**Delivery to the host practices progressive disclosure at the file
-layer, not just at the doc layer.** The install action does not dump the
-full methodology into the host's framework config file. It writes a
-short pointer stub into that file and lands the full methodology doc
-set into a dedicated `.aide/docs/` directory on the host's disk. The
-framework config file — which the agent reads on every session —
-carries only the knowledge that AIDE exists, where the doc set lives,
-and when to crawl into it. The doc set itself is read only by sessions
-whose current task actually touches `.aide` files. The pattern mirrors
-how the user's `study-playbook` skill walks the brain: a shallow
-pointer surface that enumerates a deep content surface, with the agent
-crawling on demand instead of carrying everything on every read.
+**Progressive disclosure is a delivery-shape commitment, not an implementation detail.** The parent promises proportional cost; the trunk operationalizes that by landing a short pointer surface in the host's always-on session-start context plus a deeper doc set the agent crawls only when its current task touches AIDE. Eagerly inlining the methodology defeats the parent's promise — the delivery shape mirrors the doctrine shape. This is what makes a session whose task has nothing to do with AIDE not pay a doctrine tax.
 
-**Each tool covers a distinct lifecycle phase with no overlap.** Discover
-is the map; read is the drill; scaffold is the pen; validate is the
-health check; init is the bootstrap; upgrade is the updater; brain is
-the runtime entry point to the host's external knowledge store; info is
-the boot probe. Adding a new tool requires showing that no existing tool
-can absorb the responsibility without overlap. A tighter surface means
-less for an agent to get wrong and less description budget competing
-for attention at handshake time.
+**Doctrine is composed from the canonical doc set, never duplicated as source strings.** Every tool description and every artifact the install lands on the host's disk is built at run time from one canonical doc set. AIDE doctrine never appears as a string literal in this submodule's source. Hand-typed strings and canonical docs drift independently within weeks; the parent's centralized-authoring outcome only holds if the trunk forbids the duplication that breaks it.
 
-**Client parity via MCP, not per-client shims.** The server speaks
-standard MCP over stdio. All client-specific branching lives in the
-install service, which writes framework-specific config files for
-whichever framework it detects. The other tools are fed identical input
-schemas regardless of which client is talking, because parity is what
-lets the teaching surface be reused across clients.
+**Client parity is a non-negotiable, except for install scaffolding.** The parent's reversibility outcome requires that adopters not be locked into a particular runtime. If two clients see different behavior from the same tool, the user has been locked into one of them by accident. Every handshake tool therefore behaves identically across supported clients. Install is the only surface allowed to diverge — host wiring conventions legitimately differ — and that divergence is confined to the install action so the rest of the runtime stays client-agnostic.
 
-**Two install entry points, one install service.** The `aide_init` MCP
-tool and the npx CLI are entry points into the same install service
-that lives under the install module. They diverge only in their wire
-shape — the MCP tool exchanges structured JSON with a calling agent
-and pauses for inherent decisions through `AskUserQuestion`; the CLI
-runs end-to-end in a terminal session and pauses for inherent
-decisions through stdin prompts (or accepts them up-front via narrowly
-scoped escape-hatch flags whose only purpose is to supply, at
-invocation time, the answer to an inherent decision the CLI would
-otherwise defer — the brain root path and the IDE choice are the two
-deferral surfaces today, each with one corresponding flag). The
-install service itself is consumer-agnostic: same plan shape, same
-status enum, same idempotency contract, same prescriptions for MCP
-config merge. Adding a new entry point is permissible if and only if
-the new entry point installs (it does not teach AIDE doctrine); a CLI
-that walks an agent through the methodology interactively is the
-forbidden third channel, not a thin invocation of channel two.
-
-**Idempotency as an invariant, not a feature.** The install action,
-scaffold, validate, sync, and upgrade are all safe to re-run on a
-project already in that state. Agents retry tool calls when uncertain;
-CLI users re-run commands when uncertain; a non-idempotent call
-corrupts on the retry. This is especially load-bearing for the install
-action and for sync, both of which mutate files neither an agent nor a
-developer should feel nervous about re-running.
-
-**Brain configuration is user-owned, not code-owned, and the package
-never branches on connector identity.** The host's brain is described
-by a single user-editable file at `.aide/config/brain.aide`. Its
-frontmatter carries exactly two fields — `name` (a human-readable
-label) and `mcpServerConfig` (`command` and `args`, consumed by sync
-to write the host's `.mcp.json` brain entry). Its body is three
-marker-bounded sections in fixed order — prose, playbook, research —
-each delimited by its own paired HTML-comment open/close tokens,
-recognized lowercase and case-sensitive. No code in this submodule
-enumerates connectors, dispatches on a `name` value, or composes
-per-connector prose from inline templates. The runtime brain
-entry-point tool reads the parsed `prose` section and returns it
-verbatim; if a future user wires a connector the package has never
-heard of, that connector's hand-written prose ships through unchanged
-because there is nothing in the response path that needs to recognize
-it. Adding, replacing, or retargeting a brain is a host-side edit to
-one file followed by `npx aidemd-mcp sync` — never a code change to
-this package.
-
-**Per-consumer ownership of `brain.aide` is exclusive.** A single
-canonical parser owns the file format and exposes a typed result;
-every other surface in this submodule consumes only the slice it is
-contracted to read. The runtime brain entry-point tool reads `prose`
-only — never `playbook`, never `research`, never frontmatter for
-control flow. The install service's brain provisioner reads `playbook`
-and `research` to seed the brain's playbook and research entry-point
-artifacts at scaffold time — never `prose`. The sync verb and the boot
-probe read frontmatter only — none of the body sections. Cross-section
-reads are contract violations because they couple a consumer to bytes
-it has no authority over and leak the file format outward. The
-single-parser-many-consumers shape is the same chokepoint pattern the
-canonical doc reader already uses — one reader, many composers — and
-is the load-bearing decision behind the marker-bounded body grammar:
-named sections make ownership visible in the type signatures every
-consumer imports.
-
-**Sync is the only `.mcp.json` mutation surface for the brain entry,
-and the boundary is a typed terminal command.** The npx CLI exposes a
-`sync` verb that reads `.aide/config/brain.aide`, takes
-`mcpServerConfig.command` and the post-interpolation args as the
-expected entry, and writes them into the host's `.mcp.json` under the
-fixed `brain` key — preserving every other key in `mcpServers`
-verbatim. Sync is idempotent. The MCP server NEVER silently rewrites
-`.mcp.json`, the runtime brain entry-point tool never patches the
-host's MCP wiring, and the boot probe never auto-repairs drift it
-detects. Every mutation of the host's MCP brain wiring is a command
-the user typed with output the user saw scroll past. The reason is
-trust: `.mcp.json` is a load-bearing config the user often hand-edits
-to point a brain at a temporary debug location while reproducing a
-bug, and any mutation from inside an agent session would silently
-overwrite that hand-edit. The visible-command-boundary invariant is
-the protection the user relies on.
-
-**Brain status is a four-state tagged union and the orchestrator halts
-on every non-`ok` state.** The boot probe surfaces exactly four states:
-`ok` (`.aide/config/brain.aide` parses, `.mcp.json` has a brain entry,
-the two agree), `no-brain-aide` (the source-of-truth file is missing,
-malformed-frontmatter, or malformed-body), `no-mcp-entry`
-(`brain.aide` parses but `.mcp.json` has no brain entry under
-`mcpServers`), and `mcp-drift` (both exist but disagree by structural
-comparison on `command` or `args`). Each state names exactly one user
-recovery action — run `npx aidemd-mcp init`, run `npx aidemd-mcp sync`,
-run `npx aidemd-mcp sync` — and the orchestrator refuses to advance
-the pipeline until the user takes it. There is no `invalid-path`
-state: the package no longer stats the brain root path, because the
-schema collapse removed `rootPath` and path validation is the
-launcher's job at MCP server startup. Reintroducing a fifth state
-under any name shifts a load-bearing contract surface back into the
-package.
-
-**Substitution is partitioned into one surface, run only at install
-and sync time, never at agent time.** The parser supports `${...}`
-interpolation of frontmatter field values inside
-`mcpServerConfig.args` for advanced users who want to DRY a value
-across argument positions; the default scaffold makes no use of it
-(the brain root path lives byte-inline in `args`). The interpolation
-surface runs only when the install service is deriving the brain MCP
-entry's args at scaffold time, or when sync is computing the entry
-to write into `.mcp.json`. It NEVER runs against any of the three
-body sections — `prose`, `playbook`, and `research` all return
-verbatim, byte-identical to what the user wrote between their marker
-pairs. A user whose prose legitimately documents a templating
-language whose syntax includes `${...}` characters reads exactly
-those characters out of `aide_brain`'s response. Mixing the install-
-time substitution surface with the agent-time body surfaces is the
-exact failure mode the parent spec's bad examples enumerate, and
-keeping the surfaces in separate exported helpers makes the mistake
-impossible by accident.
-
-**The `.aide/config/` directory is user-owned forever after the first
-scaffold.** The install service may create `.aide/config/` and seed
-the canonical default `brain.aide` on a cold install where the file
-is absent. After that first write, every path under `.aide/config/`
-belongs to the user — the install service and the upgrade tool never
-overwrite, patch, or migrate anything in that directory on subsequent
-runs, regardless of byte drift from the canonical default. The
-boundary is structural (the directory path itself is the ownership
-signal), not a per-file allowlist, so any future user-owned config
-file added under `.aide/config/` inherits the same semantics
-automatically. New defaults reach existing hosts only through `npx
-aidemd-mcp sync` (for the derived `.mcp.json` brain entry) or a
-deliberate user edit (for the file itself), never through the install
-or upgrade path. The same class of failure that a silent MCP server
-rewriting `.mcp.json` would produce — a load-bearing user surface
-shifting out from under the user — applies to anything inside
-`.aide/config/`.
-
-**The CLI is the sole cold-start surface and runs unattended; the MCP
-tool is the agent-mediated surface and prompts inherently.** The npx
-CLI installs every canonical artifact whose content carries no
-inherent decision attached and skips on conflict, because it has no
-agent to interview the user mid-run; categories that depend on
-inherent decisions (the brain root path, which scaffolds
-`.aide/config/brain.aide` and the derived MCP entry; the IDE choice)
-are deferred to the right follow-up surface unless supplied as
-flags. The `aide_init` MCP tool runs the same install service through
-an agent that can ask the user via `AskUserQuestion`, and prompts on
-overwrite-pending categories and on inherent decisions. Both produce
-the same on-disk result on a fully-resolved run — the consumer is the
-wire shape, the install service is the contract.
+**Mutation of host files is reserved to visible commands.** The install action and an explicit sync command are the only surfaces allowed to write the host's wired files. Runtime tools called during an agent session are read-only against those files. A runtime tool that "helpfully" rewrites host configuration silently overwrites user intent and breaks the visible-command-boundary the user relies on to know when their files changed.
 
 ## Good examples
 
-A new agent connects to aidemd-mcp for the first time and, before
-touching a single file, reasons:
+**A fresh agent learns AIDE from the handshake alone.** A host project wires this server. An agent connects, reads the tool list at session start, and gets a working understanding of how AIDE specs are shaped, when they are written, and how to discover them — without opening a single methodology doc. Its first action on an AIDE-touching task is correct because the handshake taught it the convention.
 
-> There are .aide spec files next to orchestrator code that I should
-> read before I read the code. The canonical file types are: `.aide`,
-> the default intent spec; `intent.aide`, the same thing renamed when
-> a `research.aide` sits alongside; `research.aide`, raw research;
-> `plan.aide`, the architect's checkboxed implementation plan;
-> `todo.aide`, a QA re-alignment document; `brain.aide`, the host's
-> user-owned brain configuration file. I must never see both `.aide`
-> and `intent.aide` in the same folder. My workflow is: call
-> `aide_discover` with no path for the project map, then drill into
-> the relevant subtree with a path, then `aide_read` specific specs as
-> needed.
+**A maintainer edit reaches both delivery channels through one source.** A canonical doc gets sharper guidance on outcomes versus implementation contracts. The next handshake every connecting agent reads carries the new framing; the next install run lands the same framing on disk. No second edit, no string duplication anywhere in this submodule.
 
-Every piece of that reasoning came from the tool list alone. No
-CLAUDE.md was read; no README was fetched. That is the target experience
-at handshake time.
-
-A user invokes the install action on a fresh project — either by asking
-the agent to call `aide_init`, or by running `npx aidemd-mcp init` in a
-terminal — and gets back a summary like:
-
-> Detected framework: Claude Code.
-> Created CLAUDE.md with AIDE pointer stub naming the methodology doc set at .aide/docs/.
-> Installed .aide/docs/ with the canonical methodology docs and an index.
-> Created slash commands for the pipeline phases.
-> Scaffolded .aide/config/brain.aide (the user-owned brain config) at the supplied brain root path.
-> Wired aidemd-mcp into .mcp.json under the `aide` key, and the brain entry derived from .aide/config/brain.aide under the `brain` key.
-> Configured .zed/settings.json to render .aide as Markdown.
-> Skipped VS Code extension — `code` CLI not on PATH.
-
-Running the same install action a second time, through either entry
-point, returns the same summary with "already present" markers instead
-of "created", and nothing on disk changes — including
-`.aide/config/brain.aide`, which the install service never re-touches
-after its first scaffold even if the user has retargeted the brain
-root, swapped the launcher command, or rewritten the prose section.
-The install service is what guarantees this; the entry point is just a
-wire shape.
-
-A maintainer edits `docs/aide-spec.md` to clarify the placement rule.
-They rebuild the server; the next agent to connect sees the updated
-text in the `aide_discover` tool description because the description
-template reads from the doc at build time. They also run the install
-action on a host project; the updated text lands in the host's
-`.aide/docs/aide-spec.md` because the methodology installer reads the
-same canonical source. One edit propagated through both channels —
-handshake teaching and installed host-side content — with no
-duplication in between.
-
-An agent in a host project opens a file unrelated to AIDE to fix a bug.
-It reads CLAUDE.md at session start, sees the short pointer stub,
-registers that the `.aide/docs/` directory exists, and consciously
-skips crawling it because the current task touches no `.aide` files. Total AIDE cost
-paid by that session: a handful of lines of stub. Later the same agent
-picks up a task that does touch `.aide` files, follows the stub's
-pointer into `.aide/docs/`, reads the index, and drills into
-`aide-spec.md` and `aide-template.md` — and only those. The delivery
-layer practiced the same progressive disclosure the methodology
-teaches.
-
-A user retargets their brain to a new location. They open
-`.aide/config/brain.aide` and edit a single string inside
-`mcpServerConfig.args` (the path next to `"@bitbonsai/mcpvault"`),
-then run `npx aidemd-mcp sync` in their terminal:
-
-> Read .aide/config/brain.aide
-> Wrote brain MCP entry into .mcp.json
->   command: npx
->   args: ["@bitbonsai/mcpvault", "D:/brains/new-location"]
-> Done.
-
-Every other key under `mcpServers` in `.mcp.json` is byte-identical to
-what was there before — the user's `aide` entry, their personal MCP
-servers, every entry the package did not author. The user runs sync a
-second time immediately to test idempotency: sync reads the same file,
-computes the same target object, sees `.mcp.json` already matches, and
-exits with "no changes." The host's MCP wiring was mutated exactly
-once, on a command the user typed, with the user looking at the
-terminal. The MCP server itself never silently rewrote anything.
-
-A pipeline agent mid-task calls `aide_brain` to read its brain
-instructions. The host's `.aide/config/brain.aide` body opens with:
-
-```
-<!-- aide-prose-start -->
-Your brain is an external knowledge store reached through MCP tools.
-Use `mcp__brain__read_note` to open files by their brain-root-relative
-path. Use `mcp__brain__search_notes` for keyword queries across the
-brain. The brain's entry-point file is `CLAUDE.md` at the brain root
-— read that first; it lists the inline references your task may need.
-When a reference in the entry-point file looks relevant to your task,
-read the file it names (depth 1) and check the references inside that
-file too. Stay in scope; don't follow references into unrelated topics.
-<!-- aide-prose-end -->
-```
-
-`aide_brain` returns:
-
-```json
-{
-  "status": "ok",
-  "instructions": "Your brain is an external knowledge store reached through MCP tools.\nUse `mcp__brain__read_note` to open files..."
-}
-```
-
-The bytes between the prose marker pair are returned byte-identical:
-no template substitution, no server-composed wrapping, no `name` field
-on the response, no `connector` discriminant for the consumer to
-branch on. The agent reads the user's instructions verbatim and
-follows them. If the same user later switches brains by editing
-`.aide/config/brain.aide` to declare a different connector and
-rewriting the prose section to describe it, the next call to
-`aide_brain` returns the new prose with no code change in this
-package — because there is no code in the response path that needed
-to know what brand of brain the user wired.
-
-A boot probe runs at the start of an agent session and finds drift —
-the user retargeted `brain.aide` and forgot to run sync. The probe
-returns `mcp-drift`. The orchestrator surfaces a remediation message
-naming the exact terminal command — `npx aidemd-mcp sync` — and
-refuses to advance the pipeline. The package never auto-rewrites
-`.mcp.json` to "fix" the drift, because the user may have
-intentionally hand-edited the brain entry in `.mcp.json` for a debug
-session and an auto-repair would silently destroy that hand-edit. The
-user runs sync, restarts Claude Code, and the next boot returns `ok`.
+**Install converges idempotently across entry points.** A user installs from the terminal on Monday, then re-runs install through the MCP tool on Friday after a methodology bump. The on-disk result matches what a fresh install through either entry point would produce — no stacked pointer surfaces, no duplicated artifacts, no per-entry-point divergence.
 
 ## Bad examples
 
-A tool description that reads "Scaffold new .aide files. See the AIDE
-docs for naming rules." The agent has learned nothing about the
-naming-conflict rule and will happily create a `.aide` next to an
-existing `research.aide`, producing exactly the corruption the tool was
-built to prevent. The description failed its only job.
+**A hand-written tool description drifts from doctrine.** A tool's description is authored as a literal string in this submodule's source rather than composed from the canonical doc set. The methodology gets sharper a month later; the canonical doc updates, the description does not. Two adopters connecting to two versions of this server now learn two different rules from the same tool, and neither can detect which is current.
 
-A tool description hand-written as a template literal in
-`src/tools/scaffold/index.ts`, containing AIDE rules the maintainer
-typed from memory. The canonical doc under `docs/` has since been
-updated; the literal has not; the two now disagree, and the server's
-handshake ships a different doctrine than the install action does. The
-single-source-of-truth invariant has been broken at the submodule
-level.
+**An install run stacks pointer surfaces.** A user runs install twice. The second run appends a fresh pointer block instead of replacing the prior one, leaving the host's session-start surface with two regions claiming to point at the methodology — they slowly diverge, and the host agent reads whichever appears first. The install service's idempotency contract was the whole point of having one shared service; stacking proves both entry points are reaching past it.
 
-An install action that appends its pointer stub to CLAUDE.md on every
-run, so a project initialized three times — through any combination of
-entry points — has three stacked marker-bounded regions. Idempotency
-was treated as a nice-to-have instead of an invariant living at the
-service layer, and the file is now corrupted.
-
-An install action that skips the methodology-doc-set step and dumps
-the full methodology body inside CLAUDE.md's stub region instead.
-Every non-AIDE session in the host now re-reads several hundred lines
-of doctrine on every open, and the progressive-disclosure rule that
-this delivery shape was meant to enforce has been quietly reversed at
-the delivery layer while passing every test.
-
-A tool — say `aide_lint` — added to the surface because validation
-rules "felt different" from health checks. Both tools show up in the
-handshake, overlap in responsibility, and the agent has to guess which
-one to call. The surface has been diluted for no gain, because the
-responsibility should have lived inside validate.
-
-The runtime brain entry-point tool dispatches the host's `.mcp.json`
-brain entry through a package-side registry of "known launchers,"
-identifies the connector by matching argument shapes against a table,
-and selects per-connector prose composed from inline TypeScript
-constants. A user wires a connector the registry has never heard of
-and gets back "no brain configured" even though their `brain.aide`
-exists and parses cleanly — the package literally cannot see brains
-its registry was not taught to recognize. The retired in-code backend
-registry has been re-introduced under a new name. The fix is to read
-`.aide/config/brain.aide`'s parsed prose section and return it
-verbatim; what the user wrote is what the agent reads, regardless of
-what brand of brain it describes.
-
-The MCP server detects drift between `.aide/config/brain.aide` and
-`.mcp.json` at startup and "helpfully" auto-syncs by overwriting
-`.mcp.json`'s brain entry from the source-of-truth file. The user
-wakes up the next morning and finds their `.mcp.json` mutated by
-something that was not a command they typed. Worse: the prior
-afternoon they had hand-edited `.mcp.json` to point the brain MCP
-server at a temporary debug location while reproducing a bug, and
-that hand-edit is silently gone. The visible-command-boundary
-invariant has been violated. Drift is a hard halt, not a self-repair
-event; the only thing the boot probe is allowed to do with drift is
-name it and route the user to `npx aidemd-mcp sync`.
-
-The brain entry-point tool returns a `name` field alongside `status`
-and `instructions` to "let the calling agent identify the connected
-brain." Within a release, two consumers branch on the value of `name`
-to vary their behavior — one only enables a research-write shortcut
-when `name` matches a particular hard-coded label, another keys a
-special-case prompt off another label. The connector-dispatch
-anti-pattern the registry retirement was meant to delete has been
-re-created on the consumer side. The response shape is `status` +
-`instructions` only; the user's `name` label belongs inside
-`brain.aide` for the human reading the file, never threaded into the
-agent-facing wire.
-
-The runtime brain entry-point tool runs `${...}` substitution over the
-prose section before returning it — the same install-time
-interpolation surface that lives in `mcpServerConfig.args`, applied
-to the agent-facing body section. A user whose prose legitimately
-documents a templating language whose syntax includes literal
-`${...}` characters has those characters silently rewritten or
-stripped, mangling the agent-facing instructions in a way invisible
-from the package's tests. Substitution lives only in
-`mcpServerConfig.args` at install/sync time. None of the three body
-sections — prose, playbook, research — receives any agent-time or
-disk-time substitution.
-
-The install service overwrites `.aide/config/brain.aide` on a
-subsequent install run because "the canonical default has improved
-since the user's last install." The user retargeted their brain to a
-custom path two months ago, refined the prose section to suit their
-own workflow, and renamed their brain. All three edits are silently
-gone. `.aide/config/` is user-owned forever after the first scaffold;
-the install and upgrade tools must never overwrite, patch, or migrate
-anything inside that directory, regardless of byte drift from the
-canonical default. New defaults reach existing hosts through `npx
-aidemd-mcp sync` (for the derived `.mcp.json` brain entry) or a
-deliberate user edit (for the file itself), never through the install
-or upgrade path.
-
-A `brain.aide` carrying deprecated frontmatter fields — `connector`,
-`rootPath`, `entryFile`, `tools` — is silently accepted by the parser
-and the offending fields are stripped before downstream consumers see
-the parsed result. The user's `tools.read` declaration is sitting
-right there in their file, but nothing in the package consumes it;
-months later they wonder why changing it has no effect. Silent
-acceptance is the worst possible failure mode for a closed schema:
-rejection forces clean migration, while silent stripping creates
-dead-field drift the user never finds out about. The parser must
-reject deprecated fields by name with `malformed-frontmatter`
-naming every stale field it found.
-
-A brain.aide carried forward from the pre-pivot heading-based body
-schema — body sections were marked by Markdown headings, not by paired
-HTML-comment markers — is silently auto-migrated by the parser: it
-detects the old shape, infers the section boundaries from the
-headings, and returns the parsed result as if the new marker grammar
-were satisfied. The user never edits their file; the heading-based
-shape persists in the wild forever; the install service's scaffold
-disagrees with what the parser will accept; deprecation never lands
-because there is no forcing event. Strict failure is the only shape
-that produces a forcing event: pre-pivot files return `malformed-body`
-naming every missing marker, the user hand-edits their file once, the
-heading-based shape disappears from the wild on the next sync.
-
-The boot probe collapses the four-state union down to two states —
-`ok` and `not-ok` — "to keep the orchestrator's branching simple."
-Now the orchestrator's remediation prose cannot tell the user what to
-do because every `not-ok` shape has a different recovery path
-(scaffold the file, run sync to write the entry, run sync to align
-the entry). Vocabulary that lies about the recovery surface is worse
-than vocabulary that admits which recovery is needed. The four states
-are load-bearing precisely because each names a distinct user action.
-
-A second `.mcp.json` mutation surface is added — say, a tool that
-"helpfully" patches the host's MCP wiring inside a session "to save
-the user from running sync." Now there are two paths that mutate
-`.mcp.json`: the one the user typed and saw, and the one the agent
-ran silently. Within a few releases users no longer trust that the
-file they last edited still says what they wrote, the
-visible-command-boundary protection is gone, and the boot probe's
-`mcp-drift` state stops being meaningful because `.mcp.json` may have
-been rewritten by something other than sync. The contract is exactly
-one mutation surface per host file, with the user typing the command.
+**A runtime tool rewrites the host's wired files.** A read-side tool gains a quietly added write path so users do not have to run sync manually. The next session, a user's hand-edited wiring is silently overwritten with a regenerated version. The visible-command-boundary invariant is broken; the user no longer knows when their files changed.
 
 ## References
 
-- `D:/Code/Me/aidemd-mcp/.aide/intent.aide` -- canonical parent
-  spec; established the two delivery channels (handshake teaching +
-  install action), the rule that no AIDE doctrine lives outside the
-  canonical doc files, the brain-configuration-is-user-owned
-  invariant, the marker-bounded body schema for `brain.aide` (three
-  sections — prose, playbook, research — delimited by paired
-  HTML-comment markers in fixed order), the four-state boot probe
-  vocabulary (`ok`, `no-brain-aide`, `no-mcp-entry`, `mcp-drift`),
-  the `.aide/config/` user-owned directory boundary, the
-  `npx aidemd-mcp sync`-as-only-mutation-surface rule, and the
-  storage-agnostic vocabulary commitment. Source of every brain-layer
-  Strategy paragraph and most of the brain-layer Bad examples.
-- `D:/Code/Me/aidemd-mcp/.aide/docs/brain-aide.md` -- canonical
-  methodology doc for the `brain.aide` file type; named the
-  per-consumer ownership rule (`prose` to the runtime brain
-  entry-point tool, `playbook` and `research` to the install
-  service's brain provisioner, frontmatter to sync and the boot
-  probe), the marker grammar's exact shape (lowercase, case-
-  sensitive, single ASCII spaces around the token, fixed
-  prose-then-playbook-then-research order, six markers total), the
-  strict-failure migration policy for pre-pivot files, and the
-  no-server-side-substitution invariant for any of the three body
-  sections. Anchors the per-consumer-ownership Strategy paragraph
-  and the heading-based-auto-migration Bad example.
-- `D:/Code/Me/aidemd-mcp/.aide/docs/aide-spec.md` -- canonical AIDE
-  spec methodology; informed the body-section structure (Context →
-  Strategy → Good examples → Bad examples → References), the
-  decisions-not-descriptions writing style, the rule that strategy
-  paragraphs trace to outcomes, and the cascading-intent rule that a
-  child spec narrows rather than restates parent context.
-- `D:/Code/Me/aidemd-mcp/.aide/docs/index.md` -- methodology doc
-  set inventory; confirmed `brain-aide.md` ships as a sixth
-  canonical file type alongside the existing five and is the
-  authoritative reference the Strategy paragraph about runtime brain
-  configuration cites without restating.
-- `D:/Code/Me/aidemd-mcp/src/service/parseBrainAide/.aide` -- single
-  canonical reader's spec; pinned the tagged-result contract
-  (`{ kind: "ok", config, prose, playbook, research }` versus
-  `missing | malformed-frontmatter | malformed-body`), the typed
-  three-section result shape carrying each body section as its own
-  field, the never-throws invariant, the `interpolateArgs` helper
-  partition that keeps substitution off every body section, and the
-  exclusive deprecated-field rejection (`connector`, `rootPath`,
-  `entryFile`, `tools`). Anchors the Strategy paragraph on
-  per-consumer ownership and the Bad examples on silent acceptance
-  of deprecated fields and on body-section substitution.
-- `D:/Code/Me/aidemd-mcp/src/service/buildBrainState/.aide` -- boot
-  probe spec; pinned the four-state tagged union, the structural-
-  comparison drift detection (in-memory shape, not byte-equality on
-  serialized `.mcp.json`), the no-stat invariant, and the no-auto-
-  repair contract. Anchors the Strategy paragraph on the four-state
-  union and the Bad examples on auto-syncing drift and collapsing
-  the state vocabulary.
-- `D:/Code/Me/aidemd-mcp/src/tools/brain/.aide` -- runtime brain
-  entry-point tool spec; pinned the response shape (`status` +
-  `instructions` only, no `backend`/`connector`/`name` discriminant),
-  the verbatim-prose-from-disk contract, the on-demand-only invocation
-  rule, and the no-package-side-template-composition invariant.
-  Anchors the Strategy paragraph on brain-config user ownership and
-  the Bad examples on response-shape discriminants and registry
-  re-introduction.
-- `D:/Code/Me/aidemd-mcp/src/cli/sync/.aide` -- sync verb spec;
-  pinned the read-merge-write contract for `.mcp.json`, the legacy-
-  key migration rule, the abort-on-malformed-JSON safety, the
-  visible-command-boundary invariant the verb embodies, and the
-  rejection of any non-user-typed trigger. Anchors the Strategy
-  paragraph on sync-as-only-mutation-surface and the Bad examples
-  on auto-sync and on adding a second mutation path.
-- `D:/Code/Me/aidemd-mcp/src/cli/init/.aide` -- cold-start CLI
-  spec; pinned the skip-on-exists-only-safe-branch rule, the
-  abort-on-malformed-JSON contract, the deferred-categories warning
-  block shape, and the `.aide/config/` user-owned-forever invariant
-  that survives every CLI re-run. Anchors the Strategy paragraph on
-  the two install entry points and the Bad example on overwriting
-  `.aide/config/brain.aide` on subsequent runs.
-- `D:/Code/Me/aidemd-mcp/src/service/install/.aide` -- shared
-  install service spec; pinned the same-plan-shape-across-consumers
-  contract, the silent-on-create / pause-on-overwrite branching, the
-  prescription pattern for MCP config, the inherent-decision prompts,
-  and the brain MCP entry derived from `parseBrainAide` plus
-  `interpolateArgs` (never from a hardcoded launcher constant).
-  Anchors the Strategy paragraph on two-entry-points-one-service and
-  the consumer-agnostic install-action contract.
+- `.aide/intent.aide` (frontmatter) — the parent outcomes (centralized authoring, proportional cost, reversibility) every Strategy decision in this body operationalizes
+- `src/.aide` (frontmatter) — the trunk outcomes this body elaborates the *why* behind
+- `.aide/docs/aide-spec.md` — Brevity Contract caps, forbidden-content list, and the domain-vocabulary boundary that defines what may appear at this level
+- `src/todo.aide` — aligner findings on the prior bloated trunk; informed which decisions are this level's job and which were duplicating root or belong in brain-related leaves
+- `cold-outreach-analyzer/src/service/outreach/sequence/.aide` — calibration reference for body shape, decision-form Strategy paragraphs, and Good/Bad example brevity

@@ -1,5 +1,6 @@
 ---
 scope: src/tools/upgrade/buildVersionsMeta
+status: misaligned
 description: >
   Build-time script that generates a complete versions.json manifest covering all AIDE artifact categories, shipped as a static asset inside the published npm package.
 intent: >

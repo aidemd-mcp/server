@@ -1,197 +1,145 @@
 ---
+description: >
+  Brevity-sweep audit of `src/cli/init/.aide` — 480 lines / 71KB, the most extreme single-leaf bloat in the tree. Description is ~1,182 chars (6x cap), intent is ~828 words (8x cap), 16 desired + 12 undesired outcomes (cap 3-4), and Strategy paragraphs run thousands of words each.
 intent: >
-  Two carry-forward misalignments that survived the brain-removal rework
-  phase (steps 1-9 of plan.aide, 2026-04-28). Both were pre-existing before
-  this phase; neither was regressed or introduced by it. The phase completed
-  its scoped work cleanly: all tests pass, typecheck is clean, and all nine
-  steps of plan.aide are checked. These items are the remaining open work
-  before `status: aligned` is valid.
+  `src/cli/init/.aide` describes the cold-start CLI bootstrapper. Almost
+  every Brevity Contract cap is exceeded by 4-15x; every paragraph encodes
+  arg-index slot semantics, exact flag enumerations, exact MCP key strings,
+  retired sentinel names, exact step-builder function names, and migration
+  history. Wholesale rewrite required. Two carry-forward implementation
+  issues remain real and must be re-verified after rewrite.
 misalignment:
-  - implementation-drift
-  - plan-gap
+  - spec-bloat
+  - spec-gap
 ---
 
 ## Issues
 
-### Carry-forward (post schema-collapse build, 2026-04-26)
+### Bloat findings (this brevity sweep)
 
-Both issues were present before the schema-collapse build phase and are
-unchanged by it. The schema-collapse plan (steps 1-9) was scoped to
-path constants, prose strings, deferred-category collapse, and test
-fixtures — neither item was in scope. They are documented here so the
-next build phase can address them explicitly.
+- [ ] `description` is ~1,182 chars (cap 200) — a single paragraph enumerating
+  every artifact the CLI installs (pointer stub, methodology doc set, slash
+  commands, agents, skills, MCP entry, tree launcher, IDE wiring), every
+  thing it never does (write `.mcp.json` brain entry, scaffold entry-point
+  artifacts, create brain root, ask backend-specific values), every flag it
+  doesn't accept, the warning shape, and per-category follow-up surfaces.
+  This is a comprehensive feature spec, not a description.
+  Traces to: `description` field | Brevity Contract caps + Forbidden content (CLI flag enumerations, file paths, MCP key strings)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-- [ ] **src/cli/init/index.ts:258-259 (warningSkipped filter)** — `exists`
-      (byte-identical) results are excluded from the warning's Skipped files
-      section. The spec's good example (second example run, lines 273-278 of
-      `.aide`) shows five `[exists]` files explicitly listed under
-      `Skipped files (already on disk or write failed — not overwritten)` in
-      the warning block: "The five pre-existing files are explicitly named in
-      the warning so the user can investigate whether their on-disk versions
-      are current." The strategy paragraph (line 159) says "if present record
-      a skip with a stable reason string" and line 165 says the warning lists
-      "every skipped file path" with reason "already present" — confirming
-      `[exists]` results are skips that belong in the warning. The current
-      filter at line 258-259 only routes `skipped-drift` and
-      `skipped-missing-canonical` to `warningSkipped`, silently dropping all
-      `exists` entries from the user-visible summary.
+- [ ] `intent` is ~828 words across multiple paragraphs (cap 100, single
+  paragraph). Restates the description verbatim with added paragraphs about
+  storage-agnostic vocabulary, `.aide/config/` ownership, terminal warning
+  shape, idempotency, and what the user does next. Trim to a single ten-second
+  north-star paragraph naming what the cold-start CLI is *for* — the no-agent
+  install surface — and let outcomes carry the rest.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
 
-      The fix: add `exists` to the `warningSkipped` filter. The suppression
-      rule (strategy line 167: "zero skips and zero deferrals") already
-      handles the fully-clean case correctly — when all artifacts are `[exists]`
-      AND deferredCategories is empty, the warning is suppressed and
-      `Already set up.` is printed. When ANY artifact is `[exists]` AND
-      deferredCategories is non-empty (the common partial-install case),
-      those `[exists]` entries must appear in the Skipped files section.
-      The `types/index.ts` `InstallStatus` type comment at line 7 also
-      needs updating: "Does NOT surface in the warning" should flip to
-      "Surfaces in the warning's skipped list when the warning fires."
+- [ ] `outcomes.desired` has 16 items (cap 4). Each is paragraph length and
+  enumerates exact subdirectory paths (`.claude/commands/aide/`,
+  `.claude/agents/aide/`, `.aide/docs/`, `.aide/bin/aide-tree.mjs`,
+  `.aide/config/brain.aide`), exact MCP keys (`aide`, `aidemd-mcp`), exact
+  flag spellings (`--ide`, `--brain`, `--brain-path`, `--vault-path`,
+  `--brain-root`, `--brain-token`, `--brain-url`, `--brain-name`), exact
+  install-service step names (`aide_init({ category: "brain" })`, "the
+  brain.aide-scaffold InitStep", "the MCP-entry-plan InitStep"), exact
+  YAML null index numbers (`args[3]`), and exact warning prose categories.
+  Compress to 3-4 falsifiable domain criteria.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Forbidden content (file paths, CLI flags, function names, MCP key strings, exact strings, argument indexes)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-      Traces to: `outcomes.desired[2]` (line 106: "records the skip for the
-      final warning") and `outcomes.desired[8]` (line 112: "names every file
-      it skipped (because it already existed)") and the good example at lines
-      273-278.
-      Misalignment: implementation-drift
+- [ ] `outcomes.undesired` has 12 items, all paragraph length, almost all citing
+  retired prior-design names or specific regression classes (`<BRAIN_PATH>`,
+  `<API_TOKEN>`, `<VAULT_ROOT>`, `${BRAIN_PATH}`, `__UNWIRED__`, magic UUIDs,
+  retired step builders by name, exact arg-index forbidden, exact flag-name
+  enumerations, exact MCP key dual-check). Forbidden content per the contract.
+  Trim to 3-4 falsifiable failure modes; let plan and code own the
+  retired-symbol-rejection logic.
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content (retired prior designs, migration history, exact strings)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-- [ ] **src/cli/init/index.ts (IIFE, no parseIde call)** — `--ide <choice>`
-      is named as a recognized flag in outcomes.desired at line 111, in the
-      help text (line 328), and in the deferred-categories string (line 44),
-      but no `parseIde()` function exists and the IIFE never reads or acts on
-      `--ide`. This means: (a) IDE is permanently deferred regardless of
-      whether the flag was supplied, (b) `Already set up.` is structurally
-      unreachable because deferredCategories always contains at least the IDE
-      entry, and (c) outcomes.desired (line 109: "when the user supplies
-      `--ide <choice>`, the CLI applies the IDE configuration for that choice")
-      is violated.
+- [ ] `## Context` is ~600+ words (cap ~150). Recapitulates the cold-start gap,
+  the agent-bandwidth contrast, the methodology layer enumeration, the
+  brain-layer-as-deferred argument, and the YAML-null-as-structural-signal
+  story. All of this duplicates content already in `src/.aide` and the
+  (rewritten) project root.
+  Traces to: `## Context` | Brevity Contract caps + Sibling-redundancy
+  Misalignment: spec-bloat, spec-gap
+  Category: Brevity, Sibling-redundancy
 
-      The fix requires: a `parseIde(argv)` function alongside `parseVaultPath`,
-      an IDE-application step in `runInit` (analogous to the brain.aide
-      scaffold step), and a `deferredCategories(vaultPath, ide)` signature
-      that omits the IDE string when `--ide` was supplied. When both
-      `--vault-path` AND `--ide` are supplied and all artifacts exist,
-      `deferredCategories` returns `[]`, `renderWarning` returns `""`, and
-      `Already set up.` is printed — the idempotency contract at outcomes.desired
-      line 115-116.
+- [ ] `## Strategy` has ~10 paragraph-length decisions (cap ~5 ≤80 words each).
+  Each decision is multiple thousand words and encodes implementation
+  contracts: which `InitStep` to apply, which to skip, which flag values to
+  accept, MCP merge logic, file-presence-check shape, JSON parse-error abort
+  contract, terminal warning rendering details. These are plan-level.
+  Traces to: `## Strategy` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-      IDE application itself is inherently framework-specific (Zed, VS Code,
-      Cursor) and will require its own design; this issue tracks the flag-
-      parsing and deferred-list gap that blocks the `Already set up.` path
-      even in the absence of a full IDE application implementation.
+- [ ] `## Good examples` and `## Bad examples` reproduce full terminal output
+  blocks with exact prose, exact warning ASCII borders, exact category labels,
+  exact follow-up surface names. Per the contract, examples should be 2-3
+  brief pattern illustrations, not byte-faithful UI mockups.
+  Traces to: `## Good examples`, `## Bad examples` | Brevity Contract caps + Forbidden content (exact strings)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
 
-      Traces to: `outcomes.desired[7]` (line 111: recognized flags include
-      `--ide <choice>`), `outcomes.desired[5]` (line 109: `--ide` applies
-      IDE configuration), `outcomes.desired[9]` (line 113: `Already set up.`
-      when no categories remain deferred), and outcomes.desired (line 116:
-      "no categories remain deferred" requires `--ide` path to resolve IDE).
-      Misalignment: plan-gap
+- [ ] Sibling redundancy with `src/.aide` and the (rewritten) project root:
+  the YAML-null-as-unwired-slot signal, the `--brain <integration>` no-backend-value
+  rule, the `.aide/config/` ownership boundary, the four-state brain status
+  vocabulary, the visible-command-boundary invariant for sync, the
+  `mcpServers["brain"]` no-write rule — all are restated verbatim from
+  parents. Push to parents; this leaf should commit only to what's specific
+  to the cold-start surface.
+  Traces to: outcomes, Strategy, Bad examples | Sibling-redundancy doctrine
+  Misalignment: spec-gap
+  Category: Sibling-redundancy
+
+### Carry-forward (real implementation issues, still open)
+
+- [ ] `src/cli/init/index.ts:258-259 (warningSkipped filter)` — `exists`
+  (byte-identical) results are excluded from the warning's Skipped files
+  section. The spec's good example shows `[exists]` files explicitly listed
+  in the warning, but the current filter routes only `skipped-drift` and
+  `skipped-missing-canonical` to `warningSkipped`. This is real
+  implementation-drift that should land in a future plan; survives the
+  brevity rewrite because the underlying contract ("CLI reports skipped
+  files in the warning") is a falsifiable domain outcome.
+  Traces to: outcomes about per-category warning content
+  Misalignment: implementation-drift
+
+- [ ] `src/cli/init/index.ts (no parseIde call)` — `--ide <choice>` is named
+  as a recognized flag in outcomes and help text, but no `parseIde()` exists
+  and the IIFE never reads `--ide`. IDE is permanently deferred regardless
+  of flag, so `Already set up.` is structurally unreachable. Real plan-gap
+  (no plan implements `--ide`); survives brevity rewrite if outcomes preserve
+  the "supplying `--ide` resolves the IDE deferral" contract.
+  Traces to: outcomes about flag handling and idempotency
+  Misalignment: plan-gap
 
 ## Retro
 
-### Schema-collapse build phase (2026-04-26)
+This spec is the most extreme bloat in the tree because it tried to be a
+single-document recipe for the cold-start CLI — every flag, every artifact,
+every warning category, every retired regression class, every step builder.
+The result is a 71KB spec for a CLI that orchestrates a dozen file writes.
 
-Steps 1-9 of plan.aide executed cleanly. All plan checkboxes are checked,
-77/77 tests pass, typecheck is clean, and the three verifications in step 9
-(grep for stale paths, grep for stale launcher strings, tests) all pass. The
-phase successfully collapsed deferred categories from three items to two
-(Brain wiring unified, IDE remaining), moved the brain.aide path constant to
-`.aide/config/brain.aide` across all five files, updated all test fixtures,
-updated `--help` text, and added the regression guard (test 5e) for the
-`.aide/config/` ownership boundary.
+The strategist treated negative-example density as a quality signal — the more
+bad shapes the spec rules out by name, the safer the outcome. The Brevity
+Contract's outcomes-purpose test is the right defense: most of those
+negative examples (literal sentinel names, retired step builders, forbidden
+arg-index introspection, forbidden flag list) are caught by unit tests and
+type checks; they belong in test code with comments, not in spec outcomes.
 
-The two carry-forward issues above were out of scope and pre-existed the
-phase. They were documented in the prior todo.aide (item #3 for the exists-
-in-warning gap; the `--ide` gap was implicit in the `deferredCategories`
-design). Neither was regressed by this phase.
-
-What these items teach about the pipeline:
-
-**exists-in-warning (issue 1):** This is the third cycle this issue has
-survived without being fixed. It originates from a deliberate plan-time
-decision in an early cycle: the implementor read the spec's good example,
-noted that `exists` entries appear in the warning, then explicitly decided
-"bytes already match canonical so no action is needed" and excluded them.
-This is the canonical plan-overrides-spec failure mode — the plan reasoned
-away a spec requirement without flagging it as a deliberate departure. Each
-subsequent plan (including the schema-collapse plan) correctly scoped to
-its work without picking up this pre-existing carry-forward. The fix is
-small (a one-line filter change plus a type comment update) and should be
-bundled into the next plan that touches the warning path.
-
-**`--ide` gap (issue 2):** The CLI's `--ide` flag has been in the help text
-and deferred-category strings since the schema-collapse spec was written, but
-no plan has ever included implementing it. This is a plan-gap: the spec
-states it as a recognized flag with behavior, but every plan scoped around
-it as "IDE is out of scope for cold-start." The consequence is that
-`Already set up.` is permanently unreachable and the idempotency contract
-(outcomes.desired line 115-116) cannot be exercised end-to-end. The next
-plan that addresses IDE configuration should pair the flag-parsing step with
-a minimal stub (even a no-op `--ide` handler that removes IDE from deferrals
-and defers the actual configuration step to a future plan) so the
-`Already set up.` path is unblocked.
-
-**Multi-plan dependency chain carry:** The schema-collapse refactor touched
-five prerequisites before this leaf could land, and intermediate states
-(template emits old schema, parser rejects new schema) were briefly in
-conflict. The plan correctly documented prerequisites and blocked on them.
-The cascade pattern (one root-level identifier change ripples through every
-leaf that pinned the old name) is now well-understood in this codebase and
-the retro notes in prior cycles capture it. The lesson that holds: any spec
-change that removes or renames a load-bearing field should trigger an
-immediate downstream alignment pass tagged against every leaf that references
-that field — not a follow-on build cycle.
-
-### Brain-removal rework phase (2026-04-28)
-
-The brain-removal rework landed. Steps 1-9 of plan.aide are all checked.
-All tests pass and typecheck is clean.
-
-Summary of what landed:
-
-- `cli/init` now scaffolds `.aide/config/brain.aide` via the install
-  service's brain category with `--brain <integration>` (defaulting to
-  `obsidian`). The orchestrator calls the install service, locates the
-  brain.aide-scaffold InitStep, applies it via `applySteps`, and discards
-  the MCP-entry-plan InitStep — exactly the `outcomes.desired[1]` contract.
-  (`outcomes.desired[1]`: "Running the CLI also scaffolds
-  `.aide/config/brain.aide` from the bundled template selected by
-  `--brain <integration>`... The CLI obtains the bytes by invoking the same
-  `aide_init({ category: \"brain\" })` install-service path... but applies
-  only the brain.aide-scaffold InitStep — the MCP-entry-plan InitStep is
-  also returned and is deliberately NOT applied here (sync owns that write).")
-
-- Every `<BRAIN_PATH>` placeholder reference is gone from cli/init's source,
-  tests, help text, and deferred-category strings. The bundled obsidian
-  template emits YAML null at the unwired slot; the `[created]` log message
-  reads `"bundled brain template (--brain obsidian default; args[3] is YAML
-  null until /aide:brain config fills it)"` — no literal-string sentinel of
-  any kind. (`outcomes.desired[3]`: "The CLI writes no brain wiring beyond
-  the `brain.aide` template. It does not write a `.mcp.json` brain entry...")
-
-- `writeMcpEntry` shrinks to managing the `aide` key only. The brain-derivation
-  section (readFile of brain.aide, parseBrainAideFromString, interpolateArgs,
-  brainEntry construction, obsidian-delete) is gone. The `managedKeys` set
-  is `new Set(["aide", "aidemd-mcp"])`. Legacy `obsidian` keys in the user's
-  `.mcp.json` survive untouched as user data — legacy-key migration is dropped
-  entirely from the package.
-
-- The forbidden-flag check (`assertNoForbiddenFlags`) fails fast on any
-  `--brain-path`, `--vault-path`, `--brain-root`, `--brain-token`,
-  `--brain-url`, or `--brain-name` flag with a clear error routing to
-  `/aide:brain config`. The `parseBrain` helper validates the integration
-  name against the module-local `BRAIN_INTEGRATIONS` registry (`["obsidian"]`)
-  and fails fast on unknown values.
-
-- `deferredCategories()` is now parameter-less and returns a fixed two-item
-  array: brain wiring (routes to `/aide:brain config` on the first `/aide`
-  run) and IDE configuration (re-run the CLI with `--ide <choice>`). No
-  `<BRAIN_PATH>` framing in either entry.
-
-- All tests were rewritten to the new contract. The unit test file
-  (`index.test.ts`) covers the full 6d-i through 6d-xi regression guard
-  matrix. The integration test file (`index.integration.test.ts`) covers
-  7c-i through 7c-vii including forbidden-flag and unknown-brain-value
-  fast-fail paths against real disk.
-
-The two carry-forward issues above (exists-in-warning gap, --ide flag-parsing
-gap) were out of scope for this plan and are unchanged by it. They remain
-open as items 1 and 2 of `## Issues` for the next build phase.
+Recommended sequence: rewrite this leaf AFTER the project root and `src/.aide`
+have been pruned, because both parents currently restate brain-layer doctrine
+this spec leans on. Once the parents own brain-layer invariants, this leaf
+can shrink to "no-agent terminal install of the methodology layer plus the
+bundled brain template scaffold; deferred surfaces named in a final warning."
+The two carry-forward implementation issues survive the rewrite as
+plan/implementation work.

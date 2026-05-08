@@ -1,6 +1,6 @@
 ---
 scope: cli
-status: aligned
+status: misaligned
 description: >
   Terminal-native two-panel TUI for humans to browse and inspect the .aide intent tree of any project without opening individual files or running MCP tools.
 intent: >

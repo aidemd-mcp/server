@@ -7,11 +7,13 @@ Verify actual output against the intent spec. This is the QA agent phase — the
 ## Checklist
 
 - [ ] Read the intent spec (`.aide` or `intent.aide`) in the target module
+- [ ] Read `brief.aide` if present — the architectural-commitments file. Use it to clarify what valid output looks like at the structural level when an outcome is ambiguous, and to verify the implementation didn't quietly diverge from a committed contract. **You read `brief.aide`; you do not modify it.**
 - [ ] Focus on the `outcomes` block specifically:
   - Does the actual output satisfy every item in `outcomes.desired`?
   - Does the actual output trip any item in `outcomes.undesired`?
-- [ ] Check for hidden failures — outputs that pass tests but violate intent, missing edge cases the spec names, anti-patterns the spec warned against
+- [ ] Check for hidden failures — outputs that pass tests but violate intent, missing edge cases the spec names, anti-patterns the spec warned against, implementation diverging from `brief.aide` commitments
 - [ ] Use judgement. If an output sounds wrong, reads wrong, or misses the point of the intent paragraph, flag it even when no specific outcome rule is named
+- [ ] What you do NOT verify: items already enforced by the type system, by unit tests, or by code review — those run on every commit. Your concern is the failure mode none of them catches: technically valid output that violates intent
 - [ ] Produce a `todo.aide` next to the spec. Use `aide_scaffold` with type `todo` if none exists yet. Format:
   - **Frontmatter:** `intent` (which outcomes are violated), `misalignment` (array of pipeline stages where intent was lost — `spec-gap`, `research-gap`, `strategy-gap`, `plan-gap`, `implementation-drift`, `test-gap`)
   - **`## Issues`** — each issue gets:

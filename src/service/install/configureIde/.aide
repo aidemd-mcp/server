@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/configureIde
-status: aligned
+status: misaligned
 description: >
   IDE integration helpers that make .aide files render as Markdown in Zed (via
   settings patch) and VS Code and forks (via bundled .vsix extension install).

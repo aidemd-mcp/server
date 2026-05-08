@@ -1,0 +1,84 @@
+---
+description: >
+  Brevity-sweep audit of `src/tools/info/.aide` — description ~249 chars (just over cap), intent ~249 words (2.5x cap), 13 desired outcomes; body Strategy enumerates the `outdated` field plus brain-state union member-by-member.
+intent: >
+  aide_info is the boot-time precondition reporter. Spec is bloated because
+  it documents both the staleness-detection contract and the brain-state
+  forward, with 13 desired outcomes each restating one slice of the response
+  shape. Most outcomes are unit-testable invariants.
+misalignment:
+  - spec-bloat
+---
+
+## Issues
+
+- [ ] `description` is 249 chars (just over cap 200). Trim to ≤200.
+  Traces to: `description` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `intent` is 249 words (cap 100). Restates description with added
+  paragraphs about state membership, no-stat-invariant, name-as-metadata
+  rule, store-in-future-name rationale.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `outcomes.desired` has 13 items (cap 4); each is paragraph length.
+  Items 5-9 each describe one of the four brain status states by name.
+  Items 10-12 enumerate the no-`backend`, no-`rootPath`, no-`invalid-path`
+  field rejection rules — restating the closed-vocabulary invariant from
+  the parent buildBrainState spec. Compress.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Sibling-redundancy + outcomes-purpose test
+  Misalignment: spec-bloat
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `outcomes.undesired` has ~14 paragraph-length items enumerating retired
+  regressions (the `backend` field, the `rootPath` field, the `invalid-path`
+  state, drift auto-resolution, conflating `no-brain-aide` with `no-mcp-entry`).
+  Forbidden content.
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] `## Context` is ~400 words (cap ~150). Recapitulates the boot-sequence
+  context, the staleness-vs-brain-state split, the passive-reporter
+  invariant, the user-owned-config-vs-derived-mcp-json relationship.
+  Traces to: `## Context` | Brevity Contract caps + Sibling-redundancy
+  Misalignment: spec-bloat
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `## Strategy` has 9 paragraph-length decisions (cap ~5). Each restates
+  one slice of the contract: independent fields, staleness-detection-shape,
+  buildBrainState-fully-delegated, four-state vocabulary, `no-brain-aide`-distinct-from-`no-mcp-entry`,
+  `mcp-drift`-as-hard-halt, no-`backend` field, no-`rootPath` field,
+  no-mutation. Most are restatements of buildBrainState's contract.
+  Traces to: `## Strategy` | Brevity Contract caps + Sibling-redundancy
+  Misalignment: spec-bloat
+  Category: Brevity, Sibling-redundancy
+
+- [ ] `## Good examples` and `## Bad examples` reproduce JSON return shapes
+  with exact brand strings, exact server version numbers, exact path strings,
+  exact store-name strings. Forbidden content (exact strings).
+  Traces to: examples sections | Forbidden content
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] Sibling redundancy with `src/service/buildBrainState/.aide`: the
+  four-state vocabulary, the no-stat invariant, the no-auto-repair
+  contract, the never-throws guarantee, the no-`backend`-field, the
+  no-`rootPath`-field — all restated from the buildBrainState sibling.
+  This is a forwarder; it should commit to "forwards `buildBrainState`'s
+  state union unchanged" and let buildBrainState own the contract.
+  Traces to: outcomes, Strategy | Sibling-redundancy doctrine
+  Misalignment: spec-gap
+  Category: Sibling-redundancy
+
+## Retro
+
+aide_info is one of the best examples in the tree of a forwarder that
+restates its delegate's contract. The fix is structural: this spec
+commits to "the orchestrator's boot probe; reports staleness via
+`.aide/versions.json` comparison; forwards `buildBrainState`'s state
+union unchanged" and lets the sibling own the brain-state contract.
+~70% of current outcomes vanish under that prune.

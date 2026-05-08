@@ -1,6 +1,6 @@
 ---
 scope: src/service/buildBrainState
-status: aligned
+status: misaligned
 description: >
   Read-only brain-state detector — consumes `.aide/config/brain.aide` via
   parseBrainAide as the source of truth, returns `no-mcp-entry` immediately

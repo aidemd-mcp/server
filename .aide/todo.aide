@@ -1,110 +1,208 @@
 ---
 description: >
-  Combined QA + alignment findings against `.aide/readme.aide` and the README.md it governs.
+  Project-root brevity sweep — `.aide/intent.aide` is ~2,000 lines of paragraph-length outcomes, retired prior designs, type signatures, and exact strings that compound into the heaviest cascade of bloat in the tree. Wholesale rewrite required.
 intent: >
-  Two independent finding tracks against `.aide/readme.aide`:
-  (1) QA finding from the README rewrite — Quick Start npx command omits @latest
-  (preserved from prior QA pass);
-  (2) Alignment finding from /aide:align — the spec hardcodes a six-tool count
-  and enumerates the tool roster, both of which contradict ancestor `src/.aide`
-  and root `.aide/intent.aide` rules forbidding count-pinning and roster
-  enumeration. The actual MCP tool surface is now eight tools (the six listed
-  plus `aide_info` and `aide_inspect`), and the README spec's enumeration is
-  silently stale.
+  Audit the project root spec against the Brevity Contract. Every cap is
+  exceeded by 5-15x and forbidden content saturates frontmatter and body.
+  Most brain-layer doctrine duplicates what `src/.aide` and the brain-related
+  submodule specs already say, so the rewrite is also a sibling-redundancy
+  prune — push brain-layer narrative downward, leave the project root with
+  only what every descendant truly inherits.
 misalignment:
-  - plan-gap
+  - spec-bloat
   - spec-gap
 ---
 
 ## Issues
 
-- [ ] **README.md:25** — Quick Start block uses `npx @aidemd-mcp/server init` without `@latest`. The spec requires `@latest` on all npx invocations ("use `npx -y @aidemd-mcp/server@latest` rather than a bare package name. The bare name uses a locally cached version if one exists"). The plan carried this omission forward (plan.aide line 34 shows `npx @aidemd-mcp/server init` without `@latest`), meaning the gap originated at planning, not implementation.
-      Traces to: `.aide/readme.aide` outcomes.undesired[4] ("A config block using a bare package name without @latest, which silently serves a stale cached version to users who have previously installed any version") | Misalignment: `plan-gap`
+- [ ] `description` is ~2,617 chars (cap 200) — a single paragraph enumerating
+  the six body-section names, marker token vocabulary, the `(string | null)[]`
+  type signature, the arg-index slot meaning for the bundled default, the
+  `--brain` flag default, sentinel sentinels, and the install vs `/aide:brain config`
+  partition. None of this belongs in `description`.
+  Traces to: `description` field | Brevity Contract caps + Forbidden content (type signatures, exact strings, CLI flag enumerations, marker tokens)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-- [ ] **`.aide/readme.aide` Context lines 81-83** — The Context paragraph hardcodes a tool count and enumerates the canonical roster: "The server currently ships six tools (`aide_discover`, `aide_read`, `aide_scaffold`, `aide_validate`, `aide_init`, `aide_upgrade`) plus a `plan.aide` file type. With six tools, full parameter documentation is feasible..." The actual surface is now eight tools — the six listed plus `aide_info` and `aide_inspect` (both registered in `src/index.ts` and surfaced through the handshake). The Context paragraph's reasoning ("six tools is small enough that every parameter can be documented... ten or fewer tools") cascades into the Strategy decision to "Document every tool with full parameters" — a decision that may or may not still hold at eight tools, but the spec gives the reader no way to know because the count is silently stale.
-      Traces to:
-        - `src/.aide` outcomes.undesired[6] ("A spec, test, or description that pins a specific count of tools or enumerates the tool roster as part of the contract. The count is an implementation detail of the current methodology snapshot, not an invariant — encoding it guarantees drift the moment a new lifecycle phase is added.")
-        - `.aide/intent.aide` outcomes.undesired[3] ("A canonical doc that describes behavior the server does not actually deliver. Aspirational docs are worse than missing docs, because missing docs do not lie.") — the README spec's "six tools" enumeration is the reverse failure mode: the doc describes an old surface the server has since outgrown, and a downstream README written from this spec will under-document the actual tooling.
-      Misalignment: `spec-gap`
+- [ ] `intent` is ~513 words (cap 100) and restates the description verbatim with
+  added paragraphs about delegation flow, install behavior, and slot semantics.
+  Trim to a single ten-second north-star paragraph naming what this repo is
+  *for* — methodology authoring + MCP delivery — and let outcomes carry the rest.
+  Traces to: `intent` field | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
 
-- [ ] **`.aide/readme.aide` outcomes.desired[1]** — The desired outcome says "The tools section documents every tool with full parameter lists in the canonical MCP README format... so a developer evaluating the server knows exactly what capabilities they get before installing." This outcome inherits the Context's six-tool enumeration by reference: "every tool" is bounded by whatever the Context counts, and the Context counts six. Any README produced from this spec will document six tools and silently omit `aide_info` and `aide_inspect`, leaving evaluating developers unaware of two real capabilities. The drift is silent because the outcome reads as exhaustive ("every tool") while the spec internally pins the meaning of "every" to a stale count.
-      Traces to:
-        - `src/.aide` outcomes.desired[1] ("Every tool description is complete enough to teach the convention it invokes on its own. An agent reading only the tool list learns what `.aide` files are...") — a README that documents six of eight tools fails this principle for the two omitted tools.
-        - `src/.aide` outcomes.undesired[6] (same count-pinning rule as above)
-      Misalignment: `spec-gap`
+- [ ] `outcomes.desired` has 21 items (cap 4). Each outcome is a paragraph-length
+  essay naming exact identifiers, type signatures, marker tokens, file paths,
+  arg-index numbers, sentinel string lists, status enum membership counts, and
+  framework-internal symbols (`provisionBrain`, `parseBrainAide`, `buildBrainState`,
+  `interpolateArgs`, `obsidianBrainAideTemplate`, `writeMcpEntry`, etc.). Compress
+  to 3-4 domain success criteria a QA agent could falsify against an output
+  artifact, not against compiler/test-level invariants.
+  Traces to: `outcomes.desired` | Brevity Contract caps + outcomes-purpose test (most items are code-level invariants the type system enforces)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-### Active (alignment pass 2026-04-25 — root revision: brain-aide.md methodology doc out of sync with new schema)
+- [ ] `outcomes.undesired` has 16+ items, all paragraph-length, almost all citing
+  retired prior-design names (`<BRAIN_PATH>`, `__UNWIRED__`, `PATH_SLOT_INDEX`,
+  `resolveBrainRoot`, `argSlots`, `connector`, `rootPath`, `entryFile`, `tools`,
+  `Hub`-suffix, the four-vs-five state vocabulary, etc.). Migration history and
+  retired prior designs are forbidden content. These belong in git history,
+  PR descriptions, or CHANGELOG, not in a durable spec.
+  Traces to: `outcomes.undesired` | Brevity Contract caps + Forbidden content (migration history, retired prior designs)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-The root `.aide/intent.aide` outcomes.desired commits to "`brain.aide` is a documented AIDE file type sitting alongside `intent.aide`, `plan.aide`, `todo.aide`, and `research.aide` in the canonical methodology — with its own dedicated methodology doc under `.aide/docs/` describing its schema, lifecycle, and the explicit divergence." The doc exists at `.aide/docs/brain-aide.md` but documents the prior schema (`connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools`) with `obsidian-mcp` as the launcher and `.aide/brain.aide` as the file path. Under the new root, the schema collapses to two fields, the path moves, and the launcher renames. The doc is the canonical-doctrine surface every host project receives via `aide_init`; drift here means every new install ships stale doctrine.
+- [ ] `## Context` is ~1,000+ words (cap ~150) and explains the entire brain-layer
+  architecture — six body sections, live-vs-seed split, arg-index slot semantics,
+  null-as-unwired-signal, four-state vocabulary, sync-as-only-mutation, drift
+  semantics, storage-agnostic vocabulary. This is implementation-contract material
+  at best.
+  Traces to: `## Context` | Brevity Contract cap (~150 words)
+  Misalignment: spec-bloat
+  Category: Brevity
 
-- [x] `.aide/docs/brain-aide.md` Format section: renders the YAML example with all five legacy fields (`connector`, `rootPath`, `entryFile`, `mcpServerConfig` referencing `obsidian-mcp` and `${rootPath}`, `tools` block with `read`/`search`).
-  Should collapse to exactly `name` + `mcpServerConfig.{command, args}` with `@bitbonsai/mcpvault` and the path inline byte-for-byte (no `${rootPath}` substitution in the default scaffold).
-  Traces to: `.aide/intent.aide` outcomes.desired (frontmatter contains exactly two top-level fields: `name` + `mcpServerConfig`; default scaffold uses `@bitbonsai/mcpvault`; `mcpServerConfig.args` carries the path inline byte-for-byte).
+- [ ] `## Strategy` has 14+ paragraph-length decisions (cap ~5, ≤80 words each).
+  Most encode implementation contracts — marker token format, the closed `kind`
+  enum, `provisionBrain`'s two-step pipeline shape, the `aide_init` conditional
+  flip — that belong in `plan.aide` or in code. The Strategy-exceeds-5-decisions
+  rule is the explicit signal to **split this scope into child specs**: brain-layer
+  doctrine should live under a dedicated child spec, not at the project root.
+  Traces to: `## Strategy` | Brevity Contract caps + "split, don't expand" rule
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] `## Good examples` and `## Bad examples` together carry 20+ scenarios with
+  embedded YAML/JSON code blocks, exact marker strings, exact path enumerations
+  (`coding-playbook/coding-playbook.md`, `coding-playbook/study-playbook.md`,
+  `coding-playbook/update-playbook.md`, `research/research.md`), exact slot index
+  numbers, full body-section example bytes for the bundled obsidian template.
+  Caps are 2-3 brief examples each; forbidden content rule forbids exact strings,
+  file paths, and format tokens.
+  Traces to: `## Good examples`, `## Bad examples` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `## References` has one ~600-word bullet plus 8 more paragraph-length bullets
+  that repeat rationale across every sibling spec. Per the contract, a `## References`
+  bullet is "path + one-line description of what was drawn." This section as
+  written is half the size of a small spec.
+  Traces to: `## References` | Brevity Contract format
+  Misalignment: spec-bloat
+  Category: Brevity
+
+- [ ] Sibling redundancy: most brain-layer content here (six-section grammar,
+  YAML-null-as-unwired-slot signal, four-state vocabulary, `--brain` flag
+  semantics, `cli/init` no-brain-wiring contract, `cli/sync` null-refusal,
+  arg-index slot semantics) is repeated nearly verbatim in `src/.aide`,
+  `src/cli/init/.aide`, `src/cli/sync/.aide`, `src/service/buildBrainState/.aide`,
+  `src/service/install/provisionBrain/.aide`, `src/service/parseBrainAide/.aide`,
+  and `src/tools/brain/.aide`. The parent re-explains everything every child
+  also explains. Pick one home for each invariant (brain-layer doctrine probably
+  lives under a dedicated brain-layer parent), prune the rest from this root.
+  Traces to: `outcomes`, `## Strategy`, `## Bad examples` | Brevity Contract sibling-redundancy doctrine
+  Misalignment: spec-gap
+  Category: Sibling-redundancy
+
+- [ ] Carry-forward from prior alignment cycle (still relevant after the rewrite):
+  outcomes restate brain.aide methodology-doc commitments that the doc at
+  `.aide/docs/brain-aide.md` did not initially track. Verify the doc still matches
+  the rewritten root after this brevity sweep lands; the per-rewrite re-walk is
+  what closes the doc-drift cascade flagged in `feedback_methodology_doc_must_match_root.md`.
+  Traces to: outcome about brain-aide.md doc existence + methodology-doc cascade
   Misalignment: spec-gap
 
-- [x] `.aide/docs/brain-aide.md` "Frontmatter fields" subsection: documents `connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools` as required fields. With the schema collapse, only `name` and `mcpServerConfig.{command, args}` remain — every other field is removed. The doc must reject the legacy fields (the parser surfaces them as `malformed-frontmatter`).
-  Traces to: `.aide/intent.aide` outcomes.desired (schema is `name` + `mcpServerConfig.{command, args}` only); outcomes.undesired (any frontmatter field whose only consumer is the parser's own validation is rejected).
-  Misalignment: spec-gap
+- [ ] `.aide/handoff.aide` — entire 527-line file is forbidden content (state
+  summary, "where this cycle stopped", anti-regression invariants enumerating
+  retired designs, what-the-next-agent-must-do, open questions). It has no
+  `scope`/`description`/`intent`/`outcomes` frontmatter; it is a session-state
+  artifact. Per the methodology, pipeline-state-during-rework belongs in
+  `session.aide` (added explicitly for this case) or in git history. Recommend
+  retiring the file: promote durable architectural commitments into the rewritten
+  root and brain-layer specs; promote retros to the brain at `process/retro/`;
+  delete the file so future readers don't treat it as durable intent.
+  Traces to: file existence, frontmatter, every body section | Forbidden content (migration history, retired prior designs, pipeline-state commentary)
+  Misalignment: spec-bloat
+  Category: Forbidden-content (entire file)
 
-- [x] `.aide/docs/brain-aide.md` "Substitution surfaces" subsection: pins `${rootPath}` as the load-bearing install-time substitution case. With `rootPath` removed, the engine generalizes to any field name (currently `${name}` is the only resolvable placeholder) and the default scaffold doesn't exercise it at all.
-  Traces to: `.aide/intent.aide` outcomes.desired (default scaffold makes no use of substitution; parser still supports `${...}` for advanced users who want to DRY a value across positions).
-  Misalignment: spec-gap
+### `.aide/readme.aide` brevity findings
 
-- [x] `.aide/docs/brain-aide.md` Lifecycle subsection: describes scaffold creation at `.aide/brain.aide` (legacy path) and includes the `invalid-path` boot state in the drift-detection step. Both are stale.
-  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/brain.aide` is the canonical path; boot states reduce to four with `invalid-path` removed).
-  Misalignment: spec-gap
+- [ ] `.aide/readme.aide` `outcomes.desired` has 5 items (cap 4); items are
+  paragraph length and item 0 enumerates exact MCP client names (Claude Code,
+  Claude Desktop, Cursor, VS Code/Copilot, Windsurf), exact JSON root keys
+  (`mcpServers`, `servers`), and the `@latest` version-pin convention. Per
+  the contract, exact strings, CLI flag enumerations, and per-client config
+  details are forbidden. Outcome should commit to "the README delivers a
+  copy-pasteable config for every supported client without translation"
+  without naming the clients.
+  Traces to: `outcomes.desired` | Brevity Contract caps + Forbidden content (exact strings, CLI/config enumerations)
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
 
-- [x] `.aide/docs/brain-aide.md` (entire doc): every prose mention of the brain.aide path uses `.aide/brain.aide`; should update to `.aide/config/brain.aide`. The user-owned scaffold-once-never-overwritten contract for the `.aide/config/` directory should also be documented here, since the lifecycle subsection covers ownership semantics.
-  Traces to: `.aide/intent.aide` outcomes.desired (`.aide/config/` is the canonical home of user-owned configuration; scaffolded once at `aide_init` if absent, then belong to the user forever).
-  Misalignment: spec-gap
+- [ ] `.aide/readme.aide` `outcomes.undesired` has 6 paragraph-length items
+  enumerating retired/forbidden specifics (`details/summary` HTML, bare
+  package names without `@latest`, PATH-troubleshooting omission). Compress
+  to 3-4 falsifiable failure-mode bullets.
+  Traces to: `outcomes.undesired` | Brevity Contract caps
+  Misalignment: spec-bloat
+  Category: Brevity
 
-- [x] `.aide/handoff.aide` ("Design decisions" #1): "`brain.aide` is the 6th AIDE file type. Lives at `.aide/brain.aide`. Schema: `connector`, `rootPath`, `entryFile`, `mcpServerConfig`, `tools` + a `## Prose` body. No `scope`/`outcomes`/`status` fields."
-  Stale path and stale schema. handoff.aide is a session-log artifact, not an authoritative spec, but it's the file a cold-start agent reads to orient on the prior session's decisions. Letting it carry the old schema means future agents reorient on outdated state. The handoff should be updated to reflect the post-revision schema and path, with the old schema labeled as superseded.
-  Traces to: `.aide/intent.aide` outcomes.desired (path move; schema collapse; field rename).
-  Misalignment: spec-gap
-  **Resolved:** the handoff was rewritten end-to-end before the schema-collapse build cycle. The current handoff has no "Design decisions" section; its body documents the new schema, the new path, and the four-state vocabulary throughout.
+- [ ] `.aide/readme.aide` `## Context` lines 81-83 hardcodes the tool roster
+  ("the server currently ships a small set of tools (`aide_discover`, `aide_read`,
+  `aide_scaffold`, `aide_validate`, `aide_inspect`, `aide_info`, `aide_init`,
+  `aide_upgrade`, `aide_brain`)") and a count-derived feasibility argument.
+  Both are forbidden — count-pinning and roster enumeration are the same drift
+  pattern flagged in `src/.aide`'s carry-forward issue. Removing the count and
+  roster from the README spec's reasoning closes the cascade.
+  Traces to: `## Context` | Forbidden content (CLI/MCP tool name enumerations) + spec-gap (cascading from src/.aide undesired outcomes against count-pinning)
+  Misalignment: spec-bloat, spec-gap
+  Category: Forbidden-content
 
-- [x] `.aide/handoff.aide` followup #3: "Package name on the launcher: `obsidian-mcp` vs `@bitbonsai/mcpvault`." This followup is now resolved by the root revision (the new default IS `@bitbonsai/mcpvault`). The handoff entry should be marked resolved or removed; leaving it as an open followup misleads future agents into thinking the question is still live.
-  Traces to: `.aide/intent.aide` outcomes.desired (default launcher is `@bitbonsai/mcpvault`).
-  Misalignment: spec-gap
-  **Resolved:** the handoff was rewritten end-to-end before the schema-collapse build cycle. The current handoff has no "followups" section; the launcher question is settled and reflected throughout the new content.
+- [ ] `.aide/readme.aide` `## Strategy` enumerates ~12 paragraph-length decisions
+  including specific badge URLs, specific section ordering rules, specific
+  per-client config snippets, exact npx flag combinations (`-y`, `@latest`),
+  PATH-troubleshooting recipes. Cap is ~5 decisions ≤80 words each. Strategy
+  should hold the why-this-shape decisions; the what-each-section-must-contain
+  belongs in code or in a README template.
+  Traces to: `## Strategy` | Brevity Contract caps + Forbidden content
+  Misalignment: spec-bloat
+  Category: Brevity, Forbidden-content
+
+- [ ] `.aide/readme.aide` `## Good examples` and `## Bad examples` reproduce
+  full markdown READMEs verbatim with exact JSON config blocks, exact bash
+  commands, exact badge image URLs, exact tool-doc Markdown. Per the contract,
+  examples should be brief and pattern-illustrative, not byte-faithful
+  templates. The README itself is the right home for these literals; the spec
+  documents the shape, not the contents.
+  Traces to: `## Good examples`, `## Bad examples` | Forbidden content (exact strings, exact JSON shapes)
+  Misalignment: spec-bloat
+  Category: Forbidden-content
+
+- [ ] Carry-forward: prior cycle flagged Quick Start npx command missing
+  `@latest` (plan-gap) and Context lines 81-83 hardcoding stale six-tool count
+  (spec-gap). The bloat sweep above subsumes the spec-gap by removing the
+  enumeration entirely. The `@latest` plan-gap is a downstream effect of the
+  spec being too prescriptive — the spec should commit to the version-pinning
+  invariant once and let the plan apply it consistently across surfaces.
+  Traces to: README.md Quick Start | Misalignment: plan-gap (subsumed by removing exact-CLI-string from spec)
 
 ## Retro
 
-The first issue (Quick Start `@latest`) is plan-level: the planner read the
-`@latest` requirement as scoped only to JSON config blocks and did not apply
-it to the `npx @aidemd-mcp/server init` CLI command. That retro is preserved
-unchanged from the prior QA pass.
+This spec was written by treating the project root as the place where every
+invariant must be restated *for safety*. The result exemplifies every
+anti-pattern the Brevity Contract was added to forbid — paragraph-length
+description, paragraph-length outcomes, retired-prior-design enumerations,
+exact strings, type signatures, arg-index numbers, file path enumerations,
+marker tokens — and a cascade where every descendant spec restates the parent.
 
-The second and third issues are spec-level alignment drift that should have
-been caught when `aide_info` and `aide_inspect` were added to the server. The
-exact same drift pattern is already flagged at `src/todo.aide` against
-`src/.aide` outcomes.desired[0] — the count and roster enumeration drift hit
-two specs simultaneously, but the realignment fix landed in neither. The
-README spec's Context paragraph and outcomes.desired[1] share the same blast
-radius: any new tool added to the surface silently invalidates both the
-count and the implicit "every tool" scope without any signal to the spec
-author.
+The bloat traces to the spec-writer not enforcing caps mid-interview and not
+suggesting child-spec decomposition for the brain layer. The strategist
+compounded it by encoding pipeline-mechanism decisions in Strategy paragraphs
+instead of leaving them in `plan.aide`. The aligner role was missing entirely.
 
-What would have caught this earlier:
-- An aide-aligner pass after every `src/index.ts` registration change. The
-  prior QA log on `src/.aide` already names this gap ("Any commit that adds
-  a new `case` to the `CallToolRequestSchema` handler in `src/index.ts`
-  should trigger a review of `src/.aide` outcomes.desired[0]") — the
-  alignment cascade up to `.aide/readme.aide` was missed because no agent
-  walked beyond the immediate parent.
-- A spec-writer rule against numeric tool counts and roster enumerations
-  in any spec under the project. The root `.aide/intent.aide` and parent
-  `src/.aide` both forbid these encodings; the README spec inherited the
-  rule but encoded the exact pattern the rule warns against. The aligner
-  needs to catch these inheritance violations on every alignment pass.
-
-### Active cycle (2026-04-25 — root revision: methodology doc + handoff out of sync)
-
-The root `.aide/intent.aide` revision settled five interlocking decisions (path move to `.aide/config/`, launcher rename, schema collapse, `connector` → `name`, `invalid-path` removal) that cascade through every spec downstream. The methodology doc `.aide/docs/brain-aide.md` is the canonical-doctrine surface that ships with `aide_init` and teaches every host project the file format — it must agree with the root, but it currently documents the prior schema.
-
-The handoff at `.aide/handoff.aide` describes a refactor that COMPLETED with the prior schema, so its design-decisions block and its followups are now historically accurate-but-superseded. Future cold-start agents reading the handoff will reorient on outdated state unless the handoff is updated to flag the supersession.
-
-This is the same root-architectural-shifts pattern from `feedback_root_architectural_shifts.md`: a major root revision leaves the trunk surfaces (handoff, methodology docs) un-updated, and the drift accumulates as peer-level violations no single leaf carries.
-
-What would have caught this earlier: `/aide:align` should follow root revisions immediately, before any handoff or methodology-doc consumer can re-cite the old shape. The methodology doc's load-bearing role (every `aide_init` ships it) makes this drift especially expensive — it propagates to every new host install on the next release.
+Recommended sequence: **wholesale rewrite, top-down**. Root first, then push
+the brain-layer narrative down into a single child spec and let `src/.aide`
+and the brain-related leaves prune their restatements. The project's actual
+root commitments are smaller than this spec admits: methodology authoring as
+the single source of truth, two MCP delivery channels (handshake + install),
+and progressive disclosure as the delivery shape. Everything else cascades.

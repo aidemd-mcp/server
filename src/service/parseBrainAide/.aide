@@ -1,5 +1,6 @@
 ---
 scope: src/service/parseBrainAide
+status: misaligned
 description: >
   Single canonical reader for `.aide/config/brain.aide` — parses the two-field
   YAML frontmatter (`name` + `mcpServerConfig`) and extracts the six required

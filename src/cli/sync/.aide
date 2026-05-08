@@ -1,5 +1,6 @@
 ---
 scope: src/cli/sync
+status: misaligned
 description: >
   The `npx aidemd-mcp sync` verb — reads `.aide/config/brain.aide`, takes
   the post-interpolation `mcpServerConfig` from `parseBrainAide`

@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/initContent
-status: aligned
+status: misaligned
 description: >
   Single chokepoint reader for the canonical docs folder — every install-service
   helper requests content through here so docs/ has exactly one reader in the

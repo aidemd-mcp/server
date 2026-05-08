@@ -1,6 +1,6 @@
 ---
 scope: src/tools/info
-status: aligned
+status: misaligned
 description: >
   Lightweight boot-time tool that reports both AIDE artifact staleness (local versions vs. shipped manifest) and brain precondition state as a four-state tagged union (ok, no-brain-aide, no-mcp-entry, mcp-drift) so the orchestrator can branch on each.
 intent: >

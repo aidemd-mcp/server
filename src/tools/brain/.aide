@@ -1,5 +1,6 @@
 ---
 scope: src/tools/brain
+status: misaligned
 description: >
   Runtime brain entry-point tool — when an agent reaches for the brain mid-task,
   takes an optional `kind` discriminator (`"orientation" | "config"`, default
