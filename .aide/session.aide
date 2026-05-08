@@ -14,26 +14,80 @@ for the full specification of this artifact.
 
 ---
 
-## Current cycle: spec-bloat methodology refactor (set 2026-04-29, mid-rework)
+## Current cycle: lean-pipeline recovery (set 2026-05-07)
 
-Two intertwined workstreams in flight:
+Active branch: `feat/lean-pipeline-recovery`. Recovers a multi-session
+methodology refactor that was lost when `aide:upgrade` overwrote
+uncommitted canonical docs. Two phases landed today; both pushed to
+GitHub. A third phase (sweep the existing leaf specs to navigation-stub
+form against the new doctrine) is queued and not yet started.
 
-1. **Tighten the AIDE methodology itself** — add a Brevity Contract, introduce
-   `brief.aide` as a per-module ephemeral pre-read, repurpose `session.aide`
-   as the root pipeline-position log, flip `plan.aide` and `todo.aide`
-   lifecycles to ephemeral (deleted post-QA by a maintainer agent), narrow
-   the forbidden-content list to true implementation contracts and admit
-   domain vocabulary explicitly, set whole-file size guidance (~150 target,
-   ~175 refactor signal), and update `/aide:refactor` with a `--specs`
-   batched cascade-aware sweep mode.
+### Phase 1 — replay Session 10's lost edits (DONE, commit `c27c166`)
 
-2. **Apply the tightened methodology to every existing spec in the repo** —
-   wholesale top-down rewrite. Root and trunk are done; ~24 leaves remain.
+Restored the Brevity Contract layer and the brief.aide / session.aide
+ephemeral artifacts:
 
-The previous cycle (brain-config + update-playbook rework) landed before
-this one. Its anti-regression invariants are listed below as the **current
-architectural state of the brain layer**, which the slimmer leaf specs being
-written this cycle must accurately reflect, not contradict.
+- `aide-spec.md` Brevity Contract section (caps, forbidden content,
+  domain vocabulary, split triggers); File Types table includes
+  `brief.aide` and `session.aide`; `plan.aide` and `todo.aide` marked
+  ephemeral (deleted by maintainer post-QA).
+- `aide-template.md` Brevity warning + per-section caps in the inline
+  comments.
+- `plan-aide.md` / `todo-aide.md` Lifecycle "Retained" → "Deleted by
+  maintainer agent".
+- `todo-aide.md` `spec-bloat` row added to misalignment values.
+- `index.md` adds `brief-aide.md` + `session-aide.md` entries.
+
+Already-on-disk Session-10 work consolidated into the same commit:
+new `brief-aide.md` and `session-aide.md` doctrine docs; root
+`.aide/session.aide` (this file) replaces legacy `handoff.aide`;
+agents updated for the brief.aide protocol; orchestrator boot
+sequence expanded; root `intent.aide` and `src/.aide` rewritten as
+pure business intent / delivery shape (96% / 89% reductions);
+per-module `.aide` and `todo.aide` reductions; CLAUDE.md gains AIDE
+tools quick-reference and the npx-from-source-dir gotcha.
+
+### Phase 2 — strategist becomes optional (DONE, commit `3165f64`)
+
+The pipeline gains a major shape: synthesize is no longer the default
+path. Most modules are navigation stubs.
+
+- Stages 2 (Research) and 3 (Synthesize) are now conditional, gated on
+  the spec-writer's two new return signals: **Research needed (yes/no)**
+  and **Strategy needed (yes/no)**. Default both to NO.
+- New routing decision table after Stage 1 maps signals to next stage.
+- Stage 4 (Plan) splits into **Shape A** (synthesize ran — body sections
+  filled, `brief.aide` exists) and **Shape B** (synthesize skipped —
+  frontmatter-only spec; orchestrator passes user implementation
+  context to architect verbatim).
+- Resume Protocol updated: frontmatter-only spec without `plan.aide`
+  defaults to Plan, asks user before routing to Synthesize.
+- "just plan it" recognized as explicit intent that skips synthesize.
+- `aide-spec.md` "Body sections (required)" → "Body sections
+  (conditional)". When present, all five appear together (no partial
+  bodies). Body sections persist when filled, like frontmatter.
+- `aide-template.md` instructs writers to delete the entire body block
+  when synthesize will not run.
+- Spec-writer outcome caps fixed at 3-6 (matches aide-spec.md).
+- Strategist all-or-nothing rule: if invoked, fill all five sections;
+  escalate to research rather than producing a thin body. Context cap
+  150 → 250 words, Strategy 5 → 7 decisions to match aide-spec.md.
+- Architect Shape A vs Shape B branching. Reads `brief.aide` only if
+  it exists. Creates `brief.aide` in Shape B only when commitments
+  surface; most simple Shape-B modules don't need one.
+
+### Phase 3 — leaf-spec sweep against new doctrine (PENDING)
+
+The Apr 29 sweep had marked ~24 leaves pending and paused awaiting a
+batching-strategy choice. Today's Phase 2 changes invalidate part of
+that pending work — many of those leaves are simple enough to live as
+frontmatter-only navigation stubs now, not as full bodies. The right
+sweep is no longer "trim each body to 150 lines" but "decide per leaf:
+keep body or strip to navigation stub."
+
+Not started. Awaiting user direction on whether to run this sweep
+within this feature lifecycle or close the feature here and run the
+sweep as a separate `feat/leaf-stub-sweep` cycle.
 
 ---
 
@@ -42,147 +96,103 @@ written this cycle must accurately reflect, not contradict.
 ### 1. Brevity Contract (in `.aide/docs/aide-spec.md`)
 
 - Hard caps: `description` ≤ 200 chars; `intent` ≤ 100 words;
-  `outcomes.desired` and `outcomes.undesired` 3-6 items each, ≤ 2 sentences
-  per item; `## Context` ≤ ~250 words; `## Strategy` ~7 decisions, ~80 words
-  each; `## Good examples` and `## Bad examples` 2-3 each; whole-file target
-  ~150 lines, refactor signal at ~175 lines.
-- **Forbidden content (anywhere in `.aide`):** type signatures; file paths
-  and folder layouts; argument-index or position-based contracts; schema
-  cardinality assertions; migration history, deprecation notes, retired
-  prior designs; long justifications/asides annotating the contract;
-  function-name enumerations standing in for outcomes.
-- **Domain vocabulary IS allowed:** entity names, status enum values, field
-  names that name a domain concept, domain enum values, specific numbers
-  tied to domain decisions. Test: if a non-engineer who knows the business
-  would recognize the term, it belongs.
+  `outcomes.desired` and `outcomes.undesired` 3-6 items each, ≤ 2
+  sentences per item; `## Context` ≤ ~250 words; `## Strategy`
+  ~7 decisions, ~80 words each; `## Good examples` and `## Bad examples`
+  2-3 each; whole-file target ~150 lines, refactor signal at ~175.
+- **Forbidden content (anywhere in `.aide`):** type signatures; file
+  paths and folder layouts; argument-index or position-based contracts;
+  schema cardinality assertions; migration history, deprecation notes,
+  retired prior designs; long justifications/asides annotating the
+  contract; function-name enumerations standing in for outcomes.
+- **Domain vocabulary IS allowed:** entity names, status enum values,
+  field names that name a domain concept, domain enum values, specific
+  numbers tied to domain decisions.
 
-### 2. Level boundaries clarified
+### 2. Body sections are conditional (Phase 2 deepening)
 
-The user's load-bearing insight late in the session: the project root spec
-should carry **pure business intent only** — what AIDE delivers as a product
-to teams adopting it. Implementation choices belong one level down at the
-trunk.
+- Default: spec is **frontmatter-only** — a navigation stub that names
+  the module's intent and outcomes. Most modules stay here.
+- Body sections appear only when the orchestrator routes through
+  synthesize. Synthesize runs only when:
+  - The spec-writer signals "Strategy needed: yes" during Stage 1
+  - OR the user explicitly asks for synthesis ("synthesize", "fill the
+    body")
+- All-or-nothing: when body exists, all five sections (Context,
+  Strategy, Good examples, Bad examples, References) are present.
+  Partial bodies are forbidden.
+- When filled, body sections persist — they are the durable domain
+  contract, not ephemeral. Unlike `plan.aide` / `todo.aide` /
+  `brief.aide` (deleted post-QA), body sections survive the maintainer
+  pass.
 
-| Level | Carries | Avoids |
-|---|---|---|
-| `.aide/intent.aide` (root) | Pure business intent — what teams adopting AIDE actually GET, why this project exists from the user's perspective | "Two delivery channels," "progressive disclosure," "idempotency," "MCP tool + npx CLI," any commitment to a particular delivery mechanism |
-| `src/.aide` (trunk) | Implementation/delivery shape — how the server is built to deliver business value: two channels, no-overlap tool surface, dual-entry install service, client parity, brain-agnostic runtime | Restating root business commitments |
-| Leaves | Each leaf's own slice — only what's specific to that submodule | Restating parent invariants, sibling-redundant content |
+### 3. Stage 1 returns two routing signals
 
-The reference for "what good looks like" is
-`D:\Code\Me\cold-outreach-analyzer\src\service\outreach\sequence\.aide`
-(~150 lines, decision-form Strategy, tight outcomes). Inside this repo, the
-calibration target post-refactor is `src/tools/discover/.aide` (already
-swept clean).
+The spec-writer's Return Format now carries:
 
-### 3. New file types and renames
+- `Research needed: yes/no` — gates Stage 2
+- `Strategy needed: yes/no` — gates Stage 3
 
-- **`brief.aide`** (per-module, NEW). Architect's pre-read. Holds the
-  implementation contracts kicked out of `.aide` by the Brevity Contract:
-  type shapes, exact strings, schema details, cross-module contracts,
-  open questions, mid-flight rework state. **Strategist authors during
-  synthesize**; architect reads + updates during plan; implementor reads
-  during build; QA reads during qa; deleted post-QA by maintainer. Doc:
-  `.aide/docs/brief-aide.md`.
-- **`session.aide`** (root only at `.aide/session.aide`, NEW location +
-  repurpose). Pipeline-position log — this file. Replaces the legacy
-  `handoff.aide` pattern. Survives across the feature lifecycle; deleted
-  only when the feature is fully complete. Doc:
-  `.aide/docs/session-aide.md`.
-- `plan.aide` lifecycle flipped: ephemeral, deleted by maintainer after
-  QA passes (was: retained as audit trail).
-- `todo.aide` lifecycle flipped: ephemeral, deleted by maintainer after
-  QA passes; retro is promoted to brain at `process/retro/` BEFORE
-  deletion.
-- `.aide/handoff.aide` retired and renamed to `.aide/session.aide`.
+The orchestrator's routing decision table maps the four signal
+combinations to the next stage. Default expectation is "no, no" →
+straight to Stage 4 (Plan). The orchestrator passes the user's
+implementation context (gathered during the Stage 1 interview)
+verbatim into the architect's delegation prompt for Shape B plans.
 
-### 4. Doctrine doc updates (`.aide/docs/`)
+### 4. Stage 4 splits into two shapes
 
-- `aide-spec.md` — Brevity Contract section added; File Types table now
-  has 7 rows (added `brief.aide`, repurposed `session.aide`); domain
-  vocabulary section explicit; level-boundary ramifications.
-- `aide-template.md` — header brevity warning + frontmatter inline
-  guidance + body-section guidance comments updated to match new caps.
-- `brief-aide.md` — new doc (renamed from previous `session-aide.md` with
-  rewritten content describing the per-module ephemeral artifact).
-- `session-aide.md` — new doc (root pipeline-log spec).
-- `plan-aide.md` — Lifecycle "Retained" step changed to "Deleted by
-  maintainer agent after QA passes."
-- `todo-aide.md` — Lifecycle "Retained" step changed to "Deleted by
-  maintainer agent after retro promotion." Misalignment value
-  `spec-bloat` description updated to reference whole-file size and
-  narrowed forbidden-content list.
-- `index.md` — `brief-aide.md` link added; `session-aide.md` description
-  updated to root-tracker role.
+- **Shape A — synthesize ran.** `.aide` has body sections; sibling
+  `brief.aide` exists. Architect reads both; UPDATES `brief.aide` as
+  planning surfaces commitments.
+- **Shape B — synthesize skipped.** `.aide` is frontmatter-only; no
+  `brief.aide`. Architect plans from frontmatter + user implementation
+  context (in delegation prompt) + coding playbook. CREATES `brief.aide`
+  only if planning surfaces commitments worth recording (most simple
+  Shape-B modules don't need one).
 
-### 5. Agent + command updates (`.claude/`)
+### 5. Ephemeral artifacts (unchanged from Apr 29)
 
-- `aide-strategist` — now AUTHORS `brief.aide` during synthesize.
-- `aide-architect` — now READS + UPDATES `brief.aide` (does NOT author).
-  If `brief.aide` is missing, escalate back to synthesize.
-- `aide-aligner` — skip-list extended to `brief.aide` and root
-  `.aide/session.aide`; runs three passes (cascade, brevity,
-  sibling-redundancy).
-- `aide-implementor` — all per-module `session.aide` references renamed
-  to `brief.aide`.
-- `aide-qa` — both `session.aide` references renamed to `brief.aide`.
-- Orchestrator (`aide.md`) — boot sequence expanded from 6 to 8 parallel
-  calls (added `brief-aide.md` doc and conditional `.aide/session.aide`
-  read); resume protocol updated; Stage 4 reframed as architect updating
-  brief instead of authoring; Completion section reframed around
-  maintainer handoff with explicit deferred-agent note.
-- `plan.md`, `build.md`, `qa.md` commands updated for the rename + new
-  lifecycle.
+- `plan.aide` — deleted by maintainer agent after QA passes.
+- `todo.aide` — deleted by maintainer after retro promotion to brain.
+- `brief.aide` — deleted by maintainer post-QA when present.
+- Code + git history are the durable artifacts.
 
-### 6. Maintainer agent — DEFERRED
+### 6. Maintainer agent — STILL DEFERRED
 
-- Will own deletion of `brief.aide`, `plan.aide`, `todo.aide` post-QA.
-- Trigger and scope TBD (probably `/aide:maintain`, user-invoked).
-- Not yet defined as an agent file or command.
-- For now the orchestrator's Completion step surfaces the cleanup list
-  to the user instead of executing.
+Will own deletion of `brief.aide`, `plan.aide`, `todo.aide` post-QA.
+Trigger and scope still TBD (probably `/aide:maintain`, user-invoked).
+Not yet defined as an agent file or command. The orchestrator's
+Completion step continues to surface the cleanup list to the user.
 
-### 7. `/aide:refactor --specs` mode (already landed before this session,
-ratified here)
+### 7. Two new file types (carried from Apr 29)
 
-- Aligner runs cascade + brevity + sibling-redundancy passes.
-- Findings tagged `Misalignment: spec-bloat` in `todo.aide`.
-- Rewriter agents spawned per spec (spec-writer for frontmatter, strategist
-  for body), top-down, parents before children, siblings in parallel.
-- Batched diff review per spec, hard rule: do not land any rewrite without
-  explicit per-spec approval (the user is the authority on judgment calls).
-- Aligner re-walks the tree after rewrites land.
+- **`brief.aide`** (per-module). Architect's pre-read. Holds
+  implementation contracts kicked out of `.aide` by the Brevity
+  Contract — type shapes, exact strings, schema details, cross-module
+  contracts, open questions, mid-flight rework state.
+  - **Strategist authors during synthesize** (Shape A only).
+  - **Architect creates during plan** (Shape B only, when commitments
+    surface).
+  - Implementor reads during build; QA reads during qa; deleted
+    post-QA by maintainer.
+  - Doc: `.aide/docs/brief-aide.md`.
+- **`session.aide`** (root only at `.aide/session.aide`). This file.
+  Replaces the legacy `handoff.aide` pattern. Survives across the
+  feature lifecycle; deleted only when the feature is fully complete.
+  Doc: `.aide/docs/session-aide.md`.
 
-### 8. Structural decision: brain doctrine pushed DOWN to leaves
+### 8. `.aide/handoff.aide` is retired
 
-The aligner found the project root and trunk both restated brain-layer
-doctrine that already lived in the brain-related leaves. The fix:
-
-- **Root** carries no brain content (it's pure business intent now).
-- **Trunk (`src/.aide`)** keeps only high-level cross-cutting brain
-  commitments: brain config is user-owned (`.aide/config/brain.aide`),
-  the package never branches on backend identity, `npx aidemd-mcp sync`
-  is the sole `.mcp.json` brain-entry mutation surface, runtime tools
-  treat host-wired files as read-only.
-- **Brain-related leaves** (`parseBrainAide`, `buildBrainState`,
-  `tools/brain`, `cli/sync`, `service/install/provisionBrain`,
-  `tools/info`) each carry only their own slice — four-state probe
-  vocabulary, marker grammar, per-consumer ownership, substitution
-  partitioning, deprecated-field rejection, `.aide/config/` ownership
-  specifics. They do NOT restate the cross-cutting trunk invariants.
-
-A separate brain-layer parent spec was considered and rejected: brain
-code is scattered across `src/cli`, `src/service`, `src/tools` with no
-common subdirectory, and creating a synthetic parent doesn't fit AIDE's
-cascading-intent model. Push-to-leaves is the simpler answer.
+Deleted in Phase 1 commit. Contents have been absorbed into this
+file's anti-regression invariants below.
 
 ---
 
 ## Anti-regression invariants from prior brain-config rework (still current)
 
 These describe the CURRENT shape of the brain layer. Slimmer leaf specs
-written this cycle must accurately reflect them, not contradict them.
-Numbering is preserved from the prior handoff so plan/PR references
+written in any future sweep must accurately reflect them, not contradict
+them. Numbering preserved from the prior handoff so plan/PR references
 remain stable.
 
 1. **`brain.aide` lives at `.aide/config/brain.aide`.** The
@@ -190,10 +200,10 @@ remain stable.
    `aide_init` if absent, never overwritten by `aide_init` or
    `aide_upgrade` afterward. Path itself is the ownership signal.
 
-2. **Default scaffolded launcher is `@bitbonsai/mcpvault`.** The bundled
-   `obsidianBrainAideTemplate()` helper takes no `brainPath` parameter
-   and emits YAML null at `args[3]` (the path slot for the bundled
-   Obsidian default).
+2. **Default scaffolded launcher is `@bitbonsai/mcpvault`.** The
+   bundled `obsidianBrainAideTemplate()` helper takes no `brainPath`
+   parameter and emits YAML null at `args[3]` (the path slot for the
+   bundled Obsidian default).
 
 3. **`brain.aide` frontmatter schema = exactly two top-level fields:**
    `name` (label, never branched on) and `mcpServerConfig`
@@ -246,8 +256,8 @@ remain stable.
     `provisionBrain` MCP-entry-plan call, no brain root directory
     creation, no backend-specific user prompts. Accepts only
     `--brain <integration>` (default `obsidian`) and writes the
-    bundled template with YAML null at unwired slots. Brain wiring is
-    delegated to `/aide:brain config` on first `/aide` run.
+    bundled template with YAML null at unwired slots. Brain wiring
+    is delegated to `/aide:brain config` on first `/aide` run.
 
 13. **Removed `brain.aide` frontmatter fields** (parser actively
     rejects): `connector`, `rootPath`, `entryFile`, `tools`.
@@ -278,13 +288,12 @@ remain stable.
 
 19. **`mcpServerConfig.args` is typed `(string | null)[]`.** Null at
     any index is the explicit, structural, unwired-slot signal. NO
-    literal-string sentinel (`<BRAIN_PATH>`, `<API_TOKEN>`,
-    `__UNWIRED__`, magic UUIDs) anywhere.
+    literal-string sentinel anywhere.
 
-20. **`provisionBrain` shrinks to a TWO-step pipeline:** brain.aide
-    scaffold + MCP entry plan only. The four entry-point artifacts
-    are seeded by the integration's `config` body section prose at
-    `/aide:brain config`, NOT by `provisionBrain`.
+20. **`provisionBrain` is a TWO-step pipeline:** brain.aide scaffold +
+    MCP entry plan only. The four entry-point artifacts are seeded by
+    the integration's `config` body section prose at `/aide:brain
+    config`, NOT by `provisionBrain`.
 
 21. **`buildBrainState` maps null entries in `mcpServerConfig.args`
     to `no-mcp-entry`** structurally (JS `=== null` against parsed
@@ -293,12 +302,11 @@ remain stable.
 
 22. **`cli/sync` refuses null-bearing args at the boundary.** Exits
     non-zero, names the offending index(es), routes user to
-    `/aide:brain config`. Sync is precondition-not-transformation:
-    no coercion, no dropping, no placeholder substitution.
+    `/aide:brain config`. Sync is precondition-not-transformation.
 
-23. **`/aide:brain config` Mode 2** calls
-    `aide_init({ category: "brain" })` UNCONDITIONALLY at the top of
-    every invocation — enables missing-`brain.aide` recovery.
+23. **`/aide:brain config` Mode 2** calls `aide_init({ category:
+    "brain" })` UNCONDITIONALLY at the top of every invocation —
+    enables missing-`brain.aide` recovery.
 
 24. **Per-integration ownership of arg-index slot semantics.** Slot
     meanings live EXCLUSIVELY in the integration's `config` body
@@ -324,63 +332,29 @@ remain stable.
 
 ---
 
-## Sweep progress (top-down)
-
-| Spec | Status | Reduction |
-|---|---|---|
-| `.aide/intent.aide` (root) | DONE | 1,997 → 71 lines (96%) |
-| `src/.aide` (trunk) | DONE | 705 → 76 lines (89%) |
-| `.aide/readme.aide` | pending depth-1 | — |
-| `.aide/docs/.aide` | pending depth-1 | — |
-| `scripts/.aide` | pending depth-1 | — |
-| `src/cli/.aide` | pending depth-2 | — |
-| `src/cli/init/.aide` | pending depth-3 (wholesale) | — |
-| `src/cli/sync/.aide` | pending depth-3 | — |
-| `src/service/install/.aide` | pending depth-3 (wholesale) | — |
-| `src/service/install/configureIde/.aide` | pending depth-4 | — |
-| `src/service/install/initContent/.aide` | pending depth-4 | — |
-| `src/service/install/installAgents/.aide` | pending depth-4 | — |
-| `src/service/install/installMethodologyDocs/.aide` | pending depth-4 | — |
-| `src/service/install/provisionBrain/.aide` | pending depth-4 (wholesale) | — |
-| `src/service/install/scaffoldCommands/.aide` | pending depth-4 | — |
-| `src/service/install/scaffoldReadme/.aide` | pending depth-4 | — |
-| `src/service/install/writeMethodology/.aide` | pending depth-4 | — |
-| `src/service/buildBrainState/.aide` | pending depth-3 | — |
-| `src/service/parseBrainAide/.aide` | pending depth-3 (wholesale) | — |
-| `src/tools/brain/.aide` | pending depth-3 | — |
-| `src/tools/info/.aide` | pending depth-3 | — |
-| `src/tools/inspect/.aide` | pending depth-3 (minor) | — |
-| `src/tools/read/.aide` | pending depth-3 (minor) | — |
-| `src/tools/scaffold/.aide` | pending depth-3 (minor) | — |
-| `src/tools/upgrade/.aide` | pending depth-3 (minor) | — |
-| `src/tools/upgrade/buildVersionsMeta/.aide` | pending depth-4 (minor) | — |
-| `src/tools/validate/.aide` | pending depth-3 (minor) | — |
-| `src/tools/discover/.aide` | DONE (calibration target, swept earlier) | — |
-
-Aligner findings live in per-spec `todo.aide` files at each location plus
-`.aide/todo.aide` and `src/todo.aide`.
-
----
-
 ## Where the cycle paused
 
-Just completed `src/.aide` body. Standing by for user decision on the
-batching strategy for the remaining ~24 specs. Four options surfaced (per
-the conversation):
+Phase 1 and Phase 2 are committed and pushed. The PR is open at
+https://github.com/aidemd-mcp/server/pull/new/feat/lean-pipeline-recovery
+(branch `feat/lean-pipeline-recovery`, commits `c27c166` and
+`3165f64`).
 
-- **A.** Per-spec approval each cycle (~24 cycles).
-- **B.** Batch by depth — spawn all rewriters at the same depth in
-  parallel, present the depth as a bundle, land in bulk, descend
-  (~4-5 cycles).
-- **C.** Spawn everything in parallel, single bulk review at the end
-  (~1-2 cycles).
-- **D.** Hybrid — per-spec approval for wholesale rewrites
-  (`src/cli/init/.aide`, `src/service/install/.aide`,
-  `src/service/install/provisionBrain/.aide`,
-  `src/service/parseBrainAide/.aide`); bulk approval per-depth for
-  trim-only specs (~7-8 cycles).
+The `.mcp.json` in this repo is set to dev form
+(`node ./dist/index.js`) so the next session loads local code rather
+than the published npm version. The aide MCP server may need to be
+restarted by the user before the next `/aide` invocation is reliable.
 
-Recommended: **D**. Awaiting user choice.
+Phase 3 — the leaf-spec sweep against the new doctrine — is queued
+but not started. Decision points awaiting the user:
+
+1. **Run Phase 3 in this feature** or close the feature here and open
+   a separate `feat/leaf-stub-sweep` cycle?
+2. **Per-leaf decision rule** for the sweep: which leaves keep their
+   filled body, which strip to navigation stub? Default: strip unless
+   the body genuinely earns its place per the Brevity Contract's
+   "domain reasoning that survives a rewrite" test.
+3. **Maintainer agent design** — still deferred. Defer until after
+   Phase 3 finishes, then design and ship.
 
 ---
 
@@ -388,33 +362,31 @@ Recommended: **D**. Awaiting user choice.
 
 If picking up cold:
 
-1. **Read this file in full** and the rewritten root + trunk
-   (`.aide/intent.aide`, `src/.aide`) to understand the new level
-   boundaries.
-2. **Read `.aide/docs/aide-spec.md`** — Brevity Contract is the new
-   ground truth for every rewrite. Section: "Forbidden content" and
-   "Domain vocabulary IS allowed" are load-bearing.
-3. **Read `.aide/docs/brief-aide.md`** — the new per-module ephemeral
-   artifact.
-4. **Confirm the batching choice with the user** (A / B / C / D above)
-   before spawning rewriters at scale.
-5. **Resume from the Sweep progress table** — pick the next pending
-   spec at the shallowest depth. Run the spec-writer for frontmatter
-   first, present diff for approval, land. Then the strategist for
-   body, present, land. Descend.
-6. **Calibration targets:**
-   `D:\Code\Me\cold-outreach-analyzer\src\service\outreach\sequence\.aide`
-   (external reference, ~150 lines) and
-   `D:\Code\Me\aidemd-mcp\src\tools\discover\.aide` (internal, swept).
-7. **Per-spec todos** are in each module's `todo.aide` file (written by
-   the aligner during the sweep). Read them; they enumerate the bloat
-   items each rewrite must address.
-8. **Push brain doctrine DOWN.** The leaves carry their own slice; do
-   not let leaf specs restate trunk-level invariants. Cross-cutting
-   brain commitments live ONLY at trunk.
-9. **Cascading intent rule:** a child spec narrows its parent. If a
-   sentence in a child spec could be copy-pasted to a sibling without
-   editing, it belongs at the parent (or already lives there).
+1. **Read this file in full.** It supersedes any earlier `session.aide`
+   or `handoff.aide` content.
+2. **Read `.aide/docs/aide-spec.md`** — the Brevity Contract, the
+   conditional body-sections rule, and the navigation-stub default
+   are the new ground truth.
+3. **Read `.claude/commands/aide.md`** — the orchestrator routing
+   logic (Shape A vs Shape B, the post-Stage-1 decision table) is
+   load-bearing for any pipeline run.
+4. **Read `.aide/docs/brief-aide.md`** — the per-module ephemeral
+   artifact spec.
+5. **For new specs:** default to frontmatter-only navigation stubs.
+   Synthesize earns its place only when the *domain* (not the
+   implementation) has decisions worth persisting alongside the spec.
+6. **For Shape B plans:** orchestrator must pass the user's
+   implementation context to the architect verbatim in the delegation
+   prompt — that's the architect's substitute for `brief.aide`.
+7. **Calibration target for full-body specs:**
+   `D:\Code\Me\cold-outreach-analyzer\src\service\outreach\.aide`
+   (~140 lines, decision-form Strategy, tight outcomes). For
+   navigation stubs, no body at all is the right shape.
+8. **The repo's `.mcp.json` is dev-form** (`node ./dist/index.js`).
+   `cli/init`'s `writeMcpEntry` will overwrite this back to the npm
+   form if `aide_init` runs against this repo. A safeguard for that
+   is open work — `cli/init` should detect when the project IS the
+   `@aidemd-mcp/server` package and skip writing the aide entry.
 
 ---
 
@@ -423,18 +395,19 @@ If picking up cold:
 1. **Maintainer agent design.** Trigger (`/aide:maintain` user-invoked
    vs. scheduled), autonomy (auto-delete vs. flag-for-review), what
    signals "dead" (all checkboxes done + git commit landed + age
-   threshold + explicit user marking). Defer until the bloat sweep
-   finishes; then design and ship.
-2. **Brain-layer parent spec.** Aligner suggested an intermediate
-   parent for brain doctrine; rejected this cycle in favor of
-   push-to-leaves (no common subdirectory). Re-evaluate if leaf-level
-   sibling-redundancy persists after this sweep.
-3. **`.aide/handoff.aide` content disposition.** The brain-rework state
-   summary that USED to live in handoff.aide has been absorbed into
-   this file as anti-regression invariants 1-28. The retro from that
-   cycle should be promoted to brain at `process/retro/` before this
-   `session.aide` is eventually deleted (when the spec-bloat refactor
-   feature closes). Not yet promoted.
+   threshold + explicit user marking). Defer until Phase 3 finishes;
+   then design and ship.
+2. **`cli/init` self-recognition guard.** When run against this repo,
+   `writeMcpEntry` overwrites the dev-form `aide` MCP entry with the
+   canonical npm form. Add a check: if the project's `package.json`
+   declares `name: "@aidemd-mcp/server"`, skip the aide entry write.
+3. **Phase 3 batching strategy.** Per-leaf manual decision vs.
+   bulk-default-to-stub-then-restore-bodies-on-review. Awaiting user
+   direction.
+4. **Retro from the prior brain-config cycle** has not yet been
+   promoted to `process/retro/` in the brain. Should be done before
+   `session.aide` is eventually deleted (when the lean-pipeline
+   recovery feature closes).
 
 ---
 
@@ -443,8 +416,8 @@ If picking up cold:
 - Every fresh agent reads this file before acting in this repo.
 - Two methodology-mandated pause points stay unconditional regardless
   of mode: after spec-writer returns frontmatter (Stage 1) and after
-  architect returns `plan.aide` (Stage 4) — present to user, wait for
-  explicit approval before advancing.
+  architect returns `plan.aide` (Stage 4). Stage 3 (synthesize), when
+  it runs, also pauses to present the filled body.
 - One implementor per numbered plan step, fresh context each time.
 - The orchestrator NEVER writes substantive files itself; it delegates
   every phase to the appropriate specialized agent. Direct edits to
