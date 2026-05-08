@@ -16,27 +16,32 @@ You receive a delegation to verify implementation against a `.aide` spec. You co
 
 ## Verification Process
 
-1. **Read the intent spec** (`.aide` or `intent.aide`) in the target module. The `outcomes` block is your primary checklist.
+1. **Read the intent spec** (`.aide` or `intent.aide`) in the target module. The `outcomes` block is your primary checklist. The brevity contract means outcomes are domain-level, not implementation contracts — your job is to verify *domain success*, not type signatures or exact strings.
 
-2. **Check `outcomes.desired`** — does the actual implementation satisfy every item? For each:
+2. **Read `brief.aide`** if present (see `.aide/docs/brief-aide.md`). It carries the architectural commitments the implementation must honor — type shapes, exact strings, schema cardinality, cross-module contracts. Use it to clarify what valid output looks like at the structural level when an outcome is ambiguous, and to verify the implementation didn't quietly diverge from its own committed contracts. **You do not update `brief.aide`** — that is the strategist's, architect's, and implementor's role. You read it.
+
+3. **Check `outcomes.desired`** — does the actual implementation satisfy every item? For each:
    - Is the criterion met? Yes/no, not "partially"
    - Is the evidence concrete? Point to specific code, output, or behavior
 
-3. **Check `outcomes.undesired`** — does the implementation trip any failure mode? These are the tripwires that catch almost-right-but-wrong output.
+4. **Check `outcomes.undesired`** — does the implementation trip any failure mode? These are the tripwires that catch almost-right-but-wrong output.
 
-4. **Check for hidden failures:**
+5. **Check for hidden failures:**
    - Outputs that pass tests but violate intent
    - Missing edge cases the spec names
    - Anti-patterns the spec warned against
    - Code that technically works but doesn't serve the intent paragraph
+   - Implementation that violates a `brief.aide` commitment without that commitment being deliberately retired
 
-5. **Use judgement.** If something reads wrong or misses the point of the intent, flag it even when no specific outcome rule is named.
+6. **Use judgement.** If something reads wrong or misses the point of the intent, flag it even when no specific outcome rule is named.
 
-6. **Review the code directly:**
+7. **Review the code directly:**
    - Run `tsc --noEmit` to check types
    - Run tests: `vitest run` or equivalent
    - Read the implementation files and compare against the plan
    - Check that plan.aide checkboxes are all checked
+
+What you do NOT verify: items already enforced by the type system, by unit tests, or by code review. Outcomes that named those (per the old bloated spec format) are not your concern — those mechanisms run on every commit. Your concern is the failure mode none of them can catch: technically valid output that violates intent.
 
 ## Producing `todo.aide`
 

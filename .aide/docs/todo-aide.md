@@ -26,6 +26,7 @@ Each entry in `misalignment` names the pipeline stage where intent was lost in t
 | `plan-gap` | The architect missed a step, made a wrong structural call, or left ambiguity the implementor had to improvise around |
 | `implementation-drift` | Code deviated from the plan — the implementor made an unauthorized architectural decision or misread a step |
 | `test-gap` | Tests passed but didn't cover the failure mode — green tests, wrong output |
+| `spec-bloat` | The spec violates the [Brevity Contract](./aide-spec.md#brevity-contract) — over-cap fields, paragraph-length outcomes, sprawling body sections, whole-file size past the ~175-line refactor signal, or forbidden content (type signatures, file paths, argument indexes, schema cardinality, migration history, function-name enumerations standing in for outcomes) |
 
 Multiple values are allowed. A single QA run often surfaces issues from different pipeline stages.
 
@@ -74,4 +75,4 @@ src/service/<feature>/
 2. **Consumed** by the implementor during `/aide:fix` — one item per session.
 3. **Re-validated** by QA after fixes land — may produce a new `todo.aide` if issues remain.
 4. **Retro promoted** by the orchestrator to `process/retro/` in the brain when all items are checked.
-5. **Retained** in the module as an audit trail.
+5. **Deleted** by the maintainer agent after QA passes — the issues have been fixed; retro is promoted to brain at `process/retro/` BEFORE deletion. The fixes themselves are the durable artifact; the todo list was scaffolding for the fix loop.

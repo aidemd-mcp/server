@@ -109,7 +109,7 @@ without re-deriving it.
 1. **Created** by the architect agent during `/aide:plan`.
 2. **Presented to the user** for approval before `/aide:build` begins. The orchestrator pauses here.
 3. **Consumed** by the implementor during `/aide:build` — checkboxes track progress.
-4. **Retained** after build completes — the plan is an audit trail of what was decided and why.
+4. **Deleted** by the maintainer agent after QA passes — the code is the durable artifact, the plan was scaffolding for the build. Future audit goes to git history + the code itself.
 
 ## Placement
 

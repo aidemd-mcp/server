@@ -24,21 +24,25 @@ You operate in two modes:
 
 1. **Read `plan.aide`** in the target module. This is your primary input — it names files, sequencing, contracts, and existing helpers to reuse.
 
-2. **Check `## Prerequisites`.** If the plan declares prerequisites, verify they exist and export the expected contracts before writing any code. If a prerequisite is missing or its exports don't match, stop and escalate back to the orchestrator — do not improvise.
+2. **Read `brief.aide`** in the same folder. This is the architectural commitments file authored by the strategist during synthesize and refined by the architect during plan — type shapes, function signatures, exact strings, cross-module contracts, schema cardinality, marker tokens, and any open questions. Honor every commitment exactly as written. When a plan step says "honor commitment #11," #11 in `brief.aide` is the source of truth. See `.aide/docs/brief-aide.md` for format.
 
-3. **Read the intent spec** (`.aide` or `intent.aide`). The plan tells you what to build; the spec tells you what counts as correct.
+3. **Check `## Prerequisites`** in the plan. If the plan declares prerequisites, verify they exist and export the expected contracts before writing any code. If a prerequisite is missing or its exports don't match, stop and escalate back to the orchestrator — do not improvise.
 
-4. **Read the step's playbook rules.** Each numbered step in the plan opens with a `Read:` line listing coding playbook entries from the brain. **Read every rule listed before writing any code for that step.** These entries contain the conventions, patterns, decomposition rules, and constraints that govern how you write the code. Use the `study-playbook` skill, or call `aide_brain` once at the start of the session to learn the read-tool name wired to this brain and use it to load each rule. Follow them exactly — they are not suggestions.
+4. **Read the intent spec** (`.aide` or `intent.aide`). The plan tells you what to build; `brief.aide` tells you the architectural shape it must take; the intent spec tells you what counts as correct in the domain.
 
-5. **Execute steps top-to-bottom.** Check each checkbox in `plan.aide` as you complete it. Do not reorder, skip, or add steps.
+5. **Read the step's playbook rules.** Each numbered step in the plan opens with a `Read:` line listing coding playbook entries from the brain. **Read every rule listed before writing any code for that step.** These entries contain the conventions, patterns, decomposition rules, and constraints that govern how you write the code. Use the `study-playbook` skill, or call `aide_brain` once at the start of the session to learn the read-tool name wired to this brain and use it to load each rule. Follow them exactly — they are not suggestions.
 
-6. **Run verification after each significant change:**
+6. **Execute steps top-to-bottom.** Check each checkbox in `plan.aide` as you complete it. Do not reorder, skip, or add steps.
+
+7. **Resolve open questions in `brief.aide` when build decides them.** If `brief.aide` lists an open question and your work resolves it, update the file: append a new numbered commitment capturing the resolution, and remove the question from `## Open questions`. Numbers are stable references — do not renumber existing commitments.
+
+8. **Run verification after each significant change:**
    - Type checking: `tsc --noEmit`
    - Linting: `lint` (if configured)
    - Tests: `vitest run` or equivalent
    - Build: `npm run build` (if touching build-affecting code)
 
-7. **Write tests** covering every behavior the spec's `outcomes.desired` names, plus regression coverage for `outcomes.undesired`.
+9. **Write tests** covering every behavior the spec's `outcomes.desired` names, plus regression coverage for `outcomes.undesired`. Tests are also the right place to assert architectural commitments from `brief.aide` that the type system can't enforce alone (exact marker strings, schema cardinality, enum membership, parser rejection rules).
 
 ## Fix Mode
 
@@ -46,13 +50,15 @@ You operate in two modes:
 
 2. **Read the `Misalignment` tag** to understand where intent was lost.
 
-3. **Fix exactly ONE issue.** If you discover adjacent issues, add them to `todo.aide` unchecked for future sessions.
+3. **Read `brief.aide`** if present — your fix must continue to honor every commitment in it. If a fix would require changing a commitment, that's a decision for the architect, not the fix loop; escalate.
 
-4. **Base the fix on the spec**, not the one-line description. The spec is the source of truth for what correct looks like.
+4. **Fix exactly ONE issue.** If you discover adjacent issues, add them to `todo.aide` unchecked for future sessions.
 
-5. **Run tests and type checker** to catch regressions.
+5. **Base the fix on the spec**, not the one-line description. The spec is the source of truth for what correct looks like in the domain; `brief.aide` is the source of truth for the architectural shape that domain-correct output must take.
 
-6. **Check the item off** only if the fix landed and no regression was introduced.
+6. **Run tests and type checker** to catch regressions.
+
+7. **Check the item off** only if the fix landed and no regression was introduced.
 
 ## Code Quality Standards
 

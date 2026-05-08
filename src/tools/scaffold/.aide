@@ -1,198 +1,24 @@
 ---
 scope: src/tools/scaffold
 status: aligned
-description: >
-  Naming-enforcement tool that creates .aide files with correct filenames and applies the auto-rename rule when research enters a folder so agents cannot corrupt the spec layout.
+description: Naming-enforcement tool that creates spec files under their canonical names and applies the auto-rename rule when research enters a folder.
 intent: >
-  aide_scaffold is the pen — the tool an agent calls to create new .aide
-  files. Its reason for existing is not "write a file"; it is "enforce
-  the naming conventions so an agent can never accidentally corrupt a
-  folder's spec layout". The auto-rename rule (`.aide` becomes
-  `intent.aide` the moment `research.aide` is introduced) is the rule
-  agents are most likely to get wrong by hand, and this tool is where
-  that rule is implemented once and trusted forever.
+  scaffold is the pen agents call to create new spec files. Its reason
+  for existing is not "write a file"; it is to enforce the naming
+  conventions so an agent can never accidentally corrupt a folder's
+  spec layout. The auto-rename rule — the default single-spec form
+  must give way to the explicit name the moment research enters the
+  folder — is the rule agents are most likely to get wrong by hand,
+  and this tool is the one place that rule is implemented and trusted.
 outcomes:
   desired:
-    - type=intent in a folder with no research.aide creates `.aide`,
-      the default form.
-    - type=intent in a folder that already contains research.aide
-      creates `intent.aide` instead, because the default `.aide` form
-      is not allowed to coexist with a sibling research spec.
-    - type=research creates `research.aide` and, if a `.aide` already
-      exists in the folder, renames it to `intent.aide` in the same
-      call — the default form cannot survive the introduction of
-      research.
-    - type=both creates both `intent.aide` and `research.aide`,
-      applying the same rename-if-needed logic so the final state is
-      always `intent.aide` + `research.aide`, never `.aide` +
-      `research.aide`.
-    - type=todo creates `todo.aide` unconditionally. todo specs are
-      orthogonal to the intent/research pair and have no naming
-      interaction with them.
-    - type=plan creates `plan.aide` unconditionally. plan specs are
-      orthogonal to the intent/research pair and have no naming
-      interaction with them.
-    - Re-running scaffold on a folder that already contains the
-      requested spec reports "no changes needed" and leaves every file
-      on disk untouched.
-    - Every action the tool takes — create, rename, skip — is reported
-      back as a plain-English line the agent can read and paste into a
-      commit message.
-    - "The MCP tool description registered for `aide_scaffold` at server-registration
-       time is an auditable contract surface, not commentary. It accurately
-       enumerates the five `type` values (`intent`, `research`, `both`, `todo`,
-       `plan`), states the auto-rename rule (`type=research` renames an existing
-       `.aide` to `intent.aide` in the same call, and `type=intent` produces
-       `intent.aide` instead of `.aide` when `research.aide` exists), names the
-       never-coexist invariant between `.aide` and `intent.aide`, names the
-       skip-existing-files safety property, and notes that `todo.aide` and
-       `plan.aide` are orthogonal to the intent/research naming machinery — so an
-       agent that reads only the description forms the same expectations it would
-       form by reading this spec. The description, the handler's runtime behavior,
-       and the rest of this spec stay in lockstep; drift between any two of them
-       is a falsifiable QA failure traceable to this outcome."
+    - The caller picks a desired end state for the folder; the tool resolves which canonical name applies and lands the spec under that name. Callers never reason about which form is legal.
+    - When research enters a folder that already holds a default-form spec, the same call renames the default to the explicit form and creates the research spec alongside it. The two-name post-state is reached atomically.
+    - Re-running scaffold against a folder that already holds the requested spec is a no-op and reports as such. Existing files are skipped, never overwritten.
+    - Every action the tool takes is reported as a plain-English line per action so the agent can confirm and cite what changed.
   undesired:
-    - "A scaffold call that creates `.aide` next to an existing
-      `research.aide`. This is the single worst outcome: the folder
-      now contains both `.aide` and `research.aide`, which violates
-      the never-coexist rule, and a future validate run will flag it
-      as a naming conflict. The tool was built to prevent exactly
-      this, and must refuse to produce it."
-    - A scaffold call that overwrites an existing spec. The caller
-      may have meant to create; they did not mean to destroy. An
-      existing file is a skip, not a target.
-    - A scaffold call that produces `.aide` + `intent.aide` in the
-      same folder. These are the same logical spec under two names;
-      having both is corruption.
-    - A scaffold call that renames `.aide` to `intent.aide` when no
-      `research.aide` exists and is not being created. The rename is
-      only correct as a response to research entering the folder. An
-      unprompted rename breaks every reference that pointed at
-      `.aide`.
-    - A scaffold that returns a serialized status object instead of a
-      line-per-action log. The agent reads the actions to confirm
-      what happened; a JSON envelope buries that signal.
-    - "A registered MCP tool description for `aide_scaffold` that teaches a
-       `type` value, naming rule, or behavioral guarantee the handler does not
-       implement or this spec does not define — for example: enumerating a sixth
-       `type` value, omitting one of the five (`intent`, `research`, `both`,
-       `todo`, `plan`), claiming `type=research` does not auto-rename existing
-       `.aide`, claiming the tool overwrites existing files, claiming `todo.aide`
-       or `plan.aide` participate in the rename machinery, or describing the
-       output as a JSON envelope instead of plain-English action lines. Agents
-       read this description at tool-discovery time and decide which `type` to
-       call with and what folder state to expect afterward; teaching the wrong
-       contract there silently corrupts the spec layout the tool exists to
-       protect, regardless of how correct the handler is.
-       Description-vs-handler drift, description-vs-spec drift, and
-       silently-stale description text after a contract change are all the same
-       falsifiable failure."
+    - A scaffold call that lands the default single-spec form in a folder that already holds a research spec, producing the forbidden coexistence the tool was built to prevent.
+    - A scaffold call that produces both the default form and the explicit form in the same folder, or that renames the default to the explicit form when no research is being introduced.
+    - A scaffold call that overwrites an existing spec instead of skipping it. The caller meant to create; destruction is never the intended path.
+    - A scaffold result returned as a serialized envelope instead of one readable line per action, burying the signal the agent reads to confirm what happened.
 ---
-
-## Context
-
-The AIDE naming rules exist so that an agent scanning a folder can
-identify the spec layout from filenames alone. Two rules carry the
-whole convention: `.aide` is the default single-spec form, and
-`.aide` may never coexist with `research.aide` in the same folder —
-whenever research enters a folder, the existing `.aide` must be
-renamed to `intent.aide`. Humans can be trusted to follow this rule
-when they have the full convention loaded in their head; agents
-cannot, because every session starts cold. This tool is where the
-rule is implemented once, so the rest of the system can trust that a
-spec created through scaffold is a spec that obeys the convention.
-`todo.aide` and `plan.aide` sit outside this rename machinery
-entirely — they are orthogonal file types with fixed names that are
-always safe to create without consulting the intent/research layout.
-
-## Strategy
-
-**The type parameter picks the desired end state, not the file
-operations.** The caller says "I want an intent spec here" or "I want
-both"; scaffold figures out which filenames and which renames are
-required to reach that state from whatever the folder currently
-contains. That separation is the whole reason the tool exists: the
-caller should not have to reason about the `.aide`-vs-`intent.aide`
-rule, and the tool is the single place that reasoning lives.
-
-**Rename on research entry, never otherwise.** The only legal
-transition from `.aide` to `intent.aide` is when `research.aide` is
-being introduced to the same folder, because that is the only
-situation in which the default form is no longer allowed. Any other
-rename — speculative, cosmetic, "for consistency" — breaks references
-and is wrong.
-
-**Existing files are skipped, never overwritten.** A call that finds
-the requested spec already in place reports "no changes needed" and
-exits. Overwriting an existing file would be data loss, and the tool
-has no way to tell whether the caller intended it. Safety wins.
-
-**Actions are reported as prose, one per line.** The agent reads the
-report to confirm what scaffold did. A bullet list of actions —
-"Created .aide", "Renamed .aide → intent.aide", "Created research.aide"
-— gives the agent exactly the signal it needs, in the form it can
-paste into a commit message or cite back to the user. No serialized
-envelope.
-
-## Good examples
-
-An agent calls `aide_scaffold` with `type=research` on a folder that
-already contains `.aide`. The response is:
-
-> Renamed .aide → intent.aide
-> Created research.aide
-
-Two actions, reported in order, and the folder is now in the only
-legal `intent.aide` + `research.aide` configuration.
-
-An agent calls `aide_scaffold` with `type=intent` on an empty folder.
-The response is:
-
-> Created .aide
-
-Single action; the folder now contains the default single-spec form.
-
-An agent calls `aide_scaffold` with `type=intent` on a folder that
-already contains `research.aide`. The response is:
-
-> Created intent.aide (research.aide exists, so using explicit name)
-
-The caller asked for "intent"; the tool resolved the ambiguity using
-the naming rule and told the caller exactly which filename it picked
-and why.
-
-An agent calls `aide_scaffold` with `type=plan` on any folder. The
-response is:
-
-> Created plan.aide
-
-The folder's intent/research layout is untouched. `plan.aide` is
-always created under its fixed name regardless of what other specs
-are present.
-
-An agent calls `aide_scaffold` a second time on a folder that is
-already fully scaffolded. The response is:
-
-> No changes needed — files already exist.
-
-Nothing on disk changed. The call is safe to retry indefinitely.
-
-## Bad examples
-
-A scaffold call that writes `.aide` into a folder that already
-contains `research.aide`, producing both. A validator will flag this
-as a naming conflict, but the damage has already been done: the rule
-that this tool exists to enforce has been broken by the tool itself.
-
-A scaffold call that silently overwrites an existing `intent.aide`
-when asked for `type=both`. The caller wanted to ensure both specs
-exist; they did not ask to have their existing intent spec replaced
-with a blank template. The operation is destructive and the caller
-has no way to tell it happened until they open the file.
-
-A scaffold call that returns:
-
-> {"actions":[{"type":"create","file":".aide"},{"type":"create","file":"research.aide"}],"status":"ok"}
-
-The agent now has to parse a schema to find out what happened. The
-report was supposed to be readable; it is now data.

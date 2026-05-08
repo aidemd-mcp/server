@@ -1,183 +1,25 @@
 ---
 scope: src/service/install/initContent
 status: aligned
-description: >
-  Single chokepoint reader for the canonical docs folder — every install-service
-  helper requests content through here so docs/ has exactly one reader in the
-  install subtree.
+description: "Single reader of the canonical doc set for the install subtree, returning content verbatim and owning the registry of named docs and methodology subsets."
 intent: >
-  initContent is the source-of-truth reader for the install service
-  subtree. It is the only helper under the install service that
-  touches the canonical docs folder directly — it knows where the
-  docs live, reads them from disk at call time, and returns their
-  contents verbatim to the consuming helpers that compose and install
-  them. Centralizing docs/ access in one place means a future change
-  to the docs folder's location, layout, or format is a one-file edit
-  rather than a scatter-shot hunt across the install service subtree.
+  initContent is the install subtree's sole reader of canonical content
+  and the sole owner of canonical-name lookup. Every install helper that
+  needs doctrine asks here by name; nobody else opens canonical files
+  themselves. Bytes flow through unmodified — composition, parsing, and
+  any transformation belong to the consumer that has the reasoning to
+  justify each rewrite. Membership in named subsets like the methodology
+  is decided here too, so adding a canonical doc or rescoping a subset
+  is a single-file edit and every consumer picks it up on the next init.
 outcomes:
   desired:
-    - initContent is the sole reader of docs/ within the install
-      service subtree. Every other install-service helper that needs
-      canonical content requests it from here; none of them read
-      docs/ on their own.
-    - Every canonical doc is returned verbatim — no trimming, no
-      reformatting, no summarization, no interpolation. Composition
-      is the caller's responsibility, and happens downstream in
-      writeMethodology, scaffoldCommands, and installMethodologyDocs.
-    - Consumers that operate on a subset of the canonical docs —
-      the methodology subset specifically — enumerate that subset
-      through this helper, not through hardcoded local lists. The
-      name-to-path registry already owns which canonical docs exist;
-      membership of the methodology subset is the same kind of
-      decision and belongs at the same chokepoint. Adding a new
-      canonical methodology doc is a one-file edit here, and every
-      downstream consumer picks it up automatically on the next
-      init.
-    - Reads happen at call time against the live docs folder. The
-      helper is free to cache within a single init invocation, but
-      the returned content must always originate from the disk
-      files under docs/, not from literals baked into this helper's
-      source.
-    - Missing or unreadable canonical docs are a hard failure. The
-      helper surfaces a clear error naming the missing file; it
-      does not substitute a default, a stub, or an empty string.
+    - Every install-subtree consumer that needs canonical content asks initContent for it by name. No other helper under the install subtree opens canonical files directly.
+    - Returned content is byte-identical to the canonical source. Trimming, reformatting, frontmatter stripping, link rewriting, and section extraction are consumer responsibilities.
+    - Named subsets of the canonical content (the methodology subset and any future siblings) are enumerated through this helper. Consumers iterate whatever list comes back rather than maintaining their own membership lists.
+    - Missing or unreadable canonical content is a hard, named failure. The helper never substitutes a default, a stub, or empty content to keep the init flowing.
   undesired:
-    - Two install-service helpers independently reading docs/ instead
-      of going through initContent. Multiple readers multiply the
-      single-source-of-truth surface and invite subtle drift between
-      "what methodology sees" and "what scaffold sees".
-    - A consumer hardcoding its own list of methodology doc names
-      instead of asking this helper for the enumeration. A local
-      array inside installMethodologyDocs or writeMethodology
-      describing which docs count as "the methodology" is a second
-      source of truth for the same decision, and the one that
-      silently misses the next canonical-doc addition will be the
-      one maintained farthest from the registry.
-    - initContent transforming doc content before returning it —
-      rewriting headings, stripping frontmatter, extracting sections,
-      renaming links. Transformation is consumer logic and belongs
-      with the consumer, where the reasoning for each transform can
-      live next to the code that applies it.
-    - "A fallback path that returns hardcoded content when docs/ is
-      missing or unreadable. There is no graceful degradation here:
-      shipping invented content under the guise of the canonical
-      docs is the exact failure mode the architecture exists to
-      prevent."
-    - Doc content held as a literal inside this helper's source
-      "as a performance optimization" or "in case docs/ moves".
-      The single-source-of-truth invariant is absolute; optimizing
-      around it with a duplicate is always wrong.
+    - A second install-subtree reader of the canonical doc set, regardless of motivation. Multiple readers fork the source-of-truth surface and let "what one helper sees" diverge from "what another helper sees".
+    - A consumer maintaining its own list of which docs belong to a named subset. Local membership lists are a second source of truth for the same decision and silently miss the next subset addition.
+    - Doc content baked into this helper's source as literals "for performance" or "in case the canonical location moves". The duplicate is the regression the chokepoint exists to prevent.
+    - Transformation applied here on behalf of consumers — heading rewrites, frontmatter stripping, link normalization, section extraction. Each transform's reasoning belongs next to the consumer that needs it.
 ---
-
-## Context
-
-The parent spec locks in a hard rule: AIDE doctrine lives in docs/,
-and the install service is a renderer. That rule has to be enforced
-somewhere, and the cleanest place to enforce it is at the single
-chokepoint where the install service subtree touches the canonical
-docs. This helper is that chokepoint. Everything above it in the call
-graph either composes or installs; nothing else reads.
-
-Centralizing the read has a second benefit: if docs/ ever moves, its
-layout changes, or a new canonical doc is added, the edit radius is
-one file. A design that scatters `readFile("docs/...")` calls across
-the install-service helpers would pay the cost of that centrality
-every time anything changed about how the canonical source is
-stored.
-
-## Strategy
-
-**Verbatim reads, no transformation.** The helper's only job is to
-return the bytes on disk. It does not parse frontmatter, extract
-sections, normalize whitespace, or rewrite links. Consumers that
-need a transformation own it end-to-end, because the reasoning for
-each transform belongs next to the code that uses the result.
-Keeping this helper transformation-free means there is exactly one
-interpretation of "canonical content" — the file on disk — and no
-ambiguity about where a given rewrite decision was made.
-
-**Sole reader of docs/ by convention and by code review.** The
-other install-service helpers import from initContent and never from
-the filesystem. This is enforced by convention in the current pass
-and by a regression test in the follow-up implementation pass. Any
-future PR that adds a second reader of docs/ under the install
-service subtree is a design regression and should be rejected in
-review.
-
-**Fail loudly on missing source.** Unreadable or missing canonical
-docs raise an error naming the missing file. There is no fallback
-to an embedded default, because any fallback would silently ship
-stale content and defeat the entire point of the chokepoint. An
-init that aborts with "docs/automated-qa.md not found" is a visible
-bug; an init that silently serves a six-month-old copy of the same
-file is an invisible one.
-
-**Lookup by canonical name, not by path.** Consumers ask for the
-methodology doc, the template doc, the QA doc by name; this helper
-owns the mapping from name to file. If docs/ is reorganized, the
-mapping changes in this file and nowhere else. Exposing file paths
-across the interface would leak the folder layout into every
-consumer and lose the centrality benefit.
-
-**Enumeration of named subsets lives here too.** Knowing which
-canonical docs exist is one kind of source-of-truth decision;
-knowing which of those docs make up "the methodology" is the same
-kind of decision, and it lives at the same chokepoint. Consumers
-that operate on the methodology subset ask this helper to
-enumerate it and iterate whatever list comes back, so that adding
-or removing a methodology doc is one edit in the same registry
-that already owns the name-to-path mapping. Any downstream list
-hardcoded to the methodology set would silently drift on the next
-addition — and the farther from the registry the hardcoded list
-lives, the longer the drift stays invisible.
-
-## Good examples
-
-writeMethodology asks initContent for the canonical spec body, the
-template body, and the progressive-disclosure body. initContent
-reads three files from docs/, returns them verbatim as strings, and
-writeMethodology composes the methodology block from the bytes it
-receives. A later edit to any of those three docs propagates to
-every host project's next init with zero changes to writeMethodology
-and zero changes to initContent.
-
-scaffoldCommands asks initContent for the pipeline command
-templates by name. initContent reads the template files from
-docs/commands/aide/ and returns them as a map from canonical name
-to file content. scaffoldCommands writes each one to an `aide/`
-subfolder of the host's command directory without mutating the
-returned strings.
-
-A maintainer moves the canonical docs from docs/ to docs/canonical/.
-They update initContent's internal path resolution in one place.
-No other init helper is touched. The next init run on a host project
-reads the new location, and no host-project-visible behavior
-changes.
-
-## Bad examples
-
-initContent reads `docs/aide-spec.md`, strips the frontmatter,
-removes the top-level H1, and returns the trimmed body. A later
-consumer needs the frontmatter for a different purpose and cannot
-get it, because the reader helped too eagerly. The transformation
-should have happened in the consumer, not the reader.
-
-writeMethodology bypasses initContent and opens `docs/aide-spec.md`
-directly "because it's simpler". initContent is no longer the sole
-reader; a later edit to docs/ (or a rename) breaks one helper and
-not the other; the chokepoint invariant is gone and no single
-review will catch the drift.
-
-initContent catches a read failure on `docs/progressive-disclosure.md`
-and returns an empty string. writeMethodology happily composes a
-methodology block with a missing Progressive Disclosure section.
-The host project installs a partial methodology, the agent reasons
-about the AIDE tiers from the missing material, and no one knows a
-section is gone because the init summary reported success.
-
-initContent is "optimized" by embedding the canonical doc bodies as
-string constants at the top of the file, read once at module load.
-The file's header comment says "this mirrors docs/ for performance;
-edits must be made in both places." The invariant has been inverted
-into a maintenance checklist — and the next maintainer who edits
-docs/ without remembering the checklist ships two sources of truth.

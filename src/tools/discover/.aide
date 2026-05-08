@@ -1,333 +1,57 @@
 ---
 scope: src/tools/discover
-description: Map-making tool that returns spec locations, ancestor intent chains, and misalignment flags
+status: aligned
+description: Map-making tool that returns spec locations, ancestor intent chains, and misalignment flags.
 intent: >
-  aide_discover is the map-making tool — the one an agent calls first to see
-  where .aide specs live in a project before deciding what to read. It must
-  honor progressive disclosure in its own behavior: cheap and shallow when
-  asked for the whole project, detailed and content-aware only when asked to
-  drill into a specific subtree. When given a path, it always returns the
-  ancestor chain from root to target — the cascading intent lineage — so any
-  agent immediately sees the full context it inherits and any misalignment
-  flags along the way. The ancestor chain with descriptions is how agents
-  learn the "walk the tree" protocol — from the tool's output, not from
-  verbose instructions in agent definitions.
+  aide_discover is the tool an agent calls first to orient on a project's intent
+  tree. It is cheap when asked for the whole project map and detailed only when
+  asked to drill into a subtree. A path-scoped call always returns the cascading
+  intent lineage from root to target, so an agent learns inherited context
+  before reading any spec body.
 outcomes:
   desired:
-    - A call with no path returns a project-wide tree map containing file
-      locations and type tags only, with no file content inspected. This is
-      the shallow mode — cheap enough to call on every session start without
-      hesitation.
-    - A call with a path returns the ancestor chain FIRST — every .aide spec
-      from root down to the target leaf, each with its description field —
-      then the detailed subtree of that directory with summaries and anomaly
-      warnings. The ancestor chain is not a separate mode or flag; it is
-      always part of a path-scoped response.
-    - "Each node in the ancestor chain shows: the spec path, the description
-      field value, and the status field if set to aligned or misaligned.
-      An agent reading the chain knows what every ancestor intends and
-      whether alignment has been verified, without opening any of them."
-    - "Specs with status: misaligned are surfaced inline with a visible flag
-      so any agent walking the tree notices drift immediately, without
-      needing to call a separate validation tool."
-    - The tool's description and output shape teach agents the cascading
-      intent protocol by example — agents learn "walk ancestors, then drill
-      subtree" from calling discover, not from paragraphs of instruction in
-      their agent definitions.
-    - Output is a single human-readable tree the agent can scan visually,
-      with type tags, inline summaries only when present, and misalignment
-      flags only when set.
-    - "The MCP tool description registered for `aide_discover` at server-registration
-       time is an auditable contract surface, not commentary. It accurately teaches
-       the path-as-switch two-mode behavior (no path = shallow project-wide map of
-       locations and types only; with path = ancestor-chain-then-subtree deep
-       response), the ancestor chain shape (each ancestor showing description plus
-       alignment status when set), the file-type vocabulary (`.aide`, `intent.aide`,
-       `research.aide`, `plan.aide`, `todo.aide`) and the `.aide`-vs-`intent.aide`
-       never-coexist rule, and the no-content-read invariant of shallow mode — so an
-       agent that reads only the description forms the same expectations it would
-       form by reading this spec. The description, the handler's runtime output
-       shape, and the rest of this spec stay in lockstep; drift between any two of
-       them is a falsifiable QA failure traceable to this outcome. Because this
-       tool's description is *itself* the teaching surface for the cascading-intent
-       protocol, description drift is unusually load-bearing — it does not just
-       misroute calls, it misteaches the entire convention."
+    - A no-path call returns a project-wide tree map with locations and type tags only — cheap enough to call speculatively at session start.
+    - A path-scoped call opens with the ancestor chain (root to target, each carrying its description and any non-default status) before the subtree detail.
+    - Misaligned specs surface inline in the chain so any agent walking the tree notices drift without a separate validation call.
+    - "Output is human-scannable: a tree the agent reads visually, not parses."
   undesired:
-    - A shallow call that reads any file contents. The whole point of the
-      shallow mode is being cheap enough to call speculatively; reading
-      files silently turns it into the deep mode and burns context for no
-      benefit.
-    - A path-scoped call that omits the ancestor chain, forcing the agent
-      to make separate calls or manually walk up the tree to understand
-      inherited context. The ancestor chain is the mechanism that makes
-      cascading intent visible; omitting it defeats the purpose.
-    - An ancestor chain that requires agents to open each ancestor spec to
-      understand what it governs. The description field exists so the chain
-      is self-contained — if an agent needs to aide_read an ancestor just
-      to understand the chain, the description is missing or inadequate.
-    - A deep call that walks the entire project instead of just the requested
-      subtree. Drill-in is a focusing operation; widening it defeats the
-      purpose.
-    - Output that dumps summaries even when they are empty strings, producing
-      ragged tree lines with trailing artifacts.
-    - Misalignment flags that block the pipeline or require immediate action.
-      The flag is informational — it surfaces drift for the agent to report
-      or act on at its discretion.
-    - "A registered MCP tool description for `aide_discover` that teaches a mode,
-       output shape, file type, or behavioral guarantee the handler does not
-       implement or this spec does not define — for example: claiming the shallow
-       mode reads file content or returns summaries, omitting the ancestor chain
-       from the path-scoped response shape, naming a file type the parser does not
-       classify, allowing both `.aide` and `intent.aide` to coexist, claiming
-       misalignment is a blocking error, or omitting one of the five recognized
-       file types. Agents read this description at tool-discovery time and call
-       the tool with the mental model it teaches; because this tool is the teaching
-       surface for the entire AIDE convention, drift here propagates to every
-       agent that ever reads the description. Description-vs-handler drift,
-       description-vs-spec drift, and silently-stale description text after a
-       contract change are all the same falsifiable failure."
+    - The shallow mode reads file contents, silently turning a cheap map call into an unpredictable expense.
+    - A path-scoped call omits the ancestor chain and forces the agent to manually walk upward to reconstruct inherited context.
+    - Misalignment flags block the call or require remediation before the response returns — the flag is informational, never a gate.
+    - Output drowns aligned/misaligned signals in noise — rendering "pending" on every unreviewed spec, trailing em-dashes on empty summaries.
 ---
 
 ## Context
 
-discover is where an agent first meets the AIDE convention in practice.
-Every other tool is called in response to something discover revealed: read
-drills into a spec discover pointed at; scaffold creates into a gap discover
-showed; validate acts on anomalies discover only partially reveals. If
-discover gets its shape wrong, the whole workflow downstream of it pays the
-cost. The discipline of this tool is making its two modes each earn their
-runtime cost.
-
-AIDE specs form a cascading intent tree: a root spec sets project-wide
-intent, and every child narrows its parent. An agent working on a leaf
-module inherits constraints from every ancestor between the root and that
-leaf. Without discover surfacing that lineage, the agent must manually walk
-upward through the filesystem, opening specs one at a time, to reconstruct
-the context it inherits. The ancestor chain solves this by returning the
-full lineage in a single call — each node carrying its description and
-alignment status — so inherited intent is visible before the agent reads a
-single spec body.
-
-The description and status fields are lightweight metadata that make the
-ancestor chain self-contained. A description is a one-liner capturing a
-spec's purpose; an agent reading it knows what an ancestor governs without
-opening it. A status tracks alignment state: pending (default, implicit),
-aligned (verified by the aligner), or misaligned (drift detected by QA).
-Together they let discover's output carry enough signal that the agent can
-decide where to focus without additional reads.
+discover is where an agent first meets the AIDE convention in practice. Every other tool is called in response to something discover revealed. Specs form a cascading intent tree: a root sets project-wide intent and every child narrows its parent, so an agent working on a leaf module inherits constraints from every ancestor between root and leaf. Without discover surfacing that lineage in one call, the agent walks the filesystem upward, opening specs one at a time, to reconstruct what it inherits — replacing that manual walk is discover's whole point.
 
 ## Strategy
 
-**Two modes, one switch: the presence of `path`.** No path means a
-shallow project-wide map — locations and type tags only, no content
-inspected. With a path means a deep subtree scan — ancestor chain first,
-then summaries and anomaly warnings drawn from the files in that subtree.
-The switch is not hidden behind a flag; `path` is the switch, because
-that's the same field the agent is already using to scope its attention.
+**Two modes, one switch — the presence of `path`.** No path means a shallow project-wide map; with a path means a deep subtree scan opening with the ancestor chain. The switch is `path` itself, not a hidden flag, because that is the same field the agent is already using to scope its attention.
 
-**Shallow is cheap on purpose.** The shallow mode exists so an agent can
-call discover at the start of every session without worrying about context
-burn. Reading file contents in the shallow mode would turn a cheap,
-predictable map into an unpredictable expense and force agents to guess
-when it's "safe" to call. The cheapness is the feature. The shallow mode
-does not surface ancestor chains, descriptions, or status — those require
-reading frontmatter, which violates the no-content-read constraint.
+**Shallow is cheap on purpose.** Reading file contents in shallow mode would turn a cheap, predictable map into an unpredictable expense and force agents to guess when it is "safe" to call. The cheapness is the feature that earns the tool a place at every session start.
 
-**Deep mode returns the ancestor chain before the subtree.** When a path
-is provided, the response opens with the ancestor chain — every spec from
-root down to the target, each showing its path, description field value,
-and status if non-default. The chain appears before the subtree detail
-because inherited context must be established before the agent interprets
-the subtree's own specs. This is not a separate mode or optional flag; it
-is always part of a path-scoped response, because a subtree without its
-lineage is a leaf without a branch.
+**Deep mode returns the ancestor chain before the subtree.** Inherited context must be established before the agent interprets the subtree's own specs. The chain is always part of a path-scoped response — never a separate flag — because a subtree without its lineage is a leaf without a branch.
 
-**The ancestor chain walks up, then renders down.** Implementation walks
-from the target path upward through the filesystem to the project root,
-collecting every .aide spec it finds at each directory level. The output
-renders them top-down — root first, target last — because that matches the
-order an agent needs to read inherited intent: broadest context first,
-narrowing toward the module it is about to work on.
+**Description and status make the chain self-contained.** Each ancestor renders with its description and any non-default status, so the agent understands the lineage without opening any spec. Pending (the default) is not rendered — it is the absence of review, not a finding, and showing it everywhere drowns out the meaningful signals.
 
-**Description makes the chain self-contained.** Each ancestor node
-displays its description field — a one-line purpose statement from
-frontmatter. An agent reading the chain should understand what every
-ancestor governs without needing to aide_read any of them. If a spec
-lacks a description field, the chain shows the path with no description
-rather than fabricating one from the intent paragraph or summary. Missing
-descriptions are a signal that the spec needs updating, not a gap for the
-tool to paper over.
-
-**Status is shown only when non-default.** The three states are pending
-(implicit default — spec exists but alignment has not been reviewed),
-aligned (aligner confirmed), and misaligned (QA flagged drift). Pending
-is the absence of a status field and is not rendered — showing "pending"
-on every unreviewed spec would be noise. Aligned and misaligned are shown
-inline next to the spec path. Misaligned specs get a visible flag so drift
-is noticed passively by any agent walking the tree, without requiring a
-separate validation call.
-
-**Misalignment is informational, not blocking.** A misaligned flag in the
-ancestor chain tells the agent that drift has been detected at that level.
-It does not halt the pipeline, reject the call, or force remediation. The
-agent can report it, factor it into its work, or note it for a later QA
-pass. Making it blocking would turn every discover call into a gate check
-and discourage agents from calling discover speculatively.
-
-**Deep is content-aware on purpose.** When the agent has already decided
-where to focus, summaries and anomaly warnings earn their cost. The agent
-is paying for context because it's about to spend context on that subtree
-anyway — summaries let it pick the right spec to read first, and anomaly
-warnings surface problems exactly where the agent is about to make
-changes.
-
-**Let the tool's own behavior teach the pattern.** An agent reading the
-description for discover learns "call with no path for the map, call with
-a path to drill in and see your ancestor chain" — and that pattern is
-cascading intent through progressive disclosure. The agent internalizes
-both shapes from discover's output: the flat map for orientation, and the
-ancestors-then-subtree structure for focused work. This is the only tool
-in the server whose *behavior* is part of what it teaches.
-
-**Render the tree for human eyes, not program parsing.** Unicode
-box-drawing characters, alphabetical sort, one leaf per line, type tag in
-brackets, summary after an em-dash only when present. An empty summary
-collapses to "filename [type]" with no trailing punctuation. The ancestor
-chain uses a distinct visual form — a vertical lineage list, not a tree
-— so agents can distinguish "these are your inherited ancestors" from
-"these are the specs in the subtree you asked about." Status badges
-appear inline after the description when set.
+**Let the tool's own behavior teach the pattern.** An agent reading discover's description learns "call with no path for the map, call with a path to drill in and see your ancestor chain" — and that pattern *is* cascading intent through progressive disclosure. Discover is the only tool whose behavior is part of what it teaches.
 
 ## Good examples
 
-An agent starts a session in an unfamiliar project and calls `aide_discover`
-with no arguments. The response is:
+An agent starts a session in an unfamiliar project and calls `aide_discover` with no arguments. It receives a flat tree of every spec location with type tags and no content read — enough to see the project's spec architecture and decide where to drill in next.
 
-> src/
-> ├── service/
-> │   ├── notifications/
-> │   │   ├── .aide [intent]
-> │   │   └── retryPolicy/
-> │   │       └── .aide [intent]
-> │   └── orders/
-> │       ├── research.aide [research]
-> │       ├── intent.aide [intent]
-> │       └── todo.aide [todo]
-
-Five files, one tree, no summaries, no warnings, no ancestor chains, no
-content reads. The agent now knows the project's spec architecture and
-decides to drill into `src/service/orders` next.
-
-The agent then calls `aide_discover` with path `src/service/orders`. The
-response opens with the ancestor chain, then the subtree detail:
-
-> Ancestor chain:
->   .aide/intent.aide — Canonical home of the AIDE methodology and its MCP delivery server
->   src/.aide — MCP server implementing the two delivery channels [aligned]
->   src/service/.aide — Service modules that compose the business logic layer
->
-> src/service/orders/
-> ├── research.aide [research] — Synthesis of order-completion patterns across common e-commerce platforms
-> ├── intent.aide [intent] — Create orders from validated payloads and emit confirmations
-> └── todo.aide [todo] — 3 unresolved issues from latest audit run
-
-The agent sees three things before it reads a single spec body: (1) the
-project exists to deliver AIDE through an MCP server, (2) the src layer
-is about delivery channels and has been verified as aligned, (3) the
-service layer composes business logic. It now has the full inherited
-context for the orders subtree and can pick which spec to read first.
-
-An agent drills into a deeply nested module and sees a misaligned ancestor:
-
-> Ancestor chain:
->   .aide/intent.aide — Lead intelligence platform for local service businesses
->   src/.aide — Data pipeline orchestration and API surface [aligned]
->   src/service/.aide — Service modules for scoring, enrichment, and outreach [misaligned]
->   src/service/scoring/.aide — Multi-signal lead scoring engine
->
-> src/service/scoring/
-> ├── .aide [intent] — Score leads using weighted digital presence signals
-> └── plan.aide [plan] — 4 of 7 steps completed
-
-The agent notices that `src/service/.aide` is flagged misaligned. It can
-choose to report this finding, factor the drift into its work, or note it
-for a later QA pass — but it is not blocked from proceeding. The flag did
-its job: drift is visible without a separate validation call.
+The same agent then calls `aide_discover` with a path. The response opens with an ancestor chain — three or four lines naming each ancestor, its description, and any alignment status — followed by the subtree of the requested directory. The agent has the inherited context and the focused subtree in a single call.
 
 ## Bad examples
 
-A shallow call that returns this:
+A shallow call that has silently inspected file contents and rendered summaries beside each spec. The map is no longer cheap; agents that called it speculatively just paid for context they did not mean to spend.
 
-> src/
-> ├── service/
-> │   ├── notifications/
-> │   │   ├── .aide [intent] — This module routes notifications through a priority-based queue...
+A path-scoped call that returns only the subtree, omitting the ancestor chain. The agent now has to walk upward and call discover again at every parent level to reconstruct what would have been one call.
 
-The shallow mode has silently read file contents. It's no longer cheap; it
-no longer behaves the way the description promised; and the agent that
-called it speculatively just spent context it didn't mean to spend.
-
-A path-scoped call that returns the subtree detail but no ancestor chain:
-
-> src/service/orders/
-> ├── research.aide [research] — Synthesis of order-completion patterns
-> ├── intent.aide [intent] — Create orders from validated payloads
-> └── todo.aide [todo] — 3 unresolved issues
-
-The agent can see what's in the orders subtree but has no idea what the
-project, src, or service layers intend. It must now make separate calls or
-manually walk upward to reconstruct the inherited context. The ancestor
-chain exists to prevent exactly this — omitting it forces the agent into
-the manual tree-walk the tool was built to eliminate.
-
-An ancestor chain that shows paths but no descriptions:
-
-> Ancestor chain:
->   .aide/intent.aide
->   src/.aide
->   src/service/.aide
-
-The agent sees the lineage but learns nothing from it. To understand what
-each ancestor governs, it must aide_read all three — turning a single
-discover call into four calls. The description field exists to make the
-chain self-contained; omitting descriptions defeats that purpose.
-
-An ancestor chain that shows "pending" on every spec that has no status:
-
-> Ancestor chain:
->   .aide/intent.aide — Canonical AIDE methodology [pending]
->   src/.aide — MCP server delivery channels [pending]
->   src/service/.aide — Service modules [pending]
-
-Pending is the default — the absence of a review, not a finding. Showing
-it on every unreviewed spec drowns out the specs that actually have a
-meaningful status. Aligned and misaligned are signals; pending is noise.
-
-A deep call scoped to the orders subtree that walks the full `src/`
-tree anyway, because "the user probably wanted the whole project." Drill-in
-is a focusing operation; widening it ignores the agent's explicit scope
-request and turns every deep call into the worst of both modes.
-
-A misaligned flag that blocks the discover response or returns an error:
-
-> Error: ancestor src/service/.aide is misaligned. Resolve before proceeding.
-
-Misalignment is informational. The flag exists so agents notice drift; it
-does not exist to gate their work. Making it blocking discourages calling
-discover speculatively and turns a map-making tool into a validator.
-
-A tree where summaries were extracted as empty strings but still printed:
-
-> ├── .aide [intent] —
-> ├── intent.aide [intent] —
-
-The trailing em-dashes tell the agent nothing and waste the visual space
-that would otherwise help it spot the meaningful entries.
+An ancestor chain that shows paths without descriptions. The agent sees the lineage but must `aide_read` every ancestor to understand it — turning the one call discover was built to make sufficient back into N calls.
 
 ## References
 
-No external research notes were used. All context was drawn from:
-- `.aide/intent.aide` -- project-level cascading intent model and single-source-of-truth invariant that discover must surface
-- `src/.aide` -- delivery channel architecture and the teaching-through-tooling constraint that shapes discover's output
-- `src/tools/discover/index.ts` -- current two-mode implementation confirming the path-as-switch pattern and shallow/deep split
-- `src/tools/discover/buildTree/index.ts` -- current tree rendering approach: type-sorted, box-drawing, summary-after-em-dash convention
+- `.aide/intent.aide` — project-level cascading-intent model and single-source-of-truth invariant discover must surface.
+- `src/.aide` — delivery-channel architecture and the teaching-through-tooling constraint that shapes discover's output shape.

@@ -1,227 +1,27 @@
 ---
 scope: src/service/install/writeMethodology
 status: aligned
-description: >
-  Installs a short marker-bounded pointer stub into the host framework's config
-  file that tells agents AIDE exists and where to find the doc hub on disk.
+description: "Installs a short marker-bounded pointer stub into the host framework's session-start config that names AIDE, locates the on-disk doc set, and triggers a crawl before any AIDE work."
 intent: >
-  writeMethodology installs the host-side pointer stub — the short, marker-
-  bounded region inside the host framework's config file (CLAUDE.md,
-  .cursorrules, etc.) whose only job is to tell the agent that AIDE exists,
-  name the path to the progressively-disclosed `.aide/` doc hub on disk,
-  and instruct the agent to crawl that hub before writing or acting on any
-  `.aide` file. The stub is deliberately tiny so non-AIDE sessions in the
-  host project pay almost nothing to carry it, and the methodology body the
-  agent actually needs lives next to the work on disk where it can be read
-  on demand. Success is a host project whose config file gains a handful of
-  lines of pointer plus a crawl trigger, and loses the several-hundred-line
-  methodology dump that used to ship here.
+  writeMethodology owns the host-side pointer surface — a short
+  marker-bounded region inserted into the framework's session-start
+  config file. The region tells the agent that AIDE exists, names the
+  on-disk location of the doc set, and instructs the agent to crawl
+  that doc set before writing or acting on any `.aide` file. The stub
+  stays small so non-AIDE sessions in the host project pay almost
+  nothing to carry it; the methodology body the agent actually needs
+  lives next to the work on disk and is read on demand.
 outcomes:
   desired:
-    - The installed region is a short pointer stub — a handful of lines
-      rather than a full methodology body. It names the host-side doc-hub
-      path, teaches the agent when to crawl (before writing or acting on
-      any `.aide` file), and tells the agent never to guess AIDE rules from
-      memory. It contains no canonical AIDE doctrine — the doctrine lives
-      in the installed hub, not in the stub.
-    - The stub's text is inlined in this helper's source as framework
-      plumbing. It is not canonical AIDE doctrine — it is a pointer
-      template whose only job is to name the hub path and trigger a
-      crawl — so it lives here rather than in `.aide/docs/`. The
-      doctrine the stub routes the agent to lives in the canonical
-      hub docs, not in the stub.
-    - The stub names the host-side doc-hub path explicitly so the agent has
-      zero guessing to do about where to look. The path and the location
-      the installer helper writes to must always agree; this stub is the
-      contract the installer fulfills.
-    - Idempotency is still detected via a marker comment. A re-run on a
-      host project whose config file already carries the marker returns
-      `exists` and writes nothing. Silent upgrades — overwriting a stale
-      stub with a newer one in place — are explicitly out of scope and
-      belong to a future explicit update path.
-    - Content outside the marker-bounded region is preserved verbatim on
-      every run. The helper owns only the bytes between its markers; the
-      user's existing config content, their team's private conventions,
-      and any other agent-facing instructions survive untouched.
+    - The installed region is a short pointer — it names the on-disk doc-set location, teaches when to crawl, and tells the agent never to guess AIDE rules from memory. It contains no canonical AIDE doctrine.
+    - The pointer template lives inlined in this helper's source as framework plumbing. Doctrine the stub routes the agent to lives in the canonical doc set, never duplicated inside the stub.
+    - The stub names the on-disk doc-set location explicitly and that name agrees by construction with where the install action writes the doc set. The two sides cannot drift.
+    - Idempotency is marker-based. A re-run on a host whose session-start config already carries the marker reports already-present and writes nothing; explicit upgrades are a separate surface.
+    - Content outside the marker-bounded region is preserved byte-for-byte on every run. The helper owns only the bytes between its markers.
   undesired:
-    - The stub ships the full concatenated methodology body — the exact
-      regression this spec exists to reverse. Every line of canonical
-      doctrine inside the config file is a line the agent re-reads in
-      every session, AIDE-related or not, and a line that drifts the
-      moment the installed hub diverges from the stub.
-    - A copy of any canonical hub doc's body inlined into the stub. The
-      stub routes the agent to the hub; it does not duplicate what the
-      hub teaches. The dividing line is "pointer to canonical content"
-      (plumbing, inline here is fine) versus "canonical content itself"
-      (doctrine, must come from `.aide/docs/`).
-    - The stub naming the doc-hub path in terms that disagree with where
-      the installer helper actually writes the hub. A stub that points at
-      `.aide/` while the installer writes into `aide/` is worse than no
-      stub at all, because it sends agents to an empty directory and
-      teaches them the tooling is unreliable.
-    - A re-run that rewrites the stub in place to pick up a doctrine
-      edit, silently replacing a user's marker-bounded region without
-      them asking. Idempotency here means "do nothing on re-run"; upgrades
-      are always explicit.
-    - Rewriting the config file from scratch and losing content the user
-      had outside the marker-bounded region. The helper is a surgical
-      insert, never a replace.
+    - The stub carrying canonical doctrine inline — full body, paragraph copies, or rule restatements that should live in the doc set the stub points at. Every line of doctrine inside the session-start surface is a line every unrelated session re-reads.
+    - The stub naming a doc-set location that disagrees with where the install action actually writes the doc set. The agent follows the pointer, finds nothing, and concludes the tooling is broken.
+    - A re-run that silently rewrites a stub already in place to pick up a doctrine edit. Idempotency means do-nothing on re-run; resync is an explicit action.
+    - Any write that touches bytes outside the marker-bounded region. The helper is a surgical insert, never a rewrite of the host's session-start config.
+    - The stub bloating into a teaching surface — adding examples, rationale, or excerpts that move it toward the methodology dump shape this layer exists to keep out of the session-start surface.
 ---
-
-## Context
-
-The host project's config file is the primary documentation surface the
-agent reads on every session — AIDE-related or not. Every line that lives
-between its opening and closing markers is a line every session pays for,
-because the agent re-reads the file from the top each time it starts work.
-Shipping the full AIDE methodology into that region made the agent pay the
-entire doctrine cost on every unrelated task: a bug fix in an unrelated
-module, a commit message, a README edit. The cost was invisible per-session
-but compounded across every minute of agent time the host project used.
-
-The fix is to treat the config file the same way the rest of AIDE treats
-code: the short, high-traffic surface teaches *what exists and where to
-look*, and the long, low-traffic surface holds the actual content. The
-full methodology already lives in canonical form under this repo's
-`docs/`; a sibling helper installs it into the host project as a
-progressively-disclosed `.aide/` hub. This helper's job shrinks to
-installing the pointer that names that hub and the instruction that
-triggers a crawl into it.
-
-The renderer invariants from the trunk (`src/.aide`) — doctrine lives
-in `.aide/docs/`, no AIDE doctrine as string literals in this
-submodule's source — and the surgical-insert / marker-based
-idempotency invariants from the install service (`src/service/install/.aide`)
-still govern. This spec narrows the trunk's doctrine rule to "no
-canonical content inlined here" — the pointer template itself is
-framework plumbing and lives in source — and inherits the install
-service's idempotency contract: re-running through either consumer
-entry point detects the marker and writes nothing.
-
-## Strategy
-
-**The delivery layer practices the same progressive disclosure it
-teaches.** The methodology's own rule is that agents crawl from a short
-pointer into deeper material on demand. Shipping a full-body methodology
-into the host config file violated that rule at the delivery layer: the
-doctrine that tells agents to crawl on demand was itself dumped up front.
-The stub shape restores the invariant — the config file gains a pointer,
-the agent crawls into the installed hub only when the task touches AIDE,
-and non-AIDE sessions skim past a handful of lines instead of several
-hundred.
-
-**The stub is framework plumbing and lives inline in source.** The
-stub's sentences teach three things: AIDE exists, here is the hub
-path, crawl before acting. None of those are canonical doctrine —
-they are the routing layer that sends the agent to the doctrine. The
-doctrine itself lives in the hub docs the stub points at. Treating
-the stub as canonical would force edits to ripple through a second
-canonical file for no content benefit; treating it as inline plumbing
-keeps the pointer and its placeholder substitution in one place and
-lets the hub docs own every line that actually teaches an AIDE rule.
-The dividing line is "pointer" (inline) versus "what the pointer
-points at" (canonical under `.aide/docs/`).
-
-**Path agreement with the installer is load-bearing.** The stub names the
-host-side hub path and the installer writes into that path. They must
-agree by construction, not by coincidence — a shared constant, a shared
-helper, a shared configuration surface, whatever the architect chooses.
-The worst failure mode of this refactor is a stub that points at a path
-the installer never created; the agent reads the stub, follows the
-pointer, finds nothing, and concludes the tooling is broken. The
-architect's plan owns the mechanism; this spec owns the invariant that
-the two sides cannot drift.
-
-**Idempotency stays marker-based, upgrades stay explicit.** The marker
-check is unchanged: if the opening marker is present in the host config
-file, the helper returns `exists` and writes nothing. A re-run does not
-detect a stale stub and replace it in place, because a user who has
-edited the marker-bounded region for their team's workflow would lose
-that edit silently on the next init. Intentional re-sync belongs to a
-future explicit update path, not to this helper's happy path. The stub
-being short does not change this — if anything, it makes the argument
-stronger, because a short stub is easy for a user to customize and
-exactly the kind of content a silent upgrade would steamroll.
-
-**The surgical-insert invariant survives shrinking.** The region the
-helper owns got smaller, but the rule that everything outside it is
-sacred got no weaker. The helper finds the insertion point, writes its
-marker-bounded region, and leaves every other byte of the config file
-alone. A user with their own CLAUDE.md content above or below the
-region sees that content untouched across every init.
-
-## Good examples
-
-A host project runs the install action for the first time in a
-fresh Claude Code project whose `CLAUDE.md` is empty — through the
-`aide_init` MCP tool or via `npx aidemd-mcp@latest init` in a
-terminal. The helper writes a short marker-bounded region at the top
-of the file — an opening marker comment, a header naming the
-methodology and the host-side doc-hub path, a handful of lines that
-say AIDE exists, that the full doc set lives at the hub path, that
-the agent should crawl the hub before writing or acting on any
-`.aide` file, and that the agent should never guess AIDE rules from
-memory. A closing marker comment closes the region. The file is a
-handful of lines long instead of several hundred. The whole stub
-template — marker, header, pointer prose, and host-side path
-placeholder — lives inlined in this helper's source, because the
-stub is framework plumbing whose only job is to route the agent into
-the canonical hub.
-
-A developer re-runs the install action a second time on the same
-project, through either entry point. The helper sees the opening
-marker, returns `exists`, writes nothing, and the install summary
-reports the methodology step as already-present. The developer also
-runs the install action a third time, after manually customizing the
-stub's header with their team's name. The customization survives;
-the marker is still there; the helper reports `exists`; their edit
-is untouched.
-
-A host project's config file has a hundred lines of unrelated agent
-instructions already in it when the install action runs for the
-first time. The helper writes its marker-bounded region at the
-correct insertion point and leaves every one of those hundred lines
-byte-identical above and below. The user's content is sacred outside
-the region; the helper is a surgical insert.
-
-An agent session opens the host project on an unrelated task — say,
-fixing a bug in a service module. The agent reads `CLAUDE.md`, sees
-the short stub, learns that AIDE exists and where the hub is, and
-consciously chooses not to crawl the hub because the task does not
-touch `.aide` files. Total session cost for carrying the AIDE
-methodology was a handful of lines, not several hundred. An hour
-later, the same agent picks up a different task that does touch
-`.aide` files; this time it follows the stub's pointer, reads the
-hub, and crawls into whichever canonical doc its task needs. The
-stub and the hub work together exactly the way `study-playbook` and
-the user's global brain already do.
-
-## Bad examples
-
-A helper whose inlined stub template copies a paragraph verbatim
-from `aide-spec.md` "so the agent gets the rule up front". The copy
-ages, the canonical doc moves on, and sessions in the host project
-read a stale version of the rule before crawling the current one.
-Inline plumbing is fine; inline duplication of canonical content is
-the regression this spec exists to prevent.
-
-A stub that points at `aide/` while a sibling helper installs the
-hub into `.aide/`. The agent reads the stub, follows the pointer,
-finds nothing, and either gives up or invents a different location.
-The two sides were never tied together by a shared path source, and
-the refactor shipped with the mismatch invisible until an agent hit
-it in production.
-
-A re-run that detects an older stub in place, composes a fresh one
-from the current canonical source, and writes the new version on top
-of the old. The user's hand-edit to the stub header is gone without
-a prompt or a warning; the next time they read their CLAUDE.md they
-find their customization missing and mistrust the tool. The stub is
-small enough to edit by hand, which is exactly why silent upgrades
-are worse here than they would have been for a long block.
-
-A stub installed above a fifty-line block of the user's unrelated
-instructions — and a future refactor that "cleans up the insertion
-point" by rewriting the whole config file from scratch, wiping the
-fifty lines out. The region got smaller; the surgical-insert
-invariant got forgotten; the user trusted the tool and lost work.
