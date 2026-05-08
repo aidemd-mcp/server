@@ -1,8 +1,7 @@
 ---
 scope: src/tools/read
-status: misaligned
-description: >
-  Drill-in tool that returns a spec's raw content alongside its type, sibling specs, and extracted links so agents know what to read next from a single call.
+status: aligned
+description: "Drill-in tool that returns a spec's raw content alongside its type, sibling specs, and extracted links so the agent's next read is decided from a single call."
 intent: >
   aide_read is the drill-in tool — the one an agent calls after discover has
   pointed it at a specific spec. It returns the file's content with enough
@@ -12,125 +11,13 @@ intent: >
   start of a trail, not the end of a lookup.
 outcomes:
   desired:
-    - A call with a valid path returns the spec's raw content verbatim,
-      its classified type, the list of sibling .aide files in the same
-      directory, and every link found in the body (wikilinks, relative
-      paths, URLs).
-    - Sibling discovery is scoped to the spec's own directory only. The
-      agent learns what else lives alongside the spec without pulling in
-      unrelated folders.
-    - Links are extracted once, deduplicated, and returned as a flat list
-      the agent can scan. Wikilinks, relative paths, and URLs are all
-      treated as potential next reads.
-    - A call with a missing path returns a readable "Path not found"
-      message as the content, with type defaulted and siblings/links
-      empty. The agent gets an actionable correction, not a thrown error.
-    - "The MCP tool description registered for `aide_read` at server-registration
-       time is an auditable contract surface, not commentary. It accurately states
-       the four-field return shape (`content` raw and verbatim, classified `type`,
-       `siblings` scoped to the same directory only, `links` covering wikilinks
-       plus relative paths plus URLs), the type vocabulary the classifier emits
-       (`intent`, `research`, `plan`, `todo`), and the missing-path-as-text contract
-       (a not-found path returns a readable text message, never an MCP error) — so
-       an agent that reads only the description forms the same expectations it
-       would form by reading this spec. The description, the handler's runtime
-       return shape, and the rest of this spec stay in lockstep; drift between any
-       two of them is a falsifiable QA failure traceable to this outcome."
+    - A call with a valid path returns the spec's raw bytes verbatim alongside its classified type, the sibling specs in the same directory, and the trail of links the body contains. One call covers content plus next-read hints.
+    - Sibling discovery is scoped to the spec's own directory only. The agent learns what else lives next to the spec without paying for unrelated folders.
+    - Extracted links are deduplicated and returned as a flat trail. Wikilinks, relative paths, and URLs are all surfaced as candidate next reads — the agent decides which to follow.
+    - A missing path returns a readable not-found message as the content with empty siblings and links. The agent gets an actionable correction, not an opaque error.
   undesired:
-    - A read that silently walks up to the project root gathering
-      "related" specs. The sibling set is the immediate directory only;
-      widening it burns context on files the agent did not ask for.
-    - A read that re-renders the spec's body — stripping frontmatter,
-      reformatting headers, or "summarizing" the content before returning
-      it. The raw content is the contract. Any transform is a bug.
-    - A read that throws on a missing file and leaves the agent with an
-      opaque MCP error. Missing paths are an expected failure mode and
-      must come back as text.
-    - A link extractor that returns duplicates, partial matches, or
-      fragments from inside code fences the agent cannot act on. The
-      extracted list must be usable as-is.
-    - "A registered MCP tool description for `aide_read` that teaches a return
-       field, type name, link kind, or behavioral guarantee the handler does not
-       implement or this spec does not define — for example: claiming the tool
-       strips frontmatter or summarizes content before returning it, claiming
-       siblings are gathered from ancestor directories, naming a file type the
-       classifier does not emit, claiming the tool throws on missing paths instead
-       of returning text, or omitting one of the link kinds (wikilinks, relative
-       paths, URLs) the extractor surfaces. Agents read this description at
-       tool-discovery time and decide what they can quote, follow, and rely on;
-       teaching the wrong contract there silently misroutes every call regardless
-       of how correct the handler is. Description-vs-handler drift,
-       description-vs-spec drift, and silently-stale description text after a
-       contract change are all the same falsifiable failure."
+    - A read that walks up to ancestor directories gathering "related" specs. The sibling set is the immediate directory only; widening it burns context the agent did not ask for.
+    - A read that re-renders the spec — stripping frontmatter, reformatting, or summarizing before returning. The bytes on disk are the contract; any transform is a bug.
+    - A read that throws on a missing path and surfaces an opaque MCP error. Missing paths are an expected failure mode and must come back as text the agent can correct from.
+    - A link extractor that emits duplicates, partial fragments, or matches pulled from inside code fences the agent cannot act on. The trail must be usable as-is.
 ---
-
-## Context
-
-Every other tool in this server either points the agent at a spec or
-creates one; read is the only tool that transfers spec content into the
-agent's working context. That makes it the load-bearing step between
-"the agent knows a spec exists" and "the agent is using the spec to make
-decisions". If read returns the content without the surrounding trail,
-the agent has to make a second discover call to figure out what else is
-nearby; if it returns the content transformed, the spec the agent is
-reading is not the spec on disk.
-
-## Strategy
-
-**Return raw content, always.** The file's bytes are the contract. The
-agent must see exactly what a human reading the file on disk would see —
-frontmatter, section headers, body prose, everything. Any transform
-(stripping YAML, rewriting headers, summarizing) breaks the agent's
-ability to quote or reason about the spec verbatim, and the cost of
-returning a few extra tokens is negligible against that.
-
-**One read = one directory's context.** Siblings come from the spec's
-own directory, not its ancestors, not its descendants. The agent asked
-about this spec; the context it earns is what sits next to this spec.
-Anything broader is a separate call.
-
-**Links are a trail, not a graph.** Every link the spec contains is a
-potential next read the agent might follow. The extractor pulls
-wikilinks, relative paths, and URLs into a single deduplicated list and
-returns them alongside the content. The agent decides which to follow —
-this tool only surfaces the options.
-
-**Missing paths are text, not exceptions.** A path that doesn't resolve
-comes back as content reading "Path not found: <path>" with an empty
-siblings and links list. The agent can retry with a corrected path; no
-MCP error is raised, because the only information the agent would get
-from that error is that something went wrong, which it already knew.
-
-## Good examples
-
-An agent calls `aide_read` on `src/tools/discover/.aide` and receives
-the file's full body, its type classified as `intent`, a siblings list
-naming the other `.aide` files in `src/tools/discover/` (empty here, as
-discover has no sibling research spec), and a links list containing
-every wikilink and relative path found in the content. The agent reads
-the body, sees a reference to `progressive-disclosure`, and decides its
-next read without calling discover again.
-
-An agent calls `aide_read` on a spec whose body references
-`../scaffold/index.ts`. The links list contains that relative path, and
-the agent can follow it directly to the orchestrator the spec governs.
-
-## Bad examples
-
-A read that strips the YAML frontmatter before returning the body. The
-agent cannot see the spec's declared scope or intent, cannot cite the
-outcomes list, and has no way to tell whether it is looking at an
-intent spec or a research spec without a separate classification call.
-Every piece of information the frontmatter encodes is now missing, and
-the agent has to guess.
-
-A read that returns siblings from two directories up because "that's
-the surrounding module". The agent asked about one file; it now has
-eight files worth of sibling context it did not request, and the
-tokens spent are tokens the actual body no longer has room for.
-
-A read on a typo'd path that throws and reaches the agent as
-`unexpected MCP error`. The agent cannot tell whether the spec is
-missing, the path is wrong, or the server is broken, and has nothing to
-retry from. The correct response is a single line of text naming the
-missing path.

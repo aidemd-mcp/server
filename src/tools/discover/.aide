@@ -1,5 +1,6 @@
 ---
 scope: src/tools/discover
+status: aligned
 description: Map-making tool that returns spec locations, ancestor intent chains, and misalignment flags.
 intent: >
   aide_discover is the tool an agent calls first to orient on a project's intent

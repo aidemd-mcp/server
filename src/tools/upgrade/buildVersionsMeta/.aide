@@ -1,26 +1,25 @@
 ---
 scope: src/tools/upgrade/buildVersionsMeta
-status: misaligned
+status: aligned
 description: >
-  Build-time script that generates a complete versions.json manifest covering all AIDE artifact categories, shipped as a static asset inside the published npm package.
+  Build-time script that generates a complete versions.json manifest covering every shipped AIDE artifact category, baked into the published npm package as a static asset.
 intent: >
   buildVersionsMeta is a build-time script that produces a versions.json
   manifest containing version metadata for every artifact the MCP server
-  delivers to host projects — methodology docs, commands, agents, skills,
-  and extensions. The manifest is generated during the npm publish pipeline,
-  baked into the package as a static asset, and read by both aide_init and
-  aide_upgrade at runtime. Host projects never need access to the MCP
-  server's git history or source repo; the manifest travels with the
-  package.
+  delivers to host projects. The manifest is generated during the npm
+  publish pipeline, baked into the package as a static asset, and read
+  by the install and upgrade surfaces at runtime. Host projects never
+  need access to the MCP server's git history or source repo; the
+  manifest travels with the package.
 outcomes:
   desired:
-    - "versions.json contains an entry for every deliverable artifact across all categories: methodology docs, commands, agents, skills, and extensions. No category is silently omitted."
-    - "Each entry carries enough metadata to identify the version of that artifact (publication timestamp, source commit reference) so consuming tools can detect drift between what the host has and what the package ships."
-    - "The manifest is generated at build time during the npm publish pipeline and committed or embedded into the published package as a static file — it is never computed at runtime on the client machine."
-    - "Both aide_init and aide_upgrade read the same shipped versions.json to deliver version metadata to host projects."
+    - versions.json covers every shipped artifact category that the install and upgrade surfaces deliver to host projects, with no category silently omitted.
+    - Each entry carries enough metadata to identify the version of that artifact (publication timestamp, source commit reference) so consuming tools can detect drift between what the host has and what the package ships.
+    - The manifest is generated at build time during the npm publish pipeline and embedded into the published package as a static file — never computed at runtime on the client machine.
+    - Both install and upgrade surfaces read the same shipped manifest to deliver version metadata to host projects, so version reporting is consistent across delivery channels.
   undesired:
-    - "Runtime dependency on git availability or the MCP server's repo history on the client machine. Clients install from npm and have no access to the source repo's git log."
-    - "Coverage limited to methodology docs only. Commands, agents, skills, and extensions must be included — a manifest that tracks only docs is incomplete and will miss drift in the majority of delivered artifacts."
-    - "An empty or partial versions.json reaching published packages because the build script failed silently or was skipped in the publish pipeline."
-    - "aide_init delivering artifacts without version metadata while aide_upgrade delivers it. Both channels must use the same manifest."
+    - Runtime dependency on git availability or the MCP server's repo history on the client machine. Clients install from npm and have no access to the source repo's git log.
+    - Coverage limited to a subset of shipped artifact categories. A manifest that tracks only part of the delivery surface is incomplete and will miss drift in the artifacts it does not cover.
+    - An empty or partial versions.json reaching published packages because the build script failed silently or was skipped in the publish pipeline.
+    - The install surface delivering artifacts without version metadata while the upgrade surface delivers it. Both channels must use the same manifest.
 ---

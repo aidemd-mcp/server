@@ -1,76 +1,29 @@
 ---
 scope: src
-status: misaligned
-description: "MCP server that delivers AIDE methodology to host projects through two channels — a live handshake teaching surface and an install action that scaffolds the methodology onto the host's disk."
+status: aligned
+description: "MCP server delivering AIDE to host projects through two channels: a handshake that teaches AIDE via tool descriptions and an install action that scaffolds the methodology onto the host's disk."
 intent: >
   src/ implements the two delivery channels through which aidemd-mcp carries
   AIDE doctrine from canonical docs into host projects. The handshake channel
   teaches AIDE at session start through tool descriptions every connecting
   client reads verbatim. The install channel scaffolds AIDE onto a host
-  project's disk, exposed through two entry points — an MCP tool and a
-  terminal command — that share a single install service so on-disk results
-  match. Both channels read from one canonical doc set; no AIDE doctrine
-  lives as source-code strings. Everything the server ships practices the
-  proportional-cost and centralized-authoring promises the parent makes.
+  project's disk, exposing both an in-session entry point for adopters
+  already running an agent and a cold-start entry point for adopters at a
+  fresh terminal — converging on the same on-disk result through one shared
+  install service.
 outcomes:
   desired:
     - Every methodology phase is covered by at most one tool in the handshake surface, and tool responsibilities do not overlap. Adding a phase to the methodology is the only event that grows the tool surface.
     - Each tool description teaches the slice of AIDE it invokes well enough that an agent reading only the handshake learns the convention. Descriptions never defer to external docs for load-bearing rules.
     - Tool descriptions and every artifact the install action lands on the host's disk are composed from the canonical doc set at build or install time. AIDE doctrine never appears as a string literal in this submodule's source.
-    - The install action makes a cold host project AIDE-ready in one invocation, is safely re-runnable, and produces an identical on-disk result regardless of which entry point the user chose. Idempotency lives at the shared install service so both entry points inherit it.
-    - The install action delivers the methodology through progressive disclosure — a short pointer surface the host agent reads every session, plus a deep doc set the agent crawls only when its current task touches AIDE. Eager-loading the full methodology defeats the parent's proportional-cost outcome.
+    - The install action makes a cold host project AIDE-ready in one invocation, is safely re-runnable, and produces an identical on-disk result regardless of which entry point the adopter chose. Idempotency lives at the shared install service so both entry points inherit it.
+    - The install action delivers the methodology through progressive disclosure — a shallow pointer surface in the host's session-start context plus a deeper doc set the agent crawls only when its current task touches AIDE. Eager-loading the full methodology at session start is forbidden at this layer.
     - Behavior across supported MCP clients is identical for every tool except install. Client-specific scaffolding is confined to the install action; every other surface is client-agnostic.
   undesired:
-    - "A spec, test, description, or contract that pins a specific count of tools or enumerates the tool roster. The roster is a snapshot of the current methodology, not an invariant — encoding it guarantees drift the moment a phase is added."
+    - A spec, test, description, or contract that pins a specific count of tools or enumerates the tool roster. The roster is a snapshot of the current methodology, not an invariant — encoding it guarantees drift the moment a phase is added.
     - Two tools whose responsibilities overlap on the same methodology phase, regardless of how the overlap was introduced. Overlap forces agents to guess which tool to call and dilutes the handshake's teaching value.
-    - A tool description that defers a load-bearing rule to an external document, or that was written as a hand-typed string duplicating doctrine that lives in the canonical doc set. Either form breaks the single-source-of-truth invariant the parent commits to.
+    - A tool description that defers a load-bearing rule to an external document, or that was hand-typed as a string duplicating doctrine that lives in the canonical doc set. Either form breaks the single-source-of-truth contract this submodule inherits.
     - An install run that is not idempotent through either entry point — stacked pointer surfaces, duplicated scaffolded files, or divergent on-disk results between the two entry points. The install service is the contract; the entry points are wire shapes that must not be allowed to diverge.
     - The install action eagerly inlining the methodology into the host's always-loaded session-start surface instead of writing a shallow pointer plus an on-demand doc set. This silently reverses progressive disclosure at the delivery layer.
     - A second mutation surface for any host file the install action wrote, added inside the server runtime to "save the user a command." Visible-command-boundary invariants belong to the install and sync surfaces only; the runtime tools are read-only against the host's wired files.
 ---
-
-## Context
-
-The trunk is the first level where AIDE meets a wire. The root commits to delivering methodology as a product; this level commits to *how* it reaches a host project. Two facts about MCP shape the answer. Every connecting client reads tool descriptions verbatim at session start — the only surface guaranteed to land in an agent's always-on context regardless of host configuration. And MCP carries handshake and tool calls only; persistent on-disk scaffolding requires a separate, host-side action. The trunk therefore commits to two delivery channels: a handshake that teaches AIDE through tool descriptions, and an install action that writes the durable methodology onto the host's disk.
-
-Adopters arrive in two starting states — already inside an agent session, or sitting at a fresh terminal with no agent yet — so the install action exposes two entry points that share one service. The parent's proportional-cost outcome forces a delivery shape: eagerly inlining the methodology into the host's session-start surface would tax every chat regardless of task, so the install lands a shallow pointer surface plus an on-demand doc set. The parent's reversibility outcome forces client parity: behavior must not depend on which MCP client connected, except where wiring conventions legitimately differ.
-
-## Strategy
-
-**The handshake's tool list is the teaching surface.** MCP guarantees clients read tool descriptions at session start; nothing else has that property. Tool descriptions therefore carry load-bearing AIDE rules, not pointers to external docs — an agent that only reads the handshake still learns the convention well enough to act. This serves the desired outcome that the handshake teaches AIDE, and guards against the undesired outcome where descriptions defer load-bearing rules to documents the agent may never open.
-
-**One tool per methodology phase, no overlap.** The methodology's lifecycle phases are countable and each has a clear home; overlap forces the agent to guess which tool to call and dilutes every tool's teaching weight. The tool count is therefore a function of the methodology, not a configuration knob, and adding a phase is the only event that grows the surface. Specs, tests, and prose in this submodule never pin a count or enumerate the roster — that snapshot guarantees drift the moment a phase is added.
-
-**Two install entry points, one install service.** Adopters arrive either with an agent already connected or at a fresh terminal without one; forcing one entry point splits adopters by their starting state. The MCP tool covers the with-agent case; a terminal command covers the cold-start case. Idempotency and on-disk parity live at the shared service, not at the entry points — so the wire shapes are thin adapters and the contract for what AIDE-ready means cannot diverge between channels.
-
-**Progressive disclosure is a delivery-shape commitment, not an implementation detail.** The parent promises proportional cost; the trunk operationalizes that by landing a short pointer surface in the host's always-on session-start context plus a deeper doc set the agent crawls only when its current task touches AIDE. Eagerly inlining the methodology defeats the parent's promise — the delivery shape mirrors the doctrine shape. This is what makes a session whose task has nothing to do with AIDE not pay a doctrine tax.
-
-**Doctrine is composed from the canonical doc set, never duplicated as source strings.** Every tool description and every artifact the install lands on the host's disk is built at run time from one canonical doc set. AIDE doctrine never appears as a string literal in this submodule's source. Hand-typed strings and canonical docs drift independently within weeks; the parent's centralized-authoring outcome only holds if the trunk forbids the duplication that breaks it.
-
-**Client parity is a non-negotiable, except for install scaffolding.** The parent's reversibility outcome requires that adopters not be locked into a particular runtime. If two clients see different behavior from the same tool, the user has been locked into one of them by accident. Every handshake tool therefore behaves identically across supported clients. Install is the only surface allowed to diverge — host wiring conventions legitimately differ — and that divergence is confined to the install action so the rest of the runtime stays client-agnostic.
-
-**Mutation of host files is reserved to visible commands.** The install action and an explicit sync command are the only surfaces allowed to write the host's wired files. Runtime tools called during an agent session are read-only against those files. A runtime tool that "helpfully" rewrites host configuration silently overwrites user intent and breaks the visible-command-boundary the user relies on to know when their files changed.
-
-## Good examples
-
-**A fresh agent learns AIDE from the handshake alone.** A host project wires this server. An agent connects, reads the tool list at session start, and gets a working understanding of how AIDE specs are shaped, when they are written, and how to discover them — without opening a single methodology doc. Its first action on an AIDE-touching task is correct because the handshake taught it the convention.
-
-**A maintainer edit reaches both delivery channels through one source.** A canonical doc gets sharper guidance on outcomes versus implementation contracts. The next handshake every connecting agent reads carries the new framing; the next install run lands the same framing on disk. No second edit, no string duplication anywhere in this submodule.
-
-**Install converges idempotently across entry points.** A user installs from the terminal on Monday, then re-runs install through the MCP tool on Friday after a methodology bump. The on-disk result matches what a fresh install through either entry point would produce — no stacked pointer surfaces, no duplicated artifacts, no per-entry-point divergence.
-
-## Bad examples
-
-**A hand-written tool description drifts from doctrine.** A tool's description is authored as a literal string in this submodule's source rather than composed from the canonical doc set. The methodology gets sharper a month later; the canonical doc updates, the description does not. Two adopters connecting to two versions of this server now learn two different rules from the same tool, and neither can detect which is current.
-
-**An install run stacks pointer surfaces.** A user runs install twice. The second run appends a fresh pointer block instead of replacing the prior one, leaving the host's session-start surface with two regions claiming to point at the methodology — they slowly diverge, and the host agent reads whichever appears first. The install service's idempotency contract was the whole point of having one shared service; stacking proves both entry points are reaching past it.
-
-**A runtime tool rewrites the host's wired files.** A read-side tool gains a quietly added write path so users do not have to run sync manually. The next session, a user's hand-edited wiring is silently overwritten with a regenerated version. The visible-command-boundary invariant is broken; the user no longer knows when their files changed.
-
-## References
-
-- `.aide/intent.aide` (frontmatter) — the parent outcomes (centralized authoring, proportional cost, reversibility) every Strategy decision in this body operationalizes
-- `src/.aide` (frontmatter) — the trunk outcomes this body elaborates the *why* behind
-- `.aide/docs/aide-spec.md` — Brevity Contract caps, forbidden-content list, and the domain-vocabulary boundary that defines what may appear at this level
-- `src/todo.aide` — aligner findings on the prior bloated trunk; informed which decisions are this level's job and which were duplicating root or belong in brain-related leaves
-- `cold-outreach-analyzer/src/service/outreach/sequence/.aide` — calibration reference for body shape, decision-form Strategy paragraphs, and Good/Bad example brevity
