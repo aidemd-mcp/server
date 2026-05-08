@@ -14,13 +14,17 @@ for the full specification of this artifact.
 
 ---
 
-## Current cycle: lean-pipeline recovery (set 2026-05-07)
+## Current cycle: lean-pipeline recovery + leaf-stub sweep (set 2026-05-07)
 
-Active branch: `feat/lean-pipeline-recovery`. Recovers a multi-session
-methodology refactor that was lost when `aide:upgrade` overwrote
-uncommitted canonical docs. Two phases landed today; both pushed to
-GitHub. A third phase (sweep the existing leaf specs to navigation-stub
-form against the new doctrine) is queued and not yet started.
+Two branches in flight:
+- `feat/lean-pipeline-recovery` (commits `c27c166`, `3165f64`, `38cdc8b`)
+  — Phase 1 + Phase 2 of the methodology refactor. Pushed.
+- `feat/leaf-stub-sweep` (branched from above; commits `60b7d18`,
+  `2d1e06f`) — Phase 3 of the same intent, run as its own cycle.
+  Local only; not yet pushed.
+
+Phase 3 chose a separate branch so the methodology refactor PR could
+ship clean and the leaf sweep could land as a focused follow-up.
 
 ### Phase 1 — replay Session 10's lost edits (DONE, commit `c27c166`)
 
@@ -76,18 +80,52 @@ path. Most modules are navigation stubs.
   it exists. Creates `brief.aide` in Shape B only when commitments
   surface; most simple Shape-B modules don't need one.
 
-### Phase 3 — leaf-spec sweep against new doctrine (PENDING)
+### Phase 3 — leaf-spec sweep against new doctrine (DONE, branch `feat/leaf-stub-sweep`)
 
-The Apr 29 sweep had marked ~24 leaves pending and paused awaiting a
-batching-strategy choice. Today's Phase 2 changes invalidate part of
-that pending work — many of those leaves are simple enough to live as
-frontmatter-only navigation stubs now, not as full bodies. The right
-sweep is no longer "trim each body to 150 lines" but "decide per leaf:
-keep body or strip to navigation stub."
+Ran on its own branch as the canonical Mode 2 batched cascade-aware
+spec-bloat sweep. Two commits:
 
-Not started. Awaiting user direction on whether to run this sweep
-within this feature lifecycle or close the feature here and run the
-sweep as a separate `feat/leaf-stub-sweep` cycle.
+- `60b7d18` — pre-doctrine cleanup. Deleted 49 orphaned `plan.aide` and
+  `todo.aide` files left behind because the maintainer agent is still
+  deferred. Their items were findings against the bloated pre-doctrine
+  specs about to be replaced; carrying them forward would just have
+  created noise. Ran cleanup before the sweep so the aligner walked
+  clean leaves.
+- `2d1e06f` — the leaf-stub sweep itself. 24 spec files rewritten:
+  9,684 deletions, 424 insertions. Net 95% compression.
+
+How the sweep ran:
+1. `aide-aligner` walked `src/` — 23 of 24 leaves flagged spec-bloat.
+   `tools/discover/.aide` already aligned (calibration reference).
+2. Trunk (`src/.aide`) rewritten first; explicitly claimed the seven
+   doctrines that 5-7 leaves were each restating verbatim
+   (MCP-description-as-auditable-contract, no source-string
+   duplication, install entry-point convergence, progressive
+   disclosure delivery shape, client parity except install, no second
+   mutation surface in runtime tools, no tool-roster enumeration).
+3. Install parent (`src/service/install/.aide`) rewritten next;
+   explicitly claimed seven install-parent doctrines (category-plan
+   shape, silent-on-create / pause-on-overwrite, inherent-decision
+   pause rule, MCP-changes-as-prescriptions, user-owned config
+   directory untouchable, brain launcher bytes from user-owned
+   brain.aide, category-model-is-the-contract).
+4. 21 remaining leaves rewritten in parallel — each instructed to drop
+   trunk-owned and (where applicable) install-parent-owned doctrines.
+5. Aligner re-verified: 23 of 24 `status: aligned` on first pass.
+   `provisionBrain/.aide` had a 5-word intent overrun; cleaned up in
+   a targeted spec-writer follow-up. Final: 24 of 24 aligned.
+
+Largest individual reductions:
+- `parseBrainAide/.aide` — 1,941 → 23 lines
+- `install/.aide` — 1,175 → 30 lines
+- `provisionBrain/.aide` — 1,013 → 27 lines
+- `tools/brain/.aide` — 695 → 25 lines
+- `cli/sync/.aide` — 605 → 28 lines
+- `cli/init/.aide` — 481 → 22 lines
+
+Forbidden content scrubbed everywhere: type signatures, file paths,
+argument indexes, schema cardinality, function-name enumerations,
+migration history, retired-design notes. Domain vocabulary preserved.
 
 ---
 
@@ -334,27 +372,32 @@ remain stable.
 
 ## Where the cycle paused
 
-Phase 1 and Phase 2 are committed and pushed. The PR is open at
-https://github.com/aidemd-mcp/server/pull/new/feat/lean-pipeline-recovery
-(branch `feat/lean-pipeline-recovery`, commits `c27c166` and
-`3165f64`).
+All three phases are now landed locally:
+
+- `feat/lean-pipeline-recovery` (Phase 1 + 2) — pushed; PR opens at
+  https://github.com/aidemd-mcp/server/pull/new/feat/lean-pipeline-recovery
+- `feat/leaf-stub-sweep` (Phase 3) — local only; not yet pushed.
 
 The `.mcp.json` in this repo is set to dev form
-(`node ./dist/index.js`) so the next session loads local code rather
-than the published npm version. The aide MCP server may need to be
-restarted by the user before the next `/aide` invocation is reliable.
+(`node ./dist/index.js`). During this cycle a stale `dist/` with
+unresolved `@/tools` aliases broke the aide MCP server entry; fixed by
+running the full `npm run build` chain (which includes `tsc-alias`).
+Future agents picking up cold should run `npm run build` if the aide
+MCP fails to register — `npm run dev` (just `tsc --watch`) skips the
+alias rewrite step and produces the same failure.
 
-Phase 3 — the leaf-spec sweep against the new doctrine — is queued
-but not started. Decision points awaiting the user:
+Decision points awaiting the user:
 
-1. **Run Phase 3 in this feature** or close the feature here and open
-   a separate `feat/leaf-stub-sweep` cycle?
-2. **Per-leaf decision rule** for the sweep: which leaves keep their
-   filled body, which strip to navigation stub? Default: strip unless
-   the body genuinely earns its place per the Brevity Contract's
-   "domain reasoning that survives a rewrite" test.
-3. **Maintainer agent design** — still deferred. Defer until after
-   Phase 3 finishes, then design and ship.
+1. **Push and merge order.** Push `feat/leaf-stub-sweep` and open a
+   second PR? Merge `lean-pipeline-recovery` first, then rebase the
+   sweep, or land them as independent PRs against `main`?
+2. **Maintainer agent design.** Still deferred. Now is the right time
+   to design and ship — the methodology has earned it (49 orphaned
+   ephemerals had to be hand-deleted at the start of the sweep
+   because no maintainer existed to do it post-QA).
+3. **Retro promotion to brain.** `process/retro/` has not yet received
+   the retro from this multi-cycle effort. Should land before
+   `session.aide` is eventually deleted.
 
 ---
 
@@ -395,19 +438,21 @@ If picking up cold:
 1. **Maintainer agent design.** Trigger (`/aide:maintain` user-invoked
    vs. scheduled), autonomy (auto-delete vs. flag-for-review), what
    signals "dead" (all checkboxes done + git commit landed + age
-   threshold + explicit user marking). Defer until Phase 3 finishes;
-   then design and ship.
+   threshold + explicit user marking). Phase 3 is now done; this is
+   the next thing to design and ship.
 2. **`cli/init` self-recognition guard.** When run against this repo,
    `writeMcpEntry` overwrites the dev-form `aide` MCP entry with the
    canonical npm form. Add a check: if the project's `package.json`
    declares `name: "@aidemd-mcp/server"`, skip the aide entry write.
-3. **Phase 3 batching strategy.** Per-leaf manual decision vs.
-   bulk-default-to-stub-then-restore-bodies-on-review. Awaiting user
-   direction.
-4. **Retro from the prior brain-config cycle** has not yet been
-   promoted to `process/retro/` in the brain. Should be done before
-   `session.aide` is eventually deleted (when the lean-pipeline
-   recovery feature closes).
+3. **Build hygiene safeguard.** This cycle hit the failure mode where
+   `tsc --watch` (or `npm run dev`) emitted JS with unresolved path
+   aliases that crashed the MCP server at runtime. Worth a CI step
+   that runs `node ./dist/index.js` briefly to catch the case where
+   `dist/` gets out of sync with `tsc-alias`.
+4. **Retro from this multi-cycle effort** has not yet been promoted
+   to `process/retro/` in the brain. Should be done before
+   `session.aide` is eventually deleted (when both branches are
+   merged and the feature is fully closed).
 
 ---
 

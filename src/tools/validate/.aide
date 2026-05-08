@@ -1,192 +1,26 @@
 ---
 scope: src/tools/validate
-status: misaligned
-description: >
-  Health-check tool that surfaces naming conflicts, orphaned research, missing specs, and broken relative links so agents can fix spec layout drift before it accumulates.
+status: aligned
+description: Health-check tool that surfaces spec-layout drift — naming conflicts, orphaned research, missing or orphaned specs, broken relative links — so agents can fix it before the layout decays.
 intent: >
-  aide_validate is the health check — the tool an agent calls to find
-  out whether a project's spec layout is internally consistent. It
-  surfaces the classes of damage that accumulate as specs drift away
-  from the code they govern: naming conflicts, orphaned research,
-  missing specs on orchestrators that clearly deserve one, and broken
-  relative links inside spec bodies. Its job is to give the agent a
-  findings list it can fix with scaffold and read, not to produce a
-  compliance report.
+  aide_validate is the layout health check. An agent calls it to find
+  out whether a project's spec layout is internally consistent, and
+  receives a findings list it can fix using scaffold and read. The tool
+  detects drift in the spec layout itself, not in generated output —
+  output drift is the QA agent's domain. Findings come in two
+  confidence classes so the agent can triage: facts about the file
+  system the tool can be certain about, and inferred signals that are
+  useful but admit false positives. Silence on a clean project is the
+  success state.
 outcomes:
   desired:
-    - A call with no path scans the entire project; a call with a path
-      scans only that subtree. Scoped runs are first-class because QA
-      and fix agents work one module at a time.
-    - Findings are reported one per line with a bracketed issue tag
-      (`[naming-conflict]`, `[orphaned-research]`, `[missing-spec]`,
-      `[orphaned-spec]`, `[broken-link]`), the offending path, and a
-      human-readable explanation. The tag lets the agent pattern-match
-      on severity and kind; the path lets it act.
-    - Deterministic findings — naming conflicts, orphaned research,
-      broken links — are labeled as errors. Heuristic findings —
-      missing specs on import-heavy orchestrators, orphaned specs on
-      folders with no index.ts — are labeled as warnings, because the
-      heuristic can be wrong.
-    - A clean run returns "No issues found." and nothing else. Silence
-      is a valid, expected response, not an error state to work around.
-    - Broken-link detection resolves relative paths inside spec bodies
-      against the spec's own directory. A link that does not resolve
-      is a finding; a link that is a wikilink or a URL is not this
-      tool's concern.
-    - "The MCP tool description registered for `aide_validate` at
-       server-registration time is an auditable contract surface, not
-       commentary. It accurately enumerates the issue-tag vocabulary the
-       tool emits (`naming-conflict`, `orphaned-research`, `missing-spec`,
-       `orphaned-spec`, `broken-link`, plus parse-error and
-       missing-description checks), names the deterministic-vs-heuristic
-       split (deterministic findings are errors; heuristic findings are
-       warnings), states the optional `path` parameter for scoped runs,
-       and names the silence-as-success contract (a clean run returns
-       exactly the text \"No issues found.\") — so an agent that reads only the
-       description forms the same expectations it would form by reading
-       this spec. The description, the handler's runtime output, and the
-       rest of this spec stay in lockstep; drift between any two of them
-       is a falsifiable QA failure traceable to this outcome."
+    - A call with no path scans the whole project; a call with a path scans only that subtree. Scope is a parameter, not a filter applied after the fact, because QA and fix agents work one module at a time.
+    - Findings separate the confidence class the agent acts on. Facts about the file system are surfaced as errors the agent can fix mechanically; inferred signals are surfaced as warnings the agent investigates before acting on.
+    - Findings are reported as readable lines naming the issue class and offending path, not as a structured envelope the agent has to parse. A clean run returns a single explicit success line and nothing else.
+    - Relative links inside spec bodies resolve against the spec's own directory. A link that does not resolve is a finding; wikilinks and external URLs are out of scope for this local, offline check.
   undesired:
-    - A run that throws on an unreadable file and aborts the whole
-      scan. One corrupt spec should not blind the agent to every other
-      finding in the project. Unreadable files are skipped, silently
-      on the happy path and with a warning otherwise.
-    - A run that labels every finding as an error regardless of how
-      the finding was reached. Heuristic findings have false positives
-      by design; calling them errors makes the agent treat them with
-      certainty it should not have.
-    - A run whose output dumps a JSON envelope with `warnings` and
-      `errors` arrays. The agent is reading findings; it should not
-      need a parser to do so.
-    - A run that invents findings for folders the user did not ask
-      about. Scoped runs respect their scope, because the whole point
-      of scoping is keeping output focused on the module under
-      review.
-    - A run that treats "no findings" as a failure condition — empty
-      output, an error, or a warning about "nothing to validate". A
-      clean project is the goal state.
-    - "A registered MCP tool description for `aide_validate` that teaches
-       an issue tag, severity rule, output shape, or behavioral guarantee
-       the handler does not implement or this spec does not define — for
-       example: enumerating an issue tag the detector never emits,
-       omitting one of the tags it does emit, claiming heuristic findings
-       are errors (or claiming deterministic findings are warnings),
-       describing the output as a JSON envelope with `errors` and
-       `warnings` arrays, claiming the tool throws on an unreadable file,
-       or omitting the \"No issues found.\" silence-as-success contract.
-       Agents read this description at tool-discovery time and decide how
-       to triage the findings list it returns; teaching the wrong
-       contract there silently misroutes triage — heuristic findings get
-       acted on as errors, or errors get ignored as warnings — regardless
-       of how correct the handler is. Description-vs-handler drift,
-       description-vs-spec drift, and silently-stale description text
-       after a contract change are all the same falsifiable failure."
+    - One unreadable file aborts the whole scan. A single corrupt spec must not blind the agent to every other finding in the project.
+    - Heuristic findings labeled with the same confidence as deterministic ones, so the agent acts on inferred signals with certainty they do not warrant.
+    - A scoped run that emits findings outside the scope the caller passed. The whole point of scoping is keeping output focused on the module under review.
+    - A clean project treated as a failure condition — empty output, an error, or a warning about nothing-to-validate. Silence on a clean project is the goal state, not a bug.
 ---
-
-## Context
-
-Spec layouts drift. A research spec gets added next to an existing
-`.aide` without the rename. A folder gets deleted but its sibling
-research spec does not. A link in a spec body points at a helper that
-has since been renamed. None of these are programming bugs, but each
-one erodes the contract between specs and the code they govern. This
-tool is the one place that drift is detected and named, so agents can
-fix it before the spec layout stops being trustworthy.
-
-This tool is **not** the audit agent from the automated QA loop.
-`aide_validate` detects drift in the spec *layout* — files in the
-wrong place, names that violate the naming rule, relative links that
-do not resolve. The QA-loop audit agent detects drift in the
-*generated output* against a spec's `outcomes.desired` and
-`outcomes.undesired`, and it runs as a slash-command agent session
-scaffolded by `aide_init`, not as an MCP tool. Both checks are useful;
-they operate on different artifacts and live in different layers of
-the pipeline. This tool owns the layout layer; the audit agent owns
-the output layer.
-
-The tool shares the same scanning primitives as discover — it walks
-the file tree, classifies files, and reports — but the two tools read
-the same data for different purposes. Discover produces a map; validate
-produces findings. Keeping them separate lets each stay honest about
-its own job.
-
-## Strategy
-
-**Separate deterministic findings from heuristic ones.** Naming
-conflicts, orphaned research, and broken links are facts about the
-file system that admit no interpretation: either the folder contains
-both `.aide` and `intent.aide` or it does not. Missing specs and
-orphaned specs, by contrast, are inferred from import counts and
-folder shapes — useful signals, but wrong often enough that an agent
-acting on them with certainty will make bad edits. The tool reports
-both, but labels the deterministic class as errors and the heuristic
-class as warnings. The agent decides how much trust to put in each
-class from the label alone.
-
-**Scoped runs are first-class.** When a QA agent has narrowed its
-attention to `src/service/notifications`, it calls validate with that
-path and expects findings from that subtree only. The alternative —
-validating the whole project and expecting the agent to filter —
-wastes context and dilutes the signal. Scope is a parameter, not a
-filter applied after the fact.
-
-**Resolve relative links against the spec's own directory.** A link
-like `../orders/index.ts` in a spec at `src/service/notifications/.aide`
-is a pointer the reader can follow. If the target does not exist, the
-pointer is broken and the agent needs to know. Wikilinks and URLs are
-out of scope for this tool — they belong to a knowledge base and a
-network, neither of which validate can reach. The link check is a
-local, offline operation, and that is exactly why it is reliable.
-
-**Silence is the success state.** A clean project returns "No issues
-found." and nothing else. Agents reading that output reason about it
-correctly because it is unambiguous; any other convention (empty
-string, "OK", a checkmark) invites interpretation the tool does not
-need.
-
-## Good examples
-
-An agent calls `aide_validate` on a project with drift and receives:
-
-> [naming-conflict] src/service/foo — folder contains both `.aide` and `intent.aide`
-> [orphaned-research] src/service/bar — `research.aide` has no intent spec alongside
-> [broken-link] src/service/baz/.aide — relative link does not resolve: ../old/index.ts
-> [missing-spec] src/service/qux — orchestrator imports 4 helpers but has no `.aide`
-
-Four findings, three classes. The first three are errors the agent
-can fix mechanically; the fourth is a warning the agent should
-investigate before acting on, because "four helpers" is a heuristic
-not a rule.
-
-An agent calls `aide_validate` with `path=src/util/configureIde` on a
-clean module and receives:
-
-> No issues found.
-
-Scoped, clean, one-line response. The agent moves on.
-
-## Bad examples
-
-A run that crashes on a single unreadable file and returns an MCP
-error, leaving the agent with no findings and no way to tell whether
-the project was clean or catastrophically broken. One unreadable spec
-should not erase the rest of the scan.
-
-A run that emits:
-
-> {"errors":[{"kind":"naming-conflict","path":"src/service/foo"}],"warnings":[]}
-
-The agent is reading a sentence; the tool is returning a schema.
-Every token in the envelope is a token the explanation could have
-used.
-
-A scoped run on `src/service/notifications` that returns findings
-from `src/service/orders` because "they looked related". The caller's
-scope was explicit. Widening it silently corrupts the agent's mental
-model of what the findings mean.
-
-A clean run that returns an empty string instead of "No issues found."
-The agent is left to guess whether the scan produced nothing because
-the project is clean or because something went wrong. The guessing is
-the bug.
