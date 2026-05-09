@@ -27,8 +27,9 @@ AIDE ships the canonical pipeline agents that `aide_init` installs to `.claude/a
 | `aide-aligner` | opus | align | none |
 | `aide-auditor` | opus | refactor | read (playbook + brain) |
 | `aide-explorer` | sonnet | investigation (read-only) | read |
+| `aide-maintainer` | sonnet | post-QA cleanup | read (brain — verifies retro promotion) |
 
-The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation. The explorer is the exception: it is a non-pipeline agent used for bug tracing, codebase questions, and intent-tree navigation — it never writes files.
+The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation. The explorer is the exception: it is a non-pipeline agent used for bug tracing, codebase questions, and intent-tree navigation — it never writes files. The maintainer is a precondition-gated cleanup pass: it runs once per closed feature (delegated by the orchestrator after QA passes and the retro is promoted to brain) to delete the per-module ephemerals (`brief.aide`, `plan.aide`, `todo.aide`) and, when the last in-flight feature closes, the project-wide `.aide/session.aide`.
 
 ## Skills
 

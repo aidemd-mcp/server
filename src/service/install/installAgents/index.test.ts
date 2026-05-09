@@ -20,6 +20,7 @@ const AGENT_FILES = [
 	"aide/aide-auditor.md",
 	"aide/aide-aligner.md",
 	"aide/aide-explorer.md",
+	"aide/aide-maintainer.md",
 ];
 
 // ---------------------------------------------------------------------------

@@ -144,6 +144,7 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 - Stage 7 (Fix): `aide-implementor` then `aide-qa`
 - Refactor: `aide-auditor` (one per `.aide` section, then `aide-implementor` + `aide-qa`)
 - Align: `aide-aligner`
+- Completion cleanup: `aide-maintainer` (post-QA, after retro promotion)
 - Bug investigation / non-pipeline work: `aide-explorer` (read-only) or `general-purpose` (if it needs to write files)
 
 **Stages 2 and 3 are skipped by default.** Most modules are navigation stubs whose intent and outcomes alone are sufficient for planning. Research runs only when the domain is genuinely unknown territory; synthesize runs only when the *domain* (not the implementation) has non-obvious decisions worth persisting alongside the spec. The spec-writer signals both needs in its return; the user confirms; the orchestrator routes accordingly. When both are skipped, the orchestrator passes the user's implementation instructions directly to the architect — the architect plans against frontmatter + user context + coding playbook.
@@ -349,12 +350,21 @@ Repeat until `todo.aide` is clear. Do NOT fix anything yourself — always deleg
 ### Completion
 
 When all issues are resolved:
-- Promote retro findings from `todo.aide` to the brain at `process/retro/` BEFORE any deletion.
-- **Hand off to the maintainer agent** for cleanup. The maintainer deletes the per-module ephemerals — `brief.aide`, `plan.aide`, and `todo.aide` — in the module being closed. Their contents have moved into the code (types, JSDoc, tests, function signatures, fixes); they were scaffolding for the in-flight work and are not retained as audit trail. The code is now the durable artifact. Future audit goes to git history.
-- **If this was the last in-flight feature**, the maintainer also deletes `.aide/session.aide` (the project-root pipeline-position log). If multiple features are still in flight, leave `session.aide` for the next feature to consume.
-- Report completion to the user with a summary of what was built and which artifacts the maintainer cleaned up.
 
-> **Note:** The `aide-maintainer` agent and `/aide:maintain` command are deferred — for now, document what the maintainer WILL delete and note it as a manual step the orchestrator points the user toward. Do not attempt to execute the deletions yourself; surface the cleanup list to the user instead.
+1. **Promote retro findings from `todo.aide` to the brain at `process/retro/`** BEFORE any deletion. Use the brain MCP write tool. The promoted entry's path is the receipt the maintainer verifies in the next step.
+
+2. **Determine whether this is the last in-flight feature.** If `.aide/session.aide` exists, its `## Where this cycle stopped` section should already indicate closure for this feature. Run `aide_discover` to confirm no other module has a `brief.aide`/`plan.aide`/`todo.aide` outside the one being closed. If yes, the maintainer will also delete `.aide/session.aide` in this delegation; if no, leave `session.aide` for the next feature to consume.
+
+3. **Delegate to the `aide-maintainer` agent** (via Agent tool, `subagent_type: aide-maintainer`). The delegation prompt MUST include:
+   - The **target module path** (where `brief.aide`/`plan.aide`/`todo.aide` live)
+   - The **brain path of the promoted retro** (e.g. `process/retro/2026-05-08-<module>.md`) — the maintainer reads it back to verify the promotion landed before deleting the source `todo.aide`
+   - **Whether to also delete `.aide/session.aide`** — explicitly authorize it only when this is the last in-flight feature (per Step 2)
+
+   The maintainer verifies preconditions (every `todo.aide` and `plan.aide` checkbox is checked; the named retro entry exists in the brain; if `session.aide` deletion is requested, no other in-flight modules remain), deletes `todo.aide` → `plan.aide` → `brief.aide` (and `session.aide` if authorized), and returns CLEANED / REFUSED / PARTIAL with the list of files touched. If REFUSED, route to the appropriate fix step (e.g. `/aide:fix` for unchecked `todo.aide` items) and re-delegate after.
+
+4. **Report completion to the user** with a summary of what was built and which artifacts the maintainer cleaned up.
+
+Do NOT delete any of these files yourself — always delegate to the maintainer. The maintainer is the only agent in the pipeline authorized to delete pipeline ephemerals.
 
 ### Refactor → `aide:refactor`
 
