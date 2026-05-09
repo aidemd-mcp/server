@@ -10,6 +10,8 @@ The folder tree *is* the high-level architecture. This is the **orchestrator/hel
 
 **Aggressive modularization.** Every helper gets its own subfolder with an `index.ts` and a default export. Files are always `index.ts` — never name a file after what it does (that's what the folder name is for). The folder structure *is* the naming system.
 
+**Universal rule, no carve-outs.** Every `.ts` file under `src/` is `<folderName>/index.ts` — orchestrators, helpers, pure data files (catalogs, tables, fixtures, seed data), type-only modules, constants, configuration, and enums alike. The rule is structural, not behavioral — it governs how the codebase *navigates*, not what each file does. A flat `dimensions.ts` is a violation; `dimensions/index.ts` is canonical, even when the file contains only typed data with no functions. The folder name is the navigation handle; `index.ts` is the export surface. The word "helper" in this doc is a convenience for the common case, not a scope restriction.
+
 ```
 src/service/orders/createOrder/
 ├── validatePayload/

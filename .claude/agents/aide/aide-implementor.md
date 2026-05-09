@@ -68,6 +68,18 @@ You operate in two modes:
 - **No silent failures.** Errors are logged, propagated, or handled — never swallowed.
 - **Respect existing abstractions.** If the codebase has a pattern, use it. Don't reinvent. When the plan references existing helpers to reuse, use `aide_inspect` to read their contracts (JSDoc + signature) before deciding whether to open the full file.
 
+## When the Plan Conflicts with AIDE-Canonical Docs
+
+The plan is authoritative for *what* gets built, not *how the structure is laid out*. The structural foundation comes from the AIDE-canonical docs (`.aide/docs/progressive-disclosure.md`, `.aide/docs/agent-readable-code.md`), which are absolute — the plan cannot override them.
+
+If a plan step prescribes a structure that violates the canonical docs (e.g., a flat `dimensions.ts` instead of `dimensions/index.ts`, or any other deviation from `<name>/index.ts` form), do not execute the step. Stop and escalate back to the orchestrator with:
+
+1. The exact plan step quoted
+2. The canonical doc rule it violates
+3. The corrected structure that honors both
+
+The architect and implementor are jointly responsible for catching this — when the architect slips, the implementor is the second line of defense.
+
 ## When the Plan Conflicts with Reality
 
 Sometimes a plan assumes something that isn't true — a file doesn't exist, an API has a different signature. When this happens:
