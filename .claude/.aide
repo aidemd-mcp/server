@@ -83,7 +83,7 @@ outcomes:
       tooling does not actually support. The doc must describe what the
       discover tool, validate tool, and aligner agent actually do, not
       what they might do someday.
-    - "The `/aide` orchestrator tells the user to re-run `npx aidemd-mcp
+    - "The `/aide` orchestrator tells the user to re-run `npx @aidemd-mcp/server@latest
       init` or any other out-of-band bootstrap step when the brain
       precondition failure is a single-input fix the orchestrator can
       capture with one `AskUserQuestion` call and apply via an
@@ -94,7 +94,7 @@ outcomes:
       broken `vaultPath`, or that fabricates a brain MCP entry when
       `brain.status` is `no-mcp-entry`. The inline-recovery contract
       covers only the empty-`vaultPath` case where user intent is
-      unambiguous; other failure modes route to `npx aidemd-mcp init`
+      unambiguous; other failure modes route to `npx @aidemd-mcp/server@latest init`
       (cold-start) or `/aide:upgrade` (drift) until they are deliberately
       brought into scope."
     - "Inline recovery that issues a single `aide_init` call and

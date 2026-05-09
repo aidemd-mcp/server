@@ -57,7 +57,7 @@ After running, open Claude Code and run `/aide` — the orchestrator will prompt
 Run this after editing `.aide/config/brain.aide` — for example, when you update the vault path argument in `mcpServerConfig.args` or rename the brain in the `name` field:
 
 ```bash
-npx aidemd-mcp sync
+npx @aidemd-mcp/server@latest sync
 ```
 
 `sync` reads `.aide/config/brain.aide`, copies `mcpServerConfig` verbatim into `.mcp.json` under the fixed `brain` key, and writes the `name` field as the server label. Every other key in `mcpServers` (including your `aide` entry and any personal MCP integrations) is left byte-identical. If a legacy `obsidian` key is present it is removed in the same write. The command is idempotent — running it twice produces the same `.mcp.json` bytes, and the second invocation prints `already in sync` without touching the file. Exit code is `0` on success (including the no-change case), `1` on a missing or malformed `brain.aide` or invalid `.mcp.json`, and `2` on `--help`.
@@ -225,7 +225,7 @@ Boot-time precondition reporter. Returns two independent fields the orchestrator
 
 On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every `/aide` boot. Boot-time brain precondition state is already reported by `aide_info.brain.status`; firing `aide_brain` at boot duplicates that work unnecessarily.
 
-Returns `{ status, instructions }` — exactly two fields. No `backend`, no `connector`, no `name`. `status` mirrors `aide_info.brain.status` (`ok | no-brain-aide | no-mcp-entry | mcp-drift`). `instructions` is always non-empty: on `ok` it is the verbatim `## Prose` body from the user's `.aide/config/brain.aide` (no server substitution); on the failure states it carries fixed remediation prose naming the right CLI recovery command (`npx aidemd-mcp init` for `no-brain-aide`, `npx aidemd-mcp sync` for `no-mcp-entry` and `mcp-drift`).
+Returns `{ status, instructions }` — exactly two fields. No `backend`, no `connector`, no `name`. `status` mirrors `aide_info.brain.status` (`ok | no-brain-aide | no-mcp-entry | mcp-drift`). `instructions` is always non-empty: on `ok` it is the verbatim `## Prose` body from the user's `.aide/config/brain.aide` (no server substitution); on the failure states it carries fixed remediation prose naming the right CLI recovery command (`npx @aidemd-mcp/server@latest init` for `no-brain-aide`, `npx @aidemd-mcp/server@latest sync` for `no-mcp-entry` and `mcp-drift`).
 
 **Inputs:**
 

@@ -8,13 +8,13 @@ import type { BrainToolResult } from "@/types/index.js";
 // verbatim, so they must name a specific terminal command or user action.
 
 const NO_BRAIN_AIDE_PROSE =
-	"No `.aide/config/brain.aide` is present in this project. Tell the user to run `npx aidemd-mcp init` to scaffold the brain config file, or `/aide:brain config` if they want to be walked through it. Do not proceed with this task as if the brain were available — the file must exist before brain-dependent work continues.";
+	"No `.aide/config/brain.aide` is present in this project. Tell the user to run `npx @aidemd-mcp/server@latest init` to scaffold the brain config file, or `/aide:brain config` if they want to be walked through it. Do not proceed with this task as if the brain were available — the file must exist before brain-dependent work continues.";
 
 const NO_MCP_ENTRY_PROSE =
-	"A brain config exists at `.aide/config/brain.aide`, but no `brain` MCP entry is wired in `.mcp.json`. Tell the user to run `npx aidemd-mcp sync` to apply the config to `.mcp.json`, then restart Claude Code. Do not proceed with this task as if the brain were available.";
+	"A brain config exists at `.aide/config/brain.aide`, but no `brain` MCP entry is wired in `.mcp.json`. Tell the user to run `npx @aidemd-mcp/server@latest sync` to apply the config to `.mcp.json`, then restart Claude Code. Do not proceed with this task as if the brain were available.";
 
 const MCP_DRIFT_PROSE =
-	"`.aide/config/brain.aide` and `.mcp.json` disagree about the brain entry. Tell the user to run `npx aidemd-mcp sync` in their terminal — that is the only command that mutates `.mcp.json` from `brain.aide`. Then restart Claude Code. Do not attempt to patch `.mcp.json` from this session.";
+	"`.aide/config/brain.aide` and `.mcp.json` disagree about the brain entry. Tell the user to run `npx @aidemd-mcp/server@latest sync` in their terminal — that is the only command that mutates `.mcp.json` from `brain.aide`. Then restart Claude Code. Do not attempt to patch `.mcp.json` from this session.";
 
 /** The two accepted values for the `kind` parameter. */
 type BrainKind = "orientation" | "config";

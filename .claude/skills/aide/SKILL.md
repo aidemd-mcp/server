@@ -52,7 +52,7 @@ The brain is the pipeline's durable memory. If it isn't wired, the pipeline can'
   Skill(skill="aide:brain", args="config")
   ```
 
-  The config flow scaffolds `brain.aide` and syncs it into `.mcp.json`. After it returns, halt — the user must run `npx aidemd-mcp sync` and then re-run `/aide`.
+  The config flow scaffolds `brain.aide` and syncs it into `.mcp.json`. After it returns, halt — the user must run `npx @aidemd-mcp/server@latest sync` and then re-run `/aide`.
 
 - **`no-mcp-entry`** — the brain backend is not wired into `.mcp.json`. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line — e.g.:
 

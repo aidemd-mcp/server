@@ -118,7 +118,7 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 
 	// Step 5 — Read .mcp.json at the framework-derived path. ENOENT and all
 	// other I/O failures collapse to no-mcp-entry: the user has a brain.aide but
-	// no .mcp.json yet — remediation is to run `npx aidemd-mcp sync`.
+	// no .mcp.json yet — remediation is to run `npx @aidemd-mcp/server@latest sync`.
 	let raw: string;
 	try {
 		raw = await readFile(mcpConfigPath, "utf-8");

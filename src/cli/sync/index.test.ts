@@ -183,7 +183,7 @@ describe("3d — preserve other keys", () => {
 // ---------------------------------------------------------------------------
 
 describe("3e — missing brain.aide", () => {
-	it("exits 1, stderr mentions aidemd-mcp init, .mcp.json unchanged (or absent)", async () => {
+	it("exits 1, stderr mentions @aidemd-mcp/server@latest init, .mcp.json unchanged (or absent)", async () => {
 		// No brain.aide — tempDir has no .aide/ directory at all.
 		await writeMcpJson(tempDir, { mcpServers: {} });
 		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
@@ -192,7 +192,7 @@ describe("3e — missing brain.aide", () => {
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
-		expect(errLines.join("\n")).toContain("aidemd-mcp init");
+		expect(errLines.join("\n")).toContain("@aidemd-mcp/server@latest init");
 
 		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(after).toBe(before);
@@ -204,7 +204,7 @@ describe("3e — missing brain.aide", () => {
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
-		expect(errLines.join("\n")).toContain("aidemd-mcp init");
+		expect(errLines.join("\n")).toContain("@aidemd-mcp/server@latest init");
 
 		// .mcp.json must not have been created.
 		await expect(readFile(join(tempDir, ".mcp.json"), "utf-8")).rejects.toThrow();

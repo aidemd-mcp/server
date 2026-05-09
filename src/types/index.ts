@@ -385,13 +385,13 @@ export type McpServerEntry = {
  * - `no-mcp-entry` — brain.aide parsed successfully, but the host's `.mcp.json`
  *   cannot be read (ENOENT or any I/O failure), cannot be parsed as JSON, or has
  *   no `mcpServers.brain` key. Carries `name` (from the parsed brain.aide) and
- *   `hints`. Remediation: run `npx aidemd-mcp sync`.
+ *   `hints`. Remediation: run `npx @aidemd-mcp/server@latest sync`.
  *
  * - `mcp-drift` — brain.aide parsed, `.mcp.json` has a `brain` entry, but the
  *   entry's `command` or `args` differ from the parsed/interpolated
  *   `mcpServerConfig`. Drift is detected by structural comparison (string equality
  *   on `command`; element-by-element equality on `args`). Carries `name` and
- *   `hints`. Remediation: run `npx aidemd-mcp sync`.
+ *   `hints`. Remediation: run `npx @aidemd-mcp/server@latest sync`.
  *
  * `hints` is populated unconditionally on every state — the orchestrator may
  * surface candidate brain root locations on `no-brain-aide` (fresh project) just as

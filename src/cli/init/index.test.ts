@@ -97,7 +97,7 @@ const mockCompareBytes = vi.mocked(compareBytes);
 // assert the deferredCategories argument to renderWarning.
 const DEFERRED_CATEGORIES = [
 	"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
-	"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
+	"IDE configuration — re-run: npx @aidemd-mcp/server@latest init --ide <choice>",
 ];
 
 // Framework config returned by detectFramework when called with "claude".

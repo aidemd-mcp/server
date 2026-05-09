@@ -246,7 +246,7 @@ remain stable.
 3. **`brain.aide` frontmatter schema = exactly two top-level fields:**
    `name` (label, never branched on) and `mcpServerConfig`
    (`command` + `args`, written verbatim into `.mcp.json` under
-   `mcpServers["brain"]` by `npx aidemd-mcp sync`).
+   `mcpServers["brain"]` by `npx @aidemd-mcp/server@latest sync`).
 
 4. **`brain.aide` body schema = exactly six marker-bounded sections,
    fixed order:** orientation, config, playbook-index, study-playbook,

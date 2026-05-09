@@ -302,14 +302,14 @@ describe("brain — no name dispatch", () => {
 // ---------------------------------------------------------------------------
 
 describe("brain — no-brain-aide: remediation prose", () => {
-	it("returns status no-brain-aide with prose containing npx aidemd-mcp init", async () => {
+	it("returns status no-brain-aide with prose containing npx @aidemd-mcp/server@latest init", async () => {
 		mockBuildBrainState.mockResolvedValue({ status: "no-brain-aide", hints: [] });
 
 		const result = await brain("/root");
 
 		expect(result.status).toBe("no-brain-aide");
 		// Load-bearing phrase: the agent must surface the exact recovery command.
-		expect(result.instructions).toContain("npx aidemd-mcp init");
+		expect(result.instructions).toContain("npx @aidemd-mcp/server@latest init");
 	});
 
 	it("returns byte-identical instructions for orientation and config on no-brain-aide branch", async () => {
@@ -333,7 +333,7 @@ describe("brain — no-brain-aide: remediation prose", () => {
 });
 
 describe("brain — no-mcp-entry: remediation prose", () => {
-	it("returns status no-mcp-entry with prose containing npx aidemd-mcp sync", async () => {
+	it("returns status no-mcp-entry with prose containing npx @aidemd-mcp/server@latest sync", async () => {
 		mockBuildBrainState.mockResolvedValue({
 			status: "no-mcp-entry",
 			name: "obsidian",
@@ -344,7 +344,7 @@ describe("brain — no-mcp-entry: remediation prose", () => {
 
 		expect(result.status).toBe("no-mcp-entry");
 		// Load-bearing phrase: sync is the only recovery command for a missing entry.
-		expect(result.instructions).toContain("npx aidemd-mcp sync");
+		expect(result.instructions).toContain("npx @aidemd-mcp/server@latest sync");
 	});
 
 	it("returns byte-identical instructions for orientation and config on no-mcp-entry branch", async () => {
@@ -379,7 +379,7 @@ describe("brain — mcp-drift: remediation prose", () => {
 
 		expect(result.status).toBe("mcp-drift");
 		// Load-bearing phrases: sync is the recovery command; prose must name drift.
-		expect(result.instructions).toContain("npx aidemd-mcp sync");
+		expect(result.instructions).toContain("npx @aidemd-mcp/server@latest sync");
 		expect(result.instructions.toLowerCase()).toContain("disagree");
 	});
 
@@ -420,7 +420,7 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 
 			expect(result.status).toBe("no-brain-aide");
 			expect(result.instructions.length).toBeGreaterThan(0);
-			expect(result.instructions).toContain("npx aidemd-mcp init");
+			expect(result.instructions).toContain("npx @aidemd-mcp/server@latest init");
 		},
 	);
 
@@ -437,7 +437,7 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 
 			expect(result.status).toBe("no-brain-aide");
 			expect(result.instructions.length).toBeGreaterThan(0);
-			expect(result.instructions).toContain("npx aidemd-mcp init");
+			expect(result.instructions).toContain("npx @aidemd-mcp/server@latest init");
 		},
 	);
 
@@ -455,7 +455,7 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 
 			expect(result.status).toBe("no-brain-aide");
 			expect(result.instructions.length).toBeGreaterThan(0);
-			expect(result.instructions).toContain("npx aidemd-mcp init");
+			expect(result.instructions).toContain("npx @aidemd-mcp/server@latest init");
 		},
 	);
 });

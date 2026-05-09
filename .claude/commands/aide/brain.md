@@ -74,7 +74,7 @@ Follow the instructions returned in Step 3 exactly. The integration's config pro
 
 **Anti-patterns — each one means you have skipped or short-circuited the flow:**
 
-- Telling the user to run `npx aidemd-mcp sync` themselves. Sync runs via your own Bash tool, recovered from `.mcp.json["mcpServers"]["aide"]` (`command` + `args` + `"sync"` appended). Telling the user to run it is a failure mode — they invoked `/aide:brain config` expecting the slash command to complete the wiring, not to hand them homework.
+- Telling the user to run `npx @aidemd-mcp/server@latest sync` themselves. Sync runs via your own Bash tool, recovered from `.mcp.json["mcpServers"]["aide"]` (`command` + `args` + `"sync"` appended). Telling the user to run it is a failure mode — they invoked `/aide:brain config` expecting the slash command to complete the wiring, not to hand them homework.
 - Concluding `brain.aide` is wired or unwired without quoting the actual bytes at the path slot. The integration prose's first step instructs you to read and quote the value at the unwired slot before continuing — you cannot quote what you did not read.
 - Treating `brain.status` as a runbook. It is a status code; the runbook is the integration prose. Drafting "next steps for the user" from the status code alone means you bypassed Steps 3–4.
 - Comparing the integration prose against guidance outside it. The prose is the authority — follow it as written.
@@ -90,7 +90,7 @@ If the `aide_init` call in Step 2 throws or the scaffold fails, do NOT retry inl
 
 > Something went wrong scaffolding `.aide/config/brain.aide`: `<error message>`.
 >
-> Run `npx aidemd-mcp init` in this project's terminal to retry the setup with full per-file logging, then restart Claude Code and re-run `/aide`.
+> Run `npx @aidemd-mcp/server@latest init` in this project's terminal to retry the setup with full per-file logging, then restart Claude Code and re-run `/aide`.
 
 Sync failure and entry-point seeding failures are handled inside Step 4's verbatim instructions — the integration's prose owns those flows and their error recovery.
 

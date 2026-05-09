@@ -43,7 +43,7 @@ export async function runSync(
 
 	if (result.kind === "missing") {
 		writeErr(
-			"No `.aide/config/brain.aide` found. Run `npx aidemd-mcp init` to scaffold it, or create the file by hand.",
+			"No `.aide/config/brain.aide` found. Run `npx @aidemd-mcp/server@latest init` to scaffold it, or create the file by hand.",
 		);
 		return 1;
 	}

@@ -64,7 +64,7 @@ const FORBIDDEN_BRAIN_FLAGS = [
 function deferredCategories(): readonly string[] {
 	return [
 		"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
-		"IDE configuration — re-run: npx aidemd-mcp init --ide <choice>",
+		"IDE configuration — re-run: npx @aidemd-mcp/server@latest init --ide <choice>",
 	];
 }
 
@@ -353,7 +353,7 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 (async () => {
 	if (process.argv.includes("--help")) {
 		process.stdout.write(
-			"Usage: npx aidemd-mcp init [--brain <integration>] [--ide <choice>]\n\n" +
+			"Usage: npx @aidemd-mcp/server@latest init [--brain <integration>] [--ide <choice>]\n\n" +
 				"What it installs:\n" +
 				"  The complete methodology layer into the current project: the methodology\n" +
 				"  pointer stub, the methodology doc set under .aide/docs/, every pipeline\n" +
@@ -386,7 +386,7 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 				"                       .aide/config/brain.aide, derive the brain MCP entry\n" +
 				"                       through cli/sync, and seed the four entry-point\n" +
 				"                       artifacts into your brain.\n" +
-				"  Deferred IDE       — re-run: npx aidemd-mcp init --ide <choice>\n" +
+				"  Deferred IDE       — re-run: npx @aidemd-mcp/server@latest init --ide <choice>\n" +
 				"  Skipped artifacts  — run /aide:upgrade for guided reconciliation.\n",
 		);
 		process.exit(0);
