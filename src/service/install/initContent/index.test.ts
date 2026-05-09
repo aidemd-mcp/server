@@ -65,7 +65,7 @@ describe("listMethodologyDocs — brain-aide registration (Step 4a/4c)", () => {
 		// METHODOLOGY_DOCS. Failing here means the registry changed without a
 		// corresponding update to this guard — making the omission visible at CI
 		// time rather than shipping a silently incomplete methodology install.
-		expect(listMethodologyDocs()).toHaveLength(10);
+		expect(listMethodologyDocs()).toHaveLength(12);
 	});
 
 	it("lists brain-aide after todo-aide (doc index reading-order invariant)", () => {

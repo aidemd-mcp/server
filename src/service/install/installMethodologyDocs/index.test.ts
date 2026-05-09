@@ -19,6 +19,8 @@ const METHODOLOGY_FILES = [
 	"automated-qa.md",
 	"plan-aide.md",
 	"todo-aide.md",
+	"brief-aide.md",
+	"session-aide.md",
 	"brain-aide.md",
 	"cascading-alignment.md",
 ];

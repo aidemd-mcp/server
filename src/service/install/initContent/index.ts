@@ -46,6 +46,8 @@ const DOC_PATHS = {
 	"commands/aide/fix": ".claude/commands/aide/fix.md",
 	"plan-aide": ".aide/docs/plan-aide.md",
 	"todo-aide": ".aide/docs/todo-aide.md",
+	"brief-aide": ".aide/docs/brief-aide.md",
+	"session-aide": ".aide/docs/session-aide.md",
 	"brain-aide": ".aide/docs/brain-aide.md",
 	"commands/aide/synthesize": ".claude/commands/aide/synthesize.md",
 	"commands/aide/upgrade": ".claude/commands/aide/upgrade.md",
@@ -102,6 +104,8 @@ const METHODOLOGY_DOCS: readonly MethodologyDocEntry[] = [
 	{ canonical: "automated-qa", hostFilename: "automated-qa.md" },
 	{ canonical: "plan-aide", hostFilename: "plan-aide.md" },
 	{ canonical: "todo-aide", hostFilename: "todo-aide.md" },
+	{ canonical: "brief-aide", hostFilename: "brief-aide.md" },
+	{ canonical: "session-aide", hostFilename: "session-aide.md" },
 	{ canonical: "brain-aide", hostFilename: "brain-aide.md" },
 	{ canonical: "cascading-alignment", hostFilename: "cascading-alignment.md" },
 ];
