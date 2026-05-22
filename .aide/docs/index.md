@@ -18,7 +18,7 @@ AIDE ships the canonical pipeline agents that `aide_init` installs to `.claude/a
 
 | Agent | Model | Phase(s) | Brain Access |
 |---|---|---|---|
-| `aide-spec-writer` | opus | spec | none |
+| `aide-spec-writer` | opus | spec (`.aide` frontmatter); also writes `session.aide` CREATE/UPDATE on orchestrator demand | none |
 | `aide-domain-expert` | sonnet | research | write |
 | `aide-strategist` | opus | synthesize | read |
 | `aide-architect` | opus | plan | read (playbook + brain) |
@@ -27,9 +27,9 @@ AIDE ships the canonical pipeline agents that `aide_init` installs to `.claude/a
 | `aide-aligner` | opus | align | none |
 | `aide-auditor` | opus | refactor | read (playbook + brain) |
 | `aide-explorer` | sonnet | investigation (read-only) | read |
-| `aide-maintainer` | sonnet | post-QA cleanup | read (brain — verifies retro promotion) |
+| `aide-maintainer` | sonnet | post-QA cleanup (delete per-module ephemerals + `session.aide` at feature close) | read (brain — verifies retro promotion) |
 
-The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation. The explorer is the exception: it is a non-pipeline agent used for bug tracing, codebase questions, and intent-tree navigation — it never writes files. The maintainer is a precondition-gated cleanup pass: it runs once per closed feature (delegated by the orchestrator after QA passes and the retro is promoted to brain) to delete the per-module ephemerals (`brief.aide`, `plan.aide`, `todo.aide`) and, when the last in-flight feature closes, the project-wide `.aide/session.aide`.
+The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fresh context per phase — handoff is via files (`.aide`, `plan.aide`, `todo.aide`), not conversation. The explorer is the exception: it is a non-pipeline agent used for bug tracing, codebase questions, and intent-tree navigation — it never writes files. The maintainer is a precondition-gated cleanup pass: it runs once per closed feature (delegated by the orchestrator after QA passes and the retro is promoted to brain) to delete the per-module ephemerals (`brief.aide`, `plan.aide`, `todo.aide`) and, when the last in-flight feature closes, the project-wide `.aide/session.aide`. `session.aide` itself is authored by `aide-spec-writer` — the same structured-file writer that owns `.aide` frontmatter — invokable at pipeline kick-off (CREATE) and at meaningful pipeline-state transitions (UPDATE). The spec-writer transcribes orchestrator-supplied state; it does not interview the user and does not invent content.
 
 ## Skills
 

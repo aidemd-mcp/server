@@ -109,10 +109,12 @@ before the pipeline can advance.
 
 ## Lifecycle
 
-1. **Created** when a feature pipeline begins and the orchestrator (or a senior pipeline agent) decides the work is large enough to need a durable tracker. Most features do not need one — a single-cycle build never gets one. Multi-cycle reworks, cross-module sweeps, and features paused for user review across multiple sessions DO get one.
+`session.aide` is authored and updated by the `aide-spec-writer` agent (the structured-file writer that also owns `.aide` frontmatter — both are "format orchestrator-supplied context into a canonical AIDE file" operations) and deleted by the `aide-maintainer` agent (the precondition-gated cleanup pass that owns deletion of all pipeline ephemerals). The orchestrator decides WHEN the file needs to be created, updated, or deleted, and supplies the content; the responsible agent transcribes the orchestrator's supplied state into the canonical format and writes or deletes the file. This preserves the orchestrator's "delegate everything; never write files" constraint while giving each lifecycle stage a clear specialized owner.
+
+1. **Created** by the `aide-spec-writer` agent on orchestrator demand, when a feature pipeline begins and the orchestrator decides the work is large enough to need a durable tracker. Most features do not need one — a single-cycle build never gets one. Multi-cycle reworks, cross-module sweeps, and features paused for user review across multiple sessions DO get one. The orchestrator's delegation prompt supplies the initial content (feature intent, current stage, settled decisions, anti-regression invariants, where the cycle stopped); the spec-writer formats and writes the file.
 2. **Read at boot** by the `/aide` orchestrator on every invocation if the file exists. The orchestrator's resume protocol consults `## Where this cycle stopped` first, then `## The architectural intent` for the settled-decisions list.
-3. **Updated** by the orchestrator (and senior agents like the architect or strategist on long reworks) at every meaningful pipeline-state transition: when a stage completes, when a stage is paused for user review, when a new architectural decision is settled, when an anti-regression invariant is added.
-4. **Deleted** when the feature is fully completed and the pipeline is no longer in use for it. "Fully completed" means: every per-module `todo.aide` resolved, retros promoted to brain, the version bumped and shipped (if applicable), and the user confirms the feature is closed. After deletion, the project returns to its no-feature-in-flight state.
+3. **Updated** by the `aide-spec-writer` agent on orchestrator demand at every meaningful pipeline-state transition: when a stage completes, when a stage is paused for user review, when a new architectural decision is settled, when an anti-regression invariant is added. The orchestrator's delegation prompt names what changed and supplies the new content; the spec-writer applies the update — appending decisions at the next stable number, rewriting the `## Where this cycle stopped` section, cutting superseded prose. The spec-writer never invents content; it transcribes what the orchestrator describes.
+4. **Deleted** by the `aide-maintainer` agent when the feature is fully completed and the pipeline is no longer in use for it. "Fully completed" means: every per-module `todo.aide` resolved, retros promoted to brain, the version bumped and shipped (if applicable), and the user confirms the feature is closed. After deletion, the project returns to its no-feature-in-flight state.
 
 ## Placement
 
@@ -135,7 +137,7 @@ It does NOT live next to module specs. Per-module ephemeral state lives in `brie
 | Scope | Per module | Project-wide (one file at root) |
 | Content | Implementation contracts for one module | Pipeline state across the whole feature |
 | Lifespan | Per feature (deleted post-QA) | Per feature lifecycle (deleted at feature close) |
-| Owner | Strategist creates; architect + implementor update | Orchestrator maintains; senior agents may append |
+| Owner | Strategist creates; architect + implementor update | `aide-spec-writer` creates and updates (orchestrator supplies the content); `aide-maintainer` deletes at feature close |
 | Resume target | The architect picking up plan revision | The orchestrator picking up the whole pipeline |
 
 A `brief.aide` answers "what shape must the code in *this module* take?" `session.aide` answers "where does the pipeline stand on *this feature*?" Both are operational state; neither is durable intent.
