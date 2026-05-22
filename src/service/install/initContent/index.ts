@@ -55,6 +55,7 @@ const DOC_PATHS = {
 	"commands/aide/aide": ".claude/commands/aide.md",
 	"commands/aide/refactor": ".claude/commands/aide/refactor.md",
 	"commands/aide/brain": ".claude/commands/aide/brain.md",
+	"commands/aide/handoff": ".claude/commands/aide/handoff.md",
 	"agents/aide/aide-spec-writer": ".claude/agents/aide/aide-spec-writer.md",
 	"agents/aide/aide-domain-expert": ".claude/agents/aide/aide-domain-expert.md",
 	"agents/aide/aide-strategist": ".claude/agents/aide/aide-strategist.md",

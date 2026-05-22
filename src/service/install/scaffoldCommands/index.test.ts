@@ -66,6 +66,7 @@ describe("scaffoldCommands", () => {
 			"aide:refactor",
 			"aide:align",
 			"aide:brain",
+			"aide:handoff",
 		]);
 	});
 

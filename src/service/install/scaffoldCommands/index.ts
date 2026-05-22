@@ -43,6 +43,7 @@ export const COMMANDS: readonly {
 	{ canonical: "commands/aide/refactor", hostPath: "aide/refactor.md", displayName: "aide:refactor" },
 	{ canonical: "commands/aide/align", hostPath: "aide/align.md", displayName: "aide:align" },
 	{ canonical: "commands/aide/brain", hostPath: "aide/brain.md", displayName: "aide:brain" },
+	{ canonical: "commands/aide/handoff", hostPath: "aide/handoff.md", displayName: "aide:handoff" },
 ];
 
 /**

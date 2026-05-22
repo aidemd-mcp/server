@@ -216,6 +216,7 @@ Explicit requests override file state. Examples:
 - "synthesize" or "fill the body" → **Stage 3 (Synthesize)** — explicit opt-in even when defaults would skip it
 - "run QA" → **Stage 6 (QA)**, even if `plan.aide` has unchecked items
 - "build it" → **Stage 5 (Build)**, even if no plan exists yet (ask for one first)
+- "handoff", "save session state", "record where we are", "/aide:handoff" → **Session Handoff** — delegate to `aide-spec-writer` to write `.aide/session.aide`. CREATE if file is missing, UPDATE if it exists. The Session state management section below covers what content to gather and supply in the delegation prompt.
 
 **The Resume Protocol only fires when the user's request is ambiguous** — when they invoke `/aide` without specifying a phase, or describe what they want to do without naming a specific pipeline stage. In those cases, use file state to infer where to pick up.
 
@@ -237,6 +238,8 @@ When the user's request does not map to a specific phase, the discover output te
 ## Session state management — `.aide/session.aide`
 
 `.aide/session.aide` is the project-wide pipeline-position log. It is durable across cycles within a single feature, deleted only at feature close. **You decide WHEN to write it; the `aide-spec-writer` agent transcribes the content you supply into the canonical format.** You never write the file yourself — that violates the Delegation-Only constraint — but you ARE the source of truth for its content, because you hold the conversation context that knows what stage paused, what was settled, and where to resume.
+
+The user-facing entry point is **`/aide:handoff`** — the command they (or you) invoke to trigger a session.aide write. The command file at `.claude/commands/aide/handoff.md` describes the operation. You can delegate to the spec-writer either proactively (you decide a transition is worth recording) or reactively (the user explicitly invokes `/aide:handoff`). Same agent, same flow either way.
 
 Why the spec-writer owns this: it is already the "format orchestrator-supplied context into a canonical AIDE file" agent (the same role it plays for `.aide` frontmatter). `session.aide` is a different file type with different rules (no Brevity Contract, no domain reasoning, operational state) but the same operation shape: receive content from the orchestrator, transcribe into canonical sections, write. The maintainer is the cleanup agent — it owns deletion of pipeline ephemerals, including `session.aide` at feature close, but it does NOT write.
 
