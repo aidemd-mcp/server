@@ -237,53 +237,33 @@ When the user's request does not map to a specific phase, the discover output te
 
 ## Session state management — `.aide/session.aide`
 
-`.aide/session.aide` is the project-wide pipeline-position log. It is durable across cycles within a single feature, deleted only at feature close. **You decide WHEN to write it; the `aide-spec-writer` agent transcribes the content you supply into the canonical format.** You never write the file yourself — that violates the Delegation-Only constraint — but you ARE the source of truth for its content, because you hold the conversation context that knows what stage paused, what was settled, and where to resume.
+`.aide/session.aide` is the project-wide pipeline-position log — durable across cycles within a single feature, deleted only at feature close. **You decide WHEN it needs to be written; the `aide-handoff` skill owns HOW.** You never write the file yourself, and you do NOT duplicate the handoff operation logic in this skill — invoke `aide-handoff` and let it carry the operation.
 
-The user-facing entry point is **`/aide:handoff`** — the command they (or you) invoke to trigger a session.aide write. The command file at `.claude/commands/aide/handoff.md` describes the operation. You can delegate to the spec-writer either proactively (you decide a transition is worth recording) or reactively (the user explicitly invokes `/aide:handoff`). Same agent, same flow either way.
+The user-facing entry point is `/aide:handoff`; the implementation lives in the `aide-handoff` skill which detects CREATE vs UPDATE, gathers content from your conversation context, and delegates the actual write to `aide-spec-writer` in `session.aide` mode. Deletion at feature close is `aide-maintainer`'s job — not the handoff skill's.
 
-Why the spec-writer owns this: it is already the "format orchestrator-supplied context into a canonical AIDE file" agent (the same role it plays for `.aide` frontmatter). `session.aide` is a different file type with different rules (no Brevity Contract, no domain reasoning, operational state) but the same operation shape: receive content from the orchestrator, transcribe into canonical sections, write. The maintainer is the cleanup agent — it owns deletion of pipeline ephemerals, including `session.aide` at feature close, but it does NOT write.
+### When to invoke `aide-handoff`
 
-### When to delegate a CREATE
+Invoke it proactively (without waiting for the user) whenever:
 
-Delegate `aide-spec-writer` to CREATE `.aide/session.aide` when ALL of these are true:
+- A multi-plan feature has just finished Stage 4 (Plan) and is about to enter a multi-cycle build → CREATE
+- The user has just paused the pipeline for review and the conversation will resume in a future session → CREATE or UPDATE
+- An architectural decision was just settled that downstream agents must not re-debate → UPDATE
+- An anti-regression invariant was just added that every future build phase must check → UPDATE
+- A pipeline stage just completed for the in-flight feature → UPDATE
+- An open question resolves or a new one surfaces → UPDATE
 
-- The feature is large enough to span multiple build/QA/fix cycles, multiple architectural reworks, or multiple sessions of conversation — single-cycle builds never need a session.aide
-- You can name at least: the feature intent (one line), the current pipeline stage, and what the next agent must do (the `## Where this cycle stopped` content)
+Invoke it reactively whenever the user explicitly says `/aide:handoff`, "save the session", "record where we are", or similar handoff phrasing.
 
-Common trigger points:
+Do NOT invoke it for single-cycle builds, trivial fixes, or features that resume from conversation context alone — a handoff there is noise.
 
-- A multi-plan feature has just finished Stage 4 (Plan) and is about to enter a multi-cycle build
-- The user has just paused the pipeline for review and the conversation will resume in a future session
-- An architectural rework has been settled that downstream agents must not re-debate
-- An anti-regression invariant has been added that every future build phase must check
+### What you owe the skill
 
-### When to delegate an UPDATE
+`aide-handoff` cannot read your conversation context — it can only read its delegation prompt. When you invoke it, your `args` should supply the content the skill needs to construct the spec-writer delegation:
 
-Delegate `aide-spec-writer` to UPDATE `.aide/session.aide` whenever a meaningful pipeline-state transition occurs:
+- **For CREATE:** feature intent (one line), state summary (current stage + what was just done + what's blocked), `## Where this cycle stopped` content (next agent's instructions), settled decisions (numbered, if any), anti-regression invariants (bulleted, if any), optional process discipline notes, optional open questions
+- **For UPDATE:** the change description (what transition occurred) and section-targeted edits (which section gets new content, e.g. "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ...")
 
-- A pipeline stage completes for the in-flight feature
-- A new architectural decision is settled and downstream agents need to honor it (append at the next stable decision number — the spec-writer will preserve numbering)
-- A new anti-regression invariant is added
-- The cycle pauses for user review and the `## Where this cycle stopped` content needs to change
-- An open question resolves or a new one surfaces
-
-### What you supply in the delegation prompt
-
-The spec-writer is a transcriber, not an author. Your CREATE/UPDATE delegation prompts MUST supply the content; the spec-writer never invents. Include:
-
-- **For CREATE:** feature intent (one line); state summary prose (current stage, what was just done, what is paused); architectural intent decisions (numbered list of what's settled, if any); anti-regression invariants (bullet list, if any); `## Where this cycle stopped` content (the next agent's instructions); process discipline notes (optional); open questions (optional). **Be explicit that this is a `session.aide` CREATE** — the spec-writer's default operation is `.aide` frontmatter; you must name the operation type so it dispatches correctly.
-- **For UPDATE:** a change description (what transition occurred); section-targeted edits (e.g., "append decision #3: ..."; "rewrite `## Where this cycle stopped` to: ..."); numbered references to preserve. **Be explicit that this is a `session.aide` UPDATE.**
-
-If you don't have the content, don't delegate yet — that's a sign you haven't gathered enough conversation context to make the write meaningful.
-
-### What the spec-writer rejects
-
-- Silent overwrites of an existing `session.aide` (use UPDATE, not CREATE)
-- Updates against a non-existent `session.aide` (use CREATE, not UPDATE)
-- Ambiguous prompts that don't name the operation type (`.aide` write vs. `session.aide` CREATE/UPDATE), the section target, or the content source
-- CREATE prompts missing feature intent or `## Where this cycle stopped` content
-
-If the spec-writer REFUSES, fix your prompt and re-delegate — never try to write the file yourself.
+If you don't have the content yet, gather it from conversation first; if it isn't in conversation, ask the user before invoking the skill. The skill will REFUSE on missing load-bearing content (feature intent, `## Where this cycle stopped`) rather than fabricate.
 
 ## Pipeline
 
