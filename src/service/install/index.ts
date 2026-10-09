@@ -46,15 +46,13 @@ export async function planBrainCategory(projectRoot: string, _integration: strin
  * `skipIde` was removed: IDE configuration is presented per-category during
  * the agent interview rather than suppressed via a flag.
  * `framework` remains so the agent can re-call after user confirms or
- * overrides framework detection. `brainPath` is the user-confirmed brain root path
- * forwarded to `provisionBrain` — the agent provides this after interviewing
- * the user.
+ * overrides framework detection. The retired `brainPath` argument is gone: the
+ * brain category is always planned and the brain root is not this layer's concern.
  */
 export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
 	path: z.string().optional().describe("Custom project root path (defaults to server working directory)"),
 	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
-	brainPath: z.string().optional().describe("Resolved brain root path for the brain category. The agent provides this after interviewing the user."),
 });
 
 /**
@@ -66,20 +64,17 @@ export const InitInput = z.object({
  *
  * Each step is idempotent: re-running on a fully initialized project returns
  * all steps as `exists`. Brain hints are discovered from env var, sibling
- * path, and conventional path — returned as candidates the agent presents
- * to the user; the agent confirms the path before any brain root work is done.
+ * path, and conventional path — returned as interview material for the agent;
+ * they never influence the brain plan.
  *
  * @param root - Server working directory (from --root CLI arg or cwd).
  * @param framework - Optional framework override.
  * @param path - Optional project root override (absolute or relative to root).
- * @param brainPath - User-confirmed brain root path. When provided, forwarded to
- *   provisionBrain instead of using the first discovered hint.
  */
 export default async function init(
 	root: string,
 	framework?: FrameworkType,
 	path?: string,
-	brainPath?: string,
 ): Promise<InitResult> {
 	const projectRoot = path ? (isAbsolute(path) ? path : join(root, path)) : root;
 	const config = await detectFramework(projectRoot, framework);
@@ -95,38 +90,13 @@ export default async function init(
 	const aideTreeSteps = await installAideTree(projectRoot);
 	const mcpStep = await wireMcp(join(projectRoot, config.mcpConfigPath));
 
-	// Brain steps require a confirmed brain root path. When brainPath is explicitly
-	// provided (agent-confirmed), delegate fully to provisionBrain. When absent,
-	// return placeholder steps with empty filePaths so the agent knows to interview
-	// the user first — the brain MCP entry prescription is omitted because without
-	// a confirmed brain.aide there is no source of truth to derive an entry from.
-	// brainHints are interview material for the agent; they are NEVER used as a
-	// planner-side default to avoid silently baking a hint into the prescription
-	// before the user has confirmed the path.
+	// The brain category is always planned. The brain config step is presence-only
+	// (an existing .aide/config/brain.aide is never overwritten), carries the published
+	// brainContract, and carries a brainRepair prescription when the config is outdated.
+	// The brain root is not this layer's concern: the config prose seeds the brain.
+	// brainHints stay interview material for the agent and never feed the plan.
 	const brainMcpPath = join(projectRoot, config.mcpConfigPath);
-	let brainSteps: InitStep[];
-	if (brainPath !== undefined) {
-		// Delegate to provisionBrain with two inputs: the host project root
-		// (where .aide/config/brain.aide lives) and the MCP config path.
-		brainSteps = await provisionBrain(projectRoot, brainMcpPath);
-	} else {
-		// No explicit brainPath — the agent must ask the user. Return placeholder
-		// steps with empty filePaths. The MCP step prescription is omitted: without
-		// brain.aide there is no source of truth to derive an entry from. The
-		// orchestrator's /aide:brain config flow scaffolds brain.aide first.
-		brainSteps = [
-			{ name: "Brain config (brain.aide)", status: "would-create" as const, category: "brain" as const, filePath: "" },
-			{ name: "Brain root directories", status: "would-create" as const, category: "brain" as const, filePath: "" },
-			{ name: "Playbook hub", status: "would-create" as const, category: "brain" as const, filePath: "" },
-			{ name: "Research hub", status: "would-create" as const, category: "brain" as const, filePath: "" },
-			{
-				name: "MCP config (brain)",
-				status: "would-create" as const,
-				category: "mcp" as const,
-				filePath: brainMcpPath,
-			},
-		];
-	}
+	const brainSteps = await provisionBrain(projectRoot, brainMcpPath);
 
 	// ── versions.json ────────────────────────────────────────────────────────
 	// Deliver the static versions manifest alongside the methodology docs so

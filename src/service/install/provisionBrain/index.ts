@@ -1,18 +1,7 @@
-import { readFile, access } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import type { InitStep, McpPrescription } from "@/types/index.js";
 import parseBrainAide, { interpolateArgs, parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
-import obsidianBrainAideTemplate from "./obsidianBrainAideTemplate/index.js";
-
-/** Check if a path exists. */
-async function exists(path: string): Promise<boolean> {
-	try {
-		await access(path);
-		return true;
-	} catch {
-		return false;
-	}
-}
+import buildBrainAideStep from "./buildBrainAideStep/index.js";
 
 /** Read a file, returning empty string if it doesn't exist. */
 async function safeReadFile(path: string): Promise<string> {
@@ -62,45 +51,6 @@ async function resolveBrainAideConfig(
 	return {
 		command: mcpServerConfig.command,
 		args: interpolateArgs({ name, mcpServerConfig }),
-	};
-}
-
-/**
- * Build the brain.aide config file planning step.
- *
- * Presence-only (seed-semantic) idempotency — if the file exists at `.aide/config/brain.aide`
- * within the host project root, the step is `exists`. The file lives under `.aide/config/`,
- * the host's user-owned configuration directory established by the root spec. The
- * seed-semantic invariant (never `would-overwrite`) applies to every path under `.aide/config/`,
- * not just brain.aide — the directory boundary is the ownership signal, not a per-file
- * allowlist. provisionBrain never returns `would-overwrite` for any file under `.aide/config/`.
- *
- * When the file is absent, the bundled template bytes are emitted as `content`. The template
- * is called with no arguments and emits YAML null at every unwired slot in
- * `mcpServerConfig.args` — the structural unwired-slot signal rather than a literal sentinel.
- */
-async function buildBrainAideStep(projectRoot: string): Promise<InitStep> {
-	const filePath = join(projectRoot, ".aide", "config", "brain.aide");
-
-	if (await exists(filePath)) {
-		return {
-			name: "Brain config (brain.aide)",
-			status: "exists",
-			category: "brain",
-			filePath,
-		};
-	}
-
-	// Absent — scaffold the bundled default brain.aide bytes. The template is the single
-	// source of launcher bytes; the MCP step derives from it. No brainPath argument —
-	// the template emits YAML null at the unwired path slot regardless of caller.
-	const content = obsidianBrainAideTemplate();
-	return {
-		name: "Brain config (brain.aide)",
-		status: "would-create",
-		category: "brain",
-		filePath,
-		content,
 	};
 }
 
@@ -217,7 +167,11 @@ async function buildBrainMcpStep(
  *   1. Brain config (brain.aide) — presence-only idempotency on `.aide/config/brain.aide`.
  *      Absent → `would-create` with the bundled template bytes (YAML null at every unwired
  *      slot of `mcpServerConfig.args`). Present → `exists` with no `content` field. Never
- *      returns `would-overwrite` for any path under `.aide/config/`.
+ *      returns `would-overwrite` for any path under `.aide/config/`. The step always publishes
+ *      `brainContract` (the required-section contract); for an outdated file (whole sections
+ *      absent) it also carries `brainRepair`, an insertion-only prescription built from the
+ *      latest bundled template that the agent applies. This category itself still never writes
+ *      into `.aide/config/`.
  *   2. MCP config (brain) — derives the prescription from the just-scaffolded (or on-disk)
  *      brain.aide via parseBrainAide + interpolateArgs. Handles four states of `.mcp.json`
  *      (absent/empty → would-create; brain key absent → would-create; brain key present and

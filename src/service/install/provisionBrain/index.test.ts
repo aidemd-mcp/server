@@ -28,6 +28,9 @@ import { platform } from "node:os";
 import provisionBrain from "./index.js";
 import obsidianBrainAideTemplate from "./obsidianBrainAideTemplate/index.js";
 import { parseBrainAideFromString, interpolateArgs } from "@/service/parseBrainAide/index.js";
+import brainContract from "@/service/brainContract/index.js";
+import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
+import type { BrainSectionField } from "@/types/index.js";
 
 const mockPlatform = vi.mocked(platform);
 
@@ -60,11 +63,13 @@ function makeMcpPath(): string {
 }
 
 /**
- * Build a valid six-section brain.aide fixture string.
+ * Build a valid brain.aide fixture string carrying every section of `brainContract`, in
+ * contract order. The fixture is derived from the contract, so it stays complete when a
+ * section is added.
  *
- * The `orientation` and `config` sections carry trivial placeholder prose — they are
- * not read by this module, so their bytes are irrelevant to assertions; they only need
- * to be present so the parser succeeds.
+ * Every section carries trivial placeholder prose unless overridden through `sections`
+ * (keyed by contract field) — section bytes are not read by this module, so they only need
+ * to be present for the parser to succeed.
  *
  * When `args` is omitted, the default carries a JS null at the path slot, mirroring the
  * bundled template's YAML null. Tests that need a wired brain.aide must pass explicit args
@@ -73,23 +78,22 @@ function makeMcpPath(): string {
  * Per-element YAML emission rule: a JS `null` at any index emits a bare-dash line (`    -`)
  * which the YAML parser reads back as JS `null`. A string emits `    - <string>`.
  */
-function makeSixSectionBrainAide(
+function makeBrainAide(
 	_brainPath: string,
 	opts: {
-		playbookContent?: string;
-		studyPlaybookContent?: string;
-		updatePlaybookContent?: string;
-		researchContent?: string;
+		sections?: Partial<Record<BrainSectionField, string>>;
 		command?: string;
 		args?: (string | null)[];
 	} = {},
 ): string {
 	const command = opts.command ?? "npx";
 	const args: (string | null)[] = opts.args ?? [`'@bitbonsai/mcpvault'`, null];
-	const playbookContent = opts.playbookContent ?? "# Playbook\n\nPlaybook content.";
-	const studyPlaybookContent = opts.studyPlaybookContent ?? "# Study Playbook\n\nStudy content.";
-	const updatePlaybookContent = opts.updatePlaybookContent ?? "# Update Playbook\n\nUpdate content.";
-	const researchContent = opts.researchContent ?? "# Research\n\nResearch content.";
+
+	const body = brainContract.flatMap((entry) => {
+		const { open, close } = toMarkerPair(entry.marker);
+		const content = opts.sections?.[entry.field] ?? `${entry.field} content.`;
+		return [open, "", content, "", close, ""];
+	});
 
 	return [
 		"---",
@@ -100,41 +104,7 @@ function makeSixSectionBrainAide(
 		...args.map((a) => (a === null ? `    -` : `    - ${a}`)),
 		"---",
 		"",
-		"<!-- aide-orientation-start -->",
-		"",
-		"Orientation content here.",
-		"",
-		"<!-- aide-orientation-end -->",
-		"",
-		"<!-- aide-config-start -->",
-		"",
-		"Config content here.",
-		"",
-		"<!-- aide-config-end -->",
-		"",
-		"<!-- aide-playbook-index-start -->",
-		"",
-		playbookContent,
-		"",
-		"<!-- aide-playbook-index-end -->",
-		"",
-		"<!-- aide-study-playbook-start -->",
-		"",
-		studyPlaybookContent,
-		"",
-		"<!-- aide-study-playbook-end -->",
-		"",
-		"<!-- aide-update-playbook-start -->",
-		"",
-		updatePlaybookContent,
-		"",
-		"<!-- aide-update-playbook-end -->",
-		"",
-		"<!-- aide-research-index-start -->",
-		"",
-		researchContent,
-		"",
-		"<!-- aide-research-index-end -->",
+		...body,
 	].join("\n");
 }
 
@@ -251,7 +221,7 @@ describe("provisionBrain", () => {
 		await mkdir(aideConfigDir, { recursive: true });
 		await writeFile(
 			join(aideConfigDir, "brain.aide"),
-			makeSixSectionBrainAide(brainPath),
+			makeBrainAide(brainPath),
 			"utf-8",
 		);
 
@@ -395,13 +365,15 @@ describe("provisionBrain", () => {
 		const mcpPath = makeMcpPath();
 
 		// User has customized their brain.aide with a real path at the path slot.
-		const customBrainAide = makeSixSectionBrainAide(brainPath, {
+		const customBrainAide = makeBrainAide(brainPath, {
 			command: "node",
 			args: [`"/custom/path/to/launcher.js"`, `${brainPath}`],
-			playbookContent: "# Custom Playbook",
-			studyPlaybookContent: "# Custom Study Playbook",
-			updatePlaybookContent: "# Custom Update Playbook",
-			researchContent: "# Custom Research",
+			sections: {
+				playbookIndex: "# Custom Playbook",
+				studyPlaybook: "# Custom Study Playbook",
+				updatePlaybook: "# Custom Update Playbook",
+				researchIndex: "# Custom Research",
+			},
 		});
 
 		const aideConfigDir = join(projectRoot, ".aide", "config");
@@ -462,7 +434,7 @@ describe("provisionBrain", () => {
 		const mcpPath = makeMcpPath();
 
 		// Pre-write a valid brain.aide with a wired path at the path slot.
-		const brainAideContent = makeSixSectionBrainAide(brainPath, {
+		const brainAideContent = makeBrainAide(brainPath, {
 			args: [`'@bitbonsai/mcpvault'`, `'${brainPath}'`],
 		});
 		const aideConfigDir = join(projectRoot, ".aide", "config");
@@ -512,7 +484,7 @@ describe("provisionBrain", () => {
 		const mcpPath = makeMcpPath();
 
 		// Brain config file — write with a wired path so the derived MCP entry has real args.
-		const brainAideContent = makeSixSectionBrainAide(brainPath, {
+		const brainAideContent = makeBrainAide(brainPath, {
 			args: [`'@bitbonsai/mcpvault'`, `'${brainPath}'`],
 		});
 		const aideConfigDir = join(projectRoot, ".aide", "config");
@@ -550,8 +522,8 @@ describe("provisionBrain", () => {
 		const projectRoot = makeProjectRoot();
 		const mcpPath = makeMcpPath();
 
-		// Pre-write a brain.aide via default makeSixSectionBrainAide (null at args[1]).
-		const brainAideContent = makeSixSectionBrainAide(makeBrainPath());
+		// Pre-write a brain.aide via default makeBrainAide (null at args[1]).
+		const brainAideContent = makeBrainAide(makeBrainPath());
 		const aideConfigDir = join(projectRoot, ".aide", "config");
 		await mkdir(aideConfigDir, { recursive: true });
 		await writeFile(join(aideConfigDir, "brain.aide"), brainAideContent, "utf-8");
@@ -578,7 +550,7 @@ describe("provisionBrain", () => {
 		const mcpPath = makeMcpPath();
 
 		// Pre-write a brain.aide with a real path at the path slot (wired state).
-		const brainAideContent = makeSixSectionBrainAide(brainPath, {
+		const brainAideContent = makeBrainAide(brainPath, {
 			args: [`'@bitbonsai/mcpvault'`, `'${brainPath}'`],
 		});
 		const aideConfigDir = join(projectRoot, ".aide", "config");
@@ -616,7 +588,7 @@ describe("provisionBrain", () => {
 		const mcpPath = makeMcpPath();
 
 		// Pre-write a brain.aide with null at the path slot (default fixture).
-		const brainAideContent = makeSixSectionBrainAide(makeBrainPath());
+		const brainAideContent = makeBrainAide(makeBrainPath());
 		const aideConfigDir = join(projectRoot, ".aide", "config");
 		await mkdir(aideConfigDir, { recursive: true });
 		await writeFile(join(aideConfigDir, "brain.aide"), brainAideContent, "utf-8");
@@ -677,6 +649,50 @@ describe("provisionBrain", () => {
 		// Required minimal-schema fields must be present.
 		expect(frontmatterBlock).toContain("name:");
 		expect(frontmatterBlock).toContain("mcpServerConfig:");
+	});
+
+	// -----------------------------------------------------------------------
+	// Brain config step publishes the contract and the repair prescription
+	// -----------------------------------------------------------------------
+
+	it("brain config step carries brainContract on both the absent and present branches", async () => {
+		const projectRoot = makeProjectRoot();
+		const mcpPath = makeMcpPath();
+
+		const cold = await provisionBrain(projectRoot, mcpPath);
+		expect(cold[0].brainContract).toEqual(brainContract);
+
+		const aideConfigDir = join(projectRoot, ".aide", "config");
+		await mkdir(aideConfigDir, { recursive: true });
+		await writeFile(join(aideConfigDir, "brain.aide"), makeBrainAide(makeBrainPath()), "utf-8");
+
+		const warm = await provisionBrain(projectRoot, mcpPath);
+		expect(warm[0].brainContract).toEqual(brainContract);
+	});
+
+	it("no step for a path under .aide/config/ is ever would-overwrite, including the outdated case", async () => {
+		const projectRoot = makeProjectRoot();
+		const mcpPath = makeMcpPath();
+		const configDir = join(projectRoot, ".aide", "config");
+
+		// Outdated: only the first two contract sections are present.
+		const full = obsidianBrainAideTemplate();
+		const cutAt = full.indexOf(toMarkerPair(brainContract[2].marker).open);
+		await mkdir(configDir, { recursive: true });
+		await writeFile(join(configDir, "brain.aide"), full.slice(0, cutAt), "utf-8");
+
+		const steps = await provisionBrain(projectRoot, mcpPath);
+
+		const underConfig = steps.filter((step) => step.filePath.startsWith(configDir));
+		expect(underConfig.length).toBeGreaterThan(0);
+		for (const step of underConfig) {
+			expect(step.status).not.toBe("would-overwrite");
+		}
+
+		const outdated = steps[0];
+		expect(outdated.status).toBe("exists");
+		expect(outdated.content).toBeUndefined();
+		expect(outdated.brainRepair?.length).toBe(brainContract.length - 2);
 	});
 
 	// -----------------------------------------------------------------------

@@ -5,6 +5,9 @@ import { tmpdir, platform } from "node:os";
 import init from "./index.js";
 import applySteps from "./applySteps/index.js";
 import { composeStub } from "./writeMethodology/index.js";
+import obsidianBrainAideTemplate from "./provisionBrain/obsidianBrainAideTemplate/index.js";
+import brainContract from "@/service/brainContract/index.js";
+import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
 import type { InitResult, InitStep } from "@/types/index.js";
 
 /** Check if a path exists on disk. */
@@ -40,6 +43,12 @@ afterEach(async () => {
 		process.env.AIDE_BRAIN_PATH = originalBrainPath;
 	}
 });
+
+/** Write a brain.aide into the temp project's config directory. */
+async function writeBrainAide(content: string): Promise<void> {
+	await mkdir(join(tempDir, ".aide", "config"), { recursive: true });
+	await writeFile(join(tempDir, ".aide", "config", "brain.aide"), content, "utf-8");
+}
 
 /** Find a step by name in the result. */
 function findStep(result: InitResult, name: string): InitStep | undefined {
@@ -84,15 +93,11 @@ describe("init — structured JSON result", () => {
 			if (step.status === "would-create") {
 				// MCP steps carry prescription; file steps carry content
 				if (step.category === "mcp") {
-					// MCP steps carry a prescription when the agent has confirmed a path;
-					// the brain MCP step always carries a prescription (even with empty path).
+					// MCP steps carry a prescription derived from the brain.aide template;
 					if (step.prescription) {
 						expect(step.prescription.key).toBeTruthy();
 						expect(step.prescription.entry.command).toBeTruthy();
 					}
-				} else if (step.category === "brain" && step.filePath === "") {
-					// Placeholder brain step — agent must interview user first
-					continue;
 				} else if (step.category !== "ide") {
 					// IDE vscode step may have no content (agent installs via CLI)
 					expect(step.content).toBeTruthy();
@@ -101,21 +106,11 @@ describe("init — structured JSON result", () => {
 		}
 	});
 
-	it("fresh project: every step has a filePath (brain placeholder steps have empty filePath when no brainPath supplied)", async () => {
+	it("fresh project: every step has a filePath, brain steps included", async () => {
 		const result = await init(tempDir);
 
-		// When no explicit brainPath is supplied, brain placeholder steps have empty
-		// filePaths — this signals the agent must interview the user before applying.
-		// "Brain config (brain.aide)" is now the first of the five placeholder steps
-		// and also carries an empty filePath. The MCP config (brain) step retains a
-		// real filePath (the .mcp.json path) because the consumer still needs it.
-		const brainPlaceholders = new Set(["Brain config (brain.aide)", "Brain root directories", "Playbook hub", "Research hub"]);
-
 		for (const step of result.steps) {
-			if (brainPlaceholders.has(step.name)) {
-				// Placeholder brain steps always have empty filePath when no brainPath supplied
-				expect(step.filePath).toBe("");
-			} else if (step.category === "readme" && step.status === "would-create" && step.filePath !== "") {
+			if (step.category === "readme" && step.status === "would-create" && step.filePath !== "") {
 				// README step on a fresh project: would-create with a real filePath (creates README.md)
 				expect(step.filePath).toBeTruthy();
 				expect(step.content).toBeTruthy();
@@ -206,86 +201,65 @@ describe("init — structured JSON result", () => {
 		expect(stepsForCategory(result, "skills").length).toBeGreaterThan(0);
 	});
 
-	it("fresh project: brain steps are would-create with empty filePath when no hints", async () => {
-		delete process.env.AIDE_BRAIN_PATH;
-		// Use isolated subdir to avoid sibling my-brain collisions
-		const isolated = join(tempDir, "project");
-		await mkdir(isolated);
+	it("cold project, no brainPath: Brain config step is would-create with template content and the contract", async () => {
+		const result = await init(tempDir);
 
-		const result = await init(isolated);
-
-		const brainSteps = stepsForCategory(result, "brain");
-		expect(brainSteps.length).toBeGreaterThan(0);
-		// When no hints exist, brain root step has empty filePath signaling
-		// the agent must interview the user before applying
-		const brainRootStep = brainSteps.find((s) => s.name === "Brain root directories");
-		expect(brainRootStep).toBeDefined();
-		expect(brainRootStep?.status).toBe("would-create");
-		expect(brainRootStep?.filePath).toBe("");
+		const brainAideStep = findStep(result, "Brain config (brain.aide)");
+		expect(brainAideStep).toBeDefined();
+		expect(brainAideStep?.category).toBe("brain");
+		expect(brainAideStep?.status).toBe("would-create");
+		expect(brainAideStep?.filePath).toBe(join(tempDir, ".aide", "config", "brain.aide"));
+		expect(brainAideStep?.content).toBe(obsidianBrainAideTemplate());
+		expect(brainAideStep?.brainContract).toEqual(brainContract);
+		expect(brainAideStep?.brainRepair).toBeUndefined();
 	});
 
-	it("no brainPath + hints non-empty: brain root step has empty-string filePath (hint NOT used as default)", async () => {
-		// Create a real brain root directory so resolveBrainHints returns a hint via env
-		const hintVault = join(tempDir, "hint-vault");
-		await mkdir(hintVault);
-		process.env.AIDE_BRAIN_PATH = hintVault;
+	it("brain category is the single Brain config step; the brain MCP step is mcp; no retired placeholders", async () => {
+		const result = await init(tempDir);
 
-		const isolated = join(tempDir, "project");
-		await mkdir(isolated);
-		// Call without brainPath — the hint must NOT be baked in
-		const result = await init(isolated);
-
-		// Hints should be non-empty (the env hint exists)
-		const envHints = result.brainHints.filter((h) => h.source === "env");
-		expect(envHints.length).toBeGreaterThan(0);
-
-		// Despite hints being present, brain root step must have empty filePath
-		const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
-		expect(brainRootStep).toBeDefined();
-		expect(brainRootStep?.status).toBe("would-create");
-		expect(brainRootStep?.filePath).toBe("");
-
-		// Brain MCP step must have NO prescription when brainPath is absent —
-		// the entry cannot be derived without a brain.aide, so no prescription is emitted.
-		const brainMcpStep = result.steps.find((s) => s.name === "MCP config (brain)");
-		expect(brainMcpStep).toBeDefined();
-		expect(brainMcpStep?.prescription).toBeUndefined();
-	});
-
-	it("no brainPath + hints empty: brain root step has empty-string filePath", async () => {
-		delete process.env.AIDE_BRAIN_PATH;
-		const isolated = join(tempDir, "deeply", "nested", "project");
-		await mkdir(isolated, { recursive: true });
-
-		const result = await init(isolated);
-
-		if (result.brainHints.length === 0) {
-			const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
-			expect(brainRootStep).toBeDefined();
-			expect(brainRootStep?.filePath).toBe("");
-			expect(brainRootStep?.status).toBe("would-create");
+		expect(stepsForCategory(result, "brain").map((s) => s.name)).toEqual(["Brain config (brain.aide)"]);
+		expect(findStep(result, "MCP config (brain)")?.category).toBe("mcp");
+		for (const retired of ["Brain root directories", "Playbook hub", "Research hub"]) {
+			expect(findStep(result, retired)).toBeUndefined();
 		}
 	});
 
-	it("explicit brainPath: brain config step exists, brainHints still returned", async () => {
-		const confirmedPath = join(tempDir, "confirmed-vault");
-		const result = await init(tempDir, undefined, undefined, confirmedPath);
+	it("hints present: hints are returned but never feed the brain plan", async () => {
+		const hintVault = join(tempDir, "hint-vault");
+		await mkdir(hintVault);
+		process.env.AIDE_BRAIN_PATH = hintVault;
+		const isolated = join(tempDir, "project");
+		await mkdir(isolated);
 
-		// provisionBrain now returns two steps: brain.aide scaffold + MCP entry plan.
-		// The retired "Brain root directories" step is gone — provisionBrain no longer
-		// creates brain root directories; that responsibility moved to the integration's
-		// aide-config prose at /aide:brain config.
-		const brainAideStep = result.steps.find((s) => s.name === "Brain config (brain.aide)");
-		expect(brainAideStep).toBeDefined();
-		expect(brainAideStep?.category).toBe("brain");
+		const result = await init(isolated);
 
-		// brainHints still present at top level (agent interview material)
-		expect(result).toHaveProperty("brainHints");
-		expect(Array.isArray(result.brainHints)).toBe(true);
+		expect(result.brainHints.filter((h) => h.source === "env").length).toBeGreaterThan(0);
+		const brainAideStep = findStep(result, "Brain config (brain.aide)");
+		expect(brainAideStep?.filePath).toBe(join(isolated, ".aide", "config", "brain.aide"));
+		expect(brainAideStep?.content).not.toContain(hintVault);
+	});
 
-		// Brain MCP step is still present
-		const brainMcpStep = result.steps.find((s) => s.name === "MCP config (brain)");
-		expect(brainMcpStep).toBeDefined();
+	it("brain MCP step carries a prescription derived from the brain.aide template", async () => {
+		const result = await init(tempDir);
+
+		const brainMcpStep = findStep(result, "MCP config (brain)");
+		expect(brainMcpStep?.status).toBe("would-create");
+		expect(brainMcpStep?.prescription?.key).toBe("brain");
+		expect(brainMcpStep?.prescription?.entry.command).toBeTruthy();
+	});
+
+	it("outdated brain.aide (kanban sections missing): Brain config step is exists with a two-entry brainRepair", async () => {
+		const full = obsidianBrainAideTemplate();
+		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-board").open)));
+
+		const result = await init(tempDir);
+
+		const brainAideStep = findStep(result, "Brain config (brain.aide)");
+		expect(brainAideStep?.status).toBe("exists");
+		expect(brainAideStep?.content).toBeUndefined();
+		expect(brainAideStep?.brainContract).toEqual(brainContract);
+		expect(brainAideStep?.brainRepair).toHaveLength(2);
+		expect(brainAideStep?.brainRepair?.map((r) => r.marker)).toEqual(["kanban-board", "work-kanban"]);
 	});
 
 	it("idempotency — re-running on initialized content returns exists steps", async () => {
@@ -416,6 +390,19 @@ describe("init — response shaping (server-handler logic)", () => {
 		expect(mcpSteps.length).toBe(originalMcpSteps.length);
 	});
 
+	it("summary mode: brain step loses content but keeps brainContract and brainRepair", async () => {
+		const full = obsidianBrainAideTemplate();
+		const coldStripped = stripContent(await init(tempDir)).steps.find((s) => s.name === "Brain config (brain.aide)");
+		expect(coldStripped).not.toHaveProperty("content");
+		expect(coldStripped?.brainContract).toEqual(brainContract);
+
+		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-board").open)));
+		const outdatedStripped = stripContent(await init(tempDir)).steps.find((s) => s.name === "Brain config (brain.aide)");
+		expect(outdatedStripped).not.toHaveProperty("content");
+		expect(outdatedStripped?.brainContract).toEqual(brainContract);
+		expect(outdatedStripped?.brainRepair).toHaveLength(2);
+	});
+
 	it("category filter: returns only steps of the specified category", async () => {
 		const result = await init(tempDir);
 		const filtered = filterCategory(result, "commands");
@@ -467,9 +454,8 @@ describe("init — apply mode (category call)", () => {
 		expect(applied.some((s) => s.status === "created")).toBe(true);
 	});
 
-	it("brain category with brainPath: brain.aide scaffold step is created after apply", async () => {
-		const brainPath = join(tempDir, "my-vault");
-		const result = await init(tempDir, undefined, undefined, brainPath);
+	it("brain category: brain.aide scaffold step is created after apply", async () => {
+		const result = await init(tempDir);
 		const brainSteps = result.steps.filter((s) => s.category === "brain");
 		expect(brainSteps.length).toBeGreaterThan(0);
 
@@ -487,6 +473,18 @@ describe("init — apply mode (category call)", () => {
 		// The brain.aide file should exist on disk at the expected path
 		const brainAidePath = join(tempDir, ".aide", "config", "brain.aide");
 		expect(await pathExists(brainAidePath)).toBe(true);
+	});
+
+	it("brain category apply never writes .aide/config/brain.aide when it already exists", async () => {
+		const full = obsidianBrainAideTemplate();
+		const outdated = full.slice(0, full.indexOf(toMarkerPair("kanban-board").open));
+		await writeBrainAide(outdated);
+
+		const result = await init(tempDir);
+		const applied = await applySteps(result.steps.filter((s) => s.category === "brain"));
+
+		expect(applied.find((s) => s.name === "Brain config (brain.aide)")?.status).toBe("exists");
+		expect(await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8")).toBe(outdated);
 	});
 
 	it("MCP steps in a category call: prescription is preserved in the returned manifest", async () => {
@@ -529,15 +527,14 @@ describe("init — apply mode (category call)", () => {
 describe("init — would-overwrite and silent-create invariants", () => {
 	it("drifted command file: that step is would-overwrite, all other canonical steps are exists or would-create", async () => {
 		// Apply a full init run first to populate all files, then corrupt one command file.
-		const brainPath = join(tempDir, "brain");
-		const firstRun = await init(tempDir, undefined, undefined, brainPath);
+		const firstRun = await init(tempDir);
 		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
 
 		// Corrupt research.md to simulate hand-editing
 		const commandDir = join(tempDir, ".claude", "commands");
 		await writeFile(join(commandDir, "aide", "research.md"), "# my custom research\n", "utf-8");
 
-		const result = await init(tempDir, undefined, undefined, brainPath);
+		const result = await init(tempDir);
 		const commandSteps = stepsForCategory(result, "commands");
 
 		const drifted = commandSteps.find((s) => s.name === "aide:research");
@@ -553,8 +550,7 @@ describe("init — would-overwrite and silent-create invariants", () => {
 
 	it("fully-initialized project: every canonical-owned step is exists", async () => {
 		// Apply all steps (brain included) to get a fully initialized state.
-		const brainPath = join(tempDir, "brain");
-		const firstRun = await init(tempDir, undefined, undefined, brainPath);
+		const firstRun = await init(tempDir);
 		// Apply all non-MCP steps (MCP is a prescription, not written to disk)
 		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
 
@@ -564,7 +560,7 @@ describe("init — would-overwrite and silent-create invariants", () => {
 			JSON.stringify({ mcpServers: { aide: expectedAideMcpEntry } }),
 		);
 
-		const result = await init(tempDir, undefined, undefined, brainPath);
+		const result = await init(tempDir);
 
 		// None of the file-writing categories should have would-create or would-overwrite
 		const fileCategories = ["methodology", "commands", "agents", "skills", "brain"] as const;
@@ -586,8 +582,7 @@ describe("init — would-overwrite and silent-create invariants", () => {
 
 	it("apply mode on drifted category: overwritten status, content stripped, disk bytes match canonical", async () => {
 		// Full init + apply to set a clean baseline.
-		const brainPath = join(tempDir, "brain");
-		const firstRun = await init(tempDir, undefined, undefined, brainPath);
+		const firstRun = await init(tempDir);
 		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
 
 		// Corrupt one command file.
@@ -596,7 +591,7 @@ describe("init — would-overwrite and silent-create invariants", () => {
 		await writeFile(driftedPath, "# my custom spec\n", "utf-8");
 
 		// Plan again — commands category should have one would-overwrite.
-		const secondRun = await init(tempDir, undefined, undefined, brainPath);
+		const secondRun = await init(tempDir);
 		const commandSteps = secondRun.steps.filter((s) => s.category === "commands");
 
 		const drifted = commandSteps.find((s) => s.name === "aide:spec");
@@ -611,7 +606,7 @@ describe("init — would-overwrite and silent-create invariants", () => {
 		expect(overwritten).not.toHaveProperty("content");
 
 		// Disk bytes must now match canonical (re-plan returns exists).
-		const thirdRun = await init(tempDir, undefined, undefined, brainPath);
+		const thirdRun = await init(tempDir);
 		const afterApply = thirdRun.steps.find((s) => s.name === "aide:spec");
 		expect(afterApply?.status).toBe("exists");
 	});
@@ -632,11 +627,10 @@ describe("init — would-overwrite and silent-create invariants", () => {
 
 	it("byte-identical versions.json: step is exists with no content", async () => {
 		// Apply a full init to get the byte-identical versions.json on disk.
-		const brainPath = join(tempDir, "brain");
-		const firstRun = await init(tempDir, undefined, undefined, brainPath);
+		const firstRun = await init(tempDir);
 		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
 
-		const result = await init(tempDir, undefined, undefined, brainPath);
+		const result = await init(tempDir);
 
 		const versionsStep = findStep(result, "versions.json");
 		expect(versionsStep).toBeDefined();
@@ -644,9 +638,8 @@ describe("init — would-overwrite and silent-create invariants", () => {
 		expect(versionsStep?.content).toBeUndefined();
 	});
 
-	it("pure-create run (fresh tempDir, brainPath supplied): no would-overwrite statuses", async () => {
-		const brainPath = join(tempDir, "brain");
-		const result = await init(tempDir, undefined, undefined, brainPath);
+	it("pure-create run (fresh tempDir): no would-overwrite statuses", async () => {
+		const result = await init(tempDir);
 
 		const overwriteSteps = result.steps.filter((s) => s.status === "would-overwrite");
 		expect(overwriteSteps).toHaveLength(0);
@@ -661,49 +654,20 @@ describe("init — would-overwrite and silent-create invariants", () => {
 	});
 });
 
-describe("init — sentinel brain path collision (issue 8)", () => {
-	it("my-brain/ inside project root does not appear as brain root step filePath when no env var set", async () => {
+describe("init — brain plan ignores brain-root lookalikes (issue 8, re-pointed)", () => {
+	it("my-brain/ inside the project root is never adopted: the brain plan is rooted at .aide/config", async () => {
 		delete process.env.AIDE_BRAIN_PATH;
-		// Use isolated subdir so sibling hint from real cwd doesn't fire
 		const isolated = join(tempDir, "project");
 		await mkdir(isolated);
-		// Create a my-brain/ directory INSIDE the project root
 		await mkdir(join(isolated, "my-brain"));
 
 		const result = await init(isolated);
 
-		const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
-		expect(brainRootStep).toBeDefined();
-		// The tool must NOT adopt the inner my-brain/ path silently.
-		// With no env var and the project root itself not having a sibling my-brain
-		// at the same level, brainHints should be empty (or only contain sibling hint
-		// from the parent tempDir level, not the inner one).
-		// The brain root step must have status would-create (not exists pointing at inner dir).
-		// If brainHints is empty, filePath must be "".
-		if (result.brainHints.length === 0) {
-			expect(brainRootStep?.filePath).toBe("");
-			expect(brainRootStep?.status).toBe("would-create");
-		} else {
-			// If a hint fired (sibling at parent level), the filePath must NOT be the inner my-brain
-			expect(brainRootStep?.filePath).not.toBe(join(isolated, "my-brain"));
-		}
-	});
-
-	it("completely isolated project (no env var, no sibling, subdirectory): brain root step has empty filePath", async () => {
-		delete process.env.AIDE_BRAIN_PATH;
-		// Use a deeply nested isolated dir where no sibling my-brain can exist at parent
-		const isolated = join(tempDir, "deeply", "nested", "project");
-		await mkdir(isolated, { recursive: true });
-
-		const result = await init(isolated);
-
-		const brainRootStep = result.steps.find((s) => s.name === "Brain root directories");
-		expect(brainRootStep).toBeDefined();
-
-		// If no hints, the brain root step must have empty filePath (not a fabricated path)
-		if (result.brainHints.length === 0) {
-			expect(brainRootStep?.filePath).toBe("");
-			expect(brainRootStep?.status).toBe("would-create");
+		const brainAideStep = findStep(result, "Brain config (brain.aide)");
+		expect(brainAideStep?.status).toBe("would-create");
+		expect(brainAideStep?.filePath).toBe(join(isolated, ".aide", "config", "brain.aide"));
+		for (const step of stepsForCategory(result, "brain")) {
+			expect(step.filePath).not.toContain("my-brain");
 		}
 	});
 });

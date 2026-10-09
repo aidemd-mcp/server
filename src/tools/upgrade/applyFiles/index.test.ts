@@ -234,6 +234,45 @@ describe("applyFiles", () => {
 		expect(result.canonicalContent).toBeUndefined();
 	});
 
+	// ── Brain: differs (behind) → section-naming instructions, no disk write ──
+	it("names the missing sections in instructions for a behind brain file, no disk write", async () => {
+		const file = makeFile({
+			name: ".aide/config/brain.aide",
+			filePath: "/some/.aide/config/brain.aide",
+			status: "differs",
+			category: "brain",
+			missingSections: ["kanban-board", "work-kanban"],
+			canonicalContent: undefined,
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(mkdir)).not.toHaveBeenCalled();
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+		expect(result.instructions).toBe(
+			"Brain config is behind — missing required sections: kanban-board, work-kanban. Run /aide:brain config to add them.",
+		);
+		expect(result.status).toBe("differs");
+		expect(result.missingSections).toEqual(["kanban-board", "work-kanban"]);
+		expect(result.canonicalContent).toBeUndefined();
+	});
+
+	// ── Brain: differs never reaches the generic write path even with content ──
+	it("never writes a behind brain file even if canonicalContent were present", async () => {
+		const file = makeFile({
+			name: ".aide/config/brain.aide",
+			filePath: "/some/.aide/config/brain.aide",
+			status: "differs",
+			category: "brain",
+			missingSections: ["work-kanban"],
+			canonicalContent: "should never be written",
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(mkdir)).not.toHaveBeenCalled();
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+		expect(result.status).toBe("differs");
+	});
+
 	// ── Brain: matches → unchanged, no instructions ───────────────────────────
 	it("brain-category matches file becomes unchanged with no instructions", async () => {
 		const file = makeFile({

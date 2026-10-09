@@ -2,7 +2,7 @@
  * Tests for brain tool — BrainState-contract branching + verbatim-bytes invariants.
  *
  * Branches covered: one describe block per BrainState status (`ok`, `no-brain-aide`,
- * `no-mcp-entry`, `mcp-drift`) plus the defensive-fallback path. Tests are written
+ * `brain-aide-invalid`, `no-mcp-entry`, `mcp-drift`) plus the defensive-fallback path. Tests are written
  * against the BrainState vocabulary exported from `@/types/index.ts`; the test
  * count is derived from those branches, not pinned as a fixed number.
  *
@@ -21,6 +21,7 @@ vi.mock("@/service/parseBrainAide/index.js");
 
 import buildBrainState from "@/service/buildBrainState/index.js";
 import parseBrainAide from "@/service/parseBrainAide/index.js";
+import brainContract from "@/service/brainContract/index.js";
 import brain, { BrainInput } from "./index.js";
 
 const mockBuildBrainState = buildBrainState as ReturnType<typeof vi.fn>;
@@ -78,6 +79,38 @@ function makeOkParseResult(overrides: { orientation?: string; config?: string } 
 		researchIndex: "research-index-placeholder",
 	};
 }
+
+/**
+ * Section markers drawn from the published contract (never hand-typed), so the
+ * missing-sections fixtures follow the contract if it grows. Two entries from
+ * the tail of the contract order.
+ */
+const CONTRACT_MARKERS = brainContract.map((entry) => entry.marker);
+const MISSING_MARKERS = CONTRACT_MARKERS.slice(-2);
+
+/** Malformed reason fixture; the composer must carry it verbatim. */
+const MALFORMED_REASON = "required field name is missing";
+
+/** brain-aide-invalid state fixture carrying a missing-sections fault. */
+function makeMissingSectionsState(sections: string[] = MISSING_MARKERS) {
+	return {
+		status: "brain-aide-invalid" as const,
+		fault: { kind: "missing-sections" as const, sections },
+		hints: [],
+	};
+}
+
+/** brain-aide-invalid state fixture carrying a malformed fault. */
+function makeMalformedState(reason = MALFORMED_REASON) {
+	return {
+		status: "brain-aide-invalid" as const,
+		fault: { kind: "malformed" as const, reason },
+		hints: [],
+	};
+}
+
+/** The absent-file sentence; it must never describe a present-but-invalid file. */
+const ABSENT_SENTENCE = "No `.aide/config/brain.aide` is present";
 
 // ---------------------------------------------------------------------------
 // Test setup
@@ -302,14 +335,15 @@ describe("brain — no name dispatch", () => {
 // ---------------------------------------------------------------------------
 
 describe("brain — no-brain-aide: remediation prose", () => {
-	it("returns status no-brain-aide with prose containing npx @aidemd-mcp/server@latest init", async () => {
+	it("returns status no-brain-aide with prose routing to /aide:brain config", async () => {
 		mockBuildBrainState.mockResolvedValue({ status: "no-brain-aide", hints: [] });
 
 		const result = await brain("/root");
 
 		expect(result.status).toBe("no-brain-aide");
-		// Load-bearing phrase: the agent must surface the exact recovery command.
-		expect(result.instructions).toContain("npx @aidemd-mcp/server@latest init");
+		// Load-bearing phrase: the agent must surface the config command, not the retired CLI init.
+		expect(result.instructions).toContain("/aide:brain config");
+		expect(result.instructions).not.toContain("init");
 	});
 
 	it("returns byte-identical instructions for orientation and config on no-brain-aide branch", async () => {
@@ -324,6 +358,87 @@ describe("brain — no-brain-aide: remediation prose", () => {
 
 	it("never calls parseBrainAide on the no-brain-aide branch regardless of kind", async () => {
 		mockBuildBrainState.mockResolvedValue({ status: "no-brain-aide", hints: [] });
+
+		await brain("/root", { kind: "orientation" });
+		await brain("/root", { kind: "config" });
+
+		expect(mockParseBrainAide).not.toHaveBeenCalled();
+	});
+});
+
+describe("brain — brain-aide-invalid: remediation prose", () => {
+	it("returns brain-aide-invalid with instructions naming every missing section", async () => {
+		mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
+
+		const result = await brain("/root");
+
+		expect(result.status).toBe("brain-aide-invalid");
+		for (const marker of MISSING_MARKERS) {
+			expect(result.instructions).toContain(marker);
+		}
+		expect(result.instructions).toContain(`missing required sections: ${MISSING_MARKERS.join(", ")}.`);
+		expect(result.instructions).toContain("/aide:brain config");
+	});
+
+	it("carries the malformed reason verbatim in the instructions", async () => {
+		mockBuildBrainState.mockResolvedValue(makeMalformedState());
+
+		const result = await brain("/root");
+
+		expect(result.status).toBe("brain-aide-invalid");
+		expect(result.instructions).toContain(`exists but is malformed: ${MALFORMED_REASON}.`);
+		expect(result.instructions).toContain("/aide:brain config");
+	});
+
+	it.each([
+		["missing-sections", makeMissingSectionsState()],
+		["malformed", makeMalformedState()],
+	])("returns byte-identical instructions for orientation and config on a %s fault", async (_label, state) => {
+		mockBuildBrainState.mockResolvedValue(state);
+
+		const orientationResult = await brain("/root", { kind: "orientation" });
+		const configResult = await brain("/root", { kind: "config" });
+
+		expect(orientationResult.status).toBe("brain-aide-invalid");
+		expect(orientationResult.status).toBe(configResult.status);
+		expect(orientationResult.instructions).toBe(configResult.instructions);
+	});
+
+	it.each([
+		["missing-sections", makeMissingSectionsState()],
+		["malformed", makeMalformedState()],
+	])("responds with exactly the keys status and instructions on a %s fault", async (_label, state) => {
+		mockBuildBrainState.mockResolvedValue(state);
+
+		const result = await brain("/root");
+
+		expect(Object.keys(result).sort()).toEqual(["instructions", "status"]);
+	});
+
+	it.each([
+		["missing-sections", makeMissingSectionsState()],
+		["malformed", makeMalformedState()],
+	])("never calls a present file absent on a %s fault", async (_label, state) => {
+		mockBuildBrainState.mockResolvedValue(state);
+
+		const result = await brain("/root");
+
+		expect(result.instructions).not.toContain(ABSENT_SENTENCE);
+	});
+
+	it.each([
+		["missing-sections", makeMissingSectionsState()],
+		["malformed", makeMalformedState()],
+	])("returns non-empty instructions on a %s fault", async (_label, state) => {
+		mockBuildBrainState.mockResolvedValue(state);
+
+		const result = await brain("/root");
+
+		expect(result.instructions.length).toBeGreaterThan(0);
+	});
+
+	it("never calls parseBrainAide on the brain-aide-invalid branch regardless of kind", async () => {
+		mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
 
 		await brain("/root", { kind: "orientation" });
 		await brain("/root", { kind: "config" });
@@ -409,7 +524,7 @@ describe("brain — mcp-drift: remediation prose", () => {
 
 describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 	it.each(["orientation", "config"] as const)(
-		"returns no-brain-aide with non-empty instructions on kind=%s when parseBrainAide returns missing",
+		"returns no-brain-aide routing to /aide:brain config on kind=%s when parseBrainAide returns missing",
 		async (kind) => {
 			// Simulate the upstream contract violation: buildBrainState says ok but
 			// parseBrainAide returns missing (e.g. file deleted between the two calls).
@@ -420,42 +535,71 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 
 			expect(result.status).toBe("no-brain-aide");
 			expect(result.instructions.length).toBeGreaterThan(0);
-			expect(result.instructions).toContain("npx @aidemd-mcp/server@latest init");
+			expect(result.instructions).toContain("/aide:brain config");
+			expect(result.instructions).toContain(ABSENT_SENTENCE);
 		},
 	);
 
 	it.each(["orientation", "config"] as const)(
-		"returns no-brain-aide on kind=%s when parseBrainAide returns malformed-frontmatter",
+		"returns brain-aide-invalid naming the missing sections on kind=%s when parseBrainAide returns missing-sections",
+		async (kind) => {
+			mockBuildBrainState.mockResolvedValue(makeOkState());
+			mockParseBrainAide.mockResolvedValue({ kind: "missing-sections", sections: MISSING_MARKERS });
+
+			const result = await brain("/root", { kind });
+
+			expect(result.status).toBe("brain-aide-invalid");
+			expect(result.instructions).toContain(`missing required sections: ${MISSING_MARKERS.join(", ")}.`);
+			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
+		},
+	);
+
+	it.each(["orientation", "config"] as const)(
+		"returns brain-aide-invalid carrying the reason on kind=%s when parseBrainAide returns malformed-frontmatter",
 		async (kind) => {
 			mockBuildBrainState.mockResolvedValue(makeOkState());
 			mockParseBrainAide.mockResolvedValue({
 				kind: "malformed-frontmatter",
-				reason: "required field name is missing",
+				reason: MALFORMED_REASON,
 			});
 
 			const result = await brain("/root", { kind });
 
-			expect(result.status).toBe("no-brain-aide");
-			expect(result.instructions.length).toBeGreaterThan(0);
-			expect(result.instructions).toContain("npx @aidemd-mcp/server@latest init");
+			expect(result.status).toBe("brain-aide-invalid");
+			expect(result.instructions).toContain(`exists but is malformed: ${MALFORMED_REASON}.`);
+			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
+		},
+	);
+
+	it.each(["orientation", "config"] as const)(
+		"returns brain-aide-invalid naming the read error, never 'not present', on kind=%s when parseBrainAide returns unreadable",
+		async (kind) => {
+			const reason = "cannot read .aide/config/brain.aide: permission denied (EACCES)";
+			mockBuildBrainState.mockResolvedValue(makeOkState());
+			mockParseBrainAide.mockResolvedValue({ kind: "unreadable", reason });
+
+			const result = await brain("/root", { kind });
+
+			expect(result.status).toBe("brain-aide-invalid");
+			expect(result.instructions).toContain(reason);
+			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
+			expect(result.instructions).not.toContain("not present");
 		},
 	);
 
 	// Step 8b — third non-ok parser kind: malformed-body
 	it.each(["orientation", "config"] as const)(
-		"returns no-brain-aide on kind=%s when parseBrainAide returns malformed-body",
+		"returns brain-aide-invalid carrying the reason on kind=%s when parseBrainAide returns malformed-body",
 		async (kind) => {
+			const reason = "unbalanced markers: <!-- aide-orientation-start -->";
 			mockBuildBrainState.mockResolvedValue(makeOkState());
-			mockParseBrainAide.mockResolvedValue({
-				kind: "malformed-body",
-				reason: "missing markers: <!-- aide-orientation-start -->, <!-- aide-orientation-end -->",
-			});
+			mockParseBrainAide.mockResolvedValue({ kind: "malformed-body", reason });
 
 			const result = await brain("/root", { kind });
 
-			expect(result.status).toBe("no-brain-aide");
-			expect(result.instructions.length).toBeGreaterThan(0);
-			expect(result.instructions).toContain("npx @aidemd-mcp/server@latest init");
+			expect(result.status).toBe("brain-aide-invalid");
+			expect(result.instructions).toContain(`exists but is malformed: ${reason}.`);
+			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
 		},
 	);
 });
@@ -467,6 +611,8 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 describe("brain — instructions always non-empty", () => {
 	it.each([
 		["no-brain-aide", { status: "no-brain-aide" as const, hints: [] }],
+		["brain-aide-invalid (missing-sections)", makeMissingSectionsState()],
+		["brain-aide-invalid (malformed)", makeMalformedState()],
 		["no-mcp-entry", { status: "no-mcp-entry" as const, name: "obsidian", hints: [] }],
 		["mcp-drift", { status: "mcp-drift" as const, name: "obsidian", hints: [] }],
 	])(

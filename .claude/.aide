@@ -40,7 +40,7 @@ outcomes:
     - A cascading-alignment.md methodology doc exists under .aide/docs/
       documenting the protocol, the status field semantics, the aligner's
       role, and how misalignment flows through the pipeline.
-    - "When `aide_info` reports `brain.status: invalid-path` with an empty
+    - "When `aide_info` reports `brain.status: no-mcp-entry` with an empty
       `vaultPath`, the `/aide` orchestrator recovers inline by issuing two
       `aide_init` calls in sequence against the user-supplied vault path.
       Call one uses `category: \"mcp\"` and applies the returned brain
@@ -102,7 +102,7 @@ outcomes:
       brainPath })` alone applies the brain-category steps (vault
       dirs, playbook hub, vault CLAUDE.md) but filters out the
       mcp-category step that prescribes the brain entry for
-      `.mcp.json` — so `brain.status` stays `invalid-path` even though
+      `.mcp.json` — so `brain.status` stays `no-mcp-entry` even though
       the orchestrator reports the vault as wired up. The sequence
       must issue both the mcp call and the brain call; one call is
       not the recovery."

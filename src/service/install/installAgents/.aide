@@ -1,12 +1,13 @@
 ---
 scope: src/service/install/installAgents
 status: aligned
-description: "Installs the canonical AIDE pipeline agents and the generic study-playbook skill into the host project, byte-faithful and skip-on-exists."
+description: "Installs the canonical AIDE pipeline agents and the generic brain-pointer skills into the host project, byte-faithful and skip-on-exists."
 intent: >
-  Plant the canonical AIDE agent set and the generic study-playbook
-  skill into a host project so each pipeline phase has a runtime
-  identity to delegate to. The category iterates the canonical
-  registry, lands one file per registered agent plus the skill,
+  Plant the canonical AIDE agent set and the generic brain-pointer
+  skills — study-playbook and the kanban skill — into a host project
+  so each pipeline phase has a runtime identity to delegate to. The
+  category iterates the canonical registry, lands one file per
+  registered agent plus each skill,
   preserves any host customization untouched, and reports per-file
   status. It writes byte-faithful copies of canonical content; it
   invents none. Configuration variance — including how the brain is
@@ -14,13 +15,16 @@ intent: >
   category never branches on it.
 outcomes:
   desired:
-    - Every canonical agent enumerated by the install service's content registry lands in the host project, with the generic study-playbook skill installed alongside. Adding a new canonical agent is a single registry entry — this category picks it up automatically.
+    - Every canonical agent enumerated by the install service's content registry lands in the host project, with the generic brain-pointer skills installed alongside. Adding a new canonical agent is a single registry entry — this category picks it up automatically.
     - Agent and skill content flow through the install service's canonical-content chokepoint byte-faithfully. This category stages files; it never authors agent prose or skill prose.
     - Each landed file reports status — created, exists, or skipped — under the install service's reporting pattern. A re-run on a fully-installed project changes nothing and reports every file as existing.
-    - Host customizations to any landed agent file or to the study-playbook skill survive every subsequent run. Upgrading installed canonical content is a separate action's job, not this category's.
+    - Host customizations to any landed agent file or brain-pointer skill survive every subsequent run. Upgrading installed canonical content is a separate action's job, not this category's.
+    - The kanban part is a single kanban skill that works in any project, AIDE or not. It only points the agent to the kanban guide in the user's brain, where all kanban logic lives.
   undesired:
-    - This category overwriting, patching, or migrating an agent file or the study-playbook skill that already exists in the host project. Customizations are the host's surface; this category respects them on every run after the first.
+    - This category overwriting, patching, or migrating an agent file or brain-pointer skill that already exists in the host project. Customizations are the host's surface; this category respects them on every run after the first.
     - Agent or skill content authored in this category as inline strings instead of read through the install service's canonical-content chokepoint. That creates a second source of truth that drifts from canonical.
     - This category branching on the host's brain configuration — inspecting the brain config, varying which agents land, or mutating an agent's declared MCP server list per host. Every host receives the same canonical files; configuration variance lives in the host's brain config, not here.
+    - A brain-pointer skill carrying board layout, card workflow, or any backend's storage vocabulary instead of routing the agent to the guide the user's brain holds. These skills point; the brain owns the procedure.
+    - A kanban skill that only works inside an AIDE project, or that splits kanban behavior across several skills. One skill points to the brain's guide wherever it runs.
     - This category restating brain-MCP-key portability doctrine, model-assignment rationale, or pipeline-phase-to-agent mapping in its own outcomes or strategy. That doctrine is owned upstream — the canonical agent files carry it, not this category.
 ---

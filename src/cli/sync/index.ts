@@ -17,7 +17,7 @@ function isAllStrings(args: (string | null)[]): args is string[] {
  *
  * Exit-code contract:
  * - 0 on success, including the no-change case ("already in sync" is success).
- * - 1 on any file failure: brain.aide missing/malformed, null-bearing args,
+ * - 1 on any file failure: brain.aide missing/malformed/missing required sections, null-bearing args,
  *   `.mcp.json` invalid JSON, or write error.
  * - 2 on `--help` or invalid argv (handled by the IIFE before `runSync` is called).
  *
@@ -48,6 +48,11 @@ export async function runSync(
 		return 1;
 	}
 
+	if (result.kind === "unreadable") {
+		writeErr(`\`.aide/config/brain.aide\` exists but could not be read: ${result.reason}. Fix the file permissions and re-run sync.`);
+		return 1;
+	}
+
 	if (result.kind === "malformed-frontmatter") {
 		writeErr(
 			`\`.aide/config/brain.aide\` frontmatter is malformed: ${result.reason}. Fix the YAML and re-run sync.`,
@@ -58,6 +63,13 @@ export async function runSync(
 	if (result.kind === "malformed-body") {
 		writeErr(
 			`\`.aide/config/brain.aide\` has a malformed body: ${result.reason}. Fix the file and re-run sync.`,
+		);
+		return 1;
+	}
+
+	if (result.kind === "missing-sections") {
+		writeErr(
+			`\`.aide/config/brain.aide\` is missing required sections: ${result.sections.join(", ")}. Run \`/aide:brain config\` to add them, then re-run sync.`,
 		);
 		return 1;
 	}

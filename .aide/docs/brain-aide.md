@@ -2,7 +2,7 @@
 
 `brain.aide` is the host project's brain configuration. It declares which MCP server to launch as the brain layer and carries the hand-written agent-facing instructions that explain how to use it. It lives at `.aide/config/brain.aide` and is the single source of truth for the host's brain wiring.
 
-`brain.aide` is a config file, not an intent spec. Its frontmatter is a typed config object; its body is hand-written content read live by `aide_brain` (orientation + config sections) and read by the integration's `aide-config` prose at first `/aide:brain config` (the four seed sections, written into the brain via the brain's own MCP write tool). The explicit divergence from the intent-spec family (`intent.aide`, `plan.aide`, `todo.aide`, `research.aide`) is load-bearing — see `## Divergence from intent specs` below.
+`brain.aide` is a config file, not an intent spec. Its frontmatter is a typed config object; its body is hand-written content read live by `aide_brain` (the live sections) and read by the integration's `aide-config` prose at first `/aide:brain config` (the seed sections, written into the brain via the brain's own MCP write tool at the paths the published contract names). The explicit divergence from the intent-spec family (`intent.aide`, `plan.aide`, `todo.aide`, `research.aide`) is load-bearing — see `## Divergence from intent specs` below.
 
 ## Format
 
@@ -16,51 +16,13 @@ mcpServerConfig:
     -
 ---
 
-<!-- aide-orientation-start -->
-Runtime briefing returned verbatim by `aide_brain`. Describes what the
-brain is, which MCP tools to call, and the four entry-point artifacts the
-agent should start from for any given task.
-<!-- aide-orientation-end -->
+<!-- aide-<marker>-start -->
+...section body, written by the user...
+<!-- aide-<marker>-end -->
 
-<!-- aide-config-start -->
-Integration-specific wiring flow, read live by `aide_brain({ kind: "config" })`.
-Documents which arg index in `mcpServerConfig.args` is the unwired slot the
-user must fill, how to resolve and land that value, how to run sync, how
-to seed the four entry-point artifacts into the brain via the brain's own
-MCP write tool from the seed-section bytes, and what restart message to
-emit.
-<!-- aide-config-end -->
-
-<!-- aide-playbook-index-start -->
-Install-time seed for the coding-playbook entry-point artifact. The
-integration's `aide-config` body section prose reads this section at first
-`/aide:brain config` and writes it verbatim to
-`coding-playbook/coding-playbook.md` in the brain via the brain's own
-MCP write tool.
-<!-- aide-playbook-index-end -->
-
-<!-- aide-study-playbook-start -->
-Install-time seed for the study-playbook navigation guide. The
-integration's `aide-config` prose reads this section at first
-`/aide:brain config` and writes it verbatim to
-`coding-playbook/study-playbook.md` in the brain. Holds the
-backend-specific playbook-navigation prose the `study-playbook` skill
-points at.
-<!-- aide-study-playbook-end -->
-
-<!-- aide-update-playbook-start -->
-Install-time seed for the playbook-maintenance methodology. The
-integration's `aide-config` prose reads this section at first
-`/aide:brain config` and writes it verbatim to
-`coding-playbook/update-playbook.md` in the brain.
-<!-- aide-update-playbook-end -->
-
-<!-- aide-research-index-start -->
-Install-time seed for the research entry-point artifact. The
-integration's `aide-config` prose reads this section at first
-`/aide:brain config` and writes it verbatim to `research/research.md`
-in the brain.
-<!-- aide-research-index-end -->
+<!-- ...one block per contract entry, in contract order. The section list,
+     marker names and purposes come from the published contract (see Body
+     shape below), not from this example... -->
 ```
 
 ### Frontmatter fields
@@ -71,57 +33,57 @@ The schema is the minimum that still has real runtime consumers. Both fields are
 
 - **`mcpServerConfig`** — `object`. The MCP server configuration that wires the brain into the host's toolchain. Sync writes this object byte-for-byte into `.mcp.json` under the fixed `brain` key. Its shape mirrors what `.mcp.json` expects under `mcpServers["brain"]` so sync passes it through without reshaping.
   - **`command`** — `string`. The executable to launch (e.g. `"npx"`, `"node"`, `"uvx"`).
-  - **`args`** — `(string | null)[]`. Arguments passed to `command`. Every element is either a fully-formed argument string OR YAML null. A YAML null at any index is the explicit unwired-slot signal — the user must fill that slot via `/aide:brain config` before sync will write the brain entry into `.mcp.json`. The default scaffold's bundled `obsidianBrainAideTemplate()` emits YAML null at `args[3]` (or the platform-equivalent path slot); the integration's `aide-config` body section is the only place that documents which arg index means what for that backend. The package never introspects which slot is which. There is no literal-string placeholder — `<BRAIN_PATH>`, `<API_TOKEN>`, magic UUIDs, and any other in-band sentinel design have been retired in favor of structural YAML null.
+  - **`args`** — `(string | null)[]`. Arguments passed to `command`. Every element is either a fully-formed argument string OR YAML null. A YAML null at any index is the explicit unwired-slot signal — the user must fill that slot via `/aide:brain config` before sync will write the brain entry into `.mcp.json`. The default scaffold's bundled `obsidianBrainAideTemplate()` emits YAML null at `args[3]` (or the platform-equivalent path slot); the config section is the only place that documents which arg index means what for that backend. The package never introspects which slot is which. There is no literal-string placeholder — `<BRAIN_PATH>`, `<API_TOKEN>`, magic UUIDs, and any other in-band sentinel design have been retired in favor of structural YAML null.
 
 That is the complete schema. There are no other top-level fields. A `connector`, `rootPath`, `entryFile`, or `tools` field — all of which a prior schema required — is rejected by the parser as `malformed-frontmatter`. Each retired field was validation theater: it existed for the parser to check, with no code path that consumed its value at runtime.
 
-The parsed `ok` result flattens all fields as siblings: `{ kind: "ok", name, mcpServerConfig, orientation, config, playbookIndex, studyPlaybook, updatePlaybook, researchIndex }`. There is no `config: BrainAideConfig` wrapper — frontmatter fields and body fields appear at the same level on the result object.
+The parsed `ok` result flattens all fields as siblings: `{ kind: "ok", name, mcpServerConfig, ...one field per contract section }`. There is no `config: BrainAideConfig` wrapper — frontmatter fields and body fields appear at the same level on the result object, and the body field names come from the contract.
 
 ### Body shape
 
-The body is SIX marker-bounded sections in fixed order:
+The body is a sequence of marker-bounded sections. The required sections are a **published contract with one source**: the server's brain contract. This doc teaches the model and deliberately does not copy the list, because a copy would drift from the parser that enforces it.
 
-1. `<!-- aide-orientation-start -->` ... `<!-- aide-orientation-end -->`
-2. `<!-- aide-config-start -->` ... `<!-- aide-config-end -->`
-3. `<!-- aide-playbook-index-start -->` ... `<!-- aide-playbook-index-end -->`
-4. `<!-- aide-study-playbook-start -->` ... `<!-- aide-study-playbook-end -->`
-5. `<!-- aide-update-playbook-start -->` ... `<!-- aide-update-playbook-end -->`
-6. `<!-- aide-research-index-start -->` ... `<!-- aide-research-index-end -->`
+**Where agents read the contract.** `aide_init`'s `Brain config (brain.aide)` step returns it as `brainContract`. Each entry gives a section's `marker`, a one-line `purpose`, its `role` (`live` or `seed`) and, for seed sections, the brain-relative `seedPath`. The array order is the required body order, and new required sections append; existing entries never reorder.
 
-**Marker grammar.** Twelve markers total, six open/close pairs. Markers are lowercase, case-sensitive, with single ASCII spaces around the token — `<!-- aide-orientation-start -->` is valid; `<!--aide-orientation-start-->`, `<!-- Aide-Orientation-Start -->`, and `<!-- orientation-start -->` are not. The fixed order is orientation → config → playbook-index → study-playbook → update-playbook → research-index; any other order is a violation. Bytes outside any marker pair are silently ignored — blank lines between sections are fine and do not affect parsing.
+**Marker grammar.** Every section is one open/close pair: `<!-- aide-<marker>-start -->` ... `<!-- aide-<marker>-end -->`, where `<marker>` is a contract entry's `marker`. Markers are lowercase and case-sensitive, with single ASCII spaces around the token: `<!-- aide-<marker>-start -->` is valid; `<!--aide-<marker>-start-->`, `<!-- Aide-<marker>-Start -->` and `<!-- <marker>-start -->` are not. Pairs appear in contract order; any other order is a violation. Bytes outside any marker pair are silently ignored, so blank lines between sections are fine and do not affect parsing.
 
-**Live vs. seed split.** The six sections divide into two categories by consumer:
+**Any backend that satisfies the contract is valid.** A hand-written config for a different brain (a wiki, a notes API, a document store) is as valid as the bundled Obsidian template. Nothing depends on the template's wording or on the backend's identity: the parser checks the frontmatter shape and the contract's marker pairs, and nothing else.
 
-- **Live sections (1–2):** `orientation` and `config` are read by `aide_brain` at runtime. They live in `brain.aide` permanently and are returned verbatim on demand. `aide_brain` knows no other sections — it reads only the live pair.
-- **Seed sections (3–6):** `playbookIndex`, `studyPlaybook`, `updatePlaybook`, and `researchIndex` are read by the integration's `aide-config` body section prose at first `/aide:brain config` — after the user fills the unwired slot(s) and runs sync — and written as files into the brain via the brain's own MCP write tool (e.g. `mcp__brain__write_note` for the bundled Obsidian default). After seeding, the brain owns those files; users edit them there. The package's code path never reads or writes the seed sections — `provisionBrain` stops at scaffolding `brain.aide` and planning the `.mcp.json` brain entry.
+**Live vs. seed split.** The contract's `role` field divides the sections by consumer:
 
-**Per-consumer section ownership.** Each section has a single designated consumer:
+- **Live sections** are read by `aide_brain` at runtime. They live in `brain.aide` permanently and are returned verbatim on demand. `aide_brain` reads only the live sections.
+- **Seed sections** are written into the brain by `/aide:brain config`, each at its contract `seedPath`, through the brain's own MCP write tool. A seed write is skip-on-exists: a file already at that path is never overwritten. After seeding, the brain owns that file and users edit it there. The package never reads or writes the seed sections at runtime; the seed bytes go dormant once the brain holds them.
 
-- `orientation` — owned by `aide_brain` (live; `kind: "orientation"`). Returns the content verbatim to the agent. This is where the user writes runtime usage instructions: which MCP tools to call, how to navigate the knowledge store, and what entry-point artifacts the brain contains.
-- `config` — owned by `aide_brain` (live; `kind: "config"`). Returns the content verbatim to the integration-specific wiring flow that `/aide:brain config` executes. Documents which arg index is the unwired slot, how to resolve and land its value, how to run sync, how to seed the four entry-point artifacts via the brain's own MCP write tool, and what restart message to emit.
-- `playbookIndex` — owned by the integration's `aide-config` prose. Read at first `/aide:brain config` (after sync) via `parseBrainAide`'s typed key and written verbatim as `coding-playbook/coding-playbook.md` in the brain via the brain's own MCP write tool.
-- `studyPlaybook` — owned by the integration's `aide-config` prose. Read at first `/aide:brain config` and written verbatim as `coding-playbook/study-playbook.md` in the brain. Holds the backend-specific playbook-navigation prose the `study-playbook` skill points at.
-- `updatePlaybook` — owned by the integration's `aide-config` prose. Read at first `/aide:brain config` and written verbatim as `coding-playbook/update-playbook.md` in the brain. Seeds the playbook-maintenance methodology the `/aide:update-playbook` command reads via the brain.
-- `researchIndex` — owned by the integration's `aide-config` prose. Read at first `/aide:brain config` and written verbatim as `research/research.md` in the brain.
+**Kanban is a seed, not a feature of the package.** The board and its working guide are ordinary seed sections: they land in the brain at their contract seed paths like any other seed, and after that the brain owns them. A single pointer skill, `kanban`, is installed with the other AIDE skills. It names the working guide in the brain and tells the agent to read it through the session's brain tools, so it works in any project and does not require running the AIDE pipeline. The package ships no kanban logic of its own.
 
-The sync verb and boot reporter read frontmatter only; all six body sections are irrelevant to them. `provisionBrain` reads frontmatter only too — its 2-step pipeline scaffolds `brain.aide` and plans the `.mcp.json` brain entry without ever opening a body section.
+**Per-consumer section ownership.** Each section has one consumer, determined by its role:
 
-Cross-section reads violate the contract. `aide_brain` does not read `playbookIndex`, `studyPlaybook`, `updatePlaybook`, or `researchIndex`. The integration's `aide-config` prose does not read `orientation` (it reads its own section as part of being executed verbatim, but it does not read the `orientation` section). Each consumer reads exactly its own section(s), nothing more.
+- A **live** section is owned by `aide_brain`, which returns the content verbatim. The orientation section is where the user writes runtime usage instructions; the config section is the backend's wiring flow that `/aide:brain config` executes (which arg slot is unwired, how to land its value, how to run sync, how to seed the brain, what restart message to emit).
+- A **seed** section is owned by the integration's `aide-config` prose. It reads the section by its typed field and writes it verbatim at the contract `seedPath`.
 
-**Closed grammar — strict failure on layout violations.** The parser returns `malformed-body` for any of the following:
+The sync verb and boot reporter read frontmatter only; the body sections are irrelevant to them. `provisionBrain` plans repairs from the contract, not from any section's bytes.
 
-- Missing pair — `"missing markers: <comma-separated list>"` naming all absent markers.
-- Malformed or typo'd marker (uppercase, mixed-case, missing `aide-` prefix, extra whitespace) — `"unknown marker: <as-written>"`.
-- Unmatched closer without a preceding opener — `"unmatched closing marker: ..."`.
-- Unmatched opener without a following closer — `"unmatched opening marker: ..."`.
-- Wrong section order — `"marker order violation: ..."`.
-- Nested markers — `"nested marker: ..."`.
+Cross-role reads violate the contract. `aide_brain` does not read seed sections, and the integration's `aide-config` prose does not read live sections beyond executing its own. Each consumer reads exactly its own section(s), nothing more.
 
-**Strict-failure migration policy.** There is no transitional read path. Pre-rework files (4-section files carrying `aide-prose-*`, `aide-playbook-*`, `aide-study-playbook-*`, and `aide-research-*` markers) return `malformed-body` naming all twelve new markers as missing — the parser sees only unknown markers where it expects the new names. No auto-injection, no rename rewrite, no `aide_upgrade` carve-out. Migration is a hand-edit: rename the four existing markers to their new names (`aide-prose-*` → `aide-orientation-*`, `aide-playbook-*` → `aide-playbook-index-*`, `aide-research-*` → `aide-research-index-*`; `aide-study-playbook-*` is unchanged) and insert the two new section pairs (`aide-config-*` between orientation and playbook-index, `aide-update-playbook-*` between study-playbook and research-index) with appropriate content.
+**Closed grammar: strict failure on layout violations.** The parser rejects structural faults among the marker pairs that are present, each as `malformed-body` with its reason:
 
-Earlier migration classes follow the same strict-failure pattern: pre-pivot files whose body used heading-based organization return `malformed-body` naming all twelve missing markers; pre-amendment three-section files (prose, playbook, and research pairs present but missing study-playbook) return `malformed-body` naming the absent pair. The parser never guesses intent from headings. The strict-failure pattern is the invariant across all migration generations.
+- Malformed or typo'd marker (uppercase, mixed-case, missing `aide-` prefix, extra whitespace): `"unknown marker: <as-written>"`.
+- Unmatched closer without a preceding opener: `"unmatched closing marker: ..."`.
+- Unmatched opener without a following closer: `"unmatched opening marker: ..."`.
+- Wrong section order: `"marker order violation: ..."`.
+- Nested markers: `"nested marker: ..."`.
 
-**Entry-point artifact bytes flow from the seed sections.** The `playbookIndex`, `studyPlaybook`, `updatePlaybook`, and `researchIndex` sections are the source of truth for the artifacts the integration's `aide-config` prose seeds into the brain at first `/aide:brain config`. The package does not hold these bytes as inline TypeScript constants — they live in `brain.aide` where the user can see, edit, and own them in the scaffold. No package code path writes the artifacts to disk; the integration's prose owns the writes via the brain's own MCP write tool.
+**Absent whole sections are a different result.** When every present pair is sound but one or more required pairs are absent entirely, the parser returns `missing-sections`, naming each absent section in contract order. It is not a `malformed-body` reason. Structural faults among the present sections take precedence: a file with both is reported as the structural fault, so the user fixes the structure before the gaps are filled. The distinction drives the boot status; see `## Boot reporter brain status states`.
+
+**Outdated is reported, never silently accepted.** The policy for a present file that falls short of the contract:
+
+- It is reported with its fault. The package never reads a short file as if it were complete.
+- `/aide:brain config` repairs a `missing-sections` file by inserting only the missing sections, taken from the latest bundled template and delivered as `brainRepair` on `aide_init`'s brain config step, after the user confirms. Existing sections, launcher wiring and customizations are never touched.
+- Structural faults are shown to the user with the parser's reason, for hand repair. The package does not guess intent.
+- Install and upgrade still never write `.aide/config/`. See `## The .aide/config/ directory contract`.
+- A retired-marker file (one whose sections use markers no contract entry names) reports every section as missing. There is no rename rewrite and no transitional read path.
+
+**Seed bytes flow from the seed sections.** The seed sections are the source of truth for the artifacts the integration's `aide-config` prose writes into the brain at first `/aide:brain config`. The package does not hold these bytes as inline TypeScript constants; they live in `brain.aide` where the user can see, edit and own them in the scaffold. No package code path writes the artifacts to disk; the integration's prose owns the writes via the brain's own MCP write tool.
 
 ## Substitution surface
 
@@ -131,7 +93,7 @@ In the current schema, `name` is the only top-level field that resolves as a sub
 
 YAML null entries in `mcpServerConfig.args` pass through `interpolateArgs` unchanged at the same index — null is not a string, so there is no `${...}` reference to expand. Sync's null-refusal precondition catches null-bearing args before they reach `.mcp.json`; sync never writes null into the launch command.
 
-The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.args`. It runs only at sync time. It NEVER applies to any body section. All six body sections return verbatim, byte-identical to what the user wrote between the recognized markers.
+The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.args`. It runs only at sync time. It NEVER applies to any body section. All body sections return verbatim, byte-identical to what the user wrote between the recognized markers.
 
 ## aide_brain kind parameter
 
@@ -141,9 +103,9 @@ The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.arg
 aide_brain({ kind?: "orientation" | "config" })
 ```
 
-`kind` defaults to `"orientation"`. When `kind` is `"config"`, the tool returns the verbatim `<!-- aide-config-start -->` ... `<!-- aide-config-end -->` body section. Non-ok branches (`no-brain-aide`, `no-mcp-entry`, `mcp-drift`) return the same fixed remediation prose regardless of `kind`.
+`kind` defaults to `"orientation"`. When `kind` is `"config"`, the tool returns the verbatim body section of the contract's config entry, between that entry's marker pair. There are five branches in all: `ok` returns the requested live section, and the four non-ok branches (`no-brain-aide`, `brain-aide-invalid`, `no-mcp-entry`, `mcp-drift`) return fixed remediation prose regardless of `kind`. The `brain-aide-invalid` remediation names what is wrong (each missing section for a `missing-sections` fault, the parser's reason for a `malformed` fault) and routes the user to `/aide:brain config`.
 
-Seed-section kinds (`playbook-index`, `study-playbook`, `update-playbook`, `research-index`) are NOT exposed at runtime. `aide_brain` has no `kind` values for the seed sections because after the integration's `aide-config` prose seeds them into the brain at first `/aide:brain config`, those sections become on-disk files in the brain that the agent reads directly via the brain's own MCP read tool. The seed bytes in `brain.aide` go dormant after the first seed pass; the live source is the brain file.
+Seed sections are never surfaced at runtime. `aide_brain` has no `kind` values for them, because after the integration's `aide-config` prose seeds them into the brain at first `/aide:brain config`, those sections become files in the brain that the agent reads directly via the brain's own MCP read tool. The seed bytes in `brain.aide` go dormant after the first seed pass; the live source is the brain file.
 
 ## The `.aide/config/` directory contract
 
@@ -151,6 +113,7 @@ Seed-section kinds (`playbook-index`, `study-playbook`, `update-playbook`, `rese
 
 - **Scaffolded once.** `aide_init` (and `cli/init` at cold install) creates `.aide/config/brain.aide` if it does not exist, pre-filled with the bundled template selected by `--brain <integration>` (default: the obsidian-flavored `obsidianBrainAideTemplate()`).
 - **Never overwritten.** After the first write, the file belongs to the user forever. Neither `aide_init` nor `aide_upgrade` overwrites, patches, migrates, or otherwise mutates anything under `.aide/config/` on subsequent runs.
+- **Repair is data, not a write.** When the file is outdated, `aide_init` returns a repair prescription (`brainRepair`) as plain data. The agent applies it under the user's visible `/aide:brain config` command, after confirmation. That is the user's command editing the user's file, not an install or upgrade write.
 - **Boundary is the path.** The install/upgrade tooling reads the directory path itself as the ownership signal — there is no per-file allowlist. Any file the user puts under `.aide/config/` is safe from the package's install/upgrade machinery.
 
 Files outside `.aide/config/` (the methodology docs at `.aide/docs/`, pipeline command templates, agent definitions, skills, every other artifact the package ships) are package-owned and re-installed on every init/upgrade.
@@ -159,13 +122,13 @@ Files outside `.aide/config/` (the methodology docs at `.aide/docs/`, pipeline c
 
 ## Lifecycle
 
-1. **Scaffolded** by `cli/init` on cold install (`npx @aidemd-mcp/server@latest init` with optional `--brain <integration>`, default `obsidian`), and by `aide_init({ category: "brain" })` on first `/aide:brain config` for missing-`brain.aide` self-heal. Both paths write `.aide/config/brain.aide` pre-filled with the bundled template — for the default Obsidian template: `name: obsidian`, an `mcpServerConfig` that launches `@bitbonsai/mcpvault` with YAML null at the path slot until the user fills it via `/aide:brain config`, and six pre-filled body sections (orientation, config, playbook-index, study-playbook, update-playbook, research-index). A host that runs `cli/init` and then `/aide:brain config` gets a working brain UX out of the box.
+1. **Created or repaired** by `/aide:brain config`. When `.aide/config/brain.aide` is missing, the command asks which backend the user wants. For the bundled Obsidian default it uses the template `aide_init` returns, which carries YAML null at the unwired launcher slot until step 2 (a cold `cli/init` install also scaffolds that template once, if the file is absent). For any other backend the agent writes a launcher, an orientation section and a config section itself, plus generic seed sections the user confirms, following the published contract (`aide_init`'s `brainContract`). When the file exists but is outdated, the command repairs it as described under `### Body shape`. Either way the result is validated with the real parser through `aide_info`; a hand-written file counts only if the parser accepts it.
 
-2. **Filled** by the user via `/aide:brain config`. The integration's `aide-config` body section prose runs, asks the user for whatever values the YAML-null slots need (e.g. the brain root path for the bundled Obsidian default), and edits `brain.aide` to land the resolved values into the args slots. Subsequent retargeting, switching brains, swapping the MCP launcher, or rewriting any body section are also hand-edits to this one file. After the initial scaffold, `aide_init` and `aide_upgrade` will never touch it.
+2. **Filled** by the user via `/aide:brain config`. The config section's prose runs, asks the user for whatever values the YAML-null slots need (e.g. the brain root path for the bundled Obsidian default), and edits `brain.aide` to land the resolved values into the args slots. Retargeting, switching brains, swapping the MCP launcher and rewriting any body section are also edits to this one file.
 
 3. **Propagated** to `.mcp.json` by `npx @aidemd-mcp/server@latest sync`. The user runs this after the slot-filling step. Sync reads the frontmatter, expands any `${...}` interpolations in `mcpServerConfig.args` (the default scaffold has none), and writes the resulting object into `.mcp.json` under the fixed `brain` key. Sync refuses null-bearing args: if any element of `mcpServerConfig.args` is still null, sync exits non-zero and routes the user back to `/aide:brain config`. Sync is the only mechanism that mutates `.mcp.json`'s brain entry.
 
-4. **Entry-point artifacts seeded** by the integration's `aide-config` prose, after sync passes. The prose reads the four seed sections from `brain.aide` via `parseBrainAide`'s typed keys (`playbookIndex`, `studyPlaybook`, `updatePlaybook`, `researchIndex`) and writes each artifact into the brain via the brain's own MCP write tool (e.g. `mcp__brain__write_note` for Obsidian) at integration-specific paths. The presence-check + re-seed loop owns missing-artifact recovery on every `/aide:brain config` invocation.
+4. **Seeds written** by the integration's `aide-config` prose, after sync passes. The prose reads each seed section from `brain.aide` via `parseBrainAide`'s typed keys and writes it into the brain via the brain's own MCP write tool at the contract `seedPath`, skipping any file that already exists. The presence-check + re-seed loop owns missing-artifact recovery on every `/aide:brain config` invocation. The kanban board and working guide are seeded here like any other seed section.
 
 5. **Restart Claude Code** so the new MCP server loads. MCP server registration is read at client startup; an edit + sync without a restart leaves the running session pointing at the previous brain.
 
@@ -175,13 +138,15 @@ Re-running sync against an unchanged `brain.aide` is idempotent — it reads the
 
 ## Boot reporter brain status states
 
-The boot reporter surfaces exactly four brain status states. The orchestrator reads the state and decides whether the pipeline can advance.
+The boot reporter surfaces exactly five brain status states. The orchestrator reads the state and decides whether the pipeline can advance.
 
-- **`ok`** — `.aide/config/brain.aide` exists, `.mcp.json` has a `brain` entry, and the two agree. The pipeline proceeds.
+- **`ok`** — `.aide/config/brain.aide` exists and satisfies the contract, `.mcp.json` has a `brain` entry, and the two agree. The pipeline proceeds.
 
-- **`no-brain-aide`** — `.aide/config/brain.aide` does not exist on disk. Remediation: run `npx @aidemd-mcp/server@latest init` (cold install) to scaffold the bundled template — the scaffold lands with YAML null at the unwired slot(s) of `mcpServerConfig.args` until the user runs `/aide:brain config` to fill them in. Alternatively, hand-author the file if the host needs a custom brain. The orchestrator halts until the file is in place.
+- **`no-brain-aide`** — `.aide/config/brain.aide` is absent (ENOENT), and only that. A file that is present is never reported as absent; a present file that cannot be read (permissions, a directory at the path) is `brain-aide-invalid` with a reason naming the read error. Remediation: run `/aide:brain config`, which asks which backend to use and creates the file. The orchestrator halts until the file is in place.
 
-- **`no-mcp-entry`** — `brain.aide` exists, but `.mcp.json` has no `brain` entry under `mcpServers`, OR `mcpServerConfig.args` carries one or more YAML null entries (a null-bearing config is by definition not a wireable launch command, so it collapses semantically into `no-mcp-entry`). Remediation: run `/aide:brain config` to fill any null slots and then run `npx @aidemd-mcp/server@latest sync` to write the entry from the source of truth, then restart Claude Code. The orchestrator halts until the wiring is in place.
+- **`brain-aide-invalid`** — the file is present but falls short of the contract. The state carries a `fault`: `missing-sections` with the absent `sections` (a file written against an earlier contract, or one missing a block), or `malformed` with the parser's `reason` (unusable frontmatter, or a structural fault among the marker pairs). Remediation: run `/aide:brain config`, which inserts the missing sections after confirmation, or shows the reason for hand repair. The orchestrator halts until the file is valid.
+
+- **`no-mcp-entry`** — `brain.aide` exists, but `.mcp.json` has no `brain` entry under `mcpServers`, OR `mcpServerConfig.args` carries one or more YAML null entries (a null-bearing config is by definition not a wireable launch command, so it collapses semantically into `no-mcp-entry`). Remediation: run `/aide:brain config` to fill any null slots, then run `npx @aidemd-mcp/server@latest sync` to write the entry from the source of truth, then restart Claude Code. The orchestrator halts until the wiring is in place.
 
 - **`mcp-drift`** — both `brain.aide` and the `.mcp.json` `brain` entry exist, but their values disagree (the `command` differs, the `args` differ, or the user hand-edited `.mcp.json` away from what `brain.aide` declares). Remediation: run `npx @aidemd-mcp/server@latest sync` to bring `.mcp.json` back in line with the source of truth, then restart Claude Code. The orchestrator halts until the two agree. The boot reporter never auto-repairs drift — auto-repair would shift a load-bearing contract surface out from under the user and erase any deliberate hand-edit they made.
 
@@ -199,11 +164,13 @@ The boot reporter surfaces exactly four brain status states. The orchestrator re
 
 ## Rules
 
-- **All six body sections returned verbatim.** Each consumer reads its own owned section(s) and receives the bytes exactly as written. `aide_brain` returns `orientation` and `config` byte-identical to disk. The integration's `aide-config` prose reads `playbookIndex`, `studyPlaybook`, `updatePlaybook`, and `researchIndex` byte-identical to disk via `parseBrainAide`'s typed keys. No server-side templating, no rendering pass, no variable substitution applies to any body section.
+- **All body sections returned verbatim.** Each consumer reads its own section(s) and receives the bytes exactly as written: `aide_brain` returns the live sections byte-identical to disk, and the integration's `aide-config` prose reads the seed sections byte-identical to disk via `parseBrainAide`'s typed keys. No server-side templating, no rendering pass, no variable substitution applies to any body section.
 
-- **Per-consumer section ownership is exclusive.** `aide_brain` reads `orientation` and `config` only. The integration's `aide-config` prose reads `playbookIndex`, `studyPlaybook`, `updatePlaybook`, and `researchIndex` only. The sync verb, boot reporter, and `provisionBrain` all read frontmatter only. Cross-section reads — `aide_brain` reading any seed section, or any package code path reading the seed sections — violate the contract.
+- **Per-consumer section ownership is exclusive.** `aide_brain` reads the live sections only. The integration's `aide-config` prose reads the seed sections only. The sync verb, boot reporter and `provisionBrain` read frontmatter only for wiring. Cross-role reads (`aide_brain` reading any seed section, or any package code path writing the seed sections) violate the contract.
 
-- **Live vs. seed split is enforced by consumer.** `aide_brain` has no knowledge of the seed sections; it does not surface them regardless of what `kind` is passed. `provisionBrain` has no knowledge of any body section; its 2-step pipeline scaffolds `brain.aide` and plans the `.mcp.json` brain entry without ever opening a body section.
+- **Live vs. seed split is enforced by consumer.** `aide_brain` has no knowledge of the seed sections; it does not surface them regardless of what `kind` is passed. `provisionBrain` never opens a body section's bytes; it plans repairs from the contract.
+
+- **The section list has one source.** The required sections live in the server's published contract and nowhere else. This doc, the templates' prose and agent prompts point to it and never restate it.
 
 - **`mcpServerConfig.args` interpolation runs only at sync time.** Any `${fieldName}` references in `args` are expanded by `npx @aidemd-mcp/server@latest sync` against the frontmatter and written into `.mcp.json`. They are never expanded at read time, at server startup, or inside any body section.
 
@@ -211,17 +178,17 @@ The boot reporter surfaces exactly four brain status states. The orchestrator re
 
 - **`name` is descriptive metadata, never dispatched on.** No code in this package branches on the value of `name`. The field exists so a human reading the file immediately knows what kind of brain is wired and so the agent can narrate its connection in conversation. Introducing any code path that switches on `name` re-introduces the in-code backend registry this architecture rejects.
 
-- **Adding a new brain is a host-side edit + sync, never a code change to this package.** The package has no opinion about which brain a host runs — only about how the host declares it. A new brain = edit `brain.aide`, run `npx @aidemd-mcp/server@latest sync`, restart Claude Code.
+- **Adding a new brain is a host-side edit + sync, never a code change to this package.** The package has no opinion about which brain a host runs — only about how the host declares it. A new brain = write a `brain.aide` that satisfies the contract (`/aide:brain config` can author it), run `npx @aidemd-mcp/server@latest sync`, restart Claude Code.
 
 - **Drift is a hard halt.** When the boot reporter surfaces `mcp-drift`, the orchestrator stops. It does not auto-repair. It directs the user to run sync.
 
 - **The `.mcp.json` brain key is fixed.** Sync always writes to `mcpServers["brain"]`. The key name is not configurable; downstream tooling, the boot reporter, and the orchestrator all read from the same fixed name.
 
-- **`.aide/config/` is user-owned forever.** After the first scaffold, neither `aide_init` nor `aide_upgrade` touches anything under `.aide/config/`. New defaults reach existing hosts only through sync or a deliberate user edit.
+- **`.aide/config/` is user-owned forever.** Neither `aide_init` nor `aide_upgrade` writes anything under `.aide/config/` after the first scaffold. New contract sections reach an existing host only through `/aide:brain config` repair, which the user runs and confirms.
 
 - **One file, one source of truth.** `brain.aide` is the single source of truth for brain configuration. The host's `.mcp.json` brain entry is a derived artifact — it must match `brain.aide` and is only updated by sync.
 
-- **Strict-failure migration: no transitional read path.** Pre-rework files (4-section files carrying `aide-prose-*`, `aide-playbook-*`, `aide-study-playbook-*`, and `aide-research-*` markers) return `malformed-body` naming all twelve new markers as missing. Earlier migration classes (pre-pivot heading-based files, pre-amendment three-section files) follow the same pattern — the parser returns `malformed-body` naming the absent markers, never guesses intent from headings, and never auto-injects. Migration is a hand-edit in every case.
+- **Outdated is reported, never silently accepted.** A present file short of the contract surfaces as `brain-aide-invalid`. Repair is `/aide:brain config` inserting only the missing sections; there is no transitional read path, no auto-injection and no heading-based guessing.
 
 ## Placement
 

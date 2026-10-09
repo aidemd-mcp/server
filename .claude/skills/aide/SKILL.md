@@ -38,11 +38,11 @@ This is your only first call. No `Read`, no `aide_discover`, no other tool.
 
 The brain is the pipeline's durable memory. If it isn't wired, the pipeline can't run.
 
-`aide_info` returns one of four `brain.status` values. Branch on them exactly:
+`aide_info` returns one of five `brain.status` values. Branch on them exactly:
 
 - **`ok`** — continue to Step 3.
 
-- **`no-brain-aide`** — the `brain.aide` config file is missing. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line, conversational tone — e.g.:
+- **`no-brain-aide`** — the `brain.aide` config file is missing (`.aide/config/brain.aide` does not exist). STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line, conversational tone — e.g.:
 
   > The brain config file (`brain.aide`) is missing — let's set that up first.
 
@@ -52,7 +52,24 @@ The brain is the pipeline's durable memory. If it isn't wired, the pipeline can'
   Skill(skill="aide:brain", args="config")
   ```
 
-  The config flow scaffolds `brain.aide` and syncs it into `.mcp.json`. After it returns, halt — the user must run `npx @aidemd-mcp/server@latest sync` and then re-run `/aide`.
+  After the skill returns, halt — the skill itself scaffolds `brain.aide`, handles the sync, and asks the user to restart.
+
+- **`brain-aide-invalid`** — the `brain.aide` config file is present but falls short of the required-section contract. `brain.fault` says how. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line what is wrong:
+  - `fault.kind === "missing-sections"` → name the sections from `fault.sections`, e.g.:
+
+    > Your brain config is missing required sections: `<section>`, `<section>` — let's add them first.
+
+  - `fault.kind === "malformed"` → give `fault.reason` verbatim, e.g.:
+
+    > Your brain config is malformed: `<fault.reason>` — let's fix that first.
+
+  Then invoke the config flow:
+
+  ```
+  Skill(skill="aide:brain", args="config")
+  ```
+
+  After the skill returns, halt — the config flow repairs or helps fix the file, validates it, and tells the user what to do next.
 
 - **`no-mcp-entry`** — the brain backend is not wired into `.mcp.json`. STOP boot. Do NOT read docs. Do NOT call `aide_discover`. Tell the user in one line — e.g.:
 

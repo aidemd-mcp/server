@@ -11,10 +11,10 @@ import detectFramework from "@/service/install/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/service/install/initContent/index.js";
 import { COMMANDS } from "@/service/install/scaffoldCommands/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
-import parseBrainAide from "@/service/parseBrainAide/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
+import checkBrainConfig from "./checkBrainConfig/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig } from "./checkIdeConfig/index.js";
 
@@ -176,19 +176,7 @@ export default async function upgrade(
 			};
 
 	// ── j. Brain config ─────────────────────────────────────────────────────
-	const brainAideHostPath = join(projectRoot, ".aide", "config", "brain.aide");
-	const brainParseResult = await parseBrainAide(projectRoot);
-	const brainResult: UpgradeFileResult = {
-		name: ".aide/config/brain.aide",
-		filePath: brainAideHostPath,
-		category: "brain",
-		status:
-			brainParseResult.kind === "ok"
-				? "matches"
-				: brainParseResult.kind === "missing"
-					? "missing"
-					: "malformed",
-	};
+	const brainResult = await checkBrainConfig(projectRoot);
 
 	// ── Assemble categories ──────────────────────────────────────────────────
 	const categories: UpgradeCategoryResult[] = [

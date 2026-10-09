@@ -2,7 +2,7 @@ import { readFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
-import { getMethodologyMarker, listMethodologyDocs, readCanonicalDoc } from "./index.js";
+import { getMethodologyMarker, listMethodologyDocs, listSkills, readCanonicalDoc } from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const METHODOLOGY_ROOT = join(REPO_ROOT, ".aide", "docs");
@@ -83,6 +83,74 @@ describe("readCanonicalDoc — brain-aide content (Step 4b)", () => {
 		expect(content.length).toBeGreaterThan(0);
 		const firstLine = content.split("\n")[0];
 		expect(firstLine).toBe("# brain.aide Spec");
+	});
+});
+
+describe("kanban pointer skill", () => {
+	const OPERATIONS = ["create", "work", "manage", "move", "complete", "stash", "review"];
+	// Mirrors provisionBrain brief commitment #4 (backend-agnostic vocabulary).
+	const BANNED_PATTERNS: RegExp[] = [
+		/\bvault\b/i,
+		/\bobsidian\b/i,
+		/\bnotes?\b/i,
+		/wikilink/i,
+		/\bhubs?\b/i,
+		/\[\[/,
+		/mcp__/i,
+		/kanban-plugin/i,
+	];
+
+	function readBody(content: string): string[] {
+		const closing = content.indexOf("\n---", 4);
+		return content
+			.slice(closing + "\n---".length)
+			.split("\n")
+			.filter((line) => line.trim() !== "");
+	}
+
+	it("is readable through readCanonicalDoc and matches the file on disk", () => {
+		const onDisk = readFileSync(join(REPO_ROOT, ".claude", "skills", "kanban", "SKILL.md"), "utf-8");
+		expect(readCanonicalDoc("skills/kanban")).toBe(onDisk);
+	});
+
+	it("is registered in listSkills with hostPath kanban/SKILL.md", () => {
+		const entry = listSkills().find((s) => s.canonical === "skills/kanban");
+		expect(entry).toBeDefined();
+		expect(entry!.hostPath).toBe("kanban/SKILL.md");
+	});
+
+	it("declares frontmatter name 'kanban'", () => {
+		expect(readCanonicalDoc("skills/kanban")).toMatch(/^---\r?\nname: kanban\r?\n/);
+	});
+
+	it("points at kanban/work-kanban.md", () => {
+		expect(readCanonicalDoc("skills/kanban")).toContain("kanban/work-kanban.md");
+	});
+
+	it.each(OPERATIONS)("names the %s operation", (operation) => {
+		expect(readCanonicalDoc("skills/kanban")).toContain(operation);
+	});
+
+	it.each(["aide_brain", "aide_", ".aide", "brain.aide"])(
+		"does not contain %s, so it works in non-AIDE projects",
+		(token) => {
+			expect(readCanonicalDoc("skills/kanban")).not.toContain(token);
+		},
+	);
+
+	it.each(BANNED_PATTERNS.map((pattern) => [pattern.source, pattern] as const))(
+		"matches no banned backend pattern %s",
+		(_source, pattern) => {
+			expect(readCanonicalDoc("skills/kanban")).not.toMatch(pattern);
+		},
+	);
+
+	it("carries no board column list", () => {
+		expect(readCanonicalDoc("skills/kanban")).not.toContain("## Backlog");
+	});
+
+	it("keeps its body at 15 non-blank lines or fewer — it points, it does not carry procedure", () => {
+		expect(readBody(readCanonicalDoc("skills/kanban")).length).toBeLessThanOrEqual(15);
 	});
 });
 

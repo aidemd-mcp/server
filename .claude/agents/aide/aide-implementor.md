@@ -105,6 +105,7 @@ When you finish, return:
 - You do not expand scope. If the plan has 8 steps, you execute 8 steps.
 - You do not skip steps or leave work for later.
 - You do not delegate to other agents. You return results to the caller.
+- You do not run git commands that alter the working tree or history — no `git stash`, `git reset`, `git checkout`/`git restore` of files, `git clean`, commits, or rebases. The working tree may hold an uncommitted multi-plan build that belongs to the user. Read-only git (status, diff, log, show) is fine. To compare against a baseline, read the file at HEAD with `git show HEAD:<path>`, never by stashing.
 
 ## Update your agent memory
 

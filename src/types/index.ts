@@ -1,3 +1,7 @@
+import type { BrainSectionContractEntry, BrainSectionField, BrainSectionMarker } from "@/service/brainContract/index.js";
+
+export type { BrainSectionContractEntry, BrainSectionField, BrainSectionMarker } from "@/service/brainContract/index.js";
+
 /** The four .aide spec types: intent, research, plan, todo. */
 export type AideFileType = "intent" | "research" | "todo" | "plan";
 
@@ -214,7 +218,31 @@ export interface InitStep {
 	 * applySteps without being written to disk.
 	 */
 	instructions?: string;
+	/**
+	 * The full published brain config required-section contract. Present only
+	 * on the brain config (brain.aide) step, so agents read the required list
+	 * and order from `aide_init` rather than from prose.
+	 */
+	brainContract?: readonly BrainSectionContractEntry[];
+	/**
+	 * Per-section repair prescriptions. Present only on an `exists` brain config
+	 * step whose file parses to `missing-sections`; one entry per absent section,
+	 * in contract order.
+	 */
+	brainRepair?: BrainSectionRepair[];
 }
+
+/**
+ * One absent brain config section plus the bytes and position needed to insert
+ * it. `block` is the full marker-wrapped section, byte-identical to the latest
+ * bundled template. `insertAfter` is the exact close-marker text the block goes
+ * directly after, or `null` for the start of the body. Insertion semantics are
+ * defined in provisionBrain brief commitment #6.
+ */
+export type BrainSectionRepair = BrainSectionContractEntry & {
+	block: string;
+	insertAfter: string | null;
+};
 
 /**
  * A discovered brain root candidate returned by resolveBrainHints.
@@ -303,6 +331,12 @@ export interface UpgradeFileResult {
 	 * being written to disk.
 	 */
 	instructions?: string;
+	/**
+	 * Marker names of the required sections absent from the brain config, in
+	 * contract order. Present only on the brain category file result when the
+	 * config is behind.
+	 */
+	missingSections?: BrainSectionMarker[];
 }
 
 /**
@@ -364,7 +398,21 @@ export type McpServerEntry = {
 };
 
 /**
- * Precondition state of the host's brain, returned as a four-state tagged
+ * Why a present `brain.aide` falls short of the contract. This is the
+ * "present but falls short" detail and never means absence: an absent file is
+ * `no-brain-aide`, not a fault.
+ *
+ * - `missing-sections` - every present marker pair is sound but one or more
+ *   whole required pairs are absent. `sections` is non-empty, in contract order.
+ * - `malformed` - the frontmatter or body is unusable; `reason` names the
+ *   exact field, parse error or violating marker.
+ */
+export type BrainAideFault =
+	| { kind: "missing-sections"; sections: BrainSectionMarker[] }
+	| { kind: "malformed"; reason: string };
+
+/**
+ * Precondition state of the host's brain, returned as a five-state tagged
  * union so the orchestrator can branch on each case and compose targeted
  * remediation prose. `buildBrainState` is the single source of this value;
  * both `aide_brain` and `aide_info` consume the same plain-data shape without
@@ -372,43 +420,54 @@ export type McpServerEntry = {
  *
  * Discriminant invariants:
  *
- * - `ok` — `.aide/brain.aide` parsed successfully and the host's `.mcp.json`
+ * - `ok` - `.aide/config/brain.aide` parsed successfully and the host's `.mcp.json`
  *   `mcpServers.brain` entry matches the parsed/interpolated `mcpServerConfig`.
- *   Carries `name` (the user-declared descriptive label from brain.aide —
+ *   Carries `name` (the user-declared descriptive label from brain.aide -
  *   descriptive only, never dispatched on by any code) and `hints`.
  *
- * - `no-brain-aide` — `parseBrainAide` returned `missing`, `malformed-frontmatter`,
- *   or `malformed-body`. All three sub-cases collapse to this status: the file is
- *   unusable and there is nothing to read a label from. Carries only `hints` —
- *   no `name`. Remediation: fix or create `.aide/brain.aide`.
+ * - `no-brain-aide` - the file is absent (ENOENT), and only that. A present file
+ *   that cannot be read is `brain-aide-invalid`, never this status. There is
+ *   nothing to read a label from. Carries only `hints` - no `name`.
+ *   Remediation: `/aide:brain config`.
  *
- * - `no-mcp-entry` — brain.aide parsed successfully, but the host's `.mcp.json`
+ * - `brain-aide-invalid` - the file is present but falls short of the contract:
+ *   missing sections, malformed frontmatter, malformed body, or unreadable. Carries the
+ *   `fault` detail and `hints` - no `name`. Remediation: `/aide:brain config`.
+ *
+ * - `no-mcp-entry` - brain.aide parsed successfully, but the host's `.mcp.json`
  *   cannot be read (ENOENT or any I/O failure), cannot be parsed as JSON, or has
  *   no `mcpServers.brain` key. Carries `name` (from the parsed brain.aide) and
  *   `hints`. Remediation: run `npx @aidemd-mcp/server@latest sync`.
  *
- * - `mcp-drift` — brain.aide parsed, `.mcp.json` has a `brain` entry, but the
+ * - `mcp-drift` - brain.aide parsed, `.mcp.json` has a `brain` entry, but the
  *   entry's `command` or `args` differ from the parsed/interpolated
  *   `mcpServerConfig`. Drift is detected by structural comparison (string equality
  *   on `command`; element-by-element equality on `args`). Carries `name` and
  *   `hints`. Remediation: run `npx @aidemd-mcp/server@latest sync`.
  *
- * `hints` is populated unconditionally on every state — the orchestrator may
+ * `hints` is populated unconditionally on every state - the orchestrator may
  * surface candidate brain root locations on `no-brain-aide` (fresh project) just as
  * much as on `mcp-drift`. No state carries `rootPath`, `connector`, `entryFile`,
- * `tools`, or `backend` — those fields are retired. Path validity is the
+ * `tools`, or `backend` - those fields are retired. Path validity is the
  * launcher's problem at MCP server startup.
  */
 export type BrainState =
 	| {
 			status: "ok";
-			/** User-declared descriptive label from brain.aide (e.g. `"obsidian"`). Descriptive only — no code branches on this value. */
+			/** User-declared descriptive label from brain.aide (e.g. `"obsidian"`). Descriptive only - no code branches on this value. */
 			name: string;
 			/** Candidate brain root locations for orchestrator remediation suggestions. */
 			hints: BrainHint[];
 	  }
 	| {
 			status: "no-brain-aide";
+			/** Candidate brain root locations for orchestrator remediation suggestions. */
+			hints: BrainHint[];
+	  }
+	| {
+			status: "brain-aide-invalid";
+			/** What the present file is missing or what makes it malformed. */
+			fault: BrainAideFault;
 			/** Candidate brain root locations for orchestrator remediation suggestions. */
 			hints: BrainHint[];
 	  }
@@ -555,99 +614,77 @@ export type BrainAideConfig = {
 
 /**
  * Tagged-result union returned by `parseBrainAide` and `parseBrainAideFromString`.
- * The discriminant is `kind`. Consumers narrow on `kind` to handle each outcome:
+ * The discriminant is `kind`. Consumers narrow on `kind` to handle each outcome.
+ * The required sections, their order and their marker names come from
+ * `brainContract` (`src/service/brainContract`); this type derives from it and
+ * never restates the list.
  *
- * - `"ok"` — the file was found, frontmatter parsed cleanly, all required fields
- *   validated, and the body contained exactly the six required marker-pair sections
- *   in their required order. `name` and `mcpServerConfig` are the flattened
- *   frontmatter fields sitting as siblings of the body fields. `orientation`,
- *   `config`, `playbookIndex`, `studyPlaybook`, `updatePlaybook`, and `researchIndex`
- *   each carry the verbatim bytes between their opening marker and matching closing
- *   marker — byte-identical to what the user wrote between those bounds. No
- *   substitution runs on any body field.
+ * - `"ok"` - the file was found, frontmatter parsed cleanly, all required fields
+ *   validated, and the body carried every contract section in order. `name` and
+ *   `mcpServerConfig` are the flattened frontmatter fields sitting as siblings of
+ *   the section fields. Each section field carries the verbatim bytes between its
+ *   opening marker and matching closing marker, with no substitution. Bytes
+ *   outside any marker pair are silently ignored.
  *
- *   The six recognized marker pairs, in required order:
- *   - `<!-- aide-orientation-start -->` / `<!-- aide-orientation-end -->`
- *     (`orientation` carries the verbatim bytes between these markers, byte-identical
- *     to user input, with no substitution applied.)
- *   - `<!-- aide-config-start -->` / `<!-- aide-config-end -->`
- *     (`config` carries the verbatim bytes between these markers, byte-identical
- *     to user input, with no substitution applied.)
- *   - `<!-- aide-playbook-index-start -->` / `<!-- aide-playbook-index-end -->`
- *     (`playbookIndex` carries the verbatim bytes between these markers, byte-identical
- *     to user input, with no substitution applied.)
- *   - `<!-- aide-study-playbook-start -->` / `<!-- aide-study-playbook-end -->`
- *     (`studyPlaybook` carries the verbatim bytes between these markers, byte-identical
- *     to user input, with no substitution applied.)
- *   - `<!-- aide-update-playbook-start -->` / `<!-- aide-update-playbook-end -->`
- *     (`updatePlaybook` carries the verbatim bytes between these markers, byte-identical
- *     to user input, with no substitution applied.)
- *   - `<!-- aide-research-index-start -->` / `<!-- aide-research-index-end -->`
- *     (`researchIndex` carries the verbatim bytes between these markers, byte-identical
- *     to user input, with no substitution applied.)
+ * - `"missing"` - `.aide/config/brain.aide` does not exist at the given root
+ *   (ENOENT only).
  *
- *   Marker tokens are lowercase, case-sensitive, with the literal shape
- *   `<!-- <token>-start -->` / `<!-- <token>-end -->` exactly. Bytes outside any
- *   marker pair are silently ignored.
+ * - `"unreadable"` - the file exists but could not be read (EACCES, EISDIR, any
+ *   non-ENOENT I/O failure). `reason` names the read error. Consumers treat it as
+ *   a fault, never as absence.
  *
- * - `"missing"` — `.aide/config/brain.aide` does not exist at the given root (or
- *   was unreachable due to an I/O error). Remediation: run `/aide` and complete
- *   the brain wiring interview.
+ * - `"malformed-frontmatter"` - the file exists but its YAML frontmatter could
+ *   not be parsed, a required field is absent or wrong-typed, or a deprecated
+ *   field is present. `reason` names the exact field or parse error.
  *
- * - `"malformed-frontmatter"` — the file exists but its YAML frontmatter could
- *   not be parsed, a required field (`name`, `mcpServerConfig.command`,
- *   `mcpServerConfig.args`) is absent or wrong-typed, or a deprecated field
- *   (`connector`, `rootPath`, `entryFile`, `tools`) is present. `reason` names
- *   the exact field or parse error so the consumer can surface a targeted
- *   remediation message to the user.
+ * - `"malformed-body"` - frontmatter is valid but a present marker pair is
+ *   structurally unsound: unknown or mistyped marker token, unmatched opening or
+ *   closing marker (a half-present pair), wrong section order, or nested
+ *   markers. `reason` names the violating marker. Wholly absent pairs are not
+ *   this kind; they are `"missing-sections"`.
  *
- * - `"malformed-body"` — frontmatter is valid but the body fails the closed
- *   marker-pair grammar. `reason` names the violating marker. Violation classes:
- *   - Missing pair → `"missing markers: <opener>, <closer>"` (lists every absent
- *     marker in fixed orientation-then-config-then-playbookIndex-then-studyPlaybook-
- *     then-updatePlaybook-then-researchIndex scan order, open before close within
- *     each section; any of the six required pairs missing produces this form).
- *   - Malformed or typo'd marker token (uppercase, mixed-case, missing internal
- *     spaces, extra internal whitespace, typo, missing `aide-` prefix) →
- *     `"unknown marker: <as-written>"`.
- *   - Closing marker without a prior matching opener →
- *     `"unmatched closing marker: <closer> appeared without a prior <matching-opener>"`.
- *   - Opening marker without a closer →
- *     `"unmatched opening marker: <opener> has no matching <expected-closer>"`.
- *   - Wrong section order →
- *     `"marker order violation: <out-of-order-opener> appeared before <expected-prior-opener>"`
- *     (e.g. `<!-- aide-update-playbook-start -->` appearing before
- *     `<!-- aide-study-playbook-start -->`).
- *   - Nested markers (any marker inside another pair's opener-closer span) →
- *     `"nested marker: <inner-opener> appeared inside the <outer-token> section"`.
- *
- *   Every violation halts the pipeline; the parser does not attempt recovery.
- *   Consumed by `buildBrainState`, the brain tool, `provisionBrain`, and
- *   `cli/sync` to compose branch-specific remediation prose.
+ * - `"missing-sections"` - every present marker pair is structurally sound and
+ *   one or more whole pairs are absent. `sections` is non-empty and in contract
+ *   order.
  */
 export type ParseBrainAideResult =
-	| {
+	| ({
 			kind: "ok";
 			/** User-supplied descriptive label from brain.aide frontmatter; never dispatched on by the package. */
 			name: string;
 			/** MCP server configuration from brain.aide frontmatter, with args that may contain `${name}` placeholders. */
 			mcpServerConfig: BrainAideMcpServerConfig;
-			/** Verbatim bytes between `<!-- aide-orientation-start -->` and `<!-- aide-orientation-end -->`, byte-identical to user input, no substitution. */
-			orientation: string;
-			/** Verbatim bytes between `<!-- aide-config-start -->` and `<!-- aide-config-end -->`, byte-identical to user input, no substitution. */
-			config: string;
-			/** Verbatim bytes between `<!-- aide-playbook-index-start -->` and `<!-- aide-playbook-index-end -->`, byte-identical to user input, no substitution. */
-			playbookIndex: string;
-			/** Verbatim bytes between `<!-- aide-study-playbook-start -->` and `<!-- aide-study-playbook-end -->`, byte-identical to user input, no substitution. */
-			studyPlaybook: string;
-			/** Verbatim bytes between `<!-- aide-update-playbook-start -->` and `<!-- aide-update-playbook-end -->`, byte-identical to user input, no substitution. */
-			updatePlaybook: string;
-			/** Verbatim bytes between `<!-- aide-research-index-start -->` and `<!-- aide-research-index-end -->`, byte-identical to user input, no substitution. */
-			researchIndex: string;
-	  }
+	  } & Record<BrainSectionField, string>)
 	| { kind: "missing" }
+	| { kind: "unreadable"; reason: string }
 	| { kind: "malformed-frontmatter"; reason: string }
-	| { kind: "malformed-body"; reason: string };
+	| { kind: "malformed-body"; reason: string }
+	| { kind: "missing-sections"; sections: BrainSectionMarker[] };
+
+/**
+ * One marker token located in the brain.aide body by the parser's scan.
+ * Consumed only by `src/service/parseBrainAide/extractMarkerSections`.
+ */
+export type LocatedMarker = {
+	/** Whether the token is an opening or a closing marker. */
+	tokenKind: "open" | "close";
+	/** The contract marker name the token belongs to. */
+	marker: BrainSectionMarker;
+	/** The token text exactly as written in the body. */
+	text: string;
+	/** Character index of the token in the body. */
+	index: number;
+};
+
+/**
+ * Outcome of the marker walk over the brain.aide body: every section's bytes,
+ * a structural violation, or the whole pairs that are absent. Consumed only by
+ * `src/service/parseBrainAide/extractMarkerSections`.
+ */
+export type SectionExtraction =
+	| ({ kind: "ok" } & Record<BrainSectionField, string>)
+	| { kind: "malformed-body"; reason: string }
+	| { kind: "missing-sections"; sections: BrainSectionMarker[] };
 
 /** Directories to skip during filesystem walks. */
 export const SKIP_DIRS = [

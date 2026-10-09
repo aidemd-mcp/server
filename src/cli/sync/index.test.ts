@@ -3,48 +3,58 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runSync } from "./index.js";
+import brainContract from "@/service/brainContract/index.js";
+import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
+import type { BrainSectionMarker } from "@/types/index.js";
 
 // ---------------------------------------------------------------------------
-// Shared fixture: a hand-crafted brain.aide using the two-field schema.
-// Using a literal fixture (not obsidianBrainAideTemplate) keeps tests
-// platform-independent — the template emits platform-specific command/args.
-// The brain root path used here is a stable test sentinel embedded inline in args.
+// Shared fixture: a brain.aide factory built from the published brainContract
+// and toMarkerPair, so no test restates a marker name or marker bytes.
 // YAML args scalars use single quotes to avoid backslash-escape on Windows paths.
 // ---------------------------------------------------------------------------
 
 const TEST_BRAIN_PATH = "/test/vault";
 
-const VALID_BRAIN_AIDE = `---
-name: obsidian
+type BrainAideOptions = {
+	name?: string;
+	/** Raw YAML list lines for `mcpServerConfig.args`, each already indented and newline-terminated. */
+	argsYaml?: string;
+	/** Markers whose whole pair is left out of the body. */
+	omit?: BrainSectionMarker[];
+	/** Body text of the orientation section. */
+	orientationBody?: string;
+};
+
+function makeBrainAide({
+	name = "obsidian",
+	argsYaml = `    - '@bitbonsai/mcpvault'
+    - '${TEST_BRAIN_PATH}'
+`,
+	omit = [],
+	orientationBody = "Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.",
+}: BrainAideOptions = {}): string {
+	const body = brainContract
+		.filter(({ marker }) => !omit.includes(marker))
+		.map(({ marker }) => {
+			const { open, close } = toMarkerPair(marker);
+			const text = marker === "orientation" ? orientationBody : `Body for ${marker}.`;
+			return `${open}
+${text}
+${close}`;
+		})
+		.join("\n\n");
+	return `---
+name: ${name}
 mcpServerConfig:
   command: npx
   args:
-    - '@bitbonsai/mcpvault'
-    - '${TEST_BRAIN_PATH}'
----
+${argsYaml}---
 
-<!-- aide-orientation-start -->
-Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
-<!-- aide-orientation-end -->
-
-<!-- aide-config-start -->
-<!-- aide-config-end -->
-
-<!-- aide-playbook-index-start -->
-The coding-playbook section lives here.
-<!-- aide-playbook-index-end -->
-
-<!-- aide-study-playbook-start -->
-The study-playbook hub lives here.
-<!-- aide-study-playbook-end -->
-
-<!-- aide-update-playbook-start -->
-<!-- aide-update-playbook-end -->
-
-<!-- aide-research-index-start -->
-The research section lives here.
-<!-- aide-research-index-end -->
+${body}
 `;
+}
+
+const VALID_BRAIN_AIDE = makeBrainAide();
 
 // The expected entry derived from VALID_BRAIN_AIDE — args are byte-for-byte
 // from mcpServerConfig; no interpolation occurs on the default scaffold.
@@ -182,6 +192,27 @@ describe("3d — preserve other keys", () => {
 // 3e. Missing brain.aide
 // ---------------------------------------------------------------------------
 
+describe("3e2 — unreadable brain.aide", () => {
+	it("exits 1, stderr names the read error and never says brain.aide was not found, .mcp.json unchanged", async () => {
+		// A directory at the config path: the entry exists but readFile fails with EISDIR.
+		await mkdir(join(tempDir, ".aide", "config", "brain.aide"), { recursive: true });
+		await writeMcpJson(tempDir, { mcpServers: {} });
+		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+
+		const { errLines, write, writeErr } = makeCapture();
+		const code = await runSync(tempDir, write, writeErr);
+
+		expect(code).toBe(1);
+		const stderr = errLines.join("\n");
+		expect(stderr).toContain("cannot read .aide/config/brain.aide");
+		expect(stderr).toContain("EISDIR");
+		expect(stderr).not.toContain("No `.aide/config/brain.aide` found");
+
+		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+		expect(after).toBe(before);
+	});
+});
+
 describe("3e — missing brain.aide", () => {
 	it("exits 1, stderr mentions @aidemd-mcp/server@latest init, .mcp.json unchanged (or absent)", async () => {
 		// No brain.aide — tempDir has no .aide/ directory at all.
@@ -274,14 +305,49 @@ Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
-		// The parser's reason must name the missing marker pairs (new vocabulary).
+		// A body with no marker pairs at all is the missing-sections refusal: every
+		// contract section is named, and the user is routed to /aide:brain config.
 		const stderr = errLines.join("\n");
-		expect(stderr).toContain("<!-- aide-orientation-start -->");
-		expect(stderr).toContain("<!-- aide-playbook-index-start -->");
+		for (const { marker } of brainContract) expect(stderr).toContain(marker);
+		expect(stderr).toContain("/aide:brain config");
 		expect(stderr).not.toContain("## Orientation");
 
 		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(after).toBe(before);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3g2. Missing required sections
+// ---------------------------------------------------------------------------
+
+describe("3g2 — missing required sections", () => {
+	it("exits 1, stderr names every missing section and /aide:brain config, .mcp.json is neither read nor written", async () => {
+		await writeBrainAide(tempDir, makeBrainAide({ omit: ["kanban-board", "work-kanban"] }));
+
+		const { errLines, write, writeErr } = makeCapture();
+		const code = await runSync(tempDir, write, writeErr);
+
+		expect(code).toBe(1);
+		expect(errLines).toHaveLength(1);
+		expect(errLines[0]).toContain("kanban-board");
+		expect(errLines[0]).toContain("work-kanban");
+		expect(errLines[0]).toContain("/aide:brain config");
+
+		// Absent before, absent after: the refusal never creates .mcp.json.
+		await expect(readFile(join(tempDir, ".mcp.json"), "utf-8")).rejects.toThrow();
+	});
+
+	it("leaves an existing .mcp.json byte-identical", async () => {
+		await writeBrainAide(tempDir, makeBrainAide({ omit: ["kanban-board", "work-kanban"] }));
+		await writeMcpJson(tempDir, { mcpServers: { aide: { command: "npx", args: ["-y", "aidemd-mcp"] } } });
+		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
+
+		const { write, writeErr } = makeCapture();
+		const code = await runSync(tempDir, write, writeErr);
+
+		expect(code).toBe(1);
+		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(before);
 	});
 });
 
@@ -339,37 +405,9 @@ describe("3j — default-scaffold no-op interpolation", () => {
 	it("default-scaffold args pass through verbatim (interpolateArgs is a no-op)", async () => {
 		// Setup: canonical two-field shape with no ${...} placeholders anywhere in args.
 		// Single-quoted YAML scalars avoid Windows path backslash-escape issues.
-		const noPlaceholderBrainAide = `---
-name: obsidian
-mcpServerConfig:
-  command: npx
-  args:
-    - '@bitbonsai/mcpvault'
-    - '/literal/inline/path'
----
-
-<!-- aide-orientation-start -->
-Prose body.
-<!-- aide-orientation-end -->
-
-<!-- aide-config-start -->
-<!-- aide-config-end -->
-
-<!-- aide-playbook-index-start -->
-The coding-playbook section lives here.
-<!-- aide-playbook-index-end -->
-
-<!-- aide-study-playbook-start -->
-The study-playbook hub lives here.
-<!-- aide-study-playbook-end -->
-
-<!-- aide-update-playbook-start -->
-<!-- aide-update-playbook-end -->
-
-<!-- aide-research-index-start -->
-The research section lives here.
-<!-- aide-research-index-end -->
-`;
+		const noPlaceholderBrainAide = makeBrainAide({
+			argsYaml: "    - '@bitbonsai/mcpvault'\n    - '/literal/inline/path'\n",
+		});
 		await writeBrainAide(tempDir, noPlaceholderBrainAide);
 
 		const { write, writeErr } = makeCapture();
@@ -389,38 +427,10 @@ The research section lives here.
 	it("advanced-user `${name}` placeholder resolves at sync time", async () => {
 		// Setup: brain.aide with ${name} placeholder in args. Single-quoted YAML
 		// scalars preserve the literal $ character on all platforms.
-		const withNamePlaceholder = `---
-name: my-vault
-mcpServerConfig:
-  command: npx
-  args:
-    - 'some-launcher'
-    - '--profile'
-    - '\${name}'
----
-
-<!-- aide-orientation-start -->
-Prose body.
-<!-- aide-orientation-end -->
-
-<!-- aide-config-start -->
-<!-- aide-config-end -->
-
-<!-- aide-playbook-index-start -->
-The coding-playbook section lives here.
-<!-- aide-playbook-index-end -->
-
-<!-- aide-study-playbook-start -->
-The study-playbook hub lives here.
-<!-- aide-study-playbook-end -->
-
-<!-- aide-update-playbook-start -->
-<!-- aide-update-playbook-end -->
-
-<!-- aide-research-index-start -->
-The research section lives here.
-<!-- aide-research-index-end -->
-`;
+		const withNamePlaceholder = makeBrainAide({
+			name: "my-vault",
+			argsYaml: "    - 'some-launcher'\n    - '--profile'\n    - '${name}'\n",
+		});
 		await writeBrainAide(tempDir, withNamePlaceholder);
 
 		const { write, writeErr } = makeCapture();
@@ -443,39 +453,8 @@ The research section lives here.
 // ---------------------------------------------------------------------------
 
 describe("3l — null-bearing args refusal", () => {
-	// Helper: build a brain.aide with the canonical six-section body schema where
-	// the args list is provided by the caller. Uses the @bitbonsai/mcpvault style
-	// consistent with the rest of the file.
-	function makeNullArgsBrainAide(args: string): string {
-		return `---
-name: obsidian
-mcpServerConfig:
-  command: npx
-  args:
-${args}---
-
-<!-- aide-orientation-start -->
-Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
-<!-- aide-orientation-end -->
-
-<!-- aide-config-start -->
-<!-- aide-config-end -->
-
-<!-- aide-playbook-index-start -->
-The coding-playbook section lives here.
-<!-- aide-playbook-index-end -->
-
-<!-- aide-study-playbook-start -->
-The study-playbook hub lives here.
-<!-- aide-study-playbook-end -->
-
-<!-- aide-update-playbook-start -->
-<!-- aide-update-playbook-end -->
-
-<!-- aide-research-index-start -->
-The research section lives here.
-<!-- aide-research-index-end -->
-`;
+	function makeNullArgsBrainAide(argsYaml: string): string {
+		return makeBrainAide({ argsYaml });
 	}
 
 	it("single null at args[3] exits 1 and stderr names the index", async () => {
@@ -568,38 +547,10 @@ The research section lives here.
 
 describe("3k — no prose interpolation", () => {
 	it("brain.aide is byte-unchanged after sync; only .mcp.json is mutated", async () => {
-		const proseWithPlaceholder = `---
-name: obsidian
-mcpServerConfig:
-  command: npx
-  args:
-    - '@bitbonsai/mcpvault'
-    - '${TEST_BRAIN_PATH}'
----
-
-<!-- aide-orientation-start -->
-This prose body contains a literal \${rootPath} placeholder and also \${entryFile}.
-These should pass through verbatim — sync only interpolates mcpServerConfig.args.
-<!-- aide-orientation-end -->
-
-<!-- aide-config-start -->
-<!-- aide-config-end -->
-
-<!-- aide-playbook-index-start -->
-The coding-playbook section lives here.
-<!-- aide-playbook-index-end -->
-
-<!-- aide-study-playbook-start -->
-The study-playbook hub lives here.
-<!-- aide-study-playbook-end -->
-
-<!-- aide-update-playbook-start -->
-<!-- aide-update-playbook-end -->
-
-<!-- aide-research-index-start -->
-The research section lives here.
-<!-- aide-research-index-end -->
-`;
+		const proseWithPlaceholder = makeBrainAide({
+			orientationBody:
+				"This prose body contains a literal ${rootPath} placeholder and also ${entryFile}.\nThese should pass through verbatim — sync only interpolates mcpServerConfig.args.",
+		});
 		await writeBrainAide(tempDir, proseWithPlaceholder);
 
 		const brainAidePath = join(tempDir, ".aide", "config", "brain.aide");

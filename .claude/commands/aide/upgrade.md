@@ -79,15 +79,27 @@ options:
 
 On confirmation, read the config, merge the prescription, write with the Write tool. If `malformed`, tell the user and ask how to proceed.
 
-**brain:** When `brain` reports `missing` or `malformed`, brain.aide cannot be written by upgrade — the canonical home for brain.aide creation is `/aide:brain config`. Call `aide_upgrade` with `category: "brain"`; the manifest entry will carry an `instructions` field. Then use `AskUserQuestion`:
+**brain:** Upgrade never writes the brain config — not to create it, not to add sections, not to fix it. `.aide/config/brain.aide` is user-owned, and its canonical home for creation and repair is `/aide:brain config`. Skip the generic "Yes, update" question for this category and use the case below that matches the file's `status`. (Calling `aide_upgrade` with `category: "brain"` is safe — it writes nothing and returns the file with an `instructions` field.)
 
-```
-question: "Brain config — .aide/config/brain.aide is {missing|malformed}. Set it up now?"
-header: "Brain"
-options:
-  - label: "Yes, set up brain" / description: "Invoke /aide:brain config to scaffold brain.aide"
-  - label: "Skip" / description: "Leave brain.aide untouched"
-```
+- **Behind** (`status` is `differs`, with `missingSections`): the config is missing required sections. Use `AskUserQuestion`:
+
+  ```
+  question: "Your brain config is missing required sections: {missingSections joined by ", "}. Repair now?"
+  header: "Brain"
+  options:
+    - label: "Yes, repair" / description: "Invoke /aide:brain config to add only the missing sections"
+    - label: "Skip" / description: "Leave brain.aide untouched"
+  ```
+
+- **Missing or malformed** (`status` is `missing` or `malformed`): use `AskUserQuestion`:
+
+  ```
+  question: "Brain config — .aide/config/brain.aide is {missing|malformed}. Set it up now?"
+  header: "Brain"
+  options:
+    - label: "Yes, set up brain" / description: "Invoke /aide:brain config to create or fix brain.aide"
+    - label: "Skip" / description: "Leave brain.aide untouched"
+  ```
 
 On "Yes," invoke `Skill(skill="aide:brain", args="config")`. On "Skip," move to the next category.
 

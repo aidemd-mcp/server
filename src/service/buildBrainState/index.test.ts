@@ -1,5 +1,5 @@
 /**
- * Tests for buildBrainState — the four-state brain precondition detector.
+ * Tests for buildBrainState — the five-state brain precondition detector.
  *
  * INVARIANT (3n): This file MUST NOT import from `@/service/brainBackends`.
  * The detector never calls resolveBackend or any registry function; importing
@@ -9,18 +9,28 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // Mock only the two helpers whose output the detector consumes structurally.
 // parseBrainAide and readFile operate on real temp files — no fs mocking.
+// readFile is wrapped in a passthrough spy so a test can assert which paths were read;
+// the real implementation still runs against the temp files.
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	return { ...actual, readFile: vi.fn(actual.readFile) };
+});
 vi.mock("@/service/install/detectFramework/index.js");
 vi.mock("@/service/install/resolveBrainHints/index.js");
 
 import detectFramework from "@/service/install/detectFramework/index.js";
 import resolveBrainHints from "@/service/install/resolveBrainHints/index.js";
 import buildBrainState from "@/service/buildBrainState/index.js";
+import parseBrainAide from "@/service/parseBrainAide/index.js";
+import brainContract from "@/service/brainContract/index.js";
+import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
+import type { BrainSectionMarker } from "@/types/index.js";
 
 const mockDetectFramework = detectFramework as ReturnType<typeof vi.fn>;
 const mockResolveBrainHints = resolveBrainHints as ReturnType<typeof vi.fn>;
@@ -29,20 +39,53 @@ const mockResolveBrainHints = resolveBrainHints as ReturnType<typeof vi.fn>;
 // Fixture helpers
 // ---------------------------------------------------------------------------
 
+const contractMarkers: BrainSectionMarker[] = brainContract.map(({ marker }) => marker);
+
 /**
- * Minimal valid brain.aide content against the new two-field schema.
- * Emits ONLY `name` and `mcpServerConfig.{command, args}` — no `connector`,
- * no `rootPath`, no `entryFile`, no `tools`. Body includes `## Prose` heading
- * plus a prose line so parseBrainAide returns `kind: "ok"`.
+ * Brain.aide body derived from the published `brainContract` through `toMarkerPair`,
+ * so fixtures track the contract instead of restating the section list or marker
+ * bytes. `omit` leaves whole sections out (an outdated config); `unclosed` drops one
+ * section's closing marker (a structurally malformed body).
+ */
+function makeBody({
+	omit = [],
+	unclosed,
+}: {
+	omit?: BrainSectionMarker[];
+	unclosed?: BrainSectionMarker;
+} = {}): string {
+	return (
+		contractMarkers
+			.filter((marker) => !omit.includes(marker))
+			.map((marker) => {
+				const { open, close } = toMarkerPair(marker);
+				return marker === unclosed
+					? `${open}\nSome ${marker} content.\n`
+					: `${open}\nSome ${marker} content.\n${close}`;
+			})
+			.join("\n\n") + "\n"
+	);
+}
+
+/**
+ * Valid brain.aide content against the two-field frontmatter schema plus a
+ * contract-derived body. Emits ONLY `name` and `mcpServerConfig.{command, args}` in
+ * the frontmatter; `extraFrontmatter` appends raw lines (e.g. a deprecated field).
  */
 function makeBrainAideContent({
 	name = "obsidian",
 	command = "npx",
 	args = ["@bitbonsai/mcpvault", "<vault-path>"],
+	extraFrontmatter = [],
+	omit,
+	unclosed,
 }: {
 	name?: string;
 	command?: string;
 	args?: (string | null)[];
+	extraFrontmatter?: string[];
+	omit?: BrainSectionMarker[];
+	unclosed?: BrainSectionMarker;
 }): string {
 	// Null entries emit as a bare dash (YAML null) so parseBrainAide produces JS null.
 	// String entries emit quoted so the parser preserves them as strings.
@@ -50,33 +93,14 @@ function makeBrainAideContent({
 	return [
 		"---",
 		`name: ${name}`,
+		...extraFrontmatter,
 		"mcpServerConfig:",
 		`  command: ${command}`,
 		"  args:",
 		argsYaml,
 		"---",
 		"",
-		"<!-- aide-orientation-start -->",
-		"This is the hand-written prose the agent receives verbatim.",
-		"<!-- aide-orientation-end -->",
-		"",
-		"<!-- aide-config-start -->",
-		"<!-- aide-config-end -->",
-		"",
-		"<!-- aide-playbook-index-start -->",
-		"The coding-playbook hub lives here.",
-		"<!-- aide-playbook-index-end -->",
-		"",
-		"<!-- aide-study-playbook-start -->",
-		"The study-playbook hub lives here.",
-		"<!-- aide-study-playbook-end -->",
-		"",
-		"<!-- aide-update-playbook-start -->",
-		"<!-- aide-update-playbook-end -->",
-		"",
-		"<!-- aide-research-index-start -->",
-		"The research hub lives here.",
-		"<!-- aide-research-index-end -->",
+		makeBody({ omit, unclosed }),
 	].join("\n");
 }
 
@@ -180,41 +204,75 @@ describe("buildBrainState — no-brain-aide: file missing (3b)", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// 3c. no-brain-aide — brain.aide exists but frontmatter is malformed YAML.
-// ---------------------------------------------------------------------------
-
-describe("buildBrainState — no-brain-aide: frontmatter malformed (3c)", () => {
-	it("returns no-brain-aide when brain.aide contains broken YAML frontmatter", async () => {
-		await writeBrainAide(
-			[
-				"---",
-				"name: obsidian",
-				"mcpServerConfig: [this is: broken: yaml: {",
-				"---",
-				"",
-				"## Prose",
-				"content",
-			].join("\n"),
-		);
+describe("buildBrainState — brain-aide-invalid: present but unreadable", () => {
+	it("returns brain-aide-invalid/malformed naming the read error, never no-brain-aide, when brain.aide exists but cannot be read", async () => {
+		// A directory at the config path: the entry exists, readFile fails with EISDIR.
+		await mkdir(join(tempRoot, ".aide", "config", "brain.aide"));
 
 		const result = await buildBrainState(tempRoot);
 
-		expect(result.status).toBe("no-brain-aide");
+		expect(result.status).toBe("brain-aide-invalid");
+		if (result.status === "brain-aide-invalid") {
+			expect(result.fault).toEqual({
+				kind: "malformed",
+				reason: "cannot read .aide/config/brain.aide: path is a directory (EISDIR)",
+			});
+		}
 		expect(result).not.toHaveProperty("name");
-		expect(result).not.toHaveProperty("rootPath");
-		expect(result).not.toHaveProperty("connector");
-		expect(result).not.toHaveProperty("backend");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 3d. no-brain-aide — brain.aide has valid frontmatter but no ## Prose heading.
+// 3c. brain-aide-invalid — brain.aide exists but frontmatter is malformed YAML.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — no-brain-aide: body malformed (3d)", () => {
-	it("returns no-brain-aide when brain.aide has valid frontmatter but missing aide marker sections", async () => {
-		// Valid two-field frontmatter but the body has no aide marker pairs.
+const BROKEN_FRONTMATTER = [
+	"---",
+	"name: obsidian",
+	"mcpServerConfig: [this is: broken: yaml: {",
+	"---",
+	"",
+	makeBody(),
+].join("\n");
+
+/** Assert the result is brain-aide-invalid/malformed and its reason is the parser's own, verbatim. */
+async function expectMalformedWithParserReason(result: Awaited<ReturnType<typeof buildBrainState>>) {
+	const parsed = await parseBrainAide(tempRoot);
+	if (parsed.kind !== "malformed-frontmatter" && parsed.kind !== "malformed-body") {
+		throw new Error(`fixture should be malformed, parser returned ${parsed.kind}`);
+	}
+	expect(parsed.reason.length).toBeGreaterThan(0);
+	expect(result.status).toBe("brain-aide-invalid");
+	if (result.status === "brain-aide-invalid") {
+		expect(result.fault).toEqual({ kind: "malformed", reason: parsed.reason });
+	}
+	expect(result).not.toHaveProperty("name");
+	expect(result).not.toHaveProperty("rootPath");
+	expect(result).not.toHaveProperty("connector");
+	expect(result).not.toHaveProperty("backend");
+}
+
+describe("buildBrainState — brain-aide-invalid: frontmatter malformed (3c)", () => {
+	it("returns brain-aide-invalid with the parser's reason when brain.aide contains broken YAML frontmatter", async () => {
+		await writeBrainAide(BROKEN_FRONTMATTER);
+
+		await expectMalformedWithParserReason(await buildBrainState(tempRoot));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3d. brain-aide-invalid — valid frontmatter with a structurally malformed body,
+// and the outdated-but-sound case (a body carrying no sections at all).
+// ---------------------------------------------------------------------------
+
+describe("buildBrainState — brain-aide-invalid: body (3d)", () => {
+	it("returns brain-aide-invalid/malformed with the parser's reason when a section's closing marker is missing", async () => {
+		await writeBrainAide(makeBrainAideContent({ unclosed: "study-playbook" }));
+
+		await expectMalformedWithParserReason(await buildBrainState(tempRoot));
+	});
+
+	it("returns brain-aide-invalid/missing-sections naming every contract section when the body has no marker pairs", async () => {
 		await writeBrainAide(
 			[
 				"---",
@@ -232,48 +290,87 @@ describe("buildBrainState — no-brain-aide: body malformed (3d)", () => {
 
 		const result = await buildBrainState(tempRoot);
 
-		expect(result.status).toBe("no-brain-aide");
+		expect(result.status).toBe("brain-aide-invalid");
+		if (result.status === "brain-aide-invalid") {
+			expect(result.fault).toEqual({ kind: "missing-sections", sections: contractMarkers });
+		}
 		expect(result).not.toHaveProperty("name");
-		expect(result).not.toHaveProperty("rootPath");
-		expect(result).not.toHaveProperty("connector");
-		expect(result).not.toHaveProperty("backend");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 3e. no-brain-aide — parser rejects deprecated field alongside valid fields.
-// Anchors that ALL malformed-frontmatter sub-cases collapse to no-brain-aide.
+// 3e. brain-aide-invalid — parser rejects deprecated field alongside valid fields.
 // ---------------------------------------------------------------------------
 
-describe("buildBrainState — no-brain-aide: parser rejects deprecated field (3e)", () => {
-	it("returns no-brain-aide when brain.aide frontmatter carries a deprecated field (rootPath)", async () => {
-		// Deprecated field rootPath present alongside valid name/mcpServerConfig.
-		// parseBrainAide rejects this with malformed-frontmatter; detector collapses to no-brain-aide.
+describe("buildBrainState — brain-aide-invalid: parser rejects deprecated field (3e)", () => {
+	it("returns brain-aide-invalid/malformed with the parser's reason when frontmatter carries a deprecated field (rootPath)", async () => {
 		await writeBrainAide(
-			[
-				"---",
-				"name: obsidian",
-				"rootPath: D:/notes/something",
-				"mcpServerConfig:",
-				"  command: npx",
-				"  args:",
-				'    - "@bitbonsai/mcpvault"',
-				'    - "/x/vault"',
-				"---",
-				"",
-				"## Prose",
-				"",
-				"This is the prose body.",
-			].join("\n"),
+			makeBrainAideContent({ extraFrontmatter: ["rootPath: D:/notes/something"] }),
+		);
+
+		await expectMalformedWithParserReason(await buildBrainState(tempRoot));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3s. brain-aide-invalid — outdated config (whole contract sections absent).
+// ---------------------------------------------------------------------------
+
+describe("buildBrainState — brain-aide-invalid: outdated config (3s)", () => {
+	const OUTDATED_ARGS = ["@bitbonsai/mcpvault", "/x/vault"];
+
+	it("returns brain-aide-invalid with the missing sections when kanban-board and work-kanban are absent", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-board", "work-kanban"] }),
 		);
 
 		const result = await buildBrainState(tempRoot);
 
-		expect(result.status).toBe("no-brain-aide");
+		expect(result.status).toBe("brain-aide-invalid");
+		if (result.status === "brain-aide-invalid") {
+			expect(result.fault).toEqual({
+				kind: "missing-sections",
+				sections: ["kanban-board", "work-kanban"],
+			});
+		}
 		expect(result).not.toHaveProperty("name");
-		expect(result).not.toHaveProperty("rootPath");
-		expect(result).not.toHaveProperty("connector");
-		expect(result).not.toHaveProperty("backend");
+	});
+
+	it("never reads .mcp.json for an outdated config", async () => {
+		await writeBrainAide(makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["work-kanban"] }));
+		// A valid, matching .mcp.json is present; reading it would be the only way to reach ok/drift.
+		await writeMcpJson(makeMcpJson({ command: "npx", args: OUTDATED_ARGS }));
+		const readFileMock = readFile as unknown as ReturnType<typeof vi.fn>;
+		readFileMock.mockClear();
+
+		const result = await buildBrainState(tempRoot);
+
+		expect(result.status).toBe("brain-aide-invalid");
+		const mcpPath = join(tempRoot, FIXED_FRAMEWORK_CONFIG.mcpConfigPath);
+		const readPaths = readFileMock.mock.calls.map(([path]) => String(path));
+		expect(readPaths).toContain(join(tempRoot, ".aide", "config", "brain.aide"));
+		expect(readPaths).not.toContain(mcpPath);
+	});
+
+	it("still reports brain-aide-invalid when the outdated config's args also carry null (parse precedes the null-slot check)", async () => {
+		await writeBrainAide(
+			makeBrainAideContent({ args: ["@bitbonsai/mcpvault", null], omit: ["kanban-board"] }),
+		);
+
+		const result = await buildBrainState(tempRoot);
+
+		expect(result.status).toBe("brain-aide-invalid");
+	});
+
+	it("carries hints on the brain-aide-invalid status", async () => {
+		const hint = [{ source: "env" as const, path: "/candidate/vault" }];
+		mockResolveBrainHints.mockResolvedValue(hint);
+		await writeBrainAide(makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-board"] }));
+
+		const result = await buildBrainState(tempRoot);
+
+		expect(result.status).toBe("brain-aide-invalid");
+		expect(result.hints).toEqual(hint);
 	});
 });
 
@@ -602,16 +699,28 @@ describe("buildBrainState — detector never throws (3o)", () => {
 		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-brain-aide" });
 	});
 
-	it("resolves to no-brain-aide (malformed frontmatter) without rejecting", async () => {
-		await writeBrainAide("---\nbroken: [yaml: {\n---\n\n## Prose\ncontent");
-		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-brain-aide" });
+	it("resolves to brain-aide-invalid (malformed frontmatter) without rejecting", async () => {
+		await writeBrainAide(BROKEN_FRONTMATTER);
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({
+			status: "brain-aide-invalid",
+			fault: { kind: "malformed" },
+		});
 	});
 
-	it("resolves to no-brain-aide (body malformed) without rejecting", async () => {
-		await writeBrainAide(
-			["---", "name: obsidian", "mcpServerConfig:", "  command: npx", "  args:", '    - "@bitbonsai/mcpvault"', "---", "", "No aide marker sections here."].join("\n"),
-		);
-		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({ status: "no-brain-aide" });
+	it("resolves to brain-aide-invalid (body malformed) without rejecting", async () => {
+		await writeBrainAide(makeBrainAideContent({ unclosed: "orientation" }));
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({
+			status: "brain-aide-invalid",
+			fault: { kind: "malformed" },
+		});
+	});
+
+	it("resolves to brain-aide-invalid (outdated config) without rejecting", async () => {
+		await writeBrainAide(makeBrainAideContent({ omit: ["kanban-board", "work-kanban"] }));
+		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({
+			status: "brain-aide-invalid",
+			fault: { kind: "missing-sections" },
+		});
 	});
 
 	it("resolves to no-mcp-entry (missing .mcp.json) without rejecting", async () => {

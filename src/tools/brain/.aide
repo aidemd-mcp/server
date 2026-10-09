@@ -6,21 +6,22 @@ intent: >
   aide_brain is the live entry-point agents call when they need the brain
   mid-task. The request names which agent-facing section to read; the
   response carries either that section's verbatim bytes (on the healthy
-  branch) or a fixed remediation sentence telling the user the exact
-  command that recovers the brain (on every unhealthy branch). The user's
-  hand-written prose is the contract; the server selects, never composes
-  or transforms.
+  branch) or remediation naming the exact command that recovers the brain
+  and, when the file exists but falls short, what is missing or malformed
+  (on every unhealthy branch). The user's hand-written prose is the
+  contract; the server selects, never composes or transforms.
 outcomes:
   desired:
     - The request's section selector accepts only the live agent-facing vocabulary the parent governs, and a default selector is honored when none is supplied. Any other value is rejected at the framework boundary, before the handler runs.
     - On the healthy branch, the response carries the verbatim bytes the parser already extracted for the requested section — byte-identical to what the user wrote, with no trimming, normalization, template rendering, or substitution pass.
     - The response shape is the same single-discriminant pair on every branch. The user's brain label and the requested selector never cross the wire as response fields.
-    - The unhealthy branches forward the brain-state vocabulary unchanged from the upstream detector. Each unhealthy state maps to one fixed remediation sentence that names the exact command the user must run, and that sentence does not vary by which section was requested.
+    - The unhealthy branches forward the brain-state vocabulary unchanged from the upstream detector, each mapping to remediation that names the exact command the user must run and does not vary by which section was requested. When the config exists but is outdated or malformed, the remediation names the missing sections or the fault.
     - The remediation field is non-empty on every branch, including the defensive fallback when the detector says healthy but the parser disagrees. A caller can unconditionally surface the field and get an actionable response.
   undesired:
     - The handler accepting any selector outside the sanctioned live vocabulary, falling back to a default for an unrecognized value, throwing instead of relying on the registered schema, or surfacing any install-time seed section under any selector. Seed bytes belong to install; exposing them here re-creates a dual source of truth for content the brain owns post-install.
     - Returning any response field beyond the sanctioned single-discriminant pair — a brain label, an echoed selector, a section name, a connector identifier, or any other label a caller could branch on programmatically. Each is the registry-dispatch regression in different clothing on the consumer side.
-    - The handler running any transformation between the parser's extracted bytes and the response — placeholder rendering, interpolation, template engines, concatenation across sections, or per-call composition of remediation prose. The user's prose is the contract; the server is a selector, not a renderer.
+    - The handler running any transformation between the parser's extracted bytes and the response — placeholder rendering, interpolation, template engines, concatenation across sections, or remediation prose composed from anything beyond the detector's state and its reported missing sections or fault. The user's prose is the contract; the server is a selector, not a renderer.
     - The handler reaching past the section the request selected — inspecting other parsed fields to vary behavior, re-implementing the parse inline, re-reading the file per call, or caching results across calls. One parse per healthy invocation; in-memory dispatch on the parser's already-named fields; nothing else.
-    - The remediation sentences varying by which section was requested, naming the connector brand, or going empty on any branch. The unhealthy states describe conditions where the file the section would be drawn from is unavailable in the same way for every section, and the recovery is the same regardless of which section the agent was reaching for.
+    - The remediation sentences varying by which section was requested, naming the connector brand, or going empty on any branch. The recovery is the same regardless of which section the agent was reaching for.
+    - Telling the user the brain config is absent when it exists but is outdated or malformed. A user told to create a file they already have is sent down the wrong recovery path.
 ---

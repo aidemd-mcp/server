@@ -3,12 +3,16 @@ import { join } from "node:path";
 import detectFramework from "@/service/install/detectFramework/index.js";
 import resolveBrainHints from "@/service/install/resolveBrainHints/index.js";
 import parseBrainAide, { interpolateArgs } from "@/service/parseBrainAide/index.js";
+import classifyParseFailure from "./classifyParseFailure/index.js";
 import type { BrainHint, BrainState } from "@/types/index.js";
 
 /**
- * Resolve the host project's brain precondition state into a four-state
+ * Resolve the host project's brain precondition state into a five-state
  * tagged union. Never throws — every failure mode collapses to a structured
- * `BrainState` value with targeted remediation vocabulary.
+ * `BrainState` value with targeted remediation vocabulary. The five statuses
+ * are `no-brain-aide` (file absent only), `brain-aide-invalid` (file present
+ * but outdated or malformed, carrying its fault), `no-mcp-entry`, `mcp-drift`,
+ * and `ok`.
  *
  * The detection pipeline, in order:
  *
@@ -19,18 +23,20 @@ import type { BrainHint, BrainState } from "@/types/index.js";
  * 2. **Resolve hints** via `resolveBrainHints(root)`. Populated unconditionally
  *    so `hints` appears on every returned state regardless of which branch fires.
  *
- * 3. **Parse `brain.aide`** via `parseBrainAide(root)`. Any non-`ok` result
- *    (`missing`, `malformed-frontmatter`, `malformed-body`) → `no-brain-aide`.
- *    All three sub-cases collapse to the same status — remediation is identical
- *    ("fix or create the file") and `no-brain-aide` carries no `name` because
- *    there is nothing readable to label.
+ * 3. **Parse `brain.aide`** via `parseBrainAide(root)`. Any non-`ok` result is
+ *    classified by `classifyParseFailure`. `null` (file `missing`) →
+ *    `no-brain-aide`, which means absence only. A fault (`missing-sections` for
+ *    an outdated config, `malformed` for unreadable frontmatter or body) →
+ *    `brain-aide-invalid` carrying that fault. Neither status carries a `name`
+ *    because a short or malformed file has nothing reliably readable to label.
+ *    Returns before any `.mcp.json` read.
  *
  * 4. **Null-args structural pre-check.** Scan `parseResult.mcpServerConfig.args`
  *    for any JS `null`. Any match returns `{ status: "no-mcp-entry", name, hints }`
  *    immediately, before any `.mcp.json` read. Detection is structural
  *    (`a === null`), never string-matching. Null in args means the launch command
  *    is unwireable, which is exactly what `no-mcp-entry` already means; collapsing
- *    into the existing status keeps the four-state vocabulary closed. The check
+ *    into the existing status keeps the status vocabulary closed. The check
  *    runs BEFORE the byte-for-byte drift comparison so two equally null-bearing
  *    files do NOT agree their way past as `ok`.
  *
@@ -93,13 +99,15 @@ export default async function buildBrainState(root: string): Promise<BrainState>
 	// of which branch fires.
 	const hints: BrainHint[] = await resolveBrainHints(root);
 
-	// Step 3 — Parse brain.aide. All non-ok parse results collapse to no-brain-aide.
-	// The parser owns the format contract; the detector only branches on `kind`.
-	// All three failure sub-cases (missing, malformed-frontmatter, malformed-body)
-	// map to the same remediation: fix or create the file.
+	// Step 3 — Parse brain.aide. The parser owns the format contract; the detector
+	// only classifies failures. Absence is no-brain-aide; a present-but-outdated or
+	// malformed file is brain-aide-invalid with its fault, so the user repairs the
+	// file before any wiring is considered. Returns before any .mcp.json read.
 	const parseResult = await parseBrainAide(root);
 	if (parseResult.kind !== "ok") {
-		return { status: "no-brain-aide", hints };
+		const fault = classifyParseFailure(parseResult);
+		if (fault === null) return { status: "no-brain-aide", hints };
+		return { status: "brain-aide-invalid", fault, hints };
 	}
 	const { name, mcpServerConfig } = parseResult;
 

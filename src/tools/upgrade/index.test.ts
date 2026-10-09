@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { FrameworkConfig, UpgradeCategoryResult, UpgradeResult } from "@/types/index.js";
+import brainContract from "@/service/brainContract/index.js";
+import type {
+	BrainSectionField,
+	FrameworkConfig,
+	ParseBrainAideResult,
+	UpgradeCategoryResult,
+	UpgradeResult,
+} from "@/types/index.js";
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -71,6 +78,14 @@ afterEach(async () => {
 	await rm(tempDir, { recursive: true, force: true });
 });
 
+/** Builds an `ok` ParseBrainAideResult carrying every contract field, so the fixture tracks the contract. */
+function makeOkBrain(): ParseBrainAideResult {
+	const sections = Object.fromEntries(
+		brainContract.map((entry) => [entry.field, `body of ${entry.marker}`]),
+	) as Record<BrainSectionField, string>;
+	return { kind: "ok", name: "obsidian", mcpServerConfig: { command: "x", args: [] }, ...sections };
+}
+
 // ── Shared mock wiring ─────────────────────────────────────────────────────────
 
 function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
@@ -116,17 +131,7 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 		status: "exists",
 		category: "readme",
 	});
-	vi.mocked(parseBrainAide).mockResolvedValue({
-		kind: "ok",
-		name: "obsidian",
-		mcpServerConfig: { command: "x", args: [] },
-		orientation: "",
-		config: "",
-		playbookIndex: "",
-		studyPlaybook: "",
-		updatePlaybook: "",
-		researchIndex: "",
-	});
+	vi.mocked(parseBrainAide).mockResolvedValue(makeOkBrain());
 }
 
 // Helper: find a category result by name
@@ -412,6 +417,25 @@ describe("upgrade", () => {
 		expect(brainCat!.files[0].prescription).toBeUndefined();
 		expect(brainCat!.files[0].canonicalContent).toBeUndefined();
 	});
+
+	// ── Test 16: Brain behind → differs with missingSections, counted in summary ─
+	it("reports differs with missingSections in brain category when brain.aide is behind", async () => {
+		wireDefaultMocks();
+		vi.mocked(parseBrainAide).mockResolvedValue({
+			kind: "missing-sections",
+			sections: ["kanban-board", "work-kanban"],
+		});
+
+		const result = await upgrade(tempDir);
+
+		const brainCat = findCategory(result, "brain");
+		expect(brainCat).toBeDefined();
+		expect(brainCat!.files[0].status).toBe("differs");
+		expect(brainCat!.files[0].missingSections).toEqual(["kanban-board", "work-kanban"]);
+		expect(brainCat!.files[0].canonicalContent).toBeUndefined();
+		expect(brainCat!.files[0].prescription).toBeUndefined();
+		expect(brainCat!.summary.differs).toBe(1);
+	});
 });
 
 describe("upgrade — response shaping (server-handler logic)", () => {
@@ -685,5 +709,42 @@ describe("upgrade — apply mode (handler simulation)", () => {
 		expect(file.status).toBe("unchanged");
 		expect(file.instructions).toBeUndefined();
 		expect(file).not.toHaveProperty("canonicalContent");
+	});
+
+	// ── Test 6d: Brain behind → section-naming instructions; brain.aide never written ─
+	it("apply mode brain: behind -> section-naming instructions, brain.aide byte-identical", async () => {
+		wireDefaultMocks();
+		vi.mocked(parseBrainAide).mockResolvedValue({
+			kind: "missing-sections",
+			sections: ["kanban-board", "work-kanban"],
+		});
+
+		// Drive the real applyFiles so a write attempt would hit the real filesystem
+		const actual = await vi.importActual<typeof import("./applyFiles/index.js")>("./applyFiles/index.js");
+		vi.mocked(applyFiles).mockImplementation(actual.default);
+
+		const brainPath = join(tempDir, ".aide", "config", "brain.aide");
+		await mkdir(join(tempDir, ".aide", "config"), { recursive: true });
+		await writeFile(brainPath, "user-owned brain config bytes", "utf-8");
+		const before = await readFile(brainPath);
+		const beforeMtime = (await stat(brainPath)).mtimeMs;
+
+		const result = await upgrade(tempDir);
+		const applied = await simulateApplyMode(result, "brain");
+
+		expect(applied).toHaveLength(1);
+		const file = applied[0].files[0];
+		expect(file.status).toBe("differs");
+		expect(file.missingSections).toEqual(["kanban-board", "work-kanban"]);
+		expect(file.instructions).toBe(
+			"Brain config is behind — missing required sections: kanban-board, work-kanban. Run /aide:brain config to add them.",
+		);
+		expect(file).not.toHaveProperty("canonicalContent");
+		expect(applied[0].summary.differs).toBe(1);
+
+		// The upgrade tool must never write .aide/config/brain.aide
+		const after = await readFile(brainPath);
+		expect(after.equals(before)).toBe(true);
+		expect((await stat(brainPath)).mtimeMs).toBe(beforeMtime);
 	});
 });

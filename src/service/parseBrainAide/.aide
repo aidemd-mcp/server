@@ -1,24 +1,29 @@
 ---
 scope: src/service/parseBrainAide
 status: aligned
-description: "Single canonical reader for the host's brain config file — every consumer reads the same parsed shape from one place."
+description: "Single canonical reader for the host's brain config — enforces the published required-section contract and names exactly what is missing or malformed when a file falls short."
 intent: >
   parseBrainAide is the one place in the project that reads the host's
-  brain config file. Every downstream consumer — install, sync,
-  runtime brain tool, provisioner — reads the same parsed shape from
-  this reader rather than re-parsing the file or carrying its own
-  understanding of the format. The reader preserves the file's content
-  verbatim into a structured value; it does not validate, coerce, or
-  reject content that other layers own. When the file format changes,
-  this reader changes, and every consumer inherits the change without
-  edit.
+  brain config file. Every downstream consumer — install, sync, runtime
+  brain tool, provisioner — reads the same parsed shape from this reader
+  rather than re-parsing the file. The reader enforces the required-section
+  contract, published from one source it shares with the agents that
+  create and repair brain configs, and reports precisely which sections
+  are missing or what is malformed. Beyond that structure it preserves
+  content verbatim and leaves meaning to the consumers that own it. Any
+  backend's config that satisfies the contract parses.
 outcomes:
   desired:
     - Every consumer of the brain config file reads it through this reader. The shape returned is the single source of truth for what the file contains.
     - Unwired slots are preserved verbatim through to consumers as the typed null they were written as. The reader does not coerce them to strings or substitute placeholders.
     - The reader returns a typed structured value with each named section as its own field, so consumers pull the slice they need without rescanning the file.
+    - The required sections are a published contract with a single source, each paired with a one-line purpose, and this reader and every agent that creates or repairs a brain config read that same source. A hand-written config for any backend that satisfies the contract parses, whether or not it came from the bundled template.
+    - A file that falls short yields a specific reason — every missing required section by name, or the precise structural fault — never a failure indistinguishable from an absent file.
   undesired:
     - A second reader of the brain config file anywhere in the project — a regex, a re-parse, a hand-rolled extraction — that competes with this one as a source of truth.
     - A literal-string sentinel encoded into the parsed result to stand in for an unwired slot. Unwired slots are typed null; sentinels reintroduce the regression of string-based wiring detection.
     - The reader rejecting, coercing, or validating content whose meaning belongs to a downstream consumer. Domain-specific rules live with the consumer that owns them, not in the reader.
+    - The required-section list restated anywhere besides its single published source, so the contract this reader enforces and the one agents repair against drift apart.
+    - A missing required section treated as optional, defaulted, or silently filled in by the reader. Absence is a failure the user repairs through the brain configuration command.
+    - Acceptance hinging on bundled-template specifics such as backend identity or template wording, so a custom-backend config that satisfies the contract is rejected.
 ---
