@@ -8,7 +8,7 @@ describe("classifyParseFailure", () => {
 	});
 
 	it("passes the missing-sections array through unchanged", () => {
-		const sections = ["kanban-board", "work-kanban"] as unknown as BrainSectionMarker[];
+		const sections = ["kanban-board", "kanban-index"] as unknown as BrainSectionMarker[];
 		const fault = classifyParseFailure({ kind: "missing-sections", sections });
 		expect(fault).toEqual({ kind: "missing-sections", sections });
 		expect(fault && fault.kind === "missing-sections" && fault.sections).toBe(sections);

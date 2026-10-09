@@ -63,11 +63,11 @@ function applyRepair(content: string, repairs: BrainSectionRepair[]): string {
 
 describe("planBrainRepair", () => {
 	it("missing the last two sections yields two entries anchored in order", async () => {
-		await writeBrainAide(templateWithout(["kanban-board", "work-kanban"]));
+		await writeBrainAide(templateWithout(["kanban-board", "kanban-index"]));
 
 		const repairs = await planBrainRepair(projectRoot);
 
-		expect(repairs?.map((r) => r.marker)).toEqual(["kanban-board", "work-kanban"]);
+		expect(repairs?.map((r) => r.marker)).toEqual(["kanban-board", "kanban-index"]);
 		expect(repairs?.[0].insertAfter).toBe(toMarkerPair("research-index").close);
 		expect(repairs?.[1].insertAfter).toBe(toMarkerPair("kanban-board").close);
 	});
@@ -83,7 +83,7 @@ describe("planBrainRepair", () => {
 	});
 
 	it("each block is byte-identical to the template's marker-wrapped section", async () => {
-		await writeBrainAide(templateWithout(["config", "study-playbook", "work-kanban"]));
+		await writeBrainAide(templateWithout(["config", "study-playbook", "kanban-index"]));
 		const template = obsidianBrainAideTemplate();
 
 		const repairs = await planBrainRepair(projectRoot);
@@ -126,7 +126,7 @@ describe("planBrainRepair", () => {
 
 	it("never changes the user's file bytes, including customized sections", async () => {
 		const orientationOpen = toMarkerPair("orientation").open;
-		const customized = templateWithout(["work-kanban"]).replace(
+		const customized = templateWithout(["kanban-index"]).replace(
 			orientationOpen,
 			`${orientationOpen}\n\nCUSTOMIZED BY USER`,
 		);
@@ -138,7 +138,7 @@ describe("planBrainRepair", () => {
 	});
 
 	it("applying the prescription yields an ok file and leaves every present section byte-identical", async () => {
-		const missing: BrainSectionMarker[] = ["orientation", "playbook-index", "work-kanban"];
+		const missing: BrainSectionMarker[] = ["orientation", "playbook-index", "kanban-index"];
 		const original = templateWithout(missing);
 		expect(parseBrainAideFromString(original).kind).toBe("missing-sections");
 		await writeBrainAide(original);

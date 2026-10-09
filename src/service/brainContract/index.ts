@@ -82,12 +82,68 @@ const brainContract = [
 		seedPath: "kanban/board.md",
 	},
 	{
-		marker: "work-kanban",
-		field: "workKanban",
+		marker: "kanban-index",
+		field: "kanbanIndex",
 		purpose:
-			"Kanban working guide the kanban skill sends agents to: the full procedure to create, work, manage, move, complete, stash and review cards.",
+			"Kanban index the kanban skill sends agents to first: the board line and card formats, priorities, project tag and linking, how to reach the board, and a link to each operation's guide.",
 		role: "seed",
-		seedPath: "kanban/work-kanban.md",
+		seedPath: "kanban/kanban.md",
+	},
+	{
+		marker: "kanban-create",
+		field: "kanbanCreate",
+		purpose:
+			"Kanban guide for creating a card: gather its details, then write the card and add its line to the board.",
+		role: "seed",
+		seedPath: "kanban/guide/create.md",
+	},
+	{
+		marker: "kanban-work",
+		field: "kanbanWork",
+		purpose:
+			"Kanban guide for working a card: pick it, plan, implement, test and self-review it behind the user's approval gates.",
+		role: "seed",
+		seedPath: "kanban/guide/work.md",
+	},
+	{
+		marker: "kanban-manage",
+		field: "kanbanManage",
+		purpose:
+			"Kanban guide for viewing the project's cards and moving them between columns.",
+		role: "seed",
+		seedPath: "kanban/guide/manage.md",
+	},
+	{
+		marker: "kanban-move",
+		field: "kanbanMove",
+		purpose:
+			"Kanban guide for moving the current session's card to a named column.",
+		role: "seed",
+		seedPath: "kanban/guide/move.md",
+	},
+	{
+		marker: "kanban-complete",
+		field: "kanbanComplete",
+		purpose:
+			"Kanban guide for moving the current session's card to In Review, or to Done.",
+		role: "seed",
+		seedPath: "kanban/guide/complete.md",
+	},
+	{
+		marker: "kanban-stash",
+		field: "kanbanStash",
+		purpose:
+			"Kanban guide for saving the session's changes, decisions, open questions and remaining work into the current card.",
+		role: "seed",
+		seedPath: "kanban/guide/stash.md",
+	},
+	{
+		marker: "kanban-review",
+		field: "kanbanReview",
+		purpose:
+			"Kanban guide for reviewing the current card's changes and running the fix cycle when changes are requested.",
+		role: "seed",
+		seedPath: "kanban/guide/review.md",
 	},
 ] as const satisfies readonly BrainSectionContractEntry[];
 

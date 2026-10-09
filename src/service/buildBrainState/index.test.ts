@@ -319,9 +319,9 @@ describe("buildBrainState — brain-aide-invalid: parser rejects deprecated fiel
 describe("buildBrainState — brain-aide-invalid: outdated config (3s)", () => {
 	const OUTDATED_ARGS = ["@bitbonsai/mcpvault", "/x/vault"];
 
-	it("returns brain-aide-invalid with the missing sections when kanban-board and work-kanban are absent", async () => {
+	it("returns brain-aide-invalid with the missing sections when kanban-board and kanban-index are absent", async () => {
 		await writeBrainAide(
-			makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-board", "work-kanban"] }),
+			makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-board", "kanban-index"] }),
 		);
 
 		const result = await buildBrainState(tempRoot);
@@ -330,14 +330,14 @@ describe("buildBrainState — brain-aide-invalid: outdated config (3s)", () => {
 		if (result.status === "brain-aide-invalid") {
 			expect(result.fault).toEqual({
 				kind: "missing-sections",
-				sections: ["kanban-board", "work-kanban"],
+				sections: ["kanban-board", "kanban-index"],
 			});
 		}
 		expect(result).not.toHaveProperty("name");
 	});
 
 	it("never reads .mcp.json for an outdated config", async () => {
-		await writeBrainAide(makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["work-kanban"] }));
+		await writeBrainAide(makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-index"] }));
 		// A valid, matching .mcp.json is present; reading it would be the only way to reach ok/drift.
 		await writeMcpJson(makeMcpJson({ command: "npx", args: OUTDATED_ARGS }));
 		const readFileMock = readFile as unknown as ReturnType<typeof vi.fn>;
@@ -716,7 +716,7 @@ describe("buildBrainState — detector never throws (3o)", () => {
 	});
 
 	it("resolves to brain-aide-invalid (outdated config) without rejecting", async () => {
-		await writeBrainAide(makeBrainAideContent({ omit: ["kanban-board", "work-kanban"] }));
+		await writeBrainAide(makeBrainAideContent({ omit: ["kanban-board", "kanban-index"] }));
 		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({
 			status: "brain-aide-invalid",
 			fault: { kind: "missing-sections" },

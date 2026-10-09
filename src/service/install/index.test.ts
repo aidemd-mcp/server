@@ -60,6 +60,10 @@ function stepsForCategory(result: InitResult, category: InitStep["category"]): I
 	return result.steps.filter((s) => s.category === category);
 }
 
+const kanbanTail = brainContract
+	.slice(brainContract.findIndex((entry) => entry.marker === "kanban-board"))
+	.map((entry) => entry.marker);
+
 describe("init — structured JSON result", () => {
 	it("fresh project: returns InitResult with framework, steps, and brainHints", async () => {
 		const result = await init(tempDir);
@@ -248,7 +252,7 @@ describe("init — structured JSON result", () => {
 		expect(brainMcpStep?.prescription?.entry.command).toBeTruthy();
 	});
 
-	it("outdated brain.aide (kanban sections missing): Brain config step is exists with a two-entry brainRepair", async () => {
+	it("outdated brain.aide (kanban sections missing): Brain config step is exists with a kanban-tail brainRepair", async () => {
 		const full = obsidianBrainAideTemplate();
 		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-board").open)));
 
@@ -258,8 +262,8 @@ describe("init — structured JSON result", () => {
 		expect(brainAideStep?.status).toBe("exists");
 		expect(brainAideStep?.content).toBeUndefined();
 		expect(brainAideStep?.brainContract).toEqual(brainContract);
-		expect(brainAideStep?.brainRepair).toHaveLength(2);
-		expect(brainAideStep?.brainRepair?.map((r) => r.marker)).toEqual(["kanban-board", "work-kanban"]);
+		expect(brainAideStep?.brainRepair).toHaveLength(kanbanTail.length);
+		expect(brainAideStep?.brainRepair?.map((r) => r.marker)).toEqual(kanbanTail);
 	});
 
 	it("idempotency — re-running on initialized content returns exists steps", async () => {
@@ -400,7 +404,7 @@ describe("init — response shaping (server-handler logic)", () => {
 		const outdatedStripped = stripContent(await init(tempDir)).steps.find((s) => s.name === "Brain config (brain.aide)");
 		expect(outdatedStripped).not.toHaveProperty("content");
 		expect(outdatedStripped?.brainContract).toEqual(brainContract);
-		expect(outdatedStripped?.brainRepair).toHaveLength(2);
+		expect(outdatedStripped?.brainRepair).toHaveLength(kanbanTail.length);
 	});
 
 	it("category filter: returns only steps of the specified category", async () => {

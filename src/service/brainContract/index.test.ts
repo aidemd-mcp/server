@@ -44,7 +44,7 @@ describe("brainContract", () => {
 		expect(brainContract[1]).toMatchObject({ marker: "config", role: "live" });
 	});
 
-	it("lists the eight required sections in the committed order", () => {
+	it("lists the fifteen required sections in the committed order", () => {
 		expect(brainContract.map((entry) => entry.marker)).toEqual([
 			"orientation",
 			"config",
@@ -53,7 +53,48 @@ describe("brainContract", () => {
 			"update-playbook",
 			"research-index",
 			"kanban-board",
-			"work-kanban",
+			"kanban-index",
+			"kanban-create",
+			"kanban-work",
+			"kanban-manage",
+			"kanban-move",
+			"kanban-complete",
+			"kanban-stash",
+			"kanban-review",
 		]);
+	});
+
+	it.each([
+		String.raw`\bvault\b`,
+		String.raw`\bobsidian\b`,
+		String.raw`\bnotes?\b`,
+		"wikilink",
+		String.raw`\bhubs?\b`,
+		String.raw`\[\[`,
+		"mcp__",
+		"kanban-plugin",
+	])("keeps backend vocabulary matching %s out of every purpose", (pattern) => {
+		const banned = new RegExp(pattern, "i");
+		for (const entry of brainContract) expect(entry.purpose).not.toMatch(banned);
+	});
+
+	it("seeds the kanban index at kanban/kanban.md and each operation guide under kanban/guide/", () => {
+		const seedPaths = new Map<string, string>(
+			brainContract.flatMap((entry) =>
+				entry.role === "seed" ? [[entry.marker, entry.seedPath] as const] : [],
+			),
+		);
+		expect(seedPaths.get("kanban-index")).toBe("kanban/kanban.md");
+		const guides = [
+			"kanban-create",
+			"kanban-work",
+			"kanban-manage",
+			"kanban-move",
+			"kanban-complete",
+			"kanban-stash",
+			"kanban-review",
+		];
+		for (const marker of guides)
+			expect(seedPaths.get(marker)?.startsWith("kanban/guide/")).toBe(true);
 	});
 });

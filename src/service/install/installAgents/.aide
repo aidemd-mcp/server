@@ -19,12 +19,12 @@ outcomes:
     - Agent and skill content flow through the install service's canonical-content chokepoint byte-faithfully. This category stages files; it never authors agent prose or skill prose.
     - Each landed file reports status — created, exists, or skipped — under the install service's reporting pattern. A re-run on a fully-installed project changes nothing and reports every file as existing.
     - Host customizations to any landed agent file or brain-pointer skill survive every subsequent run. Upgrading installed canonical content is a separate action's job, not this category's.
-    - The kanban part is a single kanban skill that works in any project, AIDE or not. It only points the agent to the kanban guide in the user's brain, where all kanban logic lives.
+    - The kanban part is a single kanban skill that works in any project, AIDE or not. It only points the agent to the kanban hub in the user's brain, where all kanban logic lives, so the agent reads the hub plus only the operation guide it needs.
   undesired:
     - This category overwriting, patching, or migrating an agent file or brain-pointer skill that already exists in the host project. Customizations are the host's surface; this category respects them on every run after the first.
     - Agent or skill content authored in this category as inline strings instead of read through the install service's canonical-content chokepoint. That creates a second source of truth that drifts from canonical.
     - This category branching on the host's brain configuration — inspecting the brain config, varying which agents land, or mutating an agent's declared MCP server list per host. Every host receives the same canonical files; configuration variance lives in the host's brain config, not here.
     - A brain-pointer skill carrying board layout, card workflow, or any backend's storage vocabulary instead of routing the agent to the guide the user's brain holds. These skills point; the brain owns the procedure.
-    - A kanban skill that only works inside an AIDE project, or that splits kanban behavior across several skills. One skill points to the brain's guide wherever it runs.
+    - A kanban skill that only works inside an AIDE project, or that splits kanban behavior across several skills. One skill points to the brain's kanban hub wherever it runs.
     - This category restating brain-MCP-key portability doctrine, model-assignment rationale, or pipeline-phase-to-agent mapping in its own outcomes or strategy. That doctrine is owned upstream — the canonical agent files carry it, not this category.
 ---

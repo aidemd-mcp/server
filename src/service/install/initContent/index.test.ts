@@ -2,6 +2,7 @@ import { readFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
+import brainContract from "../../brainContract/index.js";
 import { getMethodologyMarker, listMethodologyDocs, listSkills, readCanonicalDoc } from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
@@ -88,7 +89,7 @@ describe("readCanonicalDoc — brain-aide content (Step 4b)", () => {
 
 describe("kanban pointer skill", () => {
 	const OPERATIONS = ["create", "work", "manage", "move", "complete", "stash", "review"];
-	// Mirrors provisionBrain brief commitment #4 (backend-agnostic vocabulary).
+	// Mirrors brainContract brief commitment #4 (backend-agnostic vocabulary); the ban still governs this skill under the delegation's narrowed scope.
 	const BANNED_PATTERNS: RegExp[] = [
 		/\bvault\b/i,
 		/\bobsidian\b/i,
@@ -123,8 +124,18 @@ describe("kanban pointer skill", () => {
 		expect(readCanonicalDoc("skills/kanban")).toMatch(/^---\r?\nname: kanban\r?\n/);
 	});
 
-	it("points at kanban/work-kanban.md", () => {
-		expect(readCanonicalDoc("skills/kanban")).toContain("kanban/work-kanban.md");
+	it("points at the kanban index kanban/kanban.md", () => {
+		const kanbanIndex = brainContract.find((entry) => entry.marker === "kanban-index");
+		if (kanbanIndex?.role !== "seed") throw new Error("brainContract has no seeded kanban-index entry");
+		const skill = readCanonicalDoc("skills/kanban");
+		expect(skill).toContain(kanbanIndex.seedPath);
+		expect(skill).not.toContain("kanban/work-kanban.md");
+	});
+
+	it("routes to one operation guide without restating guide paths", () => {
+		const skill = readCanonicalDoc("skills/kanban");
+		expect(skill).not.toContain("kanban/guide/");
+		expect(skill).toContain("only the guide");
 	});
 
 	it.each(OPERATIONS)("names the %s operation", (operation) => {

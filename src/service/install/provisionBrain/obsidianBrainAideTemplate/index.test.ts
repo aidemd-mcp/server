@@ -134,10 +134,10 @@ describe("round-trip parses cleanly under the new schema", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Eight-section body shape
+// Contract body shape
 // ---------------------------------------------------------------------------
 
-describe("eight-section body shape", () => {
+describe("contract body shape", () => {
 	it("result.kind is ok — parser accepts the full contract, so a fresh scaffold boots clean", async () => {
 		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
@@ -229,7 +229,7 @@ describe("eight-section body shape", () => {
 		if (result.kind !== "ok") return;
 
 		const sections = brainContract.map(({ field }) => result[field]);
-		expect(sections).toHaveLength(8);
+		expect(sections).toHaveLength(brainContract.length);
 
 		for (let i = 0; i < sections.length; i++) {
 			for (let j = i + 1; j < sections.length; j++) {
@@ -1014,42 +1014,204 @@ describe("schema does not include intent-spec or deprecated fields", () => {
 	});
 });
 
+
 // ---------------------------------------------------------------------------
-// Kanban seed sections: board bytes, full-port guide, backend-agnostic vocabulary
+// Kanban seed sections: board, index and the seven operation guides
 // ---------------------------------------------------------------------------
 
-/** Case-insensitive patterns the kanban seed bytes must never match (brief commitment #4). */
-const BANNED_PATTERNS: RegExp[] = [
-	/\bvault\b/i,
-	/\bobsidian\b/i,
-	/\bnotes?\b/i,
-	/wikilink/i,
-	/\bhubs?\b/i,
-	/\[\[/,
-	/mcp__/i,
-	/kanban-plugin/i,
+type KanbanField = Extract<(typeof brainContract)[number]["field"], `kanban${string}`>;
+
+/** The nine kanban contract fields, board first. */
+const KANBAN_FIELDS = brainContract.map(({ field }) => field).filter((field): field is KanbanField => field.startsWith("kanban"));
+
+/** The seven operation guides: contract field, `# ` title, and the outline brief commitment #5 fixes. */
+const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string[] }> = [
+	{
+		field: "kanbanCreate",
+		title: "Create",
+		outline: [
+			"# Create",
+			"## Delegation rules",
+			"## Step 1 — Gather card details",
+			"## Step 2 — Create the card",
+			"## Step 3 — Confirm and clear",
+		],
+	},
+	{
+		field: "kanbanWork",
+		title: "Work",
+		outline: [
+			"# Work",
+			"## Architecture",
+			"## Mode discipline",
+			"## Checklist",
+			"## Step 0 — Enter planning mode",
+			"## Step 1 — Spawn a board subagent: find cards",
+			"## Step 2 — Present and pick",
+			"## Step 3 — Deferred",
+			"## Step 4 — Investigate and plan (main agent, planning mode)",
+			"### 4a — Load conventions",
+			"### 4b — Load context",
+			"### 4c — Investigate the codebase",
+			"### 4d — Devise the plan",
+			"### 4e — Open questions (if any)",
+			"## Step 5 — Hard stop: present the plan",
+			"## Step 5b — Spawn a board subagent: activate the card",
+			"## Step 6 — Implement (main agent, act mode)",
+			"### 6a — Implement the changes",
+			"### 6b — Type check",
+			"### 6c — Write and run tests",
+			"## Step 7 — Review (main agent, planning mode)",
+			"### 7a — Get the diff",
+			"### 7b — Read the changed files in full",
+			"### 7c — Review against each criterion",
+			"### 7d — Produce the review",
+			"### 7e — Present the review and check the verdict",
+			"## Step 8 — Revision loop (forward-only)",
+			"### 8a — Re-investigate (planning mode)",
+			"### 8b — Implement the revisions (act mode)",
+			"### 8c — Re-review (planning mode)",
+			"### 8d — Present and check the verdict",
+		],
+	},
+	{
+		field: "kanbanManage",
+		title: "Manage",
+		outline: [
+			"# Manage",
+			"## Step 1 — Determine the project",
+			"## Step 2 — Read the board",
+			"### Reconciliation check",
+			"## Step 3 — Present cards and prompt for action",
+			"## Step 4 — Move the card",
+			"### 4a — Update the board",
+			"### 4b — Move the card file",
+			"## Step 5 — Confirm",
+		],
+	},
+	{
+		field: "kanbanMove",
+		title: "Move",
+		outline: [
+			"# Move",
+			"## Step 1 — Parse the target column",
+			"## Step 2 — Identify the card from session context",
+			"## Step 3 — Determine the project",
+			"## Step 4 — Read the board",
+			"## Step 5 — Move the card",
+			"### 5a — Update the board",
+			"### 5b — Move the card file",
+			"## Step 6 — Confirm",
+		],
+	},
+	{
+		field: "kanbanComplete",
+		title: "Complete",
+		outline: [
+			"# Complete",
+			"## Step 1 — Parse flags",
+			"## Step 2 — Identify the card from session context",
+			"## Step 3 — Determine the project",
+			"## Step 4 — Read the board",
+			"## Step 5 — Move the card",
+			"### 5a — Update the board",
+			"### 5b — Move the card file",
+			"## Step 6 — Confirm",
+		],
+	},
+	{
+		field: "kanbanStash",
+		title: "Stash",
+		outline: [
+			"# Stash",
+			"## Step 1 — Identify the card from session context",
+			"## Step 2 — Determine the project",
+			"## Step 3 — Read the card",
+			"## Step 4 — Gather session context",
+			"### 4a — Git changes (if in a git repo)",
+			"### 4b — Conversation review",
+			"## Step 5 — Compose and append the stash entry",
+			"## Step 6 — Update frontmatter",
+			"## Step 7 — Confirm",
+		],
+	},
+	{
+		field: "kanbanReview",
+		title: "Review",
+		outline: [
+			"# Review",
+			"## Delegation rules",
+			"## Step 1 — Run the review",
+			"## Step 2 — Present the review",
+			"## Step 3 — Record the review",
+			"## Step 4 — Fix cycle (only if changes were requested)",
+			"### 4a — Investigate the findings",
+			"### 4b — Present the plan and handle open questions",
+			"### 4c — Implement the fixes",
+			"### 4d — Present results",
+		],
+	},
 ];
 
-/** The `##` section headings of the work-kanban guide, in the order brief commitment #3 fixes. */
-const GUIDE_HEADINGS = [
-	"## Board and Columns",
-	"## Cards",
-	"## Project Tag",
-	"## Create",
-	"## Work",
-	"## Manage",
-	"## Move",
-	"## Complete",
-	"## Stash",
-	"## Review",
-	"## Reaching the Board",
+/** The operations in contract order, as the index's `[[kanban/guide/<op>|` links name them. */
+const OPERATIONS = ["create", "work", "manage", "move", "complete", "stash", "review"];
+
+/** Headings the index owns; no guide may restate them. */
+const SHARED_HEADINGS = ["## Board and Columns", "## Cards", "## Project Tag", "## Reaching the Board"];
+
+/** Tokens that identified the user's own projects in the source guide (brief commitment #6). */
+const PROJECT_SPECIFIC_TOKENS = [
+	"tetsukodai",
+	"tetsukod.ai",
+	"cold-outreach-analyzer",
+	"aidemd",
+	"apollo",
+	"brain-contract-and-create-repair-command",
 ];
 
-describe("kanbanBoard section ships the empty five-column board", () => {
+/** The orientation's final paragraph (brief commitment #8), spelled out independently of the template. */
+const ORIENTATION_POINTER =
+	"Project work is tracked on the kanban board at `kanban/board.md`. Before any board operation, read the kanban index at `kanban/kanban.md`, then read only the guide it links for the operation you are performing.";
+
+/** Parses the template and returns the ok result, failing the test if the template does not parse. */
+async function parseTemplate() {
+	const result = parseBrainAideFromString(await getTemplate());
+	if (result.kind !== "ok") throw new Error(`template did not parse: ${result.kind}`);
+	return result;
+}
+
+/** Returns the `---` frontmatter block of a seed section, without its fences, or null when the section has none. */
+function readFrontmatter(section: string): string | null {
+	const trimmed = section.trimStart();
+	if (!trimmed.startsWith("---\n")) return null;
+	const end = trimmed.indexOf("\n---\n", 3);
+	return end === -1 ? null : trimmed.slice(4, end);
+}
+
+/** Returns the section text after its frontmatter block. */
+function readBody(section: string): string {
+	const trimmed = section.trimStart();
+	return trimmed.slice(trimmed.indexOf("\n---\n", 3) + 5);
+}
+
+/** Returns the column-0 heading lines of a markdown text, skipping fenced code blocks and blockquoted lines. */
+function extractOutline(text: string): string[] {
+	const headings: string[] = [];
+	let inFence = false;
+	for (const line of text.split("\n")) {
+		if (line.trimStart().startsWith("```")) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence || line.startsWith(">")) continue;
+		if (/^#{1,6} /.test(line)) headings.push(line);
+	}
+	return headings;
+}
+
+describe("kanbanBoard section ships the empty Kanban-plugin board", () => {
 	it("contains the five column headings in order", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+		const result = await parseTemplate();
 
 		const columns = ["## Backlog", "## Todo", "## In Progress", "## In Review", "## Done"];
 		const positions = columns.map((heading) => result.kanbanBoard.indexOf(`\n${heading}\n`));
@@ -1057,132 +1219,211 @@ describe("kanbanBoard section ships the empty five-column board", () => {
 		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
 	});
 
-	it("is the exact bytes of brief commitment #2", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+	it("is the exact bytes of brief commitment #3, wrapped as the marker pair emits them", async () => {
+		const result = await parseTemplate();
 
-		expect(result.kanbanBoard).toBe(
-			"\n\n# Kanban Board\n\n" +
-				"Cards are listed under their column, one per line, as `- [ ] <card-slug> — <title> #<project-tag>`. Cards in Done use `- [x]`. The guide at `kanban/work-kanban.md` defines every board operation.\n\n" +
-				"## Backlog\n\n## Todo\n\n## In Progress\n\n## In Review\n\n## Done\n\n",
-		);
+		const fence = "```";
+		const seed =
+			"---\nkanban-plugin: list\ntags:\n  - tasks\n---\n\n\n\n" +
+			"## Backlog\n\n\n\n## Todo\n\n\n\n## In Progress\n\n\n\n## In Review\n\n\n\n## Done\n\n\n\n" +
+			`%% kanban:settings\n${fence}\n{"kanban-plugin":"list"}\n${fence}\n%%\n`;
+		expect(result.kanbanBoard).toBe("\n\n" + seed + "\n");
 	});
 
-	it("carries no frontmatter and no plugin-specific keys", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+	it("opens with the kanban-plugin frontmatter and carries no prose before '## Backlog'", async () => {
+		const result = await parseTemplate();
 
-		expect(result.kanbanBoard.trimStart().startsWith("---")).toBe(false);
-		expect(result.kanbanBoard).not.toMatch(/^kanban-plugin:/m);
+		expect(readFrontmatter(result.kanbanBoard)).toContain("kanban-plugin: list");
+		const beforeFirstColumn = readBody(result.kanbanBoard).split("## Backlog")[0] ?? "";
+		expect(beforeFirstColumn.trim()).toBe("");
+	});
+
+	it("ends with the '%% kanban:settings' block holding the kanban-plugin list setting", async () => {
+		const result = await parseTemplate();
+
+		const settingsStart = result.kanbanBoard.indexOf("%% kanban:settings");
+		expect(settingsStart).toBeGreaterThan(-1);
+		const settings = result.kanbanBoard.slice(settingsStart);
+		expect(settings).toContain('{"kanban-plugin":"list"}');
+		expect(settings.trimEnd().endsWith("%%")).toBe(true);
+		expect(settings).not.toContain("## ");
 	});
 });
 
-describe("workKanban section ships the full-port guide", () => {
-	it("starts with the '# Work Kanban' title", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+describe("kanbanIndex section ships the shared rules and the operations list", () => {
+	it("opens with frontmatter tagged tasks, workflow, hub", async () => {
+		const result = await parseTemplate();
 
-		expect(result.workKanban.trimStart().startsWith("# Work Kanban\n")).toBe(true);
+		expect(readFrontmatter(result.kanbanIndex)).toBe("tags:\n  - tasks\n  - workflow\n  - hub");
 	});
 
-	it("contains every '##' section heading from brief commitment #3, in order", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+	it("has the '# Kanban' title directly after the frontmatter", async () => {
+		const result = await parseTemplate();
 
-		const positions = GUIDE_HEADINGS.map((heading) => result.workKanban.indexOf(`\n${heading}\n`));
+		expect(readBody(result.kanbanIndex).startsWith("# Kanban\n")).toBe(true);
+	});
+
+	it("contains the shared-rule headings in order", async () => {
+		const result = await parseTemplate();
+
+		const headings = ["## Operations", "## Board and Columns", "## Cards", "## Project Tag", "## Reaching the Board"];
+		const positions = headings.map((heading) => result.kanbanIndex.indexOf(`\n${heading}\n`));
 		for (const position of positions) expect(position).toBeGreaterThan(-1);
 		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
 	});
 
-	it("has no feature-linking section and no feature field", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+	it.each(OPERATIONS)("links the %s guide", async (operation) => {
+		const result = await parseTemplate();
 
-		expect(result.workKanban).not.toContain("## Link a Card to a Feature");
-		expect(result.workKanban).not.toMatch(/feature:/i);
+		expect(result.kanbanIndex).toContain(`[[kanban/guide/${operation}|`);
 	});
 
-	it("works in non-AIDE projects: no aide_brain, no .aide/, no orientation reference", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+	it("holds no step headings — procedures live in the guides", async () => {
+		const result = await parseTemplate();
 
-		expect(result.workKanban).not.toContain("aide_brain");
-		expect(result.workKanban).not.toContain(".aide/");
-		expect(result.workKanban).not.toMatch(/orientation/i);
+		expect(result.kanbanIndex).not.toMatch(/^#{2,4} Step\b/m);
 	});
 
-	it("keeps the approval hard stops and the return formats of the work procedure", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+	it.each([
+		"[[<card-slug>]]",
+		"<P#> <TYPE>: <summary>",
+		"p3",
+		"Related: [[projects/<project-note>|<display-name>]]",
+		"%% kanban:settings",
+		"kanban-plugin: list",
+		"mcp__brain__read_note_lines",
+		"mcp__brain__move_note",
+	])("keeps the Obsidian convention anchor %s", async (anchor) => {
+		const result = await parseTemplate();
 
-		for (const anchor of [
-			"MODE: DIRECT",
-			"MODE: TABLE",
-			"MODE: NO_TASKS",
-			"MODE: NO_PROJECT",
-			"MISMATCHES:",
-			"Hard stop. Do not activate the board or write code until the user approves the plan.",
-			"DONE (resumed)",
-			"VERDICT: LGTM | CHANGES_REQUESTED | NEEDS_DISCUSSION",
-			"CREATED:",
-			"**Verdict:** LGTM | Changes Requested | Needs Discussion",
-			"INVESTIGATION:",
-			"SUMMARY:",
-		]) {
-			expect(result.workKanban).toContain(anchor);
-		}
+		expect(result.kanbanIndex).toContain(anchor);
 	});
 });
 
-describe("kanban seed bytes are backend-agnostic (brief commitment #4)", () => {
-	it.each(BANNED_PATTERNS.map((pattern) => [pattern.source, pattern] as const))(
-		"kanbanBoard and workKanban do not match /%s/i",
-		async (_source, pattern) => {
-			const result = parseBrainAideFromString(await getTemplate());
-			expect(result.kind).toBe("ok");
-			if (result.kind !== "ok") return;
+describe.each(GUIDES)("$field guide", ({ field, title, outline }) => {
+	it("opens with frontmatter tagged tasks, workflow", async () => {
+		const result = await parseTemplate();
 
-			expect(result.kanbanBoard).not.toMatch(pattern);
-			expect(result.workKanban).not.toMatch(pattern);
-		},
-	);
+		expect(readFrontmatter(result[field])).toBe("tags:\n  - tasks\n  - workflow");
+	});
 
-	it("the orientation pointer sentence satisfies the same vocabulary rule", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+	it("has its operation title as the first heading", async () => {
+		const result = await parseTemplate();
 
-		const pointer =
-			"Project work is tracked on the kanban board at `kanban/board.md`; follow the guide at `kanban/work-kanban.md` to create, work, move, complete, stash, or review cards.";
-		expect(result.orientation).toContain(`${pointer}\n\n`);
-		for (const pattern of BANNED_PATTERNS) expect(pointer).not.toMatch(pattern);
+		expect(extractOutline(readBody(result[field]))[0]).toBe(`# ${title}`);
+	});
+
+	it("links back to the index with the fixed 'Part of' line", async () => {
+		const result = await parseTemplate();
+
+		expect(result[field]).toContain("Part of [[kanban/kanban|Kanban]].");
+	});
+
+	it("has exactly the brief commitment #5 heading outline, in order", async () => {
+		const result = await parseTemplate();
+
+		expect(extractOutline(readBody(result[field]))).toEqual(outline);
+	});
+
+	it.each(SHARED_HEADINGS)("does not restate the index's %s", async (heading) => {
+		const result = await parseTemplate();
+
+		expect(result[field]).not.toContain(`\n${heading}\n`);
 	});
 });
 
-describe("orientation points at the kanban board and its guide", () => {
-	it("contains kanban/board.md and kanban/work-kanban.md", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+describe("return-format and gate anchors live in the guide that owns them", () => {
+	it.each([
+		["kanbanCreate", ["CREATED:", "MODE: NO_PROJECT", "PROJECT_NOTE: none", "omit the `Related:` line"]],
+		[
+			"kanbanWork",
+			[
+				"MODE: DIRECT",
+				"MODE: TABLE",
+				"MODE: NO_TASKS",
+				"MISMATCHES:",
+				"Hard stop. Do not activate the board or write code until the user approves the plan.",
+				"DONE (resumed)",
+				"VERDICT: LGTM | CHANGES_REQUESTED | NEEDS_DISCUSSION",
+				"run the [[kanban/guide/stash|Stash]] operation",
+			],
+		],
+		["kanbanManage", ["Reconciliation check", "[[kanban/kanban|Kanban]]"]],
+		[
+			"kanbanReview",
+			["**Verdict:** LGTM | Changes Requested | Needs Discussion", "INVESTIGATION:", "SUMMARY:", "Do NOT commit"],
+		],
+	] as const)("%s contains its anchors", async (field, anchors) => {
+		const result = await parseTemplate();
 
-		expect(result.orientation).toContain("kanban/board.md");
-		expect(result.orientation).toContain("kanban/work-kanban.md");
+		for (const anchor of anchors) expect(result[field]).toContain(anchor);
 	});
 
-	it("keeps the pointer as its own final paragraph", async () => {
-		const result = parseBrainAideFromString(await getTemplate());
-		expect(result.kind).toBe("ok");
-		if (result.kind !== "ok") return;
+	it("kanbanStash keeps the entry format unpromoted inside its fence", async () => {
+		const result = await parseTemplate();
+
+		const fenced = result.kanbanStash.split("```markdown")[1] ?? "";
+		expect(fenced).toContain("\n## Stash\n");
+		expect(fenced).toContain("### <YYYY-MM-DD HH:MM>");
+	});
+});
+
+describe("every kanban section is project-neutral and standalone", () => {
+	it.each(KANBAN_FIELDS)("%s carries no project-specific token", async (field) => {
+		const result = await parseTemplate();
+
+		for (const token of PROJECT_SPECIFIC_TOKENS) expect(result[field].toLowerCase()).not.toContain(token);
+	});
+
+	it.each(KANBAN_FIELDS)("%s works in non-AIDE projects: no aide_brain, no .aide/, no orientation reference", async (field) => {
+		const result = await parseTemplate();
+
+		expect(result[field]).not.toContain("aide_brain");
+		expect(result[field]).not.toContain(".aide/");
+		expect(result[field]).not.toMatch(/orientation/i);
+	});
+
+	it.each(KANBAN_FIELDS)("%s has no feature-linking section and no feature field", async (field) => {
+		const result = await parseTemplate();
+
+		expect(result[field]).not.toContain("## Link a Card to a Feature");
+		expect(result[field]).not.toContain("feature:");
+	});
+});
+
+describe("orientation points at the kanban board and its index", () => {
+	it("ends with the exact pointer paragraph of brief commitment #8", async () => {
+		const result = await parseTemplate();
 
 		const paragraphs = result.orientation.trim().split("\n\n");
-		expect(paragraphs).toHaveLength(2);
-		expect(paragraphs[1]?.startsWith("Project work is tracked on the kanban board")).toBe(true);
+		expect(paragraphs[paragraphs.length - 1]).toBe(ORIENTATION_POINTER);
+	});
+
+	it("names kanban/board.md and kanban/kanban.md, and not the retired kanban/work-kanban.md", async () => {
+		const result = await parseTemplate();
+
+		expect(result.orientation).toContain("kanban/board.md");
+		expect(result.orientation).toContain("kanban/kanban.md");
+		expect(result.orientation).not.toContain("kanban/work-kanban.md");
+	});
+
+	it("keeps exactly two paragraphs", async () => {
+		const result = await parseTemplate();
+
+		expect(result.orientation.trim().split("\n\n")).toHaveLength(2);
+	});
+});
+
+describe("config section seeds frontmatter-bearing sections correctly", () => {
+	it("tells the agent to split a leading frontmatter block into the tool's frontmatter argument", async () => {
+		const result = await parseTemplate();
+
+		expect(result.config).toContain("pass that block's fields as the tool's `frontmatter` argument");
+	});
+
+	it("still names no seed path", async () => {
+		const result = await parseTemplate();
+
+		for (const entry of brainContract) if (entry.role === "seed") expect(result.config).not.toContain(entry.seedPath);
 	});
 });

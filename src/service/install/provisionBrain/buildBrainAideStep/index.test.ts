@@ -22,6 +22,10 @@ async function writeBrainAide(content: string): Promise<void> {
 	await writeFile(join(projectRoot, ".aide", "config", "brain.aide"), content, "utf-8");
 }
 
+const kanbanTail = brainContract
+	.slice(brainContract.findIndex((entry) => entry.marker === "kanban-board"))
+	.map((entry) => entry.marker);
+
 describe("buildBrainAideStep", () => {
 	it("absent file: would-create with template content and the contract", async () => {
 		const step = await buildBrainAideStep(projectRoot);
@@ -43,7 +47,7 @@ describe("buildBrainAideStep", () => {
 		expect(step.status).toBe("exists");
 		expect(step.content).toBeUndefined();
 		expect(step.brainContract).toEqual(brainContract);
-		expect(step.brainRepair?.map((r) => r.marker)).toEqual(["kanban-board", "work-kanban"]);
+		expect(step.brainRepair?.map((r) => r.marker)).toEqual(kanbanTail);
 	});
 
 	it("complete file: exists with the contract and no brainRepair", async () => {

@@ -11,6 +11,8 @@ description: >
 
 # /kanban — Kanban Board
 
-Read `kanban/work-kanban.md` from the brain using this session's brain tools, then carry out the requested operation — create, work, manage, move, complete, stash or review — by following its matching `## <Operation>` section.
+Read the kanban index `kanban/kanban.md` from the brain using this session's brain tools. It holds the rules every operation shares and links one guide per operation.
+
+Then read only the guide for the requested operation — create, work, manage, move, complete, stash or review — and follow it step by step.
 
 Arguments name the operation and its input, e.g. `/kanban create "..."`. If no operation is given, ask the user which one.

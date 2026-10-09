@@ -26,7 +26,7 @@ All 11 plans built (23 steps). QA found 10 minor issues; all fixed and re-valida
 
    A missing file stays `no-brain-aide`. An unwired slot stays `no-mcp-entry`. A present file is never reported as "not present".
 6. **How agents read the contract.** Agents read the contract and the repair blocks through aide_init's read-only brain step (brainContract / brainRepair). aide_brain never returns seed bytes. aide_upgrade reports "behind" and never writes the config.
-7. **The kanban guide.** It lives at `kanban/work-kanban.md`. It is a FULL port of the user's global kb commands (~/.claude/commands/kb/*.md and ~/.claude/skills/kb-work), stripping only storage-, backend- and user-specific detail. A parity check against the sources is required (provisionBrain plan step 1f).
+7. Superseded by #13.
 8. **One `kanban` skill** replaces the 7 kb-* skills.
    - It is a thin pointer that does not depend on AIDE, so it works in non-AIDE projects.
    - The same file is shipped by AIDE and copied verbatim as the user's global skill.
@@ -41,41 +41,57 @@ All 11 plans built (23 steps). QA found 10 minor issues; all fixed and re-valida
 12. **Single-source guard scope.** The single-source guard (src/service/parseBrainAide/singleSource.test.ts) scans src/ string literals AND every .md/.aide under .claude/ and .aide/docs/ for real contract marker tokens.
     - Ephemeral pipeline files are excluded.
     - /aide:brain config derives the config section's markers from brainContract.
+13. **The template is Obsidian-specific and the kanban guide is split (user, 2026-10-08).**
+    - **The bundled Obsidian template's section text is written for Obsidian:** wikilinks, the Kanban plugin's board format and trailing `%% kanban:settings` block, `kanban-plugin` frontmatter, and the real brain tool names.
+    - **It reproduces the user's working kanban exactly**, with only references to the user's own projects excluded. Its source is the user's customized brain copy.
+    - **The guide is split into a hub plus one file per operation.**
+      - Seed sections: `kanban-hub` → `kanban/kanban.md`, plus `kanban-create` / `-work` / `-manage` / `-move` / `-complete` / `-stash` / `-review` → `kanban/guide/<op>.md`. The architect may refine these names.
+      - The `work-kanban` section is removed.
+      - The contract goes from 8 to 15 sections.
+    - **The kanban skill** stays backend-neutral and points to the hub, then the operation file.
+    - **Repair on a non-template backend** adapts both live and seed sections.
 
 ## Anti-regression invariants future build phases must hold
 
 - The section list and marker text exist ONLY in brainContract. A test guards against restatement.
-- No banned storage vocabulary (vault, obsidian, note(s), wikilink, hub(s), [[, mcp__, kanban-plugin) in the kanban sections or the kanban skill.
+- No banned storage vocabulary (vault, obsidian, note(s), wikilink, hub(s), [[, mcp__, kanban-plugin) in the contract purposes, the kanban skill, or shipped docs/prose outside the template. Template section bytes are exempt.
 - The kanban skill and guide never reference aide_brain, .aide/, or the orientation section.
 - The status vocabulary stays closed at five values, and every consumer handles all five.
 - No real contract marker token (aide-<marker>-start/-end) may appear in .claude/ or .aide/docs/ prose; the guard test enforces it.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-The build is complete, verified, and uncommitted. Waiting on the user's review of the changes.
+The brain contract feature is committed (d41c3c5). A follow-on cycle is in progress: Stage 1 specs are approved (provisionBrain, brainContract, installAgents). Stage 4 (Plan) is running.
 
 ### What the next agent must do
 
-In order. Each step needs user confirmation.
+In order:
 
-1. The user reviews the change summary and the diff.
-2. Commit.
-3. Seed kanban/board.md and kanban/work-kanban.md into the user's real brain (D:\Code\Me\my-brain via the brain MCP), skip-on-exists. The user's kanban/board.md already exists, so only work-kanban.md is new.
-4. Swap the user's global kb:* commands (~/.claude/commands/kb/) and the kb-work skill for a single global ~/.claude/skills/kanban/SKILL.md, copied verbatim from the repo. Move the old ones to a backup first.
-5. Version bump and publish via `node scripts/publish.mjs`.
-6. Promote the retro to process/retro/ in the brain.
-7. aide-maintainer deletes the plan/brief/todo ephemerals and this session.aide.
+1. Approve the plan.
+2. Build.
+3. QA.
+4. Migrate the user's brain, with confirmation:
+   - move the obsolete `kanban/kanban.md` to a backup (the user called it garbage; do not hard-delete);
+   - remove `kanban/work-kanban.md`;
+   - seed the split files.
+5. Re-copy the global kanban skill.
+6. Commit.
+
+**Before publish:** the remaining cards must be done: global/local install, pipeline strategy, card↔feature linking. Do not publish until all are done (user, 2026-10-08).
 
 ### What's already done and validated
 
-- The specs, the build, QA, the fix loop, and the E2E matrix (results at scratchpad e2e/RESULTS.md).
+- The global kb skills were swapped for the single kanban skill (backup at ~/.claude/backup/kb-2026-10-08/).
+- The single guide was seeded into the user's brain at kanban/work-kanban.md, and customized.
+- The retro was promoted at process/retro/2026-10-08-aidemd-brain-contract-and-kanban.md.
+- The first-cycle ephemerals were deleted.
 
 ### Open follow-ups
 
 - aide_brain remediation text for no-mcp-entry/mcp-drift (and the aide_info description) tells the user to run `npx … sync` themselves. This conflicts with the brain.md anti-pattern. It is pre-existing and not fixed in this cycle.
-- The work-kanban guide is ~990 lines, read in full on every /kanban call. Consider splitting it into an index plus a file per operation.
 - The installAgents spec claims the kanban skill outcome, but installSkills stages it (scope attribution).
 - brain.md Step 3's malformed branch wording fits syntax faults better than read errors.
+- The user's global ~/.claude/CLAUDE.md and the design-handoff / handoff:start skills still reference the old kb:* skills. They need updating to /kanban, which requires the user's OK for their private config.
 
 ## Process discipline (permanent)
 

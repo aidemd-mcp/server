@@ -63,10 +63,10 @@ Call `aide_info`. Read `brain.status`, `brain.fault` (present only on `brain-aid
 
 1. **Ask which backend.** Use `AskUserQuestion`: the bundled default (Obsidian) or another backend. If another, ask which one and how its MCP server is launched.
 2. **Scaffold.** Call `aide_init({ category: "brain" })`. It writes `.aide/config/brain.aide` from the latest bundled template, with YAML null at the unwired path slot of `mcpServerConfig.args`. YAML null is the structural unwired-slot signal; there is no literal-string placeholder.
-3. **Non-Obsidian backend only — adapt the scaffold.** Read `brainContract` from the summary call, then edit `.aide/config/brain.aide`:
+3. **Non-Obsidian backend only — adapt the scaffold.** The bundled template is written for Obsidian, seed sections included: its seeds use Obsidian wiki links, the board plugin's frontmatter and trailing settings block, and the Obsidian brain tool names. None of that carries over to another backend, so every seed section needs adapting, not only the generic ones. Read `brainContract` from the summary call, then edit `.aide/config/brain.aide`:
    - **Frontmatter launcher.** Rewrite `name` and `mcpServerConfig` (`command`, `args`) for the user's backend. Leave YAML null at the slot the user's brain location fills. Add no other frontmatter field — the parser rejects extras.
    - **Live sections** (`role: "live"`). Rewrite each section's body so it fulfills its contract `purpose` for this backend: the backend's own tool names, entry points and wiring flow.
-   - **Seed sections** (`role: "seed"`). Walk them one at a time: show the user the section's marker and purpose, adapt any backend-specific wording in the generic seed, and confirm with the user before moving on.
+   - **Seed sections** (`role: "seed"`). Walk every one of them, one at a time: show the user the section's marker and purpose, rewrite its link syntax, frontmatter, board format and tool names for the user's backend, and confirm with the user before moving on.
    - Keep every marker line byte-identical and every section in place. Only the bytes between a section's markers change.
 
 Then go to Step 4.
@@ -79,7 +79,12 @@ Branch on `brain.fault.kind`.
 
 1. Call `aide_init` with no arguments and read `brainRepair` from the `Brain config (brain.aide)` step. Each entry carries the contract fields (`marker`, `purpose`, `role`, and `seedPath` for seeds), plus `block` — the full marker-wrapped section from the latest bundled template — and `insertAfter`.
 2. Show the user the marker and purpose of each missing section, then confirm with `AskUserQuestion` (repair now / skip). On skip, STOP.
-3. **Adapt live sections on a non-Obsidian config first.** If an entry is `role: "live"` and this config's frontmatter launcher is not the bundled Obsidian one, the template block is Obsidian-specific. Adapt the bytes between its markers with the user to fit their backend, keeping both marker lines unchanged. Seed blocks are inserted as given.
+3. **Adapt every block on a non-Obsidian config first.** If this config's frontmatter launcher is not the bundled Obsidian one, every template block — live and seed alike — is Obsidian-specific (wiki links, the board plugin's frontmatter and settings, Obsidian brain tool names). Adapt each one with the user before inserting it:
+   - **Live blocks** (`role: "live"`): rewrite the bytes between the markers so the section fulfills its contract `purpose` for this backend — the backend's own tool names, entry points and wiring flow.
+   - **Seed blocks** (`role: "seed"`): walk them one at a time. Show the user the marker and purpose, adapt the bytes between the markers for this backend, and confirm with the user before moving to the next.
+   - Keep both marker lines of every block byte-identical; only the bytes between them change.
+
+   On the bundled Obsidian launcher, insert every block as given.
 4. **Insert, and change nothing else.** Edit `.aide/config/brain.aide`, applying the entries in array order:
    - `insertAfter` is a close-marker string → insert `"\n\n" + block` immediately after the first occurrence of that exact string.
    - `insertAfter` is `null` → insert `block + "\n\n"` at the start of the body, immediately after the line holding the frontmatter's closing `---`.
@@ -101,7 +106,7 @@ Call `aide_info` again. This is a parser check of the file on disk, not a brain 
 
 For each `role: "seed"` entry you inserted in Step 3, write it to its `seedPath` in the brain:
 
-- **Brain MCP tools loaded in this session:** presence-check `seedPath`. If it exists, skip it — never overwrite user-edited content. If absent, write the bytes between that section's markers in `brain.aide` to `seedPath` with the brain's write tool.
+- **Brain MCP tools loaded in this session:** presence-check `seedPath`; a missing folder means the file is absent. If it exists, skip it — never overwrite user-edited content. If absent, take the bytes between that section's markers in `brain.aide`, drop the empty lines at their start and end, and write them to `seedPath` with the brain's write tool. When those bytes open with a `---` frontmatter block, pass that block in whatever form the write tool expects for frontmatter (for example a separate frontmatter argument), and pass only the text after its closing `---` (leading empty lines dropped) as the body. Never leave a frontmatter block inside the body text, or the file will not get real frontmatter.
 - **Brain MCP tools not loaded:** tell the user the new seed files will be written once they restart Claude Code and re-run `/aide:brain config`. Never fall back to native filesystem tools to write the brain.
 
 After a CREATE, skip this step — Step 6's config prose seeds every seed section.

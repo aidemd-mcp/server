@@ -15,7 +15,7 @@ outcomes:
     - The parser, template seeding, repair, upgrade, and the agents all derive the required-section list and marker text from this one source. Changing a section here changes it for every consumer at once.
     - Every required section names its marker, a one-line purpose, and its role as live or seed, and every seed section also names the brain location it is written to.
     - Adding a section here makes every existing brain config that lacks it report the brain-aide-invalid status and route the user to /aide:brain config, with no other module editing a list of its own.
-    - A config written for a custom backend that satisfies the contract is valid. Nothing in the contract assumes a particular brain backend.
+    - A config written for a custom backend that satisfies the contract is valid. Nothing in the contract assumes a particular brain backend; each backend's template fills the sections in its own vocabulary.
     - The order and roles of the sections here are exactly what the parser enforces.
   undesired:
     - The section list or marker text restated anywhere outside this module, whether in the parser, the template tooling, repair, upgrade, or agent prose. A second copy drifts silently.

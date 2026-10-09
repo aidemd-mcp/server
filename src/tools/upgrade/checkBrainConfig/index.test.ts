@@ -54,10 +54,10 @@ describe("checkBrainConfig", () => {
 	});
 
 	it("maps a behind config to differs and names the missing sections in contract order", async () => {
-		await writeBrain(buildBrainAide(["kanban-board", "work-kanban"]));
+		await writeBrain(buildBrainAide(["kanban-board", "kanban-index"]));
 		const result = await checkBrainConfig(root);
 		expect(result.status).toBe("differs");
-		expect(result.missingSections).toEqual(["kanban-board", "work-kanban"]);
+		expect(result.missingSections).toEqual(["kanban-board", "kanban-index"]);
 		expect(result.canonicalContent).toBeUndefined();
 	});
 

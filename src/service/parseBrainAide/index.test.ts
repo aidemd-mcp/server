@@ -164,9 +164,37 @@ research section.
 
 ## Done
 `,
-	"work-kanban": `# Working the board
+	"kanban-index": `# Kanban
 
-Create, work, manage, move, complete, stash and review cards.
+The board line and card formats, and a link to each operation's guide.
+`,
+	"kanban-create": `# Create a card
+
+Gather the card's details, then write it and add its line to the board.
+`,
+	"kanban-work": `# Work a card
+
+Pick the card, plan, implement, test and self-review it.
+`,
+	"kanban-manage": `# Manage the board
+
+View the project's cards and move them between columns.
+`,
+	"kanban-move": `# Move a card
+
+Move the current session's card to a named column.
+`,
+	"kanban-complete": `# Complete a card
+
+Move the current session's card to In Review, or to Done.
+`,
+	"kanban-stash": `# Stash a card
+
+Save the session's changes, decisions and remaining work into the card.
+`,
+	"kanban-review": `# Review a card
+
+Review the current card's changes and run the fix cycle.
 `,
 };
 
@@ -428,11 +456,11 @@ describe("3e — missing required sections", () => {
 		["missing update-playbook only", ["update-playbook"]],
 		["missing research-index only", ["research-index"]],
 		["missing kanban-board only", ["kanban-board"]],
-		["missing work-kanban only", ["work-kanban"]],
+		["missing kanban-index only", ["kanban-index"]],
 		["missing orientation and research-index", ["orientation", "research-index"]],
 		["missing orientation and playbook-index", ["orientation", "playbook-index"]],
 		["missing study-playbook and research-index", ["study-playbook", "research-index"]],
-		["missing kanban-board and work-kanban", ["kanban-board", "work-kanban"]],
+		["missing kanban-board and kanban-index", ["kanban-board", "kanban-index"]],
 	];
 
 	it.each(omitCases)("%s → missing-sections naming exactly the absent markers", async (_description, omit) => {
@@ -445,22 +473,22 @@ describe("3e — missing required sections", () => {
 		expect(result.sections).toEqual(omit);
 	});
 
-	it("a file missing only kanban-board and work-kanban returns missing-sections with exactly [\"kanban-board\",\"work-kanban\"]", async () => {
-		await writeBrainAide(tempDir, makeContent({ omit: ["kanban-board", "work-kanban"] }));
+	it("a file missing only kanban-board and kanban-index returns missing-sections with exactly [\"kanban-board\",\"kanban-index\"]", async () => {
+		await writeBrainAide(tempDir, makeContent({ omit: ["kanban-board", "kanban-index"] }));
 
 		const result = await parseBrainAide(tempDir);
 
-		expect(result).toEqual({ kind: "missing-sections", sections: ["kanban-board", "work-kanban"] });
+		expect(result).toEqual({ kind: "missing-sections", sections: ["kanban-board", "kanban-index"] });
 	});
 
 	it("a file missing non-adjacent sections lists every missing marker in contract order, regardless of omission order", async () => {
-		await writeBrainAide(tempDir, makeContent({ omit: ["work-kanban", "config", "research-index"] }));
+		await writeBrainAide(tempDir, makeContent({ omit: ["kanban-index", "config", "research-index"] }));
 
 		const result = await parseBrainAide(tempDir);
 
 		expect(result.kind).toBe("missing-sections");
 		if (result.kind !== "missing-sections") return;
-		expect(result.sections).toEqual(["config", "research-index", "work-kanban"]);
+		expect(result.sections).toEqual(["config", "research-index", "kanban-index"]);
 	});
 
 	it("a missing section is never defaulted — the result is not ok and carries no field for the absent section", async () => {
@@ -502,7 +530,7 @@ describe("3e — missing required sections", () => {
 	it("an order violation among the present pairs with others absent returns malformed-body (order), not missing-sections", async () => {
 		await writeBrainAide(
 			tempDir,
-			makeContent({ omit: ["kanban-board", "work-kanban"], order: reorder("config", "orientation") }),
+			makeContent({ omit: ["kanban-board", "kanban-index"], order: reorder("config", "orientation") }),
 		);
 
 		const result = await parseBrainAide(tempDir);
@@ -528,7 +556,7 @@ describe("3e — missing required sections", () => {
 
 	// Unmatched pairs, one opener-only and one closer-only case at two contract positions.
 
-	it.each<[BrainSectionMarker]>([["orientation"], ["study-playbook"], ["work-kanban"]])(
+	it.each<[BrainSectionMarker]>([["orientation"], ["study-playbook"], ["kanban-index"]])(
 		"%s opener present but closer missing → unmatched opening marker",
 		async (marker) => {
 			await writeBrainAide(tempDir, makeContent({ tokens: { [marker]: { close: null } } }));
@@ -541,7 +569,7 @@ describe("3e — missing required sections", () => {
 		},
 	);
 
-	it.each<[BrainSectionMarker]>([["orientation"], ["study-playbook"], ["work-kanban"]])(
+	it.each<[BrainSectionMarker]>([["orientation"], ["study-playbook"], ["kanban-index"]])(
 		"%s closer present but opener missing → unmatched closing marker",
 		async (marker) => {
 			await writeBrainAide(tempDir, makeContent({ tokens: { [marker]: { open: null } } }));
@@ -582,7 +610,7 @@ describe("3f — malformed/typo'd marker rejection", () => {
 		["typo in update-playbook-start", "update-playbook", "open", "<!-- aide-update-playbook-strart -->"],
 		["uppercase update-playbook-end", "update-playbook", "close", "<!-- AIDE-UPDATE-PLAYBOOK-END -->"],
 		["typo in kanban-board section name (bord)", "kanban-board", "open", "<!-- aide-kanban-bord-start -->"],
-		["uppercase work-kanban closer", "work-kanban", "close", "<!-- AIDE-WORK-KANBAN-END -->"],
+		["uppercase kanban-index closer", "kanban-index", "close", "<!-- AIDE-KANBAN-INDEX-END -->"],
 	];
 
 	it.each(malformedCases)("%s → malformed-body with unknown marker reason", async (_description, marker, side, token) => {
@@ -598,7 +626,7 @@ describe("3f — malformed/typo'd marker rejection", () => {
 	it("an unknown-marker typo on a new marker name is flagged as unknown marker even when other sections are absent", async () => {
 		await writeBrainAide(
 			tempDir,
-			makeContent({ omit: ["work-kanban"], tokens: { "kanban-board": { open: "<!-- aide-kanban-bord-start -->" } } }),
+			makeContent({ omit: ["kanban-index"], tokens: { "kanban-board": { open: "<!-- aide-kanban-bord-start -->" } } }),
 		);
 
 		const result = await parseBrainAide(tempDir);
@@ -640,7 +668,7 @@ describe("3g — marker order violation", () => {
 		["study-playbook before playbook-index", "study-playbook", "playbook-index"],
 		["research-index before study-playbook", "research-index", "study-playbook"],
 		["update-playbook before study-playbook", "update-playbook", "study-playbook"],
-		["work-kanban before kanban-board", "work-kanban", "kanban-board"],
+		["kanban-index before kanban-board", "kanban-index", "kanban-board"],
 		["kanban-board before research-index", "kanban-board", "research-index"],
 		["playbook-index before config", "playbook-index", "config"],
 	];
@@ -699,7 +727,11 @@ describe("3h — nested marker rejection", () => {
 			// Openers still appear in contract order, so the order check passes and the nesting check fires.
 			join(
 				...blocksBefore("config"),
-				`${open("config")}\nSome config content.\n${makeBlock("playbook-index")}\nMore config content.\n${close("config")}`,
+				`${open("config")}
+\nSome config content.
+\n${makeBlock("playbook-index")}
+\nMore config content.
+\n${close("config")}`,
 				...blocksAfter("playbook-index"),
 			),
 			`nested marker: ${open("playbook-index")} appeared inside the config section`,
@@ -707,7 +739,11 @@ describe("3h — nested marker rejection", () => {
 		[
 			"config-start nested inside orientation pair",
 			join(
-				`${open("orientation")}\nSome orientation content.\n${open("config")}\nMore orientation content.\n${close("orientation")}`,
+				`${open("orientation")}
+\nSome orientation content.
+\n${open("config")}
+\nMore orientation content.
+\n${close("orientation")}`,
 				close("config"),
 				...blocksAfter("config"),
 			),
@@ -717,7 +753,11 @@ describe("3h — nested marker rejection", () => {
 			"update-playbook pair nested inside study-playbook pair",
 			join(
 				...blocksBefore("study-playbook"),
-				`${open("study-playbook")}\nSome study playbook content.\n${makeBlock("update-playbook")}\nMore study playbook content.\n${close("study-playbook")}`,
+				`${open("study-playbook")}
+\nSome study playbook content.
+\n${makeBlock("update-playbook")}
+\nMore study playbook content.
+\n${close("study-playbook")}`,
 				...blocksAfter("update-playbook"),
 			),
 			`nested marker: ${open("update-playbook")} appeared inside the studyPlaybook section`,
@@ -727,7 +767,11 @@ describe("3h — nested marker rejection", () => {
 			// Every real pair is present and in order; the duplicate closer sits inside research-index's span.
 			join(
 				...blocksBefore("research-index"),
-				`${open("research-index")}\nSome research content.\n${close("playbook-index")}\nMore research.\n${close("research-index")}`,
+				`${open("research-index")}
+\nSome research content.
+\n${close("playbook-index")}
+\nMore research.
+\n${close("research-index")}`,
 				...blocksAfter("research-index"),
 			),
 			`nested marker: ${close("playbook-index")} appeared inside the researchIndex section`,
@@ -735,7 +779,11 @@ describe("3h — nested marker rejection", () => {
 		[
 			"single stray inner opener (no full inner pair) inside a pair",
 			join(
-				`${open("orientation")}\nSome orientation content.\n${open("config")}\nStray opener, no matching closer inside orientation.\n${close("orientation")}`,
+				`${open("orientation")}
+\nSome orientation content.
+\n${open("config")}
+\nStray opener, no matching closer inside orientation.
+\n${close("orientation")}`,
 				close("config"),
 				...blocksAfter("config"),
 			),
@@ -745,18 +793,26 @@ describe("3h — nested marker rejection", () => {
 			"study-playbook pair nested inside playbook-index pair",
 			join(
 				...blocksBefore("playbook-index"),
-				`${open("playbook-index")}\nSome playbook index content.\n${makeBlock("study-playbook")}\nMore playbook index content.\n${close("playbook-index")}`,
+				`${open("playbook-index")}
+\nSome playbook index content.
+\n${makeBlock("study-playbook")}
+\nMore playbook index content.
+\n${close("playbook-index")}`,
 				...blocksAfter("study-playbook"),
 			),
 			`nested marker: ${open("study-playbook")} appeared inside the playbookIndex section`,
 		],
 		[
-			"work-kanban pair nested inside kanban-board pair",
+			"kanban-index pair nested inside kanban-board pair",
 			join(
 				...blocksBefore("kanban-board"),
-				`${open("kanban-board")}\nSome board content.\n${makeBlock("work-kanban")}\nMore board content.\n${close("kanban-board")}`,
+				`${open("kanban-board")}
+\nSome board content.
+\n${makeBlock("kanban-index")}
+\nMore board content.
+\n${close("kanban-board")}`,
 			),
-			`nested marker: ${open("work-kanban")} appeared inside the kanbanBoard section`,
+			`nested marker: ${open("kanban-index")} appeared inside the kanbanBoard section`,
 		],
 	];
 
@@ -1071,7 +1127,7 @@ describe("3n — parseBrainAideFromString parses bytes identically to parseBrain
 		expect(fromDisk).toEqual(fromString);
 	});
 
-	it.each<[BrainSectionMarker]>([["playbook-index"], ["study-playbook"], ["work-kanban"]])(
+	it.each<[BrainSectionMarker]>([["playbook-index"], ["study-playbook"], ["kanban-index"]])(
 		"missing-sections — missing %s parses identically via both paths",
 		async (marker) => {
 			const content = makeContent({ omit: [marker] });
@@ -1136,7 +1192,7 @@ describe("3o — per-section ownership: all fields are top-level siblings on the
 // ---------------------------------------------------------------------------
 
 describe("4a — later sections participate in the verbatim-slicing invariant", () => {
-	it.each(["config", "updatePlaybook", "kanbanBoard", "workKanban"] as const)(
+	it.each(["config", "updatePlaybook", "kanbanBoard", "kanbanIndex"] as const)(
 		"result.%s is byte-identical to the canonical section",
 		async (field) => {
 			await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);

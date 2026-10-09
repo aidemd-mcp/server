@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import composeOutdatedRemediation from "./index.js";
 import type { BrainAideFault } from "@/types/index.js";
 
-const MISSING: BrainAideFault = { kind: "missing-sections", sections: ["kanban-board", "work-kanban"] as never };
+const MISSING: BrainAideFault = { kind: "missing-sections", sections: ["kanban-board", "kanban-index"] as never };
 const MALFORMED: BrainAideFault = { kind: "malformed", reason: "unterminated marker `<!-- begin:orientation -->`" };
 
 describe("composeOutdatedRemediation", () => {
 	it("composes the exact missing-sections string, markers joined by ', ' in order", () => {
 		expect(composeOutdatedRemediation(MISSING)).toBe(
-			"`.aide/config/brain.aide` is missing required sections: kanban-board, work-kanban. Tell the user to run `/aide:brain config` — it adds only the missing sections from the latest bundled template and leaves every existing section untouched. Do not proceed with this task as if the brain were available.",
+			"`.aide/config/brain.aide` is missing required sections: kanban-board, kanban-index. Tell the user to run `/aide:brain config` — it adds only the missing sections from the latest bundled template and leaves every existing section untouched. Do not proceed with this task as if the brain were available.",
 		);
 	});
 
