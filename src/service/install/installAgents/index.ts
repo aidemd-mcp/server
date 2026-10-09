@@ -7,7 +7,7 @@ import {
 import compareBytes from "@/service/install/shared/compareBytes/index.js";
 
 /**
- * Return planning steps for each canonical AIDE pipeline agent file.
+ * Return planning steps for each canonical agent file the registry enumerates (the pipeline agents and the kanban board agent).
  *
  * For each agent named by `listAgents()`, compares the host file bytes against
  * the canonical content:

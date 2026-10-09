@@ -66,6 +66,7 @@ const DOC_PATHS = {
 	"agents/aide/aide-aligner": ".claude/agents/aide/aide-aligner.md",
 	"agents/aide/aide-explorer": ".claude/agents/aide/aide-explorer.md",
 	"agents/aide/aide-maintainer": ".claude/agents/aide/aide-maintainer.md",
+	"agents/kanban/kanban-maintainer": ".claude/agents/kanban/kanban-maintainer.md",
 	"commands/aide/align": ".claude/commands/aide/align.md",
 	"cascading-alignment": ".aide/docs/cascading-alignment.md",
 	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
@@ -115,7 +116,8 @@ const METHODOLOGY_DOCS: readonly MethodologyDocEntry[] = [
 
 /**
  * An entry in the agent-doc enumeration. Consumers iterate this list to
- * install the pipeline agent files into the host's agent directory.
+ * install the canonical agent files (the pipeline agents in phase order, then
+ * the kanban board agent) into the host's agent directory.
  */
 export interface AgentDocEntry {
 	readonly canonical: CanonicalDocName;
@@ -132,8 +134,8 @@ export interface SkillDocEntry {
 }
 
 /**
- * The canonical list of pipeline agent files that ship into the host's
- * agent directory. Ordering is pipeline phase order.
+ * The canonical list of agent files that ship into the host's agent
+ * directory: the pipeline agents in phase order, then the kanban board agent.
  */
 const AGENT_DOCS: readonly AgentDocEntry[] = [
 	{ canonical: "agents/aide/aide-spec-writer", hostFilename: "aide/aide-spec-writer.md" },
@@ -146,6 +148,7 @@ const AGENT_DOCS: readonly AgentDocEntry[] = [
 	{ canonical: "agents/aide/aide-aligner", hostFilename: "aide/aide-aligner.md" },
 	{ canonical: "agents/aide/aide-explorer", hostFilename: "aide/aide-explorer.md" },
 	{ canonical: "agents/aide/aide-maintainer", hostFilename: "aide/aide-maintainer.md" },
+	{ canonical: "agents/kanban/kanban-maintainer", hostFilename: "kanban/kanban-maintainer.md" },
 ];
 
 /**
@@ -219,8 +222,9 @@ export function listMethodologyDocs(): readonly MethodologyDocEntry[] {
 }
 
 /**
- * Return the canonical enumeration of pipeline agent files that belong in
- * the host's agent directory.
+ * Return the canonical enumeration of agent files (the pipeline agents in
+ * phase order, then the kanban board agent) that belong in the host's agent
+ * directory.
  */
 export function listAgents(): readonly AgentDocEntry[] {
 	return AGENT_DOCS;

@@ -34,6 +34,15 @@ describe("enumerateArtifacts", () => {
 		expect(unique.size).toBe(slugs.length);
 	});
 
+	it("includes the kanban-maintainer board agent under its canonical slug", () => {
+		const entries = enumerateArtifacts();
+
+		expect(entries).toContainEqual({
+			slug: "agents/kanban/kanban-maintainer",
+			repoPath: ".claude/agents/kanban/kanban-maintainer.md",
+		});
+	});
+
 	it("each slug starts with its category prefix", () => {
 		const entries = enumerateArtifacts();
 		const validPrefixes = ["docs/", "commands/", "agents/", "skills/", "bin/", "extensions/"];

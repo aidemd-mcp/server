@@ -10,13 +10,14 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-09, kanban-maintainer card in progress)
+## State summary (set 2026-10-09, kanban-maintainer installer in Stage 4 Plan)
 
-Three commits, all local, not pushed, not published:
+Four commits, all local, not pushed, not published:
 
 - d41c3c5: brain contract + kanban.
 - 0831d94: Obsidian template + split kanban guide.
 - bbc3c40: global install as a first-class launch mode.
+- fe9d431: board tracking in /aide boot and the kanban-maintainer board agent.
 
 For bbc3c40:
 
@@ -28,21 +29,25 @@ For bbc3c40:
 
 2026-10-09 (this repo's dev config): the brain MCP failed to connect (30s CONNECT_TIMEOUT) because this repo's brain launcher was the legacy unpinned `cmd /c npx @bitbonsai/mcpvault`. Hand-migrated: brain.aide frontmatter launcher is now global (`command: mcpvault`, args = the brain path); .mcp.json brain entry hand-edited to match; .mcp.json aide entry switched to dev form `node ./dist/index.js`. Restarted; /aide:brain config repaired the 9 kanban sections into brain.aide (inserted after research-index, rest of the file byte-identical); aide_info now reports brain ok; all 9 seed files already existed in the brain so none were written. Finding for the legacy-migration card: the existing `config` section kept its pre-launch-modes prose (it still treats a literal `<BRAIN_PATH>` as the unwired marker, while the current template uses YAML null) — exactly the stale-existing-section gap that card describes.
 
-Uncommitted board-tracking edits — .claude/skills/aide/SKILL.md (new boot Step 5 "Check the board" via the kanban skill; new "Board tracking" section; Track added to orchestrator jobs; board bookkeeping is the one named exception to delegate-everything; Completion step moves the card), .claude/skills/aide-handoff/SKILL.md and .claude/agents/aide/aide-spec-writer.md (`## Kanban` card links are mandatory load-bearing content; UPDATE adds the section to older files), .aide/docs/session-aide.md (`## Kanban` section in the format + "Always links the board" rule), CLAUDE.md (repo-only rule: .claude/ prose edits are made by the main agent, not delegated). Build clean, 1481/1481 tests pass (one known-flaky install-suite 5s timeout passed on rerun).
+Board-tracking edits (committed in fe9d431) — .claude/skills/aide/SKILL.md (new boot Step 5 "Check the board" via the kanban skill; new "Board tracking" section; Track added to orchestrator jobs; board bookkeeping is the one named exception to delegate-everything; Completion step moves the card), .claude/skills/aide-handoff/SKILL.md and .claude/agents/aide/aide-spec-writer.md (`## Kanban` card links are mandatory load-bearing content; UPDATE adds the section to older files), .aide/docs/session-aide.md (`## Kanban` section in the format + "Always links the board" rule), CLAUDE.md (repo-only rule: .claude/ prose edits are made by the main agent, not delegated). Build clean, 1481/1481 tests pass (one known-flaky install-suite 5s timeout passed on rerun).
 
-Uncommitted kanban-maintainer edits — new agent .claude/agents/kanban/kanban-maintainer.md (AIDE-independent, backend-neutral; requests LIST / FIND / CHECK / APPLY; LIST reads the board and every listed card and reports per card column, slug, priority, title, a short `about` excerpt, optional `status`, and exact path; APPLY executes only caller-approved moves/completes/creates/stash appends/drift fixes and reports what changed; never talks to the user). .claude/skills/kanban/SKILL.md now routes all board reads and writes to it — the caller keeps the guides' user-facing steps and may read a single card in full by its reported path, never the board. /aide boot Step 5 and Board tracking use it; Step 5 proposes continuing the card session.aide names, else asks the user which card to work on. The user's global copy ~/.claude/skills/kanban/SKILL.md synced byte-identical (user OK). First real run: the agent moved the new card to In Progress, both finished cards to Done, and created the legacy-migration card, with targeted board edits (board frontmatter and settings block verified intact); a LIST + CHECK returned 9 open aidemd-mcp cards and 0 drift. Build clean, 1481/1481 tests pass.
+kanban-maintainer edits (committed in fe9d431) — new agent .claude/agents/kanban/kanban-maintainer.md (AIDE-independent, backend-neutral; requests LIST / FIND / CHECK / APPLY; LIST reads the board and every listed card and reports per card column, slug, priority, title, a short `about` excerpt, optional `status`, and exact path; APPLY executes only caller-approved moves/completes/creates/stash appends/drift fixes and reports what changed; never talks to the user). .claude/skills/kanban/SKILL.md now routes all board reads and writes to it — the caller keeps the guides' user-facing steps and may read a single card in full by its reported path, never the board. /aide boot Step 5 and Board tracking use it; Step 5 proposes continuing the card session.aide names, else asks the user which card to work on. The user's global copy ~/.claude/skills/kanban/SKILL.md synced byte-identical (user OK). First real run: the agent moved the new card to In Progress, both finished cards to Done, and created the legacy-migration card, with targeted board edits (board frontmatter and settings block verified intact); a LIST + CHECK returned 9 open aidemd-mcp cards and 0 drift. Build clean, 1481/1481 tests pass.
+
+Only .claude/settings.local.json and a deleted .claude/scheduled_tasks.lock remain uncommitted; neither is feature work.
 
 ## Kanban
 
 The feature's cards on the project's kanban board, linked by slug (column = where the card sits today):
 
-- `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` (In Progress, P1) — the `kanban-maintainer` board agent; prose done, installer code next. Current card.
+- `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` (In Progress, P1) — the `kanban-maintainer` board agent; agent prose committed (fe9d431); installer code in Stage 4 Plan now. Current card.
 - `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (Backlog, P1) — legacy brain.aide migration; pre-publish.
 - `replace-the-plugin-board-with-per-project-card-folders` (Backlog, P1) — drop the board file; folders are the board, per project; cleanup rules; migrate the user's board. Pre-publish.
 - `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (Backlog, P1) — pipeline strategy card; pre-publish.
 - `bring-the-kanban-board-into-aide` (Backlog, P2) — card ↔ feature linking; partly delivered by the boot board check + session.aide card links; needs re-scoping.
 - `brain-contract-and-create-repair-command` (Done, P1) — finished (d41c3c5, 0831d94).
 - `aide-info-reports-brain-not-connected-for-global-package-install` (Done, P1) — finished (bbc3c40).
+- `build-aidemd-mcp-server` (Done, P1) — stale April card, closed 2026-10-09 with the user's OK.
+- `add-aide-init-config-tool` (Done, P1) — stale April card, closed 2026-10-09 with the user's OK.
 
 ## The architectural intent (what the specs say after the rewrite)
 
@@ -107,22 +112,26 @@ The feature's cards on the project's kanban board, linked by slug (column = wher
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Seven pre-publish cards; two done, kanban-maintainer card in progress.
+Seven pre-publish cards; two done, kanban-maintainer card in progress (Stage 4 Plan).
 
 ### What the next agent must do
 
 Next, before publish:
 
-1. Commit the uncommitted work (brain.aide repair, board-tracking prose, kanban-maintainer agent + kanban skill, CLAUDE.md, session.aide) once the user approves.
-2. Installer code for `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` (current card) through the /aide pipeline: aide_init must install .claude/agents/kanban/kanban-maintainer.md (host filename kanban/kanban-maintainer.md) alongside the kanban skill, add it to the versions manifest, and aide_upgrade must cover it. Plan against the existing installAgents spec (Shape B). Optional in the same card: update the brain template's kanban guide seeds to name the agent instead of general-purpose subagents and full-board rewrites.
-3. Per-project card folders — `replace-the-plugin-board-with-per-project-card-folders` (p1, pre-publish): brain contract + template + index/guides through /aide, kanban-maintainer and kanban skill wording directly, then a staged, approved migration of the user's board. Do it together with item 2's installer work or right after it, since the agent's LIST changes to folder listing.
-4. With the user's OK, review the stale aidemd cards via kanban-maintainer: `build-aidemd-mcp-server` and `add-aide-init-config-tool` (In Progress), `configurevscode-is-dead-code-never-called-from-install-orche` (Todo), and the two Backlog cards with no priority (`restructure-aidemd-dev-landing-page`, `create-per-command-aide-specs-under-claude-commands-aide`).
-5. Pipeline strategy card — `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (p1).
-6. Card ↔ feature linking — remainder of `bring-the-kanban-board-into-aide` (p2); re-scope it.
-7. Legacy brain.aide migration — `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (p1, pre-publish); the full description now lives on the card.
-8. Do NOT publish until all are done (user, 2026-10-08).
-9. Publish via `node scripts/publish.mjs` only after the user confirms.
-10. aide-maintainer deletes session.aide at final close.
+1. Stage 4 (Plan, Shape B) is running for `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` against src/service/install/installAgents; the plan awaits the user's approval before build. Installer code for `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` (current card) through the /aide pipeline: aide_init must install .claude/agents/kanban/kanban-maintainer.md (host filename kanban/kanban-maintainer.md) alongside the kanban skill, add it to the versions manifest, and aide_upgrade must cover it. Plan against the existing installAgents spec (Shape B). Optional in the same card: update the brain template's kanban guide seeds to name the agent instead of general-purpose subagents and full-board rewrites.
+2. Per-project card folders — `replace-the-plugin-board-with-per-project-card-folders` (p1, pre-publish): brain contract + template + index/guides through /aide, kanban-maintainer and kanban skill wording directly, then a staged, approved migration of the user's board. Do it together with item 1's installer work or right after it, since the agent's LIST changes to folder listing.
+3. Review the remaining stale aidemd cards via kanban-maintainer, with the user's OK: `configurevscode-is-dead-code-never-called-from-install-orche` (Todo, P2), `restructure-aidemd-dev-landing-page` (Backlog, P1) and `create-per-command-aide-specs-under-claude-commands-aide` (Backlog, P2; likely stale under the CLAUDE.md rule against .aide specs on .claude/ files).
+4. Pipeline strategy card — `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (p1).
+5. Card ↔ feature linking — remainder of `bring-the-kanban-board-into-aide` (p2); re-scope it.
+6. Legacy brain.aide migration — `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (p1, pre-publish); the full description now lives on the card.
+7. Do NOT publish until all are done (user, 2026-10-08).
+8. Publish via `node scripts/publish.mjs` only after the user confirms.
+9. aide-maintainer deletes session.aide at final close.
+
+### What's already done and validated
+
+- fe9d431 committed (board tracking + kanban-maintainer agent, kanban skill, CLAUDE.md, session.aide, brain.aide repair).
+- Stale In Progress cards `build-aidemd-mcp-server` and `add-aide-init-config-tool` moved to Done (2026-10-09).
 
 ### Open follow-ups
 
@@ -132,7 +141,7 @@ Next, before publish:
 - The user's global ~/.claude/CLAUDE.md and the design-handoff / handoff:start skills still reference the old kb:* skills. They need updating to /kanban, which requires the user's OK for their private config.
 - brain.md's malformed branch should say an unknown marker may be a retired section to delete. Example: work-kanban from the unpublished d41c3c5 template.
 - The narrowed banned-vocabulary invariant's wording is loose. Phrase it as "backend-specific tool names and link syntax outside the template".
-- The user's brain has a stray `kanban/doing/` folder (1 card), and board/folder drift (In Progress 17 lines vs 19 files; Done 10 vs 100+). /kanban manage reconciles it.
+- The user's brain has a stray `kanban/doing/` folder (1 card), and board/folder drift (Done 10 vs 100+). /kanban manage reconciles it.
 - The behind check ignores `npm_config_registry`.
 - Upgrade and sync wording for malformed or unreadable brain.aide.
 - Specs are missing for the helper orchestrators (resolveBehind, resolveLaunchModes, obsidianBrainAideTemplate, extractMarkerSections).

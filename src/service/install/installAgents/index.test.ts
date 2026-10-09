@@ -8,7 +8,8 @@ import installAgents from "./index.js";
 import type { InitStep } from "@/types/index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const AGENTS_ROOT = join(REPO_ROOT, ".claude", "agents", "aide");
+const CANONICAL_AGENTS_ROOT = join(REPO_ROOT, ".claude", "agents");
+const AGENTS_ROOT = join(CANONICAL_AGENTS_ROOT, "aide");
 
 const AGENT_FILES = [
 	"aide/aide-spec-writer.md",
@@ -21,6 +22,7 @@ const AGENT_FILES = [
 	"aide/aide-aligner.md",
 	"aide/aide-explorer.md",
 	"aide/aide-maintainer.md",
+	"kanban/kanban-maintainer.md",
 ];
 
 // ---------------------------------------------------------------------------
@@ -76,8 +78,8 @@ describe("installAgents", () => {
 		const results = await installAgents(agentDir);
 
 		for (const result of results) {
-			const filename = result.name.replace("agents/aide/", "");
-			const canonical = readFileSync(join(AGENTS_ROOT, filename), "utf-8");
+			const relativePath = result.name.replace(/^agents\//, "");
+			const canonical = readFileSync(join(CANONICAL_AGENTS_ROOT, relativePath), "utf-8");
 			expect(result.content).toBe(canonical);
 		}
 	});
@@ -250,5 +252,74 @@ describe("installAgents — parameterized outcome shapes", () => {
 
 		const canonical = readFileSync(join(AGENTS_ROOT, filename), "utf-8");
 		expect(step).toMatchObject(makeWouldOverwrite(displayName, canonical));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Kanban board agent (lands outside the aide/ subfolder)
+// ---------------------------------------------------------------------------
+
+describe("installAgents — kanban board agent", () => {
+	const BOARD_NAME = "agents/kanban/kanban-maintainer.md";
+	const canonicalBoardAgent = () =>
+		readFileSync(join(CANONICAL_AGENTS_ROOT, "kanban", "kanban-maintainer.md"), "utf-8");
+
+	it("cold run reports would-create with canonical content at the kanban subfolder", async () => {
+		const agentDir = join(tempDir, "agents");
+
+		const results = await installAgents(agentDir);
+		const step = results.find((r) => r.name === BOARD_NAME)!;
+
+		expect(step.status).toBe("would-create");
+		expect(step.category).toBe("agents");
+		expect(step.filePath).toBe(join(agentDir, "kanban", "kanban-maintainer.md"));
+		expect(step.content).toBe(canonicalBoardAgent());
+	});
+
+	it("never lands inside the aide subfolder", async () => {
+		const agentDir = join(tempDir, "agents");
+
+		const results = await installAgents(agentDir);
+		const step = results.find((r) => r.name === BOARD_NAME)!;
+
+		expect(step.filePath?.startsWith(join(agentDir, "aide"))).toBe(false);
+	});
+
+	it("byte-identical file on disk → exists with no content", async () => {
+		const agentDir = join(tempDir, "agents");
+		await mkdir(join(agentDir, "kanban"), { recursive: true });
+		await writeFile(join(agentDir, "kanban", "kanban-maintainer.md"), canonicalBoardAgent(), "utf-8");
+
+		const results = await installAgents(agentDir);
+		const step = results.find((r) => r.name === BOARD_NAME)!;
+
+		expect(step).toMatchObject(makeExists(BOARD_NAME));
+		expect(step.content).toBeUndefined();
+	});
+
+	it("host-customized file on disk → would-overwrite with canonical content", async () => {
+		const agentDir = join(tempDir, "agents");
+		await mkdir(join(agentDir, "kanban"), { recursive: true });
+		await writeFile(
+			join(agentDir, "kanban", "kanban-maintainer.md"),
+			"# my customized board agent\n",
+			"utf-8",
+		);
+
+		const results = await installAgents(agentDir);
+		const step = results.find((r) => r.name === BOARD_NAME)!;
+
+		expect(step).toMatchObject(makeWouldOverwrite(BOARD_NAME, canonicalBoardAgent()));
+	});
+
+	it("other agents are unaffected when only the board agent is present", async () => {
+		const agentDir = join(tempDir, "agents");
+		await mkdir(join(agentDir, "kanban"), { recursive: true });
+		await writeFile(join(agentDir, "kanban", "kanban-maintainer.md"), canonicalBoardAgent(), "utf-8");
+
+		const results = await installAgents(agentDir);
+
+		const byName = new Map(results.map((r) => [r.name, r.status]));
+		expect(byName.get("agents/aide/aide-architect.md")).toBe("would-create");
 	});
 });

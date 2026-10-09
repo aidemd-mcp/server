@@ -436,6 +436,34 @@ describe("upgrade", () => {
 		expect(brainCat!.files[0].prescription).toBeUndefined();
 		expect(brainCat!.summary.differs).toBe(1);
 	});
+
+	// ── Agents in a subfolder outside aide/ (the board agent) ────────────────
+	it("reports a missing board agent under kanban/ alongside a matching aide agent", async () => {
+		wireDefaultMocks();
+		vi.mocked(listAgents).mockReturnValue([
+			{ canonical: "agents/aide/aide-architect", hostFilename: "aide/aide-architect.md" },
+			{ canonical: "agents/kanban/kanban-maintainer", hostFilename: "kanban/kanban-maintainer.md" },
+		] as ReturnType<typeof listAgents>);
+		const boardAgentPath = join(tempDir, ".claude/agents", "kanban", "kanban-maintainer.md");
+		vi.mocked(compareFile).mockImplementation(async (hostPath) =>
+			hostPath === boardAgentPath ? "missing" : "matches",
+		);
+
+		const result = await upgrade(tempDir);
+
+		const agentsCat = findCategory(result, "agents");
+		expect(agentsCat).toBeDefined();
+		expect(agentsCat!.files).toHaveLength(2);
+
+		const architect = agentsCat!.files.find((f) => f.name === "agents/aide/aide-architect.md");
+		expect(architect?.status).toBe("matches");
+		expect(architect?.canonicalContent).toBeUndefined();
+
+		const boardAgent = agentsCat!.files.find((f) => f.name === "agents/kanban/kanban-maintainer.md");
+		expect(boardAgent?.filePath).toBe(boardAgentPath);
+		expect(boardAgent?.status).toBe("missing");
+		expect(boardAgent?.canonicalContent).toBe("canonical content");
+	});
 });
 
 describe("upgrade — response shaping (server-handler logic)", () => {

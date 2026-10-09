@@ -3,11 +3,30 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import brainContract from "../../brainContract/index.js";
-import { getMethodologyMarker, listMethodologyDocs, listSkills, readCanonicalDoc } from "./index.js";
+import {
+	getCanonicalPath,
+	getMethodologyMarker,
+	listAgents,
+	listMethodologyDocs,
+	listSkills,
+	readCanonicalDoc,
+} from "./index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const METHODOLOGY_ROOT = join(REPO_ROOT, ".aide", "docs");
 const COMMANDS_ROOT = join(REPO_ROOT, ".claude", "commands");
+
+// Mirrors brainContract brief commitment #4 (backend-agnostic vocabulary); the ban still governs this skill under the delegation's narrowed scope.
+const BANNED_PATTERNS: RegExp[] = [
+	/\bvault\b/i,
+	/\bobsidian\b/i,
+	/\bnotes?\b/i,
+	/wikilink/i,
+	/\bhubs?\b/i,
+	/\[\[/,
+	/mcp__/i,
+	/kanban-plugin/i,
+];
 
 describe("readCanonicalDoc", () => {
 	it("returns disk bytes verbatim for aide-spec", () => {
@@ -89,17 +108,6 @@ describe("readCanonicalDoc — brain-aide content (Step 4b)", () => {
 
 describe("kanban pointer skill", () => {
 	const OPERATIONS = ["create", "work", "manage", "move", "complete", "stash", "review"];
-	// Mirrors brainContract brief commitment #4 (backend-agnostic vocabulary); the ban still governs this skill under the delegation's narrowed scope.
-	const BANNED_PATTERNS: RegExp[] = [
-		/\bvault\b/i,
-		/\bobsidian\b/i,
-		/\bnotes?\b/i,
-		/wikilink/i,
-		/\bhubs?\b/i,
-		/\[\[/,
-		/mcp__/i,
-		/kanban-plugin/i,
-	];
 
 	function readBody(content: string): string[] {
 		const closing = content.indexOf("\n---", 4);
@@ -162,6 +170,61 @@ describe("kanban pointer skill", () => {
 
 	it("keeps its body at 15 non-blank lines or fewer — it points, it does not carry procedure", () => {
 		expect(readBody(readCanonicalDoc("skills/kanban")).length).toBeLessThanOrEqual(15);
+	});
+});
+
+describe("kanban board agent", () => {
+	it("is readable through readCanonicalDoc and matches the file on disk", () => {
+		const onDisk = readFileSync(join(REPO_ROOT, ".claude", "agents", "kanban", "kanban-maintainer.md"), "utf-8");
+		expect(readCanonicalDoc("agents/kanban/kanban-maintainer")).toBe(onDisk);
+	});
+
+	it("is registered last in listAgents with hostFilename kanban/kanban-maintainer.md", () => {
+		const agents = listAgents();
+		const entry = agents.find((a) => a.canonical === "agents/kanban/kanban-maintainer");
+		expect(entry).toBeDefined();
+		expect(entry!.hostFilename).toBe("kanban/kanban-maintainer.md");
+		expect(agents[agents.length - 1]).toBe(entry);
+	});
+
+	it("declares frontmatter name 'kanban-maintainer'", () => {
+		expect(readCanonicalDoc("agents/kanban/kanban-maintainer")).toMatch(/^---\r?\nname: kanban-maintainer\r?\n/);
+	});
+
+	it.each(["aide_brain", "aide_", ".aide", "brain.aide"])(
+		"does not contain %s, so it works in non-AIDE projects",
+		(token) => {
+			expect(readCanonicalDoc("agents/kanban/kanban-maintainer")).not.toContain(token);
+		},
+	);
+
+	it.each(BANNED_PATTERNS.map((pattern) => [pattern.source, pattern] as const))(
+		"matches no banned backend pattern %s",
+		(_source, pattern) => {
+			expect(readCanonicalDoc("agents/kanban/kanban-maintainer")).not.toMatch(pattern);
+		},
+	);
+});
+
+describe("published package file set", () => {
+	const files: string[] = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf-8")).files;
+
+	function isShipped(path: string): boolean {
+		return files.some((entry) => path === entry || path.startsWith(`${entry}/`));
+	}
+
+	it("covers every listAgents path with a package.json files entry", () => {
+		for (const agent of listAgents()) {
+			const path = getCanonicalPath(agent.canonical);
+			expect(isShipped(path), `${path} is not covered by package.json "files"`).toBe(true);
+		}
+	});
+
+	it("covers every listSkills path with a package.json files entry", () => {
+		for (const skill of listSkills()) {
+			const path = getCanonicalPath(skill.canonical);
+			expect(isShipped(path), `${path} is not covered by package.json "files"`).toBe(true);
+		}
 	});
 });
 
