@@ -9,7 +9,8 @@ description: >
   in-flight pipeline, or asks to align/refactor specs across the intent
   tree. **MANDATORY**: this skill begins with a non-skippable boot sequence
   — call `aide_info`, gate on brain status, read 6 methodology docs in
-  parallel, run `aide_discover`, read `.aide/session.aide` if it exists.
+  parallel, run `aide_discover`, read `.aide/session.aide` if it exists,
+  then check the board through the `kanban` skill for open cards.
   You MUST execute boot before reading or acting on the user's request,
   even when you think you have enough context. Skipping boot means
   orchestrating a methodology you don't know — you will guess at file
@@ -118,7 +119,22 @@ Now — and only now — run these 8 calls in parallel:
 7. `aide_discover` (MCP tool, no arguments)
 8. `Read` → `.aide/session.aide` (only if it exists — the project-root pipeline-position log; if absent, no feature pipeline is in flight)
 
-**Only after all calls return** may you read the user's request, consult the sections below, and decide what to do.
+**Only after all calls return** move on to Step 5.
+
+### Step 5 — Check the board
+
+Every pipeline's work is tracked on the project's kanban board. Invoke the `kanban` skill (`Skill(skill="kanban")`) and, as it directs, have the `kanban-maintainer` agent LIST the project's **open cards** — every column except Done — and CHECK drift. You get back a report — per card its column, slug, priority, title, a short excerpt and its path — never the board itself; never read, search or parse the board with other tools. Read a card in full from its reported path whenever you need more than the excerpt. If the project tag isn't known yet this session, the kanban index tells you to ask the user — do that, never guess.
+
+Then cross-check the open cards against `.aide/session.aide` (if present) and the discover output:
+
+- **Session links.** `session.aide`'s `## Kanban` section names the in-flight feature's cards by slug. Open those cards first — they are the feature's task list.
+- **Drift.** Flag cards that `session.aide` says are finished but sit outside Done, in-flight work with no card, cards `session.aide` names that are missing from the board, and stale In Progress cards.
+
+Report the open cards and any drift to the user in a few lines, and propose the moves or new cards that would fix it. If `session.aide` names the next card, propose continuing it; otherwise ask the user which card to work on. Never move or create a card silently — every card change goes through the kanban skill's own operations and their approval gates.
+
+If the kanban skill or the brain tools are unreachable, say so and continue — never invent the board's contents.
+
+**Only after Step 5** may you read the user's request, consult the sections below, and decide what to do.
 
 **Why this matters:** You are an orchestrator for a methodology you don't inherently know. Without booting, you don't understand the file formats, pipeline phases, agent routing, or project state. Skipping boot means guessing.
 
@@ -142,6 +158,8 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 3. **Delegate** — spawn the correct specialized agent for each phase
 4. **Relay** — present agent results to the user and collect approvals
 5. **Advance** — move to the next pipeline stage after approval
+6. **Track** — keep the feature's card current on the board through the `kanban` skill (see "Board tracking" below)
+7. **Edit agent instructions** — when the user wants an agent definition, command prompt or skill file changed, make the edit yourself. Never delegate it to a subagent and never run it through the pipeline: the change depends on the conversation that motivated it, and a fresh subagent loses that context. This covers agent instructions only — code, code comments, `.aide` specs and methodology docs still follow the normal pipeline and delegation rules.
 
 **You MUST NOT:**
 - Write or edit `.aide`, `plan.aide`, `todo.aide`, `brief.aide`, `session.aide`, or any code files yourself
@@ -279,10 +297,21 @@ Do NOT invoke it for single-cycle builds, trivial fixes, or features that resume
 
 `aide-handoff` cannot read your conversation context — it can only read its delegation prompt. When you invoke it, your `args` should supply the content the skill needs to construct the spec-writer delegation:
 
-- **For CREATE:** feature intent (one line), state summary (current stage + what was just done + what's blocked), `## Where this cycle stopped` content (next agent's instructions), settled decisions (numbered, if any), anti-regression invariants (bulleted, if any), optional process discipline notes, optional open questions
-- **For UPDATE:** the change description (what transition occurred) and section-targeted edits (which section gets new content, e.g. "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ...")
+- **For CREATE:** feature intent (one line), state summary (current stage + what was just done + what's blocked), `## Kanban` card links (see below), `## Where this cycle stopped` content (next agent's instructions), settled decisions (numbered, if any), anti-regression invariants (bulleted, if any), optional process discipline notes, optional open questions
+- **For UPDATE:** the change description (what transition occurred) and section-targeted edits (which section gets new content, e.g. "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ..."). Whenever a card is created, moved, finished, or newly tied to the feature, include the matching `## Kanban` edit.
 
-If you don't have the content yet, gather it from conversation first; if it isn't in conversation, ask the user before invoking the skill. The skill will REFUSE on missing load-bearing content (feature intent, `## Where this cycle stopped`) rather than fabricate.
+**Card links are mandatory.** Every handoff supplies the `## Kanban` links: one line per card tied to the feature — its slug, its column, and one line on what it covers. The slug is the stable link; the kanban skill finds the card by slug in whatever column it sits. Items in `## Where this cycle stopped` that correspond to a card name its slug. A feature with no card yet gets one through the kanban skill before the handoff, never a handoff without links.
+
+If you don't have the content yet, gather it from conversation first; if it isn't in conversation, ask the user before invoking the skill. The skill will REFUSE on missing load-bearing content (feature intent, `## Kanban` card links, `## Where this cycle stopped`) rather than fabricate.
+
+## Board tracking — the kanban skill
+
+Every piece of pipeline work is tracked on a card, always. Board bookkeeping is a job the orchestrator runs itself (like interviewing and relaying) — through the `kanban` skill's operations, never by editing the board another way. You hold each operation's approval gates with the user; the `kanban-maintainer` agent does the file work and returns what changed.
+
+- **Start.** When a feature pipeline starts or resumes, tie it to an open card from the Step 5 list, or create one with the kanban skill's create operation. Move it to In Progress with the move operation.
+- **Transitions.** At every transition that triggers `aide-handoff`, stash progress into the card with the stash operation, and hand the card link to the handoff (see "What you owe the skill").
+- **New work.** Follow-up work that surfaces mid-pipeline and is not done this cycle becomes a card (ask the user first), and its slug goes into `session.aide`.
+- **Close.** At Completion, after the maintainer cleans up, move the card to In Review with the complete operation, or to Done once the user confirms the feature is closed.
 
 ## Pipeline
 
@@ -416,7 +445,9 @@ When all issues are resolved:
 
    The maintainer verifies preconditions (every `todo.aide` and `plan.aide` checkbox is checked; the named retro entry exists in the brain; if `session.aide` deletion is requested, no other in-flight modules remain), deletes `todo.aide` → `plan.aide` → `brief.aide` (and `session.aide` if authorized), and returns CLEANED / REFUSED / PARTIAL with the list of files touched. If REFUSED, route to the appropriate fix step (e.g. `/aide:fix` for unchecked `todo.aide` items) and re-delegate after.
 
-4. **Report completion to the user** with a summary of what was built and which artifacts the maintainer cleaned up.
+4. **Update the board.** Through the `kanban` skill's complete operation, move the feature's card to In Review — or to Done once the user confirms the feature is closed. If `session.aide` survives (other features still in flight), the next handoff updates its `## Kanban` links to match.
+
+5. **Report completion to the user** with a summary of what was built, which artifacts the maintainer cleaned up, and where the card now sits.
 
 Do NOT delete any of these files yourself — always delegate to the maintainer. The maintainer is the only agent in the pipeline authorized to delete pipeline ephemerals.
 
@@ -505,7 +536,8 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
 
 ## Rules
 
-- **DELEGATE EVERYTHING.** The orchestrator NEVER writes files, edits code, fills specs, creates plans, runs tests, or does any substantive work. Every phase is handled by its specialized agent via the Agent tool. This is the single most important rule. If you are tempted to "just do it quickly" — don't. Spawn the agent.
+- **DELEGATE EVERYTHING.** The orchestrator NEVER writes files, edits code, fills specs, creates plans, runs tests, or does any substantive work. Every phase is handled by its specialized agent via the Agent tool. This is the single most important rule. If you are tempted to "just do it quickly" — don't. Spawn the agent. Two named exceptions: board bookkeeping through the `kanban` skill, and edits to agent instructions (agent definitions, command prompts, skill files), which you make yourself.
+- **Track every feature on the board.** Check the open cards at boot (Step 5), keep the feature's card current through the `kanban` skill at start, at every transition, and at close, and make sure `session.aide`'s `## Kanban` section links every card tied to the feature by slug.
 - **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, and entries persisted to the brain.
 - **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context.
 - **Pause for approval twice:** after spec frontmatter (Stage 1) and after plan (Stage 4). These are the two points where the user's input shapes the work. (Synthesize, when it runs, also pauses to present the filled body — but synthesize is conditional, so it isn't always in the path.)
@@ -516,4 +548,4 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
 - **Retro is promoted.** When the fix loop closes, extract the `## Retro` section and persist it to `process/retro/` in the brain. This is how the pipeline learns.
 - **No shortcuts.** Even if the task seems trivial, the pipeline exists to maintain intent alignment. A "simple" task handled outside the pipeline is how drift starts. Always delegate.
 - **Suggest alignment, don't force it.** When discover output shows `status: misaligned` on any spec, or when a spec edit touches outcomes, suggest `/aide:align` to the user. Do not invoke it automatically — misalignment is informational, not a pipeline gate. The user decides whether to act.
-- **`.aide/session.aide` is written by `aide-spec-writer`, deleted by `aide-maintainer`, never by you.** You hold the content (current stage, settled decisions, where the cycle stopped) because the conversation belongs to you. But the canonical-format write belongs to the spec-writer (same agent that owns `.aide` frontmatter). Delegate a CREATE at pipeline kick-off for multi-cycle features and an UPDATE at every meaningful state transition. If you find yourself about to call Write/Edit on `.aide/session.aide`, STOP — construct a delegation prompt instead.
+- **`.aide/session.aide` is written by `aide-spec-writer`, deleted by `aide-maintainer`, never by you.** You hold the content (current stage, card links, settled decisions, where the cycle stopped) because the conversation belongs to you. But the canonical-format write belongs to the spec-writer (same agent that owns `.aide` frontmatter). Delegate a CREATE at pipeline kick-off for multi-cycle features and an UPDATE at every meaningful state transition. If you find yourself about to call Write/Edit on `.aide/session.aide`, STOP — construct a delegation prompt instead.

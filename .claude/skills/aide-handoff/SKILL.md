@@ -36,15 +36,16 @@ Record current pipeline state to `.aide/session.aide`. This skill owns the orche
   - File missing → **CREATE** mode (first handoff for the in-flight feature)
   - File exists → **UPDATE** mode (apply a surgical diff to the existing log)
 - [ ] **Gather content from conversation context.** Before delegating, identify the specific pieces `aide-spec-writer` needs:
-  - **For CREATE:** feature intent (one line for the frontmatter `intent:` field); state summary (current stage + what was just done + what's blocked); `## Where this cycle stopped` content (the next agent's instructions); architectural decisions settled (numbered list, if any); anti-regression invariants (bullet list, if any); process discipline notes (optional); open questions (optional)
-  - **For UPDATE:** change description (what transition occurred); section-targeted edits (e.g. "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ..."); numbered references to preserve (decision #N stays stable across edits)
+  - **For CREATE:** feature intent (one line for the frontmatter `intent:` field); state summary (current stage + what was just done + what's blocked); `## Kanban` card links (one line per card tied to the feature: slug, column, what it covers); `## Where this cycle stopped` content (the next agent's instructions, naming the card slug of each item that has one); architectural decisions settled (numbered list, if any); anti-regression invariants (bullet list, if any); process discipline notes (optional); open questions (optional)
+  - **For UPDATE:** change description (what transition occurred); section-targeted edits (e.g. "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ..."); numbered references to preserve (decision #N stays stable across edits). Whenever a card was created, moved, finished, or newly tied to the feature, include the matching `## Kanban` edit — and if the existing file has no `## Kanban` section, add one.
+- [ ] **Card links are mandatory.** `session.aide` always points at the board. If the conversation names no card for the feature, check the board through the `kanban` skill; if no card exists, ask the user to create one there before delegating. Never write a handoff without card links. The slug is the stable link — the kanban skill finds the card by slug in whatever column it sits.
 - [ ] **Delegate to `aide-spec-writer`** via the Agent tool (`subagent_type: aide-spec-writer`). The delegation prompt MUST:
   - **Name the operation type explicitly** — `session.aide CREATE` or `session.aide UPDATE`. The spec-writer's default operation is `.aide` frontmatter; naming the operation is mandatory for correct dispatch.
   - **Quote all supplied content verbatim** — the spec-writer transcribes; it never invents.
 - [ ] **Receive the verdict** — CREATED, UPDATED, or REFUSED.
   - **REFUSED on `session.aide already exists`** → the orchestrator should have called UPDATE. Switch the operation type and re-delegate.
   - **REFUSED on `session.aide missing`** → the orchestrator should have called CREATE. Switch and re-delegate.
-  - **REFUSED on ambiguous prompt or missing load-bearing content** (feature intent, `## Where this cycle stopped`) → gather the missing content from conversation context (or ask the user if it's not in context) and re-delegate.
+  - **REFUSED on ambiguous prompt or missing load-bearing content** (feature intent, `## Kanban` card links, `## Where this cycle stopped`) → gather the missing content from conversation context (or ask the user if it's not in context) and re-delegate.
 - [ ] **Confirm completion** and continue with whatever pipeline work was in flight before the handoff was invoked.
 
 ## What this skill does NOT do

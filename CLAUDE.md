@@ -80,4 +80,6 @@ This repo's primary work is editing `.claude/agents/`, `.claude/commands/`, and 
 
 **Do NOT spawn `/aide` (spec → research → synthesize → plan → build → QA → fix) on `.claude/` files.** No per-agent or per-command `.aide` specs (e.g., `.claude/commands/aide/aide.aide`). When agent, command, or skill behavior needs to change, edit the canonical file directly.
 
+"Directly" means the main agent makes the edit, not a subagent — the `/aide` skill's "Edit agent instructions" rule. (This exception is local to this repo — never write it into the shipped skills.)
+
 `.aide/docs/`, `.aide/intent.aide`, and `.aide/config/brain.aide` ARE pipeline-appropriate — they describe code contracts and evolve alongside code changes. The rule applies specifically to the prompt/agent/skill definition surfaces under `.claude/`.

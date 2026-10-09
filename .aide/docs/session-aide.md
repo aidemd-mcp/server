@@ -13,6 +13,7 @@ Features sometimes span multiple build/QA/fix cycles, multiple architectural rew
 `session.aide` is the durable pipeline state. When a fresh orchestrator (or any pipeline agent) reads it at boot, it knows:
 
 - which stage of the pipeline is in flight
+- which cards on the kanban board track the work
 - which architectural decisions have already been settled and must not be re-debated
 - which anti-regression invariants every build phase must hold
 - exactly where the prior cycle stopped and what the next step is
@@ -42,6 +43,14 @@ Where the pipeline is right now. What was just done, what was paused, what
 is blocking forward motion. One short paragraph per pipeline stage if
 multiple are in flight (e.g. Stage 1 frontmatter complete; Stage 3 body
 synthesis complete; Stage 4 plan paused mid-review).
+
+## Kanban
+
+The feature's cards on the project's kanban board — the task list this
+session works from. One bullet per card tied to the feature, linked by slug
+(the stable link; the kanban skill finds the card in whatever column it sits):
+
+- `<card-slug>` (<column>) — <what the card covers>
 
 ## The architectural intent (what the specs say after the rewrite)
 
@@ -99,6 +108,7 @@ before the pipeline can advance.
 ## Rules
 
 - **One file per project, not per module.** `session.aide` lives at `.aide/session.aide` and ONLY there. Per-module pipeline state lives in `brief.aide`, `plan.aide`, and `todo.aide`. This file is the project-wide tracker.
+- **Always links the board.** `## Kanban` is required: every card tied to the feature appears by slug with its column, and every item in `## Where this cycle stopped` that has a card names its slug. The `/aide` orchestrator checks the board at boot and reads these links first; a feature with no card gets one through the kanban skill before the file is written.
 - **Replaces `handoff.aide`.** Pre-doctrine projects may still have a `.aide/handoff.aide` file — under the new doctrine that file is renamed to `.aide/session.aide` and integrated into the pipeline's resume protocol. Do not maintain both.
 - **Numbered architectural decisions are stable references.** When a plan or brief says "see session decision #21," that number must keep meaning the same thing across edits. Removing a decision leaves a gap; new decisions append.
 - **No domain reasoning.** Why-the-business-needs-this lives in `.aide/intent.aide` and module specs. `session.aide` is what's true *right now* about the in-flight feature, not why the feature exists.

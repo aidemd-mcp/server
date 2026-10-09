@@ -1,11 +1,8 @@
 ---
 name: obsidian
 mcpServerConfig:
-  command: cmd
+  command: mcpvault
   args:
-    - '/c'
-    - 'npx'
-    - '@bitbonsai/mcpvault'
     - 'D:\Code\Me\my-brain'
 ---
 
@@ -216,3 +213,1144 @@ Add domain hubs here as your research grows. Each hub lives at `<domain>/<domain
 ### Contents
 
 <!-- aide-research-index-end -->
+
+<!-- aide-kanban-board-start -->
+
+---
+kanban-plugin: list
+tags:
+  - tasks
+---
+
+
+
+## Backlog
+
+
+
+## Todo
+
+
+
+## In Progress
+
+
+
+## In Review
+
+
+
+## Done
+
+
+
+%% kanban:settings
+```
+{"kanban-plugin":"list"}
+```
+%%
+
+<!-- aide-kanban-board-end -->
+
+<!-- aide-kanban-index-start -->
+
+---
+tags:
+  - tasks
+  - workflow
+  - hub
+---
+# Kanban
+
+How to work the project's kanban board: create, work, manage, move, complete, stash and review cards. Read this page first: Board and Columns, Cards, Project Tag and Reaching the Board apply to every operation. Then read only the guide for the operation the user asked for, listed under Operations, and follow it step by step without skipping a gate.
+
+Operations take their inputs from the user's request (a title, a priority, a card slug, a column, or a flag such as `--backlog` or `--done`). A flag may also be stated in words.
+
+## Operations
+
+- [[kanban/guide/create|Create]] — create a new card on the board.
+- [[kanban/guide/work|Work]] — pick the next card, plan it, implement it, test it and review it, behind approval gates.
+- [[kanban/guide/manage|Manage]] — view the project's cards and move them between columns.
+- [[kanban/guide/move|Move]] — move the current session's card to a named column.
+- [[kanban/guide/complete|Complete]] — move the current session's card to In Review, or to Done with `--done`.
+- [[kanban/guide/stash|Stash]] — save the session's context into the current card.
+- [[kanban/guide/review|Review]] — review the current card's changes and, when asked, run the fix cycle.
+
+## Board and Columns
+
+- The board lives at `kanban/board.md`.
+- There are five columns, in this order: Backlog, Todo, In Progress, In Review, Done.
+- Each column has a folder that holds its cards: `kanban/backlog/`, `kanban/todo/`, `kanban/in-progress/`, `kanban/in-review/`, `kanban/done/`.
+- Each board line is `- [ ] [[<card-slug>]] — <P#> <TYPE>: <summary> #<project-tag>`. Cards in Done use `- [x]`. For example:
+  `- [ ] [[fix-login-bug]] — P1 BUG: Fix login bug on mobile #myproject #mobile`
+  - The slug is a wiki link: `[[<card-slug>]]`, the card's file name without `.md`.
+  - `<P#>` is the priority in upper case (`P0`, `P1`, `P2`, `P3`), matching the card's priority tag.
+  - `<TYPE>` is optional, one upper-case word for the kind of work (`BUG`, `DEPLOY`, `HARDENING`, `MAINTENANCE` and so on). Without a type the prefix is just `<P#>:`.
+  - `<summary>` is the card title or a one-line summary of it.
+  - The line ends with one or more `#<project-tag>` tags, the project tag always among them.
+  - Older lines may lack the `<P#>` prefix. Leave them as they are; never rewrite a line's text when moving it.
+- To read a board line, take the slug from inside `[[` `]]` and the priority from the `P#` prefix if present (the card's frontmatter is authoritative).
+- A moved line goes to the bottom of its target column: just before the blank line(s) that precede the next column heading. For Done, that is just before the blank line that precedes the `%% kanban:settings` block at the end of the file.
+- Entering Done checks the box (`- [ ]` becomes `- [x]`). Leaving Done unchecks it (`- [x]` becomes `- [ ]`). Every other move leaves the box unchanged.
+- When editing the board, rewrite the whole file and preserve everything above the first column heading (the frontmatter) and the trailing `%% kanban:settings` block exactly as they are.
+- A card's folder must match the column its board line sits in. Moving a card means doing both: update the board, then move the file.
+
+## Cards
+
+- Each card is one markdown file at `kanban/<column-folder>/<slug>.md`.
+- Frontmatter:
+  - `tags`: the project tag(s) and a priority tag (`p0`, `p1`, `p2` or `p3`), optionally followed by a lower-case type tag (`bug`, `deploy` and so on) matching the board line's `<TYPE>`;
+  - `created` and `updated`: both `YYYY-MM-DDTHH:MM:SS`;
+  - `sessions`: optional, a list of datetimes, one appended each time a work session starts on the card.
+- Body: `# <Title>`, a blank line, then a `Related: [[projects/<project-note>|<display-name>]]` line linking the project's note under `projects/`, then the description if there is one. The `Related:` line may add further links to related cards, separated by ` · ` (for example `Related: [[projects/my-app|My App]] · [[add-email-validation]]`). The project note name is not always the project tag (tag `myproject` links `[[projects/my-app|My App]]`), so look the note up under `projects/` rather than deriving it from the tag.
+- Later sections (Stash, Review, Revisions and so on) are appended to the card and never overwrite earlier entries.
+- Priorities: `p0` is critical or blocking, `p1` is high (do soon), `p2` is low (nice to have), `p3` is lowest (cleanup, someday). A card with no priority is treated as `p2`. The priority is also called the severity. On the board it is written upper case (`P0`–`P3`).
+- Any operation that changes a card updates its `updated` field to the current datetime. `created` is never changed.
+
+## Project Tag
+
+Every card and every board line carries the project's tag, and operations filter the board by it.
+
+If the tag is not already known in this session, ask the user which project the work is for and use the answer as the tag. Never guess it. Once known, reuse it for the rest of the session and pass it explicitly to every subagent that needs it.
+
+## Reaching the Board
+
+Read and write the board and the cards only with the brain read and write tools available in this session. Never assume a storage backend, and never bypass those tools: no native file reads or writes, no shell listing, no direct editing of files on disk.
+
+In this brain the tools are the `brain` MCP server's `mcp__brain__*` tools. Every operation in this guide needs only these capabilities from them:
+
+| Capability | Brain tool | Used for |
+| ---------- | ---------- | -------- |
+| read a file by its brain-relative path | `mcp__brain__read_note` (or `mcp__brain__read_multiple_notes`) | the board, a card |
+| write a file (overwrite) | `mcp__brain__write_note` (mode `overwrite`) | creating a card, rewriting the whole board |
+| append to a file | `mcp__brain__write_note` (mode `append`) or `mcp__brain__patch_note` | adding a Stash, Review or Revisions entry to a card |
+| move a file | `mcp__brain__move_note` | moving a card to another column folder |
+| read and update frontmatter | `mcp__brain__get_frontmatter`, `mcp__brain__update_frontmatter` | `updated`, `sessions` |
+| search | `mcp__brain__search_notes`, `mcp__brain__list_directory` | finding a card by slug or name, domain context, the project note under `projects/` |
+
+`mcp__brain__read_note` returns the frontmatter separately from the body. The board has frontmatter (`kanban-plugin: list`, `tags`, `updated`) that the Obsidian Kanban plugin needs, so when rewriting the board with `mcp__brain__write_note`, pass the frontmatter you read back in its `frontmatter` argument; never drop it. The board file is large: if a read is too big to return at once, read it in parts with `mcp__brain__read_note_lines` rather than switching to the file system.
+
+All paths are brain-relative. If the brain tools are not available in this session, stop and tell the user. Do not improvise with another route to the files.
+
+<!-- aide-kanban-index-end -->
+
+<!-- aide-kanban-create-start -->
+
+---
+tags:
+  - tasks
+  - workflow
+---
+# Create
+
+Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+
+Create a new card on the board.
+
+## Delegation rules
+
+1. Gather user input yourself and delegate everything else. You collect the card details by asking the user with structured options, then pass them to a single subagent call that does all the brain work. This keeps your context clean for whatever runs next.
+2. Every subagent call needs three things: a type (`general-purpose`, because it needs write access), a short description for the UI, and the full prompt the subagent receives.
+3. Ask the user with structured options for the priority and any other choice. Do not dump plain-text questions.
+
+## Step 1 — Gather card details
+
+Take whatever the user already provided (title, priority, `--backlog` flag).
+
+- No title provided: ask "What's the task?"
+- No priority provided: ask with these options:
+  - `p0` — critical / blocks work
+  - `p1` — high / should do soon
+  - `p2` — low / nice to have
+  - `p3` — lowest / cleanup, someday
+- Title is vague: optionally ask for a short description. Skip this if the title is self-explanatory.
+- If the user's request names a kind of work (a bug, a deploy, hardening, maintenance), take it as `TYPE`. Do not ask for it; without one, `TYPE` is none.
+
+The target column is Backlog if `--backlog` was passed, Todo otherwise.
+
+After this step you have `TITLE`, `SEVERITY`, `TYPE` (or none), `DESCRIPTION` (or none), `TARGET_COLUMN` and the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+
+## Step 2 — Create the card
+
+Make one subagent call (`general-purpose`, description "Create kanban task") with this prompt, filled in:
+
+> You are creating a new card on the kanban board.
+>
+> **Task title:** `<TITLE>`
+> **Severity:** `<SEVERITY>`
+> **Type:** `<TYPE or "none">`
+> **Description:** `<DESCRIPTION or "none">`
+> **Target column:** `<TARGET_COLUMN>`
+> **Project tag:** `<project tag, or "none">`
+>
+> Use only the brain read, write, move and search tools available in this session.
+>
+> ## Checklist
+>
+> - [ ] **Check the project tag.** If the project tag is "none", return `MODE: NO_PROJECT` and stop.
+> - [ ] **Generate the slug.** Convert the title to a slug: lowercase, replace spaces and special characters with hyphens, strip leading and trailing hyphens, at most 60 characters. Check whether `<target_folder>/<slug>.md` already exists. If it does, append `-2` (or increment) until it is unique. Target folders: Todo is `kanban/todo/`, Backlog is `kanban/backlog/`.
+> - [ ] **Find the project note.** List or search `projects/` for the note of the project this tag belongs to (for example tag `myproject` → `projects/my-app`). If exactly one note clearly matches, use it as `<project-note>` with its usual display name. If none or several match, omit the `Related:` line and report `PROJECT_NOTE: none`.
+> - [ ] **Create the card.** Write `<target_folder>/<slug>.md`:
+>
+>   ```markdown
+>   ---
+>   tags:
+>     - <project tag>
+>     - <severity>
+>     - <type in lower case, if not "none">
+>   created: <YYYY-MM-DDTHH:MM:SS>
+>   updated: <YYYY-MM-DDTHH:MM:SS>
+>   ---
+>
+>   # <Task Title>
+>
+>   Related: [[projects/<project-note>|<display-name>]]
+>
+>   <Description if provided. Otherwise omit this line.>
+>   ```
+>
+> - [ ] **Add to the board.** Read `kanban/board.md`. Insert a new line at the bottom of the target column section (just before the blank line(s) preceding the next `##` heading):
+>
+>   ```
+>   - [ ] [[<slug>]] — <SEVERITY in upper case> <TYPE in upper case, if not "none">: <Task Title> #<project tag>
+>   ```
+>
+>   For example `- [ ] [[fix-login-bug]] — P1 BUG: Fix login bug on mobile #myproject`, or `- [ ] [[add-email-validation]] — P2: Add email validation #myproject` without a type.
+>
+>   Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
+> - [ ] **Return in this exact format:**
+>
+>   ```
+>   CREATED:
+>   SLUG: <slug>
+>   PATH: <brain-relative path>
+>   SEVERITY: <severity>
+>   COLUMN: <target column>
+>   PROJECT: <project tag or "unknown">
+>   PROJECT_NOTE: <projects/<project-note> or "none">
+>   ```
+>
+>   If no project tag was supplied: `MODE: NO_PROJECT`
+
+Wait for the subagent result.
+
+If the result is `MODE: NO_PROJECT`, ask the user "Which project is this task for?" Then re-run this step with the answer as the project tag.
+
+## Step 3 — Confirm and clear
+
+Tell the user: card created as `<SLUG>` (severity: `<SEVERITY>`) and added to `<COLUMN>`. One line. Then clear the context window (for example with `/clear`, where the harness supports it) so the next operation starts fresh.
+
+<!-- aide-kanban-create-end -->
+
+<!-- aide-kanban-work-start -->
+
+---
+tags:
+  - tasks
+  - workflow
+---
+# Work
+
+Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+
+Pick, investigate and plan the next card from the board, then implement, test and self-review it with strict plan/act mode discipline. Working a card moves it to In Progress and gates all code changes on the user's approval. Use this operation for each card you start. For other board operations use [[kanban/guide/manage|Manage]].
+
+The caller may pass arguments, typically a card slug or a description fragment. They are honored in Step 1 to skip the picker. No arguments falls through to the interactive picker.
+
+## Architecture
+
+Board subagents handle all board and brain reads and writes (find, activate, record). They are stateless and disposable.
+
+The main agent does the investigation, planning, implementation and review directly. This keeps accumulating context in the window so revisions do not pay double serialization costs.
+
+Do NOT delegate investigation, implementation or review to subagents. Do NOT read the board or the card yourself. Delegate board and brain reads to subagents.
+
+## Mode discipline
+
+| Steps | Mode | Rule                                    |
+| ----- | ---- | --------------------------------------- |
+| 1–5   | Plan | Read, analyze, search. No code changes. |
+| 5b    | Act  | Board activation write only.            |
+| 6     | Act  | Write code, run type checks, run tests. |
+| 7     | Plan | Read and analyze only. No code changes. |
+| 8a    | Plan | Re-investigate, present revised plan.   |
+| 8b    | Act  | Implement revised plan, run tests.      |
+| 8c–8d | Plan | Re-review, present results.             |
+
+**Transition rule:** After every Act section, re-enter planning mode before doing anything else. Do not make further code changes until explicitly approved.
+
+## Checklist
+
+- [ ] **Step 0** — Enter planning mode
+- [ ] **Step 1** — Spawn a board subagent to find cards
+- [ ] **Step 2** — Present the card table and ask the user to pick (skip if a slug matched)
+- [ ] **Step 3** — (deferred — board activation runs at Step 5b after plan approval)
+- [ ] **Step 4** — Investigate and plan (main agent, planning mode)
+- [ ] **Step 5** — Hard stop: present the plan for approval
+- [ ] **Step 5b** — Spawn a board subagent to activate the card (first act after approval)
+- [ ] **Step 6** — Implement (main agent, act mode)
+- [ ] **Step 7** — Review (main agent, planning mode)
+- [ ] **Step 8** — Revision loop (if needed, forward-only)
+
+## Step 0 — Enter planning mode
+
+If you are not already in a read-only planning mode, enter it now. Do not proceed until you are in it.
+
+## Step 1 — Spawn a board subagent: find cards
+
+Make one subagent call (`general-purpose`) with this prompt, filled in:
+
+> You are finding a card on the kanban board.
+>
+> **Arguments:** `<args from the caller, or "none">`
+> **Project tag:** `<project tag, or "none">`
+>
+> Use only the brain read, search and frontmatter tools available in this session.
+>
+> ## Checklist
+>
+> - [ ] **Check the project tag.** If the project tag is "none", return `MODE: NO_PROJECT`.
+> - [ ] **Find the card.**
+>
+>   **If the arguments contain a card name or slug:** search `kanban/` for it. A single match: read its full content and return it as DIRECT. Multiple matches: return all of them for clarification. No match: fall through to the board path.
+>
+>   **Otherwise:** read `kanban/board.md`. Board lines look like `- [ ] [[<slug>]] — <P#> <TYPE>: <summary> #<project-tag>`; the slug is the text inside `[[` `]]`. For each card line, verify the file `<slug>.md` exists in the folder matching its column (`kanban/backlog/`, `kanban/todo/`, and so on). If any file's actual folder does not match its board column, do NOT move it — collect the mismatches for the return output. Filter to lines containing `#<project tag>` in **In Progress**, **Todo** and **Backlog** only. Read each card's frontmatter for its priority (`p0`/`p1`/`p2`/`p3`, default `p2`; fall back to the line's `P#` prefix if the frontmatter has none). Return as TABLE.
+>
+> - [ ] **Return** — one of:
+>
+>   **DIRECT** (the slug matched one card):
+>
+>   ```
+>   MODE: DIRECT
+>   PROJECT_TAG: <tag>
+>   TASK_SLUG: <slug>
+>   TASK_PATH: <brain-relative path>
+>   TASK_CONTENT:
+>   <full markdown including frontmatter>
+>   ```
+>
+>   **TABLE** (the user picks):
+>
+>   ```
+>   MODE: TABLE
+>   PROJECT_TAG: <tag>
+>
+>   | # | Status | Severity | Task | Description |
+>   |---|--------|----------|------|-------------|
+>   | 1 | In Progress | p0 | slug | short desc |
+>
+>   TASK_PATHS:
+>   1: kanban/backlog/my-task.md
+>
+>   TASK_CONTENTS:
+>   --- TASK 1 ---
+>   <full markdown>
+>   ```
+>
+>   If there are board/folder mismatches, append:
+>
+>   ```
+>   MISMATCHES:
+>   - <slug>: board says "<column>" but file is in "<actual folder>"
+>   ```
+>
+>   Omit MISMATCHES if there are none.
+>
+>   **NO_TASKS** or **NO_PROJECT**: `MODE: NO_TASKS` / `MODE: NO_PROJECT`
+
+## Step 2 — Present and pick
+
+**First, check for mismatches.** If the response contains a `MISMATCHES:` section, present it:
+
+> These tasks have board/folder mismatches:
+> `<list>`
+> Want me to fix them before continuing, or ignore for now?
+
+**Hard stop.** If the user says fix, ask: "Move the files to match the board, or update the board to match the files?" Then make a `general-purpose` subagent call to apply the chosen direction. After fixing, **re-run Step 1**.
+
+If the user says ignore, proceed.
+
+**Then handle the mode:**
+
+- `NO_PROJECT`: ask the user which project. Stop.
+- `NO_TASKS`: tell the user there are no open cards. Stop.
+- `DIRECT`: extract the card fields and skip to Step 4.
+- `TABLE`: display the table verbatim. **Hard stop: "Which task?"** Accept a number, a slug or a description fragment.
+
+## Step 3 — Deferred
+
+Board activation is a write operation. It runs after plan approval, at Step 5b, to avoid planning-mode conflicts. The card path, slug and project tag resolved in Step 2 are used there.
+
+## Step 4 — Investigate and plan (main agent, planning mode)
+
+You do this directly, with no subagent. Planning mode: read, search and analyze only.
+
+### 4a — Load conventions
+
+Do not proceed to 4b until the conventions are fully loaded into this context window. Do not delegate planning to a subagent — it runs in a fresh context and will not have these conventions.
+
+Try these sources in order and use the first that succeeds:
+
+1. The `study-playbook` skill. Invoke it, then:
+   - read the entry point it returns;
+   - identify which sections are relevant to this task;
+   - read each relevant section's entry point;
+   - read every child file linked from those entry points;
+   - only proceed to 4b once all the relevant child files are in context.
+2. The project's `CLAUDE.md` in the working directory.
+3. If neither exists, proceed without conventions and record `CONVENTIONS: none found`.
+
+### 4b — Load context
+
+Search the brain with the card's topic keywords for domain context.
+
+### 4c — Investigate the codebase
+
+- Read every file mentioned in the card (full files, not fragments).
+- Search for all call sites of functions you expect to change.
+- List every file that needs to change and why, including indirect dependents.
+
+### 4d — Devise the plan
+
+The plan must answer:
+
+- **Root cause** (not symptom): quote specific lines or behavior.
+- **Minimal change:** name each file, function or block, and what changes. If multiple approaches exist, list them and justify your choice.
+- **Conventions used:** list which conventions from the coding playbook were used.
+- **What could go wrong:** side effects, edge cases, anything needing user input.
+- **Open questions:** anything ambiguous, or "None".
+
+Output the plan as a structured checklist.
+
+### 4e — Open questions (if any)
+
+If there are open questions, **hard stop**. Present them to the user. Do not proceed until every question is answered or dismissed.
+
+## Step 5 — Hard stop: present the plan
+
+Present the plan to the user verbatim.
+
+**Hard stop. Do not activate the board or write code until the user approves the plan.**
+
+Once the user approves, proceed immediately to Step 5b, before writing any code.
+
+## Step 5b — Spawn a board subagent: activate the card
+
+You are now in act mode. Make one subagent call (`general-purpose`) with this prompt, filled in:
+
+> You are activating a card — stamping it and moving it to In Progress.
+>
+> **Card path:** `<path>` | **Slug:** `<slug>` | **Tag:** `#<project tag>` | **Now:** `<YYYY-MM-DDTHH:MM:SS>`
+>
+> Use only the brain read, write, move and frontmatter tools available in this session.
+>
+> ## Checklist
+>
+> - [ ] **Check the current status.** If the card path is already under `kanban/in-progress/`, this is a resume. Only stamp the session (append the datetime to `sessions`, update `updated`). Skip the board move and the file move. Return `DONE (resumed)`.
+> - [ ] **Stamp.** Read the frontmatter, then update it: append the current datetime to the `sessions` list (preserve existing entries) and update `updated`.
+> - [ ] **Move on the board.** Read `kanban/board.md`, remove the card's line (the line containing `[[<slug>]]`) from its current column, and insert it unchanged at the bottom of **In Progress**. Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
+> - [ ] **Move the file.** Move the card to `kanban/in-progress/<slug>.md`. Update `updated` in the frontmatter.
+> - [ ] Return `DONE` or `DONE (resumed)`.
+
+Do not proceed to Step 6 until the subagent returns `DONE` or `DONE (resumed)`.
+
+## Step 6 — Implement (main agent, act mode)
+
+You do this directly, with no subagent. Act mode: write code and run tools.
+
+### 6a — Implement the changes
+
+Follow the approved plan. Apply the coding playbook patterns loaded in Step 4a.
+
+### 6b — Type check
+
+Run the project's type checker. Fix all errors before proceeding.
+
+### 6c — Write and run tests
+
+**Mandatory.** Choose the appropriate test type:
+
+- **Unit-testable changes** (functions, modules, classes): write a unit test that imports the actual function or module you changed. Do NOT copy-paste the implementation into the test. Cover the happy path at minimum, plus the edge cases from the plan.
+- **Non-unit-testable changes** (config files, migrations, templates, CSS, build scripts, environment changes): write a smoke test or integration test that exercises the changed behavior end to end.
+- **If neither is feasible** (pure documentation, environment-file changes, CI config): skip the test. State why no automated test applies and how to verify manually.
+
+Run all tests and confirm green before proceeding.
+
+**After implementation is complete and the tests pass, re-enter planning mode. Do not make any further code changes until explicitly approved.**
+
+## Step 7 — Review (main agent, planning mode)
+
+You are now in planning mode. Read and analyze only — no code changes.
+
+### 7a — Get the diff
+
+Run `git diff HEAD` for uncommitted changes. If it is empty, run `git log --oneline -10` to find the session commits, then `git diff <first>^..HEAD`.
+
+### 7b — Read the changed files in full
+
+For every file in the diff, read the complete current version (not just the hunks). Also read the callers and dependents of changed functions.
+
+### 7c — Review against each criterion
+
+- **Correctness:** does the implementation match the plan? Logic errors, missed conditions?
+- **Edge cases:** boundaries, empty inputs, nulls, concurrent access?
+- **Type safety:** complete types? Hidden `any` casts, missing null checks?
+- **Error handling:** at the right level? Useful messages? Silent swallowing?
+- **Side effects:** changes outside the stated scope? Shared-state impacts?
+- **Test coverage:** do the tests verify the described behavior? Untested paths?
+- **Playbook alignment:** follows the established patterns?
+- **Performance:** N+1 queries, blocking calls, memory leaks?
+- **Security:** injection, XSS, auth bypass, secrets in code?
+- **Naming and clarity:** descriptive? Self-documenting?
+
+### 7d — Produce the review
+
+```
+VERDICT: LGTM | CHANGES_REQUESTED | NEEDS_DISCUSSION
+RISK: Low | Medium | High
+
+CRITICAL:
+- <file:line> — <issue and fix>
+
+WARNINGS:
+- <file:line> — <issue and fix>
+
+NITS:
+- <file:line> — <suggestion>
+
+POSITIVE:
+- <things done well>
+
+MISSED_EDGE_CASES:
+- <scenario not covered>
+```
+
+Omit sections with zero items.
+
+### 7e — Present the review and check the verdict
+
+Present the review to the user.
+
+- **LGTM:** ask "Ready to stash?" If yes, run the [[kanban/guide/stash|Stash]] operation.
+- **NEEDS_DISCUSSION:** hard stop. Wait for the user's direction. If the user says proceed, ask "Ready to stash?" If yes, run the [[kanban/guide/stash|Stash]] operation.
+- **CHANGES_REQUESTED:** enter Step 8.
+
+## Step 8 — Revision loop (forward-only)
+
+Do not jump back to earlier steps. This is a self-contained loop. Repeat 8a–8d until the review verdict is LGTM or the user says stop.
+
+### 8a — Re-investigate (planning mode)
+
+Focus on the review's critical and warning findings, not a fresh investigation. Read any additional files needed to understand the issues. Devise a targeted revision plan addressing only the findings.
+
+Present the revised plan. **Hard stop for approval.**
+
+### 8b — Implement the revisions (act mode)
+
+Implement only the approved revisions. Run the type check. Run the tests. Confirm green.
+
+**After the tests pass, re-enter planning mode.**
+
+### 8c — Re-review (planning mode)
+
+Read and analyze only — no code changes.
+
+Get the updated diff. Read the changed files in full. Review against the same criteria as Step 7c. Produce a new review in the same format as Step 7d.
+
+### 8d — Present and check the verdict
+
+Present the re-review to the user.
+
+- **LGTM:** ask "Ready to stash?" If yes, run the [[kanban/guide/stash|Stash]] operation.
+- **CHANGES_REQUESTED:** return to 8a.
+- **NEEDS_DISCUSSION:** hard stop. Wait for the user's direction.
+
+<!-- aide-kanban-work-end -->
+
+<!-- aide-kanban-manage-start -->
+
+---
+tags:
+  - tasks
+  - workflow
+---
+# Manage
+
+Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+
+View and move cards on the board, scoped to the current project.
+
+## Step 1 — Determine the project
+
+Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+
+## Step 2 — Read the board
+
+Read `kanban/board.md`. Parse the content into the five columns: Backlog, Todo, In Progress, In Review, Done (ignore the trailing `%% kanban:settings` block). Filter each column to show only lines containing `#<project tag>`. From each line, take the slug from inside `[[` `]]` and the rest of the text after ` — ` (priority, type and summary).
+
+### Reconciliation check
+
+Before presenting cards, verify that each card's file location matches its board column. For every card line in the filtered results, check whether the file exists in the expected folder (`kanban/backlog/`, `kanban/todo/`, `kanban/in-progress/`, `kanban/in-review/`, `kanban/done/`). If a file is in the wrong folder (for example the board says In Review but the file is in `kanban/in-progress/`), silently move it to the folder its board column names. This handles drift caused by a board editor that updates the board but does not move files.
+
+## Step 3 — Present cards and prompt for action
+
+Display the filtered board to the user in a compact format:
+
+```
+Backlog
+  [ ] fix-login-bug — P1 BUG: Fix login bug on mobile
+  [ ] add-email-validation — P2: Add email validation
+
+Todo
+  [ ] redesign-header — P2: Redesign the header
+
+In Progress
+  [ ] update-api — P1: Update the API endpoints
+
+In Review
+  [ ] update-docs — P3: Update the docs
+```
+
+If all columns are empty for this project, tell the user and stop.
+
+Then ask: "Which task do you want to move, and where?"
+
+Accept natural answers such as:
+
+- "move fix-login-bug to Todo"
+- "move redesign-header to In Progress"
+- "move update-docs to Done"
+
+Valid column names: `Backlog`, `Todo`, `In Progress`, `In Review`, `Done`.
+
+## Step 4 — Move the card
+
+### 4a — Update the board
+
+In the board content:
+
+1. Remove the card's line (the line containing `[[<slug>]]`) from its current column.
+2. Insert it unchanged at the bottom of the target column (just before the blank line(s) that precede the next `##` heading, or, for Done, just before the blank line that precedes the `%% kanban:settings` block).
+3. If the target is Done: change `- [ ]` to `- [x]`.
+4. If moving out of Done: change `- [x]` back to `- [ ]`.
+
+Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
+
+### 4b — Move the card file
+
+The card lives in the folder that matches its current column:
+
+- `kanban/backlog/` — Backlog
+- `kanban/todo/` — Todo
+- `kanban/in-progress/` — In Progress
+- `kanban/in-review/` — In Review
+- `kanban/done/` — Done
+
+If the source and target folders differ, move the file. Update the `updated` frontmatter field to the current datetime (`YYYY-MM-DDTHH:MM:SS`). Do not update `created`.
+
+## Step 5 — Confirm
+
+Tell the user: "`<slug>` moved to <Target Column>."
+
+Ask whether they want to move another card. If yes, return to Step 3. If no, stop.
+
+<!-- aide-kanban-manage-end -->
+
+<!-- aide-kanban-move-start -->
+
+---
+tags:
+  - tasks
+  - workflow
+---
+# Move
+
+Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+
+Move the current session's card to a specified column. The card is inferred from the session. The user provides the target column inline (for example "move to todo", "move to in review").
+
+## Step 1 — Parse the target column
+
+Extract the target column from the request. Match it against the valid columns (case-insensitive):
+
+- `Backlog`
+- `Todo`
+- `In Progress`
+- `In Review`
+- `Done`
+
+If no target column is found in the message, ask: "Which column?"
+
+## Step 2 — Identify the card from session context
+
+Look back through the current conversation for the card being worked on this session. Signals, in priority order:
+
+1. A card picked through Work and moved to In Progress.
+2. A card moved through Manage during this session.
+3. A card file read or referenced during the session.
+
+Use the slug (the name on the board) and the current folder the card lives in.
+
+If no card can be identified, tell the user and stop.
+
+## Step 3 — Determine the project
+
+Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+
+## Step 4 — Read the board
+
+Read `kanban/board.md`.
+
+Locate the card's line on the board (the line containing `[[<slug>]]`). If it is not found, tell the user and stop.
+
+If the card is already in the target column, tell the user and stop.
+
+## Step 5 — Move the card
+
+### 5a — Update the board
+
+In the board content:
+
+1. Remove the card line (the line containing `[[<slug>]]`) from its current column.
+2. Insert it unchanged at the bottom of the target column (just before the blank line(s) that precede the next `##` heading, or, for Done, just before the blank line that precedes the `%% kanban:settings` block).
+3. If the target is Done: change `- [ ]` to `- [x]`.
+4. If moving out of Done: change `- [x]` back to `- [ ]`.
+
+Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
+
+### 5b — Move the card file
+
+The card lives in the folder that matches its current column:
+
+- `kanban/backlog/` — Backlog
+- `kanban/todo/` — Todo
+- `kanban/in-progress/` — In Progress
+- `kanban/in-review/` — In Review
+- `kanban/done/` — Done
+
+If the source and target folders differ, move the file. Update the `updated` frontmatter field to the current datetime (`YYYY-MM-DDTHH:MM:SS`).
+
+## Step 6 — Confirm
+
+Tell the user: "`<slug>` moved to <Target Column>."
+
+<!-- aide-kanban-move-end -->
+
+<!-- aide-kanban-complete-start -->
+
+---
+tags:
+  - tasks
+  - workflow
+---
+# Complete
+
+Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+
+Move the current session's card to In Review (the default) or to Done (when the user passes `--done` or asks for Done).
+
+## Step 1 — Parse flags
+
+Check whether `--done` was passed.
+
+- No flag (default): the target column is **In Review**.
+- `--done`: the target column is **Done**.
+
+## Step 2 — Identify the card from session context
+
+Look back through the current conversation for the card that was worked on this session. Signals: a card picked through Work, a card moved to In Progress through Manage, or a card file read or referenced during the session.
+
+If no card was worked on this session, tell the user there is nothing to complete and stop.
+
+## Step 3 — Determine the project
+
+Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+
+## Step 4 — Read the board
+
+Read `kanban/board.md`.
+
+Locate the card's line on the board (the line containing `[[<slug>]]`). It could be in any column (Backlog, Todo, In Progress, In Review). If it is not found, tell the user and stop.
+
+## Step 5 — Move the card
+
+### 5a — Update the board
+
+In the board content:
+
+1. Remove the card line (the line containing `[[<slug>]]`) from its current column.
+2. If the target is In Review: insert it at the bottom of the `## In Review` section (keep `- [ ]` and the line text unchanged).
+3. If the target is Done: insert it at the bottom of the `## Done` section, just before the blank line that precedes the `%% kanban:settings` block, changing `- [ ]` to `- [x]`.
+
+Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
+
+### 5b — Move the card file
+
+- If the target is Done: move the file from its current folder to `kanban/done/<slug>.md`.
+- If the target is In Review: move the file from its current folder to `kanban/in-review/<slug>.md`.
+
+Update the `updated` frontmatter field to the current datetime (`YYYY-MM-DDTHH:MM:SS`).
+
+## Step 6 — Confirm
+
+Tell the user the card was moved to In Review (or to Done if `--done` was used).
+
+<!-- aide-kanban-complete-end -->
+
+<!-- aide-kanban-stash-start -->
+
+---
+tags:
+  - tasks
+  - workflow
+---
+# Stash
+
+Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+
+Stash session context into the current card: what changed, decisions made, open questions and remaining work. Use this at the end of a session, or at any point mid-session, to persist everything learned so a future session can pick up seamlessly.
+
+## Step 1 — Identify the card from session context
+
+Look back through the current conversation for the card that was worked on this session. Signals: a card picked through Work, a card moved to In Progress through Manage, or a card file read or referenced during the session.
+
+If no card can be identified, ask the user which card to stash to and stop until they answer.
+
+## Step 2 — Determine the project
+
+Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+
+## Step 3 — Read the card
+
+Read the card to see which sections already exist (Investigation, Answers, Solution, Revisions, earlier Stash entries). You need to know the current state so you do not duplicate information.
+
+## Step 4 — Gather session context
+
+Collect information from these sources, in parallel where possible.
+
+### 4a — Git changes (if in a git repo)
+
+Run `git diff --stat` and `git log --oneline -10` to see which files changed and which commits were made during this session. If there are uncommitted changes, record them.
+
+### 4b — Conversation review
+
+Review the conversation for:
+
+- **What was done:** concrete changes made (files modified, new behavior added, bugs fixed, refactors performed). Be specific: name files, functions and what changed.
+- **Key decisions:** choices made and why. Include the alternatives that were considered and rejected, and the reasoning. This is the most valuable part: a future session needs to know not just what was chosen but why the alternatives lost.
+- **Open questions:** anything unresolved, unclear or deferred. Things that need more investigation or user input, or that depend on external factors.
+- **Remaining work:** what is left to do to complete the card. Be concrete: name specific files, functions or steps. If there is a rough order, give it.
+- **Gotchas and surprises:** anything unexpected discovered during the session that future sessions should know about (weird behavior, undocumented constraints, things that look like bugs but are not).
+
+## Step 5 — Compose and append the stash entry
+
+Append a `## Stash` section to the card. If a `## Stash` section already exists (from a prior session), append a new dated subsection under it — do NOT overwrite prior stash entries.
+
+Format:
+
+```markdown
+## Stash
+
+### <YYYY-MM-DD HH:MM>
+
+**Changes made:**
+- <file or area>: <what changed and why>
+
+**Decisions:**
+- <decision>: <reasoning, alternatives considered>
+
+**Open questions:**
+- <question or uncertainty>
+
+**Remaining work:**
+- [ ] <concrete next step>
+
+**Gotchas:**
+- <anything surprising or non-obvious>
+```
+
+Omit any section that has no content (for example, if there are no gotchas, skip that heading). Do not pad with filler: every line should carry information.
+
+If a `## Stash` section already exists, append the new entry as a new `###` dated subsection at the bottom of the existing Stash section:
+
+```markdown
+### <YYYY-MM-DD HH:MM>
+
+**Changes made:**
+...
+```
+
+## Step 6 — Update frontmatter
+
+Update the card's `updated` field to the current datetime (`YYYY-MM-DDTHH:MM:SS`).
+
+## Step 7 — Confirm
+
+Tell the user the stash was saved. Show a brief summary of what was recorded (one line per section that was included). If there are open questions or remaining work items, highlight them so the user is aware of loose ends.
+
+<!-- aide-kanban-stash-end -->
+
+<!-- aide-kanban-review-start -->
+
+---
+tags:
+  - tasks
+  - workflow
+---
+# Review
+
+Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+
+Spin up a subagent to do a comprehensive code review of the changes made for the current session's card. If changes are requested, run the full investigate, plan, approve, implement cycle through subagents.
+
+The point of this operation is to offload work from the main agent's context. Do as little as possible yourself and pass the context you already have to subagents. Do NOT read the card, search the brain or gather project context yourself.
+
+## Delegation rules
+
+1. Never read the card, diffs or code yourself. Every read operation happens inside a subagent call.
+2. Execute the steps in strict order. Complete each step's subagent call and fully process its output before starting the next step.
+3. Hard stops are mandatory. Where marked HARD STOP, you MUST stop and wait for user input.
+4. Pass context forward explicitly. Each subagent call is stateless, so include all needed context (paths, slugs, diffs, review findings) in the prompt.
+5. Every subagent call needs three things: a type (`read-only` for exploration, or `general-purpose` for full access), a short description for the UI (5–10 words), and the full prompt the subagent receives.
+6. Planning mode must be off. If a read-only planning mode is active, turn it off before starting Step 1. This operation has its own approval gates, and planning mode adds redundant friction that breaks subagent write operations.
+7. Ask with structured options at every HARD STOP. Whenever a HARD STOP presents the user with choices, ask with structured multiple-choice options. Do not dump plain text and wait. Only the main agent can ask the user.
+
+## Step 1 — Run the review
+
+You already know the card path, diff range and working directory from the current conversation. Pass them directly into the subagent prompt. If the user's request contains a commit range or branch, use that as the diff range.
+
+If no card can be identified from conversation context, ask the user which card to review and **HARD STOP until they answer**.
+
+Make one subagent call (type `read-only`, description "Code review for `<TASK_SLUG>`") with this prompt, filled in:
+
+> You are performing a comprehensive code review.
+> **You are read-only — do not write, patch, move or update any files or card content.**
+>
+> **Card path:** `<path>`
+> **Diff range:** `<range, or "uncommitted changes">`
+> **Working directory:** `<pwd>`
+>
+> ## MANDATORY FIRST STEP — do this before anything else
+>
+> Invoke the `study-playbook` skill and read everything it returns. Follow every convention it specifies when evaluating code. If the playbook references a project-level `CLAUDE.md`, read that too (check the working directory root). If the skill is unavailable, read the project's `CLAUDE.md`; if neither exists, proceed without conventions and say so in the review.
+>
+> ## Review checklist
+>
+> Follow this checklist in order:
+>
+> - [ ] **Read the coding playbook** (above — not optional, do it first).
+> - [ ] **Gather context**
+>   - Read the card at `<card path>`. Extract the description, investigation, plan, solution, stash and revisions sections.
+>   - Get the diff: run `git diff HEAD` for uncommitted changes. If empty, run `git log --oneline -20` to find the session commits, then `git diff <first-commit>^..HEAD`. If a specific range was provided, use that.
+>   - If the card contains a `## Stash` section, read the latest entry — it represents the most current session state (changes made, decisions, gotchas). Factor this into your review.
+> - [ ] **Read the changed files in full.** For every file in the diff, read the complete current version (not just the diff hunks) so you have surrounding context. Also read the callers and dependents of changed functions.
+> - [ ] **Review against each criterion:**
+>   - **Correctness:** does the implementation match the plan and the card description? Logic errors, off-by-one, missed conditions?
+>   - **Edge cases:** boundary conditions, empty inputs, null values, concurrent access, unexpected states?
+>   - **Type safety:** correct and complete types? Any `any` casts, missing null checks at boundaries, type assertions hiding problems?
+>   - **Error handling:** errors caught at the right level? Useful messages? Silent swallowing?
+>   - **Side effects:** changes outside the stated scope? Check callers, dependents and shared state.
+>   - **Test coverage:** do the tests verify the described behavior? Untested paths? Do the tests import the real module (not copy-pasted logic)?
+>   - **Playbook alignment:** do the changes follow the established patterns from the coding playbook?
+>   - **Performance:** N+1 queries, unnecessary re-renders, blocking calls, memory leaks?
+>   - **Security:** OWASP top 10 — injection, XSS, auth bypass, secrets in code?
+>   - **Naming and clarity:** descriptive names? Self-documenting code? Intent clear without comments?
+> - [ ] **Produce the review** in this exact format:
+>
+> ```
+> ## Review Summary
+>
+> **Verdict:** LGTM | Changes Requested | Needs Discussion
+>
+> **Risk level:** Low | Medium | High
+>
+> ### Findings
+>
+> #### Critical (must fix)
+> - [ ] <file:line> — <issue and suggested fix>
+>
+> #### Warnings (should fix)
+> - [ ] <file:line> — <issue and suggested fix>
+>
+> #### Nits (optional)
+> - [ ] <file:line> — <suggestion>
+>
+> #### Positive
+> - <things done well — reinforce good patterns>
+>
+> ### Missed Edge Cases
+> - <scenario not covered by tests or code>
+>
+> ### Questions
+> - <anything ambiguous that needs the author's input>
+> ```
+>
+> Omit any section that has zero items. Every finding must reference a specific file and line number.
+
+Wait for the subagent result. Then proceed to Step 2.
+
+## Step 2 — Present the review
+
+Display the full review output verbatim. Do not summarize, editorialize or filter.
+
+## Step 3 — Record the review
+
+Make one subagent call (`general-purpose`, description "Record review on `<TASK_SLUG>`") with this prompt, filled in:
+
+> You are recording a code review on a card.
+>
+> **Card path:** `<card path>`
+> **Now:** `<YYYY-MM-DDTHH:MM:SS>`
+>
+> Use only the brain read, append, write and frontmatter tools available in this session.
+>
+> - [ ] Read the current card.
+> - [ ] If a `## Review` section already exists, append a new dated subsection under it (do NOT overwrite prior reviews). Otherwise, append a new `## Review` section.
+> - [ ] Append:
+>
+> ```markdown
+> ### <YYYY-MM-DD HH:MM>
+>
+> **Verdict:** <verdict>
+> **Risk level:** <risk level>
+>
+> **Key findings:**
+> <critical and warning items only — skip nits>
+>
+> **Action taken:** <pending user decision>
+> ```
+>
+> - [ ] Update the frontmatter to set `updated`.
+> - [ ] Return: `DONE`
+
+Wait for `DONE`.
+
+## Step 4 — Fix cycle (only if changes were requested)
+
+If the verdict is **LGTM**, stop here. You are done.
+
+If the verdict is **Changes Requested** or **Needs Discussion**, ask the user: "Want me to implement the fixes?"
+
+**HARD STOP until they answer.**
+
+If the user says yes, run Steps 4a through 4d below. You are an orchestrator: delegate every step to subagents.
+
+### 4a — Investigate the findings
+
+Make one subagent call (type `read-only`, description "Investigate review findings for `<TASK_SLUG>`") with this prompt, filled in:
+
+> You are re-investigating a card after a code review found issues.
+> **You are read-only — do NOT write, patch, move or update anything.**
+>
+> **Card path:** `<path>` | **Slug:** `<TASK_SLUG>` | **Project:** `<project tag>`
+> **Working directory:** `<pwd>`
+>
+> Use only the brain read and search tools available in this session.
+>
+> ## MANDATORY FIRST STEP — do this before anything else
+>
+> Invoke the `study-playbook` skill and read everything it returns. Follow every convention it specifies. If the playbook references a project-level `CLAUDE.md`, read that too. If the skill is unavailable, read the project's `CLAUDE.md`; if neither exists, proceed without conventions and say so.
+>
+> ## Review findings to address
+>
+> `<paste the full review findings: Critical + Warnings + Missed Edge Cases>`
+>
+> ## Checklist
+>
+> - [ ] **Read the coding playbook** (above — not optional, do it first).
+> - [ ] **Read the card.** Get full context, including investigation, plan, solution, stash and prior reviews.
+> - [ ] **Investigate each finding.** Read every file referenced in the review findings (full files). Search for call sites of functions that need to change. Verify each finding is valid (not a false positive).
+> - [ ] **Devise the fix plan.** For each confirmed finding:
+>   - name the file, the function or block, and what changes;
+>   - flag any side effects or downstream impacts;
+>   - output as a **structured checklist**.
+> - [ ] **Return in this exact format:**
+>
+>   ```
+>   INVESTIGATION:
+>   - **Validated findings:** <which review items are confirmed>
+>   - **False positives:** <which items are not actually issues, with reasoning>
+>   - **Files involved:** <each file + one-line reason>
+>
+>   OPEN_QUESTIONS:
+>   <bulleted list, or "None">
+>
+>   PLAN:
+>   <structured checklist of fixes>
+>   ```
+
+Wait for the subagent result. Parse out INVESTIGATION, OPEN_QUESTIONS and PLAN.
+
+### 4b — Present the plan and handle open questions
+
+If there are open questions, present them. **HARD STOP until every question is answered or dismissed.**
+
+Present the PLAN verbatim.
+
+**HARD STOP: "Plan ready — approve to proceed?"** Do not implement until approved.
+
+### 4c — Implement the fixes
+
+Once approved, make one subagent call (`general-purpose`, description "Implement review fixes for `<TASK_SLUG>`") with this prompt, filled in:
+
+> You are implementing review fixes from an approved plan.
+>
+> **Card path:** `<path>` | **Slug:** `<TASK_SLUG>`
+> **Working directory:** `<pwd>` | **Now:** `<YYYY-MM-DDTHH:MM:SS>`
+>
+> Use only the brain append and frontmatter tools available in this session.
+>
+> ## MANDATORY FIRST STEP — do this before writing any code
+>
+> Invoke the `study-playbook` skill and read everything it returns. Then check whether a `CLAUDE.md` exists at the working directory root — if so, read that too. Follow every convention from both for all code you write. If the skill is unavailable and there is no `CLAUDE.md`, proceed without conventions and say so.
+>
+> ## Approved plan
+>
+> `<paste the full PLAN here>`
+>
+> `<if open questions were answered, paste them here under "## User answers">`
+>
+> ## Checklist
+>
+> - [ ] **Read the coding playbook and the project `CLAUDE.md`** (above — mandatory).
+> - [ ] **Implement the fixes.** Follow the approved plan step by step. Follow every convention from the playbook.
+> - [ ] **Type check.** Run the project's type checker. Fix all errors before proceeding.
+> - [ ] **Run tests.** Run the existing tests. If any review finding relates to untested behavior, add tests. All tests must pass before proceeding.
+> - [ ] **Record revisions.** Append a `## Revisions` section to the card. If a `## Revisions` section already exists, append a new dated subsection (do NOT overwrite prior revisions):
+>
+>   ```markdown
+>   ### <YYYY-MM-DD HH:MM>
+>
+>   **Review findings addressed:** <which items were fixed>
+>   **Files changed:** <each file + one-line summary>
+>   **Test coverage:** <tests added/modified and what they verify>
+>   ```
+>
+>   Then update the frontmatter to set `updated`.
+>
+> - [ ] **Return in this exact format:**
+>
+>   ```
+>   SUMMARY:
+>   <files modified and what each change does>
+>
+>   TEST_RESULTS:
+>   <tests added/modified, what they verify, pass/fail>
+>
+>   FILES_CHANGED:
+>   <bulleted list of every file modified or created>
+>   ```
+>
+> **Do NOT commit. No git add, git commit or any git write operations.**
+
+Wait for the subagent result. Then proceed to Step 4d.
+
+### 4d — Present results
+
+Display `SUMMARY`, `TEST_RESULTS` and `FILES_CHANGED` verbatim.
+
+**Do NOT commit or stage anything.** Wait for an explicit user request.
+
+To review again, run the Review operation again.
+
+<!-- aide-kanban-review-end -->

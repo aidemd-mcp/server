@@ -116,6 +116,7 @@ The orchestrator's delegation prompt MUST supply:
 - **Feature intent** — one-line summary that goes into the frontmatter `intent:` field
 - **State summary content** — where the pipeline is right now (current stage, what was just done, what is paused, what is blocking)
 - **Where this cycle stopped** — what stage paused and what the next agent must do; this is the most critical section for resume
+- **Kanban card links** — one line per board card tied to the feature: its slug, its column, and what it covers. The slug is the stable link to the card on the project's kanban board.
 
 The orchestrator's prompt MAY supply (omit a section if not given):
 - **Architectural intent decisions** — numbered list of decisions the orchestrator has settled
@@ -123,7 +124,7 @@ The orchestrator's prompt MAY supply (omit a section if not given):
 - **Process discipline notes** — pause points, batching rules, context discipline
 - **Open questions** — decisions still in flight
 
-If feature intent or `## Where this cycle stopped` content is missing, return to the orchestrator listing what's missing — these two sections are load-bearing and you must not guess them.
+If feature intent, the kanban card links, or `## Where this cycle stopped` content is missing, return to the orchestrator listing what's missing — these three sections are load-bearing and you must not guess them.
 
 ### Preconditions
 
@@ -138,6 +139,7 @@ If feature intent or `## Where this cycle stopped` content is missing, return to
    - **YAML frontmatter** — `intent:` only, in `>` folded-block form. No `scope`, no `outcomes`, no `status`.
    - **`# AIDE SESSION` header** and the cold-start protocol paragraph (verbatim from the canonical doc).
    - **`## State summary (set <date>, <phase>)`** — current pipeline position. Date format `YYYY-MM-DD` (today). Phase is the current stage name (e.g. `Stage 4 plan review`, `Stage 7 fix loop`).
+   - **`## Kanban`** — one bullet per card: `` `<slug>` (<column>) — <what it covers> ``. Items in `## Where this cycle stopped` that correspond to a card name its slug.
    - **`## The architectural intent (what the specs say after the rewrite)`** — numbered list of settled decisions if the orchestrator supplied any. If none supplied, write a single line: `No architectural decisions settled yet for this feature.` and leave the section open for future updates.
    - **`## Anti-regression invariants future build phases must hold`** — bullet list. If none supplied, write: `No anti-regression invariants recorded yet.` and leave the section open.
    - **`## Where this cycle stopped (CRITICAL READING)`** — name the stage that paused, why, and the next agent's instructions. Include the canonical sub-sections `### What the next agent must do`, `### What's already done and validated`, `### What's left after the rework lands` — populate from the orchestrator's supplied content; omit a sub-section only if the orchestrator explicitly said nothing belongs there.
@@ -165,6 +167,7 @@ The orchestrator's delegation prompt MUST supply:
   - Append to `## Anti-regression invariants` — add a bullet
   - Rewrite `## Where this cycle stopped` — most updates touch this section; the orchestrator supplies the new content
   - Update `## State summary` — change the `(set <date>, <phase>)` parenthetical and the body paragraph
+  - Update `## Kanban` — add, re-column, or remove card links. If the file has no `## Kanban` section (written before card links were required), add it after `## State summary` with the links the orchestrator supplied; if the orchestrator supplied none, return and ask for them
   - Append/clear `## Open questions` — add new questions or strike resolved ones
 
 If the change description or section target is missing or ambiguous, return to the orchestrator and ask. Never guess between sections.
@@ -183,6 +186,7 @@ Rules for canonical-format preservation:
 - **Numbered decisions in `## The architectural intent` are stable references.** When appending, use the next unused number. When the orchestrator says "retire decision #5," delete the text but leave the gap — do NOT renumber #6, #7, etc. to fill the hole.
 - **Cut superseded prose; do not annotate it.** When `## Where this cycle stopped` changes, replace it — do not leave "previously: ..." breadcrumbs. Git history preserves the journey; this file describes only the current state.
 - **Preserve YAML frontmatter** unless the orchestrator explicitly changes the feature intent. The `intent:` field rarely changes across a feature lifecycle.
+- **`## Kanban` links stay current.** Every card the orchestrator names lands as a slug link; a card it says is finished or dropped is updated or removed, not annotated.
 - **Update the `(set <date>, <phase>)` parenthetical in `## State summary`** every time you touch the section. Date is today; phase is the current stage.
 - **Never invent content.** Same rule as CREATE — every substantive line traces back to the orchestrator's prompt.
 
@@ -205,7 +209,7 @@ For `session.aide` CREATE:
 - **Sections populated**: list of `## ...` sections that have content (vs. left open for future updates)
 - **Architectural decisions seeded**: count of decisions written into `## The architectural intent`
 - **Anti-regression invariants seeded**: count of bullets written
-- **Preconditions failed** (only on REFUSED): which check failed (`session.aide already exists`, `feature intent missing`, `where-stopped content missing`)
+- **Preconditions failed** (only on REFUSED): which check failed (`session.aide already exists`, `feature intent missing`, `kanban card links missing`, `where-stopped content missing`)
 - **Recommended next step**: usually "orchestrator continues with the next pipeline stage"
 
 For `session.aide` UPDATE:
