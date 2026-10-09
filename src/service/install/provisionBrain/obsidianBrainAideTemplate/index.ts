@@ -8,12 +8,20 @@ import kanbanMoveSeed from "./kanbanSeeds/guide/move/index.js";
 import kanbanCompleteSeed from "./kanbanSeeds/guide/complete/index.js";
 import kanbanStashSeed from "./kanbanSeeds/guide/stash/index.js";
 import kanbanReviewSeed from "./kanbanSeeds/guide/review/index.js";
+import type { LaunchMode } from "@/types/index.js";
+
+/**
+ * The pinned brain package (`@bitbonsai/mcpvault`) version the local launcher and
+ * the config prose both name. Bumped by hand after a new release is verified
+ * (brief #19); a test asserts the prose and the launcher agree.
+ */
+const MCPVAULT_VERSION = "0.16.0";
 
 /**
  * Returns the complete canonical bundled `brain.aide` file content as a string,
  * ready to write to disk at `.aide/config/brain.aide` in the host project root.
  *
- * Takes no arguments. The path slot in `mcpServerConfig.args` is always YAML null
+ * Takes an optional launch `mode` (default `"local"`). The path slot in `mcpServerConfig.args` is always YAML null
  * in the emitted output — the structural unwired-slot signal carried by the typed
  * `(string | null)[]` schema. The agent fills the null slot with the user's real
  * path via `/aide:brain config`, then runs sync; sync writes the wired entry to
@@ -56,13 +64,15 @@ import kanbanReviewSeed from "./kanbanSeeds/guide/review/index.js";
  *   maximum schema. The parser rejects any additional top-level field as
  *   `malformed-frontmatter`.
  * - The path slot in `mcpServerConfig.args` is a bare-dash YAML null line in
- *   every emission. POSIX: `args` parses to `["@bitbonsai/mcpvault", null]`.
- *   Win32: `args` parses to `["/c", "npx", "@bitbonsai/mcpvault", null]`. No
+ *   every emission. POSIX: `args` parses to `["-y", "@bitbonsai/mcpvault@0.16.0", null]`.
+ *   Win32: `args` parses to `["/c", "npx", "-y", "@bitbonsai/mcpvault@0.16.0", null]`. No
  *   quoted empty string, no literal-string sentinel, no `${...}` interpolation
  *   at the unwired slot. The user fills the slot via `/aide:brain config`.
  * - Platform branching: Windows uses `command: cmd` with `["/c", "npx", ...]`
  *   args to work around Windows shell constraints. POSIX uses `command: npx`
  *   directly. The platform check is isolated here and nowhere else in this module.
+ *   The `mode` argument selects a global launcher (the bare `mcpvault` command) or
+ *   the local npx launcher pinned with `-y` to `MCPVAULT_VERSION`; the default is local.
  * - Heading levels: the playbook-index and study-playbook sections use `## ` for
  *   top-level sub-sections under their `# ` title, since these sections are seeded
  *   into standalone files where `## ` is the natural sub-heading level. The
@@ -76,11 +86,13 @@ import kanbanReviewSeed from "./kanbanSeeds/guide/review/index.js";
  *   bytes and returns `malformed-body` (missing markers) for any brain.aide that
  *   still uses the old four-section grammar.
  */
-export default function obsidianBrainAideTemplate(): string {
+export default function obsidianBrainAideTemplate(mode: LaunchMode = "local"): string {
 	const mcpServerConfig =
-		platform() === "win32"
-			? `mcpServerConfig:\n  command: cmd\n  args:\n    - '/c'\n    - 'npx'\n    - '@bitbonsai/mcpvault'\n    -`
-			: `mcpServerConfig:\n  command: npx\n  args:\n    - '@bitbonsai/mcpvault'\n    -`;
+		mode === "global"
+			? `mcpServerConfig:\n  command: mcpvault\n  args:\n    -`
+			: platform() === "win32"
+				? `mcpServerConfig:\n  command: cmd\n  args:\n    - '/c'\n    - 'npx'\n    - '-y'\n    - '@bitbonsai/mcpvault@${MCPVAULT_VERSION}'\n    -`
+				: `mcpServerConfig:\n  command: npx\n  args:\n    - '-y'\n    - '@bitbonsai/mcpvault@${MCPVAULT_VERSION}'\n    -`;
 
 	return (
 		`---\n` +
@@ -92,8 +104,8 @@ export default function obsidianBrainAideTemplate(): string {
 		`\n` +
 		`Your brain is an Obsidian-backed knowledge store. Use \`mcp__brain__read_note\` to\n` +
 		`open files by their brain-relative path. Use \`mcp__brain__search_notes\` for\n` +
-		`keyword queries across every note in the store. The store has four entry-point\n` +
-		`artifacts: the coding-playbook index at \`coding-playbook/coding-playbook.md\`, the\n` +
+		`keyword queries across every note in the store. The store's entry-point\n` +
+		`artifacts include the coding-playbook index at \`coding-playbook/coding-playbook.md\`, the\n` +
 		`study-playbook navigation guide at \`coding-playbook/study-playbook.md\`, the\n` +
 		`update-playbook maintenance guide at \`coding-playbook/update-playbook.md\`, and the\n` +
 		`research index at \`research/research.md\`. Start from the relevant entry-point for\n` +
@@ -136,11 +148,14 @@ export default function obsidianBrainAideTemplate(): string {
 		`     target path. Proceed to Step 3.\n` +
 		`   - \`$ARGUMENTS\` empty AND last entry is a string path → **SEEDING** flow.\n` +
 		`     The brain is already wired; skip Steps 3 and 4 entirely and jump to Step 5.\n` +
+		`     Before seeding, if the launcher is local (\`npx\`, directly or after \`cmd /c\`) and its \`@bitbonsai/mcpvault\` spec has no version, is \`@latest\`, or pins a version older than \`${MCPVAULT_VERSION}\`, offer with \`AskUserQuestion\` to update it to \`-y @bitbonsai/mcpvault@${MCPVAULT_VERSION}\`. On yes, edit only that spec (adding \`-y\` if missing), run Step 4 (sync) and stop as the WIRING flow does. On no, continue to seeding unchanged. Never change an equal or newer pin, and never change the launch mode here.\n` +
 		`\n` +
 		`### WIRING flow — Steps 3, 4 (then STOP at end of 4)\n` +
 		`\n` +
 		`3. Edit \`brain.aide\` — replace the null at the last entry of \`mcpServerConfig.args\`\n` +
 		`   with the absolute path.\n` +
+		`\n` +
+		`   Then check how this config launches the brain. If the launched program is \`mcpvault\` (the file name of \`mcpServerConfig.command\`, or of the entry after \`/c\` when the command is \`cmd\`, with or without a directory path or a \`.cmd\` / \`.exe\` extension), the brain launches from a global install. In that case, run \`npm ls -g @bitbonsai/mcpvault --depth=0\` via Bash. If the package is not listed, ask with \`AskUserQuestion\`: "Install now (\`npm i -g @bitbonsai/mcpvault\`)" or "Use local launch instead". Run the install via Bash only after the user picks install. If the user picks local, or the install exits non-zero, rewrite \`mcpServerConfig\` to the pinned local launcher and keep the path you just wrote as the last entry: \`command: npx\` with args \`-y\`, \`@bitbonsai/mcpvault@${MCPVAULT_VERSION}\`, \`<path>\`; on Windows, \`command: cmd\` with args \`/c\`, \`npx\`, \`-y\`, \`@bitbonsai/mcpvault@${MCPVAULT_VERSION}\`, \`<path>\`. Then tell the user the brain will launch locally through npx, pinned to that version. If the launcher is already local, apply the same pin check as step 2: offer to move an unpinned, \`@latest\` or older pin to \`@bitbonsai/mcpvault@${MCPVAULT_VERSION}\`, and apply it only on the user's OK. A global launcher given by absolute path is valid; never rewrite it for being a path. Never switch a launcher between global and local for any other reason.\n` +
 		`\n` +
 		`4. **Run sync now via Bash.** Read \`.mcp.json["mcpServers"]["aide"]\`, take its\n` +
 		`   \`command\` and \`args\`, append the literal string \`"sync"\`, and execute the\n` +

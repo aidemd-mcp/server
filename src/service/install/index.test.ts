@@ -1,14 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, access, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir, platform } from "node:os";
-import init from "./index.js";
+import { tmpdir } from "node:os";
+import init, { InitInput, planBrainCategory } from "./index.js";
+import { mcpEntry } from "./wireMcp/index.js";
+import aidePackage from "./shared/aidePackage/index.js";
 import applySteps from "./applySteps/index.js";
 import { composeStub } from "./writeMethodology/index.js";
 import obsidianBrainAideTemplate from "./provisionBrain/obsidianBrainAideTemplate/index.js";
 import brainContract from "@/service/brainContract/index.js";
 import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
 import type { InitResult, InitStep } from "@/types/index.js";
+
+vi.mock("./shared/checkGlobalPackage/index.js", () => ({ default: vi.fn(async () => false) }));
 
 /** Check if a path exists on disk. */
 async function pathExists(p: string): Promise<boolean> {
@@ -23,10 +27,7 @@ async function pathExists(p: string): Promise<boolean> {
 // Clean up AIDE_BRAIN_PATH after each test to avoid cross-test pollution
 const originalBrainPath = process.env.AIDE_BRAIN_PATH;
 
-const expectedAideMcpEntry =
-	platform() === "win32"
-		? { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }
-		: { command: "npx", args: ["@aidemd-mcp/server"] };
+const expectedAideMcpEntry = mcpEntry("local");
 
 let tempDir: string;
 
@@ -343,6 +344,48 @@ describe("init — structured JSON result", () => {
 		// No extra string fields
 		const extraKeys = keys.filter((k) => !["framework", "steps", "brainHints"].includes(k));
 		expect(extraKeys).toHaveLength(0);
+	});
+});
+
+describe("init — launch mode threading", () => {
+	it("aide + brain global: aide step prescribes mcpEntry('global') with globalPackage; brain config and MCP step use the global launcher", async () => {
+		const result = await init(tempDir, "claude", undefined, { aide: "global", brain: "global" });
+
+		const mcpStep = findStep(result, "MCP config (aide)");
+		expect(mcpStep?.prescription).toEqual({ key: "aide", entry: mcpEntry("global") });
+		expect(mcpStep?.globalPackage).toEqual({
+			name: aidePackage.name,
+			installed: false,
+			installCommand: aidePackage.installCommand,
+		});
+
+		const brainAideStep = findStep(result, "Brain config (brain.aide)");
+		expect(brainAideStep?.content).toBe(obsidianBrainAideTemplate("global"));
+		const brainMcpStep = findStep(result, "MCP config (brain)");
+		expect(brainMcpStep?.prescription?.entry).toEqual({ command: "mcpvault", args: [null] });
+	});
+
+	it("no modes: aide step prescribes the pinned local mcpEntry and carries no globalPackage", async () => {
+		const result = await init(tempDir);
+
+		const mcpStep = findStep(result, "MCP config (aide)");
+		expect(mcpStep?.prescription?.entry).toEqual(mcpEntry("local"));
+		expect(mcpStep?.globalPackage).toBeUndefined();
+		expect(findStep(result, "Brain config (brain.aide)")?.content).toBe(obsidianBrainAideTemplate("local"));
+	});
+
+	it("InitInput accepts aideMode and brainMode and rejects an unknown mode", () => {
+		expect(InitInput.parse({ aideMode: "global", brainMode: "local" })).toMatchObject({ aideMode: "global", brainMode: "local" });
+		expect(InitInput.safeParse({ aideMode: "remote" }).success).toBe(false);
+		expect(InitInput.safeParse({ brainMode: "remote" }).success).toBe(false);
+	});
+
+	it("planBrainCategory with brainMode global yields the global template content", async () => {
+		const steps = await planBrainCategory(tempDir, "obsidian", "global");
+
+		const brainAideStep = steps.find((s) => s.name === "Brain config (brain.aide)");
+		expect(brainAideStep?.content).toBe(obsidianBrainAideTemplate("global"));
+		expect(brainAideStep?.content).not.toBe(obsidianBrainAideTemplate("local"));
 	});
 });
 

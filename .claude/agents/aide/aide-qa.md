@@ -32,6 +32,7 @@ You receive a delegation to verify implementation against a `.aide` spec. You co
    - Anti-patterns the spec warned against
    - Code that technically works but doesn't serve the intent paragraph
    - Implementation that violates a `brief.aide` commitment without that commitment being deliberately retired
+   - Unrelated or sweeping edits to existing code outside the plan's MODIFIED notes — flag as `implementation-drift`
 
 6. **Use judgement.** If something reads wrong or misses the point of the intent, flag it even when no specific outcome rule is named.
 

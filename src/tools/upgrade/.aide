@@ -18,10 +18,12 @@ outcomes:
     - The tool is the executor for files it owns, so the agent never sees canonical content for those categories and cannot hallucinate it; the agent's role is consent-gathering and surfacing results.
     - Files outside the methodology surface are invisible to the tool. User code and user-authored intent specs are never read, compared, or written.
     - The brain step reports a brain config that is behind the required-section contract, naming the missing sections, and routes the user to the brain configuration command. The upgrade never adds, rewrites, or removes sections in the user-owned brain config itself.
+    - The MCP step judges each server entry against the canonical shape for the launch mode that entry already uses, so a global entry stays global and a local entry stays local.
   undesired:
     - An apply path that fires without per-category user confirmation, or that treats the whole upgrade as one all-or-nothing decision. Either silently destroys customizations the user would have kept.
     - The tool returning canonical file content to the agent for the agent to write itself. This invites hallucinated content and bypasses the tool-as-executor contract.
     - A drift-detection pass that mutates the host's disk. Comparison must be observably read-only; any side effect during detection is a regression.
     - The tool reading, comparing, or writing files outside the methodology surface — user code, user intent specs, or any artifact aide_init did not install.
     - The brain step writing missing sections into the user-owned brain config, or reporting a behind config as a generic mismatch without naming what is missing and where to repair it.
+    - An upgrade that proposes switching a server entry between global and local launch, or reports a correctly wired global entry as drift.
 ---

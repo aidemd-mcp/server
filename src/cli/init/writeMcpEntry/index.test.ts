@@ -116,6 +116,54 @@ describe("writeMcpEntry (init wrapper)", () => {
 		expect(servers.brain).toEqual(brainEntry);
 	});
 
+	// --- Launch mode ---
+
+	it("global mode on a fresh project — writes mcpEntry('global')", async () => {
+		const result = await writeMcpEntry(tempDir, "global");
+
+		expect(result.status).toBe("created");
+
+		const parsed = await readMcpJson();
+		const servers = parsed.mcpServers as Record<string, unknown>;
+		expect(servers.aide).toEqual(mcpEntry("global"));
+	});
+
+	// --- Keep-existing guard: an existing aide entry is never switched ---
+
+	it("existing global entry — preserved byte-for-byte, returns exists", async () => {
+		const existing = { mcpServers: { aide: mcpEntry("global") } };
+		const raw = JSON.stringify(existing, null, 2) + "\n";
+		await writeFile(join(tempDir, ".mcp.json"), raw, "utf-8");
+
+		const result = await writeMcpEntry(tempDir);
+
+		expect(result.status).toBe("exists");
+		expect(result.message).toBe("aide MCP server entry already configured");
+		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);
+	});
+
+	it("existing local entry — preserved when mode is global", async () => {
+		const existing = { mcpServers: { aide: mcpEntry("local") } };
+		const raw = JSON.stringify(existing, null, 2) + "\n";
+		await writeFile(join(tempDir, ".mcp.json"), raw, "utf-8");
+
+		const result = await writeMcpEntry(tempDir, "global");
+
+		expect(result.status).toBe("exists");
+		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);
+	});
+
+	it("existing legacy aidemd-mcp key — preserved, no aide key added", async () => {
+		const existing = { mcpServers: { "aidemd-mcp": { command: "aidemd-mcp", args: [] } } };
+		const raw = JSON.stringify(existing, null, 2) + "\n";
+		await writeFile(join(tempDir, ".mcp.json"), raw, "utf-8");
+
+		const result = await writeMcpEntry(tempDir, "global");
+
+		expect(result.status).toBe("exists");
+		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);
+	});
+
 	// --- Malformed JSON throws ---
 
 	it("throws on malformed .mcp.json", async () => {

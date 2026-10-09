@@ -120,19 +120,28 @@ Files outside `.aide/config/` (the methodology docs at `.aide/docs/`, pipeline c
 
 `brain.aide` is the current inhabitant of `.aide/config/`; the convention is forward-compatible with future user-owned config files.
 
+## Launch modes
+
+Each MCP server entry — the `aide` server and the brain server declared in `mcpServerConfig` — launches in one of two modes. Setup asks which one, recommends global, and never switches an existing entry.
+
+- **Global** — pick it on a personal machine. Install once with `npm i -g @aidemd-mcp/server`; the entry runs the installed command by name, and terminal commands are `aidemd-mcp init` and `aidemd-mcp sync`. It stays on the installed version until you reinstall. Global is the fast launcher and the only one that works offline.
+- **Local** — pick it for shared repos and cloud/CI. The entry runs through npx, pinned to one exact version: `npx -y @aidemd-mcp/server@<version> sync`. `/aide:upgrade` moves the aide pin forward when you confirm it. Its first launch after a pin change downloads the package, and even a pinned, cached start still contacts the registry, so an npx cold start can miss Claude Code's 30-second connect window.
+
+The brain server's global or local launcher lives in `mcpServerConfig`, and a local brain launcher is pinned the same way. `/aide:brain config` sets the launcher, offers the global install of the brain's own package, and moves the brain pin forward with your OK. Upgrade never edits `brain.aide`.
+
 ## Lifecycle
 
 1. **Created or repaired** by `/aide:brain config`. When `.aide/config/brain.aide` is missing, the command asks which backend the user wants. For the bundled Obsidian default it uses the template `aide_init` returns, which carries YAML null at the unwired launcher slot until step 2 (a cold `cli/init` install also scaffolds that template once, if the file is absent). For any other backend the agent writes a launcher, an orientation section and a config section itself, plus generic seed sections the user confirms, following the published contract (`aide_init`'s `brainContract`). When the file exists but is outdated, the command repairs it as described under `### Body shape`. Either way the result is validated with the real parser through `aide_info`; a hand-written file counts only if the parser accepts it.
 
 2. **Filled** by the user via `/aide:brain config`. The config section's prose runs, asks the user for whatever values the YAML-null slots need (e.g. the brain root path for the bundled Obsidian default), and edits `brain.aide` to land the resolved values into the args slots. Retargeting, switching brains, swapping the MCP launcher and rewriting any body section are also edits to this one file.
 
-3. **Propagated** to `.mcp.json` by `npx @aidemd-mcp/server@latest sync`. The user runs this after the slot-filling step. Sync reads the frontmatter, expands any `${...}` interpolations in `mcpServerConfig.args` (the default scaffold has none), and writes the resulting object into `.mcp.json` under the fixed `brain` key. Sync refuses null-bearing args: if any element of `mcpServerConfig.args` is still null, sync exits non-zero and routes the user back to `/aide:brain config`. Sync is the only mechanism that mutates `.mcp.json`'s brain entry.
+3. **Propagated** to `.mcp.json` by sync (`aidemd-mcp sync` for a global install, `npx -y @aidemd-mcp/server@<version> sync` for a local one — match the project's `aide` entry). The user runs this after the slot-filling step. Sync reads the frontmatter, expands any `${...}` interpolations in `mcpServerConfig.args` (the default scaffold has none), and writes the resulting object into `.mcp.json` under the fixed `brain` key. Sync refuses null-bearing args: if any element of `mcpServerConfig.args` is still null, sync exits non-zero and routes the user back to `/aide:brain config`. Sync is the only mechanism that mutates `.mcp.json`'s brain entry.
 
 4. **Seeds written** by the integration's `aide-config` prose, after sync passes. The prose reads each seed section from `brain.aide` via `parseBrainAide`'s typed keys and writes it into the brain via the brain's own MCP write tool at the contract `seedPath`, skipping any file that already exists. The section's empty lines at its start and end are dropped, and a leading frontmatter block is passed in whatever form the backend's write tool expects (for example as a separate frontmatter argument) rather than left inside the body. The presence-check + re-seed loop owns missing-artifact recovery on every `/aide:brain config` invocation. The kanban board, the kanban index and the operation guides are seeded here like any other seed section.
 
 5. **Restart Claude Code** so the new MCP server loads. MCP server registration is read at client startup; an edit + sync without a restart leaves the running session pointing at the previous brain.
 
-6. **Drift detected** by the boot reporter. At session start, the reporter compares the `brain` entry in `.mcp.json` against the values declared in `brain.aide`. If they disagree, the reporter surfaces `mcp-drift`. The orchestrator treats drift as a hard halt: it does not proceed, does not attempt self-repair, and directs the user to run `npx @aidemd-mcp/server@latest sync`.
+6. **Drift detected** by the boot reporter. At session start, the reporter compares the `brain` entry in `.mcp.json` against the values declared in `brain.aide`. If they disagree, the reporter surfaces `mcp-drift`. The orchestrator treats drift as a hard halt: it does not proceed, does not attempt self-repair, and directs the user to run sync (`aidemd-mcp sync` for a global install, `npx -y @aidemd-mcp/server@<version> sync` for a local one — match the project's `aide` entry).
 
 Re-running sync against an unchanged `brain.aide` is idempotent — it reads the file, computes the same target object, sees `.mcp.json` already matches, and exits reporting no change.
 
@@ -146,9 +155,9 @@ The boot reporter surfaces exactly five brain status states. The orchestrator re
 
 - **`brain-aide-invalid`** — the file is present but falls short of the contract. The state carries a `fault`: `missing-sections` with the absent `sections` (a file written against an earlier contract, or one missing a block), or `malformed` with the parser's `reason` (unusable frontmatter, or a structural fault among the marker pairs). Remediation: run `/aide:brain config`, which inserts the missing sections after confirmation, or shows the reason for hand repair. The orchestrator halts until the file is valid.
 
-- **`no-mcp-entry`** — `brain.aide` exists, but `.mcp.json` has no `brain` entry under `mcpServers`, OR `mcpServerConfig.args` carries one or more YAML null entries (a null-bearing config is by definition not a wireable launch command, so it collapses semantically into `no-mcp-entry`). Remediation: run `/aide:brain config` to fill any null slots, then run `npx @aidemd-mcp/server@latest sync` to write the entry from the source of truth, then restart Claude Code. The orchestrator halts until the wiring is in place.
+- **`no-mcp-entry`** — `brain.aide` exists, but `.mcp.json` has no `brain` entry under `mcpServers`, OR `mcpServerConfig.args` carries one or more YAML null entries (a null-bearing config is by definition not a wireable launch command, so it collapses semantically into `no-mcp-entry`). Remediation: run `/aide:brain config` to fill any null slots, then run sync (`aidemd-mcp sync` for a global install, `npx -y @aidemd-mcp/server@<version> sync` for a local one — match the project's `aide` entry) to write the entry from the source of truth, then restart Claude Code. The orchestrator halts until the wiring is in place.
 
-- **`mcp-drift`** — both `brain.aide` and the `.mcp.json` `brain` entry exist, but their values disagree (the `command` differs, the `args` differ, or the user hand-edited `.mcp.json` away from what `brain.aide` declares). Remediation: run `npx @aidemd-mcp/server@latest sync` to bring `.mcp.json` back in line with the source of truth, then restart Claude Code. The orchestrator halts until the two agree. The boot reporter never auto-repairs drift — auto-repair would shift a load-bearing contract surface out from under the user and erase any deliberate hand-edit they made.
+- **`mcp-drift`** — both `brain.aide` and the `.mcp.json` `brain` entry exist, but their values disagree (the `command` differs, the `args` differ, or the user hand-edited `.mcp.json` away from what `brain.aide` declares). Remediation: run sync (`aidemd-mcp sync` for a global install, `npx -y @aidemd-mcp/server@<version> sync` for a local one — match the project's `aide` entry) to bring `.mcp.json` back in line with the source of truth, then restart Claude Code. The orchestrator halts until the two agree. The boot reporter never auto-repairs drift — auto-repair would shift a load-bearing contract surface out from under the user and erase any deliberate hand-edit they made.
 
 ## Divergence from intent specs
 
@@ -172,13 +181,13 @@ The boot reporter surfaces exactly five brain status states. The orchestrator re
 
 - **The section list has one source.** The required sections live in the server's published contract and nowhere else. This doc, the templates' prose and agent prompts point to it and never restate it.
 
-- **`mcpServerConfig.args` interpolation runs only at sync time.** Any `${fieldName}` references in `args` are expanded by `npx @aidemd-mcp/server@latest sync` against the frontmatter and written into `.mcp.json`. They are never expanded at read time, at server startup, or inside any body section.
+- **`mcpServerConfig.args` interpolation runs only at sync time.** Any `${fieldName}` references in `args` are expanded by sync (`aidemd-mcp sync` for a global install, `npx -y @aidemd-mcp/server@<version> sync` for a local one — match the project's `aide` entry) against the frontmatter and written into `.mcp.json`. They are never expanded at read time, at server startup, or inside any body section.
 
 - **The brain's interface contract is the `orientation` section, not the schema.** The frontmatter does not declare expected MCP tool names, expected operations, or expected entry-point paths. The agent reads the `orientation` section verbatim, calls whatever MCP tools it names, and surfaces failures fast. A frontmatter field whose only consumer is the parser's own validation is rejected.
 
 - **`name` is descriptive metadata, never dispatched on.** No code in this package branches on the value of `name`. The field exists so a human reading the file immediately knows what kind of brain is wired and so the agent can narrate its connection in conversation. Introducing any code path that switches on `name` re-introduces the in-code backend registry this architecture rejects.
 
-- **Adding a new brain is a host-side edit + sync, never a code change to this package.** The package has no opinion about which brain a host runs — only about how the host declares it. A new brain = write a `brain.aide` that satisfies the contract (`/aide:brain config` can author it), run `npx @aidemd-mcp/server@latest sync`, restart Claude Code.
+- **Adding a new brain is a host-side edit + sync, never a code change to this package.** The package has no opinion about which brain a host runs — only about how the host declares it. A new brain = write a `brain.aide` that satisfies the contract (`/aide:brain config` can author it), run sync (`aidemd-mcp sync` for a global install, `npx -y @aidemd-mcp/server@<version> sync` for a local one — match the project's `aide` entry), restart Claude Code.
 
 - **Drift is a hard halt.** When the boot reporter surfaces `mcp-drift`, the orchestrator stops. It does not auto-repair. It directs the user to run sync.
 

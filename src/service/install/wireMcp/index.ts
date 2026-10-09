@@ -1,6 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { platform } from "node:os";
-import type { InitStep, McpPrescription } from "@/types/index.js";
+import type { InitStep, LaunchMode, McpPrescription } from "@/types/index.js";
+import aidePackage from "../shared/aidePackage/index.js";
+import checkGlobalPackage from "../shared/checkGlobalPackage/index.js";
+import readAidePackageVersion from "../shared/readAidePackageVersion/index.js";
 
 /** Read a file, returning empty string if it doesn't exist. */
 async function safeReadFile(path: string): Promise<string> {
@@ -12,16 +15,26 @@ async function safeReadFile(path: string): Promise<string> {
 }
 
 /**
- * Build the MCP server entry for the current platform.
+ * Build the MCP server entry for the given launch mode on the current platform.
  *
- * On Windows, `npx` must be invoked through `cmd /c` so that the shell can
- * resolve the `.cmd` shim. On macOS and Linux, `npx` can be invoked directly.
+ * Local (the default) launches through `npx -y`, pinned to the version of the
+ * running package (`@aidemd-mcp/server@<version>`, never `@latest`); `-y`
+ * suppresses npx install prompts. On Windows, `npx` must be invoked through
+ * `cmd /c` so that the shell can resolve the `.cmd` shim. On macOS and Linux,
+ * `npx` can be invoked directly.
+ *
+ * Global launches the installed bin by its bare name on every platform
+ * (`aidemd-mcp`, no args), as verified by the Windows launch probe.
  */
-export function mcpEntry(): McpPrescription["entry"] {
-	if (platform() === "win32") {
-		return { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] };
+export function mcpEntry(mode: LaunchMode = "local"): McpPrescription["entry"] {
+	if (mode === "global") {
+		return { command: aidePackage.command, args: [] };
 	}
-	return { command: "npx", args: ["@aidemd-mcp/server"] };
+	const spec = `${aidePackage.name}@${readAidePackageVersion()}`;
+	if (platform() === "win32") {
+		return { command: "cmd", args: ["/c", "npx", "-y", spec] };
+	}
+	return { command: "npx", args: ["-y", spec] };
 }
 
 /**
@@ -34,10 +47,25 @@ export function mcpEntry(): McpPrescription["entry"] {
  * `would-create` with `configMalformed: true` so the agent can surface
  * the issue to the user.
  *
+ * In global mode every `would-create` result also carries `globalPackage`
+ * (whether the package is installed globally, and the command that installs
+ * it). The `exists` result never does.
+ *
  * This helper never writes to disk — it is a planner only.
  */
-export default async function wireMcp(mcpConfigPath: string): Promise<InitStep> {
-	const prescription: McpPrescription = { key: "aide", entry: mcpEntry() };
+export default async function wireMcp(
+	mcpConfigPath: string,
+	mode: LaunchMode = "local",
+): Promise<InitStep> {
+	const prescription: McpPrescription = { key: "aide", entry: mcpEntry(mode) };
+	const globalPackage =
+		mode === "global"
+			? {
+					name: aidePackage.name,
+					installed: await checkGlobalPackage(aidePackage.name),
+					installCommand: aidePackage.installCommand,
+				}
+			: undefined;
 	const existing = await safeReadFile(mcpConfigPath);
 
 	if (existing) {
@@ -58,6 +86,7 @@ export default async function wireMcp(mcpConfigPath: string): Promise<InitStep> 
 				category: "mcp",
 				filePath: mcpConfigPath,
 				prescription,
+				...(globalPackage && { globalPackage }),
 			};
 		} catch {
 			return {
@@ -67,6 +96,7 @@ export default async function wireMcp(mcpConfigPath: string): Promise<InitStep> 
 				filePath: mcpConfigPath,
 				prescription,
 				configMalformed: true,
+				...(globalPackage && { globalPackage }),
 			};
 		}
 	}
@@ -77,5 +107,6 @@ export default async function wireMcp(mcpConfigPath: string): Promise<InitStep> 
 		category: "mcp",
 		filePath: mcpConfigPath,
 		prescription,
+		...(globalPackage && { globalPackage }),
 	};
 }

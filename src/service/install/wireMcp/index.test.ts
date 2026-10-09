@@ -1,17 +1,33 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir, platform } from "node:os";
+
+vi.mock("../shared/checkGlobalPackage/index.js", () => ({ default: vi.fn() }));
+vi.mock("node:os", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:os")>();
+	return { ...actual, platform: vi.fn(actual.platform) };
+});
+
+import checkGlobalPackage from "../shared/checkGlobalPackage/index.js";
+import readAidePackageVersion from "../shared/readAidePackageVersion/index.js";
 import wireMcp, { mcpEntry } from "./index.js";
 
+const mockCheckGlobalPackage = checkGlobalPackage as ReturnType<typeof vi.fn>;
+const mockPlatform = platform as ReturnType<typeof vi.fn>;
+const realPlatform = platform();
+const pinnedSpec = `@aidemd-mcp/server@${readAidePackageVersion()}`;
+
 const expectedEntry =
-	platform() === "win32"
-		? { command: "cmd", args: ["/c", "npx", "@aidemd-mcp/server"] }
-		: { command: "npx", args: ["@aidemd-mcp/server"] };
+	realPlatform === "win32"
+		? { command: "cmd", args: ["/c", "npx", "-y", pinnedSpec] }
+		: { command: "npx", args: ["-y", pinnedSpec] };
 
 let tempDir: string;
 
 beforeEach(async () => {
+	vi.clearAllMocks();
+	mockCheckGlobalPackage.mockResolvedValue(false);
 	tempDir = await mkdtemp(join(tmpdir(), "aide-wiremcp-"));
 });
 
@@ -52,7 +68,7 @@ describe("wireMcp", () => {
 		const mcpPath = join(tempDir, ".mcp.json");
 		const existing = {
 			mcpServers: {
-				aide: { command: "npx", args: ["@aidemd-mcp/server"] },
+				aide: expectedEntry,
 			},
 		};
 		await writeFile(mcpPath, JSON.stringify(existing), "utf-8");
@@ -90,5 +106,100 @@ describe("wireMcp", () => {
 		const result = await wireMcp(mcpPath);
 
 		expect(result.filePath).toBe(mcpPath);
+	});
+});
+
+describe("mcpEntry", () => {
+	afterEach(() => {
+		mockPlatform.mockReturnValue(realPlatform);
+	});
+
+	it("defaults to the local mode", () => {
+		expect(mcpEntry()).toEqual(mcpEntry("local"));
+	});
+
+	it.each([
+		["win32", { command: "cmd", args: ["/c", "npx", "-y", pinnedSpec] }],
+		["linux", { command: "npx", args: ["-y", pinnedSpec] }],
+		["darwin", { command: "npx", args: ["-y", pinnedSpec] }],
+	])("local on %s is pinned with -y and never @latest", (os, expected) => {
+		mockPlatform.mockReturnValue(os);
+
+		const entry = mcpEntry("local");
+
+		expect(entry).toEqual(expected);
+		expect(entry.args).toContain("-y");
+		expect(entry.args.join(" ")).not.toContain("@latest");
+		expect(entry.args[entry.args.length - 1]).toBe(pinnedSpec);
+	});
+
+	it.each(["win32", "linux", "darwin"])("global on %s is the bare command with no path separators", (os) => {
+		mockPlatform.mockReturnValue(os);
+
+		const entry = mcpEntry("global");
+
+		expect(entry).toEqual({ command: "aidemd-mcp", args: [] });
+		expect(entry.command).not.toMatch(/[\/]/);
+		for (const arg of entry.args) expect(arg).not.toMatch(/[\/]/);
+	});
+});
+
+describe("wireMcp launch modes", () => {
+	it("a cold global run carries globalPackage with installed from the check", async () => {
+		mockCheckGlobalPackage.mockResolvedValue(true);
+
+		const result = await wireMcp(join(tempDir, ".mcp.json"), "global");
+
+		expect(result.status).toBe("would-create");
+		expect(result.prescription?.entry).toEqual(mcpEntry("global"));
+		expect(result.globalPackage).toEqual({
+			name: "@aidemd-mcp/server",
+			installed: true,
+			installCommand: "npm i -g @aidemd-mcp/server",
+		});
+		expect(mockCheckGlobalPackage).toHaveBeenCalledWith("@aidemd-mcp/server");
+	});
+
+	it("reports installed false when the package is not installed globally", async () => {
+		const result = await wireMcp(join(tempDir, ".mcp.json"), "global");
+
+		expect(result.globalPackage?.installed).toBe(false);
+	});
+
+	it("carries globalPackage on a global would-create with a malformed config", async () => {
+		const mcpPath = join(tempDir, ".mcp.json");
+		await writeFile(mcpPath, "not valid json {{{", "utf-8");
+
+		const result = await wireMcp(mcpPath, "global");
+
+		expect(result.configMalformed).toBe(true);
+		expect(result.globalPackage).toBeDefined();
+	});
+
+	it("carries globalPackage on a global would-create when the config lacks an aide entry", async () => {
+		const mcpPath = join(tempDir, ".mcp.json");
+		await writeFile(mcpPath, JSON.stringify({ mcpServers: { other: { command: "node" } } }), "utf-8");
+
+		const result = await wireMcp(mcpPath, "global");
+
+		expect(result.status).toBe("would-create");
+		expect(result.globalPackage).toBeDefined();
+	});
+
+	it("global with an existing aide key returns exists without globalPackage", async () => {
+		const mcpPath = join(tempDir, ".mcp.json");
+		await writeFile(mcpPath, JSON.stringify({ mcpServers: { aide: expectedEntry } }), "utf-8");
+
+		const result = await wireMcp(mcpPath, "global");
+
+		expect(result.status).toBe("exists");
+		expect(result.globalPackage).toBeUndefined();
+	});
+
+	it("local omits globalPackage and never runs the global check", async () => {
+		const result = await wireMcp(join(tempDir, ".mcp.json"));
+
+		expect(result.globalPackage).toBeUndefined();
+		expect(mockCheckGlobalPackage).not.toHaveBeenCalled();
 	});
 });

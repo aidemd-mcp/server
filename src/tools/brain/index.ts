@@ -3,6 +3,7 @@ import buildBrainState from "@/service/buildBrainState/index.js";
 import classifyParseFailure from "@/service/buildBrainState/classifyParseFailure/index.js";
 import parseBrainAide from "@/service/parseBrainAide/index.js";
 import type { BrainToolResult } from "@/types/index.js";
+import describeAideCommand from "@/service/install/shared/describeAideCommand/index.js";
 import composeOutdatedRemediation from "./composeOutdatedRemediation/index.js";
 
 // Non-ok remediation prose — one fixed sentence per failure state, except
@@ -15,10 +16,14 @@ const NO_BRAIN_AIDE_PROSE =
 	"No `.aide/config/brain.aide` is present in this project. Tell the user to run `/aide:brain config` — it asks which brain backend they use and creates the config. Do not proceed with this task as if the brain were available — the file must exist before brain-dependent work continues.";
 
 const NO_MCP_ENTRY_PROSE =
-	"A brain config exists at `.aide/config/brain.aide`, but no `brain` MCP entry is wired in `.mcp.json`. Tell the user to run `npx @aidemd-mcp/server@latest sync` to apply the config to `.mcp.json`, then restart Claude Code. Do not proceed with this task as if the brain were available.";
+	"A brain config exists at `.aide/config/brain.aide`, but no `brain` MCP entry is wired in `.mcp.json`. Tell the user to run sync with the same launcher their project's `aide` MCP entry uses — " +
+	describeAideCommand("sync") +
+	" — to apply the config to `.mcp.json`, then restart Claude Code. Do not proceed with this task as if the brain were available.";
 
 const MCP_DRIFT_PROSE =
-	"`.aide/config/brain.aide` and `.mcp.json` disagree about the brain entry. Tell the user to run `npx @aidemd-mcp/server@latest sync` in their terminal — that is the only command that mutates `.mcp.json` from `brain.aide`. Then restart Claude Code. Do not attempt to patch `.mcp.json` from this session.";
+	"`.aide/config/brain.aide` and `.mcp.json` disagree about the brain entry. Tell the user to run sync in their terminal with the same launcher their project's `aide` MCP entry uses — " +
+	describeAideCommand("sync") +
+	" — that is the only command that mutates `.mcp.json` from `brain.aide`. Then restart Claude Code. Do not attempt to patch `.mcp.json` from this session.";
 
 /** The two accepted values for the `kind` parameter. */
 type BrainKind = "orientation" | "config";

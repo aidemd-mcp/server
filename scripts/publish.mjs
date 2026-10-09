@@ -35,8 +35,20 @@ for (const p of serverJson.packages ?? []) {
 }
 writeFileSync(serverJsonPath, JSON.stringify(serverJson, null, 2) + "\n");
 
+// Sync README pinned-version examples (only real semver pins; `@<version>` and `@latest` are left alone)
+const readmePath = resolve(root, "README.md");
+const readme = readFileSync(readmePath, "utf-8");
+const pinPattern = /@aidemd-mcp\/server@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/g;
+const pinCount = (readme.match(pinPattern) ?? []).length;
+writeFileSync(readmePath, readme.replace(pinPattern, `@aidemd-mcp/server@${version}`));
+console.log(`Updated ${pinCount} README version pin(s) to ${version}`);
+const latestCount = (readme.match(/@aidemd-mcp\/server@latest\b/g) ?? []).length;
+if (latestCount > 0) {
+	console.warn(`Warning: README.md contains ${latestCount} @aidemd-mcp/server@latest reference(s) — left unchanged`);
+}
+
 // Commit, tag, push
-execSync(`git add package.json package-lock.json server.json`, { cwd: root, stdio: "inherit" });
+execSync(`git add package.json package-lock.json server.json README.md`, { cwd: root, stdio: "inherit" });
 const commitMsg = message ? `${version}: ${message}` : version;
 execSync(`git commit -m "${commitMsg}"`, { cwd: root, stdio: "inherit" });
 execSync(`git tag v${version}`, { cwd: root, stdio: "inherit" });

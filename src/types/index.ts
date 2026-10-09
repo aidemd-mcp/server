@@ -102,6 +102,19 @@ export interface ReadResult {
 /** Supported agent frameworks for aide_init. */
 export type FrameworkType = "claude" | "cursor" | "windsurf" | "copilot";
 
+/** How an MCP server entry launches. Global runs the installed command; local runs it through npx. */
+export type LaunchMode = "global" | "local";
+
+/** Whether a package is installed globally, and the command that would install it. */
+export type GlobalPackageStatus = {
+	name: string;
+	installed: boolean;
+	installCommand: string;
+};
+
+/** The globally installed aide server's version versus the latest published version. */
+export type BehindNotice = { installed: string; latest: string };
+
 /** Resolved paths for a detected agent framework. */
 export interface FrameworkConfig {
 	/** Which framework was detected (or overridden). */
@@ -211,6 +224,11 @@ export interface InitStep {
 	prescription?: McpPrescription;
 	/** True when the MCP config file exists but cannot be parsed as JSON. */
 	configMalformed?: boolean;
+	/**
+	 * Present only on the aide MCP step when the step was planned in global
+	 * mode and would create the entry.
+	 */
+	globalPackage?: GlobalPackageStatus;
 	/**
 	 * CLI command the agent should execute for steps that require external
 	 * tooling (e.g. `code --install-extension <vsixPath>` for VS Code).
@@ -325,6 +343,11 @@ export interface UpgradeFileResult {
 	 */
 	prescription?: McpPrescription;
 	/**
+	 * An informational note on a file result. It is neither drift nor a
+	 * prescription, and it never changes the summary counts.
+	 */
+	tip?: string;
+	/**
 	 * CLI command the agent should execute for steps that require external
 	 * tooling (e.g. `code --install-extension <vsixPath>` for VS Code).
 	 * Present only on IDE VS Code steps that pass through applyFiles without
@@ -437,13 +460,13 @@ export type BrainAideFault =
  * - `no-mcp-entry` - brain.aide parsed successfully, but the host's `.mcp.json`
  *   cannot be read (ENOENT or any I/O failure), cannot be parsed as JSON, or has
  *   no `mcpServers.brain` key. Carries `name` (from the parsed brain.aide) and
- *   `hints`. Remediation: run `npx @aidemd-mcp/server@latest sync`.
+ *   `hints`. Remediation: run sync with the launcher the project's `aide` MCP entry uses.
  *
  * - `mcp-drift` - brain.aide parsed, `.mcp.json` has a `brain` entry, but the
  *   entry's `command` or `args` differ from the parsed/interpolated
  *   `mcpServerConfig`. Drift is detected by structural comparison (string equality
  *   on `command`; element-by-element equality on `args`). Carries `name` and
- *   `hints`. Remediation: run `npx @aidemd-mcp/server@latest sync`.
+ *   `hints`. Remediation: run sync with the launcher the project's `aide` MCP entry uses.
  *
  * `hints` is populated unconditionally on every state - the orchestrator may
  * surface candidate brain root locations on `no-brain-aide` (fresh project) just as
@@ -524,6 +547,11 @@ export interface InfoResult {
 	serverVersion: string;
 	/** Artifact keys whose sourceCommit differs between local and canonical. */
 	outdated: string[];
+	/**
+	 * A soft notice, independent of `outdated`. It is null when not applicable
+	 * or unknown.
+	 */
+	behind: BehindNotice | null;
 	/** Precondition state of the host's brain. */
 	brain: BrainState;
 }

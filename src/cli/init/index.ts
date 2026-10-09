@@ -3,6 +3,8 @@ import { join } from "node:path";
 import path from "node:path";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
+import parseMode from "./parseMode/index.js";
+import resolveLaunchModes from "./resolveLaunchModes/index.js";
 import type { InstallResult } from "./types/index.js";
 import writeMethodology from "@/service/install/writeMethodology/index.js";
 import installMethodologyDocs from "@/service/install/installMethodologyDocs/index.js";
@@ -16,7 +18,9 @@ import { planBrainCategory } from "@/service/install/index.js";
 import detectFramework from "@/service/install/detectFramework/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import compareBytes from "@/service/install/shared/compareBytes/index.js";
-import type { InitStep, FrameworkConfig } from "@/types/index.js";
+import launchModeChoices from "@/service/install/shared/launchModeChoices/index.js";
+import aidePackage from "@/service/install/shared/aidePackage/index.js";
+import type { InitStep, FrameworkConfig, LaunchMode } from "@/types/index.js";
 
 /**
  * Registered brain integrations. Today only "obsidian" is valid. Future
@@ -49,7 +53,7 @@ const FORBIDDEN_BRAIN_FLAGS = [
  *
  * Brain wiring is always deferred — cli/init scaffolds the bundled `brain.aide`
  * template with YAML null at the unwired slot but never fills it, never derives
- * the brain MCP entry, and never seeds the four entry-point artifacts. Those steps
+ * the brain MCP entry, and never seeds the brain's entry-point artifacts. Those steps
  * belong exclusively to `/aide:brain config` on the first `/aide` run.
  *
  * The brain entry MUST name `/aide:brain config` as the wiring surface and MUST
@@ -63,8 +67,8 @@ const FORBIDDEN_BRAIN_FLAGS = [
  */
 function deferredCategories(): readonly string[] {
 	return [
-		"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
-		"IDE configuration — re-run: npx @aidemd-mcp/server@latest init --ide <choice>",
+		"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the brain's entry-point artifacts into your brain.",
+		`IDE configuration — re-run: ${aidePackage.command} init --ide <choice> (global) or npx -y ${aidePackage.name}@<version> init --ide <choice> (local)`,
 	];
 }
 
@@ -108,17 +112,25 @@ function deferredCategories(): readonly string[] {
  *
  * @param cwd - Project root to install artifacts into.
  * @param write - Line-writer injected for testability; defaults to stdout.
+ * **Launch modes:** before anything is planned, `resolveLaunchModes` settles
+ * whether the aide and brain MCP servers launch globally or through npx. The aide
+ * mode goes to `writeMcpEntry`, the brain mode to the brain template scaffold.
+ * `options.mode` (the `--mode` flag) wins over prompting; with neither a flag nor
+ * a terminal both servers resolve to local. An existing aide entry or brain.aide
+ * is never re-asked or switched.
+ *
  * @param options - Optional. `brain` selects the bundled template (default
- *   `"obsidian"`). No `brainPath` parameter exists on this object under any
- *   rename — the install service accepts only the integration name, not a
- *   backend-specific datum.
+ *   `"obsidian"`). `mode` is the `--mode` launch-mode flag. No `brainPath`
+ *   parameter exists on this object under any rename — the install service
+ *   accepts only the integration name, not a backend-specific datum.
  */
 export async function runInit(
 	cwd: string,
 	write: (line: string) => void = (line) => process.stdout.write(line + "\n"),
-	options: { brain?: string } = {},
+	options: { brain?: string; mode?: LaunchMode } = {},
 ): Promise<number> {
 	const integration = options.brain ?? "obsidian";
+	const modes = await resolveLaunchModes(cwd, options.mode, write);
 
 	// Step 1 — Brain.aide scaffold: delegate to the install service. Obtain both
 	// steps provisionBrain returns, apply only the brain.aide-scaffold step (first
@@ -126,7 +138,7 @@ export async function runInit(
 	// by cli/sync invoked from /aide:brain config after the user has filled the null
 	// slot(s) — applying it here would land a null-bearing brain entry that sync
 	// refuses at its boundary.
-	const brainSteps = await planBrainCategory(cwd, integration);
+	const brainSteps = await planBrainCategory(cwd, integration, modes.brain);
 	const brainAideStep = brainSteps.find((s) => s.category === "brain" && s.name === "Brain config (brain.aide)");
 	const brainScaffoldResult: InstallResult = await (async () => {
 		if (!brainAideStep) {
@@ -142,14 +154,14 @@ export async function runInit(
 		return {
 			status: "created" as const,
 			displayPath: ".aide/config/brain.aide",
-			message: `bundled brain template (--brain obsidian default; args[3] is YAML null until /aide:brain config fills it)`,
+			message: `bundled brain template (--brain obsidian default; the last args entry is YAML null until /aide:brain config fills it)`,
 		};
 	})();
 
 	// Step 2 — MCP entry: the only helper that can throw (malformed JSON). Runs
 	// AFTER the brain.aide scaffold. If it throws, propagate immediately; the IIFE
 	// catch block converts the throw to a stderr error line and exits 1.
-	const mcpRaw = await writeMcpEntry(cwd);
+	const mcpRaw = await writeMcpEntry(cwd, modes.aide);
 	const mcpResult: InstallResult = { ...mcpRaw, displayPath: ".mcp.json" };
 
 	// Step 3 — Resolve framework config. Explicit "claude" skips the detection
@@ -353,7 +365,8 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 (async () => {
 	if (process.argv.includes("--help")) {
 		process.stdout.write(
-			"Usage: npx @aidemd-mcp/server@latest init [--brain <integration>] [--ide <choice>]\n\n" +
+			`Usage: ${aidePackage.command} init [--brain <integration>] [--mode global|local] [--ide <choice>] (global)\n` +
+				`       npx -y ${aidePackage.name}@<version> init [--brain <integration>] [--mode global|local] [--ide <choice>] (local)\n\n` +
 				"What it installs:\n" +
 				"  The complete methodology layer into the current project: the methodology\n" +
 				"  pointer stub, the methodology doc set under .aide/docs/, every pipeline\n" +
@@ -365,8 +378,8 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 				"  YAML null at the unwired slot). Never overwrites existing files.\n\n" +
 				"What it does NOT do:\n" +
 				"  Never writes a .mcp.json brain entry (sync owns that, after the null slot\n" +
-				"  is filled). Never seeds the four entry-point artifacts (coding-playbook,\n" +
-				"  study-playbook, update-playbook, research index). Never creates the brain\n" +
+				"  is filled). Never seeds the brain's entry-point artifacts (playbook,\n" +
+				"  research and kanban guides). Never creates the brain\n" +
 				"  root directory. Never asks for a brain path, token, connection URI, or any\n" +
 				"  other backend-specific value. Never accepts any backend-shaped flag\n" +
 				"  (--brain-path, --vault-path, --brain-root, --brain-token, --brain-url,\n" +
@@ -378,15 +391,21 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 				"                          --brain is omitted). Future integrations land their\n" +
 				"                          own bundled templates and become valid --brain values\n" +
 				"                          without changing this contract.\n" +
+				"  --mode <global|local>   Launch mode for the aide and brain MCP servers.\n" +
+				`                          global — ${launchModeChoices.global.explanation}\n` +
+				`                          local  — pins both servers. aide: ${launchModeChoices.local.explanation}\n` +
+				`                                   brain: ${launchModeChoices.localBrain.explanation}\n` +
+				"                          Omitted: asked in a terminal (global recommended); local when no terminal.\n" +
 				"  --ide <choice>          Select which IDE preview wiring scaffolds. (Not yet\n" +
 				"                          implemented; see todo.aide.)\n\n" +
 				"Post-install follow-up:\n" +
 				"  Brain wiring       — open Claude Code and run /aide; on the first run,\n" +
 				"                       /aide:brain config will fill the unwired slot in\n" +
 				"                       .aide/config/brain.aide, derive the brain MCP entry\n" +
-				"                       through cli/sync, and seed the four entry-point\n" +
+				"                       through cli/sync, and seed the brain's entry-point\n" +
 				"                       artifacts into your brain.\n" +
-				"  Deferred IDE       — re-run: npx @aidemd-mcp/server@latest init --ide <choice>\n" +
+				`  Deferred IDE       — re-run: ${aidePackage.command} init --ide <choice> (global)\n` +
+				`                       or: npx -y ${aidePackage.name}@<version> init --ide <choice> (local)\n` +
 				"  Skipped artifacts  — run /aide:upgrade for guided reconciliation.\n",
 		);
 		process.exit(0);
@@ -402,7 +421,8 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 
 	try {
 		const brain = parseBrain(process.argv.slice(2));
-		const code = await runInit(process.cwd(), undefined, { brain });
+		const mode = parseMode(process.argv.slice(2));
+		const code = await runInit(process.cwd(), undefined, { brain, mode });
 		process.exit(code);
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);

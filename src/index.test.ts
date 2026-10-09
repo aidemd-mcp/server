@@ -20,6 +20,9 @@ vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
 
 // Import the exported function under test after mocks are declared.
 import { routeSubcommand } from "./index.js";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const originalArgv = process.argv;
 
@@ -62,5 +65,38 @@ describe("routeSubcommand", () => {
 		const handled = await routeSubcommand();
 
 		expect(handled).toBe(false);
+	});
+});
+
+describe("remediation names the project's own launcher", () => {
+	const NPX_ONLY_REMEDIATION = /run `npx @aidemd-mcp\/server@latest (sync|init)`/i;
+	const LATEST_LAUNCHER = "@aidemd-mcp/server@latest";
+	const srcRoot = dirname(fileURLToPath(import.meta.url));
+
+	function findOffendingLines(): string[] {
+		const files = (readdirSync(srcRoot, { recursive: true }) as string[])
+			.filter((rel) => rel.endsWith(".ts") && !rel.endsWith(".test.ts"));
+		const offenders: string[] = [];
+		for (const rel of files) {
+			const lines = readFileSync(join(srcRoot, rel), "utf-8").split(/\r?\n/);
+			lines.forEach((line, index) => {
+				const trimmed = line.trimStart();
+				if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return;
+				if (line.includes(LATEST_LAUNCHER)) offenders.push(`${rel}:${index + 1}`);
+			});
+		}
+		return offenders;
+	}
+
+	it("has no non-test, non-comment source line that mentions @aidemd-mcp/server@latest", () => {
+		expect(findOffendingLines()).toEqual([]);
+	});
+
+	it("the guard substring matches a bare usage line", () => {
+		expect("Usage: npx @aidemd-mcp/server@latest sync".includes(LATEST_LAUNCHER)).toBe(true);
+	});
+
+	it("the guard regex matches the old hardcoded remediation literal", () => {
+		expect(NPX_ONLY_REMEDIATION.test("Run `npx @aidemd-mcp/server@latest init` to scaffold it")).toBe(true);
 	});
 });

@@ -103,6 +103,8 @@ If `outdated` from `aide_info` is non-empty, mention it once and continue:
 
 Outdated is informational, not a gate.
 
+If `behind` from `aide_info` is non-null, mention it once: the global aide server is v{installed}, npm has v{latest}; run `npm i -g @aidemd-mcp/server` when convenient. Informational, never a gate.
+
 ### Step 4 — Load methodology + intent tree (parallel)
 
 Now — and only now — run these 8 calls in parallel:

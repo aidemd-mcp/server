@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { join, isAbsolute, dirname } from "node:path";
-import type { FrameworkType, InitResult, InitStep } from "@/types/index.js";
+import type { FrameworkType, InitResult, InitStep, LaunchMode } from "@/types/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import detectFramework from "@/service/install/detectFramework/index.js";
 import resolveBrainHints from "@/service/install/resolveBrainHints/index.js";
@@ -33,11 +33,16 @@ import compareBytes from "./shared/compareBytes/index.js";
  * @param _integration - Integration name selecting which bundled template scaffolds.
  *   Currently only `"obsidian"` is valid; the parameter is accepted for
  *   forward-compatibility and reserved for future integration routing.
+ * @param brainMode - Optional launch mode for the scaffolded brain launcher; omitted means local.
  */
-export async function planBrainCategory(projectRoot: string, _integration: string): Promise<InitStep[]> {
+export async function planBrainCategory(
+	projectRoot: string,
+	_integration: string,
+	brainMode?: LaunchMode,
+): Promise<InitStep[]> {
 	const config = await detectFramework(projectRoot);
 	const mcpConfigPath = join(projectRoot, config.mcpConfigPath);
-	return provisionBrain(projectRoot, mcpConfigPath);
+	return provisionBrain(projectRoot, mcpConfigPath, brainMode);
 }
 
 /**
@@ -53,6 +58,8 @@ export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
 	path: z.string().optional().describe("Custom project root path (defaults to server working directory)"),
 	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
+	aideMode: z.enum(["global", "local"]).optional().describe("Launch mode for the aide MCP entry, after asking the user (global recommended). Omitted means local, pinned to this server's version."),
+	brainMode: z.enum(["global", "local"]).optional().describe("Launch mode for the bundled brain template's launcher, asked by /aide:brain config. Omitted means local."),
 });
 
 /**
@@ -70,11 +77,15 @@ export const InitInput = z.object({
  * @param root - Server working directory (from --root CLI arg or cwd).
  * @param framework - Optional framework override.
  * @param path - Optional project root override (absolute or relative to root).
+ * @param modes - Optional launch modes: `aide` selects the aide MCP entry shape (passed to
+ *   wireMcp), `brain` selects the brain template's launcher (passed to provisionBrain).
+ *   Either omitted means local.
  */
 export default async function init(
 	root: string,
 	framework?: FrameworkType,
 	path?: string,
+	modes: { aide?: LaunchMode; brain?: LaunchMode } = {},
 ): Promise<InitResult> {
 	const projectRoot = path ? (isAbsolute(path) ? path : join(root, path)) : root;
 	const config = await detectFramework(projectRoot, framework);
@@ -88,7 +99,7 @@ export default async function init(
 	const agentSteps = await installAgents(join(projectRoot, config.agentDir));
 	const skillSteps = await installSkills(join(projectRoot, config.skillDir));
 	const aideTreeSteps = await installAideTree(projectRoot);
-	const mcpStep = await wireMcp(join(projectRoot, config.mcpConfigPath));
+	const mcpStep = await wireMcp(join(projectRoot, config.mcpConfigPath), modes.aide);
 
 	// The brain category is always planned. The brain config step is presence-only
 	// (an existing .aide/config/brain.aide is never overwritten), carries the published
@@ -96,7 +107,7 @@ export default async function init(
 	// The brain root is not this layer's concern: the config prose seeds the brain.
 	// brainHints stay interview material for the agent and never feed the plan.
 	const brainMcpPath = join(projectRoot, config.mcpConfigPath);
-	const brainSteps = await provisionBrain(projectRoot, brainMcpPath);
+	const brainSteps = await provisionBrain(projectRoot, brainMcpPath, modes.brain);
 
 	// ── versions.json ────────────────────────────────────────────────────────
 	// Deliver the static versions manifest alongside the methodology docs so

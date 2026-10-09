@@ -23,6 +23,9 @@ vi.mock("./writeMcpEntry/index.js", () => ({
 vi.mock("./renderWarning/index.js", () => ({
 	default: vi.fn(),
 }));
+vi.mock("./resolveLaunchModes/index.js", () => ({
+	default: vi.fn(),
+}));
 vi.mock("@/service/install/detectFramework/index.js", () => ({
 	default: vi.fn(),
 }));
@@ -64,6 +67,7 @@ import { runInit } from "./index.js";
 import { planBrainCategory } from "@/service/install/index.js";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
+import resolveLaunchModes from "./resolveLaunchModes/index.js";
 import detectFramework from "@/service/install/detectFramework/index.js";
 import writeMethodology from "@/service/install/writeMethodology/index.js";
 import installMethodologyDocs from "@/service/install/installMethodologyDocs/index.js";
@@ -80,6 +84,7 @@ import type { InitStep } from "@/types/index.js";
 const mockPlanBrainCategory = vi.mocked(planBrainCategory);
 const mockWriteMcpEntry = vi.mocked(writeMcpEntry);
 const mockRenderWarning = vi.mocked(renderWarning);
+const mockResolveLaunchModes = vi.mocked(resolveLaunchModes);
 const mockDetectFramework = vi.mocked(detectFramework);
 const mockWriteMethodology = vi.mocked(writeMethodology);
 const mockInstallMethodologyDocs = vi.mocked(installMethodologyDocs);
@@ -96,8 +101,8 @@ const mockCompareBytes = vi.mocked(compareBytes);
 // IDE always defers to re-run with --ide. Single source of truth for all tests that
 // assert the deferredCategories argument to renderWarning.
 const DEFERRED_CATEGORIES = [
-	"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the four entry-point artifacts into your brain.",
-	"IDE configuration — re-run: npx @aidemd-mcp/server@latest init --ide <choice>",
+	"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the brain's entry-point artifacts into your brain.",
+	"IDE configuration — re-run: aidemd-mcp init --ide <choice> (global) or npx -y @aidemd-mcp/server@<version> init --ide <choice> (local)",
 ];
 
 // Framework config returned by detectFramework when called with "claude".
@@ -166,6 +171,7 @@ beforeEach(() => {
 		makeBrainScaffoldStep("exists"),
 		makeBrainMcpStep(),
 	]);
+	mockResolveLaunchModes.mockResolvedValue({ aide: "local", brain: "local" });
 	mockWriteMcpEntry.mockResolvedValue({ status: "created", message: "aide MCP server entry" });
 	mockDetectFramework.mockResolvedValue(CLAUDE_CONFIG);
 	mockWriteMethodology.mockResolvedValue(
@@ -793,13 +799,13 @@ describe("6d-i — cold-start happy path, default integration", () => {
 		await runInit(CWD, () => {});
 
 		expect(mockPlanBrainCategory).toHaveBeenCalledTimes(1);
-		expect(mockPlanBrainCategory).toHaveBeenCalledWith(CWD, "obsidian");
+		expect(mockPlanBrainCategory).toHaveBeenCalledWith(CWD, "obsidian", "local");
 	});
 
-	it("writeMcpEntry called with exactly one positional argument: cwd (no brainPath)", async () => {
+	it("writeMcpEntry called with cwd and the resolved aide mode (no brainPath)", async () => {
 		await runInit(CWD, () => {});
 
-		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD);
+		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD, "local");
 	});
 
 	it("renderWarning receives the two-item deferredCategories array", async () => {
@@ -832,7 +838,7 @@ describe("6d-ii — explicit --brain obsidian matches default", () => {
 	it("planBrainCategory receives integration name 'obsidian' when explicitly passed", async () => {
 		await runInit(CWD, () => {}, { brain: "obsidian" });
 
-		expect(mockPlanBrainCategory).toHaveBeenCalledWith(CWD, "obsidian");
+		expect(mockPlanBrainCategory).toHaveBeenCalledWith(CWD, "obsidian", "local");
 	});
 
 	it("brain.aide line contains 'bundled brain template (--brain obsidian default'", async () => {
@@ -843,10 +849,10 @@ describe("6d-ii — explicit --brain obsidian matches default", () => {
 		expect(brainLine).toContain("bundled brain template (--brain obsidian default");
 	});
 
-	it("writeMcpEntry called with exactly cwd (no brainPath)", async () => {
+	it("writeMcpEntry called with cwd and the resolved aide mode (no brainPath)", async () => {
 		await runInit(CWD, () => {}, { brain: "obsidian" });
 
-		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD);
+		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD, "local");
 	});
 });
 
@@ -1094,12 +1100,76 @@ describe("6d-vii — regression guard: brainPath field on options is not forward
 		// exercises the runtime regression guard, not the type-system check.
 		await runInit(CWD, () => {}, { brain: "obsidian", brainPath: "/foo" } as any);
 
-		// writeMcpEntry must have been called with exactly one argument (CWD only).
-		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD);
+		// writeMcpEntry must have been called with CWD and the resolved aide mode only.
+		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD, "local");
 		expect(mockWriteMcpEntry).not.toHaveBeenCalledWith(CWD, "/foo");
 
-		// planBrainCategory must have been called with CWD and the integration name only.
-		expect(mockPlanBrainCategory).toHaveBeenCalledWith(CWD, "obsidian");
+		// planBrainCategory must have been called with CWD, the integration name and the brain mode only.
+		expect(mockPlanBrainCategory).toHaveBeenCalledWith(CWD, "obsidian", "local");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Launch modes — resolveLaunchModes results are threaded to both consumers
+// ---------------------------------------------------------------------------
+describe("launch modes — threaded from resolveLaunchModes", () => {
+	it("passes resolved { aide: global, brain: global } to planBrainCategory and writeMcpEntry", async () => {
+		mockResolveLaunchModes.mockResolvedValue({ aide: "global", brain: "global" });
+
+		await runInit(CWD, () => {});
+
+		expect(mockPlanBrainCategory).toHaveBeenCalledWith(CWD, "obsidian", "global");
+		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD, "global");
+	});
+
+	it("passes each server its own mode when they differ", async () => {
+		mockResolveLaunchModes.mockResolvedValue({ aide: "local", brain: "global" });
+
+		await runInit(CWD, () => {});
+
+		expect(mockPlanBrainCategory).toHaveBeenCalledWith(CWD, "obsidian", "global");
+		expect(mockWriteMcpEntry).toHaveBeenCalledWith(CWD, "local");
+	});
+
+	it("options.mode reaches resolveLaunchModes as flagMode, with cwd and the write function", async () => {
+		const write = () => {};
+
+		await runInit(CWD, write, { mode: "global" });
+
+		expect(mockResolveLaunchModes).toHaveBeenCalledWith(CWD, "global", write);
+	});
+
+	it("flagMode is undefined when options.mode is absent", async () => {
+		await runInit(CWD, () => {});
+
+		expect(mockResolveLaunchModes).toHaveBeenCalledWith(CWD, undefined, expect.any(Function));
+	});
+
+	it("resolves launch modes before planBrainCategory runs", async () => {
+		const order: string[] = [];
+		mockResolveLaunchModes.mockImplementation(async () => {
+			order.push("resolveLaunchModes");
+			return { aide: "local", brain: "local" };
+		});
+		mockPlanBrainCategory.mockImplementation(async () => {
+			order.push("planBrainCategory");
+			return [makeBrainScaffoldStep("exists"), makeBrainMcpStep()];
+		});
+
+		await runInit(CWD, () => {});
+
+		expect(order.indexOf("resolveLaunchModes")).toBeLessThan(order.indexOf("planBrainCategory"));
+	});
+
+	it("the brain scaffold log line no longer says args[3]", async () => {
+		mockPlanBrainCategory.mockResolvedValue([makeBrainScaffoldStep("would-create"), makeBrainMcpStep()]);
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		const brainLine = lines.find((l) => l.includes("brain.aide"))!;
+		expect(brainLine).not.toContain("args[3]");
+		expect(brainLine).toContain("the last args entry is YAML null");
 	});
 });
 

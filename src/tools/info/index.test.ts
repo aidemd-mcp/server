@@ -12,13 +12,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("node:fs");
 vi.mock("@/tools/upgrade/buildVersionsMeta/index.js");
 vi.mock("@/service/buildBrainState/index.js");
+vi.mock("./resolveBehind/index.js", () => ({ default: vi.fn(async () => null) }));
 
 import { readFileSync } from "node:fs";
 import readVersionsManifest, { type VersionsMap } from "@/tools/upgrade/buildVersionsMeta/index.js";
 import buildBrainState from "@/service/buildBrainState/index.js";
+import resolveBehind from "./resolveBehind/index.js";
 import info, { InfoInput } from "./index.js";
-import type { BrainState } from "@/types/index.js";
+import type { BrainState, BehindNotice } from "@/types/index.js";
 
+const mockResolveBehind = resolveBehind as ReturnType<typeof vi.fn>;
 const mockReadFileSync = readFileSync as ReturnType<typeof vi.fn>;
 const mockReadVersionsManifest = readVersionsManifest as ReturnType<typeof vi.fn>;
 const mockBuildBrainState = buildBrainState as ReturnType<typeof vi.fn>;
@@ -82,6 +85,8 @@ beforeEach(() => {
 	});
 	// Default brain state: healthy brain so staleness tests are not affected by brain.
 	mockBuildBrainState.mockResolvedValue(BRAIN_OK);
+	// Default: no behind notice, and the network is never touched.
+	mockResolveBehind.mockResolvedValue(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -475,6 +480,65 @@ describe("info — name field forwarding", () => {
 		const result = await info("/project/root");
 
 		expect(result.brain).not.toHaveProperty("name");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// behind — soft behind-npm notice, independent of outdated and brain.
+// resolveBehind is mocked: these tests never touch the network.
+// ---------------------------------------------------------------------------
+
+describe("info — behind notice", () => {
+	const NOTICE: BehindNotice = { installed: "1.2.3", latest: "1.3.0" };
+
+	it("forwards the resolveBehind notice verbatim in behind", async () => {
+		mockResolveBehind.mockResolvedValue(NOTICE);
+
+		const result = await info("/project/root");
+
+		expect(result.behind).toEqual(NOTICE);
+		expect(mockResolveBehind).toHaveBeenCalledWith("/project/root", "1.2.3");
+	});
+
+	it("returns behind: null when resolveBehind resolves null (offline, non-global or current)", async () => {
+		await expect(info("/project/root")).resolves.toBeDefined();
+		const result = await info("/project/root");
+
+		expect(result.behind).toBeNull();
+	});
+
+	it("behind non-null does not change outdated or brain", async () => {
+		mockResolveBehind.mockResolvedValue(NOTICE);
+		mockBuildBrainState.mockResolvedValue(BRAIN_MCP_DRIFT);
+		mockReadFileSync.mockImplementation((filePath: string) => {
+			if (LOCAL_VERSIONS_PATH_PATTERN.test(filePath)) {
+				return JSON.stringify({ "docs/aide-spec": { sourceCommit: "stale00" } });
+			}
+			return JSON.stringify({ version: "1.2.3" });
+		});
+
+		const result = await info("/project/root");
+
+		expect(result.behind).toEqual(NOTICE);
+		expect(result.outdated).toEqual(["docs/aide-spec", "commands/aide/spec"]);
+		expect(result.brain).toEqual(BRAIN_MCP_DRIFT);
+	});
+
+	it("outdated and a broken brain do not suppress or alter behind", async () => {
+		mockResolveBehind.mockResolvedValue(null);
+		mockBuildBrainState.mockResolvedValue(BRAIN_NO_BRAIN_AIDE);
+		mockReadFileSync.mockImplementation((filePath: string) => {
+			if (LOCAL_VERSIONS_PATH_PATTERN.test(filePath)) {
+				return JSON.stringify({ "docs/aide-spec": { sourceCommit: "stale00" } });
+			}
+			return JSON.stringify({ version: "1.2.3" });
+		});
+
+		const result = await info("/project/root");
+
+		expect(result.behind).toBeNull();
+		expect(result.outdated).toHaveLength(2);
+		expect(result.brain.status).toBe("no-brain-aide");
 	});
 });
 

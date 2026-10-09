@@ -448,7 +448,7 @@ describe("brain — brain-aide-invalid: remediation prose", () => {
 });
 
 describe("brain — no-mcp-entry: remediation prose", () => {
-	it("returns status no-mcp-entry with prose containing npx @aidemd-mcp/server@latest sync", async () => {
+	it("returns status no-mcp-entry with prose naming the launcher-matching sync command", async () => {
 		mockBuildBrainState.mockResolvedValue({
 			status: "no-mcp-entry",
 			name: "obsidian",
@@ -459,7 +459,10 @@ describe("brain — no-mcp-entry: remediation prose", () => {
 
 		expect(result.status).toBe("no-mcp-entry");
 		// Load-bearing phrase: sync is the only recovery command for a missing entry.
-		expect(result.instructions).toContain("npx @aidemd-mcp/server@latest sync");
+		expect(result.instructions).toContain("npx -y @aidemd-mcp/server@<version> sync");
+		expect(result.instructions).toContain("aidemd-mcp sync");
+		expect(result.instructions).toContain("same launcher their project's `aide` MCP entry uses");
+		expect(result.instructions).not.toContain("@latest");
 	});
 
 	it("returns byte-identical instructions for orientation and config on no-mcp-entry branch", async () => {
@@ -494,7 +497,10 @@ describe("brain — mcp-drift: remediation prose", () => {
 
 		expect(result.status).toBe("mcp-drift");
 		// Load-bearing phrases: sync is the recovery command; prose must name drift.
-		expect(result.instructions).toContain("npx @aidemd-mcp/server@latest sync");
+		expect(result.instructions).toContain("npx -y @aidemd-mcp/server@<version> sync");
+		expect(result.instructions).toContain("aidemd-mcp sync");
+		expect(result.instructions).toContain("same launcher their project's `aide` MCP entry uses");
+		expect(result.instructions).not.toContain("@latest");
 		expect(result.instructions.toLowerCase()).toContain("disagree");
 	});
 

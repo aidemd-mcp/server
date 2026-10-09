@@ -62,9 +62,17 @@ Call `aide_info`. Read `brain.status`, `brain.fault` (present only on `brain-aid
 ### Step 2 — CREATE (status `no-brain-aide`)
 
 1. **Ask which backend.** Use `AskUserQuestion`: the bundled default (Obsidian) or another backend. If another, ask which one and how its MCP server is launched.
-2. **Scaffold.** Call `aide_init({ category: "brain" })`. It writes `.aide/config/brain.aide` from the latest bundled template, with YAML null at the unwired path slot of `mcpServerConfig.args`. YAML null is the structural unwired-slot signal; there is no literal-string placeholder.
-3. **Non-Obsidian backend only — adapt the scaffold.** The bundled template is written for Obsidian, seed sections included: its seeds use Obsidian wiki links, the board plugin's frontmatter and trailing settings block, and the Obsidian brain tool names. None of that carries over to another backend, so every seed section needs adapting, not only the generic ones. Read `brainContract` from the summary call, then edit `.aide/config/brain.aide`:
+2. **Ask the launch mode.** Use `AskUserQuestion` with these two options, exactly as worded:
+   - **Global (recommended)** — personal machine, reliable startup; stays on its installed version; one-time `npm i -g`.
+   - **Local** — shared repos, cloud/CI; pinned to one version that /aide:brain config moves forward; flaky cold start.
+
+   The answer is `brainMode`: `"global"` or `"local"`.
+3. **Scaffold.** Call `aide_init({ category: "brain", brainMode })`. It writes `.aide/config/brain.aide` from the latest bundled template, with YAML null at the unwired path slot of `mcpServerConfig.args`. YAML null is the structural unwired-slot signal; there is no literal-string placeholder.
+4. **Non-Obsidian backend only — adapt the scaffold.** The bundled template is written for Obsidian, seed sections included: its seeds use Obsidian wiki links, the board plugin's frontmatter and trailing settings block, and the Obsidian brain tool names. None of that carries over to another backend, so every seed section needs adapting, not only the generic ones. Read `brainContract` from the summary call, then edit `.aide/config/brain.aide`:
    - **Frontmatter launcher.** Rewrite `name` and `mcpServerConfig` (`command`, `args`) for the user's backend. Leave YAML null at the slot the user's brain location fills. Add no other frontmatter field — the parser rejects extras.
+     - **Global mode:** the launcher is the backend's bare command name, never an absolute path. Run that backend's global-install check (for an npm package, `npm ls -g <package> --depth=0`). If it is not installed, offer `npm i -g <package>` and run it only with the user's OK.
+     - **On a decline or a failed install,** write the pinned local form instead (`npx -y <package>@<version>`, through `cmd /c` on Windows) and tell the user.
+     - **Local mode:** write the pinned local form directly.
    - **Live sections** (`role: "live"`). Rewrite each section's body so it fulfills its contract `purpose` for this backend: the backend's own tool names, entry points and wiring flow.
    - **Seed sections** (`role: "seed"`). Walk every one of them, one at a time: show the user the section's marker and purpose, rewrite its link syntax, frontmatter, board format and tool names for the user's backend, and confirm with the user before moving on.
    - Keep every marker line byte-identical and every section in place. Only the bytes between a section's markers change.
@@ -123,11 +131,13 @@ Get the backend's config prose, then execute it verbatim:
 
 Forward `$ARGUMENTS` opaquely to that prose — this command does not parse it. The prose owns everything from here: what `$ARGUMENTS` means for this backend, asking the user for the brain location (`AskUserQuestion` plus `aide_info.brain.hints` when appropriate), landing the resolved value into the YAML-null slot, running sync via the Bash command recovered from `.mcp.json["mcpServers"]["aide"]`, seeding each seed section in the published contract (skip-on-exists), and emitting the restart message.
 
+The prose also owns the brain launcher before sync runs: the brain's global-install check (and its install offer) for a global launcher, and moving a local launcher's pin forward. Do not check, install or re-pin the brain package yourself.
+
 `no-mcp-entry` covers both unwired args (YAML null at the path slot) and unsynced args (a string at the path slot never written to `.mcp.json`). Only the prose's first step tells you which applies.
 
 **Anti-patterns — each one means you have skipped or short-circuited the flow:**
 
-- Telling the user to run `npx @aidemd-mcp/server@latest sync` themselves. Sync runs via your own Bash tool, recovered from `.mcp.json["mcpServers"]["aide"]` (`command` + `args` + `"sync"` appended). The user invoked `/aide:brain config` expecting it to complete the wiring, not to hand them homework.
+- Telling the user to run sync themselves. Sync runs via your own Bash tool, recovered from `.mcp.json["mcpServers"]["aide"]` (`command` + `args` + `"sync"` appended). The user invoked `/aide:brain config` expecting it to complete the wiring, not to hand them homework.
 - Concluding `brain.aide` is wired or unwired without quoting the actual bytes at the path slot. The prose's first step reads and quotes that value — you cannot quote what you did not read.
 - Treating `brain.status` as a runbook, or acting on `aide_brain`'s remediation prose as if it were the config section.
 - Listing, restating or inventing the brain config's sections instead of reading `brainContract` / `brainRepair`.
@@ -145,7 +155,7 @@ If the `aide_init({ category: "brain" })` call in Step 2 throws or the scaffold 
 
 > Something went wrong scaffolding `.aide/config/brain.aide`: `<error message>`.
 >
-> Run `npx @aidemd-mcp/server@latest init` in this project's terminal to retry the setup with full per-file logging, then restart Claude Code and re-run `/aide`.
+> Run `aidemd-mcp init` when the project's `aide` MCP entry runs the globally installed `aidemd-mcp`, or `npx -y @aidemd-mcp/server@<version> init` with the version that entry pins when it runs through npx, in this project's terminal to retry the setup with full per-file logging, then restart Claude Code and re-run `/aide`.
 
 Sync and brain-seeding failures inside Step 6 are owned by the config prose and its own error recovery.
 

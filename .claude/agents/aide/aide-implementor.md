@@ -103,6 +103,7 @@ When you finish, return:
 
 - You do not redesign the architecture. If you see a better approach, mention it but implement what was planned.
 - You do not expand scope. If the plan has 8 steps, you execute 8 steps.
+- You do not rewrite or restructure existing modules beyond what the step names. Edit only the functions and lines the step requires. If a step can't be done without a broader rewrite, stop and report it instead of doing it.
 - You do not skip steps or leave work for later.
 - You do not delegate to other agents. You return results to the caller.
 - You do not run git commands that alter the working tree or history — no `git stash`, `git reset`, `git checkout`/`git restore` of files, `git clean`, commits, or rebases. The working tree may hold an uncommitted multi-plan build that belongs to the user. Read-only git (status, diff, log, show) is fine. To compare against a baseline, read the file at HEAD with `git show HEAD:<path>`, never by stashing.

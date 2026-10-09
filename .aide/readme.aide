@@ -18,9 +18,9 @@ outcomes:
   desired:
     - A developer on any supported MCP client (Claude Code, Claude Desktop,
       Cursor, VS Code / Copilot, Windsurf) finds a copy-pasteable config
-      block for their specific client, with the correct JSON root key, the
-      correct config file path, and @latest version pinning — no translation
-      from another client's example required.
+      block for their specific client, with the correct JSON root key and the
+      correct config file path — no translation from another client's example
+      required.
     - The tools section documents every tool with full parameter lists in
       the canonical MCP README format (H3 per tool, imperative description,
       bulleted Inputs with name/type/optional markers), so a developer
@@ -36,6 +36,11 @@ outcomes:
     - A post-install "what happens next" block gives the developer a
       concrete first action to take inside their agent, closing the gap
       between install and first value.
+    - Every client's section offers the same two launch modes, each with a
+      one-line when-to-pick — a global install recommended for a personal
+      machine, and a local launch pinned to an exact version for shared repos
+      and cloud/CI. A developer on any client sees the same choice framed the
+      same way.
   undesired:
     - "A config block that shows one client's format and expects users of
       other clients to translate — the #1 documented friction source in
@@ -48,9 +53,10 @@ outcomes:
       to that point, not to replace it.
     - Content hidden inside details/summary tags that renders on GitHub
       but is invisible or broken on the npm package page.
-    - A config block using a bare package name without @latest, which
-      silently serves a stale cached version to users who have previously
-      installed any version.
+    - A config block that launches through a floating `@latest` tag or an
+      unpinned package name, so the running version shifts underneath the
+      user and destabilizes their setup. Equally wrong is one client's
+      section offering a launch mode or pin the other clients' sections omit.
     - "A PATH-troubleshooting gap: omitting the nvm/Homebrew PATH failure
       mode for Claude Desktop, which is the single most common MCP install
       failure and silently loses users who blame themselves and give up."
@@ -124,20 +130,21 @@ order finding).
 footnote.** Use Pattern A from the conventions research: one H3 per
 client under the Installation H2, each with its own copy-pasteable JSON
 block showing the correct root key, the correct config file path, and
-`@latest` version pinning. The clients to cover are Claude Code (CLI
+the same two launch modes. The clients to cover are Claude Code (CLI
 command and .mcp.json), Claude Desktop (Mac and Windows paths), Cursor,
 VS Code / Copilot (noting the `"servers"` root key difference), and
 Windsurf. This is the largest section of the README and the most visited
 — every character must be copy-pasteable without modification
 (mcp-readme-config-blocks research, multi-client presentation finding).
 
-**Pin to `@latest` in all config blocks.** Use `npx -y
-@aidemd-mcp/server@latest` rather than a bare package name. The bare name
-uses a locally cached version if one exists; `@latest` forces a fresh
-resolution. This is the convention in community MCP servers and
-communicates intent explicitly. Users who want reproducibility can pin in
-their own config (mcp-readme-config-blocks research, version pinning
-finding).
+**Offer two launch modes in every client section, both version-stable.**
+Recommend a one-time global install (`npm i -g @aidemd-mcp/server`, then
+the bare `aidemd-mcp` command) for a personal machine, and a local launch
+pinned to an exact version (`npx -y @aidemd-mcp/server@<version>`) for
+shared repos and cloud/CI, each with a one-line when-to-pick. Never use
+`@latest`: a floating tag shifts the running version underneath the user
+and destabilizes their setup (user decision 2026-10-09, overriding the
+config-blocks research's `@latest` recommendation).
 
 **Include the `-y` flag in npx args.** All official MCP server READMEs
 use `npx -y` to auto-confirm the package install prompt. Omitting `-y`
@@ -210,18 +217,22 @@ A per-client config block that eliminates translation friction:
 
 > ### Claude Code
 >
+> **Global** — recommended on your own machine. Install once:
+>
 > ```bash
-> claude mcp add aide npx -- -y @aidemd-mcp/server@latest
+> npm i -g @aidemd-mcp/server
+> claude mcp add aide aidemd-mcp
 > ```
 >
-> Or add to your project's `.mcp.json`:
+> **Local, pinned** — for shared repos and cloud/CI. Add to your
+> project's `.mcp.json`:
 >
 > ```json
 > {
 >   "mcpServers": {
 >     "aide": {
 >       "command": "npx",
->       "args": ["-y", "@aidemd-mcp/server@latest"]
+>       "args": ["-y", "@aidemd-mcp/server@0.9.0"]
 >     }
 >   }
 > }
@@ -229,14 +240,27 @@ A per-client config block that eliminates translation friction:
 >
 > ### VS Code / Copilot
 >
-> Add to `.vscode/mcp.json`:
+> **Global** — recommended on your own machine. After
+> `npm i -g @aidemd-mcp/server`, add to `.vscode/mcp.json`:
+>
+> ```json
+> {
+>   "servers": {
+>     "aide": {
+>       "command": "aidemd-mcp"
+>     }
+>   }
+> }
+> ```
+>
+> **Local, pinned** — for shared repos and cloud/CI:
 >
 > ```json
 > {
 >   "servers": {
 >     "aide": {
 >       "command": "npx",
->       "args": ["-y", "@aidemd-mcp/server@latest"]
+>       "args": ["-y", "@aidemd-mcp/server@0.9.0"]
 >     }
 >   }
 > }
@@ -334,7 +358,7 @@ inaccessible on one of the two primary surfaces the README serves.
 ## References
 
 - `research/mcp-readme/mcp-readme-conventions` -- Canonical section order (title, badges, features, install, tools, dev, license) and the Pattern A multi-client presentation finding that drives the per-client config block strategy.
-- `research/mcp-readme/mcp-readme-config-blocks` -- The `mcpServers` vs `"servers"` root key difference, `@latest` version pinning recommendation, PATH troubleshooting requirement for Claude Desktop, and the restart-after-config-change requirement.
+- `research/mcp-readme/mcp-readme-config-blocks` -- The `mcpServers` vs `"servers"` root key difference, PATH troubleshooting requirement for Claude Desktop, and the restart-after-config-change requirement. Its `@latest` version-pinning recommendation is superseded by the user's 2026-10-09 decision (global install plus exact-version local pin, no `@latest`).
 - `research/mcp-readme/mcp-readme-tool-documentation` -- The canonical tool documentation format (H3 per tool, imperative description, bulleted Inputs), the full-documentation recommendation for servers with fewer than 10 tools, and the tool annotations pattern.
 - `research/mcp-readme/mcp-readme-npm-badges` -- Badge placement convention (below H1, before description), recommended badge stack (version + license minimum), npm rendering constraints (no details/summary, absolute URLs required, callout degradation acceptable).
 - `research/aidemd-dev/install-cta-mechanics` -- The MCP install friction map (config location confusion, reload requirement, PATH inheritance failure, cross-client ambiguity), the post-install "try it" block pattern from Stripe/shadcn precedent, and the v1 scope note confirming Claude Code as primary target.

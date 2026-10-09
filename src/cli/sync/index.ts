@@ -1,5 +1,6 @@
 import parseBrainAide, { interpolateArgs } from "@/service/parseBrainAide/index.js";
 import writeMcpEntry from "@/cli/shared/writeMcpEntry/index.js";
+import describeAideCommand from "@/service/install/shared/describeAideCommand/index.js";
 
 /** Type guard that narrows `(string | null)[]` to `string[]` after the null-refusal precondition has verified every element is non-null. */
 function isAllStrings(args: (string | null)[]): args is string[] {
@@ -43,7 +44,9 @@ export async function runSync(
 
 	if (result.kind === "missing") {
 		writeErr(
-			"No `.aide/config/brain.aide` found. Run `npx @aidemd-mcp/server@latest init` to scaffold it, or create the file by hand.",
+			"No `.aide/config/brain.aide` found. Run init with the same launcher your project's `aide` MCP entry uses — " +
+				describeAideCommand("init") +
+				" — to scaffold it, or create the file by hand.",
 		);
 		return 1;
 	}

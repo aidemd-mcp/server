@@ -5,7 +5,7 @@ description: "Cold-start npx entry point that drives the install service end-to-
 intent: >
   cli/init is the install consumer for users at a fresh terminal who
   have not yet started an agent session. It accepts a brain-integration
-  selector, drives the shared install service to completion, applies
+  selector, asks each MCP server's launch mode, drives the shared install service to completion, applies
   every plan the service returns, and surfaces the follow-up surfaces
   the consumer must run later for any category the cold context cannot
   finish. Because no agent is present to interview the user, cli/init
@@ -13,11 +13,13 @@ intent: >
   cannot resolve is deferred, named, and routed onward.
 outcomes:
   desired:
-    - A single npx invocation takes a cold project to AIDE-ready end-to-end with no Claude Code session involved. The brain-integration selector is the only knob the consumer accepts; running npx is itself the opt-in.
+    - A single npx invocation takes a cold project to AIDE-ready end-to-end with no Claude Code session involved. Its only inputs are the brain-integration selector and each MCP server's global-or-local launch mode, asked with global recommended and each mode explained in one line.
     - Every category whose plan the cold context can apply is applied; categories that cannot finish without a live agent or backend-specific input are deferred without prompting. The consumer never invents answers the install service has not authorized.
+    - Choosing global for a server whose package is not installed globally offers that install and runs it only with the user's OK, before that server is wired.
     - On exit the consumer surfaces, per deferred or skipped category, the named follow-up surface the user must invoke next. The user finishes a cold install knowing exactly what command picks up where the terminal stopped.
   undesired:
     - The consumer prompts for backend-specific values (paths, tokens, connection URIs) at install time. Cold-terminal context has no agent to interview the user; any such prompt is a category that should have deferred.
     - A category the install service marked deferred is silently dropped instead of surfaced as a follow-up. The user finishes the install believing it completed and discovers later that an unfinished step was never named.
+    - Wiring a global entry before confirming its package is installed globally, installing a package without the user's OK, or writing a path specific to one machine into the launcher config.
     - The consumer mutates host files the install service did not return as a plan step — sneaking writes in to "save the user a command" rather than honoring the service's plan-as-contract.
 ---

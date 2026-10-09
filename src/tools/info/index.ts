@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import buildBrainState from "@/service/buildBrainState/index.js";
+import resolveBehind from "./resolveBehind/index.js";
 import type { InfoResult } from "@/types/index.js";
 
 export const InfoInput = z.object({});
@@ -29,7 +30,8 @@ function readServerVersion(): string {
 /**
  * Passive boot-time reporter called by the orchestrator at startup.
  *
- * Returns two independent top-level fields, each covering a distinct concern:
+ * Returns four top-level fields (`serverVersion`, `outdated`, `behind`, `brain`),
+ * each covering a distinct concern:
  *
  * - `serverVersion` + `outdated`: staleness of the host's installed AIDE
  *   artifacts against the canonical manifest shipped with this npm package.
@@ -37,29 +39,35 @@ function readServerVersion(): string {
  *   stale. Missing `.aide/versions.json` (pre-version-tracking install)
  *   collapses silently to an empty `outdated` array.
  *
+ * - `behind`: staleness of the running server binary against the latest
+ *   published npm version. Soft notice independent of `outdated`, never a
+ *   gate; `null` when the server is not globally launched, the check is
+ *   offline or fails, or the server is current.
+ *
  * - `brain`: precondition state of the host's brain.
  *   Hard gate — the orchestrator must halt and direct the user to run `/aide`
  *   when `brain.status` is anything other than `"ok"`; the inline-recovery
  *   flow detects the broken state and prompts the user to resolve it.
  *
- * The two concerns are structurally independent: neither depends on the
- * other, and the orchestrator applies a different policy to each field.
+ * The concerns are structurally independent: none depends on the others,
+ * and the orchestrator applies a different policy to each field.
  */
 export default async function info(root: string): Promise<InfoResult> {
 	// Step 1 — read the server's own package version (sync, always fast).
 	const serverVersion = readServerVersion();
 
-	// Steps 2 and 3 — staleness check and brain-state resolution are
-	// independent; run them in parallel so neither blocks the other.
-	// (Both involve at least one async I/O read, so parallel scheduling
-	// is a meaningful latency improvement, not just cosmetic.)
-	const [outdated, brain] = await Promise.all([
+	// Steps 2, 3 and 4 — staleness check, behind-npm check and brain-state
+	// resolution are independent; run them in parallel so none blocks the
+	// others. (Each involves at least one async I/O read, so parallel
+	// scheduling is a meaningful latency improvement, not just cosmetic.)
+	const [outdated, behind, brain] = await Promise.all([
 		resolveOutdated(root),
+		resolveBehind(root, serverVersion),
 		buildBrainState(root),
 	]);
 
-	// Step 4 — compose the two independent fields into the unified result.
-	return { serverVersion, outdated, brain };
+	// Step 5 — compose the independent fields into the unified result.
+	return { serverVersion, outdated, behind, brain };
 }
 
 /**

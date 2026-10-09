@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import brainContract from "@/service/brainContract/index.js";
 import parseBrainAide, { parseBrainAideFromString, interpolateArgs } from "@/service/parseBrainAide/index.js";
-import type { BrainAideConfig } from "@/types/index.js";
+import type { BrainAideConfig, LaunchMode } from "@/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Module-scope mock for node:os — each test that needs platform branching
@@ -38,13 +38,13 @@ afterEach(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getTemplate(mockedPlatform?: "win32" | "posix"): Promise<string> {
+async function getTemplate(mockedPlatform?: "win32" | "posix", mode?: LaunchMode): Promise<string> {
 	const { platform } = await import("node:os");
 	if (mockedPlatform !== undefined) {
 		vi.mocked(platform).mockReturnValue(mockedPlatform === "win32" ? "win32" : "linux");
 	}
 	const { default: obsidianBrainAideTemplate } = await import("./index.js");
-	return obsidianBrainAideTemplate();
+	return obsidianBrainAideTemplate(mode);
 }
 
 async function writeBrainAide(root: string, content: string): Promise<void> {
@@ -57,24 +57,24 @@ async function writeBrainAide(root: string, content: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 describe("path slot is YAML null in every emission", () => {
-	it("on POSIX: parsed args at index 1 is exactly null", async () => {
+	it("on POSIX: parsed args at index 2 is exactly null", async () => {
 		const content = await getTemplate("posix");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.mcpServerConfig.args[1]).toBeNull();
+		expect(result.mcpServerConfig.args[2]).toBeNull();
 	});
 
-	it("on win32: parsed args at index 3 is exactly null", async () => {
+	it("on win32: parsed args at index 4 is exactly null", async () => {
 		const content = await getTemplate("win32");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.mcpServerConfig.args[3]).toBeNull();
+		expect(result.mcpServerConfig.args[4]).toBeNull();
 	});
 
 	it("the literal token '<BRAIN_PATH>' does not appear anywhere in the template output", async () => {
@@ -95,8 +95,8 @@ describe("path slot is YAML null in every emission", () => {
 		const brainAideConfig: BrainAideConfig = { name: result.name, mcpServerConfig: result.mcpServerConfig };
 		const interpolated = interpolateArgs(brainAideConfig);
 
-		// null at args[1] for POSIX — must be null, not "" and not absent
-		expect(interpolated[1]).toBeNull();
+		// null at args[2] for POSIX — must be null, not "" and not absent
+		expect(interpolated[2]).toBeNull();
 		expect(interpolated).toHaveLength(result.mcpServerConfig.args.length);
 	});
 });
@@ -786,14 +786,14 @@ describe("platform branching — Windows", () => {
 		expect(result.mcpServerConfig.command).toBe("cmd");
 	});
 
-	it("args deep-equal ['/c', 'npx', '@bitbonsai/mcpvault', null] on win32", async () => {
+	it("args deep-equal ['/c', 'npx', '-y', '@bitbonsai/mcpvault@0.16.0', null] on win32", async () => {
 		const content = await getTemplate("win32");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.mcpServerConfig.args).toEqual(["/c", "npx", "@bitbonsai/mcpvault", null]);
+		expect(result.mcpServerConfig.args).toEqual(["/c", "npx", "-y", "@bitbonsai/mcpvault@0.16.0", null]);
 	});
 });
 
@@ -812,22 +812,22 @@ describe("platform branching — POSIX", () => {
 		expect(result.mcpServerConfig.command).toBe("npx");
 	});
 
-	it("args deep-equal ['@bitbonsai/mcpvault', null] on linux", async () => {
+	it("args deep-equal ['-y', '@bitbonsai/mcpvault@0.16.0', null] on linux", async () => {
 		const content = await getTemplate("posix");
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.mcpServerConfig.args).toEqual(["@bitbonsai/mcpvault", null]);
+		expect(result.mcpServerConfig.args).toEqual(["-y", "@bitbonsai/mcpvault@0.16.0", null]);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Orientation body uses storage-agnostic vocabulary and lists all four entry-point artifacts
+// Orientation body uses storage-agnostic vocabulary and lists its entry-point artifacts
 // ---------------------------------------------------------------------------
 
-describe("orientation body uses storage-agnostic vocabulary and lists all four entry-point artifacts", () => {
+describe("orientation body uses storage-agnostic vocabulary and lists its entry-point artifacts", () => {
 	it("orientation is non-empty", async () => {
 		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
@@ -1425,5 +1425,83 @@ describe("config section seeds frontmatter-bearing sections correctly", () => {
 		const result = await parseTemplate();
 
 		for (const entry of brainContract) if (entry.role === "seed") expect(result.config).not.toContain(entry.seedPath);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Launch mode — global launcher, pinned local launcher, config-prose agreement
+// ---------------------------------------------------------------------------
+
+/** Parses a template emission and returns its ok result, failing the test if it does not parse. */
+function parseOk(content: string) {
+	const result = parseBrainAideFromString(content);
+	if (result.kind !== "ok") throw new Error(`template did not parse: ${result.kind}`);
+	return result;
+}
+
+describe("launch mode — global launcher", () => {
+	it("on POSIX: command is mcpvault and args deep-equal [null]", async () => {
+		const result = parseOk(await getTemplate("posix", "global"));
+
+		expect(result.mcpServerConfig.command).toBe("mcpvault");
+		expect(result.mcpServerConfig.args).toEqual([null]);
+	});
+
+	it("on win32: command is the bare mcpvault (probe outcome A, brief #20) and args deep-equal [null]", async () => {
+		const result = parseOk(await getTemplate("win32", "global"));
+
+		expect(result.mcpServerConfig.command).toBe("mcpvault");
+		expect(result.mcpServerConfig.args).toEqual([null]);
+	});
+
+	it.each(["posix", "win32"] as const)("on %s: still parses ok and the last args entry is null", async (platformName) => {
+		const result = parseOk(await getTemplate(platformName, "global"));
+
+		const { args } = result.mcpServerConfig;
+		expect(args[args.length - 1]).toBeNull();
+	});
+});
+
+describe("launch mode — local launcher", () => {
+	it.each(["posix", "win32"] as const)("on %s: args contain -y and never @latest", async (platformName) => {
+		const result = parseOk(await getTemplate(platformName, "local"));
+
+		expect(result.mcpServerConfig.args).toContain("-y");
+		for (const arg of result.mcpServerConfig.args) expect(arg ?? "").not.toContain("@latest");
+	});
+
+	it.each(["posix", "win32"] as const)("on %s: an omitted mode is byte-identical to local", async (platformName) => {
+		expect(await getTemplate(platformName)).toBe(await getTemplate(platformName, "local"));
+	});
+});
+
+describe("config section prose for the brain launch mode", () => {
+	it("names the global-install check, the install offer, the local fallback and the absolute-path rule", async () => {
+		const result = parseOk(await getTemplate());
+
+		expect(result.config).toContain("npm ls -g @bitbonsai/mcpvault --depth=0");
+		expect(result.config).toContain("npm i -g @bitbonsai/mcpvault");
+		expect(result.config).toContain("Use local launch instead");
+		expect(result.config).toContain("A global launcher given by absolute path is valid");
+	});
+
+	it("carries the pin-forward offer with the pinned spec in both insertions", async () => {
+		const result = parseOk(await getTemplate());
+
+		expect(result.config).toContain("offer with `AskUserQuestion` to update it to `-y @bitbonsai/mcpvault@0.16.0`");
+		expect(result.config).toContain("offer to move an unpinned, `@latest` or older pin to `@bitbonsai/mcpvault@0.16.0`");
+	});
+
+	it("every version in the prose equals the launcher's version", async () => {
+		const result = parseOk(await getTemplate("posix", "local"));
+
+		const launcherSpec = result.mcpServerConfig.args.find((arg) => arg?.startsWith("@bitbonsai/mcpvault@"));
+		const launcherVersion = launcherSpec?.split("@").pop();
+		expect(launcherVersion).toMatch(/^\d+\.\d+\.\d+$/);
+
+		const proseVersions = [...result.config.matchAll(/@bitbonsai\/mcpvault@(\d+\.\d+\.\d+)/g)].map((match) => match[1]);
+		const olderThan = [...result.config.matchAll(/older than `(\d+\.\d+\.\d+)`/g)].map((match) => match[1]);
+		expect(proseVersions.length).toBeGreaterThanOrEqual(4);
+		for (const version of [...proseVersions, ...olderThan]) expect(version).toBe(launcherVersion);
 	});
 });

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { InitStep, McpPrescription } from "@/types/index.js";
+import type { InitStep, LaunchMode, McpPrescription } from "@/types/index.js";
 import parseBrainAide, { interpolateArgs, parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import buildBrainAideStep from "./buildBrainAideStep/index.js";
 
@@ -180,7 +180,7 @@ async function buildBrainMcpStep(
  *
  * YAML-null contract: the bundled template emits null at unwired slots; the null propagates
  * verbatim through parseBrainAide and interpolateArgs into the MCP step's prescription;
- * sync (downstream) refuses to write null-bearing args. The four entry-point artifacts
+ * sync (downstream) refuses to write null-bearing args. The brain's entry-point artifacts
  * (playbook, study-playbook, update-playbook, research) and the brain root directory are NOT
  * this module's responsibility — they are seeded by the integration's `aide-config` body
  * section prose at first `/aide:brain config` via the brain's MCP write tool, after the
@@ -188,12 +188,14 @@ async function buildBrainMcpStep(
  *
  * @param projectRoot - Host project root (where `.aide/config/brain.aide` lives).
  * @param mcpConfigPath - Absolute path to the host's `.mcp.json`.
+ * @param brainMode - Optional launch mode for the scaffolded brain launcher; omitted means local.
  */
 export default async function provisionBrain(
 	projectRoot: string,
 	mcpConfigPath: string,
+	brainMode?: LaunchMode,
 ): Promise<InitStep[]> {
-	const brainAideStep = await buildBrainAideStep(projectRoot);
+	const brainAideStep = await buildBrainAideStep(projectRoot, brainMode);
 	const mcpStep = await buildBrainMcpStep(projectRoot, brainAideStep, mcpConfigPath);
 	return [brainAideStep, mcpStep];
 }

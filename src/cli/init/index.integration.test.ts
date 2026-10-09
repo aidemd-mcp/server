@@ -31,6 +31,9 @@ import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runInit } from "./index.js";
+import { mcpEntry } from "@/service/install/wireMcp/index.js";
+import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
+import aidePackage from "@/service/install/shared/aidePackage/index.js";
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -38,14 +41,27 @@ import { runInit } from "./index.js";
 
 let tempDir: string;
 
+// Force the non-interactive path so the real resolveLaunchModes can never
+// prompt a real terminal, wherever the suite is launched from.
+const ttyOwners = [process.stdin, process.stdout] as const;
+const savedTty = ttyOwners.map((stream) => Object.getOwnPropertyDescriptor(stream, "isTTY"));
+
 beforeEach(async () => {
 	tempDir = await mkdtemp(join(tmpdir(), "aide-init-integration-"));
 	// Re-arm process.exit mock so each test starts fresh.
 	mockExit.mockClear();
+	for (const stream of ttyOwners) {
+		Object.defineProperty(stream, "isTTY", { value: false, configurable: true, writable: true });
+	}
 });
 
 afterEach(async () => {
 	await rm(tempDir, { recursive: true, force: true });
+	ttyOwners.forEach((stream, i) => {
+		const saved = savedTty[i];
+		if (saved) Object.defineProperty(stream, "isTTY", saved);
+		else delete (stream as { isTTY?: boolean }).isTTY;
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -363,5 +379,113 @@ describe("7c-vii — unknown --brain value causes process.exit(1) before any fil
 			mockExit.mockClear();
 			vi.resetModules();
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 7c-viii. --mode local on a cold directory
+// ---------------------------------------------------------------------------
+
+describe("7c-viii — { mode: 'local' } on a cold directory", () => {
+	it("writes the local mcpEntry and a local brain template", async () => {
+		const code = await runInit(tempDir, () => {}, { mode: "local" });
+
+		expect(code).toBe(0);
+
+		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8")) as {
+			mcpServers: Record<string, unknown>;
+		};
+		expect(mcp.mcpServers.aide).toEqual(mcpEntry("local"));
+
+		const brainAide = await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8");
+		expect(brainAide).toContain("@bitbonsai/mcpvault@");
+		expect(brainAide).not.toContain("command: mcpvault");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 7c-ix. --mode global without a terminal
+// ---------------------------------------------------------------------------
+
+describe("7c-ix — { mode: 'global' } without a terminal", () => {
+	it("writes the global aide entry when the package is installed globally, else the local entry plus the 'no terminal' line", async () => {
+		// Real checkGlobalPackage: the branch depends on this machine, so assert
+		// whichever branch it reports. Nothing is mocked across the boundary.
+		const installed = await checkGlobalPackage(aidePackage.name);
+		const { lines, write } = makeCapture();
+
+		const code = await runInit(tempDir, write, { mode: "global" });
+
+		expect(code).toBe(0);
+
+		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8")) as {
+			mcpServers: Record<string, unknown>;
+		};
+		const noTerminalLine = `aide MCP server: ${aidePackage.name} is not installed globally and there is no terminal to ask — using local launch (npx).`;
+
+		if (installed) {
+			expect(mcp.mcpServers.aide).toEqual(mcpEntry("global"));
+			expect(lines).not.toContain(noTerminalLine);
+		} else {
+			expect(mcp.mcpServers.aide).toEqual(mcpEntry("local"));
+			expect(lines).toContain(noTerminalLine);
+		}
+
+		// The brain template is global regardless: no package check runs for the brain.
+		const brainAide = await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8");
+		expect(brainAide).toContain("command: mcpvault");
+	}, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// 7c-x. Unknown --mode value fails fast
+// ---------------------------------------------------------------------------
+
+describe("7c-x — unknown --mode value causes process.exit(1) before any file is written", () => {
+	it("--mode remote exits 1, stderr names the value and global/local, no file written", async () => {
+		const stderrChunks: string[] = [];
+		const originalStderrWrite = process.stderr.write.bind(process.stderr);
+		process.stderr.write = ((chunk: string | Uint8Array) => {
+			stderrChunks.push(String(chunk));
+			return true;
+		}) as unknown as typeof process.stderr.write;
+
+		const originalArgv = process.argv;
+		process.argv = ["node", "index.js", "--mode", "remote"];
+
+		try {
+			vi.resetModules();
+			await import("./index.js");
+
+			const stderrJoined = stderrChunks.join("");
+
+			expect(process.exit).toHaveBeenCalledWith(1);
+			expect(stderrJoined).toContain("remote");
+			expect(stderrJoined).toContain("global");
+			expect(stderrJoined).toContain("local");
+
+			await expect(readFile(join(tempDir, ".mcp.json"), "utf-8")).rejects.toThrow();
+			await expect(readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8")).rejects.toThrow();
+		} finally {
+			process.argv = originalArgv;
+			process.stderr.write = originalStderrWrite;
+			mockExit.mockClear();
+			vi.resetModules();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 7c-xi. An existing global aide entry survives init
+// ---------------------------------------------------------------------------
+
+describe("7c-xi — an existing global aide entry survives init untouched", () => {
+	it.each([undefined, "local", "global"] as const)("mode %s: .mcp.json bytes are identical after runInit", async (mode) => {
+		const raw = JSON.stringify({ mcpServers: { aide: mcpEntry("global") } }, null, 2) + "\n";
+		await writeFile(join(tempDir, ".mcp.json"), raw, "utf-8");
+
+		await runInit(tempDir, () => {}, mode ? { mode } : {});
+
+		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);
 	});
 });

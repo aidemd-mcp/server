@@ -29,11 +29,22 @@ Learn more at [aidemd.dev](https://aidemd.dev).
 
 ### Quick Start (Claude Code)
 
-The fastest path is a single npx command that wires everything up automatically:
+Pick a launch mode — init asks, recommends global, and never switches an existing entry.
+
+**Global** — pick it on a personal machine: reliable startup, stays on the installed version.
 
 ```bash
-npx @aidemd-mcp/server@latest init
+npm i -g @aidemd-mcp/server
+aidemd-mcp init
 ```
+
+**Local** — pick it for shared repos and cloud/CI: pinned to one exact version that `/aide:upgrade` moves forward.
+
+```bash
+npx -y @aidemd-mcp/server@0.9.0 init
+```
+
+`--mode global|local` skips the question (non-interactive runs default to local).
 
 This command:
 
@@ -56,8 +67,16 @@ After running, open Claude Code and run `/aide` — the orchestrator will prompt
 
 Run this after editing `.aide/config/brain.aide` — for example, when you update the vault path argument in `mcpServerConfig.args` or rename the brain in the `name` field:
 
+Global:
+
 ```bash
-npx @aidemd-mcp/server@latest sync
+aidemd-mcp sync
+```
+
+Local (use the version your `aide` entry pins):
+
+```bash
+npx -y @aidemd-mcp/server@0.9.0 sync
 ```
 
 `sync` reads `.aide/config/brain.aide`, copies `mcpServerConfig` verbatim into `.mcp.json` under the fixed `brain` key, and writes the `name` field as the server label. Every other key in `mcpServers` (including your `aide` entry and any personal MCP integrations) is left byte-identical. If a legacy `obsidian` key is present it is removed in the same write. The command is idempotent — running it twice produces the same `.mcp.json` bytes, and the second invocation prints `already in sync` without touching the file. Exit code is `0` on success (including the no-change case), `1` on a missing or malformed `brain.aide` or invalid `.mcp.json`, and `2` on `--help`.
@@ -78,8 +97,29 @@ If you use a client other than Claude Code, or prefer to configure manually, add
 
 #### Claude Code
 
+**Global** — recommended on your own machine. Install once, then register:
+
 ```bash
-claude mcp add aide npx -- -y @aidemd-mcp/server@latest
+npm i -g @aidemd-mcp/server
+claude mcp add aide -- aidemd-mcp
+```
+
+Or add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "aide": {
+      "command": "aidemd-mcp"
+    }
+  }
+}
+```
+
+**Local, pinned** — for shared repos and cloud/CI:
+
+```bash
+claude mcp add aide -- npx -y @aidemd-mcp/server@0.9.0
 ```
 
 Or add to your project's `.mcp.json`:
@@ -89,7 +129,7 @@ Or add to your project's `.mcp.json`:
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@latest"]
+      "args": ["-y", "@aidemd-mcp/server@0.9.0"]
     }
   }
 }
@@ -105,12 +145,26 @@ Config file locations:
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
+**Global** — recommended on your own machine (after `npm i -g @aidemd-mcp/server`):
+
+```json
+{
+  "mcpServers": {
+    "aide": {
+      "command": "aidemd-mcp"
+    }
+  }
+}
+```
+
+**Local, pinned** — for shared repos and cloud/CI:
+
 ```json
 {
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@latest"]
+      "args": ["-y", "@aidemd-mcp/server@0.9.0"]
     }
   }
 }
@@ -125,12 +179,26 @@ Claude Desktop requires a full quit-and-reopen after any config change.
 
 Add to `~/.cursor/mcp.json`:
 
+**Global** — recommended on your own machine (after `npm i -g @aidemd-mcp/server`):
+
+```json
+{
+  "mcpServers": {
+    "aide": {
+      "command": "aidemd-mcp"
+    }
+  }
+}
+```
+
+**Local, pinned** — for shared repos and cloud/CI:
+
 ```json
 {
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@latest"]
+      "args": ["-y", "@aidemd-mcp/server@0.9.0"]
     }
   }
 }
@@ -140,12 +208,26 @@ Add to `~/.cursor/mcp.json`:
 
 Add to `.vscode/mcp.json`:
 
+**Global** — recommended on your own machine (after `npm i -g @aidemd-mcp/server`):
+
+```json
+{
+  "servers": {
+    "aide": {
+      "command": "aidemd-mcp"
+    }
+  }
+}
+```
+
+**Local, pinned** — for shared repos and cloud/CI:
+
 ```json
 {
   "servers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@latest"]
+      "args": ["-y", "@aidemd-mcp/server@0.9.0"]
     }
   }
 }
@@ -158,12 +240,26 @@ Add to `.vscode/mcp.json`:
 
 Add to `~/.windsurf/mcp.json`:
 
+**Global** — recommended on your own machine (after `npm i -g @aidemd-mcp/server`):
+
+```json
+{
+  "mcpServers": {
+    "aide": {
+      "command": "aidemd-mcp"
+    }
+  }
+}
+```
+
+**Local, pinned** — for shared repos and cloud/CI:
+
 ```json
 {
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@latest"]
+      "args": ["-y", "@aidemd-mcp/server@0.9.0"]
     }
   }
 }
@@ -225,7 +321,7 @@ Boot-time precondition reporter. Returns two independent fields the orchestrator
 
 On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every `/aide` boot. Boot-time brain precondition state is already reported by `aide_info.brain.status`; firing `aide_brain` at boot duplicates that work unnecessarily.
 
-Returns `{ status, instructions }` — exactly two fields. No `backend`, no `connector`, no `name`. `status` mirrors `aide_info.brain.status` (`ok | no-brain-aide | brain-aide-invalid | no-mcp-entry | mcp-drift`). `instructions` is always non-empty: on `ok` it is the verbatim body of the selected section (`orientation` or `config`, per the optional `kind` input) from the user's `.aide/config/brain.aide` (no server substitution); on the failure states it carries remediation prose. `no-brain-aide` and `brain-aide-invalid` both route to `/aide:brain config`; `brain-aide-invalid` is composed from the detector's `fault` — either the missing required sections, named, or the malformed reason (including a file that is present but unreadable, which is never reported as absent). `no-mcp-entry` and `mcp-drift` name `npx @aidemd-mcp/server@latest sync`.
+Returns `{ status, instructions }` — exactly two fields. No `backend`, no `connector`, no `name`. `status` mirrors `aide_info.brain.status` (`ok | no-brain-aide | brain-aide-invalid | no-mcp-entry | mcp-drift`). `instructions` is always non-empty: on `ok` it is the verbatim body of the selected section (`orientation` or `config`, per the optional `kind` input) from the user's `.aide/config/brain.aide` (no server substitution); on the failure states it carries remediation prose. `no-brain-aide` and `brain-aide-invalid` both route to `/aide:brain config`; `brain-aide-invalid` is composed from the detector's `fault` — either the missing required sections, named, or the malformed reason (including a file that is present but unreadable, which is never reported as absent). `no-mcp-entry` and `mcp-drift` tell the user to run sync with the launcher their `aide` entry uses (`aidemd-mcp sync` or `npx -y @aidemd-mcp/server@<version> sync`).
 
 **Inputs:**
 

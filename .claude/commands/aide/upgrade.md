@@ -79,6 +79,12 @@ options:
 
 On confirmation, read the config, merge the prescription, write with the Write tool. If `malformed`, tell the user and ask how to proceed.
 
+- **Launch mode is kept.** The prescription keeps the aide entry's current launch mode, global or local, and never switches it.
+- **The local pin moves forward here.** A local npx entry not pinned to the current version gets the pinned prescription. This is how the pin moves forward.
+- **Custom entries are left alone.** A custom aide entry (neither npx nor `aidemd-mcp`, e.g. a dev `node ./dist/index.js`) reports `matches` and is never offered a change.
+- **Tips are information.** If a file carries a `tip`, surface it once, as information. Never turn it into a merge question.
+- **The brain's launcher is not upgrade's.** The brain's launcher and pin change only through `/aide:brain config`.
+
 **brain:** Upgrade never writes the brain config — not to create it, not to add sections, not to fix it. `.aide/config/brain.aide` is user-owned, and its canonical home for creation and repair is `/aide:brain config`. Skip the generic "Yes, update" question for this category and use the case below that matches the file's `status`. (Calling `aide_upgrade` with `category: "brain"` is safe — it writes nothing and returns the file with an `instructions` field.)
 
 - **Behind** (`status` is `differs`, with `missingSections`): the config is missing required sections. Use `AskUserQuestion`:

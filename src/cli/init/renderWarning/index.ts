@@ -26,8 +26,8 @@ const BORDER = "=".repeat(60);
  * self-contained guidance that names its own follow-up surface inline —
  * Brain wiring (cli/init never wires the brain) routes to `/aide:brain config`
  * on the first `/aide` run, where the integration's prose owns filling the YAML
- * null slot, deriving the brain MCP entry through cli/sync, and seeding the
- * four entry-point artifacts via the brain's own MCP write tools. IDE routes to
+ * null slot, deriving the brain MCP entry through cli/sync, and seeding
+ * the brain's entry-point artifacts via the brain's own MCP write tools. IDE routes to
  * a CLI re-run with `--ide`. The renderer numbers the entries and prints them
  * verbatim; it does NOT append a single "Next step" footer, because there is no
  * one command that handles all categories.

@@ -214,7 +214,7 @@ describe("3e2 — unreadable brain.aide", () => {
 });
 
 describe("3e — missing brain.aide", () => {
-	it("exits 1, stderr mentions @aidemd-mcp/server@latest init, .mcp.json unchanged (or absent)", async () => {
+	it("exits 1, stderr names the launcher-neutral init commands (no @latest), .mcp.json unchanged", async () => {
 		// No brain.aide — tempDir has no .aide/ directory at all.
 		await writeMcpJson(tempDir, { mcpServers: {} });
 		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
@@ -223,7 +223,10 @@ describe("3e — missing brain.aide", () => {
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
-		expect(errLines.join("\n")).toContain("@aidemd-mcp/server@latest init");
+		const stderr = errLines.join("\n");
+		expect(stderr).toContain("aidemd-mcp init");
+		expect(stderr).toContain("npx -y @aidemd-mcp/server@<version> init");
+		expect(stderr).not.toContain("@latest");
 
 		const after = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(after).toBe(before);
@@ -235,7 +238,7 @@ describe("3e — missing brain.aide", () => {
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
-		expect(errLines.join("\n")).toContain("@aidemd-mcp/server@latest init");
+		expect(errLines.join("\n")).toContain("aidemd-mcp init");
 
 		// .mcp.json must not have been created.
 		await expect(readFile(join(tempDir, ".mcp.json"), "utf-8")).rejects.toThrow();

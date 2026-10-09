@@ -4,8 +4,8 @@ status: aligned
 description: "Boot-time reporter that returns AIDE artifact staleness and brain-precondition state in one read-only pass so the orchestrator can branch on each before pipeline work runs."
 intent: >
   aide_info is the passive precondition reporter the orchestrator calls
-  during its boot sequence. It returns two structurally different
-  findings as independent fields — artifact staleness and brain
+  during its boot sequence. It returns structurally different findings
+  as independent fields — among them artifact staleness and brain
   configuration state — so the orchestrator can apply different
   policies to each. Brain detection is forwarded unchanged from the
   upstream detector; this tool composes nothing, mutates nothing, and
@@ -14,15 +14,15 @@ intent: >
   first-ever boot on a cold project completes cleanly.
 outcomes:
   desired:
-    - Returns artifact staleness and brain-precondition state as two independent top-level fields, so the orchestrator can branch on each without scanning the other.
-    - Treats artifact staleness as a soft notification — the orchestrator may advise the user but the pipeline can still run when artifacts are outdated.
+    - Returns artifact staleness, brain-precondition state, and any version notice each as its own independent top-level field, so the orchestrator can branch on each without scanning the others.
+    - Treats artifact staleness, and a globally installed server that is behind its published version, as soft notifications — the orchestrator may advise the user but the pipeline can still run when artifacts are outdated.
     - Treats brain-precondition state as a hard gate — any non-ok brain state halts the orchestrator until the user runs the visible remediation command.
     - Forwards the upstream brain detector's tagged result unchanged; the closed status vocabulary it defines is the only vocabulary this tool surfaces.
     - Resolves every pre-init and misconfiguration condition (missing config, unreadable wiring, drift) to a structured state, never a thrown error.
   undesired:
-    - Throwing or erroring on a cold project where brain configuration and the host's wiring file have never been written. First-ever boot must complete cleanly.
+    - Throwing or erroring on a cold project where brain configuration and the host's wiring file have never been written, or when the published version cannot be checked. First-ever and offline boots must complete cleanly.
     - Returning a pre-formatted message instead of structured state. Message composition belongs to the orchestrator, which tailors wording to the user's session context.
-    - Conflating artifact staleness with brain-precondition state — folding them into a single verdict, sentinel value, or shared array. Their severities differ and the orchestrator branches on each separately.
+    - Conflating artifact staleness with brain-precondition state — folding them into a single verdict, sentinel value, or shared array — or gating the pipeline on a behind global install. Their severities differ and the orchestrator branches on each separately.
     - Auto-repairing drift, auto-syncing the host's wiring, or otherwise mutating any file the user owns. The boot reporter is read-only; remediation flows through the user's visible command boundary.
     - Surfacing a status that names launcher-path validity. Path resolution is the launcher's responsibility at MCP server startup, not this reporter's.
     - Extending the brain status vocabulary beyond what the upstream detector defines, including renames or aliases of retired states. The detector is the single source of truth for the closed set.

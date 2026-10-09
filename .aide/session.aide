@@ -10,9 +10,9 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-08, post-QA)
+## State summary (set 2026-10-09)
 
-All 11 plans built (23 steps). QA found 10 minor issues; all fixed and re-validated PASS. Full suite 1144 tests green, tsc clean, npm run build clean. E2E matrix against the built server over MCP: 8 brain states + full install, 48/48 PASS.
+Brain contract feature committed (d41c3c5). Follow-on cycle committed (0831d94): Obsidian-specific template, contract 15 sections, kanban guide split into index + 7 operation guides. QA PASS. 1279 tests, tsc and build clean. User's brain migrated (old kanban/kanban.md and work-kanban.md moved to backup/kanban-2026-10-09/; index + 7 guides written from the user's own copy). Global kanban skill refreshed. Retros: process/retro/2026-10-08-aidemd-brain-contract-and-kanban.md and process/retro/2026-10-09-aidemd-obsidian-template-split-kanban.md. All ephemerals deleted.
 
 ## The architectural intent (what the specs say after the rewrite)
 
@@ -61,30 +61,14 @@ All 11 plans built (23 steps). QA found 10 minor issues; all fixed and re-valida
 
 ## Where this cycle stopped (CRITICAL READING)
 
-The brain contract feature is committed (d41c3c5). A follow-on cycle is in progress: Stage 1 specs are approved (provisionBrain, brainContract, installAgents). Stage 4 (Plan) is running.
+The brain contract card's work is complete and committed locally (not pushed, not published).
 
 ### What the next agent must do
 
-In order:
-
-1. Approve the plan.
-2. Build.
-3. QA.
-4. Migrate the user's brain, with confirmation:
-   - move the obsolete `kanban/kanban.md` to a backup (the user called it garbage; do not hard-delete);
-   - remove `kanban/work-kanban.md`;
-   - seed the split files.
-5. Re-copy the global kanban skill.
-6. Commit.
-
-**Before publish:** the remaining cards must be done: global/local install, pipeline strategy, card↔feature linking. Do not publish until all are done (user, 2026-10-08).
-
-### What's already done and validated
-
-- The global kb skills were swapped for the single kanban skill (backup at ~/.claude/backup/kb-2026-10-08/).
-- The single guide was seeded into the user's brain at kanban/work-kanban.md, and customized.
-- The retro was promoted at process/retro/2026-10-08-aidemd-brain-contract-and-kanban.md.
-- The first-cycle ephemerals were deleted.
+1. Remaining cards before publish: the global/local install option (p1), pipeline strategy (p1), and card↔feature linking (p2). Do NOT publish until all are done (user, 2026-10-08).
+2. This repo's own .aide/config/brain.aide still has the old 6 sections and will report brain-aide-invalid on the next /aide boot. That is expected, and repair runs via /aide:brain config.
+3. Publish via `node scripts/publish.mjs` only after the user confirms.
+4. aide-maintainer deletes session.aide at final close.
 
 ### Open follow-ups
 
@@ -92,6 +76,9 @@ In order:
 - The installAgents spec claims the kanban skill outcome, but installSkills stages it (scope attribution).
 - brain.md Step 3's malformed branch wording fits syntax faults better than read errors.
 - The user's global ~/.claude/CLAUDE.md and the design-handoff / handoff:start skills still reference the old kb:* skills. They need updating to /kanban, which requires the user's OK for their private config.
+- brain.md's malformed branch should say an unknown marker may be a retired section to delete. Example: work-kanban from the unpublished d41c3c5 template.
+- The narrowed banned-vocabulary invariant's wording is loose. Phrase it as "backend-specific tool names and link syntax outside the template".
+- The user's brain has a stray `kanban/doing/` folder (1 card), and board/folder drift (In Progress 17 lines vs 19 files; Done 10 vs 100+). /kanban manage reconciles it.
 
 ## Process discipline (permanent)
 
