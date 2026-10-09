@@ -371,7 +371,8 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 				"  The complete methodology layer into the current project: the methodology\n" +
 				"  pointer stub, the methodology doc set under .aide/docs/, every pipeline\n" +
 				"  slash command under .claude/commands/aide/, every pipeline agent definition\n" +
-				"  under .claude/agents/aide/, every skill template under .claude/skills/, the\n" +
+				"  under .claude/agents/aide/, the kanban-maintainer board agent under\n" +
+				"  .claude/agents/kanban/, every skill template under .claude/skills/, the\n" +
 				"  aide MCP server entry additively merged into .mcp.json, the aide-tree\n" +
 				"  launcher at .aide/bin/aide-tree.mjs, the README badge, and the bundled\n" +
 				"  brain.aide template selected by --brain at .aide/config/brain.aide (with\n" +

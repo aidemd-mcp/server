@@ -114,9 +114,11 @@ You are taking the orchestrator's supplied pipeline state and writing `.aide/ses
 
 The orchestrator's delegation prompt MUST supply:
 - **Feature intent** — one-line summary that goes into the frontmatter `intent:` field
-- **State summary content** — where the pipeline is right now (current stage, what was just done, what is paused, what is blocking)
-- **Where this cycle stopped** — what stage paused and what the next agent must do; this is the most critical section for resume
-- **Kanban card links** — one line per board card tied to the feature: its slug, its column, and what it covers. The slug is the stable link to the card on the project's kanban board.
+- **State summary content** — a few lines: the current stage, the card in progress, the commit/publish state, what is blocking
+- **Where this cycle stopped** — the next card (by slug) and the stage it is at, plus the order of the cards after it; this is the most critical section for resume
+- **Kanban card links** — one line per board card tied to the feature, in work order: its slug, its column, and what it covers. The slug is the stable link to the card on the project's kanban board.
+
+`session.aide` is an index to the board, not a second copy of it. A card's progress — what was done, its decisions, its remaining work, its gotchas — lives in that card's stash. If the orchestrator's prompt carries card-level detail, keep only the slug link and the one-line summary; do not transcribe the detail.
 
 The orchestrator's prompt MAY supply (omit a section if not given):
 - **Architectural intent decisions** — numbered list of decisions the orchestrator has settled
@@ -138,11 +140,11 @@ If feature intent, the kanban card links, or `## Where this cycle stopped` conte
 2. Assemble the file:
    - **YAML frontmatter** — `intent:` only, in `>` folded-block form. No `scope`, no `outcomes`, no `status`.
    - **`# AIDE SESSION` header** and the cold-start protocol paragraph (verbatim from the canonical doc).
-   - **`## State summary (set <date>, <phase>)`** — current pipeline position. Date format `YYYY-MM-DD` (today). Phase is the current stage name (e.g. `Stage 4 plan review`, `Stage 7 fix loop`).
-   - **`## Kanban`** — one bullet per card: `` `<slug>` (<column>) — <what it covers> ``. Items in `## Where this cycle stopped` that correspond to a card name its slug.
+   - **`## State summary (set <date>, <phase>)`** — a few lines: current stage, the card in progress, commit/publish state, what is blocking. No work history. Date format `YYYY-MM-DD` (today). Phase is the current stage name (e.g. `Stage 4 plan review`, `Stage 7 fix loop`).
+   - **`## Kanban`** — one bullet per card, in work order: `` `<slug>` (<column>) — <what it covers> ``. One line each; the card's stash holds its progress. Items in `## Where this cycle stopped` name their card's slug.
    - **`## The architectural intent (what the specs say after the rewrite)`** — numbered list of settled decisions if the orchestrator supplied any. If none supplied, write a single line: `No architectural decisions settled yet for this feature.` and leave the section open for future updates.
    - **`## Anti-regression invariants future build phases must hold`** — bullet list. If none supplied, write: `No anti-regression invariants recorded yet.` and leave the section open.
-   - **`## Where this cycle stopped (CRITICAL READING)`** — name the stage that paused, why, and the next agent's instructions. Include the canonical sub-sections `### What the next agent must do`, `### What's already done and validated`, `### What's left after the rework lands` — populate from the orchestrator's supplied content; omit a sub-section only if the orchestrator explicitly said nothing belongs there.
+   - **`## Where this cycle stopped (CRITICAL READING)`** — the next card by slug, the stage it is at, and a pointer to read that card's latest stash. Then `### What the next agent must do` — a short ordered list of the cards to work next, each by slug with one line, plus any feature-level step that has no card (e.g. publish once every card is done).
    - **`## Process discipline (permanent)`** (optional) — only include if the orchestrator supplied content.
    - **`## Open questions`** (optional) — only include if the orchestrator supplied content.
 3. Use the `Write` tool to create the file. Do NOT use `Edit` (the file doesn't exist yet).
@@ -151,6 +153,8 @@ If feature intent, the kanban card links, or `## Where this cycle stopped` conte
 
 - **No domain reasoning.** Why-the-business-needs-this lives in `.aide/intent.aide` and module specs. `session.aide` is what's true *right now* about the in-flight feature, not why the feature exists.
 - **No invented content.** If the orchestrator's prompt doesn't supply a section's content, omit the section or write a one-line placeholder acknowledging the gap. Never fabricate decisions, invariants, or stopped-here details.
+- **No card detail.** What was done on a card, its card-level decisions, remaining work and gotchas live in the card's stash. `session.aide` names the card by slug. Decisions and invariants here are only those that span the feature's cards.
+- **No follow-up lists.** Follow-up work becomes a card on the board, not a bullet list here. If the orchestrator supplies a follow-up with no card, return and ask for the card.
 
 ---
 
@@ -187,6 +191,7 @@ Rules for canonical-format preservation:
 - **Cut superseded prose; do not annotate it.** When `## Where this cycle stopped` changes, replace it — do not leave "previously: ..." breadcrumbs. Git history preserves the journey; this file describes only the current state.
 - **Preserve YAML frontmatter** unless the orchestrator explicitly changes the feature intent. The `intent:` field rarely changes across a feature lifecycle.
 - **`## Kanban` links stay current.** Every card the orchestrator names lands as a slug link; a card it says is finished or dropped is updated or removed, not annotated.
+- **Keep it an index.** The CREATE rules "No card detail" and "No follow-up lists" apply to every update. When a stage or card finishes, update its link and `## Where this cycle stopped` — the record of the work goes in the card's stash, not here.
 - **Update the `(set <date>, <phase>)` parenthetical in `## State summary`** every time you touch the section. Date is today; phase is the current stage.
 - **Never invent content.** Same rule as CREATE — every substantive line traces back to the orchestrator's prompt.
 

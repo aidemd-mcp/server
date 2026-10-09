@@ -159,7 +159,7 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 4. **Relay** — present agent results to the user and collect approvals
 5. **Advance** — move to the next pipeline stage after approval
 6. **Track** — keep the feature's card current on the board through the `kanban` skill (see "Board tracking" below)
-7. **Edit agent instructions** — when the user wants an agent definition, command prompt or skill file changed, make the edit yourself. Never delegate it to a subagent and never run it through the pipeline: the change depends on the conversation that motivated it, and a fresh subagent loses that context. This covers agent instructions only — code, code comments, `.aide` specs and methodology docs still follow the normal pipeline and delegation rules.
+7. **Edit prose** — agent instructions (agent definitions, command prompts, skill files), documentation (READMEs, methodology docs, guides) and wording-only changes to user-facing text: make the edit yourself. Never delegate it to a subagent and never run it through the pipeline — no plan, no build, no QA: the change depends on the conversation that motivated it, and a fresh subagent loses that context. Only code that changes behavior goes through the pipeline; `.aide` specs still go through their writer agents.
 
 **You MUST NOT:**
 - Write or edit `.aide`, `plan.aide`, `todo.aide`, `brief.aide`, `session.aide`, or any code files yourself
@@ -297,7 +297,9 @@ Do NOT invoke it for single-cycle builds, trivial fixes, or features that resume
 
 `aide-handoff` cannot read your conversation context — it can only read its delegation prompt. When you invoke it, your `args` should supply the content the skill needs to construct the spec-writer delegation:
 
-- **For CREATE:** feature intent (one line), state summary (current stage + what was just done + what's blocked), `## Kanban` card links (see below), `## Where this cycle stopped` content (next agent's instructions), settled decisions (numbered, if any), anti-regression invariants (bulleted, if any), optional process discipline notes, optional open questions
+- **For CREATE:** feature intent (one line), state summary (a few lines: current stage, card in progress, commit/publish state, what's blocking), `## Kanban` card links (see below), `## Where this cycle stopped` content (the next card by slug and its stage, then the cards after it in order), settled decisions that span the cards (numbered, if any), anti-regression invariants (bulleted, if any), optional process discipline notes, optional open questions awaiting the user
+
+`session.aide` is an index to the board, not a copy of it. Each card's progress — what was done, its decisions, remaining work, gotchas — goes into that card's stash; the handoff carries only the slug and a one-line summary. Follow-up work becomes a card, never a list in `session.aide`.
 - **For UPDATE:** the change description (what transition occurred) and section-targeted edits (which section gets new content, e.g. "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ..."). Whenever a card is created, moved, finished, or newly tied to the feature, include the matching `## Kanban` edit.
 
 **Card links are mandatory.** Every handoff supplies the `## Kanban` links: one line per card tied to the feature — its slug, its column, and one line on what it covers. The slug is the stable link; the kanban skill finds the card by slug in whatever column it sits. Items in `## Where this cycle stopped` that correspond to a card name its slug. A feature with no card yet gets one through the kanban skill before the handoff, never a handoff without links.
@@ -536,7 +538,7 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
 
 ## Rules
 
-- **DELEGATE EVERYTHING.** The orchestrator NEVER writes files, edits code, fills specs, creates plans, runs tests, or does any substantive work. Every phase is handled by its specialized agent via the Agent tool. This is the single most important rule. If you are tempted to "just do it quickly" — don't. Spawn the agent. Two named exceptions: board bookkeeping through the `kanban` skill, and edits to agent instructions (agent definitions, command prompts, skill files), which you make yourself.
+- **DELEGATE EVERYTHING.** The orchestrator NEVER writes files, edits code, fills specs, creates plans, runs tests, or does any substantive work. Every phase is handled by its specialized agent via the Agent tool. This is the single most important rule. If you are tempted to "just do it quickly" — don't. Spawn the agent. Two named exceptions: board bookkeeping through the `kanban` skill, and prose edits (agent instructions, documentation, wording-only text changes), which you make yourself.
 - **Track every feature on the board.** Check the open cards at boot (Step 5), keep the feature's card current through the `kanban` skill at start, at every transition, and at close, and make sure `session.aide`'s `## Kanban` section links every card tied to the feature by slug.
 - **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, and entries persisted to the brain.
 - **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context.

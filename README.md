@@ -49,23 +49,23 @@ npx -y @aidemd-mcp/server@0.9.0 init
 This command:
 
 - Merges the AIDE MCP server entry into `.mcp.json`
-- Merges a placeholder brain MCP entry into `.mcp.json` (vault path filled in by `/aide`)
+- Writes the bundled brain config template to `.aide/config/brain.aide` (the brain location stays unset until `/aide:brain config` fills it and writes the brain MCP entry)
 - Writes every pipeline slash command to `.claude/commands/aide/`
-- Installs 9 canonical pipeline agents to `.claude/agents/aide/`
-- Installs skills (`study-playbook`, `brain`) to `.claude/skills/`
+- Installs 10 canonical pipeline agents to `.claude/agents/aide/` and the `kanban-maintainer` board agent to `.claude/agents/kanban/`
+- Installs skills (`study-playbook`, `brain`, `aide`, `aide-handoff`, `kanban`) to `.claude/skills/`
 - Installs the methodology docs hub to `.aide/docs/`
 - Writes the `aide-tree` launcher to `.aide/bin/aide-tree.mjs`
 - Adds an AIDE badge to `README.md` (appends if not present)
 
 All operations are additive — files that already exist are never overwritten. Safe to re-run at any time.
 
-Pass `--vault-path <path>` to record your brain vault location at install time, skipping the vault-path prompt when `/aide` first runs.
+`init` asks for no brain location, path or token, and rejects backend flags such as `--vault-path`. `--brain <integration>` picks the bundled template (today only `obsidian`, the default).
 
-After running, open Claude Code and run `/aide` — the orchestrator will prompt for any setup the cli could not finish (IDE choice, vault path if not supplied).
+After running, open Claude Code and run `/aide`. On the first run it routes to `/aide:brain config`, which fills the brain location in `.aide/config/brain.aide`, writes the brain MCP entry through sync, and seeds the brain. Anything else `init` could not finish is named in its closing follow-up list.
 
 ### Syncing brain.aide to .mcp.json
 
-Run this after editing `.aide/config/brain.aide` — for example, when you update the vault path argument in `mcpServerConfig.args` or rename the brain in the `name` field:
+Run this after editing `.aide/config/brain.aide` — for example, when you update the brain path argument in `mcpServerConfig.args` or rename the brain in the `name` field:
 
 Global:
 
@@ -81,13 +81,13 @@ npx -y @aidemd-mcp/server@0.9.0 sync
 
 `sync` reads `.aide/config/brain.aide`, copies `mcpServerConfig` verbatim into `.mcp.json` under the fixed `brain` key, and writes the `name` field as the server label. Every other key in `mcpServers` (including your `aide` entry and any personal MCP integrations) is left byte-identical. If a legacy `obsidian` key is present it is removed in the same write. The command is idempotent — running it twice produces the same `.mcp.json` bytes, and the second invocation prints `already in sync` without touching the file. Exit code is `0` on success (including the no-change case), `1` on a missing or malformed `brain.aide` or invalid `.mcp.json`, and `2` on `--help`.
 
-Example output after updating the vault path in `mcpServerConfig.args`:
+Example output after updating the brain path in `mcpServerConfig.args`:
 
 ```
-Read .aide/brain.aide
+Read .aide/config/brain.aide
 Wrote brain MCP entry into .mcp.json
-  command: npx
-  args: [-y, obsidian-mcp, D:/notes/new-vault]
+  command: mcpvault
+  args: [D:/notes/new-brain]
 Done.
 ```
 
@@ -336,7 +336,8 @@ Bootstrap the AIDE development environment into a project using a guided one-at-
 - `framework` (string, optional): Force a specific framework instead of auto-detecting. One of: `claude`, `cursor`, `windsurf`, `copilot`.
 - `path` (string, optional): Custom project root path. Defaults to the server working directory.
 - `category` (string, optional): Write all `would-create` files for this category and return a manifest. One of: `framework`, `methodology`, `commands`, `agents`, `skills`, `mcp`, `brain`, `ide`, `readme`. Omit on the first call to get a metadata-only summary.
-- `brainPath` (string, optional): Resolved brain vault path. Required when `category=brain`.
+- `aideMode` (string, optional): Launch mode for the aide MCP entry, `global` (recommended) or `local`. Pass with `category=mcp`.
+- `brainMode` (string, optional): Launch mode for the brain template's launcher, `global` or `local`. Pass with `category=brain`.
 
 ### aide_upgrade
 
