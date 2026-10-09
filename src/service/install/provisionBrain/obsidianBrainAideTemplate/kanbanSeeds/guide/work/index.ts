@@ -2,11 +2,10 @@
  * Seed text for the Work guide at `kanban/guide/work.md`, carried by the
  * template's `kanban-work` contract section.
  *
- * Obsidian-specific by design: it reproduces the `## Work` section of the
- * user's working kanban verbatim (wiki-link card slugs, `P# TYPE:` prefixes,
- * the `%% kanban:settings` preservation rule, the `mcp__brain__*` tools), with
- * headings promoted one level outside fences and blockquotes and cross-file
- * links pointing at the Manage and Stash guides.
+ * Obsidian-specific by design: wiki links and the `mcp__brain__*` tools. Card
+ * reads and writes (find, activate) go to the `kanban-maintainer` agent, which
+ * lists the project's column folders; the main agent investigates, plans,
+ * implements and reviews.
  *
  * The text lands in the brain exactly as written here (ending in one newline);
  * the config seeding step splits the frontmatter from the body when writing.
@@ -18,26 +17,26 @@ tags:
 ---
 # Work
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
 
-Pick, investigate and plan the next card from the board, then implement, test and self-review it with strict plan/act mode discipline. Working a card moves it to In Progress and gates all code changes on the user's approval. Use this operation for each card you start. For other board operations use [[kanban/guide/manage|Manage]].
+Pick, investigate and plan the project's next card, then implement, test and self-review it with strict plan/act mode discipline. Working a card moves it to In Progress and gates all code changes on the user's approval. Use this operation for each card you start. For other card operations use [[kanban/guide/manage|Manage]].
 
 The caller may pass arguments, typically a card slug or a description fragment. They are honored in Step 1 to skip the picker. No arguments falls through to the interactive picker.
 
 ## Architecture
 
-Board subagents handle all board and brain reads and writes (find, activate, record). They are stateless and disposable.
+The \`kanban-maintainer\` agent handles card reads and writes (find, activate). It is stateless and disposable.
 
 The main agent does the investigation, planning, implementation and review directly. This keeps accumulating context in the window so revisions do not pay double serialization costs.
 
-Do NOT delegate investigation, implementation or review to subagents. Do NOT read the board or the card yourself. Delegate board and brain reads to subagents.
+Do NOT delegate investigation, implementation or review to subagents. Do NOT list the project's cards yourself; delegate that to \`kanban-maintainer\`. You may read a single card in full from the path it reports.
 
 ## Mode discipline
 
 | Steps | Mode | Rule                                    |
 | ----- | ---- | --------------------------------------- |
 | 1–5   | Plan | Read, analyze, search. No code changes. |
-| 5b    | Act  | Board activation write only.            |
+| 5b    | Act  | Card activation write only.             |
 | 6     | Act  | Write code, run type checks, run tests. |
 | 7     | Plan | Read and analyze only. No code changes. |
 | 8a    | Plan | Re-investigate, present revised plan.   |
@@ -49,12 +48,12 @@ Do NOT delegate investigation, implementation or review to subagents. Do NOT rea
 ## Checklist
 
 - [ ] **Step 0** — Enter planning mode
-- [ ] **Step 1** — Spawn a board subagent to find cards
+- [ ] **Step 1** — Have \`kanban-maintainer\` find cards
 - [ ] **Step 2** — Present the card table and ask the user to pick (skip if a slug matched)
-- [ ] **Step 3** — (deferred — board activation runs at Step 5b after plan approval)
+- [ ] **Step 3** — (deferred — card activation runs at Step 5b after plan approval)
 - [ ] **Step 4** — Investigate and plan (main agent, planning mode)
 - [ ] **Step 5** — Hard stop: present the plan for approval
-- [ ] **Step 5b** — Spawn a board subagent to activate the card (first act after approval)
+- [ ] **Step 5b** — Have \`kanban-maintainer\` activate the card (first act after approval)
 - [ ] **Step 6** — Implement (main agent, act mode)
 - [ ] **Step 7** — Review (main agent, planning mode)
 - [ ] **Step 8** — Revision loop (if needed, forward-only)
@@ -63,11 +62,11 @@ Do NOT delegate investigation, implementation or review to subagents. Do NOT rea
 
 If you are not already in a read-only planning mode, enter it now. Do not proceed until you are in it.
 
-## Step 1 — Spawn a board subagent: find cards
+## Step 1 — Find cards (\`kanban-maintainer\`)
 
-Make one subagent call (\`general-purpose\`) with this prompt, filled in:
+Delegate to the \`kanban-maintainer\` agent with this request, filled in:
 
-> You are finding a card on the kanban board.
+> You are finding a card in the project's kanban folders.
 >
 > **Arguments:** \`<args from the caller, or "none">\`
 > **Project tag:** \`<project tag, or "none">\`
@@ -79,9 +78,9 @@ Make one subagent call (\`general-purpose\`) with this prompt, filled in:
 > - [ ] **Check the project tag.** If the project tag is "none", return \`MODE: NO_PROJECT\`.
 > - [ ] **Find the card.**
 >
->   **If the arguments contain a card name or slug:** search \`kanban/\` for it. A single match: read its full content and return it as DIRECT. Multiple matches: return all of them for clarification. No match: fall through to the board path.
+>   **If the arguments contain a card name or slug:** look for it in the column folders under \`kanban/<project>/\`. A single match: read its full content and return it as DIRECT. Multiple matches: return all of them for clarification. No match: fall through to the listing.
 >
->   **Otherwise:** read \`kanban/board.md\`. Board lines look like \`- [ ] [[<slug>]] — <P#> <TYPE>: <summary> #<project-tag>\`; the slug is the text inside \`[[\` \`]]\`. For each card line, verify the file \`<slug>.md\` exists in the folder matching its column (\`kanban/backlog/\`, \`kanban/todo/\`, and so on). If any file's actual folder does not match its board column, do NOT move it — collect the mismatches for the return output. Filter to lines containing \`#<project tag>\` in **In Progress**, **Todo** and **Backlog** only. Read each card's frontmatter for its priority (\`p0\`/\`p1\`/\`p2\`/\`p3\`, default \`p2\`; fall back to the line's \`P#\` prefix if the frontmatter has none). Return as TABLE.
+>   **Otherwise:** list \`kanban/<project>/in-progress/\`, \`kanban/<project>/todo/\` and \`kanban/<project>/backlog/\`. Read each card's frontmatter for its priority (\`p0\`/\`p1\`/\`p2\`/\`p3\`, default \`p2\`) and its \`project\` field. If a card's \`project\` field is missing or does not match the folder, do NOT change it — collect it for the return output. Return as TABLE.
 >
 > - [ ] **Return** — one of:
 >
@@ -107,18 +106,18 @@ Make one subagent call (\`general-purpose\`) with this prompt, filled in:
 >   | 1 | In Progress | p0 | slug | short desc |
 >
 >   TASK_PATHS:
->   1: kanban/backlog/my-task.md
+>   1: kanban/<project>/backlog/my-task.md
 >
 >   TASK_CONTENTS:
 >   --- TASK 1 ---
 >   <full markdown>
 >   \`\`\`
 >
->   If there are board/folder mismatches, append:
+>   If any card has a missing or wrong \`project\` field, append:
 >
 >   \`\`\`
 >   MISMATCHES:
->   - <slug>: board says "<column>" but file is in "<actual folder>"
+>   - <slug>: project field is "<value or missing>" but the card is in "kanban/<project>/"
 >   \`\`\`
 >
 >   Omit MISMATCHES if there are none.
@@ -129,11 +128,11 @@ Make one subagent call (\`general-purpose\`) with this prompt, filled in:
 
 **First, check for mismatches.** If the response contains a \`MISMATCHES:\` section, present it:
 
-> These tasks have board/folder mismatches:
+> These cards have a missing or wrong project field:
 > \`<list>\`
 > Want me to fix them before continuing, or ignore for now?
 
-**Hard stop.** If the user says fix, ask: "Move the files to match the board, or update the board to match the files?" Then make a \`general-purpose\` subagent call to apply the chosen direction. After fixing, **re-run Step 1**.
+**Hard stop.** If the user says fix, ask for each card: "Set the field to this folder's project, or move the card to the project its field names?" Then have \`kanban-maintainer\` apply the chosen fix. After fixing, **re-run Step 1**.
 
 If the user says ignore, proceed.
 
@@ -197,29 +196,28 @@ If there are open questions, **hard stop**. Present them to the user. Do not pro
 
 Present the plan to the user verbatim.
 
-**Hard stop. Do not activate the board or write code until the user approves the plan.**
+**Hard stop. Do not activate the card or write code until the user approves the plan.**
 
 Once the user approves, proceed immediately to Step 5b, before writing any code.
 
-## Step 5b — Spawn a board subagent: activate the card
+## Step 5b — Activate the card (\`kanban-maintainer\`)
 
-You are now in act mode. Make one subagent call (\`general-purpose\`) with this prompt, filled in:
+You are now in act mode. Delegate to the \`kanban-maintainer\` agent with this request, filled in:
 
 > You are activating a card — stamping it and moving it to In Progress.
 >
-> **Card path:** \`<path>\` | **Slug:** \`<slug>\` | **Tag:** \`#<project tag>\` | **Now:** \`<YYYY-MM-DDTHH:MM:SS>\`
+> **Card path:** \`<path>\` | **Slug:** \`<slug>\` | **Project:** \`<project tag>\` | **Now:** \`<YYYY-MM-DDTHH:MM:SS>\`
 >
 > Use only the brain read, write, move and frontmatter tools available in this session.
 >
 > ## Checklist
 >
-> - [ ] **Check the current status.** If the card path is already under \`kanban/in-progress/\`, this is a resume. Only stamp the session (append the datetime to \`sessions\`, update \`updated\`). Skip the board move and the file move. Return \`DONE (resumed)\`.
+> - [ ] **Check the current status.** If the card path is already under \`kanban/<project>/in-progress/\`, this is a resume. Only stamp the session (append the datetime to \`sessions\`, update \`updated\`). Skip the move. Return \`DONE (resumed)\`.
 > - [ ] **Stamp.** Read the frontmatter, then update it: append the current datetime to the \`sessions\` list (preserve existing entries) and update \`updated\`.
-> - [ ] **Move on the board.** Read \`kanban/board.md\`, remove the card's line (the line containing \`[[<slug>]]\`) from its current column, and insert it unchanged at the bottom of **In Progress**. Write the full board back (overwrite), preserving everything above the first column heading and the trailing \`%% kanban:settings\` block.
-> - [ ] **Move the file.** Move the card to \`kanban/in-progress/<slug>.md\`. Update \`updated\` in the frontmatter.
+> - [ ] **Move the file.** Move the card to \`kanban/<project>/in-progress/<slug>.md\`.
 > - [ ] Return \`DONE\` or \`DONE (resumed)\`.
 
-Do not proceed to Step 6 until the subagent returns \`DONE\` or \`DONE (resumed)\`.
+Do not proceed to Step 6 until the agent returns \`DONE\` or \`DONE (resumed)\`.
 
 ## Step 6 — Implement (main agent, act mode)
 

@@ -241,7 +241,7 @@ describe("applyFiles", () => {
 			filePath: "/some/.aide/config/brain.aide",
 			status: "differs",
 			category: "brain",
-			missingSections: ["kanban-board", "kanban-index"],
+			missingSections: ["kanban-index", "kanban-create"],
 			canonicalContent: undefined,
 		});
 		const [result] = await applyFiles([file]);
@@ -249,10 +249,10 @@ describe("applyFiles", () => {
 		expect(vi.mocked(mkdir)).not.toHaveBeenCalled();
 		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
 		expect(result.instructions).toBe(
-			"Brain config is behind — missing required sections: kanban-board, kanban-index. Run /aide:brain config to add them.",
+			"Brain config is behind — missing required sections: kanban-index, kanban-create. Run /aide:brain config to add them.",
 		);
 		expect(result.status).toBe("differs");
-		expect(result.missingSections).toEqual(["kanban-board", "kanban-index"]);
+		expect(result.missingSections).toEqual(["kanban-index", "kanban-create"]);
 		expect(result.canonicalContent).toBeUndefined();
 	});
 

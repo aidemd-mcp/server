@@ -326,14 +326,14 @@ Your brain is an Obsidian vault. Use mcp__brain__read_note to open files.
 
 describe("3g2 — missing required sections", () => {
 	it("exits 1, stderr names every missing section and /aide:brain config, .mcp.json is neither read nor written", async () => {
-		await writeBrainAide(tempDir, makeBrainAide({ omit: ["kanban-board", "kanban-index"] }));
+		await writeBrainAide(tempDir, makeBrainAide({ omit: ["kanban-index", "kanban-create"] }));
 
 		const { errLines, write, writeErr } = makeCapture();
 		const code = await runSync(tempDir, write, writeErr);
 
 		expect(code).toBe(1);
 		expect(errLines).toHaveLength(1);
-		expect(errLines[0]).toContain("kanban-board");
+		expect(errLines[0]).toContain("kanban-create");
 		expect(errLines[0]).toContain("kanban-index");
 		expect(errLines[0]).toContain("/aide:brain config");
 
@@ -342,7 +342,7 @@ describe("3g2 — missing required sections", () => {
 	});
 
 	it("leaves an existing .mcp.json byte-identical", async () => {
-		await writeBrainAide(tempDir, makeBrainAide({ omit: ["kanban-board", "kanban-index"] }));
+		await writeBrainAide(tempDir, makeBrainAide({ omit: ["kanban-index", "kanban-create"] }));
 		await writeMcpJson(tempDir, { mcpServers: { aide: { command: "npx", args: ["-y", "aidemd-mcp"] } } });
 		const before = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 

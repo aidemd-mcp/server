@@ -2,11 +2,9 @@
  * Seed text for the Manage guide at `kanban/guide/manage.md`, carried by the
  * template's `kanban-manage` contract section.
  *
- * Obsidian-specific by design: it reproduces the `## Manage` section of the
- * user's working kanban verbatim (wiki-link card slugs, `P# TYPE:` prefixes,
- * the `%% kanban:settings` preservation rule, the column folders), with
- * headings promoted one level outside fences and cross-file links pointing at
- * the kanban index.
+ * Obsidian-specific by design: wiki links and the `mcp__brain__*` tools.
+ * The project's column folders are listed to show its cards, and the index's
+ * cleanup rules are checked and offered to the user.
  *
  * The text lands in the brain exactly as written here (ending in one newline);
  * the config seeding step splits the frontmatter from the body when writing.
@@ -18,81 +16,71 @@ tags:
 ---
 # Manage
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card, cleanup and brain tool rules apply to every step below.
 
-View and move cards on the board, scoped to the current project.
+View the current project's cards, apply the cleanup rules, and move cards between columns.
 
 ## Step 1 — Determine the project
 
-Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+Get the project tag (see Project in [[kanban/kanban|Kanban]]).
 
-## Step 2 — Read the board
+## Step 2 — List the cards
 
-Read \`kanban/board.md\`. Parse the content into the five columns: Backlog, Todo, In Progress, In Review, Done (ignore the trailing \`%% kanban:settings\` block). Filter each column to show only lines containing \`#<project tag>\`. From each line, take the slug from inside \`[[\` \`]]\` and the rest of the text after \` — \` (priority, type and summary).
+List each column folder under \`kanban/<project>/\`: \`backlog/\`, \`todo/\`, \`in-progress/\`, \`in-review/\`, \`done/\`. For each card, read its frontmatter (\`priority\`, \`type\`, \`project\`, \`updated\`) and its \`# <Title>\` line.
 
-### Reconciliation check
+## Step 3 — Check the cleanup rules
 
-Before presenting cards, verify that each card's file location matches its board column. For every card line in the filtered results, check whether the file exists in the expected folder (\`kanban/backlog/\`, \`kanban/todo/\`, \`kanban/in-progress/\`, \`kanban/in-review/\`, \`kanban/done/\`). If a file is in the wrong folder (for example the board says In Review but the file is in \`kanban/in-progress/\`), silently move it to the folder its board column names. This handles drift caused by a board editor that updates the board but does not move files.
+Check every card against the Cleanup Rules in [[kanban/kanban|Kanban]]: long titles, stale In Review cards, Done overflow, and wrong or missing \`project\` fields. Collect what you find; change nothing yet.
 
-## Step 3 — Present cards and prompt for action
+## Step 4 — Present cards and findings
 
-Display the filtered board to the user in a compact format:
+Show the user the project's open cards in a compact format, then the cleanup findings:
 
 \`\`\`
 Backlog
-  [ ] fix-login-bug — P1 BUG: Fix login bug on mobile
-  [ ] add-email-validation — P2: Add email validation
+  fix-login-bug — p1 bug: Fix login bug on mobile
+  add-email-validation — p2: Add email validation
 
 Todo
-  [ ] redesign-header — P2: Redesign the header
+  redesign-header — p2: Redesign the header
 
 In Progress
-  [ ] update-api — P1: Update the API endpoints
+  update-api — p1: Update the API endpoints
 
 In Review
-  [ ] update-docs — P3: Update the docs
+  update-docs — p3: Update the docs (in review 21 days)
+
+Done: 63 cards
+
+Cleanup
+  update-docs has been in In Review for 21 days — complete it to Done?
+  Done holds 63 cards — archive the 13 oldest?
 \`\`\`
 
-If all columns are empty for this project, tell the user and stop.
+If the project has no cards, tell the user and stop.
 
-Then ask: "Which task do you want to move, and where?"
+Then ask: "Which cards do you want to move, and which cleanup items should I apply?"
 
 Accept natural answers such as:
 
 - "move fix-login-bug to Todo"
-- "move redesign-header to In Progress"
 - "move update-docs to Done"
+- "archive the old Done cards"
 
 Valid column names: \`Backlog\`, \`Todo\`, \`In Progress\`, \`In Review\`, \`Done\`.
 
-## Step 4 — Move the card
+## Step 5 — Apply what the user approved
 
-### 4a — Update the board
+For each approved change:
 
-In the board content:
+- **Move:** move the file to \`kanban/<project>/<target column folder>/<slug>.md\` and update its \`updated\` field.
+- **Archive:** move the file from \`done/\` to \`archive/\` and update its \`updated\` field.
+- **Shorten a title:** rewrite the \`# <Title>\` line and add the removed detail to the top of the description; update \`updated\`.
+- **Fix a project field:** set \`project\` to the folder's project, or move the card to the project folder its field names, as the user chose; update \`updated\`.
 
-1. Remove the card's line (the line containing \`[[<slug>]]\`) from its current column.
-2. Insert it unchanged at the bottom of the target column (just before the blank line(s) that precede the next \`##\` heading, or, for Done, just before the blank line that precedes the \`%% kanban:settings\` block).
-3. If the target is Done: change \`- [ ]\` to \`- [x]\`.
-4. If moving out of Done: change \`- [x]\` back to \`- [ ]\`.
+Never change \`created\`.
 
-Write the full board back (overwrite), preserving everything above the first column heading and the trailing \`%% kanban:settings\` block.
+## Step 6 — Confirm
 
-### 4b — Move the card file
-
-The card lives in the folder that matches its current column:
-
-- \`kanban/backlog/\` — Backlog
-- \`kanban/todo/\` — Todo
-- \`kanban/in-progress/\` — In Progress
-- \`kanban/in-review/\` — In Review
-- \`kanban/done/\` — Done
-
-If the source and target folders differ, move the file. Update the \`updated\` frontmatter field to the current datetime (\`YYYY-MM-DDTHH:MM:SS\`). Do not update \`created\`.
-
-## Step 5 — Confirm
-
-Tell the user: "\`<slug>\` moved to <Target Column>."
-
-Ask whether they want to move another card. If yes, return to Step 3. If no, stop.
+Tell the user what changed, one line per card. Ask whether they want to change anything else. If yes, return to Step 4. If no, stop.
 `;

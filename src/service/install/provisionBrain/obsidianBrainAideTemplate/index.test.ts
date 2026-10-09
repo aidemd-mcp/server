@@ -1016,12 +1016,12 @@ describe("schema does not include intent-spec or deprecated fields", () => {
 
 
 // ---------------------------------------------------------------------------
-// Kanban seed sections: board, index and the seven operation guides
+// Kanban seed sections: index and the seven operation guides
 // ---------------------------------------------------------------------------
 
 type KanbanField = Extract<(typeof brainContract)[number]["field"], `kanban${string}`>;
 
-/** The nine kanban contract fields, board first. */
+/** The eight kanban contract fields, index first. */
 const KANBAN_FIELDS = brainContract.map(({ field }) => field).filter((field): field is KanbanField => field.startsWith("kanban"));
 
 /** The seven operation guides: contract field, `# ` title, and the outline brief commitment #5 fixes. */
@@ -1031,10 +1031,10 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 		title: "Create",
 		outline: [
 			"# Create",
-			"## Delegation rules",
+			"## Who does what",
 			"## Step 1 — Gather card details",
-			"## Step 2 — Create the card",
-			"## Step 3 — Confirm and clear",
+			"## Step 2 — Write the card",
+			"## Step 3 — Confirm",
 		],
 	},
 	{
@@ -1046,7 +1046,7 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 			"## Mode discipline",
 			"## Checklist",
 			"## Step 0 — Enter planning mode",
-			"## Step 1 — Spawn a board subagent: find cards",
+			"## Step 1 — Find cards (`kanban-maintainer`)",
 			"## Step 2 — Present and pick",
 			"## Step 3 — Deferred",
 			"## Step 4 — Investigate and plan (main agent, planning mode)",
@@ -1056,7 +1056,7 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 			"### 4d — Devise the plan",
 			"### 4e — Open questions (if any)",
 			"## Step 5 — Hard stop: present the plan",
-			"## Step 5b — Spawn a board subagent: activate the card",
+			"## Step 5b — Activate the card (`kanban-maintainer`)",
 			"## Step 6 — Implement (main agent, act mode)",
 			"### 6a — Implement the changes",
 			"### 6b — Type check",
@@ -1080,13 +1080,11 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 		outline: [
 			"# Manage",
 			"## Step 1 — Determine the project",
-			"## Step 2 — Read the board",
-			"### Reconciliation check",
-			"## Step 3 — Present cards and prompt for action",
-			"## Step 4 — Move the card",
-			"### 4a — Update the board",
-			"### 4b — Move the card file",
-			"## Step 5 — Confirm",
+			"## Step 2 — List the cards",
+			"## Step 3 — Check the cleanup rules",
+			"## Step 4 — Present cards and findings",
+			"## Step 5 — Apply what the user approved",
+			"## Step 6 — Confirm",
 		],
 	},
 	{
@@ -1097,10 +1095,8 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 			"## Step 1 — Parse the target column",
 			"## Step 2 — Identify the card from session context",
 			"## Step 3 — Determine the project",
-			"## Step 4 — Read the board",
+			"## Step 4 — Find the card",
 			"## Step 5 — Move the card",
-			"### 5a — Update the board",
-			"### 5b — Move the card file",
 			"## Step 6 — Confirm",
 		],
 	},
@@ -1112,10 +1108,8 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 			"## Step 1 — Parse flags",
 			"## Step 2 — Identify the card from session context",
 			"## Step 3 — Determine the project",
-			"## Step 4 — Read the board",
+			"## Step 4 — Find the card",
 			"## Step 5 — Move the card",
-			"### 5a — Update the board",
-			"### 5b — Move the card file",
 			"## Step 6 — Confirm",
 		],
 	},
@@ -1157,7 +1151,7 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 const OPERATIONS = ["create", "work", "manage", "move", "complete", "stash", "review"];
 
 /** Headings the index owns; no guide may restate them. */
-const SHARED_HEADINGS = ["## Board and Columns", "## Cards", "## Project Tag", "## Reaching the Board"];
+const SHARED_HEADINGS = ["## Projects and Columns", "## Cards", "## Project", "## Cleanup Rules", "## Reaching the Cards"];
 
 /** Tokens that identified the user's own projects in the source guide (brief commitment #6). */
 const PROJECT_SPECIFIC_TOKENS = [
@@ -1171,7 +1165,7 @@ const PROJECT_SPECIFIC_TOKENS = [
 
 /** The orientation's final paragraph (brief commitment #8), spelled out independently of the template. */
 const ORIENTATION_POINTER =
-	"Project work is tracked on the kanban board at `kanban/board.md`. Before any board operation, read the kanban index at `kanban/kanban.md`, then read only the guide it links for the operation you are performing.";
+	"Project work is tracked as kanban cards in per-project folders under `kanban/<project>/`, one subfolder per column. Before any card operation, read the kanban index at `kanban/kanban.md`, then read only the guide it links for the operation you are performing.";
 
 /** Parses the template and returns the ok result, failing the test if the template does not parse. */
 async function parseTemplate() {
@@ -1209,47 +1203,6 @@ function extractOutline(text: string): string[] {
 	return headings;
 }
 
-describe("kanbanBoard section ships the empty Kanban-plugin board", () => {
-	it("contains the five column headings in order", async () => {
-		const result = await parseTemplate();
-
-		const columns = ["## Backlog", "## Todo", "## In Progress", "## In Review", "## Done"];
-		const positions = columns.map((heading) => result.kanbanBoard.indexOf(`\n${heading}\n`));
-		for (const position of positions) expect(position).toBeGreaterThan(-1);
-		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
-	});
-
-	it("is the exact bytes of brief commitment #3, wrapped as the marker pair emits them", async () => {
-		const result = await parseTemplate();
-
-		const fence = "```";
-		const seed =
-			"---\nkanban-plugin: list\ntags:\n  - tasks\n---\n\n\n\n" +
-			"## Backlog\n\n\n\n## Todo\n\n\n\n## In Progress\n\n\n\n## In Review\n\n\n\n## Done\n\n\n\n" +
-			`%% kanban:settings\n${fence}\n{"kanban-plugin":"list"}\n${fence}\n%%\n`;
-		expect(result.kanbanBoard).toBe("\n\n" + seed + "\n");
-	});
-
-	it("opens with the kanban-plugin frontmatter and carries no prose before '## Backlog'", async () => {
-		const result = await parseTemplate();
-
-		expect(readFrontmatter(result.kanbanBoard)).toContain("kanban-plugin: list");
-		const beforeFirstColumn = readBody(result.kanbanBoard).split("## Backlog")[0] ?? "";
-		expect(beforeFirstColumn.trim()).toBe("");
-	});
-
-	it("ends with the '%% kanban:settings' block holding the kanban-plugin list setting", async () => {
-		const result = await parseTemplate();
-
-		const settingsStart = result.kanbanBoard.indexOf("%% kanban:settings");
-		expect(settingsStart).toBeGreaterThan(-1);
-		const settings = result.kanbanBoard.slice(settingsStart);
-		expect(settings).toContain('{"kanban-plugin":"list"}');
-		expect(settings.trimEnd().endsWith("%%")).toBe(true);
-		expect(settings).not.toContain("## ");
-	});
-});
-
 describe("kanbanIndex section ships the shared rules and the operations list", () => {
 	it("opens with frontmatter tagged tasks, workflow, hub", async () => {
 		const result = await parseTemplate();
@@ -1266,7 +1219,7 @@ describe("kanbanIndex section ships the shared rules and the operations list", (
 	it("contains the shared-rule headings in order", async () => {
 		const result = await parseTemplate();
 
-		const headings = ["## Operations", "## Board and Columns", "## Cards", "## Project Tag", "## Reaching the Board"];
+		const headings = ["## Operations", "## Projects and Columns", "## Cards", "## Project", "## Cleanup Rules", "## Reaching the Cards"];
 		const positions = headings.map((heading) => result.kanbanIndex.indexOf(`\n${heading}\n`));
 		for (const position of positions) expect(position).toBeGreaterThan(-1);
 		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -1285,18 +1238,31 @@ describe("kanbanIndex section ships the shared rules and the operations list", (
 	});
 
 	it.each([
-		"[[<card-slug>]]",
-		"<P#> <TYPE>: <summary>",
+		"kanban/<project>/<column>/<slug>.md",
 		"p3",
 		"Related: [[projects/<project-note>|<display-name>]]",
-		"%% kanban:settings",
-		"kanban-plugin: list",
-		"mcp__brain__read_note_lines",
+		"mcp__brain__list_directory",
 		"mcp__brain__move_note",
-	])("keeps the Obsidian convention anchor %s", async (anchor) => {
+		"in-progress/",
+		"**Done overflow.**",
+		"**Wrong or missing project.**",
+	])("keeps the folder-board anchor %s", async (anchor) => {
 		const result = await parseTemplate();
 
 		expect(result.kanbanIndex).toContain(anchor);
+	});
+
+	it.each([
+		"[[<card-slug>]]",
+		"<P#> <TYPE>: <summary>",
+		"%% kanban:settings",
+		"kanban-plugin",
+		"mcp__brain__read_note_lines",
+		"kanban/board.md",
+	])("drops the retired plugin-board anchor %s", async (anchor) => {
+		const result = await parseTemplate();
+
+		expect(result.kanbanIndex).not.toContain(anchor);
 	});
 });
 
@@ -1334,21 +1300,22 @@ describe.each(GUIDES)("$field guide", ({ field, title, outline }) => {
 
 describe("return-format and gate anchors live in the guide that owns them", () => {
 	it.each([
-		["kanbanCreate", ["CREATED:", "MODE: NO_PROJECT", "PROJECT_NOTE: none", "omit the `Related:` line"]],
+		["kanbanCreate", ["CREATED:", "PROJECT_NOTE: none", "omit the `Related:` line"]],
 		[
 			"kanbanWork",
 			[
 				"MODE: DIRECT",
 				"MODE: TABLE",
 				"MODE: NO_TASKS",
+				"MODE: NO_PROJECT",
 				"MISMATCHES:",
-				"Hard stop. Do not activate the board or write code until the user approves the plan.",
+				"Hard stop. Do not activate the card or write code until the user approves the plan.",
 				"DONE (resumed)",
 				"VERDICT: LGTM | CHANGES_REQUESTED | NEEDS_DISCUSSION",
 				"run the [[kanban/guide/stash|Stash]] operation",
 			],
 		],
-		["kanbanManage", ["Reconciliation check", "[[kanban/kanban|Kanban]]"]],
+		["kanbanManage", ["## Step 3 — Check the cleanup rules", "[[kanban/kanban|Kanban]]"]],
 		[
 			"kanbanReview",
 			["**Verdict:** LGTM | Changes Requested | Needs Discussion", "INVESTIGATION:", "SUMMARY:", "Do NOT commit"],
@@ -1383,6 +1350,12 @@ describe("every kanban section is project-neutral and standalone", () => {
 		expect(result[field]).not.toMatch(/orientation/i);
 	});
 
+	it.each(["orientation", ...KANBAN_FIELDS] as const)("%s never names the retired board file", async (field) => {
+		const result = await parseTemplate();
+
+		expect(result[field]).not.toContain("kanban/board.md");
+	});
+
 	it.each(KANBAN_FIELDS)("%s has no feature-linking section and no feature field", async (field) => {
 		const result = await parseTemplate();
 
@@ -1391,7 +1364,7 @@ describe("every kanban section is project-neutral and standalone", () => {
 	});
 });
 
-describe("orientation points at the kanban board and its index", () => {
+describe("orientation points at the card folders and the kanban index", () => {
 	it("ends with the exact pointer paragraph of brief commitment #8", async () => {
 		const result = await parseTemplate();
 
@@ -1399,11 +1372,12 @@ describe("orientation points at the kanban board and its index", () => {
 		expect(paragraphs[paragraphs.length - 1]).toBe(ORIENTATION_POINTER);
 	});
 
-	it("names kanban/board.md and kanban/kanban.md, and not the retired kanban/work-kanban.md", async () => {
+	it("names kanban/kanban.md and neither retired path", async () => {
 		const result = await parseTemplate();
 
-		expect(result.orientation).toContain("kanban/board.md");
 		expect(result.orientation).toContain("kanban/kanban.md");
+		expect(result.orientation).toContain("kanban/<project>/");
+		expect(result.orientation).not.toContain("kanban/board.md");
 		expect(result.orientation).not.toContain("kanban/work-kanban.md");
 	});
 

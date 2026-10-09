@@ -62,14 +62,14 @@ function applyRepair(content: string, repairs: BrainSectionRepair[]): string {
 }
 
 describe("planBrainRepair", () => {
-	it("missing the last two sections yields two entries anchored in order", async () => {
-		await writeBrainAide(templateWithout(["kanban-board", "kanban-index"]));
+	it("missing two adjacent sections yields two entries anchored in order", async () => {
+		await writeBrainAide(templateWithout(["kanban-index", "kanban-create"]));
 
 		const repairs = await planBrainRepair(projectRoot);
 
-		expect(repairs?.map((r) => r.marker)).toEqual(["kanban-board", "kanban-index"]);
+		expect(repairs?.map((r) => r.marker)).toEqual(["kanban-index", "kanban-create"]);
 		expect(repairs?.[0].insertAfter).toBe(toMarkerPair("research-index").close);
-		expect(repairs?.[1].insertAfter).toBe(toMarkerPair("kanban-board").close);
+		expect(repairs?.[1].insertAfter).toBe(toMarkerPair("kanban-index").close);
 	});
 
 	it("missing the first section anchors on null", async () => {
@@ -95,12 +95,12 @@ describe("planBrainRepair", () => {
 	});
 
 	it("entries carry every contract field, in contract order", async () => {
-		await writeBrainAide(templateWithout(["playbook-index", "kanban-board"]));
+		await writeBrainAide(templateWithout(["playbook-index", "kanban-create"]));
 
 		const repairs = await planBrainRepair(projectRoot);
 
 		const expected = brainContract.filter(
-			(e) => e.marker === "playbook-index" || e.marker === "kanban-board",
+			(e) => e.marker === "playbook-index" || e.marker === "kanban-create",
 		);
 		expect(repairs?.map((r) => r.marker)).toEqual(expected.map((e) => e.marker));
 		for (const [i, entry] of expected.entries()) {

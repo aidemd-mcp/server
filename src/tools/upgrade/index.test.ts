@@ -423,7 +423,7 @@ describe("upgrade", () => {
 		wireDefaultMocks();
 		vi.mocked(parseBrainAide).mockResolvedValue({
 			kind: "missing-sections",
-			sections: ["kanban-board", "kanban-index"],
+			sections: ["kanban-index", "kanban-create"],
 		});
 
 		const result = await upgrade(tempDir);
@@ -431,7 +431,7 @@ describe("upgrade", () => {
 		const brainCat = findCategory(result, "brain");
 		expect(brainCat).toBeDefined();
 		expect(brainCat!.files[0].status).toBe("differs");
-		expect(brainCat!.files[0].missingSections).toEqual(["kanban-board", "kanban-index"]);
+		expect(brainCat!.files[0].missingSections).toEqual(["kanban-index", "kanban-create"]);
 		expect(brainCat!.files[0].canonicalContent).toBeUndefined();
 		expect(brainCat!.files[0].prescription).toBeUndefined();
 		expect(brainCat!.summary.differs).toBe(1);
@@ -744,7 +744,7 @@ describe("upgrade — apply mode (handler simulation)", () => {
 		wireDefaultMocks();
 		vi.mocked(parseBrainAide).mockResolvedValue({
 			kind: "missing-sections",
-			sections: ["kanban-board", "kanban-index"],
+			sections: ["kanban-index", "kanban-create"],
 		});
 
 		// Drive the real applyFiles so a write attempt would hit the real filesystem
@@ -763,9 +763,9 @@ describe("upgrade — apply mode (handler simulation)", () => {
 		expect(applied).toHaveLength(1);
 		const file = applied[0].files[0];
 		expect(file.status).toBe("differs");
-		expect(file.missingSections).toEqual(["kanban-board", "kanban-index"]);
+		expect(file.missingSections).toEqual(["kanban-index", "kanban-create"]);
 		expect(file.instructions).toBe(
-			"Brain config is behind — missing required sections: kanban-board, kanban-index. Run /aide:brain config to add them.",
+			"Brain config is behind — missing required sections: kanban-index, kanban-create. Run /aide:brain config to add them.",
 		);
 		expect(file).not.toHaveProperty("canonicalContent");
 		expect(applied[0].summary.differs).toBe(1);

@@ -10,10 +10,10 @@ describe("toMarkerPair", () => {
 		});
 	});
 
-	it("produces the exact bytes for kanban-board", () => {
-		expect(toMarkerPair("kanban-board")).toEqual({
-			open: "<!-- aide-kanban-board-start -->",
-			close: "<!-- aide-kanban-board-end -->",
+	it("produces the exact bytes for kanban-index", () => {
+		expect(toMarkerPair("kanban-index")).toEqual({
+			open: "<!-- aide-kanban-index-start -->",
+			close: "<!-- aide-kanban-index-end -->",
 		});
 	});
 

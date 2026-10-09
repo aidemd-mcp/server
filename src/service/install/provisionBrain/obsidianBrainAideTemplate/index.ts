@@ -1,5 +1,4 @@
 import { platform } from "node:os";
-import kanbanBoardSeed from "./kanbanSeeds/board/index.js";
 import kanbanIndexSeed from "./kanbanSeeds/hub/index.js";
 import kanbanCreateSeed from "./kanbanSeeds/guide/create/index.js";
 import kanbanWorkSeed from "./kanbanSeeds/guide/work/index.js";
@@ -30,14 +29,14 @@ const MCPVAULT_VERSION = "0.16.0";
  * including the post-sync seeding step, which reads the published section
  * contract instead of restating a list of artifacts.
  *
- * The returned string has fifteen body sections. The authoritative list, order and
+ * The returned string has fourteen body sections. The authoritative list, order and
  * per-section roles are owned by `@/service/brainContract`; the parser enforces
  * it and this template must carry a block for every entry. By role:
  *
  * - **Live sections** are read at runtime from the brain config and never written
  *   into the brain. `orientation` is the agent-facing briefing `aide_brain` returns
  *   (tools to reach the brain, entry points to start from, and a pointer to the
- *   kanban board and the kanban index that links its guides). `config` is the Obsidian wiring and seeding flow
+ *   per-project card folders and the kanban index that links its guides). `config` is the Obsidian wiring and seeding flow
  *   `/aide:brain config` runs. Both are user-editable post-scaffold.
  *
  * - **Seed sections** are install-time bytes written into the user's brain at
@@ -46,15 +45,12 @@ const MCPVAULT_VERSION = "0.16.0";
  *   - the coding-playbook index, the study-playbook navigation methodology, the
  *     update-playbook maintenance methodology (backend-agnostic: no MCP tool
  *     names) and the research index;
- *   - `kanban-board`: the empty Obsidian Kanban-plugin board (frontmatter with
- *     `kanban-plugin: list`, five columns in order, trailing `%% kanban:settings`
- *     block). Its text lives in `kanbanSeeds/board`;
  *   - `kanban-index` and the seven operation guides (`kanban-create`,
  *     `kanban-work`, `kanban-manage`, `kanban-move`, `kanban-complete`,
  *     `kanban-stash`, `kanban-review`): an exact, lossless split of the user's
- *     working kanban guide into a short index (board, cards, project tag, how to
- *     reach the board) and one guide per operation. They are Obsidian-specific by
- *     design (wiki links, `P# TYPE:` prefixes, the `Related:` line, the
+ *     working kanban guide into a short index (card folders, cards, project, cleanup rules, how to
+ *     reach the cards) and one guide per operation. They are Obsidian-specific by
+ *     design (wiki links, the `Related:` line, the
  *     `mcp__brain__*` tool table) and carry frontmatter. Their text lives in
  *     `kanbanSeeds/hub` and `kanbanSeeds/guide/<operation>`; the marker lines stay
  *     here, and each section parses to `"\n\n" + seed + "\n"`.
@@ -112,7 +108,7 @@ export default function obsidianBrainAideTemplate(mode: LaunchMode = "local"): s
 		`your task, follow the references it lists to deepen context, and check those\n` +
 		`files' references too. Stay in scope; don't follow references into unrelated topics.\n` +
 		`\n` +
-		`Project work is tracked on the kanban board at \`kanban/board.md\`. Before any board operation, read the kanban index at \`kanban/kanban.md\`, then read only the guide it links for the operation you are performing.\n` +
+		`Project work is tracked as kanban cards in per-project folders under \`kanban/<project>/\`, one subfolder per column. Before any card operation, read the kanban index at \`kanban/kanban.md\`, then read only the guide it links for the operation you are performing.\n` +
 		`\n` +
 		`<!-- aide-orientation-end -->\n` +
 		`\n` +
@@ -513,12 +509,6 @@ export default function obsidianBrainAideTemplate(mode: LaunchMode = "local"): s
 		`### Contents\n` +
 		`\n` +
 		`<!-- aide-research-index-end -->\n` +
-		`\n` +
-		`<!-- aide-kanban-board-start -->\n` +
-		`\n` +
-		kanbanBoardSeed +
-		`\n` +
-		`<!-- aide-kanban-board-end -->\n` +
 		`\n` +
 		`<!-- aide-kanban-index-start -->\n` +
 		`\n` +

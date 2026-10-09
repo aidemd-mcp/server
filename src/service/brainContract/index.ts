@@ -74,18 +74,10 @@ const brainContract = [
 		seedPath: "research/research.md",
 	},
 	{
-		marker: "kanban-board",
-		field: "kanbanBoard",
-		purpose:
-			"Empty kanban board with its five columns, seeded into the brain for tracking project work.",
-		role: "seed",
-		seedPath: "kanban/board.md",
-	},
-	{
 		marker: "kanban-index",
 		field: "kanbanIndex",
 		purpose:
-			"Kanban index the kanban skill sends agents to first: the board line and card formats, priorities, project tag and linking, how to reach the board, and a link to each operation's guide.",
+			"Kanban index the kanban skill sends agents to first: the per-project column folders, the card format, priorities, project linking, the cleanup rules, how to reach the cards, and a link to each operation's guide.",
 		role: "seed",
 		seedPath: "kanban/kanban.md",
 	},
@@ -93,7 +85,7 @@ const brainContract = [
 		marker: "kanban-create",
 		field: "kanbanCreate",
 		purpose:
-			"Kanban guide for creating a card: gather its details, then write the card and add its line to the board.",
+			"Kanban guide for creating a card: gather its details, then write the card into its project's column folder.",
 		role: "seed",
 		seedPath: "kanban/guide/create.md",
 	},

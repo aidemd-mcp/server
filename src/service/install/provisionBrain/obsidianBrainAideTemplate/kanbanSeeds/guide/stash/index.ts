@@ -2,10 +2,8 @@
  * Seed text for the Stash guide at `kanban/guide/stash.md`, carried by the
  * template's `kanban-stash` contract section.
  *
- * Obsidian-specific by design: it reproduces the `## Stash` section of the
- * user's working kanban verbatim (wiki-link card slugs, the card's `## Stash`
- * entry format), with headings promoted one level outside fences and
- * cross-file links pointing at the kanban index. The `## Stash` and
+ * Obsidian-specific by design: wiki links and the card's `## Stash` entry
+ * format; the card is found in its project's column folders. The `## Stash` and
  * `### <YYYY-MM-DD HH:MM>` lines inside the entry-format fences are card
  * content, not guide headings, so they stay unpromoted.
  *
@@ -19,7 +17,9 @@ tags:
 ---
 # Stash
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
+
+A stash only appends a record of the session to the card; it moves and creates nothing, so it needs no approval from the user.
 
 Stash session context into the current card: what changed, decisions made, open questions and remaining work. Use this at the end of a session, or at any point mid-session, to persist everything learned so a future session can pick up seamlessly.
 
@@ -31,11 +31,11 @@ If no card can be identified, ask the user which card to stash to and stop until
 
 ## Step 2 — Determine the project
 
-Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+Get the project tag (see Project in [[kanban/kanban|Kanban]]).
 
 ## Step 3 — Read the card
 
-Read the card to see which sections already exist (Investigation, Answers, Solution, Revisions, earlier Stash entries). You need to know the current state so you do not duplicate information.
+Find \`<slug>.md\` in the project's column folders under \`kanban/<project>/\` and read it to see which sections already exist (Investigation, Answers, Solution, Revisions, earlier Stash entries). You need to know the current state so you do not duplicate information.
 
 ## Step 4 — Gather session context
 

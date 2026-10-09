@@ -2,10 +2,9 @@
  * Seed text for the Review guide at `kanban/guide/review.md`, carried by the
  * template's `kanban-review` contract section.
  *
- * Obsidian-specific by design: it reproduces the `## Review` section of the
- * user's working kanban verbatim (wiki-link card slugs, the subagent prompts,
- * the card's `## Review` and `## Revisions` entry formats), with headings
- * promoted one level outside fences and blockquotes. Every blockquoted prompt
+ * Obsidian-specific by design: wiki links, the subagent prompts, and the
+ * card's `## Review` and `## Revisions` entry formats; recording the review on
+ * the card goes to the `kanban-maintainer` agent. Every blockquoted prompt
  * line, including its `##`/`###`/`####` lines, is subagent prompt content and
  * stays unpromoted.
  *
@@ -19,7 +18,7 @@ tags:
 ---
 # Review
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
 
 Spin up a subagent to do a comprehensive code review of the changes made for the current session's card. If changes are requested, run the full investigate, plan, approve, implement cycle through subagents.
 
@@ -115,7 +114,7 @@ Display the full review output verbatim. Do not summarize, editorialize or filte
 
 ## Step 3 — Record the review
 
-Make one subagent call (\`general-purpose\`, description "Record review on \`<TASK_SLUG>\`") with this prompt, filled in:
+Delegate to the \`kanban-maintainer\` agent (description "Record review on \`<TASK_SLUG>\`") with this request, filled in:
 
 > You are recording a code review on a card.
 >

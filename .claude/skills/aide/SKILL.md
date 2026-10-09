@@ -123,12 +123,12 @@ Now — and only now — run these 8 calls in parallel:
 
 ### Step 5 — Check the board
 
-Every pipeline's work is tracked on the project's kanban board. Invoke the `kanban` skill (`Skill(skill="kanban")`) and, as it directs, have the `kanban-maintainer` agent LIST the project's **open cards** — every column except Done — and CHECK drift. You get back a report — per card its column, slug, priority, title, a short excerpt and its path — never the board itself; never read, search or parse the board with other tools. Read a card in full from its reported path whenever you need more than the excerpt. If the project tag isn't known yet this session, the kanban index tells you to ask the user — do that, never guess.
+Every pipeline's work is tracked on the project's kanban board. Invoke the `kanban` skill (`Skill(skill="kanban")`) and, as it directs, have the `kanban-maintainer` agent LIST the project's **open cards** — every column except Done. You get back a report — per card its column, slug, priority, title, a short excerpt and its path; never list or search the cards with other tools. Read a card in full from its reported path whenever you need more than the excerpt. If the project tag isn't known yet this session, the kanban index tells you to ask the user — do that, never guess.
 
 Then cross-check the open cards against `.aide/session.aide` (if present) and the discover output:
 
 - **Session links.** `session.aide`'s `## Kanban` section names the in-flight feature's cards by slug. Open those cards first — they are the feature's task list.
-- **Drift.** Flag cards that `session.aide` says are finished but sit outside Done, in-flight work with no card, cards `session.aide` names that are missing from the board, and stale In Progress cards.
+- **Drift.** Flag cards that `session.aide` says are finished but sit outside Done, in-flight work with no card, cards `session.aide` names that the agent cannot find, and stale In Progress cards.
 
 Report the open cards and any drift to the user in a few lines, and propose the moves or new cards that would fix it. If `session.aide` names the next card, propose continuing it; otherwise ask the user which card to work on. Never move or create a card silently — every card change goes through the kanban skill's own operations and their approval gates.
 

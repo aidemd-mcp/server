@@ -319,9 +319,9 @@ describe("buildBrainState — brain-aide-invalid: parser rejects deprecated fiel
 describe("buildBrainState — brain-aide-invalid: outdated config (3s)", () => {
 	const OUTDATED_ARGS = ["@bitbonsai/mcpvault", "/x/vault"];
 
-	it("returns brain-aide-invalid with the missing sections when kanban-board and kanban-index are absent", async () => {
+	it("returns brain-aide-invalid with the missing sections when kanban-index and kanban-create are absent", async () => {
 		await writeBrainAide(
-			makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-board", "kanban-index"] }),
+			makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-index", "kanban-create"] }),
 		);
 
 		const result = await buildBrainState(tempRoot);
@@ -330,7 +330,7 @@ describe("buildBrainState — brain-aide-invalid: outdated config (3s)", () => {
 		if (result.status === "brain-aide-invalid") {
 			expect(result.fault).toEqual({
 				kind: "missing-sections",
-				sections: ["kanban-board", "kanban-index"],
+				sections: ["kanban-index", "kanban-create"],
 			});
 		}
 		expect(result).not.toHaveProperty("name");
@@ -354,7 +354,7 @@ describe("buildBrainState — brain-aide-invalid: outdated config (3s)", () => {
 
 	it("still reports brain-aide-invalid when the outdated config's args also carry null (parse precedes the null-slot check)", async () => {
 		await writeBrainAide(
-			makeBrainAideContent({ args: ["@bitbonsai/mcpvault", null], omit: ["kanban-board"] }),
+			makeBrainAideContent({ args: ["@bitbonsai/mcpvault", null], omit: ["kanban-create"] }),
 		);
 
 		const result = await buildBrainState(tempRoot);
@@ -365,7 +365,7 @@ describe("buildBrainState — brain-aide-invalid: outdated config (3s)", () => {
 	it("carries hints on the brain-aide-invalid status", async () => {
 		const hint = [{ source: "env" as const, path: "/candidate/vault" }];
 		mockResolveBrainHints.mockResolvedValue(hint);
-		await writeBrainAide(makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-board"] }));
+		await writeBrainAide(makeBrainAideContent({ args: OUTDATED_ARGS, omit: ["kanban-create"] }));
 
 		const result = await buildBrainState(tempRoot);
 
@@ -716,7 +716,7 @@ describe("buildBrainState — detector never throws (3o)", () => {
 	});
 
 	it("resolves to brain-aide-invalid (outdated config) without rejecting", async () => {
-		await writeBrainAide(makeBrainAideContent({ omit: ["kanban-board", "kanban-index"] }));
+		await writeBrainAide(makeBrainAideContent({ omit: ["kanban-index", "kanban-create"] }));
 		await expect(buildBrainState(tempRoot)).resolves.toMatchObject({
 			status: "brain-aide-invalid",
 			fault: { kind: "missing-sections" },

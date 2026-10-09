@@ -62,7 +62,7 @@ function stepsForCategory(result: InitResult, category: InitStep["category"]): I
 }
 
 const kanbanTail = brainContract
-	.slice(brainContract.findIndex((entry) => entry.marker === "kanban-board"))
+	.slice(brainContract.findIndex((entry) => entry.marker === "kanban-index"))
 	.map((entry) => entry.marker);
 
 describe("init — structured JSON result", () => {
@@ -255,7 +255,7 @@ describe("init — structured JSON result", () => {
 
 	it("outdated brain.aide (kanban sections missing): Brain config step is exists with a kanban-tail brainRepair", async () => {
 		const full = obsidianBrainAideTemplate();
-		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-board").open)));
+		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-index").open)));
 
 		const result = await init(tempDir);
 
@@ -443,7 +443,7 @@ describe("init — response shaping (server-handler logic)", () => {
 		expect(coldStripped).not.toHaveProperty("content");
 		expect(coldStripped?.brainContract).toEqual(brainContract);
 
-		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-board").open)));
+		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-index").open)));
 		const outdatedStripped = stripContent(await init(tempDir)).steps.find((s) => s.name === "Brain config (brain.aide)");
 		expect(outdatedStripped).not.toHaveProperty("content");
 		expect(outdatedStripped?.brainContract).toEqual(brainContract);
@@ -524,7 +524,7 @@ describe("init — apply mode (category call)", () => {
 
 	it("brain category apply never writes .aide/config/brain.aide when it already exists", async () => {
 		const full = obsidianBrainAideTemplate();
-		const outdated = full.slice(0, full.indexOf(toMarkerPair("kanban-board").open));
+		const outdated = full.slice(0, full.indexOf(toMarkerPair("kanban-index").open));
 		await writeBrainAide(outdated);
 
 		const result = await init(tempDir);

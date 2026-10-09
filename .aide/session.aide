@@ -12,15 +12,14 @@ superseded design decisions are cut, not annotated.
 
 ## State summary (set 2026-10-09, between cards)
 
-- Commits, all local, not pushed, not published: d41c3c5 (brain contract + kanban), 0831d94 (Obsidian template + split kanban guide), bbc3c40 (global install launch modes), fe9d431 (board tracking + kanban-maintainer agent), 3d82db1 (kanban-maintainer installer), plus the commit landing now (session.aide as an index, prose-edit rule, docs/README/help text).
-- Card in progress: `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` — its work is done; the orchestrator is proposing to close it. Its stash holds the record.
+- Commits, all local, not pushed, not published: d41c3c5 (brain contract + kanban), 0831d94 (Obsidian template + split kanban guide), bbc3c40 (global install launch modes), fe9d431 (board tracking + kanban-maintainer agent), 3d82db1 (kanban-maintainer installer), c913d8d (session.aide as an index, prose-edit rule, docs/README/help text).
+- No card in progress. Next: `replace-the-plugin-board-with-per-project-card-folders`.
 - Publish is blocked until every pre-publish card is done (user, 2026-10-08).
 
 ## Kanban
 
 The feature's cards, in work order (column = where the card sits today; each card's stash holds its progress):
 
-- `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` (In Progress, P1) — the kanban-maintainer board agent; done, pending close.
 - `replace-the-plugin-board-with-per-project-card-folders` (Backlog, P1, pre-publish) — folders are the board, per project; rewrite index/guides, kanban-maintainer and skill wording; migrate the user's board. Next.
 - `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Backlog, P1, pre-publish) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer stops using rm.
 - `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (Backlog, P1, pre-publish) — legacy brain.aide launcher and stale-section migration on upgrade.
@@ -38,6 +37,7 @@ The feature's cards, in work order (column = where the card sits today; each car
 - `configurevscode-is-dead-code-never-called-from-install-orche` (Todo, P2) — stale, to review with the user.
 - `restructure-aidemd-dev-landing-page` (Backlog, P1) — stale, to review with the user.
 - `create-per-command-aide-specs-under-claude-commands-aide` (Backlog, P2) — stale, to review with the user; likely stale under the rule against .aide specs on .claude/ files.
+- `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` (Done, P1) — the kanban-maintainer board agent
 - `brain-contract-and-create-repair-command` (Done) — done.
 - `aide-info-reports-brain-not-connected-for-global-package-install` (Done) — done.
 - `build-aidemd-mcp-server` (Done) — done.
@@ -110,13 +110,12 @@ Next card: `replace-the-plugin-board-with-per-project-card-folders`, not started
 
 ### What the next agent must do
 
-1. Close `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` once the user confirms.
-2. `replace-the-plugin-board-with-per-project-card-folders` — brain contract + template + index/guides through /aide; kanban-maintainer and kanban skill wording edited directly; then a staged, approved migration of the user's board.
-3. `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline`.
-4. `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up`.
-5. `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`.
-6. Review the three stale cards with the user.
-7. Publish via `node scripts/publish.mjs` only after every pre-publish card is done and the user confirms; aide-maintainer then deletes session.aide.
+1. `replace-the-plugin-board-with-per-project-card-folders` — brain contract + template + index/guides through /aide; kanban-maintainer and kanban skill wording edited directly; then a staged, approved migration of the user's board.
+2. `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline`.
+3. `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up`.
+4. `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`.
+5. Review the three stale cards with the user.
+6. Publish via `node scripts/publish.mjs` only after every pre-publish card is done and the user confirms; aide-maintainer then deletes session.aide.
 
 ## Process discipline (permanent)
 

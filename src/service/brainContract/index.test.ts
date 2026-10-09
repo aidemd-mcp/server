@@ -44,7 +44,7 @@ describe("brainContract", () => {
 		expect(brainContract[1]).toMatchObject({ marker: "config", role: "live" });
 	});
 
-	it("lists the fifteen required sections in the committed order", () => {
+	it("lists the fourteen required sections in the committed order", () => {
 		expect(brainContract.map((entry) => entry.marker)).toEqual([
 			"orientation",
 			"config",
@@ -52,7 +52,6 @@ describe("brainContract", () => {
 			"study-playbook",
 			"update-playbook",
 			"research-index",
-			"kanban-board",
 			"kanban-index",
 			"kanban-create",
 			"kanban-work",

@@ -158,12 +158,6 @@ An entry point for domain research material.
 A \${name} placeholder here proves verbatim pass-through in the
 research section.
 `,
-	"kanban-board": `# Board
-
-## Backlog
-
-## Done
-`,
 	"kanban-index": `# Kanban
 
 The board line and card formats, and a link to each operation's guide.
@@ -305,7 +299,6 @@ describe("3a — happy path", () => {
 		expect(result.researchIndex).toContain("# Research");
 		expect(result.researchIndex).toContain("## Domains");
 		expect(result.researchIndex).toContain("### Example domain");
-		expect(result.kanbanBoard).toContain("## Backlog");
 	});
 });
 
@@ -455,12 +448,12 @@ describe("3e — missing required sections", () => {
 		["missing study-playbook only", ["study-playbook"]],
 		["missing update-playbook only", ["update-playbook"]],
 		["missing research-index only", ["research-index"]],
-		["missing kanban-board only", ["kanban-board"]],
+		["missing kanban-create only", ["kanban-create"]],
 		["missing kanban-index only", ["kanban-index"]],
 		["missing orientation and research-index", ["orientation", "research-index"]],
 		["missing orientation and playbook-index", ["orientation", "playbook-index"]],
 		["missing study-playbook and research-index", ["study-playbook", "research-index"]],
-		["missing kanban-board and kanban-index", ["kanban-board", "kanban-index"]],
+		["missing kanban-index and kanban-create", ["kanban-index", "kanban-create"]],
 	];
 
 	it.each(omitCases)("%s → missing-sections naming exactly the absent markers", async (_description, omit) => {
@@ -473,12 +466,12 @@ describe("3e — missing required sections", () => {
 		expect(result.sections).toEqual(omit);
 	});
 
-	it("a file missing only kanban-board and kanban-index returns missing-sections with exactly [\"kanban-board\",\"kanban-index\"]", async () => {
-		await writeBrainAide(tempDir, makeContent({ omit: ["kanban-board", "kanban-index"] }));
+	it("a file missing only kanban-index and kanban-create returns missing-sections with exactly [\"kanban-index\",\"kanban-create\"]", async () => {
+		await writeBrainAide(tempDir, makeContent({ omit: ["kanban-index", "kanban-create"] }));
 
 		const result = await parseBrainAide(tempDir);
 
-		expect(result).toEqual({ kind: "missing-sections", sections: ["kanban-board", "kanban-index"] });
+		expect(result).toEqual({ kind: "missing-sections", sections: ["kanban-index", "kanban-create"] });
 	});
 
 	it("a file missing non-adjacent sections lists every missing marker in contract order, regardless of omission order", async () => {
@@ -492,12 +485,12 @@ describe("3e — missing required sections", () => {
 	});
 
 	it("a missing section is never defaulted — the result is not ok and carries no field for the absent section", async () => {
-		await writeBrainAide(tempDir, makeContent({ omit: ["kanban-board"] }));
+		await writeBrainAide(tempDir, makeContent({ omit: ["kanban-create"] }));
 
 		const result = await parseBrainAide(tempDir);
 
 		expect(result.kind).not.toBe("ok");
-		expect(Object.keys(result)).not.toContain("kanbanBoard");
+		expect(Object.keys(result)).not.toContain("kanbanCreate");
 		expect(Object.values(result)).not.toContain("");
 	});
 
@@ -530,7 +523,7 @@ describe("3e — missing required sections", () => {
 	it("an order violation among the present pairs with others absent returns malformed-body (order), not missing-sections", async () => {
 		await writeBrainAide(
 			tempDir,
-			makeContent({ omit: ["kanban-board", "kanban-index"], order: reorder("config", "orientation") }),
+			makeContent({ omit: ["kanban-index", "kanban-create"], order: reorder("config", "orientation") }),
 		);
 
 		const result = await parseBrainAide(tempDir);
@@ -609,7 +602,7 @@ describe("3f — malformed/typo'd marker rejection", () => {
 		["typo in config-end", "config", "close", "<!-- aide-config-ennd -->"],
 		["typo in update-playbook-start", "update-playbook", "open", "<!-- aide-update-playbook-strart -->"],
 		["uppercase update-playbook-end", "update-playbook", "close", "<!-- AIDE-UPDATE-PLAYBOOK-END -->"],
-		["typo in kanban-board section name (bord)", "kanban-board", "open", "<!-- aide-kanban-bord-start -->"],
+		["typo in kanban-create section name (craete)", "kanban-create", "open", "<!-- aide-kanban-craete-start -->"],
 		["uppercase kanban-index closer", "kanban-index", "close", "<!-- AIDE-KANBAN-INDEX-END -->"],
 	];
 
@@ -626,14 +619,26 @@ describe("3f — malformed/typo'd marker rejection", () => {
 	it("an unknown-marker typo on a new marker name is flagged as unknown marker even when other sections are absent", async () => {
 		await writeBrainAide(
 			tempDir,
-			makeContent({ omit: ["kanban-index"], tokens: { "kanban-board": { open: "<!-- aide-kanban-bord-start -->" } } }),
+			makeContent({ omit: ["kanban-create"], tokens: { "kanban-index": { open: "<!-- aide-kanban-indx-start -->" } } }),
 		);
 
 		const result = await parseBrainAide(tempDir);
 
 		expect(result.kind).toBe("malformed-body");
 		if (result.kind !== "malformed-body") return;
-		expect(result.reason).toBe("unknown marker: <!-- aide-kanban-bord-start -->");
+		expect(result.reason).toBe("unknown marker: <!-- aide-kanban-indx-start -->");
+	});
+
+	it("a config still carrying the retired kanban-board block is malformed-body naming its opener", async () => {
+		const retiredBlock = "<!-- aide-kanban-board-start -->\n\nold board\n\n<!-- aide-kanban-board-end -->\n\n";
+		const content = makeContent();
+		const at = content.indexOf(open("kanban-index"));
+		expect(at).toBeGreaterThan(-1);
+		await writeBrainAide(tempDir, content.slice(0, at) + retiredBlock + content.slice(at));
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result).toEqual({ kind: "malformed-body", reason: "unknown marker: <!-- aide-kanban-board-start -->" });
 	});
 
 	it("left-to-right ordering: two malformed markers — reason names the FIRST encountered", async () => {
@@ -668,8 +673,8 @@ describe("3g — marker order violation", () => {
 		["study-playbook before playbook-index", "study-playbook", "playbook-index"],
 		["research-index before study-playbook", "research-index", "study-playbook"],
 		["update-playbook before study-playbook", "update-playbook", "study-playbook"],
-		["kanban-index before kanban-board", "kanban-index", "kanban-board"],
-		["kanban-board before research-index", "kanban-board", "research-index"],
+		["kanban-create before kanban-index", "kanban-create", "kanban-index"],
+		["kanban-index before research-index", "kanban-index", "research-index"],
 		["playbook-index before config", "playbook-index", "config"],
 	];
 
@@ -803,16 +808,17 @@ describe("3h — nested marker rejection", () => {
 			`nested marker: ${open("study-playbook")} appeared inside the playbookIndex section`,
 		],
 		[
-			"kanban-index pair nested inside kanban-board pair",
+			"kanban-create pair nested inside kanban-index pair",
 			join(
-				...blocksBefore("kanban-board"),
-				`${open("kanban-board")}
-\nSome board content.
-\n${makeBlock("kanban-index")}
-\nMore board content.
-\n${close("kanban-board")}`,
+				...blocksBefore("kanban-index"),
+				`${open("kanban-index")}
+\nSome kanban index content.
+\n${makeBlock("kanban-create")}
+\nMore kanban index content.
+\n${close("kanban-index")}`,
+				...blocksAfter("kanban-create"),
 			),
-			`nested marker: ${open("kanban-index")} appeared inside the kanbanBoard section`,
+			`nested marker: ${open("kanban-create")} appeared inside the kanbanIndex section`,
 		],
 	];
 
@@ -1192,7 +1198,7 @@ describe("3o — per-section ownership: all fields are top-level siblings on the
 // ---------------------------------------------------------------------------
 
 describe("4a — later sections participate in the verbatim-slicing invariant", () => {
-	it.each(["config", "updatePlaybook", "kanbanBoard", "kanbanIndex"] as const)(
+	it.each(["config", "updatePlaybook", "kanbanCreate", "kanbanIndex"] as const)(
 		"result.%s is byte-identical to the canonical section",
 		async (field) => {
 			await writeBrainAide(tempDir, CANONICAL_BRAIN_AIDE);

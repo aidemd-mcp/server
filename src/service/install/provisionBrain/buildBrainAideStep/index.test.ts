@@ -24,7 +24,7 @@ async function writeBrainAide(content: string): Promise<void> {
 }
 
 const kanbanTail = brainContract
-	.slice(brainContract.findIndex((entry) => entry.marker === "kanban-board"))
+	.slice(brainContract.findIndex((entry) => entry.marker === "kanban-index"))
 	.map((entry) => entry.marker);
 
 describe("buildBrainAideStep", () => {
@@ -40,7 +40,7 @@ describe("buildBrainAideStep", () => {
 
 	it("outdated file: exists with brainRepair, no content, and the contract", async () => {
 		const full = obsidianBrainAideTemplate();
-		const cutAt = full.indexOf(toMarkerPair("kanban-board").open);
+		const cutAt = full.indexOf(toMarkerPair("kanban-index").open);
 		await writeBrainAide(full.slice(0, cutAt));
 
 		const step = await buildBrainAideStep(projectRoot);

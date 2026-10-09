@@ -214,44 +214,6 @@ Add domain hubs here as your research grows. Each hub lives at `<domain>/<domain
 
 <!-- aide-research-index-end -->
 
-<!-- aide-kanban-board-start -->
-
----
-kanban-plugin: list
-tags:
-  - tasks
----
-
-
-
-## Backlog
-
-
-
-## Todo
-
-
-
-## In Progress
-
-
-
-## In Review
-
-
-
-## Done
-
-
-
-%% kanban:settings
-```
-{"kanban-plugin":"list"}
-```
-%%
-
-<!-- aide-kanban-board-end -->
-
 <!-- aide-kanban-index-start -->
 
 ---
