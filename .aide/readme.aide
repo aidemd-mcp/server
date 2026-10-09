@@ -232,7 +232,7 @@ A per-client config block that eliminates translation friction:
 >   "mcpServers": {
 >     "aide": {
 >       "command": "npx",
->       "args": ["-y", "@aidemd-mcp/server@0.9.0"]
+>       "args": ["-y", "@aidemd-mcp/server@<version>"]
 >     }
 >   }
 > }
@@ -260,7 +260,7 @@ A per-client config block that eliminates translation friction:
 >   "servers": {
 >     "aide": {
 >       "command": "npx",
->       "args": ["-y", "@aidemd-mcp/server@0.9.0"]
+>       "args": ["-y", "@aidemd-mcp/server@<version>"]
 >     }
 >   }
 > }

@@ -12,7 +12,19 @@ superseded design decisions are cut, not annotated.
 
 ## State summary (set 2026-10-09)
 
-Brain contract feature committed (d41c3c5). Follow-on cycle committed (0831d94): Obsidian-specific template, contract 15 sections, kanban guide split into index + 7 operation guides. QA PASS. 1279 tests, tsc and build clean. User's brain migrated (old kanban/kanban.md and work-kanban.md moved to backup/kanban-2026-10-09/; index + 7 guides written from the user's own copy). Global kanban skill refreshed. Retros: process/retro/2026-10-08-aidemd-brain-contract-and-kanban.md and process/retro/2026-10-09-aidemd-obsidian-template-split-kanban.md. All ephemerals deleted.
+Three commits, all local, not pushed, not published:
+
+- d41c3c5: brain contract + kanban.
+- 0831d94: Obsidian template + split kanban guide.
+- bbc3c40: global install as a first-class launch mode.
+
+For bbc3c40:
+
+- 1481 tests, tsc and build clean.
+- E2E 36/36 PASS.
+- Retro: process/retro/2026-10-09-aidemd-global-install-launch-modes.md.
+- Research: research/claude-code/2026-10-09-mcp-npx-cold-start-vs-global-install.md.
+- Ephemerals deleted.
 
 ## The architectural intent (what the specs say after the rewrite)
 
@@ -50,6 +62,16 @@ Brain contract feature committed (d41c3c5). Follow-on cycle committed (0831d94):
       - The contract goes from 8 to 15 sections.
     - **The kanban skill** stays backend-neutral and points to the hub, then the operation file.
     - **Repair on a non-template backend** adapts both live and seed sections.
+14. **Launch modes (user, 2026-10-09).**
+    - Setup asks global or local, global recommended.
+    - Global = bare command name. Local = pinned with `-y`, never `@latest`.
+    - A missing global package gets a consent-gated install, with fallback to pinned local.
+    - The choice sticks.
+    - Upgrade judges npx / aidemd-mcp / custom; custom entries are left alone.
+    - /aide:upgrade moves the aide pin; /aide:brain config moves the brain pin.
+    - aide_info has a separate `behind` notice.
+    - No user-facing @latest anywhere, enforced by a guard test.
+    - publish.mjs updates the README pins.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -58,17 +80,22 @@ Brain contract feature committed (d41c3c5). Follow-on cycle committed (0831d94):
 - The kanban skill and guide never reference aide_brain, .aide/, or the orientation section.
 - The status vocabulary stays closed at five values, and every consumer handles all five.
 - No real contract marker token (aide-<marker>-start/-end) may appear in .claude/ or .aide/docs/ prose; the guard test enforces it.
+- No user-facing `@aidemd-mcp/server@latest` in src/ (guard test), .claude/, README.md or .aide/docs/.
+- Changes to existing code are surgical (doctrine in plan-aide.md and the architect, implementor and QA agents).
 
 ## Where this cycle stopped (CRITICAL READING)
 
-The brain contract card's work is complete and committed locally (not pushed, not published).
+Two of the four pre-publish cards are done: brain contract, and global install.
 
 ### What the next agent must do
 
-1. Remaining cards before publish: the global/local install option (p1), pipeline strategy (p1), and card↔feature linking (p2). Do NOT publish until all are done (user, 2026-10-08).
-2. This repo's own .aide/config/brain.aide still has the old 6 sections and will report brain-aide-invalid on the next /aide boot. That is expected, and repair runs via /aide:brain config.
-3. Publish via `node scripts/publish.mjs` only after the user confirms.
-4. aide-maintainer deletes session.aide at final close.
+Next, before publish:
+
+1. Pipeline strategy card (p1).
+2. Card ↔ feature linking (what remains of the kanban card, p2).
+3. Do NOT publish until all are done (user, 2026-10-08).
+4. Publish via `node scripts/publish.mjs` only after the user confirms.
+5. aide-maintainer deletes session.aide at final close.
 
 ### Open follow-ups
 
@@ -79,6 +106,15 @@ The brain contract card's work is complete and committed locally (not pushed, no
 - brain.md's malformed branch should say an unknown marker may be a retired section to delete. Example: work-kanban from the unpublished d41c3c5 template.
 - The narrowed banned-vocabulary invariant's wording is loose. Phrase it as "backend-specific tool names and link syntax outside the template".
 - The user's brain has a stray `kanban/doing/` folder (1 card), and board/folder drift (In Progress 17 lines vs 19 files; Done 10 vs 100+). /kanban manage reconciles it.
+- The behind check ignores `npm_config_registry`.
+- Upgrade and sync wording for malformed or unreadable brain.aide.
+- Specs are missing for the helper orchestrators (resolveBehind, resolveLaunchModes, obsidianBrainAideTemplate, extractMarkerSections).
+- wireMcp runs the package check even when the entry exists.
+- Flaky ~5s install-suite tests.
+- Session-cwd root-resolution bug (separate card candidate).
+- The README Quick Start still describes the retired `--vault-path`.
+- The user's `design-handoff` skill mentions `npx @aidemd-mcp/server@latest sync`.
+- This repo's own .aide/config/brain.aide predates the 15-section contract and will report brain-aide-invalid (missing sections) on the next /aide boot here — expected; repair via /aide:brain config.
 
 ## Process discipline (permanent)
 
