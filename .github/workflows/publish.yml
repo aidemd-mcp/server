@@ -3,6 +3,11 @@ name: Publish to npm + MCP Registry
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to (re)finish, e.g. v0.10.0. Steps already done for that version are skipped."
+        required: true
 
 jobs:
   publish:
@@ -10,10 +15,14 @@ jobs:
     permissions:
       id-token: write
       contents: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
@@ -29,13 +38,29 @@ jobs:
 
       - name: Sync server.json version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${TAG#v}
           jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.tmp && mv server.tmp server.json
 
+      # Trusted publishing (OIDC) — no npm token. Skipped when this version is
+      # already on npm, so a re-run can finish the later steps.
       - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION=${TAG#v}
+          if npm view "@aidemd-mcp/server@$VERSION" version >/dev/null 2>&1; then
+            echo "@aidemd-mcp/server@$VERSION is already on npm — skipping publish"
+          else
+            npm publish --access public
+          fi
+
+      - name: Wait for the version to appear on npm
+        run: |
+          VERSION=${TAG#v}
+          for i in $(seq 1 30); do
+            npm view "@aidemd-mcp/server@$VERSION" version >/dev/null 2>&1 && exit 0
+            sleep 10
+          done
+          echo "@aidemd-mcp/server@$VERSION not visible on npm after 5 minutes" >&2
+          exit 1
 
       - name: Install mcp-publisher
         run: |
@@ -51,7 +76,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          gh release create "$VERSION" \
-            --title "$VERSION" \
-            --generate-notes
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skipping"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes
+          fi
