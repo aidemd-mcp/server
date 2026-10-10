@@ -125,7 +125,7 @@ Now — and only now — run these 8 calls in parallel:
 
 ### Step 5 — Check the board
 
-Every pipeline's work is tracked on the project's kanban board. Invoke the `kanban` skill (`Skill(skill="kanban")`) and, as it directs, have the `kanban-maintainer` agent LIST the project's **open tasks** — every column except Done. You get back a report — per task its column, slug, priority, title, a short excerpt and its path; never list or search the tasks with other tools. Read a task in full from its reported path whenever you need more than the excerpt. If the project tag isn't known yet this session, the kanban index tells you to ask the user — do that, never guess.
+Every pipeline's work is tracked on the project's kanban board. Invoke the `kanban` skill (`Skill(skill="kanban")`) and, as it directs, have the `kanban-maintainer` agent LIST the project's **open tasks** — every column except Done. You get back a report — per task its column, slug, priority, title, a short excerpt and its path; never list or search the tasks with other tools. Read a task in full from its reported path whenever you need more than the excerpt. Get the project tag the way the kanban skill says: from the `Kanban project tag:` line in the project's instructions file, or, when that line is missing, by asking the user once and recording the answer there — never guess.
 
 Then cross-check the open tasks against `.aide/session.aide` (if present) and the discover output:
 
