@@ -12,11 +12,11 @@ superseded design decisions are cut, not annotated.
 
 ## State summary (set 2026-10-10, between tasks)
 
-- Latest release v0.10.2 on npm + MCP Registry (CI green) — content-free brain responses + kanban skill records the project tag once.
-- v0.10.1 is a git tag on a broken commit that never published (staged git mv/rm were swept into the release commit) — superseded by 0.10.2.
-- Recent commits: 7470034 (feature), 30cb0a7 (0.10.2), 6f8c8f4 (CLAUDE.md publish rules: check staged files; sync aidemd.dev from npm after every publish — local, not pushed).
-- No task in progress.
-- Pending outside this repo: aidemd.dev sync to 0.10.2 from npm (a session in the site repo was offered).
+- Latest release v0.10.3 on npm + MCP Registry (CI green): /aide boot now stops and suggests the upgrade (global server, /aide:upgrade, /aide:brain config) before Step 4 when the project is behind (commit ea4b19a, release 1e8d02a). v0.10.2 shipped content-free brain responses + the kanban project-tag fix. v0.10.1 is a git tag on a broken commit that never published.
+- Global install is @aidemd-mcp/server 0.10.3. This repo's and aidemd.dev's `aide` MCP entry both run the global `aidemd-mcp`.
+- aidemd.dev synced to 0.10.3 from npm and deployed (site commit 6deda6a, GitHub Pages deploy green); its brain.aide was repaired/migrated through /aide:brain config.
+- This repo's own brain.aide stale sections updated to the current template (committed and pushed).
+- All work committed and pushed; no task in progress.
 
 ## Kanban
 
@@ -126,7 +126,7 @@ No feature in flight.
 
 ### What the next agent must do
 
-1. aidemd.dev: pull 0.10.2 from npm in the site's own project and deploy (if not already done).
+1. `versions-manifest-release-hygiene` — with the 0.10.3 boot gate, /aide in this repo now stops on "outdated" every run because the committed .aide/versions.json is stale; fix it first.
 2. Kanban cleanup pass per project through /kanban manage.
 3. Review the three stale tasks with the user.
 4. Next feature from the board (candidates: `aide-scaffold-overwrites-existing-files` P1 bug, `brain-authoring-skill-create-a-brain-aide-for-any-backend` P2).
@@ -141,4 +141,4 @@ session.aide is then rewritten, never deleted (decision 18).
 - Every /aide session checks the board at boot and keeps the feature's tasks and `## Kanban` links current.
 - Task progress goes into the task's stash; session.aide stays an index.
 - Cleanup of plan/todo/brief goes through aide_cleanup via aide-maintainer.
-- Publishing: publish first, then sync aidemd.dev by pulling the published version from npm in the site's project.
+- Publishing: check `git status` (publish.mjs commits everything staged), publish, `npm i -g @aidemd-mcp/server@<version>`, then the user runs /aide in a session started from the aidemd.dev folder and pushes (push to main deploys). Never edit the site from this repo's session.
