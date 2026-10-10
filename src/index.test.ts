@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import type { CleanupResult } from "@/types/index.js";
+
+// Registered request handlers keyed by their (mocked) schema object. A map, not
+// mock.calls, so afterEach(vi.clearAllMocks) cannot erase the capture.
+const { handlers, mockCleanup } = vi.hoisted(() => ({
+	handlers: new Map<unknown, (request?: unknown) => Promise<any>>(),
+	mockCleanup: vi.fn(),
+}));
 
 // Mock the init CLI module to prevent its IIFE from executing during tests.
 vi.mock("./cli/init/index.js", () => ({}));
@@ -6,7 +14,9 @@ vi.mock("./cli/init/index.js", () => ({}));
 // Mock MCP SDK modules to prevent real server instantiation.
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
 	Server: vi.fn().mockImplementation(() => ({
-		setRequestHandler: vi.fn(),
+		setRequestHandler: vi.fn((schema: unknown, handler: (request?: unknown) => Promise<any>) => {
+			handlers.set(schema, handler);
+		}),
 		connect: vi.fn().mockResolvedValue(undefined),
 	})),
 }));
@@ -14,12 +24,19 @@ vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
 	StdioServerTransport: vi.fn().mockImplementation(() => ({})),
 }));
 vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
-	CallToolRequestSchema: {},
-	ListToolsRequestSchema: {},
+	CallToolRequestSchema: { id: "call" },
+	ListToolsRequestSchema: { id: "list" },
 }));
+
+// Keep the real CleanupInput (zod) so parsing and defaults are exercised; stub the work.
+vi.mock("@/tools/cleanup/index.js", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@/tools/cleanup/index.js")>();
+	return { ...original, default: mockCleanup };
+});
 
 // Import the exported function under test after mocks are declared.
 import { routeSubcommand } from "./index.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,5 +115,94 @@ describe("remediation names the project's own launcher", () => {
 
 	it("the guard regex matches the old hardcoded remediation literal", () => {
 		expect(NPX_ONLY_REMEDIATION.test("Run `npx @aidemd-mcp/server@latest init` to scaffold it")).toBe(true);
+	});
+});
+
+describe("aide_cleanup registration", () => {
+	const root = process.cwd();
+
+	async function listTools(): Promise<
+		{ name: string; description: string; inputSchema: { properties: Record<string, { type: string }>; required: string[] } }[]
+	> {
+		const { tools } = await handlers.get(ListToolsRequestSchema)!();
+		return tools;
+	}
+
+	async function callTool(name: string, args: unknown) {
+		return handlers.get(CallToolRequestSchema)!({ params: { name, arguments: args } });
+	}
+
+	async function findCleanup() {
+		const tool = (await listTools()).find((t) => t.name === "aide_cleanup");
+		if (!tool) throw new Error("aide_cleanup is not registered");
+		return tool;
+	}
+
+	it("lists aide_cleanup requiring path, with optional boolean dryRun and allowEmptyPlan", async () => {
+		const { inputSchema } = await findCleanup();
+
+		expect(inputSchema.required).toEqual(["path"]);
+		expect(inputSchema.properties.path.type).toBe("string");
+		expect(inputSchema.properties.dryRun.type).toBe("boolean");
+		expect(inputSchema.properties.allowEmptyPlan.type).toBe("boolean");
+	});
+
+	it("describes the ephemerals, the out-of-reach session file, and the optional dry run", async () => {
+		const { description } = await findCleanup();
+
+		expect(description).toContain("plan.aide");
+		expect(description).toContain("todo.aide");
+		expect(description).toContain("brief.aide");
+		expect(description).toContain("session.aide");
+		expect(description).toMatch(/dryRun is an optional preview/);
+	});
+
+	it("calls cleanup with the root and defaulted flags", async () => {
+		mockCleanup.mockResolvedValue({ kind: "removed", module: "src/x", files: ["plan.aide"] } satisfies CleanupResult);
+
+		await callTool("aide_cleanup", { path: "src/x" });
+
+		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: false, allowEmptyPlan: false });
+	});
+
+	it("passes dryRun through", async () => {
+		mockCleanup.mockResolvedValue({ kind: "would-remove", module: "src/x", files: ["plan.aide"] } satisfies CleanupResult);
+
+		await callTool("aide_cleanup", { path: "src/x", dryRun: true });
+
+		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: true, allowEmptyPlan: false });
+	});
+
+	it("passes allowEmptyPlan through", async () => {
+		mockCleanup.mockResolvedValue({ kind: "removed", module: "src/x", files: ["plan.aide"] } satisfies CleanupResult);
+
+		await callTool("aide_cleanup", { path: "src/x", allowEmptyPlan: true });
+
+		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: false, allowEmptyPlan: true });
+	});
+
+	it("flags a refusal as an error and carries the refusal text", async () => {
+		mockCleanup.mockResolvedValue({
+			kind: "refused",
+			module: "src/x",
+			refusal: { kind: "no-plan" },
+		} satisfies CleanupResult);
+
+		const response = await callTool("aide_cleanup", { path: "src/x" });
+
+		expect(response.isError).toBe(true);
+		expect(response.content[0].text).toContain("no plan.aide");
+	});
+
+	it("does not flag a removal as an error", async () => {
+		mockCleanup.mockResolvedValue({ kind: "removed", module: "src/x", files: ["plan.aide"] } satisfies CleanupResult);
+
+		const response = await callTool("aide_cleanup", { path: "src/x" });
+
+		expect(response.isError).toBe(false);
+	});
+
+	it("rejects a call without path", async () => {
+		await expect(callTool("aide_cleanup", {})).rejects.toThrow();
 	});
 });

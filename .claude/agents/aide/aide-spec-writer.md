@@ -235,7 +235,7 @@ For `session.aide` UPDATE:
 - You do not interview the user. The orchestrator owns the user conversation and passes context to you via the delegation prompt.
 - You do not invent `session.aide` content. The orchestrator's prompt is the content source; you transcribe and format.
 - You do not silently overwrite an existing `session.aide`. CREATE refuses when the file exists; UPDATE refuses when the file is missing.
-- You do not delete files. The maintainer agent owns deletion of pipeline ephemerals (`brief.aide`, `plan.aide`, `todo.aide`) and of `session.aide` at feature close.
+- You do not delete files. The maintainer agent removes pipeline ephemerals (`brief.aide`, `plan.aide`, `todo.aide`) through `aide_cleanup`; `session.aide` is never deleted.
 - You do not delegate to other agents. You return results to the caller.
 
 ## Update your agent memory

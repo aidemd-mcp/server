@@ -20,6 +20,7 @@ Learn more at [aidemd.dev](https://aidemd.dev).
 - **Project-wide spec discovery** with a progressive disclosure tree that surfaces intent, research, and QA specs at every level of your codebase
 - **One-command project bootstrap** via `aide_init` — wires methodology docs, pipeline commands, and this MCP server into your project in a single guided flow
 - **Automatic naming convention enforcement** — `aide_scaffold` handles the `.aide` / `intent.aide` rename rules so you never create conflicting specs
+- **Guarded pipeline cleanup** via `aide_cleanup` — removes a closed module's plan, todo and brief only when every checkbox is checked, and refuses with the exact open items otherwise
 - **Health-check validation** via `aide_validate` — detects orphaned specs, missing descriptions, broken links, and naming conflicts before they cause drift
 - **Code introspection** via `aide_inspect` — returns JSDoc, signatures, and kind for named symbols without opening files, giving agents Tier 2 progressive disclosure for code
 - **Upgrade drift detection** via `aide_upgrade` — compares your project's AIDE methodology artifacts against canonical versions and writes updates per-category
@@ -291,6 +292,16 @@ Create new `.aide` spec files with automatic naming convention enforcement. Hand
 
 - `directory` (string, required): Directory where the `.aide` file(s) will be created.
 - `type` (string, required): Type of `.aide` file to create. One of: `intent`, `research`, `both`, `todo`, `plan`.
+
+### aide_cleanup
+
+Remove a closed module's pipeline ephemerals — `brief.aide`, `todo.aide` and `plan.aide` — and nothing else. The preconditions are enforced in code: the module must have a `plan.aide` with every checkbox checked, and a `todo.aide`, if present, must be fully checked. Otherwise the tool refuses, removes nothing, and names each unchecked item with its file and line. It never touches intent specs, code or `.aide/session.aide`, and it refuses paths outside the project. Cross-platform with no shell, so cleanup needs no `rm` permission — allow the tool by name.
+
+**Inputs:**
+
+- `path` (string, required): Module folder that holds the ephemerals, relative to the project root.
+- `dryRun` (boolean, optional): Report what would be removed, or what blocks removal, without removing anything. For inspection only — the real call is already safe.
+- `allowEmptyPlan` (boolean, optional): Let a `plan.aide` with no checkboxes pass. Overrides nothing else.
 
 ### aide_inspect
 

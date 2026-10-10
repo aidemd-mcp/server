@@ -9,6 +9,8 @@ import {
 import discover, { DiscoverInput } from "@/tools/discover/index.js";
 import read, { ReadInput } from "@/tools/read/index.js";
 import scaffold, { ScaffoldInput } from "@/tools/scaffold/index.js";
+import cleanup, { CleanupInput } from "@/tools/cleanup/index.js";
+import formatReport from "@/tools/cleanup/formatReport/index.js";
 import validate, { ValidateInput } from "@/tools/validate/index.js";
 import init, { InitInput } from "@/service/install/index.js";
 import applySteps from "@/service/install/applySteps/index.js";
@@ -131,6 +133,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 					},
 				},
 				required: ["directory", "type"],
+			},
+		},
+		{
+			name: "aide_cleanup",
+			description:
+				"Remove a module's pipeline ephemerals (plan.aide, todo.aide, brief.aide) once that module's cycle has closed, leaving the code and the intent specs as the durable record. It never removes, rewrites or reads anything else: intent specs, research specs, code, and .aide/session.aide are all out of reach.\n\nIt refuses unless plan.aide exists with every checkbox checked and any todo.aide present is fully checked. A missing todo.aide does not block. A refusal lists each unchecked item with its file and line, and nothing is removed. By default a plan.aide with no checkboxes is refused; passing allowEmptyPlan: true explicitly lets such a plan pass, and it never overrides unchecked items, a missing plan, or any other refusal.\n\nCall it directly, because the real call is already safe. dryRun is an optional preview for inspection only and is never a required step before the real call.\n\nThis is the cross-platform replacement for a shell delete, so it can be permitted by name.",
+			inputSchema: {
+				type: "object" as const,
+				properties: {
+					path: {
+						type: "string",
+						description: "The module directory whose ephemerals to remove, relative to the project root",
+					},
+					dryRun: {
+						type: "boolean",
+						description: "Optional. Removes nothing and only reports what a real call would remove. Agents closing a module omit it.",
+					},
+					allowEmptyPlan: {
+						type: "boolean",
+						description: "Optional, off by default. Lets a plan.aide with no checkboxes pass. Overrides nothing else.",
+					},
+				},
+				required: ["path"],
 			},
 		},
 		{
@@ -282,6 +307,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 			const parsed = ScaffoldInput.parse(args);
 			const result = await scaffold(root, parsed.directory, parsed.type);
 			return { content: [{ type: "text", text: result }] };
+		}
+		case "aide_cleanup": {
+			const parsed = CleanupInput.parse(args);
+			const result = await cleanup(root, parsed);
+			const { text, isError } = formatReport(result);
+			return { content: [{ type: "text", text }], isError };
 		}
 		case "aide_validate": {
 			const parsed = ValidateInput.parse(args);

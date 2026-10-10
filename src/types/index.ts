@@ -587,6 +587,71 @@ export type InspectResult = {
 };
 
 /**
+ * The three pipeline ephemerals aide_cleanup may remove; nothing else is ever
+ * a removal target. session.aide is deliberately not a member — it is the
+ * project-wide session log and survives every cleanup call.
+ */
+export type CleanupEphemeral = "plan.aide" | "todo.aide" | "brief.aide";
+
+/** The two ephemerals whose checkboxes gate removal. */
+export type CheckedEphemeral = Extract<CleanupEphemeral, "plan.aide" | "todo.aide">;
+
+/**
+ * One unchecked item: the file it sits in, its 1-based line number, and the
+ * item text after the checkbox marker, trimmed.
+ */
+export type OpenCheckbox = {
+	file: CheckedEphemeral;
+	line: number;
+	text: string;
+};
+
+/**
+ * Why aide_cleanup refused to touch a module. A typed union rather than a
+ * string so a refusal can never omit the unchecked items it must name.
+ */
+export type CleanupRefusal =
+	/** The named path resolves outside the project root (via `..`, an absolute path, or a symlink or junction). */
+	| { kind: "outside-root" }
+	/** Nothing exists at the named path. */
+	| { kind: "missing" }
+	/** The named path is a file or other non-directory. */
+	| { kind: "not-a-directory" }
+	/** An ephemeral name exists but is not a regular file (directory, symlink). */
+	| { kind: "not-a-file"; file: CleanupEphemeral }
+	/** The module has no plan.aide. */
+	| { kind: "no-plan" }
+	/**
+	 * plan.aide exists but contains no checkbox, so completion cannot be
+	 * verified. This is the default; the caller can lift it only by passing
+	 * `allowEmptyPlan: true`.
+	 */
+	| { kind: "plan-without-checkboxes" }
+	/** At least one unchecked item. `items` is non-empty: plan.aide items first, then todo.aide items, each in line order. */
+	| { kind: "unchecked-items"; items: OpenCheckbox[] };
+
+/**
+ * Result returned by aide_cleanup. Every variant carries `module`, the module
+ * path as displayed to the caller: POSIX-separated and relative to the root
+ * (`"."` for the root itself). For `outside-root` it is the caller's input verbatim.
+ */
+export type CleanupResult =
+	/** Real call succeeded. `files` lists what was removed, in removal order. */
+	| { kind: "removed"; module: string; files: CleanupEphemeral[] }
+	/** Dry run. `files` is exactly what the real call would remove against the same state. */
+	| { kind: "would-remove"; module: string; files: CleanupEphemeral[] }
+	/** Preconditions failed. Nothing was touched. */
+	| { kind: "refused"; module: string; refusal: CleanupRefusal }
+	/** A removal failed partway: names what is gone, what is left, and the underlying error message. */
+	| {
+			kind: "incomplete";
+			module: string;
+			removed: CleanupEphemeral[];
+			remaining: CleanupEphemeral[];
+			error: string;
+	  };
+
+/**
  * The `mcpServerConfig` block parsed from `brain.aide` frontmatter. Kept as a
  * separate type from `McpServerEntry` because `args` is `(string | null)[]` at
  * parse time — every element is either a fully-formed argument string OR YAML

@@ -4,7 +4,7 @@ The pipeline-position log. A single `session.aide` lives at the project root ins
 
 It replaces the legacy `handoff.aide` pattern: same content, fixed location, integrated into the methodology rather than hand-written ad hoc.
 
-It is **scoped to one feature lifecycle**: created when a feature pipeline begins, survives every build/QA/fix cycle within that feature, deleted only when the feature is fully completed and the pipeline is no longer in use.
+It is **long-lived and never deleted**: created the first time a feature pipeline needs a durable tracker, it survives every build/QA/fix cycle and every feature after it. When a feature closes, the next handoff rewrites it for the work that comes next — the board almost always has a next card.
 
 ## Why This Exists
 
@@ -113,12 +113,12 @@ one card lives in that card.
 
 ## Lifecycle
 
-`session.aide` is authored and updated by the `aide-spec-writer` agent (the structured-file writer that also owns `.aide` frontmatter — both are "format orchestrator-supplied context into a canonical AIDE file" operations) and deleted by the `aide-maintainer` agent (the precondition-gated cleanup pass that owns deletion of all pipeline ephemerals). The orchestrator decides WHEN the file needs to be created, updated, or deleted, and supplies the content; the responsible agent transcribes the orchestrator's supplied state into the canonical format and writes or deletes the file. This preserves the orchestrator's "delegate everything; never write files" constraint while giving each lifecycle stage a clear specialized owner.
+`session.aide` is authored and updated by the `aide-spec-writer` agent (the structured-file writer that also owns `.aide` frontmatter — both are "format orchestrator-supplied context into a canonical AIDE file" operations). Nothing deletes it — not the `aide-maintainer` agent, not the `aide_cleanup` tool. The orchestrator decides WHEN the file needs to be created or updated, and supplies the content; the spec-writer transcribes the orchestrator's supplied state into the canonical format and writes the file. This preserves the orchestrator's "delegate everything; never write files" constraint while giving each lifecycle stage a clear specialized owner.
 
 1. **Created** by the `aide-spec-writer` agent on orchestrator demand, when a feature pipeline begins and the orchestrator decides the work is large enough to need a durable tracker. Most features do not need one — a single-cycle build never gets one. Multi-cycle reworks, cross-module sweeps, and features paused for user review across multiple sessions DO get one. The orchestrator's delegation prompt supplies the initial content (feature intent, current stage, card links in work order, settled decisions, anti-regression invariants, the next card); the spec-writer formats and writes the file.
 2. **Read at boot** by the `/aide` orchestrator on every invocation if the file exists. The orchestrator's resume protocol consults `## Where this cycle stopped` first, then the next card's latest stash, then `## The architectural intent` for the settled-decisions list.
 3. **Updated** by the `aide-spec-writer` agent on orchestrator demand at every meaningful pipeline-state transition: when a stage completes, when a stage is paused for user review, when a new architectural decision is settled, when an anti-regression invariant is added. The orchestrator's delegation prompt names what changed and supplies the new content; the spec-writer applies the update — appending decisions at the next stable number, rewriting the `## Where this cycle stopped` section and the `## Kanban` links, cutting superseded prose. The record of finished work goes into the card's stash, not here. The spec-writer never invents content; it transcribes what the orchestrator describes.
-4. **Deleted** by the `aide-maintainer` agent when the feature is fully completed and the pipeline is no longer in use for it. "Fully completed" means: every per-module `todo.aide` resolved, retros promoted to brain, the version bumped and shipped (if applicable), and the user confirms the feature is closed. After deletion, the project returns to its no-feature-in-flight state.
+4. **Rewritten, never deleted,** when a feature closes. The closing handoff records the finished cards in `## Kanban` and rewrites `## State summary` and `## Where this cycle stopped` around the next card on the board; decisions and invariants that no longer span live work are cut.
 
 ## Placement
 
@@ -140,8 +140,8 @@ It does NOT live next to module specs. Per-module ephemeral state lives in `brie
 |---|---|---|
 | Scope | Per module | Project-wide (one file at root) |
 | Content | Implementation contracts for one module | Pipeline state across the whole feature |
-| Lifespan | Per feature (deleted post-QA) | Per feature lifecycle (deleted at feature close) |
-| Owner | Strategist creates; architect + implementor update | `aide-spec-writer` creates and updates (orchestrator supplies the content); `aide-maintainer` deletes at feature close |
+| Lifespan | Per feature (removed post-QA) | Long-lived; never deleted, rewritten as features close |
+| Owner | Strategist creates; architect + implementor update | `aide-spec-writer` creates and updates (orchestrator supplies the content) |
 | Resume target | The architect picking up plan revision | The orchestrator picking up the whole pipeline |
 
 A `brief.aide` answers "what shape must the code in *this module* take?" `session.aide` answers "where does the pipeline stand on *this feature*?" Both are operational state; neither is durable intent.
@@ -150,7 +150,7 @@ A `brief.aide` answers "what shape must the code in *this module* take?" `sessio
 
 | | `.aide/intent.aide` | `.aide/session.aide` |
 |---|---|---|
-| Lifespan | Durable; survives across all features | Ephemeral; deleted at feature close |
+| Lifespan | Durable; survives across all features | Long-lived, but its content is operational state, rewritten as features close |
 | Bound by Brevity Contract? | Yes | No |
 | Cascades to children? | Yes — root of the intent tree | No |
 | Survives a rewrite? | Yes — durable contract | No — describes work in flight |

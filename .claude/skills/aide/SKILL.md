@@ -183,7 +183,7 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 - Refactor: `aide-auditor` (one per `.aide` section, then `aide-implementor` + `aide-qa`)
 - Align: `aide-aligner`
 - `.aide/session.aide` CREATE and UPDATE: `aide-spec-writer` (same structured-file writer that owns `.aide` frontmatter — see "Session state management" below)
-- Completion cleanup (delete per-module ephemerals; delete `session.aide` at feature close): `aide-maintainer` (post-QA, after retro promotion)
+- Completion cleanup (remove per-module ephemerals through the `aide_cleanup` tool; `session.aide` is never deleted): `aide-maintainer` (post-QA, after retro promotion)
 - Bug investigation / non-pipeline work: `aide-explorer` (read-only) or `general-purpose` (if it needs to write files)
 
 **Stages 2 and 3 are skipped by default.** Most modules are navigation stubs whose intent and outcomes alone are sufficient for planning. Research runs only when the domain is genuinely unknown territory; synthesize runs only when the *domain* (not the implementation) has non-obvious decisions worth persisting alongside the spec. The spec-writer signals both needs in its return; the user confirms; the orchestrator routes accordingly. When both are skipped, the orchestrator passes the user's implementation instructions directly to the architect — the architect plans against frontmatter + user context + coding playbook.
@@ -220,7 +220,7 @@ You are an orchestrator for a methodology you do not inherently know. The `.aide
 
 You also read **`brief-aide.md`** at boot — `brief.aide` files are per-module pipeline state you detect during resume. The strategist authors them during synthesize; the architect refines them during plan; the implementor and QA consume them; the maintainer agent deletes them after QA passes.
 
-You also read **`session-aide.md`** at boot — `session.aide` is a single project-root pipeline-position log at `.aide/session.aide` (replacing the legacy `handoff.aide` pattern). It tracks the in-flight feature's state, settled architectural decisions, and where the cycle paused. If it exists, read it during boot (Step 4 call 8) — it tells you exactly where to resume. It is deleted only when the feature is fully completed.
+You also read **`session-aide.md`** at boot — `session.aide` is a single project-root pipeline-position log at `.aide/session.aide` (replacing the legacy `handoff.aide` pattern). It tracks the in-flight feature's state, settled architectural decisions, and where the cycle paused. If it exists, read it during boot (Step 4 call 8) — it tells you exactly where to resume. It is never deleted: when a feature closes, the next handoff rewrites it for the work that comes next.
 
 **You do NOT need to read** `progressive-disclosure.md`, `agent-readable-code.md`, `automated-qa.md`, `cascading-alignment.md`, or `aide-template.md` — those are implementation details for the subagents, not for you.
 
@@ -270,13 +270,13 @@ When the user's request does not map to a specific phase, the discover output te
 | `plan.aide` exists with unchecked items | **Build** — plan is ready |
 | `plan.aide` fully checked, no `todo.aide` | **QA** — build is done |
 | `todo.aide` exists with unchecked items | **Fix** — QA found issues |
-| `todo.aide` fully checked | **Done** — promote retro to brain, hand off to maintainer to delete `brief.aide` (if present)/`plan.aide`/`todo.aide`, report completion. Also: if this was the last in-flight feature, the maintainer deletes `.aide/session.aide` |
+| `todo.aide` fully checked | **Done** — promote retro to brain, hand off to maintainer to remove `brief.aide` (if present)/`plan.aide`/`todo.aide` through `aide_cleanup`, update `session.aide` through `aide-handoff`, report completion |
 
 ## Session state management — `.aide/session.aide`
 
-`.aide/session.aide` is the project-wide pipeline-position log — durable across cycles within a single feature, deleted only at feature close. **You decide WHEN it needs to be written; the `aide-handoff` skill owns HOW.** You never write the file yourself, and you do NOT duplicate the handoff operation logic in this skill — invoke `aide-handoff` and let it carry the operation.
+`.aide/session.aide` is the project-wide pipeline-position log — the long-lived index to the board's queue. It is never deleted; when a feature closes, the next handoff rewrites it for the work that comes next. **You decide WHEN it needs to be written; the `aide-handoff` skill owns HOW.** You never write the file yourself, and you do NOT duplicate the handoff operation logic in this skill — invoke `aide-handoff` and let it carry the operation.
 
-The user-facing entry point is `/aide:handoff`; the implementation lives in the `aide-handoff` skill which detects CREATE vs UPDATE, gathers content from your conversation context, and delegates the actual write to `aide-spec-writer` in `session.aide` mode. Deletion at feature close is `aide-maintainer`'s job — not the handoff skill's.
+The user-facing entry point is `/aide:handoff`; the implementation lives in the `aide-handoff` skill which detects CREATE vs UPDATE, gathers content from your conversation context, and delegates the actual write to `aide-spec-writer` in `session.aide` mode. Nothing deletes `session.aide`.
 
 ### When to invoke `aide-handoff`
 
@@ -436,22 +436,22 @@ Repeat until `todo.aide` is clear. Do NOT fix anything yourself — always deleg
 
 When all issues are resolved:
 
-1. **Promote retro findings from `todo.aide` to the brain at `process/retro/`** BEFORE any deletion. Use the brain MCP write tool. The promoted entry's path is the receipt the maintainer verifies in the next step.
+1. **Promote retro findings from `todo.aide` to the brain at `process/retro/`** BEFORE any removal. Use the brain MCP write tool. The promoted entry's path is the receipt the maintainer verifies in the next step. If QA passed without writing a `todo.aide`, there is no retro to promote — say so in the delegation.
 
-2. **Determine whether this is the last in-flight feature.** If `.aide/session.aide` exists, its `## Where this cycle stopped` section should already indicate closure for this feature. Run `aide_discover` to confirm no other module has a `brief.aide`/`plan.aide`/`todo.aide` outside the one being closed. If yes, the maintainer will also delete `.aide/session.aide` in this delegation; if no, leave `session.aide` for the next feature to consume.
-
-3. **Delegate to the `aide-maintainer` agent** (via Agent tool, `subagent_type: aide-maintainer`). The delegation prompt MUST include:
+2. **Delegate to the `aide-maintainer` agent** (via Agent tool, `subagent_type: aide-maintainer`) — once per module that holds ephemerals for the feature. The delegation prompt MUST include:
    - The **target module path** (where `brief.aide`/`plan.aide`/`todo.aide` live)
-   - The **brain path of the promoted retro** (e.g. `process/retro/2026-05-08-<module>.md`) — the maintainer reads it back to verify the promotion landed before deleting the source `todo.aide`
-   - **Whether to also delete `.aide/session.aide`** — explicitly authorize it only when this is the last in-flight feature (per Step 2)
+   - The **brain path of the promoted retro** (e.g. `process/retro/2026-05-08-<module>.md`) — the maintainer reads it back to verify the promotion landed — or the explicit statement that QA wrote no `todo.aide`
+   - **Only if the user confirmed it:** that the module's `plan.aide` is intentionally empty
 
-   The maintainer verifies preconditions (every `todo.aide` and `plan.aide` checkbox is checked; the named retro entry exists in the brain; if `session.aide` deletion is requested, no other in-flight modules remain), deletes `todo.aide` → `plan.aide` → `brief.aide` (and `session.aide` if authorized), and returns CLEANED / REFUSED / PARTIAL with the list of files touched. If REFUSED, route to the appropriate fix step (e.g. `/aide:fix` for unchecked `todo.aide` items) and re-delegate after.
+   The maintainer verifies the retro, then calls the `aide_cleanup` MCP tool, which refuses — removing nothing — on any unchecked `plan.aide` or `todo.aide` item (naming each one), on a missing plan, or on a path outside the project. It returns CLEANED / REFUSED / PARTIAL with the tool's report. If REFUSED, route to the appropriate fix step (e.g. `/aide:fix` for unchecked `todo.aide` items) and re-delegate after.
 
-4. **Update the board.** Through the `kanban` skill's complete operation, move the feature's card to In Review — or to Done once the user confirms the feature is closed. If `session.aide` survives (other features still in flight), the next handoff updates its `## Kanban` links to match.
+3. **Update `session.aide`.** It is never deleted. Invoke `aide-handoff` to record the closed card and rewrite `## Where this cycle stopped` for the next card.
+
+4. **Update the board.** Through the `kanban` skill's complete operation, move the feature's card to In Review — or to Done once the user confirms the feature is closed.
 
 5. **Report completion to the user** with a summary of what was built, which artifacts the maintainer cleaned up, and where the card now sits.
 
-Do NOT delete any of these files yourself — always delegate to the maintainer. The maintainer is the only agent in the pipeline authorized to delete pipeline ephemerals.
+Do NOT delete any of these files yourself — always delegate to the maintainer, which removes them only through `aide_cleanup`. Never remove pipeline ephemerals with a shell delete.
 
 ### Refactor → `aide:refactor`
 
@@ -550,4 +550,4 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
 - **Retro is promoted.** When the fix loop closes, extract the `## Retro` section and persist it to `process/retro/` in the brain. This is how the pipeline learns.
 - **No shortcuts.** Even if the task seems trivial, the pipeline exists to maintain intent alignment. A "simple" task handled outside the pipeline is how drift starts. Always delegate.
 - **Suggest alignment, don't force it.** When discover output shows `status: misaligned` on any spec, or when a spec edit touches outcomes, suggest `/aide:align` to the user. Do not invoke it automatically — misalignment is informational, not a pipeline gate. The user decides whether to act.
-- **`.aide/session.aide` is written by `aide-spec-writer`, deleted by `aide-maintainer`, never by you.** You hold the content (current stage, card links, settled decisions, where the cycle stopped) because the conversation belongs to you. But the canonical-format write belongs to the spec-writer (same agent that owns `.aide` frontmatter). Delegate a CREATE at pipeline kick-off for multi-cycle features and an UPDATE at every meaningful state transition. If you find yourself about to call Write/Edit on `.aide/session.aide`, STOP — construct a delegation prompt instead.
+- **`.aide/session.aide` is written by `aide-spec-writer`, never by you, and never deleted.** You hold the content (current stage, card links, settled decisions, where the cycle stopped) because the conversation belongs to you. But the canonical-format write belongs to the spec-writer (same agent that owns `.aide` frontmatter). Delegate a CREATE at pipeline kick-off for multi-cycle features and an UPDATE at every meaningful state transition. If you find yourself about to call Write/Edit on `.aide/session.aide`, STOP — construct a delegation prompt instead.

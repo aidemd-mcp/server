@@ -15,20 +15,20 @@ description: >
   stage completed, architectural decision settled, anti-regression
   invariant added, pipeline paused mid-review. Do NOT invoke for
   single-cycle builds or trivial fixes — those resume from
-  conversation context alone and a handoff would be noise. Do NOT use
-  this skill to delete `session.aide` — the `aide-maintainer` agent
-  owns deletion at feature close.
+  conversation context alone and a handoff would be noise.
+  `session.aide` is never deleted — when a feature closes, UPDATE it
+  for the next card.
 ---
 
 # /aide:handoff — Session Handoff
 
-Record current pipeline state to `.aide/session.aide`. This skill owns the orchestration; the `aide-spec-writer` agent owns the actual file write (it transcribes orchestrator-supplied state into the canonical format). The `aide-maintainer` agent (NOT this skill) owns deletion at feature close. See [session.aide spec](../../../.aide/docs/session-aide.md) for the file format.
+Record current pipeline state to `.aide/session.aide`. This skill owns the orchestration; the `aide-spec-writer` agent owns the actual file write (it transcribes orchestrator-supplied state into the canonical format). Nothing deletes `session.aide`; it is long-lived and rewritten as features close. See [session.aide spec](../../../.aide/docs/session-aide.md) for the file format.
 
 ## Hard constraints
 
 - **You do NOT write `.aide/session.aide` yourself.** The actual file write belongs to `aide-spec-writer`. This skill describes the orchestration that surrounds the delegation.
 - **You do NOT invent content.** The invoking agent (orchestrator or other) holds the conversation context — current stage, settled decisions, where work paused, anti-regression invariants. That context is the content source. If the conversation doesn't supply it, ask before invoking the skill — never fabricate state.
-- **You do NOT delete `.aide/session.aide`.** That belongs to `aide-maintainer` at feature close. This skill is exclusively for create/update.
+- **You do NOT delete `.aide/session.aide`.** Nothing does. This skill is exclusively for create/update.
 
 ## Checklist
 
@@ -53,5 +53,5 @@ Record current pipeline state to `.aide/session.aide`. This skill owns the orche
 
 - It does not interview the user. The invoking agent holds the conversation context; this skill only formats it into a delegation prompt for `aide-spec-writer`.
 - It does not apply the Brevity Contract. `session.aide` is operational state, not durable intent — no caps on description, no word counts, no forbidden-content rules from the `.aide` body. The Brevity Contract is `.aide`-only.
-- It does not delete `session.aide`. That belongs to `aide-maintainer` at feature close.
+- It does not delete `session.aide`. Nothing does — at feature close, UPDATE it for the next card.
 - It does not bypass `aide-spec-writer`. The skill is the orchestration layer; the agent owns the file write. Calling `Write`/`Edit` on `.aide/session.aide` directly from this skill violates the delegation pattern.

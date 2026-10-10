@@ -12,15 +12,17 @@ superseded design decisions are cut, not annotated.
 
 ## State summary (set 2026-10-09, between cards)
 
-- Commits, all local, not pushed, not published: d41c3c5 (brain contract + kanban), 0831d94 (Obsidian template + split kanban guide), bbc3c40 (global install launch modes), fe9d431 (board tracking + kanban-maintainer agent), 3d82db1 (kanban-maintainer installer), c913d8d (session.aide as an index, prose-edit rule, docs/README/help text), 25a7943 (folders are the board — kanban-board seed dropped). The commit landing now records the repo's refreshed brain.aide kanban sections.
-- No card in progress. Next: `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline`.
-- Publish is blocked until every pre-publish card is done (user, 2026-10-08).
+- Commits, all local, not pushed, not published: d41c3c5 (brain contract + kanban), 0831d94 (Obsidian template + split kanban guide), bbc3c40 (global install launch modes), fe9d431 (board tracking + kanban-maintainer agent), 3d82db1 (kanban-maintainer installer), c913d8d (session.aide as an index, prose-edit rule, docs/README/help text), 25a7943 (folders are the board — kanban-board seed dropped), bb7478e (refreshed brain.aide kanban sections), a8d1ed8 (cards-to-tasks card link).
+- aide_cleanup work is uncommitted in the working tree: src/tools/cleanup/**, src/types/index.ts, src/index.ts (+test), and prose edits to aide-maintainer, the aide and aide-handoff skills, aide-spec-writer, .aide/docs/{session-aide,aide-spec,index}.md and README.md.
+- No card in progress. Next: `aide-scaffold-creates-and-reformats-session-aide`.
+- Publish is still blocked until every pre-publish card is done (user, 2026-10-08).
 
 ## Kanban
 
 The feature's cards, in work order (column = where the card sits today; each card's stash holds its progress):
 
-- `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Backlog, P1, pre-publish) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer stops using rm.
+- `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (In Review, P1, pre-publish) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer removes ephemerals through it, never rm. Built, QA passed.
+- `aide-scaffold-creates-and-reformats-session-aide` (Backlog, P1, pre-publish) — aide_scaffold creates the session.aide skeleton when missing and re-formats an existing one via a param.
 - `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (Backlog, P1, pre-publish) — legacy brain.aide launcher and stale-section migration on upgrade.
 - `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (Backlog, P1, pre-publish) — when the spec-writer signals Strategy needed for pipelines.
 - `rename-cards-to-tasks-in-kanban-prose` (Backlog, P1, pre-publish) — call kanban items "tasks" everywhere instead of "cards" (user, 2026-10-09).
@@ -93,6 +95,7 @@ The feature's cards, in work order (column = where the card sits today; each car
 15. **Board tracking lives on the AIDE side (user, 2026-10-09).** The /aide boot sequence checks the project's open cards through the kanban skill and cross-checks them against session.aide; the orchestrator keeps the feature's card current through kanban skill operations (start → In Progress, stash at transitions, complete at close), never silently. session.aide carries a required `## Kanban` section linking every card tied to the feature by slug. Cards still carry no feature field (#9 stands); the dependency stays one-way, AIDE → kanban.
 16. **Board work goes through the `kanban-maintainer` agent (user, 2026-10-09).** The board is too large for the main context. The agent reads the board and cards and reports what work is available (title, excerpt, path per card); the main agent uses that report to ask the user what to work on or continue the session's card, may read any single card by its path, and redelegates every change back to the agent by slug. The agent never runs approval gates — the main agent holds them. It ships with the kanban skill as a pair (AIDE-independent), installed by aide_init.
 17. **No board file; per-project card folders (user, 2026-10-09).** The user no longer uses the Obsidian kanban plugin, and the single board (456 lines, ~99 KB, ~10 projects per column) is unreadable for agents. Folders are the board: kanban/<project>/<column>/<slug>.md (backlog, todo, in-progress, in-review, done); a card's folder is its column; card frontmatter carries project, priority, optional type, created, updated. No plugin frontmatter, settings block, checkboxes or wiki-link board lines. This supersedes #13's plugin board format for the kanban seeds (the kanban-board seed is dropped; the index and guides are rewritten); the rest of #13 stands. It must land before publish. Migrated 2026-10-09: 667 cards; folder column won over board column; board.md and backups in kanban/legacy/.
+18. **session.aide is never deleted (user, 2026-10-09).** It is the long-lived index to the board's queue. aide_cleanup never reads, writes or deletes it; aide_scaffold will create/re-format it (card aide-scaffold-creates-and-reformats-session-aide). The maintainer, /aide Completion, handoff skill and session-aide.md now say so.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -104,20 +107,23 @@ The feature's cards, in work order (column = where the card sits today; each car
 - No user-facing `@aidemd-mcp/server@latest` in src/ (guard test), .claude/, README.md or .aide/docs/.
 - Changes to existing code are surgical (doctrine in plan-aide.md and the architect, implementor and QA agents).
 - **session.aide always links the board** — every handoff carries `## Kanban` slug links for the feature's cards; the shipped aide/handoff/spec-writer prose must keep that requirement and stay backend-neutral (no storage vocabulary).
+- **aide_cleanup touches only plan.aide, todo.aide, brief.aide in the named module** — fixed names, never a directory listing, never session.aide, specs or code.
+- **Pipeline ephemerals are removed only through aide_cleanup** — never a shell delete; the maintainer verifies the retro, then calls the tool; dryRun is never a required step.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Next card: `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline`, not started — read its latest stash.
+Next card: `aide-scaffold-creates-and-reformats-session-aide`, not started — read its card.
 
 ### What the next agent must do
 
-1. `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline`.
-2. `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up`.
-3. `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`.
-4. `rename-cards-to-tasks-in-kanban-prose`.
-5. Kanban cleanup pass per project through /kanban manage (stale `status:` keys, In Review > 14 days, Done over 50) — not pre-publish.
-6. Review the three stale cards with the user.
-7. Publish via `node scripts/publish.mjs` only after every pre-publish card is done and the user confirms; aide-maintainer then deletes session.aide.
+1. Commit the aide_cleanup work (with the user's go-ahead).
+2. `aide-scaffold-creates-and-reformats-session-aide`.
+3. `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up`.
+4. `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`.
+5. `rename-cards-to-tasks-in-kanban-prose`.
+6. Kanban cleanup pass per project through /kanban manage (stale `status:` keys, In Review > 14 days, Done over 50) — not pre-publish.
+7. Review the three stale cards with the user.
+8. Publish via `node scripts/publish.mjs` only after every pre-publish card is done and the user confirms; session.aide is then rewritten, never deleted (decision 18).
 
 ## Process discipline (permanent)
 
@@ -126,3 +132,4 @@ Next card: `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline`, not started —
 - Pause for user approval before the build.
 - Every /aide session checks the board at boot and keeps the feature's cards and `## Kanban` links current.
 - Card progress goes into the card's stash; session.aide stays an index.
+- Cleanup of plan/todo/brief goes through aide_cleanup via aide-maintainer.

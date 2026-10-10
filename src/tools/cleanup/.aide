@@ -1,0 +1,26 @@
+---
+scope: src/tools/cleanup
+description: Guarded eraser that removes a closed module's pipeline ephemerals only once every checkbox is ticked, refusing with the exact items still open.
+intent: >
+  cleanup is the eraser that pairs with scaffold's pen. When a module's
+  pipeline cycle closes, its plan, todo list, and brief have served their
+  purpose and should disappear, leaving code and intent specs as the
+  durable record. Today that removal is a prose checklist followed by a
+  raw shell delete, which safety tooling blocks as irreversible and which
+  enforces nothing. This tool moves the safety rules into code: it removes
+  only a closed module's ephemerals, only when every checkbox is ticked,
+  and otherwise refuses with exactly what remains.
+outcomes:
+  desired:
+    - Given a module, the tool removes only that module's plan, todo list, and brief. Intent specs, research specs, code, the session log, and every other file survive every call untouched.
+    - Removal proceeds only when the plan exists with every item checked and any todo list present is fully checked; a missing todo list never blocks. Preconditions are settled before anything is removed, so a module is cleaned completely or not at all.
+    - A refusal names each unchecked item and the file it sits in, so the caller knows exactly what work remains before cleanup can succeed.
+    - Because the real call is already safe, an agent closing a module calls it directly with no preview step. An opt-in dry run exists for inspection only, changes nothing, and never disagrees with what the real call would do against the same state.
+    - Cleanup is a single cross-platform action a user can permit by name, so closing a module never requires a raw shell delete or a broad delete permission.
+  undesired:
+    - A call that removes, rewrites, or even reads the session log, an intent spec, a research spec, code, or any file that is not a pipeline ephemeral of the named module, however the module was named.
+    - Removal that proceeds with an unchecked item in the plan or todo list, or with no plan present at all.
+    - A half-cleaned module, with some ephemerals removed and others left behind, reported as success or without naming what remains.
+    - A dry run that predicts a different result than the real call, or a cleanup flow that treats a dry run as a required step before the real call.
+    - A refusal that only says it refused, without naming the unchecked items or the file holding them.
+---
