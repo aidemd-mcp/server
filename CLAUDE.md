@@ -45,7 +45,7 @@ This bumps `package.json`, syncs `server.json`, commits (e.g. `0.3.16: fix scori
 
 **Before publishing,** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship.
 
-**After every publish, keep the aidemd.dev site in sync.** Bring the site's copy of the AIDE methodology (docs, agents, commands, skills, `versions.json`) to the new version, commit it as `chore(aide): sync methodology to <version>`, and deploy the site. The site's local checkout location lives in the maintainer's private notes, not here.
+**After every publish, keep the aidemd.dev site in sync.** The publish always comes first. Then, working in the site's own project, pull the new version from npm — move the site's `aide` server pin to the published version and run `/aide:upgrade` there — never copy files from this repo's local build. Commit the result as `chore(aide): sync methodology to <version>` and deploy the site. The site's local checkout location lives in the maintainer's private notes, not here.
 
 ## Fixes Go in Canonical Docs, Not Memory
 
