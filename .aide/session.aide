@@ -16,7 +16,8 @@ superseded design decisions are cut, not annotated.
 - Global install is @aidemd-mcp/server 0.10.3. This repo's and aidemd.dev's `aide` MCP entry both run the global `aidemd-mcp`.
 - aidemd.dev synced to 0.10.3 from npm and deployed (site commit 6deda6a, GitHub Pages deploy green); its brain.aide was repaired/migrated through /aide:brain config.
 - This repo's own brain.aide stale sections updated to the current template (committed and pushed).
-- All work committed and pushed; no task in progress.
+- Unreleased, committed locally (not pushed): the handoff rule — session.aide is kept up to date as the agent works, updated whenever anything changes what it says (releases, off-pipeline fixes, environment changes included), never left behind at the end of a turn or session; CREATE the first time tracked work starts. Changed: the aide and aide-handoff skills, the aide-spec-writer agent, session-aide.md and the docs index. Ships with the next release.
+- No task in progress.
 
 ## Kanban
 
@@ -103,6 +104,7 @@ The feature's tasks, in work order (column = where the task sits today; each tas
 19. **Strategy is triggered by the pipeline test (user, 2026-10-08).** Strategy needed = several modules each doing one thing in a specific order, handing off through calls, events or queues; independent of Research needed. Parent spec carries the end-to-end flow, each module its slice; self-contained modules stay frontmatter-only. Decisions parked in session.aide or brief.aide never justify skipping.
 20. **Content-free brain responses (user, 2026-10-10).** aide_init's summary brain step carries only `brainSummary` (flags, markers, sizes) on every status — the heavy fields are removed from the type. Missing sections are inserted tool-side by aide_upgrade category=brain (byte-identical only when the launcher is the template's mcpvault integration; otherwise named for the user to adapt), matching the file's line endings, returning only inserted markers. One migration per round trip: aide_upgrade brain with `brainChange: <marker|"launcher">` and no `beforeHash` is a read-only preview returning one before/after + `beforeHash` (lowercase hex SHA-256 of the exact before string); the same call with `beforeHash` applies, refusing on any byte change. aide_brain accepts any contract marker and returns one section verbatim on every status where the file exists and parses; its reply is exactly status, instructions, found (`found` true only when instructions is the section's bytes). Malformed remediation gives the parser's reason, a hand fix, and a re-check; never "run /aide:brain config". No explicit consent flag; no line numbers.
 21. **Brain config authoring is its own skill (user, 2026-10-10).** Validation stays structural — every required field and section must exist; content is the user's responsibility. Authoring a brain.aide for any backend becomes a standalone skill (task `brain-authoring-skill-create-a-brain-aide-for-any-backend`); /aide:brain config keeps detection, Obsidian repair, migration, validation and sync, and hands create and custom-backend adapting to that skill once it exists.
+22. **session.aide is always current (user, 2026-10-10).** The orchestrator updates session.aide through aide-handoff whenever anything changes what it says — not only at pipeline milestones — and never ends a turn or a session with it behind.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -142,3 +144,4 @@ session.aide is then rewritten, never deleted (decision 18).
 - Task progress goes into the task's stash; session.aide stays an index.
 - Cleanup of plan/todo/brief goes through aide_cleanup via aide-maintainer.
 - Publishing: check `git status` (publish.mjs commits everything staged), publish, `npm i -g @aidemd-mcp/server@<version>`, then the user runs /aide in a session started from the aidemd.dev folder and pushes (push to main deploys). Never edit the site from this repo's session.
+- Keep session.aide up to date as you work (decision 22).
