@@ -280,18 +280,16 @@ The user-facing entry point is `/aide:handoff`; the implementation lives in the 
 
 ### When to invoke `aide-handoff`
 
-Invoke it proactively (without waiting for the user) whenever:
+**`session.aide` is always kept up to date as you work.** Whenever something changes what it says — the state summary, the task links, the decisions, the invariants or the next step — invoke it right then, without waiting for the user and without waiting for a pipeline milestone. A stale `session.aide` sends the next session down the wrong path. That includes, among others:
 
-- A multi-plan feature has just finished Stage 4 (Plan) and is about to enter a multi-cycle build → CREATE
-- The user has just paused the pipeline for review and the conversation will resume in a future session → CREATE or UPDATE
-- An architectural decision was just settled that downstream agents must not re-debate → UPDATE
-- An anti-regression invariant was just added that every future build phase must check → UPDATE
-- A pipeline stage just completed for the in-flight feature → UPDATE
+- A pipeline stage starts or completes, or the pipeline pauses for review → CREATE (if missing) or UPDATE
+- An architectural decision is settled, or an anti-regression invariant is added → UPDATE
+- A task is created, moved, finished, or newly tied to the work → UPDATE
 - An open question resolves or a new one surfaces → UPDATE
+- A release or publish happens, or a commit lands that the state summary should name → UPDATE
+- Work done outside the pipeline changes the state or the next step — a direct prose edit, a fix, a config or environment change (e.g. a global upgrade), a follow-up in another repo → UPDATE
 
-Invoke it reactively whenever the user explicitly says `/aide:handoff`, "save the session", "record where we are", or similar handoff phrasing.
-
-Do NOT invoke it for single-cycle builds, trivial fixes, or features that resume from conversation context alone — a handoff there is noise.
+Batch only within one burst of work: never end a turn, hand back to the user, or finish a session with `session.aide` behind. Invoke it also whenever the user says `/aide:handoff`, "save the session", "record where we are", or similar.
 
 ### What you owe the skill
 
@@ -553,4 +551,4 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
 - **Retro is promoted.** When the fix loop closes, extract the `## Retro` section and persist it to `process/retro/` in the brain. This is how the pipeline learns.
 - **No shortcuts.** Even if the task seems trivial, the pipeline exists to maintain intent alignment. A "simple" task handled outside the pipeline is how drift starts. Always delegate.
 - **Suggest alignment, don't force it.** When discover output shows `status: misaligned` on any spec, or when a spec edit touches outcomes, suggest `/aide:align` to the user. Do not invoke it automatically — misalignment is informational, not a pipeline gate. The user decides whether to act.
-- **`.aide/session.aide` is written by `aide-spec-writer`, never by you, and never deleted.** You hold the content (current stage, task links, settled decisions, where the cycle stopped) because the conversation belongs to you. But the canonical-format write belongs to the spec-writer (same agent that owns `.aide` frontmatter). Delegate a CREATE at pipeline kick-off for multi-cycle features and an UPDATE at every meaningful state transition. If you find yourself about to call Write/Edit on `.aide/session.aide`, STOP — construct a delegation prompt instead.
+- **`.aide/session.aide` is written by `aide-spec-writer`, never by you, and never deleted.** You hold the content (current stage, task links, settled decisions, where the cycle stopped) because the conversation belongs to you. But the canonical-format write belongs to the spec-writer (same agent that owns `.aide` frontmatter). Delegate a CREATE the first time tracked work starts, and an UPDATE whenever anything changes what the file says — keep it up to date as you work. If you find yourself about to call Write/Edit on `.aide/session.aide`, STOP — construct a delegation prompt instead.

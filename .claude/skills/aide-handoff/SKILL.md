@@ -4,20 +4,19 @@ description: >
   Record current pipeline state to `.aide/session.aide` — the
   project-wide pipeline-position log that lets the next session (yours
   or another agent's) resume from a known point. CREATE on first
-  invocation per feature; UPDATE on every subsequent meaningful
-  transition. This skill is the orchestration layer: it detects
-  CREATE vs UPDATE from file state, gathers content from the invoking
-  agent's conversation context, and delegates the actual write to the
-  `aide-spec-writer` agent in `session.aide` mode. Invoke this skill
-  when the user types `/aide:handoff`, asks to "save the session" or
-  "record where we are", or whenever a multi-cycle feature reaches a
-  state transition the next agent must not re-derive from scratch —
-  stage completed, architectural decision settled, anti-regression
-  invariant added, pipeline paused mid-review. Do NOT invoke for
-  single-cycle builds or trivial fixes — those resume from
-  conversation context alone and a handoff would be noise.
-  `session.aide` is never deleted — when a feature closes, UPDATE it
-  for the next task.
+  invocation; UPDATE every time after. `session.aide` is always kept
+  up to date as the agent works. This skill is the orchestration
+  layer: it detects CREATE vs UPDATE from file state, gathers content
+  from the invoking agent's conversation context, and delegates the
+  actual write to the `aide-spec-writer` agent in `session.aide` mode.
+  Invoke this skill when the user types `/aide:handoff`, asks to "save
+  the session" or "record where we are", and whenever anything changes
+  what `session.aide` says — a stage starts or completes, a decision
+  is settled, an invariant is added, a task moves, a release ships, or
+  work outside the pipeline changes the state or the next step. Never
+  end a turn or a session with `session.aide` behind. `session.aide`
+  is never deleted — when a feature closes, UPDATE it for the next
+  task.
 ---
 
 # /aide:handoff — Session Handoff
