@@ -24,7 +24,7 @@ Produce the `.aide` intent spec **frontmatter only**. This is the spec-writing p
 - [ ] Run `aide_validate` to check the spec for structural issues
 - [ ] Return **two independent routing signals** to the orchestrator:
   - `Research needed: yes/no` — is the domain genuinely unknown territory?
-  - `Strategy needed: yes/no` — is the feature a pipeline: several modules each doing one specific thing in a specific order, handing off through calls, events or queues? (The pipeline test in `.aide/docs/aide-spec.md`.) Self-contained modules are NO. Never answer NO because hand-offs are settled in `session.aide` or `brief.aide`.
+  - `Strategy needed: yes/no` — is the feature a pipeline: several modules each doing one specific thing in a specific order, handing off through calls, events, a clock or state changes? (The pipeline test in `.aide/docs/aide-spec.md`.) Self-contained modules are NO. Never answer NO because hand-offs are settled in `session.aide` or `brief.aide`.
 
   The orchestrator decides next stage:
   - both NO → `/aide:plan` directly (orchestrator passes user implementation context)

@@ -77,7 +77,8 @@ outcomes:
 <!-- REPLACE THIS COMMENT with the Strategy body. Cap: ≤ ~7 decisions, each
   ≤ ~80 words. One paragraph per decision, decision form not description form.
   Rules:
-  - Strategy is how the modules interact: what starts the flow, who calls or
+  - Strategy is how the system solves a real-world problem — how the modules
+    interact: what starts the flow, who calls or
     notifies whom, in what order, what each hand-off carries, and what happens
     when one is late, repeated or missing. A parent spec carries the end-to-end
     flow; a module spec carries only its slice.
