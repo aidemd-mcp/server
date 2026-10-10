@@ -77,8 +77,16 @@ outcomes:
 <!-- REPLACE THIS COMMENT with the Strategy body. Cap: ≤ ~7 decisions, each
   ≤ ~80 words. One paragraph per decision, decision form not description form.
   Rules:
+  - Strategy is how the modules interact: what starts the flow, who calls or
+    notifies whom, in what order, what each hand-off carries, and what happens
+    when one is late, repeated or missing. A parent spec carries the end-to-end
+    flow; a module spec carries only its slice.
   - Each paragraph states a concrete choice (tactic, threshold, structural
-    decision, sequencing rule) and the reasoning or data that justifies it.
+    decision, ordering rule) and the reasoning or data that justifies it,
+    naming the outcome it serves.
+  - Never restate this file's intent or outcomes, never recount history, never
+    cite session.aide, brief.aide, plan.aide or todo.aide. A list of what each
+    module does is a table of contents, not a strategy.
   - "Do X because Y (citation)" — never "X is a thing that exists."
   - Cite sources inline, compressed: name the source and the finding, move on.
   - No type signatures, no file paths, no argument indexes, no schema-cardinality

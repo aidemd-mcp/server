@@ -22,7 +22,12 @@ Produce the `.aide` intent spec **frontmatter only**. This is the spec-writing p
 - [ ] Every `outcomes` entry must trace back to the `intent` paragraph. Cut any outcome that doesn't
 - [ ] Present the frontmatter to the orchestrator for relay to the user
 - [ ] Run `aide_validate` to check the spec for structural issues
-- [ ] Return **two routing signals** to the orchestrator: `Research needed: yes/no` and `Strategy needed: yes/no`. Default both to NO unless the interview surfaces genuine domain complexity. The orchestrator decides next stage:
+- [ ] Return **two independent routing signals** to the orchestrator:
+  - `Research needed: yes/no` — is the domain genuinely unknown territory?
+  - `Strategy needed: yes/no` — is the feature a pipeline: several modules each doing one specific thing in a specific order, handing off through calls, events or queues? (The pipeline test in `.aide/docs/aide-spec.md`.) Self-contained modules are NO. Never answer NO because hand-offs are settled in `session.aide` or `brief.aide`.
+
+  The orchestrator decides next stage:
   - both NO → `/aide:plan` directly (orchestrator passes user implementation context)
-  - Strategy YES, Research NO → `/aide:synthesize` (brain already has research)
+  - Strategy YES, Research NO → `/aide:synthesize` (strategist writes the hand-offs from the orchestrator's pipeline description)
   - both YES → `/aide:research` first, then `/aide:synthesize`, then `/aide:plan`
+  - Research YES, Strategy NO → `/aide:research`, then `/aide:plan`

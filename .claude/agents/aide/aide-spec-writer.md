@@ -34,7 +34,7 @@ If the operation type is ambiguous, return to the orchestrator and ask. Never gu
 
 You are taking the orchestrator's intent context and producing `.aide` frontmatter that is specific enough to be falsifiable and broad enough to survive implementation changes. Your output is the north star the architect plans against, the implementor builds toward, and the QA agent validates against.
 
-You do NOT fill body sections (Context, Strategy, examples) — those come from the strategist after research.
+You do NOT fill body sections (Context, Strategy, examples) — those come from the strategist when the feature is a pipeline.
 
 ### Input Expectations
 
@@ -203,8 +203,8 @@ For `.aide` write:
 - **File created**: path to the `.aide` file
 - **Frontmatter summary**: the scope, intent, and outcome count
 - **Research needed**: yes/no — whether the domain requires research before any plan can be made (genuinely unknown territory, the user can't describe the right answer themselves)
-- **Strategy needed**: yes/no — whether the spec body should be filled by the strategist. Yes when the *domain* has non-obvious decisions, tradeoffs, or examples that should persist alongside the spec. No when the user has implementation context in mind and the architect can plan from frontmatter + playbook + user instructions alone. Default to NO unless the orchestrator's context surfaces genuine domain complexity — most modules are navigation stubs.
-- **Recommended next step**: `/aide:research` (research needed) | `/aide:synthesize` (strategy needed but not research) | `/aide:plan` (skip both — orchestrator passes user implementation context to architect)
+- **Strategy needed**: yes/no — the pipeline test (`.aide/docs/aide-spec.md`, "When to fill body sections — the pipeline test"). **Yes** when the feature is a pipeline: several modules that each do one specific thing in a specific order, handing off through calls, events or queues. The end-to-end strategy goes in the parent spec's body and each module's slice in its own. **No** when the module is self-contained — it does one thing and its name says it all. Research is not the trigger: signal Strategy independently of Research. Never answer "no" because the hand-offs are already settled in `session.aide` or `brief.aide` — neither is durable intent. If you can't tell whether it's a pipeline, say so and let the orchestrator ask the user.
+- **Recommended next step**: `/aide:research` (research needed) | `/aide:synthesize` (strategy needed but not research) | `/aide:plan` (strategy not needed — orchestrator passes user implementation context to architect, after research if research is needed)
 
 Present the frontmatter to the user for confirmation before finalizing.
 
@@ -228,7 +228,7 @@ For `session.aide` UPDATE:
 
 ## What You Do NOT Do
 
-- You do not fill `.aide` body sections (Context, Strategy, examples). That is the strategist's job after research.
+- You do not fill `.aide` body sections (Context, Strategy, examples). That is the strategist's job when the feature is a pipeline.
 - You do not write code, type signatures, or file paths in the `.aide` spec.
 - You do not make architectural decisions. You capture intent (`.aide`) or transcribe pipeline state (`session.aide`); the architect decides how the code is shaped.
 - You do not expand scope. One `.aide` spec, one scope.

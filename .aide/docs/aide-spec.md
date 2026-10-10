@@ -186,14 +186,31 @@ A child spec should **not**:
 
 Body sections are **optional**. A `.aide` file with only frontmatter is a valid, complete spec — a navigation stub that names the module's intent and outcomes for the cascading tree, with no further elaboration. Most modules don't need more than that.
 
-Body sections are filled by the strategist during synthesize when — and only when — the module needs domain context that isn't already obvious from intent + outcomes + parent specs. The orchestrator decides whether synthesize runs (see [orchestrator routing](../../.claude/commands/aide.md)). If the strategist is invoked, **all five body sections must be filled** — partial bodies are not permitted. If the strategist is skipped, the body section headings should not appear in the file at all.
+Body sections are filled by the strategist during synthesize when — and only when — the module needs context that isn't already obvious from intent + outcomes + parent specs. The orchestrator decides whether synthesize runs (see [orchestrator routing](../../.claude/commands/aide.md)), using the pipeline test below. If the strategist is invoked, **all five body sections must be filled** — partial bodies are not permitted. If the strategist is skipped, the body section headings should not appear in the file at all.
 
 When present, body sections persist — they are the durable domain contract, just like frontmatter. Unlike `plan.aide` / `todo.aide` / `brief.aide` (ephemeral pipeline state), filled body sections are not deleted post-QA.
+
+### When to fill body sections — the pipeline test
+
+The trigger for synthesize is one question: **is this feature a pipeline?** A pipeline is several modules that each do one specific thing in a specific order, handing off to each other through calls, events or queues. Research is not the trigger — a module can need research and still be self-contained, or need none and still be a step in a pipeline.
+
+- **Pipeline → synthesize runs.** The end-to-end strategy goes in the parent spec's body: what starts the flow, the order of the steps, the hand-offs between them, why each step sits where it does, and what happens when a step is late, repeated or missing. Each module's own slice of that strategy goes in that module's spec body.
+- **Not a pipeline → frontmatter only.** A self-contained module that does one thing — its name says it all — has no Strategy body.
+
+The reason is that module names and outcomes describe each step alone. Nothing in them says that storage notifies a queue, that the queue reader treats each notice only as a cue and re-checks the real files, or that a sweep settles whatever a lost notice missed. That order, and why it holds, is the design — and it lives nowhere else durable.
+
+**Decisions parked in pipeline-state files never stand in for a Strategy body.** `brief.aide`, `plan.aide` and `todo.aide` are deleted after QA, and `session.aide` is rewritten as features close. A pipeline whose hand-offs are settled only there has no durable strategy.
+
+**Example — needs a Strategy (a post-upload event pipeline).** The upload request reserves space and returns size-locked links; the agent sends the files and stops; storage announces each file to the queue; the queue reader treats each notice only as a cue, re-checks the real stored files, and once every file of that upload has arrived and passed its checks publishes in one step or refuses and frees the space; duplicate or late notices find the upload already settled; a periodic sweep settles anything a lost notice missed and discards uploads that never complete.
+
+**Example — skip it (an upload module).** "Uploads a file to storage under the item's folder." Anyone calls it and it uploads; nothing follows it and nothing depends on its order.
 
 The five sections, when filled:
 
 - **`## Context`** — Why this module exists and the domain-level background an agent needs to make good decisions. No code.
-- **`## Strategy`** — The synthesized approach. How this module honors its `intent` and achieves its `outcomes.desired`. Research pulled from the brain gets distilled here into decisions — specific tactics, thresholds, structural choices, and the reasoning behind each one. Write in decision form ("do X because Y"), not description form. Cite data inline. No code.
+- **`## Strategy`** — How the modules interact, and why. What starts the flow, who calls or notifies whom, in what order, what each hand-off carries, and what happens when one is late, repeated or missing — each decision naming the outcome it serves. Research pulled from the brain, when there is any, gets distilled here into decisions. Write in decision form ("do X because Y"), not description form. Cite data inline. No code. A Strategy never restates the intent or outcomes above it in the same file, never recounts history, and never cites `session.aide`, `brief.aide`, `plan.aide` or `todo.aide`.
+  - *Bad — a table of contents:* "The request module creates the upload. The queue module reads messages. The publish module publishes." It lists what each module does, never how they interact.
+  - *Bad — duplication:* a decision that restates an outcome ("go live all at once, keeping the prior version") instead of explaining the hand-off that guarantees it, or a Context that walks the pipeline and a Strategy that walks it again.
 - **`## Good examples`** — Concrete domain output that illustrates success. Real output, not code. Pattern material for QA agents verifying the system's output.
 - **`## Bad examples`** — Concrete domain output that illustrates failure, especially the almost-right-but-wrong cases. Expands on `outcomes.undesired` with recognizable failure material.
 - **`## References`** — A flat list of brain entries the synthesis agent read during strategy writing, each as a path plus a one-line description of what was drawn from it. Its purpose is human auditability: a reviewer can trace every strategy decision back to the research that informed it without re-running the pipeline. Populated by the synthesis agent as a side effect of normal synthesis — not filled manually after the fact. Paths are not required to be valid links; the description is the fallback by design.
@@ -203,11 +220,11 @@ Additional sections (constraints, state machine, etc.) are allowed when the modu
 ### Frontmatter vs Strategy — what each layer owns
 
 - **Frontmatter (`intent` + `outcomes`)** declares *what* the module is for and *what* counts as success or failure. It is a contract — short, falsifiable, machine-readable. **Always present.**
-- **`## Strategy` body** (when filled) answers *how* — the intent combined with research from the brain, compressed into actionable decisions the architect can turn into a plan and the implementor can execute without re-reading the sources. **Optional — present only when the orchestrator routed through synthesize.**
+- **`## Strategy` body** (when filled) answers *how* — how the modules hand off to each other, combined with any research from the brain, compressed into actionable decisions the architect can turn into a plan and the implementor can execute without re-reading the sources. **Optional — present only when the orchestrator routed through synthesize.**
 
 If the strategy contradicts the intent, the intent wins and the strategy is wrong. If a new research finding changes the strategy but not the intent, rewrite the strategy in place. If the intent itself changes, the scope and identity of the spec have changed — consider whether it should be a new spec entirely.
 
-**When body sections aren't filled, where does "how" live?** In the user's implementation context to the orchestrator (which the orchestrator hands directly to the architect), the brain's coding playbook (which the architect consults), and the architect's `plan.aide` itself. The body sections only earn their place when the *domain* — not the implementation — has reasoning that needs to persist alongside the spec.
+**When body sections aren't filled, where does "how" live?** In the user's implementation context to the orchestrator (which the orchestrator hands directly to the architect), the brain's coding playbook (which the architect consults), and the architect's `plan.aide` itself. The body sections earn their place when the feature is a pipeline — the order and hand-offs between modules are a design no module's name or outcomes reveal (see [the pipeline test](#when-to-fill-body-sections--the-pipeline-test)).
 
 ## Writing Standards
 
@@ -247,7 +264,7 @@ The pipeline is driven by an **orchestrator** (`/aide`) that interviews the user
 
 2. **Domain Expert** (`/aide:research`). *Optional.* Fills the brain with domain knowledge — the same role a human domain expert would play, automated. Runs only when the module requires domain knowledge that isn't already available. Ingests sources (existing brain entries, web search, MCP memory), synthesizes patterns, resolves conflicts, and persists the result to the brain filed by **domain** (e.g., `research/email-marketing/`), not by project — domain knowledge is reusable. If no external brain is available, falls back to a co-located `research.aide`. The domain expert never writes `.aide` files; its sole output is reusable knowledge.
 
-3. **Strategist** (`/aide:synthesize`). Reads the brain's domain knowledge and distills it into the `.aide` body sections: `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`, `## References`. Uses `aide_discover` to walk the intent tree. Every strategy decision must trace to an outcome; anything that doesn't serve the intent gets cut.
+3. **Strategist** (`/aide:synthesize`). *Runs when the feature is a pipeline.* Reads the orchestrator's description of how the modules hand off, plus any domain knowledge in the brain, and distills them into the `.aide` body sections: `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`, `## References`. Uses `aide_discover` to walk the intent tree. Every strategy decision must trace to an outcome; anything that doesn't serve the intent gets cut.
 
 4. **Architect agent** (`/aide:plan`). Translates the complete `.aide` spec into a `plan.aide` — a checkboxed implementation plan the implementor executes top-to-bottom. Reads the `.aide` for what the module must produce, pulls the coding playbook from the brain for how this team writes code, and reads the current codebase for what already exists. Output: file placement, naming, sequencing, contracts, reuse decisions, test steps. No code. The plan is presented to the user for approval before build begins. See [plan.aide spec](./plan-aide.md).
 

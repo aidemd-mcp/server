@@ -18,4 +18,4 @@ Fill the brain with durable domain knowledge the synthesizer can later draw from
   - Patterns observed across sources
   - Conflicts resolved (where sources disagreed, which direction chosen and why)
 - [ ] Stop when coverage is sufficient for the synthesizer to fill the `.aide` body sections, not when all sources are exhausted
-- [ ] Hand off to `/aide:synthesize` — the strategist (fresh session) will read your research and fill the spec's body sections
+- [ ] Hand off to the next phase the orchestrator routed: `/aide:synthesize` when the feature is a pipeline (the strategist reads your research alongside the pipeline description), otherwise `/aide:plan`

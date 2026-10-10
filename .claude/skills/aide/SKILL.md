@@ -186,7 +186,7 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 - Completion cleanup (remove per-module ephemerals through the `aide_cleanup` tool; `session.aide` is never deleted): `aide-maintainer` (post-QA, after retro promotion)
 - Bug investigation / non-pipeline work: `aide-explorer` (read-only) or `general-purpose` (if it needs to write files)
 
-**Stages 2 and 3 are skipped by default.** Most modules are navigation stubs whose intent and outcomes alone are sufficient for planning. Research runs only when the domain is genuinely unknown territory; synthesize runs only when the *domain* (not the implementation) has non-obvious decisions worth persisting alongside the spec. The spec-writer signals both needs in its return; the user confirms; the orchestrator routes accordingly. When both are skipped, the orchestrator passes the user's implementation instructions directly to the architect — the architect plans against frontmatter + user context + coding playbook.
+**Stages 2 and 3 are skipped by default.** Most modules are navigation stubs whose intent and outcomes alone are sufficient for planning. Research runs only when the domain is genuinely unknown territory; synthesize runs when the feature is a pipeline — several modules handing off to each other in a specific order — so the order and hand-offs persist alongside the spec. The spec-writer signals both needs in its return; the user confirms; the orchestrator routes accordingly. When both are skipped, the orchestrator passes the user's implementation instructions directly to the architect — the architect plans against frontmatter + user context + coding playbook.
 
 **Never use the generic `Explore` subagent type.** Use `aide-explorer` instead — it understands the AIDE methodology, uses `aide_discover` for `.aide` file lookups, and follows progressive disclosure. The generic `Explore` agent has no methodology context and will fall back to blind file searching.
 
@@ -324,7 +324,8 @@ Every piece of pipeline work is tracked on a card, always. Board bookkeeping is 
 - What module or feature is this for? Where does it live?
 - What is the module's purpose, in domain terms? (Drives `description` and `intent`.)
 - What does success look like? What does failure look like? Especially the almost-right-but-wrong kind. (Drives `outcomes.desired` and `outcomes.undesired`.)
-- **Implementation context, if any.** If the user already has a clear picture of how this should be built (helpers to reuse, libraries, sequencing, type shapes), capture it verbatim — you'll pass it to the architect later if synthesize is skipped. If the user wants to think aloud about the *domain* but doesn't have implementation details, that's a signal that synthesize may be warranted.
+- **Is this feature a pipeline?** Several modules that each do one specific thing in a specific order, handing off through calls, events or queues. If yes, capture how it flows in the user's words: what starts it, who calls or notifies whom, in what order, what each hand-off carries, and what happens when a step is late, repeated or missing. This is the strategist's main input — pass it verbatim. (See [the pipeline test](../../../.aide/docs/aide-spec.md#when-to-fill-body-sections--the-pipeline-test).)
+- **Implementation context, if any.** If the user already has a clear picture of how this should be built (helpers to reuse, libraries, sequencing, type shapes), capture it verbatim — you'll pass it to the architect.
 - Any domain knowledge already available in the brain? (Determines whether to skip research later.)
 
 If the interview leaves gaps, the spec-writer will return to you listing what's missing — you re-interview the user and re-delegate.
@@ -344,11 +345,13 @@ The spec-writer's two signals plus the user's confirmation determine the next st
 | Research needed | Strategy needed | Next stage |
 |---|---|---|
 | no | no | **Skip to Stage 4 (Plan).** Pass the user's implementation context to the architect. The spec is a frontmatter-only navigation stub. |
-| no | yes | **Skip to Stage 3 (Synthesize).** Brain already has the research; strategist fills body sections. |
-| yes | yes | **Stage 2 (Research) → Stage 3 (Synthesize) → Stage 4 (Plan).** Full pipeline. |
-| yes | no | Unusual. Confirm with the user — research without strategy means we're filling the brain but not the spec body. Only proceed if the user wants the brain entry without persisting domain reasoning in the spec itself. |
+| no | yes | **Skip to Stage 3 (Synthesize).** The feature is a pipeline; the strategist writes how its modules hand off, from the flow you captured in the interview (plus any brain research). |
+| yes | yes | **Stage 2 (Research) → Stage 3 (Synthesize) → Stage 4 (Plan).** |
+| yes | no | **Stage 2 (Research) → Stage 4 (Plan).** A self-contained module can need research and still need no Strategy body; the research lives in the brain, where the architect reads it. |
 
-**Default expectation: most modules are "no, no" → straight to Plan.** Synthesize earns its place only when the *domain* — not the implementation — has decisions worth persisting alongside the spec. If the user is uncertain, ask: "Is there domain reasoning here that you'd want to read in 6 months, beyond what intent + outcomes already say?" If no, skip synthesize.
+The two signals are independent. **Research needed** asks whether the domain is unknown territory. **Strategy needed** asks one thing: [is this feature a pipeline?](../../../.aide/docs/aide-spec.md#when-to-fill-body-sections--the-pipeline-test) — several modules each doing one specific thing in a specific order, handing off through calls, events or queues. Self-contained modules stay frontmatter-only; pipelines get a Strategy in the parent spec and each module's slice in its own spec.
+
+**Never skip synthesize silently on a pipeline.** If the feature looks like a pipeline and the spec-writer returned "Strategy needed: no", ask the user before routing to Plan. Decisions settled in `session.aide` or `brief.aide` are never a reason to skip — neither is durable intent.
 
 ### Stage 2: Research → `aide:research` (conditional)
 
@@ -366,12 +369,12 @@ Do NOT research anything yourself. The domain expert agent has specialized tools
 
 **Run only if Stage 1 returned "Strategy needed: yes".** Otherwise skip.
 
-**Your job (orchestrator):** Confirm research is complete (or that the brain already has it), then delegate.
+**Your job (orchestrator):** If research ran, confirm it is complete. Then delegate, passing the pipeline flow you captured in the interview verbatim — the strategist cannot read your conversation. For a pipeline, delegate the parent spec first (the end-to-end strategy), then each module spec (its own slice).
 
 **Then delegate** to the `aide-strategist` agent (via Agent tool, `subagent_type: aide-strategist`). The agent will:
 - Use `aide_discover` to understand the intent tree
 - Read the `.aide` frontmatter for intent
-- Read the brain's research entries for domain knowledge
+- Read the pipeline flow from your delegation, and any brain research entries for domain knowledge
 - Fill ALL FIVE body sections — `## Context`, `## Strategy`, `## Good examples`, `## Bad examples`, `## References` (partial bodies are forbidden)
 - Author the sibling `brief.aide` carrying implementation commitments
 
@@ -543,7 +546,7 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
 - **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, and entries persisted to the brain.
 - **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context.
 - **Pause for approval twice:** after spec frontmatter (Stage 1) and after plan (Stage 4). These are the two points where the user's input shapes the work. (Synthesize, when it runs, also pauses to present the filled body — but synthesize is conditional, so it isn't always in the path.)
-- **Stages 2 and 3 are conditional, not default.** The default path is Stage 1 → Stage 4 → 5 → 6 → 7. Research runs only when the spec-writer signals "Research needed: yes". Synthesize runs only when "Strategy needed: yes". Most modules are navigation stubs — frontmatter-only specs whose intent + outcomes + the user's implementation context are sufficient for planning. Adding synthesize when it isn't earned bloats the spec tree and burns context for downstream agents.
+- **Stages 2 and 3 are conditional, not default.** The default path is Stage 1 → Stage 4 → 5 → 6 → 7. Research runs only when the spec-writer signals "Research needed: yes". Synthesize runs only when "Strategy needed: yes" — when the feature is a pipeline. Self-contained modules are navigation stubs — frontmatter-only specs whose intent + outcomes + the user's implementation context are sufficient for planning. Adding synthesize to a self-contained module bloats the spec tree; skipping it on a pipeline loses the design. When a pipeline comes back "Strategy needed: no", ask the user.
 - **For Shape B plans, pass the user's implementation context to the architect verbatim.** When you skip synthesize, the user's words from the Stage 1 interview ARE the architectural input. Quote them in the architect's delegation prompt; do not paraphrase or summarize.
 - **Detect and resume.** If the user runs `/aide` mid-pipeline, detect state from existing files and resume from the correct stage. Never restart from scratch if prior work exists.
 - **Research is filed by domain.** Research entries go to `research/<domain>/` in the brain, not `research/<project>/`. The knowledge is reusable across projects.
