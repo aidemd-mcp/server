@@ -5,7 +5,7 @@
 - [plan-aide.md](./plan-aide.md)
 - [todo-aide.md](./todo-aide.md)
 - [brief-aide.md](./brief-aide.md) — per-module architect's pre-read (deleted post-QA)
-- [session-aide.md](./session-aide.md) — root-level pipeline-position log — an index to the feature's board tasks (replaces legacy `handoff.aide`)
+- [session-aide.md](./session-aide.md) — root-level session record — what was done, decisions, what comes next — linked to the kanban board (replaces legacy `handoff.aide`)
 - [brain-aide.md](./brain-aide.md)
 - [progressive-disclosure.md](./progressive-disclosure.md)
 - [agent-readable-code.md](./agent-readable-code.md)

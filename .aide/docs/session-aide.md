@@ -1,6 +1,6 @@
 # session.aide Spec
 
-The pipeline-position log. A single `session.aide` lives at the project root inside `.aide/` and is the in-flight feature's index to the board: it names the current stage, the task in progress, the tasks in work order, the decisions and anti-regression invariants that span those tasks, where the cycle paused, and which task is next. Each task's own progress — what was done, its decisions, remaining work, gotchas — lives in that task's stash, not here.
+The session record. A single `session.aide` lives at the project root inside `.aide/` and tracks the work as it happens: where it stands, what was done and validated, every decision settled along the way, the anti-regression invariants the build must hold, where the cycle paused and what the next agent must do to pick up. It also points at the kanban board: every task tied to the work is linked by slug. The board tracks the tasks; `session.aide` tracks the session — it holds the full picture on its own, so a resume needs no other read.
 
 It replaces the legacy `handoff.aide` pattern: same content, fixed location, integrated into the methodology rather than hand-written ad hoc.
 
@@ -12,13 +12,14 @@ Features sometimes span multiple build/QA/fix cycles, multiple architectural rew
 
 `session.aide` is the durable pipeline state. When a fresh orchestrator (or any pipeline agent) reads it at boot, it knows:
 
-- which stage of the pipeline is in flight
+- which stage of the pipeline is in flight, and what was just done
 - which tasks on the kanban board track the work, in work order
-- which decisions spanning those tasks are settled and must not be re-debated
+- which decisions have already been settled and must not be re-debated
 - which anti-regression invariants every build phase must hold
-- which task is next — and that task's latest stash says exactly where it stands
+- what is already done and validated, so nothing is redone
+- exactly where the prior cycle stopped and what the next step is
 
-Without it, every resume costs a full re-orientation. With it, resume is two reads: `session.aide`, then the next task's latest stash.
+Without it, every resume costs a full re-orientation. With it, resume is a one-file read.
 
 ## Format
 
@@ -39,24 +40,24 @@ superseded design decisions are cut, not annotated.
 
 ## State summary (set <date>, <phase>)
 
-A few lines only: the current stage, the task in progress (by slug), the
-commit/publish state, what is blocking. No work history — what was done
-lives in the tasks' stashes.
+Where the work is right now. What was just done, what was paused, what is
+blocking forward motion, and the commit/publish state. One short paragraph
+per pipeline stage if multiple are in flight (e.g. Stage 1 frontmatter
+complete; Stage 3 body synthesis complete; Stage 4 plan paused mid-review).
+Name the task in progress by slug.
 
 ## Kanban
 
-The main section: the feature's tasks on the project's kanban board, in
-work order. One line per task tied to the feature, linked by slug (the
-stable link; the kanban skill finds the task in whatever column it sits).
-The task's stash holds its progress:
+The tasks on the project's kanban board that this work touches, in work
+order. One line per task, linked by slug (the stable link; the kanban skill
+finds the task in whatever column it sits):
 
 - `<task-slug>` (<column>) — <what the task covers>
 
 ## The architectural intent (what the specs say after the rewrite)
 
-Numbered list of the architectural decisions that are settled for this
-feature and span its tasks. A decision that concerns one task lives in that
-task's stash. Each numbered decision is a stable commitment — if the architect,
+Numbered list of the decisions settled in this work — every one, whether it
+spans several tasks or concerns one. Each numbered decision is a stable commitment — if the architect,
 implementor, or QA encounters a question that touches one of these, the
 answer is here, not in conversation. Numbers persist across edits; gaps
 remain when a decision is retired so existing references stay stable.
@@ -75,39 +76,49 @@ phase's checklist, not as new content.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-The most important section for resume. Names the next task by slug and the
-stage it is at, and points the next agent to that task's latest stash for
-where the work stands.
+The most important section for resume. Names exactly which stage paused,
+why, and what the next agent must do. If the pipeline paused mid-review of
+N artifacts, list each artifact with its status (READY / NEEDS REVISION /
+BLOCKED) and the specific revision needed. Name the task each item belongs
+to by slug.
 
 ### What the next agent must do
 
-A short ordered list of the tasks to work next, each by slug with one line,
-plus any feature-level step that has no task (e.g. publish once every task
-is done). The next orchestrator reads this and starts from item 1.
+Numbered checklist of the immediate next steps. The next orchestrator reads
+this and starts execution from item 1.
+
+### What's already done and validated
+
+Bullet list of work that has landed and does not need to be re-done —
+commits, releases, QA verdicts, fixes, environment changes.
+
+### What's left after the current cycle
+
+Bullet list of follow-up items that surface after the current cycle
+completes — smoke testing, version bumps, cleanup, brain promotions. Larger
+follow-ups also get a task on the board; name its slug here.
 
 ## Process discipline (permanent)
 
-Notes about how the pipeline must be run for this feature — pause points,
-context discipline, batching rules. Permanent for the feature's lifetime;
-not for any single cycle.
+Notes about how the work must be run — pause points, context discipline,
+batching rules, release steps. Permanent; not for any single cycle.
 
 ## Open questions
 
-Questions awaiting the user that span the feature's tasks. A question about
-one task lives in that task.
+Decisions still in flight that need user input or further investigation
+before the work can advance.
 ```
 
 ## Rules
 
 - **One file per project, not per module.** `session.aide` lives at `.aide/session.aide` and ONLY there. Per-module pipeline state lives in `brief.aide`, `plan.aide`, and `todo.aide`. This file is the project-wide tracker.
-- **Always links the board.** `## Kanban` is required: every task tied to the feature appears by slug with its column, and every item in `## Where this cycle stopped` that has a task names its slug. The `/aide` orchestrator checks the board at boot and reads these links first; a feature with no task gets one through the kanban skill before the file is written.
-- **An index, not a copy.** No task detail here. What was done on a task, its task-level decisions, remaining work and gotchas go into that task's stash through the kanban skill; `session.aide` names the task by slug with one line.
-- **No follow-up lists.** Follow-up work becomes a task on the board, never a list in `session.aide`.
+- **Always links the board.** `## Kanban` is required: every task tied to the work appears by slug with its column, and every item in `## Where this cycle stopped` that has a task names its slug. The `/aide` orchestrator checks the board at boot and reads these links; work with no task gets one through the kanban skill before the file is written.
+- **The full session record, not just an index.** What was done, every decision, what is validated and what comes next live here, in full. Stashing progress into the task through the kanban skill still happens alongside, but `session.aide` never defers to a stash — a fresh agent reading only this file knows where everything stands.
 - **Replaces `handoff.aide`.** Pre-doctrine projects may still have a `.aide/handoff.aide` file — under the new doctrine that file is renamed to `.aide/session.aide` and integrated into the pipeline's resume protocol. Do not maintain both.
 - **Numbered architectural decisions are stable references.** When a plan or brief says "see session decision #21," that number must keep meaning the same thing across edits. Removing a decision leaves a gap; new decisions append.
 - **No domain reasoning.** Why-the-business-needs-this lives in `.aide/intent.aide` and module specs. `session.aide` is what's true *right now* about the in-flight feature, not why the feature exists.
 - **Not cascaded, not aligned, not validated.** The aligner does not walk `session.aide`. `aide_validate` does not warn about it. It is operational state, not durable intent.
-- **Implementation contracts welcome — when they span the feature's tasks.** A contract for one task's work lives in that task's stash (or the module's `brief.aide`). Type shapes, exact strings, schema details, marker tokens, slot indexes — anything that helps an agent reorient without re-deriving the architecture from code.
+- **Implementation contracts welcome.** Type shapes, exact strings, schema details, marker tokens, slot indexes — anything that helps an agent reorient without re-deriving the architecture from code.
 - **Cut superseded decisions.** When a design decision is replaced by a new one, delete the old text. Git history preserves it. The session file describes the *current* state, not the journey.
 - **Frontmatter is minimal.** `intent` only. No `scope`, no `outcomes`, no `status`.
 
@@ -116,8 +127,8 @@ one task lives in that task.
 `session.aide` is authored and updated by the `aide-spec-writer` agent (the structured-file writer that also owns `.aide` frontmatter — both are "format orchestrator-supplied context into a canonical AIDE file" operations). Nothing deletes it — not the `aide-maintainer` agent, not the `aide_cleanup` tool. The orchestrator decides WHEN the file needs to be created or updated, and supplies the content; the spec-writer transcribes the orchestrator's supplied state into the canonical format and writes the file. This preserves the orchestrator's "delegate everything; never write files" constraint while giving each lifecycle stage a clear specialized owner.
 
 1. **Created** by the `aide-spec-writer` agent on orchestrator demand, the first time the orchestrator starts tracked work in the project and the file does not exist yet. The orchestrator's delegation prompt supplies the initial content (feature intent, current stage, task links in work order, settled decisions, anti-regression invariants, the next task); the spec-writer formats and writes the file.
-2. **Read at boot** by the `/aide` orchestrator on every invocation if the file exists. The orchestrator's resume protocol consults `## Where this cycle stopped` first, then the next task's latest stash, then `## The architectural intent` for the settled-decisions list.
-3. **Kept up to date as the agent works.** The `aide-spec-writer` agent updates it on orchestrator demand whenever anything changes what it says, not only at pipeline milestones: a stage starts, completes or pauses for review; a decision is settled or an invariant added; a task is created, moved or finished; a release ships; or work outside the pipeline (a direct prose edit, a fix, a config or environment change) changes the state or the next step. The orchestrator never ends a turn or a session with the file behind. The orchestrator's delegation prompt names what changed and supplies the new content; the spec-writer applies the update — appending decisions at the next stable number, rewriting the `## Where this cycle stopped` section and the `## Kanban` links, cutting superseded prose. The record of finished work goes into the task's stash, not here. The spec-writer never invents content; it transcribes what the orchestrator describes.
+2. **Read at boot** by the `/aide` orchestrator on every invocation if the file exists. The orchestrator's resume protocol consults `## Where this cycle stopped` first, then `## The architectural intent` for the settled-decisions list. The file alone is enough to resume.
+3. **Kept up to date as the agent works.** The `aide-spec-writer` agent updates it on orchestrator demand whenever anything changes what it says, not only at pipeline milestones: a stage starts, completes or pauses for review; a decision is settled or an invariant added; a task is created, moved or finished; a release ships; or work outside the pipeline (a direct prose edit, a fix, a config or environment change) changes the state or the next step. The orchestrator never ends a turn or a session with the file behind. The orchestrator's delegation prompt names what changed and supplies the new content; the spec-writer applies the update — appending decisions at the next stable number, rewriting the `## Where this cycle stopped` section and the `## Kanban` links, moving finished work into `### What's already done and validated`, cutting superseded prose. The spec-writer never invents content; it transcribes what the orchestrator describes.
 4. **Rewritten, never deleted,** when a feature closes. The closing handoff records the finished tasks in `## Kanban` and rewrites `## State summary` and `## Where this cycle stopped` around the next task on the board; decisions and invariants that no longer span live work are cut.
 
 ## Placement

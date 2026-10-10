@@ -274,7 +274,7 @@ When the user's request does not map to a specific phase, the discover output te
 
 ## Session state management — `.aide/session.aide`
 
-`.aide/session.aide` is the project-wide pipeline-position log — the long-lived index to the board's queue. It is never deleted; when a feature closes, the next handoff rewrites it for the work that comes next. **You decide WHEN it needs to be written; the `aide-handoff` skill owns HOW.** You never write the file yourself, and you do NOT duplicate the handoff operation logic in this skill — invoke `aide-handoff` and let it carry the operation.
+`.aide/session.aide` is the project-wide pipeline-position log — the long-lived session record, linked to the kanban board. It is never deleted; when a feature closes, the next handoff rewrites it for the work that comes next. **You decide WHEN it needs to be written; the `aide-handoff` skill owns HOW.** You never write the file yourself, and you do NOT duplicate the handoff operation logic in this skill — invoke `aide-handoff` and let it carry the operation.
 
 The user-facing entry point is `/aide:handoff`; the implementation lives in the `aide-handoff` skill which detects CREATE vs UPDATE, gathers content from your conversation context, and delegates the actual write to `aide-spec-writer` in `session.aide` mode. Nothing deletes `session.aide`.
 
@@ -295,9 +295,9 @@ Batch only within one burst of work: never end a turn, hand back to the user, or
 
 `aide-handoff` cannot read your conversation context — it can only read its delegation prompt. When you invoke it, your `args` should supply the content the skill needs to construct the spec-writer delegation:
 
-- **For CREATE:** feature intent (one line), state summary (a few lines: current stage, task in progress, commit/publish state, what's blocking), `## Kanban` task links (see below), `## Where this cycle stopped` content (the next task by slug and its stage, then the tasks after it in order), settled decisions that span the tasks (numbered, if any), anti-regression invariants (bulleted, if any), optional process discipline notes, optional open questions awaiting the user
+- **For CREATE:** feature intent (one line), state summary (what was just done, what is paused or blocking, commit/publish state, task in progress by slug), `## Kanban` task links (see below), `## Where this cycle stopped` content (which stage paused and why, artifact statuses, the numbered next steps), what's already done and validated, what's left after the current cycle, every settled decision (numbered), anti-regression invariants (bulleted, if any), optional process discipline notes, optional open questions awaiting the user
 
-`session.aide` is an index to the board, not a copy of it. Each task's progress — what was done, its decisions, remaining work, gotchas — goes into that task's stash; the handoff carries only the slug and a one-line summary. Follow-up work becomes a task, never a list in `session.aide`.
+`session.aide` is the full session record, and it also links the board. Give the handoff the whole picture — what was done, every decision, what is validated, what comes next — not just slugs. Stashing progress into the task through the kanban skill still happens alongside; it never replaces what goes into `session.aide`.
 - **For UPDATE:** the change description (what transition occurred) and section-targeted edits (which section gets new content, e.g. "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ..."). Whenever a task is created, moved, finished, or newly tied to the feature, include the matching `## Kanban` edit.
 
 **Task links are mandatory.** Every handoff supplies the `## Kanban` links: one line per task tied to the feature — its slug, its column, and one line on what it covers. The slug is the stable link; the kanban skill finds the task by slug in whatever column it sits. Items in `## Where this cycle stopped` that correspond to a task name its slug. A feature with no task yet gets one through the kanban skill before the handoff, never a handoff without links.
@@ -310,7 +310,7 @@ Every piece of pipeline work is tracked on a task, always. Board bookkeeping is 
 
 - **Start.** When a feature pipeline starts or resumes, tie it to an open task from the Step 5 list, or create one with the kanban skill's create operation. Move it to In Progress with the move operation.
 - **Transitions.** At every transition that triggers `aide-handoff`, stash progress into the task with the stash operation, and hand the task link to the handoff (see "What you owe the skill").
-- **New work.** Follow-up work that surfaces mid-pipeline and is not done this cycle becomes a task (ask the user first), and its slug goes into `session.aide`.
+- **New work.** Follow-up work that surfaces mid-pipeline goes into `session.aide`'s follow-ups; anything large enough to schedule also becomes a task (ask the user first), and its slug goes next to it.
 - **Close.** At Completion, after the maintainer cleans up, move the task to In Review with the complete operation, or to Done once the user confirms the feature is closed.
 
 ## Pipeline

@@ -114,15 +114,17 @@ You are taking the orchestrator's supplied pipeline state and writing `.aide/ses
 
 The orchestrator's delegation prompt MUST supply:
 - **Feature intent** — one-line summary that goes into the frontmatter `intent:` field
-- **State summary content** — a few lines: the current stage, the task in progress, the commit/publish state, what is blocking
-- **Where this cycle stopped** — the next task (by slug) and the stage it is at, plus the order of the tasks after it; this is the most critical section for resume
-- **Kanban task links** — one line per board task tied to the feature, in work order: its slug, its column, and what it covers. The slug is the stable link to the task on the project's kanban board.
+- **State summary content** — where the work is: what was just done, what is paused or blocking, the commit/publish state, and the task in progress by slug
+- **Where this cycle stopped** — which stage paused and why, the status of each artifact under review, and the numbered next steps; this is the most critical section for resume
+- **Kanban task links** — one line per board task the work touches, in work order: its slug, its column, and what it covers. The slug is the stable link to the task on the project's kanban board.
 
-`session.aide` is an index to the board, not a second copy of it. A task's progress — what was done, its decisions, its remaining work, its gotchas — lives in that task's stash. If the orchestrator's prompt carries task-level detail, keep only the slug link and the one-line summary; do not transcribe the detail.
+`session.aide` is the full session record and also links the board. Transcribe everything the orchestrator supplies — what was done, every decision, what is validated, what comes next — in full. Do not cut detail because a task's stash may also hold it.
 
 The orchestrator's prompt MAY supply (omit a section if not given):
 - **Architectural intent decisions** — numbered list of decisions the orchestrator has settled
 - **Anti-regression invariants** — imperative rules every build agent must check
+- **What's already done and validated** — work that has landed and must not be redone
+- **What's left after the current cycle** — follow-up items, naming task slugs where they exist
 - **Process discipline notes** — pause points, batching rules, context discipline
 - **Open questions** — decisions still in flight
 
@@ -140,11 +142,11 @@ If feature intent, the kanban task links, or `## Where this cycle stopped` conte
 2. Assemble the file:
    - **YAML frontmatter** — `intent:` only, in `>` folded-block form. No `scope`, no `outcomes`, no `status`.
    - **`# AIDE SESSION` header** and the cold-start protocol paragraph (verbatim from the canonical doc).
-   - **`## State summary (set <date>, <phase>)`** — a few lines: current stage, the task in progress, commit/publish state, what is blocking. No work history. Date format `YYYY-MM-DD` (today). Phase is the current stage name (e.g. `Stage 4 plan review`, `Stage 7 fix loop`).
-   - **`## Kanban`** — one bullet per task, in work order: `` `<slug>` (<column>) — <what it covers> ``. One line each; the task's stash holds its progress. Items in `## Where this cycle stopped` name their task's slug.
+   - **`## State summary (set <date>, <phase>)`** — where the work is: what was just done, what is paused or blocking, commit/publish state, the task in progress by slug; one short paragraph per stage if several are in flight. Date format `YYYY-MM-DD` (today). Phase is the current stage name (e.g. `Stage 4 plan review`, `Stage 7 fix loop`).
+   - **`## Kanban`** — one bullet per task, in work order: `` `<slug>` (<column>) — <what it covers> ``. Items in `## Where this cycle stopped` name their task's slug.
    - **`## The architectural intent (what the specs say after the rewrite)`** — numbered list of settled decisions if the orchestrator supplied any. If none supplied, write a single line: `No architectural decisions settled yet for this feature.` and leave the section open for future updates.
    - **`## Anti-regression invariants future build phases must hold`** — bullet list. If none supplied, write: `No anti-regression invariants recorded yet.` and leave the section open.
-   - **`## Where this cycle stopped (CRITICAL READING)`** — the next task by slug, the stage it is at, and a pointer to read that task's latest stash. Then `### What the next agent must do` — a short ordered list of the tasks to work next, each by slug with one line, plus any feature-level step that has no task (e.g. publish once every task is done).
+   - **`## Where this cycle stopped (CRITICAL READING)`** — which stage paused and why; for artifacts under review, each one's status (READY / NEEDS REVISION / BLOCKED) and the revision needed; task slugs where items belong to a task. Then `### What the next agent must do` — the numbered checklist of next steps; `### What's already done and validated` — work that has landed; `### What's left after the current cycle` — follow-ups, naming task slugs where they exist.
    - **`## Process discipline (permanent)`** (optional) — only include if the orchestrator supplied content.
    - **`## Open questions`** (optional) — only include if the orchestrator supplied content.
 3. Use the `Write` tool to create the file. Do NOT use `Edit` (the file doesn't exist yet).
@@ -153,8 +155,6 @@ If feature intent, the kanban task links, or `## Where this cycle stopped` conte
 
 - **No domain reasoning.** Why-the-business-needs-this lives in `.aide/intent.aide` and module specs. `session.aide` is what's true *right now* about the in-flight feature, not why the feature exists.
 - **No invented content.** If the orchestrator's prompt doesn't supply a section's content, omit the section or write a one-line placeholder acknowledging the gap. Never fabricate decisions, invariants, or stopped-here details.
-- **No task detail.** What was done on a task, its task-level decisions, remaining work and gotchas live in the task's stash. `session.aide` names the task by slug. Decisions and invariants here are only those that span the feature's tasks.
-- **No follow-up lists.** Follow-up work becomes a task on the board, not a bullet list here. If the orchestrator supplies a follow-up with no task, return and ask for the task.
 
 ---
 
@@ -191,7 +191,7 @@ Rules for canonical-format preservation:
 - **Cut superseded prose; do not annotate it.** When `## Where this cycle stopped` changes, replace it — do not leave "previously: ..." breadcrumbs. Git history preserves the journey; this file describes only the current state.
 - **Preserve YAML frontmatter** unless the orchestrator explicitly changes the feature intent. The `intent:` field rarely changes across a feature lifecycle.
 - **`## Kanban` links stay current.** Every task the orchestrator names lands as a slug link; a task it says is finished or dropped is updated or removed, not annotated.
-- **Keep it an index.** The CREATE rules "No task detail" and "No follow-up lists" apply to every update. When a stage or task finishes, update its link and `## Where this cycle stopped` — the record of the work goes in the task's stash, not here.
+- **Keep it the full record.** When a stage or task finishes, update its link, move what landed into `### What's already done and validated`, and rewrite `## Where this cycle stopped` for what comes next. Transcribe the orchestrator's detail in full; never trim it on the grounds that a task stash holds it.
 - **Update the `(set <date>, <phase>)` parenthetical in `## State summary`** every time you touch the section. Date is today; phase is the current stage.
 - **Never invent content.** Same rule as CREATE — every substantive line traces back to the orchestrator's prompt.
 
