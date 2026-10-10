@@ -1,6 +1,6 @@
 ---
 intent: >
-  The brain config's required sections become a single published contract with a fifth boot status `brain-aide-invalid`, create/repair through /aide:brain config for any backend, and kanban as the first new required sections behind one AIDE-independent `kanban` pointer skill.
+  Session record for the aidemd-mcp server: content-free brain responses shipped (0.10.2–0.10.3); boot upgrade gate; session.aide restored to the full session record and kept current as the agent works.
 ---
 
 # AIDE SESSION
@@ -12,16 +12,11 @@ superseded design decisions are cut, not annotated.
 
 ## State summary (set 2026-10-10, between tasks)
 
-- Latest release v0.10.3 on npm + MCP Registry (CI green): /aide boot now stops and suggests the upgrade (global server, /aide:upgrade, /aide:brain config) before Step 4 when the project is behind (commit ea4b19a, release 1e8d02a). v0.10.2 shipped content-free brain responses + the kanban project-tag fix. v0.10.1 is a git tag on a broken commit that never published.
-- Global install is @aidemd-mcp/server 0.10.3. This repo's and aidemd.dev's `aide` MCP entry both run the global `aidemd-mcp`.
-- aidemd.dev synced to 0.10.3 from npm and deployed (site commit 6deda6a, GitHub Pages deploy green); its brain.aide was repaired/migrated through /aide:brain config.
-- This repo's own brain.aide stale sections updated to the current template (committed and pushed).
-- Unreleased, committed locally (not pushed): the handoff rule — session.aide is kept up to date as the agent works, updated whenever anything changes what it says (releases, off-pipeline fixes, environment changes included), never left behind at the end of a turn or session; CREATE the first time tracked work starts. Changed: the aide and aide-handoff skills, the aide-spec-writer agent, session-aide.md and the docs index. Ships with the next release.
-- No task in progress.
+No feature in flight. Latest release v0.10.3 (npm + MCP Registry, CI green). Global install @aidemd-mcp/server 0.10.3; this repo's and aidemd.dev's `aide` MCP entries run the global `aidemd-mcp`. Unreleased and committed locally, not pushed: 6f1dcc2 (session.aide kept up to date as the agent works), b406037 (session decision 22), 8e1a8fb (session.aide restored to the full session record, linked to the board). They ship with the next release.
 
 ## Kanban
 
-The feature's tasks, in work order (column = where the task sits today; each task's stash holds its progress):
+The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
 - `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done) — content-free brain responses; shipped in 0.10.2.
 - `brain-authoring-skill-create-a-brain-aide-for-any-backend` (Backlog, P2, dx) — standalone skill that authors a brain.aide for any backend, section by section using aide_brain's purpose; /aide:brain config's create and custom-backend repair hand off to it.
@@ -35,7 +30,7 @@ The feature's tasks, in work order (column = where the task sits today; each tas
 - `fix-malformed-unreadable-brain-aide-wording-in-brain-md-upgr` (Backlog, P2) — housekeeping.
 - `aide-brain-remediation-tells-users-to-run-npx-sync-themselve` (Backlog, P2) — housekeeping.
 - `update-the-design-handoff-and-handoff-start-skills-to-kanban` (Backlog, P2) — housekeeping.
-- `versions-manifest-release-hygiene` (Backlog, P2) — housekeeping.
+- `versions-manifest-release-hygiene` (Backlog, P2) — stale committed .aide/versions.json; with the 0.10.3 boot gate it makes /aide in this repo stop every run — next up.
 - `fix-flaky-5s-install-suite-test-timeouts` (Backlog, P2) — housekeeping.
 - `session-cwd-root-resolution-bug` (Backlog, P2) — housekeeping.
 - `spec-accuracy-for-installagents-and-missing-helper-specs` (Backlog, P3) — housekeeping.
@@ -100,11 +95,12 @@ The feature's tasks, in work order (column = where the task sits today; each tas
 15. **Board tracking lives on the AIDE side (user, 2026-10-09).** The /aide boot sequence checks the project's open tasks through the kanban skill and cross-checks them against session.aide; the orchestrator keeps the feature's task current through kanban skill operations (start → In Progress, stash at transitions, complete at close), never silently. session.aide carries a required `## Kanban` section linking every task tied to the feature by slug. Tasks still carry no feature field (#9 stands); the dependency stays one-way, AIDE → kanban.
 16. **Board work goes through the `kanban-maintainer` agent (user, 2026-10-09).** The board is too large for the main context. The agent reads the board and tasks and reports what work is available (title, excerpt, path per task); the main agent uses that report to ask the user what to work on or continue the session's task, may read any single task by its path, and redelegates every change back to the agent by slug. The agent never runs approval gates — the main agent holds them. It ships with the kanban skill as a pair (AIDE-independent), installed by aide_init.
 17. **No board file; per-project task folders (user, 2026-10-09).** The user no longer uses the Obsidian kanban plugin, and the single board (456 lines, ~99 KB, ~10 projects per column) is unreadable for agents. Folders are the board: kanban/<project>/<column>/<slug>.md (backlog, todo, in-progress, in-review, done); a task's folder is its column; task frontmatter carries project, priority, optional type, created, updated. No plugin frontmatter, settings block, checkboxes or wiki-link board lines. This supersedes #13's plugin board format for the kanban seeds (the kanban-board seed is dropped; the index and guides are rewritten); the rest of #13 stands. It must land before publish. Migrated 2026-10-09: 667 tasks; folder column won over board column; board.md and backups in kanban/legacy/.
-18. **session.aide is never deleted (user, 2026-10-09).** It is the long-lived index to the board's queue. aide_cleanup never reads, writes or deletes it. The maintainer, /aide Completion, handoff skill and session-aide.md now say so.
+18. **session.aide is never deleted (user, 2026-10-09).** It is the long-lived session record, linked to the board. aide_cleanup never reads, writes or deletes it. The maintainer, /aide Completion, handoff skill and session-aide.md now say so.
 19. **Strategy is triggered by the pipeline test (user, 2026-10-08).** Strategy needed = several modules each doing one thing in a specific order, handing off through calls, events or queues; independent of Research needed. Parent spec carries the end-to-end flow, each module its slice; self-contained modules stay frontmatter-only. Decisions parked in session.aide or brief.aide never justify skipping.
 20. **Content-free brain responses (user, 2026-10-10).** aide_init's summary brain step carries only `brainSummary` (flags, markers, sizes) on every status — the heavy fields are removed from the type. Missing sections are inserted tool-side by aide_upgrade category=brain (byte-identical only when the launcher is the template's mcpvault integration; otherwise named for the user to adapt), matching the file's line endings, returning only inserted markers. One migration per round trip: aide_upgrade brain with `brainChange: <marker|"launcher">` and no `beforeHash` is a read-only preview returning one before/after + `beforeHash` (lowercase hex SHA-256 of the exact before string); the same call with `beforeHash` applies, refusing on any byte change. aide_brain accepts any contract marker and returns one section verbatim on every status where the file exists and parses; its reply is exactly status, instructions, found (`found` true only when instructions is the section's bytes). Malformed remediation gives the parser's reason, a hand fix, and a re-check; never "run /aide:brain config". No explicit consent flag; no line numbers.
 21. **Brain config authoring is its own skill (user, 2026-10-10).** Validation stays structural — every required field and section must exist; content is the user's responsibility. Authoring a brain.aide for any backend becomes a standalone skill (task `brain-authoring-skill-create-a-brain-aide-for-any-backend`); /aide:brain config keeps detection, Obsidian repair, migration, validation and sync, and hands create and custom-backend adapting to that skill once it exists.
 22. **session.aide is always current (user, 2026-10-10).** The orchestrator updates session.aide through aide-handoff whenever anything changes what it says — not only at pipeline milestones — and never ends a turn or a session with it behind.
+23. **session.aide is the full session record, linked to the board (user, 2026-10-10).** It holds what was done, every decision settled, what is validated and what comes next, in full — a fresh agent needs only this file to resume. `## Kanban` slug links stay required. Task stashes continue alongside but never replace the record. This reverses the 2026-10-09 'index to the board' slim-down (c913d8d).
 
 ## Anti-regression invariants future build phases must hold
 
@@ -124,16 +120,38 @@ The feature's tasks, in work order (column = where the task sits today; each tas
 
 ## Where this cycle stopped (CRITICAL READING)
 
-No feature in flight.
+Nothing paused; between features.
 
 ### What the next agent must do
 
-1. `versions-manifest-release-hygiene` — with the 0.10.3 boot gate, /aide in this repo now stops on "outdated" every run because the committed .aide/versions.json is stale; fix it first.
-2. Kanban cleanup pass per project through /kanban manage.
-3. Review the three stale tasks with the user.
-4. Next feature from the board (candidates: `aide-scaffold-overwrites-existing-files` P1 bug, `brain-authoring-skill-create-a-brain-aide-for-any-backend` P2).
+1. Decide with the user whether to push 6f1dcc2, b406037 and 8e1a8fb now or hold them for the next release.
+2. `versions-manifest-release-hygiene` — since the 0.10.3 boot gate, /aide in this repo stops on "outdated" every run because the committed .aide/versions.json is stale; fix it first.
+3. Kanban cleanup pass per project through /kanban manage.
+4. Review the three stale tasks with the user (`configurevscode-is-dead-code-never-called-from-install-orche`, `restructure-aidemd-dev-landing-page`, `create-per-command-aide-specs-under-claude-commands-aide`).
+5. Next feature from the board — candidates: `aide-scaffold-overwrites-existing-files` (P1 bug), `brain-authoring-skill-create-a-brain-aide-for-any-backend` (P2).
 
-session.aide is then rewritten, never deleted (decision 18).
+### What's already done and validated
+
+- Feature `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done): aide_init brain step carries only `brainSummary` (under 4 KB on every status, tested); aide_upgrade brain category inserts missing sections tool-side (byte-identical only for the template's mcpvault launcher, else names sections to adapt), previews one change and applies it with a byte-exact SHA-256 `beforeHash`; aide_brain returns any contract section on every well-formed status with `found` and `purpose`; parseBrainAide CRLF fix (stray 
+ in quoted last frontmatter line). Full gate green (tsc 0, 2155 tests, build). QA passed all 7 modules; upgrade fix loop cleared 4 low-severity playbook items. Ephemerals cleaned via aide_cleanup. Retro at process/retro/2026-10-10-aidemd-content-free-brain-responses.md.
+- Prose rewritten to match: /aide:brain config, /aide:upgrade, brain-aide.md, the aide_init / aide_upgrade / aide_brain tool descriptions.
+- Releases: v0.10.2 (feature + kanban project-tag fix); v0.10.3 (/aide boot stops and suggests the upgrade before Step 4). v0.10.1 is a git tag on a broken commit that never published.
+- Kanban skill records the project tag once in the instructions file; this repo's CLAUDE.md declares `Kanban project tag: aidemd-mcp`; the user's global kanban skill copy synced.
+- CLAUDE.md publishing rules: check `git status` before publishing; after every publish, `npm i -g` then run /aide in a session in the aidemd.dev folder and push.
+- aidemd.dev synced to 0.10.3 from npm and deployed (site commit 6deda6a); its `aide` entry switched to the global launcher; its brain.aide repaired.
+- This repo's brain.aide stale sections updated (committed, pushed).
+- Board: `rename-cards-to-tasks-in-kanban-prose` and `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` moved to Done; `brain-authoring-skill-create-a-brain-aide-for-any-backend` created (Backlog, P2).
+
+### What's left after the current cycle
+
+- aide_upgrade's brain `missing` preview returns no section purpose (minor; fold into the brain authoring skill task).
+- The upgrade spec could name the one-section adapt read explicitly (QA spec-gap note).
+- The server reports its version as "0.2.0" in MCP serverInfo — a stale hard-coded label.
+- aidemd.dev's `docs:verify` expects 33 files, counts 42 — stale count in the site's script.
+- Retro rules for the architect agent (always include `foundations/conventions` in step Read lists; single-source pinned strings) — ship with a future release if the user wants them.
+- `/aide:brain config` create flow could hand off to the brain authoring skill once it exists (decision 21).
+
+session.aide is rewritten, never deleted (decision 18).
 
 ## Process discipline (permanent)
 
@@ -141,7 +159,7 @@ session.aide is then rewritten, never deleted (decision 18).
 - Prose never goes through the pipeline — agent instructions, methodology docs, README and wording-only text changes are edited directly by the main agent; only behavior-changing code is pipelined (user, 2026-10-09).
 - Pause for user approval before the build.
 - Every /aide session checks the board at boot and keeps the feature's tasks and `## Kanban` links current.
-- Task progress goes into the task's stash; session.aide stays an index.
+- Record the work in session.aide in full (decision 23); stash into tasks alongside.
 - Cleanup of plan/todo/brief goes through aide_cleanup via aide-maintainer.
 - Publishing: check `git status` (publish.mjs commits everything staged), publish, `npm i -g @aidemd-mcp/server@<version>`, then the user runs /aide in a session started from the aidemd.dev folder and pushes (push to main deploys). Never edit the site from this repo's session.
 - Keep session.aide up to date as you work (decision 22).
