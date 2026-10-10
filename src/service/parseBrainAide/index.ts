@@ -80,7 +80,10 @@ export function interpolateArgs(config: BrainAideConfig): (string | null)[] {
  *    are present (unknown or typo'd marker token, half-present pair, wrong section order,
  *    nesting) return `malformed-body` naming the violating marker, and are always reported
  *    before absence. Wholly absent sections return `missing-sections`, naming each one in
- *    contract order; they are never defaulted or filled in.
+ *    contract order; they are never defaulted or filled in. The result also carries the
+ *    validated frontmatter (`name`, `mcpServerConfig`) and `present`, the verbatim bytes of
+ *    every section that is there, so migration detection can judge an old-shape config
+ *    without a second reader.
  */
 export function parseBrainAideFromString(content: string): ParseBrainAideResult {
 	// Step 2: Split on first `---\n` opening fence.
@@ -163,7 +166,15 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 	// Step 5: Extract the contract's required body sections via the contract-driven marker walker.
 	const extraction = extractMarkerSections(body);
 	if (extraction.kind === "malformed-body") return extraction;
-	if (extraction.kind === "missing-sections") return { kind: "missing-sections", sections: extraction.sections };
+	if (extraction.kind === "missing-sections") {
+		return {
+			kind: "missing-sections",
+			sections: extraction.sections,
+			name: parsedFrontmatter.name,
+			mcpServerConfig: parsedFrontmatter.mcpServerConfig,
+			present: extraction.present,
+		};
+	}
 
 	// Step 6: Return the ok result with flattened frontmatter and every body section.
 	const { kind: _kind, ...sections } = extraction;
@@ -198,8 +209,10 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
  *   faults are always reported before absence.
  * - `"missing-sections"` — frontmatter is valid and every present pair is structurally
  *   sound, but one or more whole required sections are absent. `sections` names each absent
- *   section in contract order. The reader never defaults or fills in a missing section;
- *   repair is by insertion through the brain configuration command.
+ *   section in contract order. `name` and `mcpServerConfig` carry the validated frontmatter
+ *   and `present` holds the verbatim bytes of every section that is there (absent sections
+ *   have no key). The reader never defaults or fills in a missing section; repair is by
+ *   insertion through the brain configuration command.
  *
  * Load-bearing invariants:
  * - Never throws — all failure modes return a tagged result.

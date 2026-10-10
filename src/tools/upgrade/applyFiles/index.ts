@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { UpgradeFileResult } from "@/types/index.js";
+import composeBrainInstructions from "./composeBrainInstructions/index.js";
 
 /**
  * Apply mode writer for aide_upgrade — turns comparison results into disk state
@@ -31,11 +32,12 @@ import type { UpgradeFileResult } from "@/types/index.js";
  *   creation and repair. Status is preserved as-is so the manifest carries the
  *   precise distinction.
  *
- * - brain category, status `"differs"` (config is behind the required-section
- *   contract):
- *   No disk write. Returned with an `instructions` field naming each entry of
- *   `missingSections` and directing the agent to run `/aide:brain config` to add
- *   them. Status stays `"differs"` so the summary still counts the behind file.
+ * - brain category, status `"differs"` (config has drifted):
+ *   No disk write. Returned with an `instructions` field from
+ *   `composeBrainInstructions` that names each drift kind present on its own —
+ *   `missingSections`, `staleSections` (outdated template text) and
+ *   `legacyLauncher` — and directs the agent to run `/aide:brain config`.
+ *   Status stays `"differs"` so the summary still counts the behind file.
  *   The brain category never reaches the generic write path below.
  *
  * - `"matches"`:
@@ -54,11 +56,7 @@ async function applyFile(file: UpgradeFileResult): Promise<UpgradeFileResult> {
 	// Brain config is detection-only — direct the agent to /aide:brain config for
 	// creation and repair; never write the file from inside upgrade
 	if (file.category === "brain" && file.status === "differs") {
-		const sections = (file.missingSections ?? []).join(", ");
-		return {
-			...file,
-			instructions: `Brain config is behind — missing required sections: ${sections}. Run /aide:brain config to add them.`,
-		};
+		return { ...file, instructions: composeBrainInstructions(file) };
 	}
 	if (file.category === "brain" && (file.status === "missing" || file.status === "malformed")) {
 		return { ...file, instructions: "Run /aide:brain config to set up the brain." };

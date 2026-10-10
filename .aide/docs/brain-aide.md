@@ -12,7 +12,8 @@ name: obsidian
 mcpServerConfig:
   command: npx
   args:
-    - "@bitbonsai/mcpvault"
+    - "-y"
+    - "@bitbonsai/mcpvault@0.16.0"
     -
 ---
 
@@ -113,7 +114,7 @@ Seed sections are never surfaced at runtime. `aide_brain` has no `kind` values f
 
 - **Scaffolded once.** `aide_init` (and `cli/init` at cold install) creates `.aide/config/brain.aide` if it does not exist, pre-filled with the bundled template selected by `--brain <integration>` (default: the obsidian-flavored `obsidianBrainAideTemplate()`).
 - **Never overwritten.** After the first write, the file belongs to the user forever. Neither `aide_init` nor `aide_upgrade` overwrites, patches, migrates, or otherwise mutates anything under `.aide/config/` on subsequent runs.
-- **Repair is data, not a write.** When the file is outdated, `aide_init` returns a repair prescription (`brainRepair`) as plain data. The agent applies it under the user's visible `/aide:brain config` command, after confirmation. That is the user's command editing the user's file, not an install or upgrade write.
+- **Repair is data, not a write.** When the file is outdated, `aide_init` returns a repair prescription (`brainRepair`) as plain data. The agent applies it under the user's visible `/aide:brain config` command, after confirmation. That is the user's command editing the user's file, not an install or upgrade write. The same holds for migration: when existing sections still carry an earlier template's text, or the launcher is a legacy form, `aide_init` returns `brainMigration` — before/after offers the agent applies one at a time, each only on the user's yes. A section is offered only when its text matches a known earlier template version, so sections the user edited and custom launchers are never offered.
 - **Boundary is the path.** The install/upgrade tooling reads the directory path itself as the ownership signal — there is no per-file allowlist. Any file the user puts under `.aide/config/` is safe from the package's install/upgrade machinery.
 
 Files outside `.aide/config/` (the methodology docs at `.aide/docs/`, pipeline command templates, agent definitions, skills, every other artifact the package ships) are package-owned and re-installed on every init/upgrade.
@@ -197,7 +198,7 @@ The boot reporter surfaces exactly five brain status states. The orchestrator re
 
 - **One file, one source of truth.** `brain.aide` is the single source of truth for brain configuration. The host's `.mcp.json` brain entry is a derived artifact — it must match `brain.aide` and is only updated by sync.
 
-- **Outdated is reported, never silently accepted.** A present file short of the contract surfaces as `brain-aide-invalid`. Repair is `/aide:brain config` inserting only the missing sections; there is no transitional read path, no auto-injection and no heading-based guessing.
+- **Outdated is reported, never silently accepted.** A present file short of the contract surfaces as `brain-aide-invalid`. Repair is `/aide:brain config` inserting only the missing sections; there is no transitional read path, no auto-injection and no heading-based guessing. Outdated section text and a legacy launcher are reported by `aide_info` and `aide_upgrade` as `brainMigration` (a soft notice, never a gate) and migrated only through `/aide:brain config`, change by change.
 
 ## Placement
 

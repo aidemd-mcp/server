@@ -256,6 +256,30 @@ describe("applyFiles", () => {
 		expect(result.canonicalContent).toBeUndefined();
 	});
 
+	// ── Brain: differs with stale + legacy → combined instructions, no disk write ──
+	it("composes missing, stale and legacy instructions for a drifted brain file, no disk write", async () => {
+		const file = makeFile({
+			name: ".aide/config/brain.aide",
+			filePath: "/some/.aide/config/brain.aide",
+			status: "differs",
+			category: "brain",
+			missingSections: ["kanban-index"],
+			staleSections: ["config"],
+			legacyLauncher: ["unpinned"],
+			canonicalContent: undefined,
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(mkdir)).not.toHaveBeenCalled();
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+		expect(result.instructions).toBe(
+			"Brain config is behind — missing required sections: kanban-index. Run /aide:brain config to add them. " +
+				"Brain config has sections whose text is an outdated template version: config. Run /aide:brain config to review each as its own before/after change. " +
+				"Brain launcher is legacy (unpinned). Run /aide:brain config to review the launcher change.",
+		);
+		expect(result.status).toBe("differs");
+	});
+
 	// ── Brain: differs never reaches the generic write path even with content ──
 	it("never writes a behind brain file even if canonicalContent were present", async () => {
 		const file = makeFile({

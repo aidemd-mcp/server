@@ -471,7 +471,27 @@ describe("3e — missing required sections", () => {
 
 		const result = await parseBrainAide(tempDir);
 
-		expect(result).toEqual({ kind: "missing-sections", sections: ["kanban-index", "kanban-create"] });
+		expect(result).toMatchObject({ kind: "missing-sections", sections: ["kanban-index", "kanban-create"] });
+	});
+
+	it("a file missing kanban-index and kanban-create carries its frontmatter and the verbatim bytes of every other section", async () => {
+		const omit: BrainSectionMarker[] = ["kanban-index", "kanban-create"];
+		const content = makeContent({ omit, argsLines: ['    - "@example/mcp-launcher"', "    -", '    - "D:/brains/my-brain"'] });
+		await writeBrainAide(tempDir, content);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("missing-sections");
+		if (result.kind !== "missing-sections") return;
+		expect(result.name).toBe("my-brain");
+		expect(result.mcpServerConfig).toEqual({ command: "npx", args: ["@example/mcp-launcher", null, "D:/brains/my-brain"] });
+		const expectedPresent = Object.fromEntries(
+			contractMarkers
+				.filter((marker) => !omit.includes(marker))
+				.map((marker) => [fieldOf(marker), content.slice(content.indexOf(open(marker)) + open(marker).length, content.indexOf(close(marker)))]),
+		);
+		expect(result.present).toEqual(expectedPresent);
+		expect(Object.keys(result.present)).toHaveLength(contractMarkers.length - omit.length);
 	});
 
 	it("a file missing non-adjacent sections lists every missing marker in contract order, regardless of omission order", async () => {
@@ -492,6 +512,9 @@ describe("3e — missing required sections", () => {
 		expect(result.kind).not.toBe("ok");
 		expect(Object.keys(result)).not.toContain("kanbanCreate");
 		expect(Object.values(result)).not.toContain("");
+		if (result.kind !== "missing-sections") return;
+		expect(Object.keys(result.present)).not.toContain("kanbanCreate");
+		expect(Object.values(result.present)).not.toContain("");
 	});
 
 	it("an empty file body (frontmatter only) is missing every contract section", async () => {
@@ -499,7 +522,7 @@ describe("3e — missing required sections", () => {
 
 		const result = await parseBrainAide(tempDir);
 
-		expect(result).toEqual({ kind: "missing-sections", sections: contractMarkers });
+		expect(result).toMatchObject({ kind: "missing-sections", sections: contractMarkers });
 	});
 
 	// Structural precedence: faults among present sections are reported before absence,
@@ -857,7 +880,7 @@ An entry point for domain research.
 
 		const result = await parseBrainAide(tempDir);
 
-		expect(result).toEqual({ kind: "missing-sections", sections: contractMarkers });
+		expect(result).toMatchObject({ kind: "missing-sections", sections: contractMarkers });
 	});
 
 	it("three-pair marker-bounded body (retired prose + playbook + research markers) returns missing-sections naming every contract marker", async () => {
@@ -869,7 +892,7 @@ An entry point for domain research.
 
 		const result = await parseBrainAide(tempDir);
 
-		expect(result).toEqual({ kind: "missing-sections", sections: contractMarkers });
+		expect(result).toMatchObject({ kind: "missing-sections", sections: contractMarkers });
 	});
 
 	it("four-pair pre-rework body keeps its study-playbook pair and lists every other contract marker as missing", async () => {
@@ -882,10 +905,40 @@ An entry point for domain research.
 
 		const result = await parseBrainAide(tempDir);
 
-		expect(result).toEqual({
+		expect(result).toMatchObject({
 			kind: "missing-sections",
 			sections: contractMarkers.filter((marker) => marker !== "study-playbook"),
 		});
+	});
+
+	it("four-pair pre-rework body carries exactly one present section, studyPlaybook", async () => {
+		const fourPairBody =
+			`<!-- aide-prose-start -->
+Some prose content.
+<!-- aide-prose-end -->
+
+` +
+			`<!-- aide-playbook-start -->
+Some playbook content.
+<!-- aide-playbook-end -->
+
+` +
+			`${makeBlock("study-playbook")}
+
+` +
+			`<!-- aide-research-start -->
+Some research content.
+<!-- aide-research-end -->
+`;
+		await writeBrainAide(tempDir, makeFrontmatter() + fourPairBody);
+
+		const result = await parseBrainAide(tempDir);
+
+		expect(result.kind).toBe("missing-sections");
+		if (result.kind !== "missing-sections") return;
+		expect(Object.keys(result.present)).toEqual(["studyPlaybook"]);
+		expect(result.present.studyPlaybook).toBe(`
+${defaultContent("study-playbook")}`);
 	});
 });
 
@@ -1142,7 +1195,7 @@ describe("3n — parseBrainAideFromString parses bytes identically to parseBrain
 			const fromDisk = await parseBrainAide(tempDir);
 			const fromString = parseBrainAideFromString(content);
 
-			expect(fromDisk).toEqual({ kind: "missing-sections", sections: [marker] });
+			expect(fromDisk).toMatchObject({ kind: "missing-sections", sections: [marker] });
 			expect(fromDisk).toEqual(fromString);
 		},
 	);

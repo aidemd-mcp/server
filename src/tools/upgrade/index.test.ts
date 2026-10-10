@@ -27,7 +27,12 @@ vi.mock("./buildVersionsMeta/index.js");
 vi.mock("./checkMcpConfig/index.js");
 vi.mock("./checkIdeConfig/index.js");
 vi.mock("@/service/install/scaffoldReadme/index.js");
-vi.mock("@/service/parseBrainAide/index.js");
+// Only the default export (file IO) is mocked; parseBrainAideFromString stays real because
+// readBrainMigrationNotice parses the bundled template with it.
+vi.mock("@/service/parseBrainAide/index.js", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@/service/parseBrainAide/index.js")>()),
+	default: vi.fn(),
+}));
 
 import detectFramework from "@/service/install/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/service/install/initContent/index.js";
@@ -423,6 +428,9 @@ describe("upgrade", () => {
 		wireDefaultMocks();
 		vi.mocked(parseBrainAide).mockResolvedValue({
 			kind: "missing-sections",
+			name: "obsidian",
+			mcpServerConfig: { command: "x", args: [] },
+			present: {},
 			sections: ["kanban-index", "kanban-create"],
 		});
 
@@ -744,6 +752,9 @@ describe("upgrade — apply mode (handler simulation)", () => {
 		wireDefaultMocks();
 		vi.mocked(parseBrainAide).mockResolvedValue({
 			kind: "missing-sections",
+			name: "obsidian",
+			mcpServerConfig: { command: "x", args: [] },
+			present: {},
 			sections: ["kanban-index", "kanban-create"],
 		});
 

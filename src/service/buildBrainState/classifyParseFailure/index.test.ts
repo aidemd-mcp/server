@@ -9,9 +9,16 @@ describe("classifyParseFailure", () => {
 
 	it("passes the missing-sections array through unchanged", () => {
 		const sections = ["kanban-board", "kanban-index"] as unknown as BrainSectionMarker[];
-		const fault = classifyParseFailure({ kind: "missing-sections", sections });
+		const fault = classifyParseFailure({
+			kind: "missing-sections",
+			sections,
+			name: "obsidian",
+			mcpServerConfig: { command: "npx", args: ["-y", "pkg@1.0.0", null] },
+			present: { orientation: "\nbody\n" },
+		});
 		expect(fault).toEqual({ kind: "missing-sections", sections });
 		expect(fault && fault.kind === "missing-sections" && fault.sections).toBe(sections);
+		expect(Object.keys(fault ?? {}).sort()).toEqual(["kind", "sections"]);
 	});
 
 	it("maps malformed-frontmatter to malformed with the reason verbatim", () => {

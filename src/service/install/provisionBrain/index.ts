@@ -3,6 +3,8 @@ import type { InitStep, LaunchMode, McpPrescription } from "@/types/index.js";
 import parseBrainAide, { interpolateArgs, parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import buildBrainAideStep from "./buildBrainAideStep/index.js";
 
+export { default as readBrainMigrationNotice } from "./readBrainMigrationNotice/index.js";
+
 /** Read a file, returning empty string if it doesn't exist. */
 async function safeReadFile(path: string): Promise<string> {
 	try {

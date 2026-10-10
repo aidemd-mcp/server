@@ -3,6 +3,7 @@ import type { SectionExtraction } from "@/types/index.js";
 import findStructuralFault from "./findStructuralFault/index.js";
 import findUnknownMarker from "./findUnknownMarker/index.js";
 import locateMarkers from "./locateMarkers/index.js";
+import slicePresentSections from "./slicePresentSections/index.js";
 import sliceSections from "./sliceSections/index.js";
 
 /**
@@ -13,7 +14,8 @@ import sliceSections from "./sliceSections/index.js";
  * 1. a marker-like token that is not a contract marker -> malformed-body (`unknown marker`);
  * 2. locate every contract marker in document order;
  * 3. a structural fault among the present pairs -> malformed-body;
- * 4. any contract pair wholly absent -> missing-sections, in contract order;
+ * 4. any contract pair wholly absent -> missing-sections, in contract order, carrying
+ *    the verbatim bytes of every section that is present;
  * 5. otherwise slice every section verbatim -> ok.
  *
  * Structural faults are always reported before absence, so a `missing-sections`
@@ -30,7 +32,7 @@ export default function extractMarkerSections(body: string): SectionExtraction {
 	if (fault !== null) return { kind: "malformed-body", reason: fault };
 
 	const sections = brainContract.map(({ marker }) => marker).filter((marker) => !located.some((m) => m.marker === marker));
-	if (sections.length > 0) return { kind: "missing-sections", sections };
+	if (sections.length > 0) return { kind: "missing-sections", sections, present: slicePresentSections({ body, located }) };
 
 	return { kind: "ok", ...sliceSections({ body, located }) };
 }

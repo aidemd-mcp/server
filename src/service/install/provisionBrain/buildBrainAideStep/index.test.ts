@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import buildBrainAideStep from "./index.js";
 import obsidianBrainAideTemplate from "../obsidianBrainAideTemplate/index.js";
@@ -97,5 +98,38 @@ describe("buildBrainAideStep", () => {
 
 		expect(step.status).toBe("exists");
 		expect(step.content).toBeUndefined();
+	});
+
+	it("existing v0.9.0 file: carries brainRepair and brainMigration, and the file is untouched", async () => {
+		const fixture = await readFile(
+			join(dirname(fileURLToPath(import.meta.url)), "..", "detectBrainMigration", "__fixtures__", "v0.9.0-brain.txt"),
+			"utf-8",
+		);
+		await writeBrainAide(fixture);
+		const filePath = join(projectRoot, ".aide", "config", "brain.aide");
+
+		const step = await buildBrainAideStep(projectRoot);
+
+		expect(step.status).toBe("exists");
+		expect(step.brainRepair?.map((r) => r.marker)).toEqual(kanbanTail);
+		expect(step.brainMigration?.staleSections.map((s) => s.marker)).toEqual(["orientation", "config"]);
+		expect(step.brainMigration?.legacyLauncher).not.toBeNull();
+		expect(await readFile(filePath, "utf-8")).toBe(fixture);
+	});
+
+	it("existing current template (local): no brainMigration key", async () => {
+		await writeBrainAide(obsidianBrainAideTemplate("local"));
+
+		const step = await buildBrainAideStep(projectRoot);
+
+		expect(step.status).toBe("exists");
+		expect("brainMigration" in step).toBe(false);
+	});
+
+	it("absent file (would-create): no brainMigration key", async () => {
+		const step = await buildBrainAideStep(projectRoot);
+
+		expect(step.status).toBe("would-create");
+		expect("brainMigration" in step).toBe(false);
 	});
 });

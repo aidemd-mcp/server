@@ -227,6 +227,42 @@ describe("checkMcpConfig", () => {
 		});
 	});
 
+	describe("the brain entry is never judged", () => {
+		const LEGACY_BRAIN = {
+			command: "cmd",
+			args: ["/c", "npx", "@bitbonsai/mcpvault", "C:\\vault"],
+		};
+		const GLOBAL_BRAIN = { command: "mcpvault", args: ["C:\\vault"] };
+
+		function configWithBrain(aide: { command: unknown; args: unknown }, brain: { command: unknown; args: unknown }): string {
+			return JSON.stringify({ mcpServers: { aide, brain } }, null, 2) + "\n";
+		}
+
+		it("matches with no prescription when a legacy brain launcher sits next to the canonical local aide entry", async () => {
+			mockReadFile.mockResolvedValue(configWithBrain(CANONICAL_ENTRY, LEGACY_BRAIN));
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.status).toBe("matches");
+			expect(result.prescription).toBeUndefined();
+		});
+
+		it("prescribes the aide key, never brain, when the aide entry has drifted", async () => {
+			const spec = CANONICAL_ENTRY.args[CANONICAL_ENTRY.args.length - 1] as string;
+			const pkg = spec.slice(0, spec.lastIndexOf("@"));
+			mockReadFile.mockResolvedValue(configWithBrain({ command: "npx", args: ["-y", pkg] }, LEGACY_BRAIN));
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.status).toBe("differs");
+			expect(result.prescription?.key).toBe("aide");
+			expect(result.prescription?.key).not.toBe("brain");
+		});
+
+		it("matches with no prescription for a global mcpvault brain entry next to a canonical global aide entry", async () => {
+			mockReadFile.mockResolvedValue(configWithBrain(GLOBAL_ENTRY, GLOBAL_BRAIN));
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.status).toBe("matches");
+			expect(result.prescription).toBeUndefined();
+		});
+	});
+
 	describe("no filesystem writes occur", () => {
 		it("never writes to disk", async () => {
 			mockReadFile.mockResolvedValue(canonical());

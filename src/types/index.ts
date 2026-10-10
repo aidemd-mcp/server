@@ -248,6 +248,13 @@ export interface InitStep {
 	 * in contract order.
 	 */
 	brainRepair?: BrainSectionRepair[];
+	/**
+	 * Migration offers for the brain config. Present only on an `exists` brain
+	 * config step whose file parses `ok` or `missing-sections` and has a stale
+	 * section or a legacy launcher. Every change is offered for the user's yes
+	 * and is never applied by the tool.
+	 */
+	brainMigration?: BrainMigration;
 }
 
 /**
@@ -260,6 +267,85 @@ export interface InitStep {
 export type BrainSectionRepair = BrainSectionContractEntry & {
 	block: string;
 	insertAfter: string | null;
+};
+
+/**
+ * Why a brain launcher counts as legacy. `unpinned` and `unversioned` mean the
+ * npx package spec carries no version; `older-pin` means it pins a version
+ * older than this server; `missing-auto-confirm` means the npx args lack the
+ * auto-confirm flag. Produced by provisionBrain's launcher check; consumed by
+ * `BrainLauncherOffer`, `BrainMigrationNotice` and `UpgradeFileResult`.
+ */
+export type LegacyLauncherReason = "unpinned" | "unversioned" | "older-pin" | "missing-auto-confirm";
+
+/**
+ * A proposed launcher rewrite for a legacy brain launcher. `before` is the
+ * user's `mcpServerConfig` as parsed; `after` is the replacement for each
+ * launch mode. Produced by provisionBrain; consumed by `BrainMigration` and
+ * read by `/aide:brain config`.
+ */
+export type BrainLauncherOffer = {
+	reasons: LegacyLauncherReason[];
+	before: BrainAideMcpServerConfig;
+	after: Record<LaunchMode, BrainAideMcpServerConfig>;
+};
+
+/**
+ * One stale brain config section plus its replacement. `before` and `after`
+ * are the bytes strictly between that section's markers: `before` is the
+ * user's, verbatim, and `after` is the latest bundled template's. Produced by
+ * provisionBrain; consumed by `BrainMigration`.
+ */
+export type BrainStaleSectionOffer = BrainSectionContractEntry & {
+	before: string;
+	after: string;
+};
+
+/**
+ * Everything aide_init offers to migrate in an existing brain config: stale
+ * sections and a legacy launcher. Produced by provisionBrain and carried on
+ * `InitStep.brainMigration`; each change is applied only after the user says
+ * yes to it.
+ */
+export type BrainMigration = {
+	staleSections: BrainStaleSectionOffer[];
+	legacyLauncher: BrainLauncherOffer | null;
+};
+
+/**
+ * Content-free summary of a `BrainMigration`: marker names and launcher
+ * reasons only, never section or launcher bytes. Produced by buildBrainState's
+ * callers; consumed by aide_info (`InfoResult.brainMigration`), which stays
+ * small, and mirrored by aide_upgrade's brain result.
+ */
+export type BrainMigrationNotice = {
+	staleSections: BrainSectionMarker[];
+	legacyLauncher: LegacyLauncherReason[] | null;
+};
+
+/**
+ * One recorded outdated version of a bundled template section: the fingerprint
+ * of its normalized text and the release it was seen in. A section is stale
+ * when its fingerprint matches one of these and is not the current template's.
+ * Consumed by provisionBrain's staleness check.
+ */
+export type OutdatedSectionVersion = {
+	fingerprint: string;
+	seenIn: string;
+};
+
+/**
+ * Where the npx package spec sits in a brain launcher's args. Both
+ * `argsStart` and `specIndex` are absolute indexes into
+ * `mcpServerConfig.args`. Produced and consumed by provisionBrain's launcher
+ * check and rewrite.
+ */
+export type NpxPackageSpec = {
+	argsStart: number;
+	specIndex: number;
+	packageName: string;
+	version: string | null;
+	autoConfirm: boolean;
 };
 
 /**
@@ -360,6 +446,17 @@ export interface UpgradeFileResult {
 	 * config is behind.
 	 */
 	missingSections?: BrainSectionMarker[];
+	/**
+	 * Marker names of the sections whose bytes match an outdated template
+	 * version. Present only on the brain category file result. Names only,
+	 * never section bytes.
+	 */
+	staleSections?: BrainSectionMarker[];
+	/**
+	 * Reasons the brain launcher is legacy. Present only on the brain category
+	 * file result. Reasons only, never launcher bytes.
+	 */
+	legacyLauncher?: LegacyLauncherReason[];
 }
 
 /**
@@ -530,7 +627,7 @@ export type BrainToolResult = {
 /**
  * Result returned by aide_info — the passive boot-time reporter.
  *
- * Returns two independent top-level fields, each covering a distinct concern:
+ * Returns three independent top-level fields, each covering a distinct concern:
  * - `serverVersion` + `outdated`: staleness of installed AIDE artifacts against
  *   the canonical manifest shipped with this npm package. Soft notification —
  *   the pipeline can run even when artifacts are stale.
@@ -538,8 +635,10 @@ export type BrainToolResult = {
  *   gate — the orchestrator halts and directs the user to run `/aide` when
  *   `status` is anything other than `"ok"`; the inline-recovery flow detects
  *   the broken state and prompts the user to resolve it.
+ * - `brainMigration`: whether the brain config carries stale sections or a
+ *   legacy launcher. Soft notice, independent of `brain`, never a gate.
  *
- * The two fields are structurally independent: the orchestrator reads each
+ * The fields are structurally independent: the orchestrator reads each
  * field in isolation and applies a different policy to each.
  */
 export interface InfoResult {
@@ -554,6 +653,13 @@ export interface InfoResult {
 	behind: BehindNotice | null;
 	/** Precondition state of the host's brain. */
 	brain: BrainState;
+	/**
+	 * A soft notice, independent of `brain`, and never a gate. It names the stale
+	 * sections and legacy launcher reasons in the brain config and carries no
+	 * section or launcher bytes. It is null when nothing is stale or the config
+	 * cannot be checked.
+	 */
+	brainMigration: BrainMigrationNotice | null;
 }
 
 /** A single symbol match returned by aide_inspect. */
@@ -738,7 +844,10 @@ export type BrainAideConfig = {
  *
  * - `"missing-sections"` - every present marker pair is structurally sound and
  *   one or more whole pairs are absent. `sections` is non-empty and in contract
- *   order.
+ *   order. The present sections' bytes are carried verbatim in `present`
+ *   (absent ones are left out of the record), and `name` and `mcpServerConfig`
+ *   are carried exactly as on `"ok"`, so an old-shape file can still be checked
+ *   for stale sections and a legacy launcher.
  */
 export type ParseBrainAideResult =
 	| ({
@@ -752,7 +861,16 @@ export type ParseBrainAideResult =
 	| { kind: "unreadable"; reason: string }
 	| { kind: "malformed-frontmatter"; reason: string }
 	| { kind: "malformed-body"; reason: string }
-	| { kind: "missing-sections"; sections: BrainSectionMarker[] };
+	| {
+			kind: "missing-sections";
+			sections: BrainSectionMarker[];
+			/** User-supplied descriptive label from brain.aide frontmatter; never dispatched on by the package. */
+			name: string;
+			/** MCP server configuration from brain.aide frontmatter, carried exactly as on `"ok"`. */
+			mcpServerConfig: BrainAideMcpServerConfig;
+			/** Verbatim bytes between the markers of every section that is present; absent sections are left out. */
+			present: Partial<Record<BrainSectionField, string>>;
+	  };
 
 /**
  * One marker token located in the brain.aide body by the parser's scan.
@@ -777,7 +895,12 @@ export type LocatedMarker = {
 export type SectionExtraction =
 	| ({ kind: "ok" } & Record<BrainSectionField, string>)
 	| { kind: "malformed-body"; reason: string }
-	| { kind: "missing-sections"; sections: BrainSectionMarker[] };
+	| {
+			kind: "missing-sections";
+			sections: BrainSectionMarker[];
+			/** Verbatim bytes between the markers of every section that is present; absent sections are left out. */
+			present: Partial<Record<BrainSectionField, string>>;
+	  };
 
 /** Directories to skip during filesystem walks. */
 export const SKIP_DIRS = [

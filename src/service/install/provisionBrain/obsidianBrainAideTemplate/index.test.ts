@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import brainContract from "@/service/brainContract/index.js";
 import parseBrainAide, { parseBrainAideFromString, interpolateArgs } from "@/service/parseBrainAide/index.js";
 import type { BrainAideConfig, LaunchMode } from "@/types/index.js";
+import { MCPVAULT_COMMAND, MCPVAULT_PACKAGE, MCPVAULT_VERSION } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // Module-scope mock for node:os — each test that needs platform branching
@@ -1446,6 +1447,20 @@ describe("launch mode — local launcher", () => {
 
 	it.each(["posix", "win32"] as const)("on %s: an omitted mode is byte-identical to local", async (platformName) => {
 		expect(await getTemplate(platformName)).toBe(await getTemplate(platformName, "local"));
+	});
+});
+
+describe("exported package identity agrees with the emitted launchers", () => {
+	it.each(["posix", "win32"] as const)("on %s: the local launcher's package spec equals MCPVAULT_PACKAGE@MCPVAULT_VERSION", async (platformName) => {
+		const result = parseOk(await getTemplate(platformName, "local"));
+
+		expect(result.mcpServerConfig.args).toContain(`${MCPVAULT_PACKAGE}@${MCPVAULT_VERSION}`);
+	});
+
+	it.each(["posix", "win32"] as const)("on %s: the global launcher's command equals MCPVAULT_COMMAND", async (platformName) => {
+		const result = parseOk(await getTemplate(platformName, "global"));
+
+		expect(result.mcpServerConfig.command).toBe(MCPVAULT_COMMAND);
 	});
 });
 

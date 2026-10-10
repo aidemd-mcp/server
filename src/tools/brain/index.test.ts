@@ -550,13 +550,20 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 		"returns brain-aide-invalid naming the missing sections on kind=%s when parseBrainAide returns missing-sections",
 		async (kind) => {
 			mockBuildBrainState.mockResolvedValue(makeOkState());
-			mockParseBrainAide.mockResolvedValue({ kind: "missing-sections", sections: MISSING_MARKERS });
+			mockParseBrainAide.mockResolvedValue({
+				kind: "missing-sections",
+				sections: MISSING_MARKERS,
+				name: "obsidian",
+				mcpServerConfig: { command: "npx", args: ["-y", "pkg@1.0.0", null] },
+				present: {},
+			});
 
 			const result = await brain("/root", { kind });
 
 			expect(result.status).toBe("brain-aide-invalid");
 			expect(result.instructions).toContain(`missing required sections: ${MISSING_MARKERS.join(", ")}.`);
 			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
+			expect(result.instructions).not.toContain("pkg@1.0.0");
 		},
 	);
 

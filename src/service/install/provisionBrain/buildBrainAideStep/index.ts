@@ -2,7 +2,9 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 import type { InitStep, LaunchMode } from "@/types/index.js";
 import brainContract from "@/service/brainContract/index.js";
+import parseBrainAide from "@/service/parseBrainAide/index.js";
 import obsidianBrainAideTemplate from "../obsidianBrainAideTemplate/index.js";
+import detectBrainMigration from "../detectBrainMigration/index.js";
 import planBrainRepair from "./planBrainRepair/index.js";
 
 /** Check if a path exists. */
@@ -30,6 +32,9 @@ async function exists(path: string): Promise<boolean> {
  * - Present file: `exists`, plus `brainRepair` only when the file is outdated (missing whole
  *   sections). `brainRepair` is an insertion-only prescription built from the latest bundled
  *   template; the agent applies it, this module never writes.
+ * - Present file, also `brainMigration` only when the file carries a known outdated section or a
+ *   legacy npx launcher: each finding is a before/after offer the agent applies only on the
+ *   user's yes. This module still never writes.
  *
  * The step `name` is load-bearing: the `/aide:brain config` prose locates the step by it.
  *
@@ -45,6 +50,7 @@ export default async function buildBrainAideStep(
 
 	if (await exists(filePath)) {
 		const brainRepair = await planBrainRepair(projectRoot);
+			const brainMigration = detectBrainMigration(await parseBrainAide(projectRoot));
 		return {
 			name,
 			status: "exists",
@@ -52,6 +58,7 @@ export default async function buildBrainAideStep(
 			filePath,
 			brainContract,
 			...(brainRepair ? { brainRepair } : {}),
+				...(brainMigration ? { brainMigration } : {}),
 		};
 	}
 

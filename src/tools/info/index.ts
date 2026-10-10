@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import buildBrainState from "@/service/buildBrainState/index.js";
+import { readBrainMigrationNotice } from "@/service/install/provisionBrain/index.js";
 import resolveBehind from "./resolveBehind/index.js";
 import type { InfoResult } from "@/types/index.js";
 
@@ -30,8 +31,8 @@ function readServerVersion(): string {
 /**
  * Passive boot-time reporter called by the orchestrator at startup.
  *
- * Returns four top-level fields (`serverVersion`, `outdated`, `behind`, `brain`),
- * each covering a distinct concern:
+ * Returns five top-level fields (`serverVersion`, `outdated`, `behind`, `brain`,
+ * `brainMigration`), each covering a distinct concern:
  *
  * - `serverVersion` + `outdated`: staleness of the host's installed AIDE
  *   artifacts against the canonical manifest shipped with this npm package.
@@ -49,6 +50,12 @@ function readServerVersion(): string {
  *   when `brain.status` is anything other than `"ok"`; the inline-recovery
  *   flow detects the broken state and prompts the user to resolve it.
  *
+ * - `brainMigration`: soft notice naming the brain config sections whose text
+ *   is a known outdated template version and any legacy brain launcher,
+ *   forwarded unchanged from provisionBrain (this tool composes nothing).
+ *   Never a gate and never a brain status: it does not touch `brain.status`.
+ *   `null` when there is nothing to report or the project is cold.
+ *
  * The concerns are structurally independent: none depends on the others,
  * and the orchestrator applies a different policy to each field.
  */
@@ -56,18 +63,20 @@ export default async function info(root: string): Promise<InfoResult> {
 	// Step 1 — read the server's own package version (sync, always fast).
 	const serverVersion = readServerVersion();
 
-	// Steps 2, 3 and 4 — staleness check, behind-npm check and brain-state
-	// resolution are independent; run them in parallel so none blocks the
-	// others. (Each involves at least one async I/O read, so parallel
-	// scheduling is a meaningful latency improvement, not just cosmetic.)
-	const [outdated, behind, brain] = await Promise.all([
+	// Steps 2, 3, 4 and 5 — staleness check, behind-npm check, brain-state
+	// resolution and brain-migration notice are independent; run them in
+	// parallel so none blocks the others. (Each involves at least one async
+	// I/O read, so parallel scheduling is a meaningful latency improvement,
+	// not just cosmetic.) The notice call never rejects, so it is not wrapped.
+	const [outdated, behind, brain, brainMigration] = await Promise.all([
 		resolveOutdated(root),
 		resolveBehind(root, serverVersion),
 		buildBrainState(root),
+		readBrainMigrationNotice(root),
 	]);
 
-	// Step 5 — compose the independent fields into the unified result.
-	return { serverVersion, outdated, behind, brain };
+	// Step 6 — compose the independent fields into the unified result.
+	return { serverVersion, outdated, behind, brain, brainMigration };
 }
 
 /**

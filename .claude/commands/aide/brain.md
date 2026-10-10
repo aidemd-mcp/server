@@ -49,7 +49,7 @@ When `$ARGUMENTS` starts with `config`, run this flow. It owns every brain confi
 
 **Every step below is mandatory and runs in order.** `brain.status` is a status code, not a runbook. If you find yourself drafting "next steps" for the user from your own understanding of a status code, you have skipped a step — go back.
 
-**Reading the contract and the repair prescription.** Call `aide_init` with **no arguments**. That is a read-only summary call; it writes nothing. Find the step named `Brain config (brain.aide)` and read `brainContract` (always present) and `brainRepair` (present only when the config is missing sections) from it.
+**Reading the contract, the repair prescription and the migration offers.** Call `aide_init` with **no arguments**. That is a read-only summary call; it writes nothing. Find the step named `Brain config (brain.aide)` and read `brainContract` (always present), `brainRepair` (present only when the config is missing sections) and `brainMigration` (present only when an existing config has outdated sections or a legacy launcher) from it.
 
 ### Step 1 — Call `aide_info`
 
@@ -57,7 +57,7 @@ Call `aide_info`. Read `brain.status`, `brain.fault` (present only on `brain-aid
 
 - `no-brain-aide` — the file is missing → Step 2 (CREATE).
 - `brain-aide-invalid` — the file is present but falls short → Step 3 (REPAIR).
-- `ok`, `no-mcp-entry` or `mcp-drift` → skip to Step 6 (WIRING/SEEDING).
+- `ok`, `no-mcp-entry` or `mcp-drift` → skip to Step 5b (MIGRATE).
 
 ### Step 2 — CREATE (status `no-brain-aide`)
 
@@ -119,6 +119,27 @@ For each `role: "seed"` entry you inserted in Step 3, write it to its `seedPath`
 
 After a CREATE, skip this step — Step 6's config prose seeds every seed section.
 
+### Step 5b — MIGRATE (outdated sections and a legacy launcher)
+
+Call `aide_init` with no arguments and read `brainMigration` from the `Brain config (brain.aide)` step. If it is absent, go to Step 6. A file created in Step 2 never carries it.
+
+`brainMigration` holds offers only. **Nothing changes without the user's explicit yes to that one change, and the default is skip.** The user's existing bytes cannot be recovered once replaced, so never batch offers under a single yes and never apply an offer the user did not see.
+
+1. **Outdated sections** (`staleSections`). Each entry carries the contract fields (`marker`, `purpose`, `role`, and `seedPath` for seeds) plus `before` — the user's bytes between that section's markers, verbatim — and `after` — the latest bundled template's bytes for the same section. A section is listed only when its text matches a known earlier template version exactly (line endings and trailing spaces aside), so a section the user edited is never offered. For each entry, one at a time:
+   - Show the marker and purpose, then the `before` and `after` text.
+   - On a non-Obsidian config, `after` is Obsidian-specific. Adapt it for the backend with the user first, as Step 3 does for repair blocks.
+   - Ask with `AskUserQuestion` (replace this section / keep mine). On keep, move on.
+   - On replace, edit `.aide/config/brain.aide`: replace exactly the bytes between that section's two marker lines with `after`. Both marker lines and every other byte of the file stay as they are.
+2. **Legacy launcher** (`legacyLauncher`). It carries `reasons` (`unpinned`, `unversioned`, `older-pin`, `missing-auto-confirm`), `before` — the frontmatter `mcpServerConfig` as it is — and `after.local` / `after.global`, the replacement for each launch mode. Show the reasons and `before`, then ask with `AskUserQuestion`, exactly as worded:
+   - **Global (recommended)** — personal machine, reliable startup; stays on its installed version; one-time `npm i -g`.
+   - **Local** — shared repos, cloud/CI; pinned to one version that /aide:brain config moves forward; flaky cold start.
+   - **Keep my launcher** — change nothing.
+
+   On Global, run the backend package's global-install check (for an npm package, `npm ls -g <package> --depth=0`). If it is not installed, offer `npm i -g <package>` and run it only with the user's OK; on a decline or a failed install, offer `after.local` instead. Then edit only the frontmatter's `mcpServerConfig` to the chosen `after`. Keep `name`, every other frontmatter field and the body untouched.
+3. Call `aide_info` and confirm `brain.status` is not `no-brain-aide` or `brain-aide-invalid`. If it is, show the status and fault and help the user fix the edit; do not continue until it parses.
+
+Then go to Step 6, which runs sync so `.mcp.json` picks up a changed launcher.
+
 ### Step 6 — WIRING/SEEDING
 
 Get the backend's config prose, then execute it verbatim:
@@ -142,6 +163,7 @@ The prose also owns the brain launcher before sync runs: the brain's global-inst
 - Treating `brain.status` as a runbook, or acting on `aide_brain`'s remediation prose as if it were the config section.
 - Listing, restating or inventing the brain config's sections instead of reading `brainContract` / `brainRepair`.
 - Rewriting, reordering or reformatting existing sections during a repair.
+- Applying a `brainMigration` offer without the user's yes to that specific change, or replacing a section or launcher that `brainMigration` did not list.
 - Comparing the config prose against guidance outside it. The prose is the authority — follow it as written.
 - Falling back to native filesystem tools (`Read`, `Write`, `Glob`, Bash `ls`, etc.) to inspect or write the **brain** when the brain MCP tools are unreachable. The brain is backend-agnostic; if its tools are unreachable, STOP and tell the user to restart. (Editing `.aide/config/brain.aide` is fine — it is a project file, not the brain.)
 

@@ -13,14 +13,19 @@ vi.mock("node:fs");
 vi.mock("@/tools/upgrade/buildVersionsMeta/index.js");
 vi.mock("@/service/buildBrainState/index.js");
 vi.mock("./resolveBehind/index.js", () => ({ default: vi.fn(async () => null) }));
+vi.mock("@/service/install/provisionBrain/index.js", () => ({
+	readBrainMigrationNotice: vi.fn(async () => null),
+}));
 
 import { readFileSync } from "node:fs";
 import readVersionsManifest, { type VersionsMap } from "@/tools/upgrade/buildVersionsMeta/index.js";
 import buildBrainState from "@/service/buildBrainState/index.js";
 import resolveBehind from "./resolveBehind/index.js";
+import { readBrainMigrationNotice } from "@/service/install/provisionBrain/index.js";
 import info, { InfoInput } from "./index.js";
-import type { BrainState, BehindNotice } from "@/types/index.js";
+import type { BrainState, BehindNotice, BrainMigrationNotice } from "@/types/index.js";
 
+const mockReadBrainMigrationNotice = readBrainMigrationNotice as ReturnType<typeof vi.fn>;
 const mockResolveBehind = resolveBehind as ReturnType<typeof vi.fn>;
 const mockReadFileSync = readFileSync as ReturnType<typeof vi.fn>;
 const mockReadVersionsManifest = readVersionsManifest as ReturnType<typeof vi.fn>;
@@ -87,6 +92,8 @@ beforeEach(() => {
 	mockBuildBrainState.mockResolvedValue(BRAIN_OK);
 	// Default: no behind notice, and the network is never touched.
 	mockResolveBehind.mockResolvedValue(null);
+	// Default: nothing to migrate.
+	mockReadBrainMigrationNotice.mockResolvedValue(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -539,6 +546,74 @@ describe("info — behind notice", () => {
 		expect(result.behind).toBeNull();
 		expect(result.outdated).toHaveLength(2);
 		expect(result.brain.status).toBe("no-brain-aide");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// brainMigration — soft stale-section / legacy-launcher notice, forwarded
+// unchanged from provisionBrain and independent of every other field.
+// ---------------------------------------------------------------------------
+
+describe("info — brainMigration soft notice", () => {
+	const MIGRATION: BrainMigrationNotice = {
+		staleSections: ["config"],
+		legacyLauncher: ["unpinned", "missing-auto-confirm"],
+	};
+
+	it("returns brainMigration: null on a cold project", async () => {
+		const result = await info("/project/root");
+
+		expect(result.brainMigration).toBeNull();
+	});
+
+	it("forwards the notice verbatim", async () => {
+		mockReadBrainMigrationNotice.mockResolvedValue(MIGRATION);
+
+		const result = await info("/project/root");
+
+		expect(result.brainMigration).toEqual(MIGRATION);
+	});
+
+	it("leaves a healthy brain, outdated and behind unaffected", async () => {
+		mockReadBrainMigrationNotice.mockResolvedValue(MIGRATION);
+		mockBuildBrainState.mockResolvedValue(BRAIN_OK);
+
+		const result = await info("/project/root");
+
+		expect(result.brainMigration).toEqual(MIGRATION);
+		expect(result.brain).toEqual(BRAIN_OK);
+		expect(result.brain.status).toBe("ok");
+		expect(result.outdated).toEqual([]);
+		expect(result.behind).toBeNull();
+	});
+
+	it("forwards the notice and a broken brain independently", async () => {
+		mockReadBrainMigrationNotice.mockResolvedValue(MIGRATION);
+		mockBuildBrainState.mockResolvedValue(BRAIN_NO_BRAIN_AIDE);
+
+		const result = await info("/project/root");
+
+		expect(result.brainMigration).toEqual(MIGRATION);
+		expect(result.brain).toEqual(BRAIN_NO_BRAIN_AIDE);
+	});
+
+	it("is a separate field: never inside outdated or behind, and the key set is exact", async () => {
+		mockReadBrainMigrationNotice.mockResolvedValue(MIGRATION);
+
+		const result = await info("/project/root");
+
+		expect(result.outdated).toEqual([]);
+		expect(result.behind).toBeNull();
+		expect(new Set(Object.keys(result))).toEqual(
+			new Set(["serverVersion", "outdated", "behind", "brain", "brainMigration"]),
+		);
+	});
+
+	it("calls readBrainMigrationNotice once, with the root", async () => {
+		await info("/project/root");
+
+		expect(mockReadBrainMigrationNotice).toHaveBeenCalledTimes(1);
+		expect(mockReadBrainMigrationNotice).toHaveBeenCalledWith("/project/root");
 	});
 });
 

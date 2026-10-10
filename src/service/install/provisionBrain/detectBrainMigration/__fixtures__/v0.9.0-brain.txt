@@ -1,0 +1,428 @@
+---
+name: obsidian
+mcpServerConfig:
+  command: cmd
+  args:
+    - '/c'
+    - 'npx'
+    - '@bitbonsai/mcpvault'
+    - 'C:\vault'
+---
+
+<!-- aide-orientation-start -->
+
+Your brain is an Obsidian-backed knowledge store. Use `mcp__brain__read_note` to
+open files by their brain-relative path. Use `mcp__brain__search_notes` for
+keyword queries across every note in the store. The store has four entry-point
+artifacts: the coding-playbook index at `coding-playbook/coding-playbook.md`, the
+study-playbook navigation guide at `coding-playbook/study-playbook.md`, the
+update-playbook maintenance guide at `coding-playbook/update-playbook.md`, and the
+research index at `research/research.md`. Start from the relevant entry-point for
+your task, follow the references it lists to deepen context, and check those
+files' references too. Stay in scope; don't follow references into unrelated topics.
+
+<!-- aide-orientation-end -->
+
+<!-- aide-config-start -->
+
+You are completing the wiring of an Obsidian brain. The required value is the
+absolute path to the user's Obsidian vault, to be placed at the last entry of
+`mcpServerConfig.args` in `brain.aide`. YAML null at that position is the
+unwired-state signal — it means the brain path has not yet been filled in.
+
+Argument shape (Obsidian only): `/aide:brain config [<absolute-path>]`.
+
+This flow has two paths that NEVER overlap in the same session: WIRING and
+SEEDING. Wiring edits `brain.aide` and runs sync, then STOPS — the brain MCP
+server only loads at session start, so any newly-wired brain entry is
+unreachable until the user restarts Claude Code. Seeding writes the
+entry-point artifacts via the brain MCP tools, which only works when the brain
+is already wired AND the session has the brain MCP server loaded — i.e., on a
+run AFTER the wiring restart.
+
+1. **Read `brain.aide` now and quote the last entry of `mcpServerConfig.args`.**
+   Open `brain.aide` and locate the final entry in the `mcpServerConfig.args`
+   list. Quote the literal value you observe — either YAML null (an empty entry,
+   written as a bare dash with no value) or a string. **Do not proceed without
+   quoting it.** YAML null means un-wired; any string value means already wired.
+
+2. Decide which flow runs:
+   - `$ARGUMENTS` non-empty → **WIRING** flow. Use `$ARGUMENTS` as the target
+     path (initial wiring or re-point). Proceed to Step 3.
+   - `$ARGUMENTS` empty AND last entry is YAML null → **WIRING** flow. Ask the
+     user where their vault lives via `AskUserQuestion` with `aide_info.brain.hints`
+     as suggestions plus a "Different location" entry. Use the answer as the
+     target path. Proceed to Step 3.
+   - `$ARGUMENTS` empty AND last entry is a string path → **SEEDING** flow.
+     The brain is already wired; skip Steps 3 and 4 entirely and jump to Step 5.
+
+### WIRING flow — Steps 3, 4 (then STOP at end of 4)
+
+3. Edit `brain.aide` — replace the null at the last entry of `mcpServerConfig.args`
+   with the absolute path.
+
+4. **Run sync now via Bash.** Read `.mcp.json["mcpServers"]["aide"]`, take its
+   `command` and `args`, append the literal string `"sync"`, and execute the
+   resulting command via the Bash tool. Quote the exit code. On non-zero, surface
+   stderr and stop. On exit 0:
+
+   **STOP HERE in the WIRING flow.** Do not proceed to Step 5 in the same
+   session. The brain MCP server was not loaded at session start (it did not
+   exist yet), and sync just wrote the entry; the running session cannot see
+   it. Emit this message verbatim and end the flow:
+
+   > Sync wrote the brain entry. Restart Claude Code so the brain MCP server
+   > picks up the new entry, then re-run `/aide:brain config` to seed the
+   > entry-point artifacts into your brain.
+
+   **Do not output the sync command for the user to run** — `/aide:brain config`
+   completes wiring inside the slash-command session, never by handing the user
+   a homework command.
+
+### SEEDING flow — Step 5
+
+5. **Seed the four entry-point artifacts into the brain via the brain MCP tools.**
+
+   First verify the brain MCP write/list tools are available in this session
+   (`mcp__brain__write_note`, `mcp__brain__list_directory`, etc.). If they are
+   NOT available, the brain MCP server has not been loaded in this session. Emit
+   this message verbatim and STOP:
+
+   > The brain MCP server is not loaded in this session. Restart Claude Code,
+   > then re-run `/aide:brain config` to seed the entry-point artifacts.
+
+   **Never fall back to native filesystem tools** (Read, Write, Bash `ls`,
+   Glob, etc.) to inspect or write the brain. The brain is a backend-agnostic
+   abstraction; the filesystem is just one possible backing store. Other backends
+   (hosted, Mem0, etc.) have no local filesystem at all. If the brain MCP tools
+   are unreachable, the correct response is to STOP and ask the user to restart,
+   never to improvise via the filesystem.
+
+   When the brain MCP tools ARE available, for each artifact below: presence-check
+   via `mcp__brain__list_directory` (or read tool) at the named path; if absent,
+   write it via `mcp__brain__write_note` using the seed bytes from brain.aide's
+   corresponding section (read via parseBrainAide's typed keys):
+   - `playbookIndex` → `coding-playbook/coding-playbook.md`
+   - `studyPlaybook` → `coding-playbook/study-playbook.md`
+   - `updatePlaybook` → `coding-playbook/update-playbook.md`
+   - `researchIndex` → `research/research.md`
+   Skip any artifact that already exists (presence-only check — do not overwrite
+   user-edited content).
+
+   After the seeding loop completes, emit a brief completion summary naming
+   each artifact and whether it was seeded or already present. Do not emit a
+   restart message — the brain is fully wired and seeded; the user can now use
+   `/aide` normally.
+
+<!-- aide-config-end -->
+
+<!-- aide-playbook-index-start -->
+
+# Coding Playbook
+
+Reference for the conventions and patterns this codebase follows. Read top-down — load only the sections that apply to the current task.
+
+## Task Routing
+
+When loading playbook context, match the task domain to the relevant section(s). Read only what applies — do NOT load all sections.
+
+| Task domain | Section |
+|-------------|---------|
+
+---
+
+## How to Use This Index
+
+Each section links to a section hub that lists its notes with keywords. Navigate to the section relevant to your task, then drill into the specific notes you need.
+
+### Always Read First
+
+These notes are **required reading** for every task, regardless of which section you're working in. They define the patterns everything else builds on:
+
+1. **[[your-conventions-note]]** — Add your naming, function ordering, and code hygiene conventions here.
+2. **[[your-folder-structure-note]]** — Add your folder layout and progressive disclosure conventions here.
+
+---
+
+## Sections
+
+Add your top-level playbook sections here, each linked to its section hub note.
+
+---
+
+## Prime Examples
+
+Add links to reference codebases that demonstrate these patterns in practice.
+
+---
+
+## Contents
+
+<!-- aide-playbook-index-end -->
+
+<!-- aide-study-playbook-start -->
+
+# Study Playbook
+
+Navigate the coding playbook hub and load only the sections relevant to the current task.
+
+---
+
+## Step 1: Read the Playbook Hub
+
+Read `coding-playbook/coding-playbook.md`.
+
+The hub lists sections with descriptions. Match your current task domain against
+those descriptions to identify which sections apply. Do NOT read all sections —
+only the ones whose descriptions overlap with the work at hand.
+
+---
+
+## Step 2: Read the Relevant Section Hubs
+
+For each matching section, read its hub note (e.g. `<section>/<section>.md`).
+
+Section hubs list their child notes with keywords. Scan the list and identify which
+specific child notes overlap with the task. Do NOT read every child — only the ones
+whose keywords match the work.
+
+---
+
+## Step 3: Read the Specific Child Notes
+
+Read the child notes identified in Step 2 (e.g. `<section>/<child-note>.md`).
+These contain the concrete patterns and code examples to follow.
+
+---
+
+## Navigation Rules
+
+- **Use the hub's link structure, not search.** Do NOT search for playbook content.
+  Searching produces fragments without context; the hub structure gives you the full
+  picture.
+- **Read top-down.** Hub → section hub → child note. Never skip levels.
+- **Follow wikilinks 1–2 levels deep from content notes.** Hub notes (tagged `hub` or
+  acting as section indexes) are navigation — they don't count as depth. Depth starts
+  at the first content note you land on. Example:
+  - `coding-playbook.md` (root hub) → depth 0 (navigation)
+  - `foundations/foundations.md` (section hub) → depth 0 (navigation)
+  - `foundations/conventions.md` (content note) → depth 0 (first real content)
+  - wikilink from `conventions.md` → depth 1
+  - wikilink from *that* note → depth 2
+
+  When reading any content note, look for `[[wikilinks]]`. If a linked note looks
+  relevant to the task, read it — then check *that* note's links too. Go at least
+  1–2 levels deep from the first content note in any direction where the information
+  could apply. Playbook notes cross-reference each other (e.g. a services note may
+  link to error-handling patterns, which links to API response conventions). Following
+  these links is how you build the full picture, not just a fragment.
+- **Never re-read notes.** Before reading any note, check whether it already appears
+  in your conversation context from earlier in the session. You may return to the
+  playbook multiple times across a single workflow — do NOT re-read the playbook hub,
+  section hubs, or child notes you have already loaded. The same applies when following
+  wikilinks: skip any link whose target you have already read in this session.
+- **Approach incrementally, not all at once.** Multi-step work (e.g. planning an
+  end-to-end feature) crosses multiple domains — types, then services, then API, then
+  client. Do NOT try to load every section upfront. Load what you need for the current
+  step. When you move to the next step and realize you're in a new domain without the
+  relevant playbook context, return to the playbook hub for that domain. The "never
+  re-read" rule keeps repeated visits cheap — you'll skip the hub and any notes already
+  loaded, and only read the new sections you actually need.
+- **Stop when you have enough.** Within a single invocation, if the step only touches
+  one domain (e.g. just API routes), you only need that one section's notes plus
+  whatever they link to. Don't load unrelated sections "just in case."
+
+<!-- aide-study-playbook-end -->
+
+<!-- aide-update-playbook-start -->
+
+# Update Playbook
+
+Maintenance methodology for the coding playbook. The three-layer structure
+(root hub → section hubs → child notes) and how to navigate it is described in
+`coding-playbook/study-playbook.md`; this note covers the operations that
+preserve it when adding, modifying, renaming, or removing entries.
+
+## What Belongs Here
+
+The playbook holds reusable engineering conventions and patterns — naming
+rules, error-handling shapes, fetch patterns, schema conventions, anti-patterns,
+testing patterns, etc. It does NOT hold project-specific context (environment,
+business rules, in-progress feature notes), domain research, retro findings, or
+operational runbooks. Those live in other parts of the brain. If the entry
+isn't a rule that survives across projects, it doesn't belong here.
+
+## Layout
+
+The playbook lives under `coding-playbook/` with this shape:
+
+```
+coding-playbook/
+├── coding-playbook.md          ← root hub
+├── study-playbook.md           ← navigation methodology
+├── update-playbook.md          ← this note
+├── prime-examples.md           ← (optional) reference codebases
+├── foundations/
+│   ├── foundations.md          ← section hub (navigation only)
+│   ├── conventions.md          ← child note (rules + code)
+│   ├── tooling.md
+│   └── anti-patterns.md
+├── architecture/
+│   ├── architecture.md         ← section hub
+│   ├── folder-structure.md
+│   ├── data-flow.md
+│   └── patterns.md
+└── ... (one folder per section)
+```
+
+Paths an updater needs to recognize:
+
+- Root hub: `coding-playbook/coding-playbook.md`
+- Section hub: `coding-playbook/<section>/<section>.md`
+- Child note: `coding-playbook/<section>/<note>.md`
+
+Section hubs (`<section>/<section>.md`) hold **no patterns themselves** — only
+their `## Subnotes` table, `## When to Read This Section` list, and the
+`Part of [[coding-playbook/coding-playbook|Coding Playbook]]` backreference.
+Every pattern, rule, and code example lives in child notes.
+
+Hub notes (root and section) carry frontmatter tags
+`["coding-playbook","hub","context"]`. Child notes have no required frontmatter
+convention.
+
+## Note Scope (Progressive Disclosure)
+
+Each child note should be tightly scoped to a single topic an agent might need
+to look up — naming, error handling, a specific fetch pattern, etc. Notes are
+short and focused, not long catch-alls. Connect related notes with `[[wikilinks]]`
+so an agent reading one can follow the trail rather than load everything upfront.
+
+If a note has drifted into multiple topics, or grown past the point where an
+agent can scan it quickly, split it: extract each topic into its own child
+note, add rows to the section hub's `## Subnotes` table for the new notes,
+update the root hub's `## Contents` list, and replace the moved content in the
+original note with a wikilink to the new note. An agent should not have to
+parse 500 lines of markdown to learn how to name a variable.
+
+## Entry Format
+
+Each rule inside a child note follows a consistent shape so an agent can scan
+quickly and learn from concrete examples.
+
+1. **Lead with the rule.** A bolded one-sentence principle as the first line of
+   the section or bullet — e.g. **Name variables after the function that
+   produces them.** State the rule plainly; the rest of the entry justifies and
+   illustrates it.
+
+2. **State the reason inline.** One or two sentences explaining *why*. The
+   reason is what an agent uses to judge edge cases the rule didn't anticipate.
+   Don't split rule and reason across distant sections — they read as a unit.
+
+3. **Show real code.** Use code blocks in the project's actual language (not
+   pseudocode). When the example is lifted from a specific file, prefix the
+   block with a provenance HTML comment naming the project and path, e.g.
+   `<!-- from <project-name>: src/path/to/file.ts -->`, so the source stays
+   traceable as the codebase evolves. Only fill in real project names and
+   paths — never leave the angle-bracket placeholders in a published note.
+
+4. **Pair Good and Bad examples.** Most rules have a clear right and wrong
+   shape — show both. Tag each block with a one-line reason in a code comment:
+   `// Good — descriptive noun, no redundant suffix` and
+   `// Bad — Result suffix adds nothing`. When a rule has multiple failure
+   modes (e.g. helpers inline above the export vs. helpers buried below it),
+   show one Bad block per failure mode so each is recognizable on its own.
+
+5. **Cross-link related rules.** Inside the note body, mention adjacent topics
+   by wikilink. At the bottom of the note, add a `See also:` line listing
+   related notes and a `Part of [[<section>/<section>|<Section>]]`
+   backreference so the navigation tree closes cleanly.
+
+Goal: an agent landing on a single rule sees the principle, the reasoning, and
+concrete code without scrolling, and knows where to follow up if the rule
+intersects another topic.
+
+## Wikilink Format
+
+Cross-references between notes use full-path wikilinks with a display label,
+not bare names:
+
+```
+// Good — full path survives renames elsewhere; label keeps prose readable
+[[coding-playbook/foundations/conventions|Conventions]]
+
+// Bad — bare name is ambiguous if any other note in the vault shares the title
+[[Conventions]]
+```
+
+This applies everywhere wikilinks appear: inline references inside child
+notes, `## Subnotes` table rows in section hubs, `## Sections` and `## Contents`
+entries in the root hub, `See also:` lines, and `Part of` backreferences.
+
+## Maintenance Methodology
+
+1. **Identify the change.** New convention, new child note, new section, rename,
+   removal, or general audit. Skip if the user already named it.
+
+2. **Locate the right layer.** Read the root hub. New conventions usually extend
+   an existing child note or land as a new child note inside an existing section.
+   Only justify a new section when the topic isn't covered by any existing one.
+
+3. **Apply the change at the layer it belongs to.**
+   - **Edit a child note** for changes inside an existing topic. Follow the
+     Entry Format above — rule, reason, real code, Good/Bad pair, cross-links.
+     If the change introduces vocabulary an agent might search by, update the
+     section hub's `## Subnotes` keywords for that note as well. If the edit
+     pushes the note beyond a single topic, split it (see Note Scope above).
+   - **Add a child note.** Write it using the Entry Format for every rule it
+     contains. Add a row to the section hub's `## Subnotes` table with
+     keywords, append its path to the root hub's `## Contents` list, and —
+     critically — retrofit the `See also:` lines of related existing notes to
+     link to the new one. A note that's only reachable from its section hub is
+     half-orphaned; agents discover related rules by following neighbor links.
+   - **Add a section.** Create `<section>/<section>.md` shaped like existing
+     section hubs (`## Subnotes`, `## When to Read This Section`, the
+     `Part of [[coding-playbook/coding-playbook|Coding Playbook]]`
+     backreference, hub frontmatter tags) — and remember section hubs hold
+     navigation only, no patterns. Add the section to the root hub's
+     `## Sections` list with a description, append every child note to
+     `## Contents`, and add task-domain rows to `## Task Routing`.
+   - **Rename or remove** a section or child note. Update the section hub, the
+     root hub's `## Sections` and `## Contents`, every wikilink in adjacent
+     notes that points at the renamed/removed target (including `See also:`
+     lines), and the `## Task Routing` table.
+
+4. **Routing-table drift check (required).** Compare the root hub's
+   `## Task Routing` table against the sections that exist. Each row should point
+   to a real section; each section should be reachable from at least one row;
+   each new convention added in step 3 should have a row that routes to it.
+   Offer to reconcile any drift.
+
+5. **Subnotes-table drift check (required when a section was touched).** Scan
+   the section hub's `## Subnotes` table — every child note in `<section>/`
+   should have a row, and every row should point to a note that still exists.
+
+6. **Confirm.** Summarize what changed in the child note(s), in the section hub,
+   and in the root hub (Sections, Contents, Task Routing).
+
+<!-- aide-update-playbook-end -->
+
+<!-- aide-research-index-start -->
+
+# Research
+
+### Domains
+
+| Domain | Notes |
+|--------|-------|
+
+### How to Use This Index
+
+Research notes are filed by domain. Each subdirectory holds notes for a single domain; read the domain hub before drilling into individual notes. Do not flat-search across every domain — the structure is the navigation.
+
+### Domain Hubs
+
+Add domain hubs here as your research grows. Each hub lives at `<domain>/<domain>.md` and lists its child notes with keywords.
+
+### Contents
+
+<!-- aide-research-index-end -->

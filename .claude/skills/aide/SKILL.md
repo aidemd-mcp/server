@@ -106,6 +106,8 @@ Outdated is informational, not a gate.
 
 If `behind` from `aide_info` is non-null, mention it once: the global aide server is v{installed}, npm has v{latest}; run `npm i -g @aidemd-mcp/server` when convenient. Informational, never a gate.
 
+If `brainMigration` from `aide_info` is non-null, mention it once: the brain config has outdated sections (`staleSections`) and/or a legacy brain launcher (`legacyLauncher` gives the reasons); run `/aide:brain config` to review each change. Informational, never a gate — nothing changes without the user's yes.
+
 ### Step 4 — Load methodology + intent tree (parallel)
 
 Now — and only now — run these 8 calls in parallel:

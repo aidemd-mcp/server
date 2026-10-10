@@ -97,6 +97,16 @@ On confirmation, read the config, merge the prescription, write with the Write t
     - label: "Skip" / description: "Leave brain.aide untouched"
   ```
 
+- **Outdated** (`status` is `differs`, with `staleSections` and/or `legacyLauncher`, alone or alongside `missingSections`): sections still carry an earlier template's text, or the brain launcher is a legacy form (`legacyLauncher` lists why: `unpinned`, `unversioned`, `older-pin`, `missing-auto-confirm`). Sections the user edited and custom launchers are never reported. Fold every kind present into one `AskUserQuestion`:
+
+  ```
+  question: "Your brain config {is missing sections: … / has outdated sections: … / uses a legacy launcher (…)}. Review now?"
+  header: "Brain"
+  options:
+    - label: "Yes, review" / description: "Invoke /aide:brain config — it shows each change as a before/after and changes nothing without your yes"
+    - label: "Skip" / description: "Leave brain.aide untouched"
+  ```
+
 - **Missing or malformed** (`status` is `missing` or `malformed`): use `AskUserQuestion`:
 
   ```

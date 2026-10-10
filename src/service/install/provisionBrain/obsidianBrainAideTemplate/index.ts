@@ -14,7 +14,13 @@ import type { LaunchMode } from "@/types/index.js";
  * the config prose both name. Bumped by hand after a new release is verified
  * (brief #19); a test asserts the prose and the launcher agree.
  */
-const MCPVAULT_VERSION = "0.16.0";
+export const MCPVAULT_VERSION = "0.16.0";
+
+/** The brain package name migration detection judges a launcher's npx package spec against. */
+export const MCPVAULT_PACKAGE = "@bitbonsai/mcpvault";
+
+/** The global command name migration detection recognises as the template's global launcher. */
+export const MCPVAULT_COMMAND = "mcpvault";
 
 /**
  * Returns the complete canonical bundled `brain.aide` file content as a string,
