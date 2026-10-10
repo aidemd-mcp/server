@@ -23,6 +23,7 @@ The feature's cards, in work order (column = where the card sits today; each car
 - `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Backlog, P1, pre-publish) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer stops using rm.
 - `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (Backlog, P1, pre-publish) — legacy brain.aide launcher and stale-section migration on upgrade.
 - `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (Backlog, P1, pre-publish) — when the spec-writer signals Strategy needed for pipelines.
+- `rename-cards-to-tasks-in-kanban-prose` (Backlog, P1, pre-publish) — call kanban items "tasks" everywhere instead of "cards" (user, 2026-10-09).
 - `bring-the-kanban-board-into-aide` (Backlog, P2) — card ↔ feature linking; partly delivered; needs re-scoping.
 - `fix-malformed-unreadable-brain-aide-wording-in-brain-md-upgr` (Backlog, P2) — housekeeping.
 - `aide-brain-remediation-tells-users-to-run-npx-sync-themselve` (Backlog, P2) — housekeeping.
@@ -113,9 +114,10 @@ Next card: `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline`, not started —
 1. `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline`.
 2. `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up`.
 3. `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`.
-4. Kanban cleanup pass per project through /kanban manage (stale `status:` keys, In Review > 14 days, Done over 50) — not pre-publish.
-5. Review the three stale cards with the user.
-6. Publish via `node scripts/publish.mjs` only after every pre-publish card is done and the user confirms; aide-maintainer then deletes session.aide.
+4. `rename-cards-to-tasks-in-kanban-prose`.
+5. Kanban cleanup pass per project through /kanban manage (stale `status:` keys, In Review > 14 days, Done over 50) — not pre-publish.
+6. Review the three stale cards with the user.
+7. Publish via `node scripts/publish.mjs` only after every pre-publish card is done and the user confirms; aide-maintainer then deletes session.aide.
 
 ## Process discipline (permanent)
 
