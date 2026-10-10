@@ -224,73 +224,74 @@ tags:
 ---
 # Kanban
 
-How to work the project's kanban board: create, work, manage, move, complete, stash and review cards. Read this page first: Board and Columns, Cards, Project Tag and Reaching the Board apply to every operation. Then read only the guide for the operation the user asked for, listed under Operations, and follow it step by step without skipping a gate.
+How to work the project's kanban cards: create, work, manage, move, complete, stash and review. Read this page first: Projects and Columns, Cards, Project, Cleanup Rules and Reaching the Cards apply to every operation. Then read only the guide for the operation the user asked for, listed under Operations, and follow it step by step without skipping a gate.
 
 Operations take their inputs from the user's request (a title, a priority, a card slug, a column, or a flag such as `--backlog` or `--done`). A flag may also be stated in words.
 
 ## Operations
 
-- [[kanban/guide/create|Create]] — create a new card on the board.
+- [[kanban/guide/create|Create]] — create a new card.
 - [[kanban/guide/work|Work]] — pick the next card, plan it, implement it, test it and review it, behind approval gates.
-- [[kanban/guide/manage|Manage]] — view the project's cards and move them between columns.
+- [[kanban/guide/manage|Manage]] — view the project's cards, apply the cleanup rules, and move cards between columns.
 - [[kanban/guide/move|Move]] — move the current session's card to a named column.
 - [[kanban/guide/complete|Complete]] — move the current session's card to In Review, or to Done with `--done`.
 - [[kanban/guide/stash|Stash]] — save the session's context into the current card.
 - [[kanban/guide/review|Review]] — review the current card's changes and, when asked, run the fix cycle.
 
-## Board and Columns
+## Projects and Columns
 
-- The board lives at `kanban/board.md`.
-- There are five columns, in this order: Backlog, Todo, In Progress, In Review, Done.
-- Each column has a folder that holds its cards: `kanban/backlog/`, `kanban/todo/`, `kanban/in-progress/`, `kanban/in-review/`, `kanban/done/`.
-- Each board line is `- [ ] [[<card-slug>]] — <P#> <TYPE>: <summary> #<project-tag>`. Cards in Done use `- [x]`. For example:
-  `- [ ] [[fix-login-bug]] — P1 BUG: Fix login bug on mobile #myproject #mobile`
-  - The slug is a wiki link: `[[<card-slug>]]`, the card's file name without `.md`.
-  - `<P#>` is the priority in upper case (`P0`, `P1`, `P2`, `P3`), matching the card's priority tag.
-  - `<TYPE>` is optional, one upper-case word for the kind of work (`BUG`, `DEPLOY`, `HARDENING`, `MAINTENANCE` and so on). Without a type the prefix is just `<P#>:`.
-  - `<summary>` is the card title or a one-line summary of it.
-  - The line ends with one or more `#<project-tag>` tags, the project tag always among them.
-  - Older lines may lack the `<P#>` prefix. Leave them as they are; never rewrite a line's text when moving it.
-- To read a board line, take the slug from inside `[[` `]]` and the priority from the `P#` prefix if present (the card's frontmatter is authoritative).
-- A moved line goes to the bottom of its target column: just before the blank line(s) that precede the next column heading. For Done, that is just before the blank line that precedes the `%% kanban:settings` block at the end of the file.
-- Entering Done checks the box (`- [ ]` becomes `- [x]`). Leaving Done unchecks it (`- [x]` becomes `- [ ]`). Every other move leaves the box unchanged.
-- When editing the board, rewrite the whole file and preserve everything above the first column heading (the frontmatter) and the trailing `%% kanban:settings` block exactly as they are.
-- A card's folder must match the column its board line sits in. Moving a card means doing both: update the board, then move the file.
+- Folders are the board. There is no board file.
+- Each project has its own folder, `kanban/<project>/`, named by the project tag.
+- Inside it, one folder per column, in this order: Backlog `backlog/`, Todo `todo/`, In Progress `in-progress/`, In Review `in-review/`, Done `done/`. A project may also have `archive/` for old Done cards.
+- A card's folder is its column. Moving a card means moving its file to the target column folder and updating its `updated` field — nothing else.
+- To see a project's cards, list its column folders and read each card's frontmatter and title.
 
 ## Cards
 
-- Each card is one markdown file at `kanban/<column-folder>/<slug>.md`.
+- Each card is one markdown file at `kanban/<project>/<column>/<slug>.md`.
+- The slug is the file name without `.md`: the title in lower case, spaces and special characters replaced with hyphens, leading and trailing hyphens stripped, at most 60 characters, unique within the project.
 - Frontmatter:
-  - `tags`: the project tag(s) and a priority tag (`p0`, `p1`, `p2` or `p3`), optionally followed by a lower-case type tag (`bug`, `deploy` and so on) matching the board line's `<TYPE>`;
+  - `project`: the project tag, matching the project folder;
+  - `priority`: `p0`, `p1`, `p2` or `p3`;
+  - `type`: optional, one lower-case word for the kind of work (`bug`, `deploy`, `hardening`, `housekeeping` and so on);
   - `created` and `updated`: both `YYYY-MM-DDTHH:MM:SS`;
   - `sessions`: optional, a list of datetimes, one appended each time a work session starts on the card.
 - Body: `# <Title>`, a blank line, then a `Related: [[projects/<project-note>|<display-name>]]` line linking the project's note under `projects/`, then the description if there is one. The `Related:` line may add further links to related cards, separated by ` · ` (for example `Related: [[projects/my-app|My App]] · [[add-email-validation]]`). The project note name is not always the project tag (tag `myproject` links `[[projects/my-app|My App]]`), so look the note up under `projects/` rather than deriving it from the tag.
+- Titles are short: at most about 100 characters. The detail goes in the description, not the title.
 - Later sections (Stash, Review, Revisions and so on) are appended to the card and never overwrite earlier entries.
-- Priorities: `p0` is critical or blocking, `p1` is high (do soon), `p2` is low (nice to have), `p3` is lowest (cleanup, someday). A card with no priority is treated as `p2`. The priority is also called the severity. On the board it is written upper case (`P0`–`P3`).
+- Priorities: `p0` is critical or blocking, `p1` is high (do soon), `p2` is low (nice to have), `p3` is lowest (cleanup, someday). A card with no priority is treated as `p2`. The priority is also called the severity.
 - Any operation that changes a card updates its `updated` field to the current datetime. `created` is never changed.
 
-## Project Tag
+## Project
 
-Every card and every board line carries the project's tag, and operations filter the board by it.
+Every operation works inside one project's folder.
 
-If the tag is not already known in this session, ask the user which project the work is for and use the answer as the tag. Never guess it. Once known, reuse it for the rest of the session and pass it explicitly to every subagent that needs it.
+If the project tag is not already known in this session, ask the user which project the work is for and use the answer. Never guess it. Once known, reuse it for the rest of the session and pass it explicitly to every agent that needs it.
 
-## Reaching the Board
+## Cleanup Rules
 
-Read and write the board and the cards only with the brain read and write tools available in this session. Never assume a storage backend, and never bypass those tools: no native file reads or writes, no shell listing, no direct editing of files on disk.
+Manage checks these and reports what it finds. Each one only flags or offers; nothing changes without the user's approval.
 
-In this brain the tools are the `brain` MCP server's `mcp__brain__*` tools. Every operation in this guide needs only these capabilities from them:
+- **Long title.** A title longer than about 100 characters: offer a shorter title and move the rest into the description.
+- **Stale In Review.** A card in `in-review/` whose `updated` is more than 14 days old: offer to complete it to Done.
+- **Done overflow.** More than 50 cards in a project's `done/`: offer to move the oldest (by `updated`) into `archive/` until 50 remain.
+- **Wrong or missing project.** A card whose `project` field is missing or does not match the folder it sits in: offer to fix the field or move the card.
+
+## Reaching the Cards
+
+Read and write cards only with the brain read and write tools available in this session. Never assume a storage backend, and never bypass those tools: no native file reads or writes, no shell listing, no direct editing of files on disk.
+
+In this brain the tools are the `brain` MCP server's `mcp__brain__*` tools. Every operation needs only these capabilities from them:
 
 | Capability | Brain tool | Used for |
 | ---------- | ---------- | -------- |
-| read a file by its brain-relative path | `mcp__brain__read_note` (or `mcp__brain__read_multiple_notes`) | the board, a card |
-| write a file (overwrite) | `mcp__brain__write_note` (mode `overwrite`) | creating a card, rewriting the whole board |
+| list a folder | `mcp__brain__list_directory` | a project's column folders, the projects under `kanban/` |
+| read a file by its brain-relative path | `mcp__brain__read_note` (or `mcp__brain__read_multiple_notes`) | a card |
+| read and update frontmatter | `mcp__brain__get_frontmatter`, `mcp__brain__update_frontmatter` | a card's priority, `updated`, `sessions` |
+| write a file (overwrite) | `mcp__brain__write_note` (mode `overwrite`) | creating a card |
 | append to a file | `mcp__brain__write_note` (mode `append`) or `mcp__brain__patch_note` | adding a Stash, Review or Revisions entry to a card |
 | move a file | `mcp__brain__move_note` | moving a card to another column folder |
-| read and update frontmatter | `mcp__brain__get_frontmatter`, `mcp__brain__update_frontmatter` | `updated`, `sessions` |
-| search | `mcp__brain__search_notes`, `mcp__brain__list_directory` | finding a card by slug or name, domain context, the project note under `projects/` |
-
-`mcp__brain__read_note` returns the frontmatter separately from the body. The board has frontmatter (`kanban-plugin: list`, `tags`, `updated`) that the Obsidian Kanban plugin needs, so when rewriting the board with `mcp__brain__write_note`, pass the frontmatter you read back in its `frontmatter` argument; never drop it. The board file is large: if a read is too big to return at once, read it in parts with `mcp__brain__read_note_lines` rather than switching to the file system.
+| search | `mcp__brain__search_notes` | domain context, the project note under `projects/` |
 
 All paths are brain-relative. If the brain tools are not available in this session, stop and tell the user. Do not improvise with another route to the files.
 
@@ -305,15 +306,13 @@ tags:
 ---
 # Create
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
 
-Create a new card on the board.
+Create a new card.
 
-## Delegation rules
+## Who does what
 
-1. Gather user input yourself and delegate everything else. You collect the card details by asking the user with structured options, then pass them to a single subagent call that does all the brain work. This keeps your context clean for whatever runs next.
-2. Every subagent call needs three things: a type (`general-purpose`, because it needs write access), a short description for the UI, and the full prompt the subagent receives.
-3. Ask the user with structured options for the priority and any other choice. Do not dump plain-text questions.
+The caller talks to the user and gathers the card details (Step 1), shows the user the new card and gets a clear yes. The `kanban-maintainer` agent writes the card (Step 2) and reports back. The caller confirms to the user (Step 3).
 
 ## Step 1 — Gather card details
 
@@ -325,82 +324,51 @@ Take whatever the user already provided (title, priority, `--backlog` flag).
   - `p1` — high / should do soon
   - `p2` — low / nice to have
   - `p3` — lowest / cleanup, someday
+- Title longer than about 100 characters: propose a shorter title and move the rest into the description.
 - Title is vague: optionally ask for a short description. Skip this if the title is self-explanatory.
-- If the user's request names a kind of work (a bug, a deploy, hardening, maintenance), take it as `TYPE`. Do not ask for it; without one, `TYPE` is none.
+- If the user's request names a kind of work (a bug, a deploy, hardening, housekeeping), take it as `TYPE`. Do not ask for it; without one, `TYPE` is none.
 
 The target column is Backlog if `--backlog` was passed, Todo otherwise.
 
-After this step you have `TITLE`, `SEVERITY`, `TYPE` (or none), `DESCRIPTION` (or none), `TARGET_COLUMN` and the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+After this step you have `TITLE`, `PRIORITY`, `TYPE` (or none), `DESCRIPTION` (or none), `TARGET_COLUMN` and the project tag (see Project in [[kanban/kanban|Kanban]]).
 
-## Step 2 — Create the card
+## Step 2 — Write the card
 
-Make one subagent call (`general-purpose`, description "Create kanban task") with this prompt, filled in:
+- [ ] **Generate the slug** as the kanban index describes. Target folder: `kanban/<project>/todo/` or `kanban/<project>/backlog/`. If a card with that slug already exists anywhere under `kanban/<project>/`, append `-2` (or increment) until it is unique.
+- [ ] **Find the project note.** List or search `projects/` for the note of the project this tag belongs to (for example tag `myproject` → `projects/my-app`). If exactly one note clearly matches, use it as `<project-note>` with its usual display name. If none or several match, omit the `Related:` line and report `PROJECT_NOTE: none`.
+- [ ] **Write the card** at `<target folder>/<slug>.md`:
 
-> You are creating a new card on the kanban board.
->
-> **Task title:** `<TITLE>`
-> **Severity:** `<SEVERITY>`
-> **Type:** `<TYPE or "none">`
-> **Description:** `<DESCRIPTION or "none">`
-> **Target column:** `<TARGET_COLUMN>`
-> **Project tag:** `<project tag, or "none">`
->
-> Use only the brain read, write, move and search tools available in this session.
->
-> ## Checklist
->
-> - [ ] **Check the project tag.** If the project tag is "none", return `MODE: NO_PROJECT` and stop.
-> - [ ] **Generate the slug.** Convert the title to a slug: lowercase, replace spaces and special characters with hyphens, strip leading and trailing hyphens, at most 60 characters. Check whether `<target_folder>/<slug>.md` already exists. If it does, append `-2` (or increment) until it is unique. Target folders: Todo is `kanban/todo/`, Backlog is `kanban/backlog/`.
-> - [ ] **Find the project note.** List or search `projects/` for the note of the project this tag belongs to (for example tag `myproject` → `projects/my-app`). If exactly one note clearly matches, use it as `<project-note>` with its usual display name. If none or several match, omit the `Related:` line and report `PROJECT_NOTE: none`.
-> - [ ] **Create the card.** Write `<target_folder>/<slug>.md`:
->
->   ```markdown
->   ---
->   tags:
->     - <project tag>
->     - <severity>
->     - <type in lower case, if not "none">
->   created: <YYYY-MM-DDTHH:MM:SS>
->   updated: <YYYY-MM-DDTHH:MM:SS>
->   ---
->
->   # <Task Title>
->
->   Related: [[projects/<project-note>|<display-name>]]
->
->   <Description if provided. Otherwise omit this line.>
->   ```
->
-> - [ ] **Add to the board.** Read `kanban/board.md`. Insert a new line at the bottom of the target column section (just before the blank line(s) preceding the next `##` heading):
->
->   ```
->   - [ ] [[<slug>]] — <SEVERITY in upper case> <TYPE in upper case, if not "none">: <Task Title> #<project tag>
->   ```
->
->   For example `- [ ] [[fix-login-bug]] — P1 BUG: Fix login bug on mobile #myproject`, or `- [ ] [[add-email-validation]] — P2: Add email validation #myproject` without a type.
->
->   Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
-> - [ ] **Return in this exact format:**
->
->   ```
->   CREATED:
->   SLUG: <slug>
->   PATH: <brain-relative path>
->   SEVERITY: <severity>
->   COLUMN: <target column>
->   PROJECT: <project tag or "unknown">
->   PROJECT_NOTE: <projects/<project-note> or "none">
->   ```
->
->   If no project tag was supplied: `MODE: NO_PROJECT`
+  ```markdown
+  ---
+  project: <project tag>
+  priority: <priority>
+  type: <type in lower case — omit this line if none>
+  created: <YYYY-MM-DDTHH:MM:SS>
+  updated: <YYYY-MM-DDTHH:MM:SS>
+  ---
 
-Wait for the subagent result.
+  # <Title>
 
-If the result is `MODE: NO_PROJECT`, ask the user "Which project is this task for?" Then re-run this step with the answer as the project tag.
+  Related: [[projects/<project-note>|<display-name>]]
 
-## Step 3 — Confirm and clear
+  <Description if provided. Otherwise omit this line.>
+  ```
 
-Tell the user: card created as `<SLUG>` (severity: `<SEVERITY>`) and added to `<COLUMN>`. One line. Then clear the context window (for example with `/clear`, where the harness supports it) so the next operation starts fresh.
+- [ ] **Report in this format:**
+
+  ```
+  CREATED:
+  SLUG: <slug>
+  PATH: <brain-relative path>
+  PRIORITY: <priority>
+  COLUMN: <target column>
+  PROJECT: <project tag>
+  PROJECT_NOTE: <projects/<project-note> or "none">
+  ```
+
+## Step 3 — Confirm
+
+Tell the user: card created as `<SLUG>` (priority `<PRIORITY>`) in `<COLUMN>`. One line.
 
 <!-- aide-kanban-create-end -->
 
@@ -413,26 +381,26 @@ tags:
 ---
 # Work
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
 
-Pick, investigate and plan the next card from the board, then implement, test and self-review it with strict plan/act mode discipline. Working a card moves it to In Progress and gates all code changes on the user's approval. Use this operation for each card you start. For other board operations use [[kanban/guide/manage|Manage]].
+Pick, investigate and plan the project's next card, then implement, test and self-review it with strict plan/act mode discipline. Working a card moves it to In Progress and gates all code changes on the user's approval. Use this operation for each card you start. For other card operations use [[kanban/guide/manage|Manage]].
 
 The caller may pass arguments, typically a card slug or a description fragment. They are honored in Step 1 to skip the picker. No arguments falls through to the interactive picker.
 
 ## Architecture
 
-Board subagents handle all board and brain reads and writes (find, activate, record). They are stateless and disposable.
+The `kanban-maintainer` agent handles card reads and writes (find, activate). It is stateless and disposable.
 
 The main agent does the investigation, planning, implementation and review directly. This keeps accumulating context in the window so revisions do not pay double serialization costs.
 
-Do NOT delegate investigation, implementation or review to subagents. Do NOT read the board or the card yourself. Delegate board and brain reads to subagents.
+Do NOT delegate investigation, implementation or review to subagents. Do NOT list the project's cards yourself; delegate that to `kanban-maintainer`. You may read a single card in full from the path it reports.
 
 ## Mode discipline
 
 | Steps | Mode | Rule                                    |
 | ----- | ---- | --------------------------------------- |
 | 1–5   | Plan | Read, analyze, search. No code changes. |
-| 5b    | Act  | Board activation write only.            |
+| 5b    | Act  | Card activation write only.             |
 | 6     | Act  | Write code, run type checks, run tests. |
 | 7     | Plan | Read and analyze only. No code changes. |
 | 8a    | Plan | Re-investigate, present revised plan.   |
@@ -444,12 +412,12 @@ Do NOT delegate investigation, implementation or review to subagents. Do NOT rea
 ## Checklist
 
 - [ ] **Step 0** — Enter planning mode
-- [ ] **Step 1** — Spawn a board subagent to find cards
+- [ ] **Step 1** — Have `kanban-maintainer` find cards
 - [ ] **Step 2** — Present the card table and ask the user to pick (skip if a slug matched)
-- [ ] **Step 3** — (deferred — board activation runs at Step 5b after plan approval)
+- [ ] **Step 3** — (deferred — card activation runs at Step 5b after plan approval)
 - [ ] **Step 4** — Investigate and plan (main agent, planning mode)
 - [ ] **Step 5** — Hard stop: present the plan for approval
-- [ ] **Step 5b** — Spawn a board subagent to activate the card (first act after approval)
+- [ ] **Step 5b** — Have `kanban-maintainer` activate the card (first act after approval)
 - [ ] **Step 6** — Implement (main agent, act mode)
 - [ ] **Step 7** — Review (main agent, planning mode)
 - [ ] **Step 8** — Revision loop (if needed, forward-only)
@@ -458,11 +426,11 @@ Do NOT delegate investigation, implementation or review to subagents. Do NOT rea
 
 If you are not already in a read-only planning mode, enter it now. Do not proceed until you are in it.
 
-## Step 1 — Spawn a board subagent: find cards
+## Step 1 — Find cards (`kanban-maintainer`)
 
-Make one subagent call (`general-purpose`) with this prompt, filled in:
+Delegate to the `kanban-maintainer` agent with this request, filled in:
 
-> You are finding a card on the kanban board.
+> You are finding a card in the project's kanban folders.
 >
 > **Arguments:** `<args from the caller, or "none">`
 > **Project tag:** `<project tag, or "none">`
@@ -474,9 +442,9 @@ Make one subagent call (`general-purpose`) with this prompt, filled in:
 > - [ ] **Check the project tag.** If the project tag is "none", return `MODE: NO_PROJECT`.
 > - [ ] **Find the card.**
 >
->   **If the arguments contain a card name or slug:** search `kanban/` for it. A single match: read its full content and return it as DIRECT. Multiple matches: return all of them for clarification. No match: fall through to the board path.
+>   **If the arguments contain a card name or slug:** look for it in the column folders under `kanban/<project>/`. A single match: read its full content and return it as DIRECT. Multiple matches: return all of them for clarification. No match: fall through to the listing.
 >
->   **Otherwise:** read `kanban/board.md`. Board lines look like `- [ ] [[<slug>]] — <P#> <TYPE>: <summary> #<project-tag>`; the slug is the text inside `[[` `]]`. For each card line, verify the file `<slug>.md` exists in the folder matching its column (`kanban/backlog/`, `kanban/todo/`, and so on). If any file's actual folder does not match its board column, do NOT move it — collect the mismatches for the return output. Filter to lines containing `#<project tag>` in **In Progress**, **Todo** and **Backlog** only. Read each card's frontmatter for its priority (`p0`/`p1`/`p2`/`p3`, default `p2`; fall back to the line's `P#` prefix if the frontmatter has none). Return as TABLE.
+>   **Otherwise:** list `kanban/<project>/in-progress/`, `kanban/<project>/todo/` and `kanban/<project>/backlog/`. Read each card's frontmatter for its priority (`p0`/`p1`/`p2`/`p3`, default `p2`) and its `project` field. If a card's `project` field is missing or does not match the folder, do NOT change it — collect it for the return output. Return as TABLE.
 >
 > - [ ] **Return** — one of:
 >
@@ -502,18 +470,18 @@ Make one subagent call (`general-purpose`) with this prompt, filled in:
 >   | 1 | In Progress | p0 | slug | short desc |
 >
 >   TASK_PATHS:
->   1: kanban/backlog/my-task.md
+>   1: kanban/<project>/backlog/my-task.md
 >
 >   TASK_CONTENTS:
 >   --- TASK 1 ---
 >   <full markdown>
 >   ```
 >
->   If there are board/folder mismatches, append:
+>   If any card has a missing or wrong `project` field, append:
 >
 >   ```
 >   MISMATCHES:
->   - <slug>: board says "<column>" but file is in "<actual folder>"
+>   - <slug>: project field is "<value or missing>" but the card is in "kanban/<project>/"
 >   ```
 >
 >   Omit MISMATCHES if there are none.
@@ -524,11 +492,11 @@ Make one subagent call (`general-purpose`) with this prompt, filled in:
 
 **First, check for mismatches.** If the response contains a `MISMATCHES:` section, present it:
 
-> These tasks have board/folder mismatches:
+> These cards have a missing or wrong project field:
 > `<list>`
 > Want me to fix them before continuing, or ignore for now?
 
-**Hard stop.** If the user says fix, ask: "Move the files to match the board, or update the board to match the files?" Then make a `general-purpose` subagent call to apply the chosen direction. After fixing, **re-run Step 1**.
+**Hard stop.** If the user says fix, ask for each card: "Set the field to this folder's project, or move the card to the project its field names?" Then have `kanban-maintainer` apply the chosen fix. After fixing, **re-run Step 1**.
 
 If the user says ignore, proceed.
 
@@ -592,29 +560,28 @@ If there are open questions, **hard stop**. Present them to the user. Do not pro
 
 Present the plan to the user verbatim.
 
-**Hard stop. Do not activate the board or write code until the user approves the plan.**
+**Hard stop. Do not activate the card or write code until the user approves the plan.**
 
 Once the user approves, proceed immediately to Step 5b, before writing any code.
 
-## Step 5b — Spawn a board subagent: activate the card
+## Step 5b — Activate the card (`kanban-maintainer`)
 
-You are now in act mode. Make one subagent call (`general-purpose`) with this prompt, filled in:
+You are now in act mode. Delegate to the `kanban-maintainer` agent with this request, filled in:
 
 > You are activating a card — stamping it and moving it to In Progress.
 >
-> **Card path:** `<path>` | **Slug:** `<slug>` | **Tag:** `#<project tag>` | **Now:** `<YYYY-MM-DDTHH:MM:SS>`
+> **Card path:** `<path>` | **Slug:** `<slug>` | **Project:** `<project tag>` | **Now:** `<YYYY-MM-DDTHH:MM:SS>`
 >
 > Use only the brain read, write, move and frontmatter tools available in this session.
 >
 > ## Checklist
 >
-> - [ ] **Check the current status.** If the card path is already under `kanban/in-progress/`, this is a resume. Only stamp the session (append the datetime to `sessions`, update `updated`). Skip the board move and the file move. Return `DONE (resumed)`.
+> - [ ] **Check the current status.** If the card path is already under `kanban/<project>/in-progress/`, this is a resume. Only stamp the session (append the datetime to `sessions`, update `updated`). Skip the move. Return `DONE (resumed)`.
 > - [ ] **Stamp.** Read the frontmatter, then update it: append the current datetime to the `sessions` list (preserve existing entries) and update `updated`.
-> - [ ] **Move on the board.** Read `kanban/board.md`, remove the card's line (the line containing `[[<slug>]]`) from its current column, and insert it unchanged at the bottom of **In Progress**. Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
-> - [ ] **Move the file.** Move the card to `kanban/in-progress/<slug>.md`. Update `updated` in the frontmatter.
+> - [ ] **Move the file.** Move the card to `kanban/<project>/in-progress/<slug>.md`.
 > - [ ] Return `DONE` or `DONE (resumed)`.
 
-Do not proceed to Step 6 until the subagent returns `DONE` or `DONE (resumed)`.
+Do not proceed to Step 6 until the agent returns `DONE` or `DONE (resumed)`.
 
 ## Step 6 — Implement (main agent, act mode)
 
@@ -738,83 +705,73 @@ tags:
 ---
 # Manage
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card, cleanup and brain tool rules apply to every step below.
 
-View and move cards on the board, scoped to the current project.
+View the current project's cards, apply the cleanup rules, and move cards between columns.
 
 ## Step 1 — Determine the project
 
-Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+Get the project tag (see Project in [[kanban/kanban|Kanban]]).
 
-## Step 2 — Read the board
+## Step 2 — List the cards
 
-Read `kanban/board.md`. Parse the content into the five columns: Backlog, Todo, In Progress, In Review, Done (ignore the trailing `%% kanban:settings` block). Filter each column to show only lines containing `#<project tag>`. From each line, take the slug from inside `[[` `]]` and the rest of the text after ` — ` (priority, type and summary).
+List each column folder under `kanban/<project>/`: `backlog/`, `todo/`, `in-progress/`, `in-review/`, `done/`. For each card, read its frontmatter (`priority`, `type`, `project`, `updated`) and its `# <Title>` line.
 
-### Reconciliation check
+## Step 3 — Check the cleanup rules
 
-Before presenting cards, verify that each card's file location matches its board column. For every card line in the filtered results, check whether the file exists in the expected folder (`kanban/backlog/`, `kanban/todo/`, `kanban/in-progress/`, `kanban/in-review/`, `kanban/done/`). If a file is in the wrong folder (for example the board says In Review but the file is in `kanban/in-progress/`), silently move it to the folder its board column names. This handles drift caused by a board editor that updates the board but does not move files.
+Check every card against the Cleanup Rules in [[kanban/kanban|Kanban]]: long titles, stale In Review cards, Done overflow, and wrong or missing `project` fields. Collect what you find; change nothing yet.
 
-## Step 3 — Present cards and prompt for action
+## Step 4 — Present cards and findings
 
-Display the filtered board to the user in a compact format:
+Show the user the project's open cards in a compact format, then the cleanup findings:
 
 ```
 Backlog
-  [ ] fix-login-bug — P1 BUG: Fix login bug on mobile
-  [ ] add-email-validation — P2: Add email validation
+  fix-login-bug — p1 bug: Fix login bug on mobile
+  add-email-validation — p2: Add email validation
 
 Todo
-  [ ] redesign-header — P2: Redesign the header
+  redesign-header — p2: Redesign the header
 
 In Progress
-  [ ] update-api — P1: Update the API endpoints
+  update-api — p1: Update the API endpoints
 
 In Review
-  [ ] update-docs — P3: Update the docs
+  update-docs — p3: Update the docs (in review 21 days)
+
+Done: 63 cards
+
+Cleanup
+  update-docs has been in In Review for 21 days — complete it to Done?
+  Done holds 63 cards — archive the 13 oldest?
 ```
 
-If all columns are empty for this project, tell the user and stop.
+If the project has no cards, tell the user and stop.
 
-Then ask: "Which task do you want to move, and where?"
+Then ask: "Which cards do you want to move, and which cleanup items should I apply?"
 
 Accept natural answers such as:
 
 - "move fix-login-bug to Todo"
-- "move redesign-header to In Progress"
 - "move update-docs to Done"
+- "archive the old Done cards"
 
 Valid column names: `Backlog`, `Todo`, `In Progress`, `In Review`, `Done`.
 
-## Step 4 — Move the card
+## Step 5 — Apply what the user approved
 
-### 4a — Update the board
+For each approved change:
 
-In the board content:
+- **Move:** move the file to `kanban/<project>/<target column folder>/<slug>.md` and update its `updated` field.
+- **Archive:** move the file from `done/` to `archive/` and update its `updated` field.
+- **Shorten a title:** rewrite the `# <Title>` line and add the removed detail to the top of the description; update `updated`.
+- **Fix a project field:** set `project` to the folder's project, or move the card to the project folder its field names, as the user chose; update `updated`.
 
-1. Remove the card's line (the line containing `[[<slug>]]`) from its current column.
-2. Insert it unchanged at the bottom of the target column (just before the blank line(s) that precede the next `##` heading, or, for Done, just before the blank line that precedes the `%% kanban:settings` block).
-3. If the target is Done: change `- [ ]` to `- [x]`.
-4. If moving out of Done: change `- [x]` back to `- [ ]`.
+Never change `created`.
 
-Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
+## Step 6 — Confirm
 
-### 4b — Move the card file
-
-The card lives in the folder that matches its current column:
-
-- `kanban/backlog/` — Backlog
-- `kanban/todo/` — Todo
-- `kanban/in-progress/` — In Progress
-- `kanban/in-review/` — In Review
-- `kanban/done/` — Done
-
-If the source and target folders differ, move the file. Update the `updated` frontmatter field to the current datetime (`YYYY-MM-DDTHH:MM:SS`). Do not update `created`.
-
-## Step 5 — Confirm
-
-Tell the user: "`<slug>` moved to <Target Column>."
-
-Ask whether they want to move another card. If yes, return to Step 3. If no, stop.
+Tell the user what changed, one line per card. Ask whether they want to change anything else. If yes, return to Step 4. If no, stop.
 
 <!-- aide-kanban-manage-end -->
 
@@ -827,7 +784,7 @@ tags:
 ---
 # Move
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
 
 Move the current session's card to a specified column. The card is inferred from the session. The user provides the target column inline (for example "move to todo", "move to in review").
 
@@ -851,46 +808,19 @@ Look back through the current conversation for the card being worked on this ses
 2. A card moved through Manage during this session.
 3. A card file read or referenced during the session.
 
-Use the slug (the name on the board) and the current folder the card lives in.
-
 If no card can be identified, tell the user and stop.
 
 ## Step 3 — Determine the project
 
-Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+Get the project tag (see Project in [[kanban/kanban|Kanban]]).
 
-## Step 4 — Read the board
+## Step 4 — Find the card
 
-Read `kanban/board.md`.
-
-Locate the card's line on the board (the line containing `[[<slug>]]`). If it is not found, tell the user and stop.
-
-If the card is already in the target column, tell the user and stop.
+Look for `<slug>.md` in the project's column folders under `kanban/<project>/`. If it is not found, tell the user and stop. If it is already in the target column, tell the user and stop.
 
 ## Step 5 — Move the card
 
-### 5a — Update the board
-
-In the board content:
-
-1. Remove the card line (the line containing `[[<slug>]]`) from its current column.
-2. Insert it unchanged at the bottom of the target column (just before the blank line(s) that precede the next `##` heading, or, for Done, just before the blank line that precedes the `%% kanban:settings` block).
-3. If the target is Done: change `- [ ]` to `- [x]`.
-4. If moving out of Done: change `- [x]` back to `- [ ]`.
-
-Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
-
-### 5b — Move the card file
-
-The card lives in the folder that matches its current column:
-
-- `kanban/backlog/` — Backlog
-- `kanban/todo/` — Todo
-- `kanban/in-progress/` — In Progress
-- `kanban/in-review/` — In Review
-- `kanban/done/` — Done
-
-If the source and target folders differ, move the file. Update the `updated` frontmatter field to the current datetime (`YYYY-MM-DDTHH:MM:SS`).
+Move the file to `kanban/<project>/<target column folder>/<slug>.md` and update its `updated` field to the current datetime (`YYYY-MM-DDTHH:MM:SS`).
 
 ## Step 6 — Confirm
 
@@ -907,7 +837,7 @@ tags:
 ---
 # Complete
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
 
 Move the current session's card to In Review (the default) or to Done (when the user passes `--done` or asks for Done).
 
@@ -926,32 +856,15 @@ If no card was worked on this session, tell the user there is nothing to complet
 
 ## Step 3 — Determine the project
 
-Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+Get the project tag (see Project in [[kanban/kanban|Kanban]]).
 
-## Step 4 — Read the board
+## Step 4 — Find the card
 
-Read `kanban/board.md`.
-
-Locate the card's line on the board (the line containing `[[<slug>]]`). It could be in any column (Backlog, Todo, In Progress, In Review). If it is not found, tell the user and stop.
+Look for `<slug>.md` in the project's column folders under `kanban/<project>/`. It could be in any column. If it is not found, tell the user and stop.
 
 ## Step 5 — Move the card
 
-### 5a — Update the board
-
-In the board content:
-
-1. Remove the card line (the line containing `[[<slug>]]`) from its current column.
-2. If the target is In Review: insert it at the bottom of the `## In Review` section (keep `- [ ]` and the line text unchanged).
-3. If the target is Done: insert it at the bottom of the `## Done` section, just before the blank line that precedes the `%% kanban:settings` block, changing `- [ ]` to `- [x]`.
-
-Write the full board back (overwrite), preserving everything above the first column heading and the trailing `%% kanban:settings` block.
-
-### 5b — Move the card file
-
-- If the target is Done: move the file from its current folder to `kanban/done/<slug>.md`.
-- If the target is In Review: move the file from its current folder to `kanban/in-review/<slug>.md`.
-
-Update the `updated` frontmatter field to the current datetime (`YYYY-MM-DDTHH:MM:SS`).
+Move the file to `kanban/<project>/in-review/<slug>.md` (or `kanban/<project>/done/<slug>.md` with `--done`) and update its `updated` field to the current datetime (`YYYY-MM-DDTHH:MM:SS`).
 
 ## Step 6 — Confirm
 
@@ -968,7 +881,9 @@ tags:
 ---
 # Stash
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
+
+A stash only appends a record of the session to the card; it moves and creates nothing, so it needs no approval from the user.
 
 Stash session context into the current card: what changed, decisions made, open questions and remaining work. Use this at the end of a session, or at any point mid-session, to persist everything learned so a future session can pick up seamlessly.
 
@@ -980,11 +895,11 @@ If no card can be identified, ask the user which card to stash to and stop until
 
 ## Step 2 — Determine the project
 
-Get the project tag (see Project Tag in [[kanban/kanban|Kanban]]).
+Get the project tag (see Project in [[kanban/kanban|Kanban]]).
 
 ## Step 3 — Read the card
 
-Read the card to see which sections already exist (Investigation, Answers, Solution, Revisions, earlier Stash entries). You need to know the current state so you do not duplicate information.
+Find `<slug>.md` in the project's column folders under `kanban/<project>/` and read it to see which sections already exist (Investigation, Answers, Solution, Revisions, earlier Stash entries). You need to know the current state so you do not duplicate information.
 
 ## Step 4 — Gather session context
 
@@ -1061,7 +976,7 @@ tags:
 ---
 # Review
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its board, card, project tag and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
 
 Spin up a subagent to do a comprehensive code review of the changes made for the current session's card. If changes are requested, run the full investigate, plan, approve, implement cycle through subagents.
 
@@ -1157,7 +1072,7 @@ Display the full review output verbatim. Do not summarize, editorialize or filte
 
 ## Step 3 — Record the review
 
-Make one subagent call (`general-purpose`, description "Record review on `<TASK_SLUG>`") with this prompt, filled in:
+Delegate to the `kanban-maintainer` agent (description "Record review on `<TASK_SLUG>`") with this request, filled in:
 
 > You are recording a code review on a card.
 >
