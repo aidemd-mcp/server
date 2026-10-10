@@ -96,17 +96,15 @@ The brain is the pipeline's durable memory. If it isn't wired, the pipeline can'
 
   After the skill returns, halt — the skill itself handles the sync and asks the user to restart.
 
-### Step 3 — Outdated artifacts (passive notification)
+### Step 3 — Bring the project up to date
 
-If `outdated` from `aide_info` is non-empty, mention it once and continue:
+**This step runs before Step 4. Do not load docs, call `aide_discover`, check the board or start any agent until it is done.** When `aide_info` finds the project behind, stop and suggest the upgrade, and wait for the user's answer before moving forward. Never just mention it and carry on. Check these in order:
 
-> `N` AIDE artifact(s) are outdated — run `/aide:upgrade` when you'd like to update.
+1. **`behind` is non-null** — the global aide server is v{installed} and npm has v{latest}. Ask with `AskUserQuestion`: upgrade the global server now (recommended) or continue on v{installed}. On upgrade, run `npm i -g @aidemd-mcp/server@{latest}` via Bash, tell the user to restart Claude Code and re-run `/aide` (a new server loads only after a restart), and halt. On continue, go on.
+2. **`outdated` is non-empty** — `N` AIDE artifact(s) are outdated. Ask with `AskUserQuestion`: run `/aide:upgrade` now (recommended) or continue without upgrading. On upgrade, invoke `Skill(skill="aide:upgrade")`, let it run to completion, then go on. On continue, go on.
+3. **`brainMigration` is non-null** — the brain config has outdated sections (`staleSections`) and/or a legacy launcher (`legacyLauncher` gives the reasons). Ask with `AskUserQuestion`: review them now with `/aide:brain config` (recommended) or continue. On review, invoke `Skill(skill="aide:brain", args="config")`; nothing in the user's brain config changes without their yes to that one change. Then go on.
 
-Outdated is informational, not a gate.
-
-If `behind` from `aide_info` is non-null, mention it once: the global aide server is v{installed}, npm has v{latest}; run `npm i -g @aidemd-mcp/server` when convenient. Informational, never a gate.
-
-If `brainMigration` from `aide_info` is non-null, mention it once: the brain config has outdated sections (`staleSections`) and/or a legacy brain launcher (`legacyLauncher` gives the reasons); run `/aide:brain config` to review each change. Informational, never a gate — nothing changes without the user's yes.
+If the user chooses to continue without an update, respect it and do not ask again this session.
 
 ### Step 4 — Load methodology + intent tree (parallel)
 
