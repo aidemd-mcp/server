@@ -12,20 +12,24 @@ superseded design decisions are cut, not annotated.
 
 ## State summary (set 2026-10-10, between tasks)
 
-- Commits, all local, not pushed, not published: d41c3c5 (brain contract + kanban), 0831d94 (Obsidian template + split kanban guide), bbc3c40 (global install launch modes), fe9d431 (board tracking + kanban-maintainer agent), 3d82db1 (kanban-maintainer installer), c913d8d (session.aide as an index, prose-edit rule, docs/README/help text), 25a7943 (folders are the board — kanban-board seed dropped), bb7478e (refreshed brain.aide kanban sections), a8d1ed8 (cards-to-tasks task link), 83a86b5 (aide_cleanup + session.aide never deleted), 9a7a094 (synthesize runs when the feature is a pipeline), 1274665 (broadened strategy trigger), 24826d4 (brain.aide migration detection).
-- No task in progress. Next: `rename-cards-to-tasks-in-kanban-prose`.
-- Publish is still blocked until every pre-publish task is done (user, 2026-10-08).
+- Latest release v0.10.2 on npm + MCP Registry (CI green) — content-free brain responses + kanban skill records the project tag once.
+- v0.10.1 is a git tag on a broken commit that never published (staged git mv/rm were swept into the release commit) — superseded by 0.10.2.
+- Recent commits: 7470034 (feature), 30cb0a7 (0.10.2), 6f8c8f4 (CLAUDE.md publish rules: check staged files; sync aidemd.dev from npm after every publish — local, not pushed).
+- No task in progress.
+- Pending outside this repo: aidemd.dev sync to 0.10.2 from npm (a session in the site repo was offered).
 
 ## Kanban
 
 The feature's tasks, in work order (column = where the task sits today; each task's stash holds its progress):
 
-- `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (In Review, P1, pre-publish) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer removes ephemerals through it, never rm. Built, QA passed.
+- `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done) — content-free brain responses; shipped in 0.10.2.
+- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (Backlog, P2, dx) — standalone skill that authors a brain.aide for any backend, section by section using aide_brain's purpose; /aide:brain config's create and custom-backend repair hand off to it.
+- `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Done) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer removes ephemerals through it, never rm. Built, QA passed.
 - `aide-scaffold-creates-and-reformats-session-aide` (Done) — dropped, won't do — the user never asked for it.
 - `aide-scaffold-overwrites-existing-files` (Backlog, P1, bug) — aide_scaffold overwrites an existing todo/plan/.aide/research file with a blank template.
 - `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (In Review, P1, pre-publish) — read-only detection of outdated brain.aide sections and legacy brain launchers; /aide:brain config offers each change, applied only on the user's yes.
 - `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (In Review, P1, pre-publish) — synthesize runs when the feature is a pipeline (the pipeline test), independent of research. Done as prose; one follow-up outside this repo: reword the Showfold `research-implies-strategy` memory rule.
-- `rename-cards-to-tasks-in-kanban-prose` (Backlog, P1, pre-publish) — call kanban items "tasks" everywhere instead of "tasks" (user, 2026-10-09).
+- `rename-cards-to-tasks-in-kanban-prose` (Done) — kanban items are called tasks everywhere; existing copies (global skill/agent, brain guides) updated.
 - `bring-the-kanban-board-into-aide` (Backlog, P2) — task ↔ feature linking; partly delivered; needs re-scoping.
 - `fix-malformed-unreadable-brain-aide-wording-in-brain-md-upgr` (Backlog, P2) — housekeeping.
 - `aide-brain-remediation-tells-users-to-run-npx-sync-themselve` (Backlog, P2) — housekeeping.
@@ -51,13 +55,13 @@ The feature's tasks, in work order (column = where the task sits today; each tas
 1. **Required sections.** New brain.aide sections are REQUIRED, not optional. A missing section fails boot with a specific message naming it.
 2. **Contract source.** The required-section list is the contract, published only from brainContract. The template is only the default fill. A custom-backend config that satisfies the contract is valid.
 3. **Repair scope.** Repair inserts only the missing sections, taken from the LATEST bundled template. Existing sections, wiring and customizations are never touched.
-4. **No new command.** /aide:brain config absorbs create (it asks which backend) and repair, then validates with the real parser.
+4. Superseded by #21.
 5. **Fifth status.** It is `brain-aide-invalid`, with a tagged fault:
    - missing-sections, which names the missing sections;
    - malformed, which gives the reason.
 
    A missing file stays `no-brain-aide`. An unwired slot stays `no-mcp-entry`. A present file is never reported as "not present".
-6. **How agents read the contract.** Agents read the contract and the repair blocks through aide_init's read-only brain step (brainContract / brainRepair). aide_brain never returns seed bytes. aide_upgrade reports "behind" and never writes the config.
+6. Superseded by #20.
 7. Superseded by #13.
 8. **One `kanban` skill** replaces the 7 kb-* skills.
    - It is a thin pointer that does not depend on AIDE, so it works in non-AIDE projects.
@@ -97,6 +101,8 @@ The feature's tasks, in work order (column = where the task sits today; each tas
 17. **No board file; per-project task folders (user, 2026-10-09).** The user no longer uses the Obsidian kanban plugin, and the single board (456 lines, ~99 KB, ~10 projects per column) is unreadable for agents. Folders are the board: kanban/<project>/<column>/<slug>.md (backlog, todo, in-progress, in-review, done); a task's folder is its column; task frontmatter carries project, priority, optional type, created, updated. No plugin frontmatter, settings block, checkboxes or wiki-link board lines. This supersedes #13's plugin board format for the kanban seeds (the kanban-board seed is dropped; the index and guides are rewritten); the rest of #13 stands. It must land before publish. Migrated 2026-10-09: 667 tasks; folder column won over board column; board.md and backups in kanban/legacy/.
 18. **session.aide is never deleted (user, 2026-10-09).** It is the long-lived index to the board's queue. aide_cleanup never reads, writes or deletes it. The maintainer, /aide Completion, handoff skill and session-aide.md now say so.
 19. **Strategy is triggered by the pipeline test (user, 2026-10-08).** Strategy needed = several modules each doing one thing in a specific order, handing off through calls, events or queues; independent of Research needed. Parent spec carries the end-to-end flow, each module its slice; self-contained modules stay frontmatter-only. Decisions parked in session.aide or brief.aide never justify skipping.
+20. **Content-free brain responses (user, 2026-10-10).** aide_init's summary brain step carries only `brainSummary` (flags, markers, sizes) on every status — the heavy fields are removed from the type. Missing sections are inserted tool-side by aide_upgrade category=brain (byte-identical only when the launcher is the template's mcpvault integration; otherwise named for the user to adapt), matching the file's line endings, returning only inserted markers. One migration per round trip: aide_upgrade brain with `brainChange: <marker|"launcher">` and no `beforeHash` is a read-only preview returning one before/after + `beforeHash` (lowercase hex SHA-256 of the exact before string); the same call with `beforeHash` applies, refusing on any byte change. aide_brain accepts any contract marker and returns one section verbatim on every status where the file exists and parses; its reply is exactly status, instructions, found (`found` true only when instructions is the section's bytes). Malformed remediation gives the parser's reason, a hand fix, and a re-check; never "run /aide:brain config". No explicit consent flag; no line numbers.
+21. **Brain config authoring is its own skill (user, 2026-10-10).** Validation stays structural — every required field and section must exist; content is the user's responsibility. Authoring a brain.aide for any backend becomes a standalone skill (task `brain-authoring-skill-create-a-brain-aide-for-any-backend`); /aide:brain config keeps detection, Obsidian repair, migration, validation and sync, and hands create and custom-backend adapting to that skill once it exists.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -111,17 +117,21 @@ The feature's tasks, in work order (column = where the task sits today; each tas
 - **aide_cleanup touches only plan.aide, todo.aide, brief.aide in the named module** — fixed names, never a directory listing, never session.aide, specs or code.
 - **Pipeline ephemerals are removed only through aide_cleanup** — never a shell delete; the maintainer verifies the retro, then calls the tool; dryRun is never a required step.
 - **A template section edit appends the previous fingerprint** — when any bundled brain template section's prose changes, append its old fingerprint to the outdated-sections record and update the drift pin, or old configs stop being recognized.
+- **No tool returns more brain text than one decision needs** — the aide_init summary brain step stays under 4 KB on every status (test); aide_brain returns one section; aide_upgrade's brain preview returns one before/after.
+- **Check `git status` before publishing** — publish.mjs commits everything already staged.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Next task: `rename-cards-to-tasks-in-kanban-prose`, not started — read its task.
+No feature in flight.
 
 ### What the next agent must do
 
-1. `rename-cards-to-tasks-in-kanban-prose`.
-2. Kanban cleanup pass per project through /kanban manage (stale `status:` keys, In Review > 14 days, Done over 50) — not pre-publish.
+1. aidemd.dev: pull 0.10.2 from npm in the site's own project and deploy (if not already done).
+2. Kanban cleanup pass per project through /kanban manage.
 3. Review the three stale tasks with the user.
-4. Publish via `node scripts/publish.mjs` only after every pre-publish task is done and the user confirms; after publishing, pull and redeploy the aidemd.dev site (user, 2026-10-10); session.aide is then rewritten, never deleted (decision 18).
+4. Next feature from the board (candidates: `aide-scaffold-overwrites-existing-files` P1 bug, `brain-authoring-skill-create-a-brain-aide-for-any-backend` P2).
+
+session.aide is then rewritten, never deleted (decision 18).
 
 ## Process discipline (permanent)
 
@@ -131,3 +141,4 @@ Next task: `rename-cards-to-tasks-in-kanban-prose`, not started — read its tas
 - Every /aide session checks the board at boot and keeps the feature's tasks and `## Kanban` links current.
 - Task progress goes into the task's stash; session.aide stays an index.
 - Cleanup of plan/todo/brief goes through aide_cleanup via aide-maintainer.
+- Publishing: publish first, then sync aidemd.dev by pulling the published version from npm in the site's project.
