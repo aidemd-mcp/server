@@ -10,42 +10,102 @@ mcpServerConfig:
 
 Your brain is an Obsidian-backed knowledge store. Use `mcp__brain__read_note` to
 open files by their brain-relative path. Use `mcp__brain__search_notes` for
-keyword queries across every note in the store. The store has four entry-point
-artifacts: the coding-playbook index at `coding-playbook/coding-playbook.md`, the
+keyword queries across every note in the store. The store's entry-point
+artifacts include the coding-playbook index at `coding-playbook/coding-playbook.md`, the
 study-playbook navigation guide at `coding-playbook/study-playbook.md`, the
 update-playbook maintenance guide at `coding-playbook/update-playbook.md`, and the
 research index at `research/research.md`. Start from the relevant entry-point for
 your task, follow the references it lists to deepen context, and check those
 files' references too. Stay in scope; don't follow references into unrelated topics.
 
+Project work is tracked as kanban tasks in per-project folders under `kanban/<project>/`, one subfolder per column. Before any task operation, read the kanban index at `kanban/kanban.md`, then read only the guide it links for the operation you are performing.
+
 <!-- aide-orientation-end -->
 
 <!-- aide-config-start -->
 
 You are completing the wiring of an Obsidian brain. The required value is the
-absolute path to the user's Obsidian vault, landed as the last entry of
-`mcpServerConfig.args` in `brain.aide`.
+absolute path to the user's Obsidian vault, to be placed at the last entry of
+`mcpServerConfig.args` in `brain.aide`. YAML null at that position is the
+unwired-state signal — it means the brain path has not yet been filled in.
 
-Argument shape (Obsidian only): `/aide:brain config [<absolute-path>]`. When
-`$ARGUMENTS` is non-empty, treat it as the absolute path the user wants to wire
-(initial wiring) or re-wire to (re-point). Empty `$ARGUMENTS` means "ask
-interactively" on a fresh wire and "STOP, nothing to do" against an already-wired
-brain.
+Argument shape (Obsidian only): `/aide:brain config [<absolute-path>]`.
 
-1. Read `brain.aide`. Extract the current path entry from `mcpServerConfig.args`
-   (the literal `<BRAIN_PATH>` placeholder means un-wired; any other string means
-   already wired).
-2. Decide the target path:
-   - `$ARGUMENTS` non-empty → use it as the target path.
-   - `$ARGUMENTS` empty AND current entry is `<BRAIN_PATH>` → ask the user where
-     their vault lives. Use `AskUserQuestion` with `aide_info.brain.hints` as
-     suggestions plus a "Different location" entry.
-   - `$ARGUMENTS` empty AND current entry is a real path → STOP, nothing to do.
-3. Edit `brain.aide` — replace the current entry with the target path.
-4. Sync — read `.mcp.json["mcpServers"]["aide"]`, take its command and args, append
-   `"sync"`, run via Bash. On exit 0 continue; on non-zero surface stderr and stop.
-5. Emit the restart message verbatim: "Sync wrote the brain entry. Restart Claude
-   Code so the brain MCP server picks up the new entry, then re-run /aide."
+This flow has two paths that NEVER overlap in the same session: WIRING and
+SEEDING. Wiring edits `brain.aide` and runs sync, then STOPS — the brain MCP
+server only loads at session start, so any newly-wired brain entry is
+unreachable until the user restarts Claude Code. Seeding writes the
+entry-point artifacts via the brain MCP tools, which only works when the brain
+is already wired AND the session has the brain MCP server loaded — i.e., on a
+run AFTER the wiring restart.
+
+1. **Read `brain.aide` now and quote the last entry of `mcpServerConfig.args`.**
+   Open `brain.aide` and locate the final entry in the `mcpServerConfig.args`
+   list. Quote the literal value you observe — either YAML null (an empty entry,
+   written as a bare dash with no value) or a string. **Do not proceed without
+   quoting it.** YAML null means un-wired; any string value means already wired.
+
+2. Decide which flow runs:
+   - `$ARGUMENTS` non-empty → **WIRING** flow. Use `$ARGUMENTS` as the target
+     path (initial wiring or re-point). Proceed to Step 3.
+   - `$ARGUMENTS` empty AND last entry is YAML null → **WIRING** flow. Ask the
+     user where their vault lives via `AskUserQuestion` with `aide_info.brain.hints`
+     as suggestions plus a "Different location" entry. Use the answer as the
+     target path. Proceed to Step 3.
+   - `$ARGUMENTS` empty AND last entry is a string path → **SEEDING** flow.
+     The brain is already wired; skip Steps 3 and 4 entirely and jump to Step 5.
+     Before seeding, if the launcher is local (`npx`, directly or after `cmd /c`) and its `@bitbonsai/mcpvault` spec has no version, is `@latest`, or pins a version older than `0.16.0`, offer with `AskUserQuestion` to update it to `-y @bitbonsai/mcpvault@0.16.0`. On yes, edit only that spec (adding `-y` if missing), run Step 4 (sync) and stop as the WIRING flow does. On no, continue to seeding unchanged. Never change an equal or newer pin, and never change the launch mode here.
+
+### WIRING flow — Steps 3, 4 (then STOP at end of 4)
+
+3. Edit `brain.aide` — replace the null at the last entry of `mcpServerConfig.args`
+   with the absolute path.
+
+   Then check how this config launches the brain. If the launched program is `mcpvault` (the file name of `mcpServerConfig.command`, or of the entry after `/c` when the command is `cmd`, with or without a directory path or a `.cmd` / `.exe` extension), the brain launches from a global install. In that case, run `npm ls -g @bitbonsai/mcpvault --depth=0` via Bash. If the package is not listed, ask with `AskUserQuestion`: "Install now (`npm i -g @bitbonsai/mcpvault`)" or "Use local launch instead". Run the install via Bash only after the user picks install. If the user picks local, or the install exits non-zero, rewrite `mcpServerConfig` to the pinned local launcher and keep the path you just wrote as the last entry: `command: npx` with args `-y`, `@bitbonsai/mcpvault@0.16.0`, `<path>`; on Windows, `command: cmd` with args `/c`, `npx`, `-y`, `@bitbonsai/mcpvault@0.16.0`, `<path>`. Then tell the user the brain will launch locally through npx, pinned to that version. If the launcher is already local, apply the same pin check as step 2: offer to move an unpinned, `@latest` or older pin to `@bitbonsai/mcpvault@0.16.0`, and apply it only on the user's OK. A global launcher given by absolute path is valid; never rewrite it for being a path. Never switch a launcher between global and local for any other reason.
+
+4. **Run sync now via Bash.** Read `.mcp.json["mcpServers"]["aide"]`, take its
+   `command` and `args`, append the literal string `"sync"`, and execute the
+   resulting command via the Bash tool. Quote the exit code. On non-zero, surface
+   stderr and stop. On exit 0:
+
+   **STOP HERE in the WIRING flow.** Do not proceed to Step 5 in the same
+   session. The brain MCP server was not loaded at session start (it did not
+   exist yet), and sync just wrote the entry; the running session cannot see
+   it. Emit this message verbatim and end the flow:
+
+   > Sync wrote the brain entry. Restart Claude Code so the brain MCP server
+   > picks up the new entry, then re-run `/aide:brain config` to seed the
+   > entry-point artifacts into your brain.
+
+   **Do not output the sync command for the user to run** — `/aide:brain config`
+   completes wiring inside the slash-command session, never by handing the user
+   a homework command.
+
+### SEEDING flow — Step 5
+
+5. **Seed the entry-point artifacts into the brain via the brain MCP tools.**
+
+   First verify the brain MCP write/list tools are available in this session
+   (`mcp__brain__write_note`, `mcp__brain__list_directory`, etc.). If they are
+   NOT available, the brain MCP server has not been loaded in this session. Emit
+   this message verbatim and STOP:
+
+   > The brain MCP server is not loaded in this session. Restart Claude Code,
+   > then re-run `/aide:brain config` to seed the entry-point artifacts.
+
+   **Never fall back to native filesystem tools** (Read, Write, Bash `ls`,
+   Glob, etc.) to inspect or write the brain. The brain is a backend-agnostic
+   abstraction; the filesystem is just one possible backing store. Other backends
+   (hosted, Mem0, etc.) have no local filesystem at all. If the brain MCP tools
+   are unreachable, the correct response is to STOP and ask the user to restart,
+   never to improvise via the filesystem.
+
+   When the brain MCP tools ARE available, read the section list: call `aide_init` with no arguments (a read-only summary call) and take `brainSummary.sections` from the step named `Brain config (brain.aide)`. For each entry whose `role` is `seed`: presence-check its `seedPath` via `mcp__brain__list_directory` (or the read tool); a missing folder means the file is absent. Skip any artifact that already exists (presence-only check — do not overwrite user-edited content). For each absent one, call `aide_brain` with `kind` set to that entry's `marker`. When `found` is true, `instructions` holds that section's bytes: drop the empty lines at their start and end and write them with `mcp__brain__write_note` at `seedPath`. When those bytes open with a `---` frontmatter block, pass that block's fields as the tool's `frontmatter` argument and only the text after its closing `---` (leading empty lines dropped) as `content`; never leave a frontmatter block inside `content`, or the file will not have real frontmatter. When `found` is false, surface `instructions` to the user and write nothing for that entry.
+
+   After the seeding loop completes, emit a brief completion summary naming
+   each artifact and whether it was seeded or already present. Do not emit a
+   restart message — the brain is fully wired and seeded; the user can now use
+   `/aide` normally.
 
 <!-- aide-config-end -->
 
@@ -171,25 +231,171 @@ These contain the concrete patterns and code examples to follow.
 
 # Update Playbook
 
-Maintenance methodology for the coding playbook. Use `mcp__brain__read_note` to read
-entries, `mcp__brain__patch_note` or `mcp__brain__write_note` to edit them. Playbook
-entries live under `coding-playbook/<section>/`; the index sits at
-`coding-playbook/coding-playbook.md`.
+Maintenance methodology for the coding playbook. The three-layer structure
+(root hub → section hubs → child notes) and how to navigate it is described in
+`coding-playbook/study-playbook.md`; this note covers the operations that
+preserve it when adding, modifying, renaming, or removing entries.
 
-1. Identify the change — new convention, modification to an existing one, section
-   rename, section removal, or general audit. Skip this step if the user already
-   named the change.
-2. Read `coding-playbook/coding-playbook.md` to identify the relevant section, or
-   confirm no section yet exists for a new convention.
-3. Apply the change with `mcp__brain__patch_note` or `mcp__brain__write_note`. If a
-   section was added, renamed, or removed, offer to reorganize adjacent sections under
-   a new or updated domain grouping if it would improve navigability.
-4. **Routing-table drift check (required):** Compare the playbook entry-point's task
-   routing table against the actual sections that now exist. For each row: does the
-   section it points to still exist under that name? For each section: does the routing
-   table cover it? Offer to reconcile any drift.
-5. Apply any routing-table changes the user approves. Confirm the final state — what
-   was changed in the playbook, what was changed in the routing table.
+## What Belongs Here
+
+The playbook holds reusable engineering conventions and patterns — naming
+rules, error-handling shapes, fetch patterns, schema conventions, anti-patterns,
+testing patterns, etc. It does NOT hold project-specific context (environment,
+business rules, in-progress feature notes), domain research, retro findings, or
+operational runbooks. Those live in other parts of the brain. If the entry
+isn't a rule that survives across projects, it doesn't belong here.
+
+## Layout
+
+The playbook lives under `coding-playbook/` with this shape:
+
+```
+coding-playbook/
+├── coding-playbook.md          ← root hub
+├── study-playbook.md           ← navigation methodology
+├── update-playbook.md          ← this note
+├── prime-examples.md           ← (optional) reference codebases
+├── foundations/
+│   ├── foundations.md          ← section hub (navigation only)
+│   ├── conventions.md          ← child note (rules + code)
+│   ├── tooling.md
+│   └── anti-patterns.md
+├── architecture/
+│   ├── architecture.md         ← section hub
+│   ├── folder-structure.md
+│   ├── data-flow.md
+│   └── patterns.md
+└── ... (one folder per section)
+```
+
+Paths an updater needs to recognize:
+
+- Root hub: `coding-playbook/coding-playbook.md`
+- Section hub: `coding-playbook/<section>/<section>.md`
+- Child note: `coding-playbook/<section>/<note>.md`
+
+Section hubs (`<section>/<section>.md`) hold **no patterns themselves** — only
+their `## Subnotes` table, `## When to Read This Section` list, and the
+`Part of [[coding-playbook/coding-playbook|Coding Playbook]]` backreference.
+Every pattern, rule, and code example lives in child notes.
+
+Hub notes (root and section) carry frontmatter tags
+`["coding-playbook","hub","context"]`. Child notes have no required frontmatter
+convention.
+
+## Note Scope (Progressive Disclosure)
+
+Each child note should be tightly scoped to a single topic an agent might need
+to look up — naming, error handling, a specific fetch pattern, etc. Notes are
+short and focused, not long catch-alls. Connect related notes with `[[wikilinks]]`
+so an agent reading one can follow the trail rather than load everything upfront.
+
+If a note has drifted into multiple topics, or grown past the point where an
+agent can scan it quickly, split it: extract each topic into its own child
+note, add rows to the section hub's `## Subnotes` table for the new notes,
+update the root hub's `## Contents` list, and replace the moved content in the
+original note with a wikilink to the new note. An agent should not have to
+parse 500 lines of markdown to learn how to name a variable.
+
+## Entry Format
+
+Each rule inside a child note follows a consistent shape so an agent can scan
+quickly and learn from concrete examples.
+
+1. **Lead with the rule.** A bolded one-sentence principle as the first line of
+   the section or bullet — e.g. **Name variables after the function that
+   produces them.** State the rule plainly; the rest of the entry justifies and
+   illustrates it.
+
+2. **State the reason inline.** One or two sentences explaining *why*. The
+   reason is what an agent uses to judge edge cases the rule didn't anticipate.
+   Don't split rule and reason across distant sections — they read as a unit.
+
+3. **Show real code.** Use code blocks in the project's actual language (not
+   pseudocode). When the example is lifted from a specific file, prefix the
+   block with a provenance HTML comment naming the project and path, e.g.
+   `<!-- from <project-name>: src/path/to/file.ts -->`, so the source stays
+   traceable as the codebase evolves. Only fill in real project names and
+   paths — never leave the angle-bracket placeholders in a published note.
+
+4. **Pair Good and Bad examples.** Most rules have a clear right and wrong
+   shape — show both. Tag each block with a one-line reason in a code comment:
+   `// Good — descriptive noun, no redundant suffix` and
+   `// Bad — Result suffix adds nothing`. When a rule has multiple failure
+   modes (e.g. helpers inline above the export vs. helpers buried below it),
+   show one Bad block per failure mode so each is recognizable on its own.
+
+5. **Cross-link related rules.** Inside the note body, mention adjacent topics
+   by wikilink. At the bottom of the note, add a `See also:` line listing
+   related notes and a `Part of [[<section>/<section>|<Section>]]`
+   backreference so the navigation tree closes cleanly.
+
+Goal: an agent landing on a single rule sees the principle, the reasoning, and
+concrete code without scrolling, and knows where to follow up if the rule
+intersects another topic.
+
+## Wikilink Format
+
+Cross-references between notes use full-path wikilinks with a display label,
+not bare names:
+
+```
+// Good — full path survives renames elsewhere; label keeps prose readable
+[[coding-playbook/foundations/conventions|Conventions]]
+
+// Bad — bare name is ambiguous if any other note in the vault shares the title
+[[Conventions]]
+```
+
+This applies everywhere wikilinks appear: inline references inside child
+notes, `## Subnotes` table rows in section hubs, `## Sections` and `## Contents`
+entries in the root hub, `See also:` lines, and `Part of` backreferences.
+
+## Maintenance Methodology
+
+1. **Identify the change.** New convention, new child note, new section, rename,
+   removal, or general audit. Skip if the user already named it.
+
+2. **Locate the right layer.** Read the root hub. New conventions usually extend
+   an existing child note or land as a new child note inside an existing section.
+   Only justify a new section when the topic isn't covered by any existing one.
+
+3. **Apply the change at the layer it belongs to.**
+   - **Edit a child note** for changes inside an existing topic. Follow the
+     Entry Format above — rule, reason, real code, Good/Bad pair, cross-links.
+     If the change introduces vocabulary an agent might search by, update the
+     section hub's `## Subnotes` keywords for that note as well. If the edit
+     pushes the note beyond a single topic, split it (see Note Scope above).
+   - **Add a child note.** Write it using the Entry Format for every rule it
+     contains. Add a row to the section hub's `## Subnotes` table with
+     keywords, append its path to the root hub's `## Contents` list, and —
+     critically — retrofit the `See also:` lines of related existing notes to
+     link to the new one. A note that's only reachable from its section hub is
+     half-orphaned; agents discover related rules by following neighbor links.
+   - **Add a section.** Create `<section>/<section>.md` shaped like existing
+     section hubs (`## Subnotes`, `## When to Read This Section`, the
+     `Part of [[coding-playbook/coding-playbook|Coding Playbook]]`
+     backreference, hub frontmatter tags) — and remember section hubs hold
+     navigation only, no patterns. Add the section to the root hub's
+     `## Sections` list with a description, append every child note to
+     `## Contents`, and add task-domain rows to `## Task Routing`.
+   - **Rename or remove** a section or child note. Update the section hub, the
+     root hub's `## Sections` and `## Contents`, every wikilink in adjacent
+     notes that points at the renamed/removed target (including `See also:`
+     lines), and the `## Task Routing` table.
+
+4. **Routing-table drift check (required).** Compare the root hub's
+   `## Task Routing` table against the sections that exist. Each row should point
+   to a real section; each section should be reachable from at least one row;
+   each new convention added in step 3 should have a row that routes to it.
+   Offer to reconcile any drift.
+
+5. **Subnotes-table drift check (required when a section was touched).** Scan
+   the section hub's `## Subnotes` table — every child note in `<section>/`
+   should have a row, and every row should point to a note that still exists.
+
+6. **Confirm.** Summarize what changed in the child note(s), in the section hub,
+   and in the root hub (Sections, Contents, Task Routing).
 
 <!-- aide-update-playbook-end -->
 
