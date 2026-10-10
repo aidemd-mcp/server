@@ -42,7 +42,7 @@ export const MCPVAULT_COMMAND = "mcpvault";
  * - **Live sections** are read at runtime from the brain config and never written
  *   into the brain. `orientation` is the agent-facing briefing `aide_brain` returns
  *   (tools to reach the brain, entry points to start from, and a pointer to the
- *   per-project card folders and the kanban index that links its guides). `config` is the Obsidian wiring and seeding flow
+ *   per-project task folders and the kanban index that links its guides). `config` is the Obsidian wiring and seeding flow
  *   `/aide:brain config` runs. Both are user-editable post-scaffold.
  *
  * - **Seed sections** are install-time bytes written into the user's brain at
@@ -54,8 +54,8 @@ export const MCPVAULT_COMMAND = "mcpvault";
  *   - `kanban-index` and the seven operation guides (`kanban-create`,
  *     `kanban-work`, `kanban-manage`, `kanban-move`, `kanban-complete`,
  *     `kanban-stash`, `kanban-review`): an exact, lossless split of the user's
- *     working kanban guide into a short index (card folders, cards, project, cleanup rules, how to
- *     reach the cards) and one guide per operation. They are Obsidian-specific by
+ *     working kanban guide into a short index (task folders, tasks, project, cleanup rules, how to
+ *     reach the tasks) and one guide per operation. They are Obsidian-specific by
  *     design (wiki links, the `Related:` line, the
  *     `mcp__brain__*` tool table) and carry frontmatter. Their text lives in
  *     `kanbanSeeds/hub` and `kanbanSeeds/guide/<operation>`; the marker lines stay
@@ -114,7 +114,7 @@ export default function obsidianBrainAideTemplate(mode: LaunchMode = "local"): s
 		`your task, follow the references it lists to deepen context, and check those\n` +
 		`files' references too. Stay in scope; don't follow references into unrelated topics.\n` +
 		`\n` +
-		`Project work is tracked as kanban cards in per-project folders under \`kanban/<project>/\`, one subfolder per column. Before any card operation, read the kanban index at \`kanban/kanban.md\`, then read only the guide it links for the operation you are performing.\n` +
+		`Project work is tracked as kanban tasks in per-project folders under \`kanban/<project>/\`, one subfolder per column. Before any task operation, read the kanban index at \`kanban/kanban.md\`, then read only the guide it links for the operation you are performing.\n` +
 		`\n` +
 		`<!-- aide-orientation-end -->\n` +
 		`\n` +

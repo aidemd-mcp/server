@@ -41,9 +41,22 @@ describe("findStaleSections", () => {
 		expect(markers(v090)).not.toContain("update-playbook");
 	});
 
-	it("flags orientation, config and update-playbook of the repo fixture", () => {
+	it("flags orientation, config, update-playbook and the card-era kanban sections of the repo fixture", () => {
 		const offers = findStaleSections({ sections: repo, template });
-		expect(offers.map((o) => o.marker)).toEqual(["orientation", "config", "update-playbook"]);
+		expect(offers.map((o) => o.marker)).toEqual([
+			"orientation",
+			"config",
+			"update-playbook",
+			// The repo copy predates the "card" → "task" rename, so its kanban sections are outdated too.
+			"kanban-index",
+			"kanban-create",
+			"kanban-work",
+			"kanban-manage",
+			"kanban-move",
+			"kanban-complete",
+			"kanban-stash",
+			"kanban-review",
+		]);
 		const config = offers.find((o) => o.marker === "config")!;
 		expect(config.before).toContain("<BRAIN_PATH>");
 		expect(config.after).not.toContain("<BRAIN_PATH>");

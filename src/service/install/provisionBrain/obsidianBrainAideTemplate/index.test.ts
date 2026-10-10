@@ -1033,8 +1033,8 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 		outline: [
 			"# Create",
 			"## Who does what",
-			"## Step 1 — Gather card details",
-			"## Step 2 — Write the card",
+			"## Step 1 — Gather task details",
+			"## Step 2 — Write the task",
 			"## Step 3 — Confirm",
 		],
 	},
@@ -1047,7 +1047,7 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 			"## Mode discipline",
 			"## Checklist",
 			"## Step 0 — Enter planning mode",
-			"## Step 1 — Find cards (`kanban-maintainer`)",
+			"## Step 1 — Find tasks (`kanban-maintainer`)",
 			"## Step 2 — Present and pick",
 			"## Step 3 — Deferred",
 			"## Step 4 — Investigate and plan (main agent, planning mode)",
@@ -1057,7 +1057,7 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 			"### 4d — Devise the plan",
 			"### 4e — Open questions (if any)",
 			"## Step 5 — Hard stop: present the plan",
-			"## Step 5b — Activate the card (`kanban-maintainer`)",
+			"## Step 5b — Activate the task (`kanban-maintainer`)",
 			"## Step 6 — Implement (main agent, act mode)",
 			"### 6a — Implement the changes",
 			"### 6b — Type check",
@@ -1081,9 +1081,9 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 		outline: [
 			"# Manage",
 			"## Step 1 — Determine the project",
-			"## Step 2 — List the cards",
+			"## Step 2 — List the tasks",
 			"## Step 3 — Check the cleanup rules",
-			"## Step 4 — Present cards and findings",
+			"## Step 4 — Present tasks and findings",
 			"## Step 5 — Apply what the user approved",
 			"## Step 6 — Confirm",
 		],
@@ -1094,10 +1094,10 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 		outline: [
 			"# Move",
 			"## Step 1 — Parse the target column",
-			"## Step 2 — Identify the card from session context",
+			"## Step 2 — Identify the task from session context",
 			"## Step 3 — Determine the project",
-			"## Step 4 — Find the card",
-			"## Step 5 — Move the card",
+			"## Step 4 — Find the task",
+			"## Step 5 — Move the task",
 			"## Step 6 — Confirm",
 		],
 	},
@@ -1107,10 +1107,10 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 		outline: [
 			"# Complete",
 			"## Step 1 — Parse flags",
-			"## Step 2 — Identify the card from session context",
+			"## Step 2 — Identify the task from session context",
 			"## Step 3 — Determine the project",
-			"## Step 4 — Find the card",
-			"## Step 5 — Move the card",
+			"## Step 4 — Find the task",
+			"## Step 5 — Move the task",
 			"## Step 6 — Confirm",
 		],
 	},
@@ -1119,9 +1119,9 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 		title: "Stash",
 		outline: [
 			"# Stash",
-			"## Step 1 — Identify the card from session context",
+			"## Step 1 — Identify the task from session context",
 			"## Step 2 — Determine the project",
-			"## Step 3 — Read the card",
+			"## Step 3 — Read the task",
 			"## Step 4 — Gather session context",
 			"### 4a — Git changes (if in a git repo)",
 			"### 4b — Conversation review",
@@ -1152,7 +1152,7 @@ const GUIDES: ReadonlyArray<{ field: KanbanField; title: string; outline: string
 const OPERATIONS = ["create", "work", "manage", "move", "complete", "stash", "review"];
 
 /** Headings the index owns; no guide may restate them. */
-const SHARED_HEADINGS = ["## Projects and Columns", "## Cards", "## Project", "## Cleanup Rules", "## Reaching the Cards"];
+const SHARED_HEADINGS = ["## Projects and Columns", "## Tasks", "## Project", "## Cleanup Rules", "## Reaching the Tasks"];
 
 /** Tokens that identified the user's own projects in the source guide (brief commitment #6). */
 const PROJECT_SPECIFIC_TOKENS = [
@@ -1166,7 +1166,7 @@ const PROJECT_SPECIFIC_TOKENS = [
 
 /** The orientation's final paragraph (brief commitment #8), spelled out independently of the template. */
 const ORIENTATION_POINTER =
-	"Project work is tracked as kanban cards in per-project folders under `kanban/<project>/`, one subfolder per column. Before any card operation, read the kanban index at `kanban/kanban.md`, then read only the guide it links for the operation you are performing.";
+	"Project work is tracked as kanban tasks in per-project folders under `kanban/<project>/`, one subfolder per column. Before any task operation, read the kanban index at `kanban/kanban.md`, then read only the guide it links for the operation you are performing.";
 
 /** Parses the template and returns the ok result, failing the test if the template does not parse. */
 async function parseTemplate() {
@@ -1220,7 +1220,7 @@ describe("kanbanIndex section ships the shared rules and the operations list", (
 	it("contains the shared-rule headings in order", async () => {
 		const result = await parseTemplate();
 
-		const headings = ["## Operations", "## Projects and Columns", "## Cards", "## Project", "## Cleanup Rules", "## Reaching the Cards"];
+		const headings = ["## Operations", "## Projects and Columns", "## Tasks", "## Project", "## Cleanup Rules", "## Reaching the Tasks"];
 		const positions = headings.map((heading) => result.kanbanIndex.indexOf(`\n${heading}\n`));
 		for (const position of positions) expect(position).toBeGreaterThan(-1);
 		expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -1310,7 +1310,7 @@ describe("return-format and gate anchors live in the guide that owns them", () =
 				"MODE: NO_TASKS",
 				"MODE: NO_PROJECT",
 				"MISMATCHES:",
-				"Hard stop. Do not activate the card or write code until the user approves the plan.",
+				"Hard stop. Do not activate the task or write code until the user approves the plan.",
 				"DONE (resumed)",
 				"VERDICT: LGTM | CHANGES_REQUESTED | NEEDS_DISCUSSION",
 				"run the [[kanban/guide/stash|Stash]] operation",
@@ -1360,12 +1360,12 @@ describe("every kanban section is project-neutral and standalone", () => {
 	it.each(KANBAN_FIELDS)("%s has no feature-linking section and no feature field", async (field) => {
 		const result = await parseTemplate();
 
-		expect(result[field]).not.toContain("## Link a Card to a Feature");
+		expect(result[field]).not.toContain("## Link a Task to a Feature");
 		expect(result[field]).not.toContain("feature:");
 	});
 });
 
-describe("orientation points at the card folders and the kanban index", () => {
+describe("orientation points at the task folders and the kanban index", () => {
 	it("ends with the exact pointer paragraph of brief commitment #8", async () => {
 		const result = await parseTemplate();
 

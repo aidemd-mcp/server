@@ -30,9 +30,22 @@ describe("detectBrainMigration", () => {
 		expect(launcher.after.global).toEqual({ command: "mcpvault", args: ["C:\\vault"] });
 	});
 
-	it("flags the repo fixture's three stale sections and leaves its global launcher alone", () => {
+	it("flags the repo fixture's eleven stale sections and leaves its global launcher alone", () => {
 		const migration = detect(repo)!;
-		expect(migration.staleSections.map((o) => o.marker)).toEqual(["orientation", "config", "update-playbook"]);
+		expect(migration.staleSections.map((o) => o.marker)).toEqual([
+			"orientation",
+			"config",
+			"update-playbook",
+			// The repo copy predates the "card" → "task" rename, so its kanban sections are outdated too.
+			"kanban-index",
+			"kanban-create",
+			"kanban-work",
+			"kanban-manage",
+			"kanban-move",
+			"kanban-complete",
+			"kanban-stash",
+			"kanban-review",
+		]);
 		expect(migration.legacyLauncher).toBeNull();
 	});
 

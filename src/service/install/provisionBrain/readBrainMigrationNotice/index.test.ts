@@ -45,7 +45,20 @@ describe("readBrainMigrationNotice", () => {
 		await writeBrainAide(fixture);
 
 		expect(await readBrainMigrationNotice(projectRoot)).toEqual({
-			staleSections: ["orientation", "config", "update-playbook"],
+			staleSections: [
+			"orientation",
+			"config",
+			"update-playbook",
+			// The repo copy predates the "card" → "task" rename, so its kanban sections are outdated too.
+			"kanban-index",
+			"kanban-create",
+			"kanban-work",
+			"kanban-manage",
+			"kanban-move",
+			"kanban-complete",
+			"kanban-stash",
+			"kanban-review",
+		],
 			legacyLauncher: null,
 		});
 		expect(await readFile(filePath, "utf-8")).toBe(fixture);

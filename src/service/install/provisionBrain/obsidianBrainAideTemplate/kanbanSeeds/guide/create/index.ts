@@ -3,7 +3,7 @@
  * template's `kanban-create` contract section.
  *
  * Obsidian-specific by design: wiki links, the `Related:` line, the
- * `mcp__brain__*` tools. A card is created by writing one file into its
+ * `mcp__brain__*` tools. A task is created by writing one file into its
  * project's column folder; there is no board file to update.
  *
  * The text lands in the brain exactly as written here (ending in one newline);
@@ -16,15 +16,15 @@ tags:
 ---
 # Create
 
-Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, card and brain tool rules apply to every step below.
+Part of [[kanban/kanban|Kanban]]. Read it first: its project, column, task and brain tool rules apply to every step below.
 
-Create a new card.
+Create a new task.
 
 ## Who does what
 
-The caller talks to the user and gathers the card details (Step 1), shows the user the new card and gets a clear yes. The \`kanban-maintainer\` agent writes the card (Step 2) and reports back. The caller confirms to the user (Step 3).
+The caller talks to the user and gathers the task details (Step 1), shows the user the new task and gets a clear yes. The \`kanban-maintainer\` agent writes the task (Step 2) and reports back. The caller confirms to the user (Step 3).
 
-## Step 1 — Gather card details
+## Step 1 — Gather task details
 
 Take whatever the user already provided (title, priority, \`--backlog\` flag).
 
@@ -42,11 +42,11 @@ The target column is Backlog if \`--backlog\` was passed, Todo otherwise.
 
 After this step you have \`TITLE\`, \`PRIORITY\`, \`TYPE\` (or none), \`DESCRIPTION\` (or none), \`TARGET_COLUMN\` and the project tag (see Project in [[kanban/kanban|Kanban]]).
 
-## Step 2 — Write the card
+## Step 2 — Write the task
 
-- [ ] **Generate the slug** as the kanban index describes. Target folder: \`kanban/<project>/todo/\` or \`kanban/<project>/backlog/\`. If a card with that slug already exists anywhere under \`kanban/<project>/\`, append \`-2\` (or increment) until it is unique.
+- [ ] **Generate the slug** as the kanban index describes. Target folder: \`kanban/<project>/todo/\` or \`kanban/<project>/backlog/\`. If a task with that slug already exists anywhere under \`kanban/<project>/\`, append \`-2\` (or increment) until it is unique.
 - [ ] **Find the project note.** List or search \`projects/\` for the note of the project this tag belongs to (for example tag \`myproject\` → \`projects/my-app\`). If exactly one note clearly matches, use it as \`<project-note>\` with its usual display name. If none or several match, omit the \`Related:\` line and report \`PROJECT_NOTE: none\`.
-- [ ] **Write the card** at \`<target folder>/<slug>.md\`:
+- [ ] **Write the task** at \`<target folder>/<slug>.md\`:
 
   \`\`\`markdown
   ---
@@ -78,5 +78,5 @@ After this step you have \`TITLE\`, \`PRIORITY\`, \`TYPE\` (or none), \`DESCRIPT
 
 ## Step 3 — Confirm
 
-Tell the user: card created as \`<SLUG>\` (priority \`<PRIORITY>\`) in \`<COLUMN>\`. One line.
+Tell the user: task created as \`<SLUG>\` (priority \`<PRIORITY>\`) in \`<COLUMN>\`. One line.
 `;

@@ -77,7 +77,7 @@ const brainContract = [
 		marker: "kanban-index",
 		field: "kanbanIndex",
 		purpose:
-			"Kanban index the kanban skill sends agents to first: the per-project column folders, the card format, priorities, project linking, the cleanup rules, how to reach the cards, and a link to each operation's guide.",
+			"Kanban index the kanban skill sends agents to first: the per-project column folders, the task format, priorities, project linking, the cleanup rules, how to reach the tasks, and a link to each operation's guide.",
 		role: "seed",
 		seedPath: "kanban/kanban.md",
 	},
@@ -85,7 +85,7 @@ const brainContract = [
 		marker: "kanban-create",
 		field: "kanbanCreate",
 		purpose:
-			"Kanban guide for creating a card: gather its details, then write the card into its project's column folder.",
+			"Kanban guide for creating a task: gather its details, then write the task into its project's column folder.",
 		role: "seed",
 		seedPath: "kanban/guide/create.md",
 	},
@@ -93,7 +93,7 @@ const brainContract = [
 		marker: "kanban-work",
 		field: "kanbanWork",
 		purpose:
-			"Kanban guide for working a card: pick it, plan, implement, test and self-review it behind the user's approval gates.",
+			"Kanban guide for working a task: pick it, plan, implement, test and self-review it behind the user's approval gates.",
 		role: "seed",
 		seedPath: "kanban/guide/work.md",
 	},
@@ -101,7 +101,7 @@ const brainContract = [
 		marker: "kanban-manage",
 		field: "kanbanManage",
 		purpose:
-			"Kanban guide for viewing the project's cards and moving them between columns.",
+			"Kanban guide for viewing the project's tasks and moving them between columns.",
 		role: "seed",
 		seedPath: "kanban/guide/manage.md",
 	},
@@ -109,7 +109,7 @@ const brainContract = [
 		marker: "kanban-move",
 		field: "kanbanMove",
 		purpose:
-			"Kanban guide for moving the current session's card to a named column.",
+			"Kanban guide for moving the current session's task to a named column.",
 		role: "seed",
 		seedPath: "kanban/guide/move.md",
 	},
@@ -117,7 +117,7 @@ const brainContract = [
 		marker: "kanban-complete",
 		field: "kanbanComplete",
 		purpose:
-			"Kanban guide for moving the current session's card to In Review, or to Done.",
+			"Kanban guide for moving the current session's task to In Review, or to Done.",
 		role: "seed",
 		seedPath: "kanban/guide/complete.md",
 	},
@@ -125,7 +125,7 @@ const brainContract = [
 		marker: "kanban-stash",
 		field: "kanbanStash",
 		purpose:
-			"Kanban guide for saving the session's changes, decisions, open questions and remaining work into the current card.",
+			"Kanban guide for saving the session's changes, decisions, open questions and remaining work into the current task.",
 		role: "seed",
 		seedPath: "kanban/guide/stash.md",
 	},
@@ -133,7 +133,7 @@ const brainContract = [
 		marker: "kanban-review",
 		field: "kanbanReview",
 		purpose:
-			"Kanban guide for reviewing the current card's changes and running the fix cycle when changes are requested.",
+			"Kanban guide for reviewing the current task's changes and running the fix cycle when changes are requested.",
 		role: "seed",
 		seedPath: "kanban/guide/review.md",
 	},

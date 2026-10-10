@@ -114,11 +114,11 @@ You are taking the orchestrator's supplied pipeline state and writing `.aide/ses
 
 The orchestrator's delegation prompt MUST supply:
 - **Feature intent** — one-line summary that goes into the frontmatter `intent:` field
-- **State summary content** — a few lines: the current stage, the card in progress, the commit/publish state, what is blocking
-- **Where this cycle stopped** — the next card (by slug) and the stage it is at, plus the order of the cards after it; this is the most critical section for resume
-- **Kanban card links** — one line per board card tied to the feature, in work order: its slug, its column, and what it covers. The slug is the stable link to the card on the project's kanban board.
+- **State summary content** — a few lines: the current stage, the task in progress, the commit/publish state, what is blocking
+- **Where this cycle stopped** — the next task (by slug) and the stage it is at, plus the order of the tasks after it; this is the most critical section for resume
+- **Kanban task links** — one line per board task tied to the feature, in work order: its slug, its column, and what it covers. The slug is the stable link to the task on the project's kanban board.
 
-`session.aide` is an index to the board, not a second copy of it. A card's progress — what was done, its decisions, its remaining work, its gotchas — lives in that card's stash. If the orchestrator's prompt carries card-level detail, keep only the slug link and the one-line summary; do not transcribe the detail.
+`session.aide` is an index to the board, not a second copy of it. A task's progress — what was done, its decisions, its remaining work, its gotchas — lives in that task's stash. If the orchestrator's prompt carries task-level detail, keep only the slug link and the one-line summary; do not transcribe the detail.
 
 The orchestrator's prompt MAY supply (omit a section if not given):
 - **Architectural intent decisions** — numbered list of decisions the orchestrator has settled
@@ -126,7 +126,7 @@ The orchestrator's prompt MAY supply (omit a section if not given):
 - **Process discipline notes** — pause points, batching rules, context discipline
 - **Open questions** — decisions still in flight
 
-If feature intent, the kanban card links, or `## Where this cycle stopped` content is missing, return to the orchestrator listing what's missing — these three sections are load-bearing and you must not guess them.
+If feature intent, the kanban task links, or `## Where this cycle stopped` content is missing, return to the orchestrator listing what's missing — these three sections are load-bearing and you must not guess them.
 
 ### Preconditions
 
@@ -140,11 +140,11 @@ If feature intent, the kanban card links, or `## Where this cycle stopped` conte
 2. Assemble the file:
    - **YAML frontmatter** — `intent:` only, in `>` folded-block form. No `scope`, no `outcomes`, no `status`.
    - **`# AIDE SESSION` header** and the cold-start protocol paragraph (verbatim from the canonical doc).
-   - **`## State summary (set <date>, <phase>)`** — a few lines: current stage, the card in progress, commit/publish state, what is blocking. No work history. Date format `YYYY-MM-DD` (today). Phase is the current stage name (e.g. `Stage 4 plan review`, `Stage 7 fix loop`).
-   - **`## Kanban`** — one bullet per card, in work order: `` `<slug>` (<column>) — <what it covers> ``. One line each; the card's stash holds its progress. Items in `## Where this cycle stopped` name their card's slug.
+   - **`## State summary (set <date>, <phase>)`** — a few lines: current stage, the task in progress, commit/publish state, what is blocking. No work history. Date format `YYYY-MM-DD` (today). Phase is the current stage name (e.g. `Stage 4 plan review`, `Stage 7 fix loop`).
+   - **`## Kanban`** — one bullet per task, in work order: `` `<slug>` (<column>) — <what it covers> ``. One line each; the task's stash holds its progress. Items in `## Where this cycle stopped` name their task's slug.
    - **`## The architectural intent (what the specs say after the rewrite)`** — numbered list of settled decisions if the orchestrator supplied any. If none supplied, write a single line: `No architectural decisions settled yet for this feature.` and leave the section open for future updates.
    - **`## Anti-regression invariants future build phases must hold`** — bullet list. If none supplied, write: `No anti-regression invariants recorded yet.` and leave the section open.
-   - **`## Where this cycle stopped (CRITICAL READING)`** — the next card by slug, the stage it is at, and a pointer to read that card's latest stash. Then `### What the next agent must do` — a short ordered list of the cards to work next, each by slug with one line, plus any feature-level step that has no card (e.g. publish once every card is done).
+   - **`## Where this cycle stopped (CRITICAL READING)`** — the next task by slug, the stage it is at, and a pointer to read that task's latest stash. Then `### What the next agent must do` — a short ordered list of the tasks to work next, each by slug with one line, plus any feature-level step that has no task (e.g. publish once every task is done).
    - **`## Process discipline (permanent)`** (optional) — only include if the orchestrator supplied content.
    - **`## Open questions`** (optional) — only include if the orchestrator supplied content.
 3. Use the `Write` tool to create the file. Do NOT use `Edit` (the file doesn't exist yet).
@@ -153,8 +153,8 @@ If feature intent, the kanban card links, or `## Where this cycle stopped` conte
 
 - **No domain reasoning.** Why-the-business-needs-this lives in `.aide/intent.aide` and module specs. `session.aide` is what's true *right now* about the in-flight feature, not why the feature exists.
 - **No invented content.** If the orchestrator's prompt doesn't supply a section's content, omit the section or write a one-line placeholder acknowledging the gap. Never fabricate decisions, invariants, or stopped-here details.
-- **No card detail.** What was done on a card, its card-level decisions, remaining work and gotchas live in the card's stash. `session.aide` names the card by slug. Decisions and invariants here are only those that span the feature's cards.
-- **No follow-up lists.** Follow-up work becomes a card on the board, not a bullet list here. If the orchestrator supplies a follow-up with no card, return and ask for the card.
+- **No task detail.** What was done on a task, its task-level decisions, remaining work and gotchas live in the task's stash. `session.aide` names the task by slug. Decisions and invariants here are only those that span the feature's tasks.
+- **No follow-up lists.** Follow-up work becomes a task on the board, not a bullet list here. If the orchestrator supplies a follow-up with no task, return and ask for the task.
 
 ---
 
@@ -171,7 +171,7 @@ The orchestrator's delegation prompt MUST supply:
   - Append to `## Anti-regression invariants` — add a bullet
   - Rewrite `## Where this cycle stopped` — most updates touch this section; the orchestrator supplies the new content
   - Update `## State summary` — change the `(set <date>, <phase>)` parenthetical and the body paragraph
-  - Update `## Kanban` — add, re-column, or remove card links. If the file has no `## Kanban` section (written before card links were required), add it after `## State summary` with the links the orchestrator supplied; if the orchestrator supplied none, return and ask for them
+  - Update `## Kanban` — add, re-column, or remove task links. If the file has no `## Kanban` section (written before task links were required), add it after `## State summary` with the links the orchestrator supplied; if the orchestrator supplied none, return and ask for them
   - Append/clear `## Open questions` — add new questions or strike resolved ones
 
 If the change description or section target is missing or ambiguous, return to the orchestrator and ask. Never guess between sections.
@@ -190,8 +190,8 @@ Rules for canonical-format preservation:
 - **Numbered decisions in `## The architectural intent` are stable references.** When appending, use the next unused number. When the orchestrator says "retire decision #5," delete the text but leave the gap — do NOT renumber #6, #7, etc. to fill the hole.
 - **Cut superseded prose; do not annotate it.** When `## Where this cycle stopped` changes, replace it — do not leave "previously: ..." breadcrumbs. Git history preserves the journey; this file describes only the current state.
 - **Preserve YAML frontmatter** unless the orchestrator explicitly changes the feature intent. The `intent:` field rarely changes across a feature lifecycle.
-- **`## Kanban` links stay current.** Every card the orchestrator names lands as a slug link; a card it says is finished or dropped is updated or removed, not annotated.
-- **Keep it an index.** The CREATE rules "No card detail" and "No follow-up lists" apply to every update. When a stage or card finishes, update its link and `## Where this cycle stopped` — the record of the work goes in the card's stash, not here.
+- **`## Kanban` links stay current.** Every task the orchestrator names lands as a slug link; a task it says is finished or dropped is updated or removed, not annotated.
+- **Keep it an index.** The CREATE rules "No task detail" and "No follow-up lists" apply to every update. When a stage or task finishes, update its link and `## Where this cycle stopped` — the record of the work goes in the task's stash, not here.
 - **Update the `(set <date>, <phase>)` parenthetical in `## State summary`** every time you touch the section. Date is today; phase is the current stage.
 - **Never invent content.** Same rule as CREATE — every substantive line traces back to the orchestrator's prompt.
 
@@ -214,7 +214,7 @@ For `session.aide` CREATE:
 - **Sections populated**: list of `## ...` sections that have content (vs. left open for future updates)
 - **Architectural decisions seeded**: count of decisions written into `## The architectural intent`
 - **Anti-regression invariants seeded**: count of bullets written
-- **Preconditions failed** (only on REFUSED): which check failed (`session.aide already exists`, `feature intent missing`, `kanban card links missing`, `where-stopped content missing`)
+- **Preconditions failed** (only on REFUSED): which check failed (`session.aide already exists`, `feature intent missing`, `kanban task links missing`, `where-stopped content missing`)
 - **Recommended next step**: usually "orchestrator continues with the next pipeline stage"
 
 For `session.aide` UPDATE:

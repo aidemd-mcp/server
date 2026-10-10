@@ -24,7 +24,7 @@ outcomes:
     - This category overwriting, patching, or migrating an agent file or brain-pointer skill that already exists in the host project. Customizations are the host's surface; this category respects them on every run after the first.
     - Agent or skill content authored in this category as inline strings instead of read through the install service's canonical-content chokepoint. That creates a second source of truth that drifts from canonical.
     - This category branching on the host's brain configuration — inspecting the brain config, varying which agents land, or mutating an agent's declared MCP server list per host. Every host receives the same canonical files; configuration variance lives in the host's brain config, not here.
-    - A brain-pointer skill carrying board layout, card workflow, or any backend's storage vocabulary instead of routing the agent to the guide the user's brain holds. These skills point; the brain owns the procedure.
+    - A brain-pointer skill carrying board layout, task workflow, or any backend's storage vocabulary instead of routing the agent to the guide the user's brain holds. These skills point; the brain owns the procedure.
     - A kanban skill that only works inside an AIDE project, or that splits kanban behavior across several skills. One skill points to the brain's kanban hub wherever it runs.
     - This category restating brain-MCP-key portability doctrine, model-assignment rationale, or pipeline-phase-to-agent mapping in its own outcomes or strategy. That doctrine is owned upstream — the canonical agent files carry it, not this category.
 ---

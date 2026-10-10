@@ -8,20 +8,20 @@ import outdatedTemplateSections from "./index.js";
 
 /** Brief #35: the current template's fingerprint for every contract marker. */
 const CURRENT_FINGERPRINTS: Record<BrainSectionMarker, string> = {
-	orientation: "b24d4092424cca080aee987b2ac9bff0891b828692360dea5bcfc2df91ff70a7",
+	orientation: "4928cebf581bd94c5f49ddfbceae88eda1eec4fc323060e5da094af88c7b0ab7",
 	config: "cee72c09b0a554c1431390311a434ecf8c3c94f6520d2f44f0efcaf039b714c5",
 	"playbook-index": "078d3c940dac5d2f7766de53eab609c3873c67def757c7fec345418cffff6c75",
 	"study-playbook": "884ac5fa4ab21bb9e6ab221eee6f0bf6f01d81da40d7e4c51315e62e2948c7d9",
 	"update-playbook": "06d4b538fb870eec652fec875b62856b1cee6bab0056f635d9525a69f4ac60b3",
 	"research-index": "6162c299a13af5fc55d9ec96a97f9051df3865e652f9085cdd1c5bf2d70da3c0",
-	"kanban-index": "44ec6da0282c586b76297338a609fed95b2e4508a2564a0c288d1ae2f4c05b2d",
-	"kanban-create": "17f7d901d052c6c6eec439bc2756222a5cc58b14a8b29a456442a51e429fd0f0",
-	"kanban-work": "871d4600849539076d5b05dce79c4f99e8b433c6097c9cc8195fa3c54a193813",
-	"kanban-manage": "1f070236a6af4b4ab6f2da2e1babd609cda9d2db54033e70e345e794d2ef0539",
-	"kanban-move": "f4ba29b3595f8dbe473dd182da550dda2d75a91b2252c50d1359217435d87dfd",
-	"kanban-complete": "ba45d419ea52a04b4b3ce0513af01e2db09a8d5ac4d8d098d23f9ccc489f30de",
-	"kanban-stash": "e8c25a8952eadd6bbdbba014184912d0b296839fcedab9f22281906ef043e181",
-	"kanban-review": "53a94eba8d2e50396b1f621bcf332119e78425bed7ea28bc3f1bc6a247f5af5b",
+	"kanban-index": "17dbab1c27043372a7c3f04b4a9fdf06542e41b61a44a80db1c4e3b63b0a37e7",
+	"kanban-create": "158625ff36d4a3d92e00952aa9b10ffbc92f11be1bf00e81aa5d5de12406f6b2",
+	"kanban-work": "71ae9f8ffed17fc9ab9e81ea8978dbf14d003c21ad8c114ea3596fd9d90bc9a7",
+	"kanban-manage": "f74b371a13170e53f1cbddd6e1f66effc13054ca2f77894ea32adeb2a73fe2d1",
+	"kanban-move": "e9aa047c93f20738e261442c6943193baae8f577ff2eec43321f3d06d4b28486",
+	"kanban-complete": "de2be00bba725286a08dd6cc2810375bf643ef156a8bc2cf2e4302acae77e220",
+	"kanban-stash": "59ad3428ca531123e3459859e7905b7481858bd9407a670c8fa6709fa56c5727",
+	"kanban-review": "c531a55e6a768ac7e176045e6c012669811a5b0f6e117bd70daf47e315c7f978",
 };
 
 const parsed = parseBrainAideFromString(obsidianBrainAideTemplate());
