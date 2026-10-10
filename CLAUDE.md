@@ -43,6 +43,10 @@ node scripts/publish.mjs <patch|minor|major> [message]
 
 This bumps `package.json`, syncs `server.json`, commits (e.g. `0.3.16: fix scoring tool`), tags `v0.3.16`, and pushes — the CI does the rest (npm publish + MCP Registry publish).
 
+**Before publishing,** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship.
+
+**After every publish, keep the aidemd.dev site in sync.** Bring the site's copy of the AIDE methodology (docs, agents, commands, skills, `versions.json`) to the new version, commit it as `chore(aide): sync methodology to <version>`, and deploy the site. The site's local checkout location lives in the maintainer's private notes, not here.
+
 ## Fixes Go in Canonical Docs, Not Memory
 
 This project ships agent definitions (`.claude/agents/`), command prompts (`.claude/commands/`), and methodology docs (`.aide/docs/`) that get installed into other projects. When you discover a behavioral fix, pattern, or constraint that should apply to all agents or all projects using AIDE:
