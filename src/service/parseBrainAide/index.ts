@@ -59,6 +59,9 @@ export function interpolateArgs(config: BrainAideConfig): (string | null)[] {
  * Used by `provisionBrain` to derive an MCP entry from a scaffolded template that
  * has not been written to disk yet.
  *
+ * CRLF and LF files parse to the same frontmatter values: the CR the closing-fence search
+ * leaves on the last YAML line is dropped, and the body is passed on unchanged.
+ *
  * Returns the same `ParseBrainAideResult` union as `parseBrainAide`. The `"missing"`
  * variant is unreachable (the input is bytes, not a path): empty input returns
  * `{ kind: "malformed-frontmatter", reason: "frontmatter is required" }`.
@@ -104,7 +107,10 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		return { kind: "malformed-frontmatter", reason: "frontmatter closing fence (---) is missing" };
 	}
 
-	const yamlBlock = afterOpen.slice(0, closeIndex);
+	// The fence is found at `\n---`, so in a CRLF file the YAML text keeps the CR of its last line.
+	// Drop that one CR so the last line parses the same as in an LF file.
+	const rawYamlBlock = afterOpen.slice(0, closeIndex);
+	const yamlBlock = rawYamlBlock.endsWith("\r") ? rawYamlBlock.slice(0, -1) : rawYamlBlock;
 	// Body is everything after the closing `---\n`.
 	const body = afterOpen.slice(closeIndex + 4).replace(/^\n/, "");
 

@@ -4,6 +4,10 @@ import parseBrainAide, { interpolateArgs, parseBrainAideFromString } from "@/ser
 import buildBrainAideStep from "./buildBrainAideStep/index.js";
 
 export { default as readBrainMigrationNotice } from "./readBrainMigrationNotice/index.js";
+export { default as planBrainRepair } from "./planBrainRepair/index.js";
+export { default as detectBrainMigration } from "./detectBrainMigration/index.js";
+export { default as parseBundledTemplate } from "./parseBundledTemplate/index.js";
+export { default as isTemplateIntegration } from "./isTemplateIntegration/index.js";
 
 /** Read a file, returning empty string if it doesn't exist. */
 async function safeReadFile(path: string): Promise<string> {
@@ -169,11 +173,12 @@ async function buildBrainMcpStep(
  *   1. Brain config (brain.aide) — presence-only idempotency on `.aide/config/brain.aide`.
  *      Absent → `would-create` with the bundled template bytes (YAML null at every unwired
  *      slot of `mcpServerConfig.args`). Present → `exists` with no `content` field. Never
- *      returns `would-overwrite` for any path under `.aide/config/`. The step always publishes
- *      `brainContract` (the required-section contract); for an outdated file (whole sections
- *      absent) it also carries `brainRepair`, an insertion-only prescription built from the
- *      latest bundled template that the agent applies. This category itself still never writes
- *      into `.aide/config/`.
+ *      returns `would-overwrite` for any path under `.aide/config/`. On every status the step
+ *      carries only the content-free `brainSummary` (flags, markers, seed paths, sizes) — no
+ *      contract, repair block or migration body. Insertion and migration are applied by
+ *      aide_upgrade's brain category (through the re-exported `planBrainRepair`,
+ *      `detectBrainMigration`, `parseBundledTemplate` and `isTemplateIntegration`), never by
+ *      this module, which still never writes into `.aide/config/`.
  *   2. MCP config (brain) — derives the prescription from the just-scaffolded (or on-disk)
  *      brain.aide via parseBrainAide + interpolateArgs. Handles four states of `.mcp.json`
  *      (absent/empty → would-create; brain key absent → would-create; brain key present and

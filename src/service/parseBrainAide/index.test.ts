@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import parseBrainAide, { parseBrainAideFromString, interpolateArgs } from "./index.js";
 import brainContract from "@/service/brainContract/index.js";
+import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
 import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
 import type { BrainAideConfig, BrainSectionField, BrainSectionMarker } from "@/types/index.js";
 
@@ -1396,5 +1399,98 @@ describe("3h — parseBrainAideFromString null-armed parity", () => {
 
 		expect(fromDisk.mcpServerConfig.args[2]).toBeNull();
 		expect(fromString.mcpServerConfig.args[2]).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// CRLF frontmatter — a CRLF file parses to the same values as its LF twin.
+// ---------------------------------------------------------------------------
+
+describe("CRLF frontmatter", () => {
+	const toCrlf = (text: string): string => text.replace(/\n/g, "\r\n");
+	const v090 = readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), "../install/provisionBrain/detectBrainMigration/__fixtures__/v0.9.0-brain.txt"),
+		"utf8",
+	);
+	const template = obsidianBrainAideTemplate();
+
+	/** Every contract section the parse carries, keyed by field. */
+	function sectionsOf(result: ReturnType<typeof parseBrainAideFromString>): Record<string, string> {
+		if (result.kind === "missing-sections") return result.present;
+		if (result.kind !== "ok") throw new Error(`unexpected parse kind: ${result.kind}`);
+		return Object.fromEntries(brainContract.map(({ field }) => [field, result[field]]));
+	}
+
+	/** Bytes strictly between a section's markers in the raw text. */
+	function sliceBetweenMarkers(raw: string, marker: BrainSectionMarker): string {
+		return raw.slice(raw.indexOf(open(marker)) + open(marker).length, raw.indexOf(close(marker)));
+	}
+
+	it("the v0.9.0 fixture holds no carriage return, so a CRLF checkout cannot fake a pass", () => {
+		expect(v090).not.toContain("\r");
+	});
+
+	it("CRLF v0.9.0 copy parses to the same kind and mcpServerConfig as the LF copy, last arg exactly C:\\vault", () => {
+		const lf = parseBrainAideFromString(v090);
+		const crlf = parseBrainAideFromString(toCrlf(v090));
+
+		expect(lf.kind).toBe("missing-sections");
+		expect(crlf.kind).toBe(lf.kind);
+		if (lf.kind !== "missing-sections" || crlf.kind !== "missing-sections") return;
+		expect(crlf.mcpServerConfig).toEqual(lf.mcpServerConfig);
+		expect(crlf.mcpServerConfig.args.at(-1)).toBe("C:\\vault");
+	});
+
+	it("CRLF template copy parses to the same kind and args as the LF copy, last arg null, no arg carries a CR", () => {
+		const lf = parseBrainAideFromString(template);
+		const crlf = parseBrainAideFromString(toCrlf(template));
+
+		expect(crlf.kind).toBe(lf.kind);
+		if (lf.kind === "malformed-frontmatter" || crlf.kind === "malformed-frontmatter") throw new Error("template frontmatter must parse");
+		if (lf.kind === "malformed-body" || crlf.kind === "malformed-body") throw new Error("template body must parse");
+		if (lf.kind === "unreadable" || crlf.kind === "unreadable" || lf.kind === "missing" || crlf.kind === "missing") return;
+		expect(crlf.mcpServerConfig.args).toEqual(lf.mcpServerConfig.args);
+		expect(crlf.mcpServerConfig.args.at(-1)).toBeNull();
+		for (const arg of crlf.mcpServerConfig.args) expect(arg === null || !arg.includes("\r")).toBe(true);
+	});
+
+	it("LF parses are unchanged: v0.9.0 last arg is C:\\vault and the template last arg is null", () => {
+		const lfV090 = parseBrainAideFromString(v090);
+		const lfTemplate = parseBrainAideFromString(template);
+
+		expect(lfV090.kind).toBe("missing-sections");
+		if (lfV090.kind !== "missing-sections") return;
+		expect(lfV090.mcpServerConfig.args.at(-1)).toBe("C:\\vault");
+
+		expect(lfTemplate.kind).toBe("ok");
+		if (lfTemplate.kind !== "ok") return;
+		expect(lfTemplate.mcpServerConfig.args.at(-1)).toBeNull();
+	});
+
+	it.each([
+		["v0.9.0 fixture", v090],
+		["template", template],
+	])("%s: every section in the CRLF parse is byte-exact between its markers, CRs included", (_label, lfText) => {
+		const raw = toCrlf(lfText);
+		const sections = sectionsOf(parseBrainAideFromString(raw));
+
+		expect(Object.keys(sections).length).toBeGreaterThan(0);
+		for (const marker of contractMarkers) {
+			const field = fieldOf(marker);
+			if (!(field in sections)) continue;
+			expect(sections[field]).toBe(sliceBetweenMarkers(raw, marker));
+		}
+		expect(Object.values(sections).some((bytes) => bytes.includes("\r"))).toBe(true);
+	});
+
+	it("a double-quoted last frontmatter line parses ok in CRLF and name is brain", () => {
+		const frontmatter = `---\nmcpServerConfig:\n  command: npx\n  args:\n    - "@example/mcp-launcher"\nname: "brain"\n---\n\n`;
+		const raw = toCrlf(frontmatter + makeBody());
+
+		const result = parseBrainAideFromString(raw);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		expect(result.name).toBe("brain");
 	});
 });

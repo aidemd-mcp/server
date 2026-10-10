@@ -1,42 +1,31 @@
 import { z } from "zod";
 import buildBrainState from "@/service/buildBrainState/index.js";
 import classifyParseFailure from "@/service/buildBrainState/classifyParseFailure/index.js";
+import brainContract from "@/service/brainContract/index.js";
 import parseBrainAide from "@/service/parseBrainAide/index.js";
-import type { BrainToolResult } from "@/types/index.js";
-import describeAideCommand from "@/service/install/shared/describeAideCommand/index.js";
+import type { BrainSectionMarker, BrainToolResult } from "@/types/index.js";
 import composeOutdatedRemediation from "./composeOutdatedRemediation/index.js";
+import sectionPurpose from "./sectionPurpose/index.js";
+import selectSection from "./selectSection/index.js";
 
-// Non-ok remediation prose — one fixed sentence per failure state, except
-// `brain-aide-invalid`, whose sentence is composed from the detector's fault by
-// composeOutdatedRemediation. These strings are the load-bearing surface:
-// agents surface them to the user verbatim, so they must name a specific
-// terminal command or user action.
+// Remediation prose for an absent file. The `brain-aide-invalid` sentence is
+// composed from the detector's fault by composeOutdatedRemediation. These
+// strings are the load-bearing surface: agents surface them to the user
+// verbatim, so they must name a specific terminal command or user action.
 
 const NO_BRAIN_AIDE_PROSE =
 	"No `.aide/config/brain.aide` is present in this project. Tell the user to run `/aide:brain config` — it asks which brain backend they use and creates the config. Do not proceed with this task as if the brain were available — the file must exist before brain-dependent work continues.";
 
-const NO_MCP_ENTRY_PROSE =
-	"A brain config exists at `.aide/config/brain.aide`, but no `brain` MCP entry is wired in `.mcp.json`. Tell the user to run sync with the same launcher their project's `aide` MCP entry uses — " +
-	describeAideCommand("sync") +
-	" — to apply the config to `.mcp.json`, then restart Claude Code. Do not proceed with this task as if the brain were available.";
-
-const MCP_DRIFT_PROSE =
-	"`.aide/config/brain.aide` and `.mcp.json` disagree about the brain entry. Tell the user to run sync in their terminal with the same launcher their project's `aide` MCP entry uses — " +
-	describeAideCommand("sync") +
-	" — that is the only command that mutates `.mcp.json` from `brain.aide`. Then restart Claude Code. Do not attempt to patch `.mcp.json` from this session.";
-
-/** The two accepted values for the `kind` parameter. */
-type BrainKind = "orientation" | "config";
-
 /**
  * Input schema for `aide_brain`. Accepts an optional `kind` field whose
- * vocabulary is closed to `"orientation"` and `"config"`. Unknown values are
- * rejected at the schema boundary — the handler never sees them. The handler
- * resolves the default (`"orientation"`) after parsing, so an absent `kind`
- * field remains absent (not coerced) at the schema level.
+ * vocabulary is every section marker of the published `brainContract`, derived
+ * from it rather than hand-typed. Unknown values are rejected at the schema
+ * boundary — the handler never sees them. The handler resolves the default
+ * (`"orientation"`) after parsing, so an absent `kind` field remains absent
+ * (not coerced) at the schema level.
  */
 export const BrainInput = z.object({
-	kind: z.enum(["orientation", "config"]).optional(),
+	kind: z.enum(brainContract.map(({ marker }) => marker) as [BrainSectionMarker, ...BrainSectionMarker[]]).optional(),
 });
 
 /**
@@ -46,92 +35,74 @@ export const BrainInput = z.object({
  * `aide_info.brain`; firing this tool unconditionally at boot duplicates that
  * work.
  *
- * The optional `kind` parameter selects which section of `brain.aide` to return:
- * - `"orientation"` (default) — the orientation section, a runtime briefing
- *   delivered when an agent reaches for the brain mid-task.
- * - `"config"` — the integration-specific wiring flow, used by `/aide:brain config`.
- *
- * Install-time seed sections (`playbookIndex`, `studyPlaybook`, `updatePlaybook`,
- * `researchIndex`) are NOT surfaced via this tool — agents reach those via the
- * brain's read tool against the on-disk seed files.
+ * The optional `kind` parameter names any `brainContract` section marker
+ * (default `"orientation"`) and selects that one section of `brain.aide`.
  *
  * Response contract:
- * - On `status: "ok"`, `instructions` is the verbatim bytes of the selected
- *   section from `.aide/config/brain.aide`, byte-identical to what the user
- *   wrote between that section's markers. No trimming, no normalization, no
- *   `${...}` substitution of any kind.
- * - On every non-ok `BrainState` status (`no-brain-aide`, `brain-aide-invalid`,
- *   `no-mcp-entry`, `mcp-drift` — five statuses in all, with `ok`),
- *   `instructions` is a backend-agnostic remediation sentence. The
- *   `brain-aide-invalid` sentence is composed only from the detector's fault
- *   (the missing section names or the malformed reason); the others are fixed.
- *   The remediation is identical regardless of `kind` — non-ok branches fire
- *   before any section is read.
+ * - On every status where the file exists and is well-formed (`ok`,
+ *   `missing-sections`, `no-mcp-entry`, `mcp-drift`) the requested section is
+ *   returned verbatim in `instructions` and `found` is `true`: the bytes the
+ *   user wrote between that section's markers, with no trimming,
+ *   normalization, or `${...}` substitution. `status` is the detector's state
+ *   even when a section is returned.
+ * - `found` says whether `instructions` is the requested section. It is set
+ *   from the branch taken, never from `status`.
+ * - `purpose` is the requested section's one-line purpose from the published
+ *   `brainContract`, never from the user's `brain.aide`. It is present only
+ *   when `found` is `true` and absent (not `undefined`-valued) on every
+ *   remediation branch.
+ * - `instructions` is a remediation sentence (`found: false`) only for an
+ *   absent file, a malformed or unreadable file, or a requested section that
+ *   is missing from an otherwise readable file. A missing section is
+ *   remediated by `aide_upgrade` with `category: "brain"`; a malformed file by
+ *   a hand fix and an `aide_info` re-check.
  * - `instructions` is never empty on any branch.
  * - No `backend`, `name`, `connector`, or `kind` field on any branch —
- *   consumers branch on `status` alone.
- * - Never throws — all failure modes return a structured `BrainToolResult`.
+ *   consumers branch on `status` and `found`.
+ * - Read-only; at most one state check and one parse per call.
+ * - Never throws on input it was given — all failure modes return a structured
+ *   `BrainToolResult`.
  */
-export default async function brain(root: string, input?: { kind?: BrainKind }): Promise<BrainToolResult> {
-	// Resolve the effective kind once, before any I/O, so the resolved value
-	// is available for the `ok` branch. Non-ok branches do not consume it.
-	const kind: BrainKind = input?.kind ?? "orientation";
+export default async function brain(root: string, input?: { kind?: BrainSectionMarker }): Promise<BrainToolResult> {
+	// Step 1 — Resolve the effective kind before any I/O.
+	const kind: BrainSectionMarker = input?.kind ?? "orientation";
 
-	// Step 1 — Resolve brain precondition state. The returned status drives
-	// all downstream branching; the detector never throws.
+	// Step 2 — Resolve brain precondition state; the detector never throws.
 	const state = await buildBrainState(root);
 
-	// Step 2 — Branch on state.status. Each non-ok branch returns immediately
-	// with a remediation sentence (fixed, or composed from the fault for
-	// `brain-aide-invalid`); only `ok` falls through to Step 3.
-	// Remediation prose is identical regardless of `kind` — the file is broken
-	// for all sections in the same way.
+	// Step 3 — Absent file: remediation only, nothing to parse.
 	if (state.status === "no-brain-aide") {
-		return { status: state.status, instructions: NO_BRAIN_AIDE_PROSE };
+		return { status: state.status, instructions: NO_BRAIN_AIDE_PROSE, found: false };
 	}
 
-	if (state.status === "brain-aide-invalid") {
-		return { status: state.status, instructions: composeOutdatedRemediation(state.fault) };
+	// Step 4 — Malformed or unreadable file: no section can be trusted, so
+	// remediation only, nothing to parse.
+	if (state.status === "brain-aide-invalid" && state.fault.kind === "malformed") {
+		return { status: state.status, instructions: composeOutdatedRemediation(state.fault), found: false };
 	}
 
-	if (state.status === "no-mcp-entry") {
-		return { status: state.status, instructions: NO_MCP_ENTRY_PROSE };
+	// Step 5 — The one parse of this call.
+	const parse = await parseBrainAide(root);
+
+	// Step 6 — The requested section is present: return it verbatim with its
+	// contract purpose and the detector's status unchanged.
+	const section = selectSection({ parse, marker: kind });
+	if (section !== undefined) {
+		return { status: state.status, instructions: section, found: true, purpose: sectionPurpose(kind) };
 	}
 
-	if (state.status === "mcp-drift") {
-		return { status: state.status, instructions: MCP_DRIFT_PROSE };
+	// Step 7 — The parse is non-ok (an `ok` parse always carries the section).
+	// One branch serves both "requested section missing" and the detector and
+	// parser disagreeing. classifyParseFailure is the single mapping from a
+	// parse failure to a fault: `null` means the file is genuinely absent; a
+	// fault means it is present but missing sections or malformed, and the
+	// remediation is composed only from that fault.
+	if (parse.kind === "ok") {
+		// Exhaustiveness guard — unreachable: an `ok` parse carries every contract
+		// field, so selectSection returned a string above.
+		throw new Error(`ok parse carried no section for marker "${kind}"`);
 	}
-
-	// Step 3 — `ok` branch: retrieve the selected section via parseBrainAide.
-	// buildBrainState already validated the file is parseable, so this call should
-	// always return `kind: "ok"`. The selected section is returned byte-identical —
-	// no substitution, no trimming, no transformation of any kind.
-	const parseResult = await parseBrainAide(root);
-
-	// Step 4 — Defensive fallback: parseBrainAide returned a non-ok kind despite
-	// buildBrainState reporting `ok`. This should be impossible (a race between
-	// file deletion and the two calls, or a future refactor that relaxes
-	// buildBrainState's validation). classifyParseFailure is the single mapping
-	// from a parse failure to a fault: `null` means the file is genuinely absent
-	// (`no-brain-aide`); a fault means the file is present but outdated or
-	// malformed (`brain-aide-invalid`), and the remediation is composed only
-	// from that fault — a present file is never called absent.
-	if (parseResult.kind !== "ok") {
-		const fault = classifyParseFailure(parseResult);
-		if (fault === null) return { status: "no-brain-aide", instructions: NO_BRAIN_AIDE_PROSE };
-		return { status: "brain-aide-invalid", instructions: composeOutdatedRemediation(fault) };
-	}
-
-	switch (kind) {
-		case "orientation":
-			return { status: "ok", instructions: parseResult.orientation };
-		case "config":
-			return { status: "ok", instructions: parseResult.config };
-		default: {
-			// Exhaustiveness guard — if BrainKind gains a new value, this
-			// branch fails to compile until a matching case is added above.
-			const unreachable: never = kind;
-			throw new Error(`Unhandled brain kind: ${String(unreachable)}`);
-		}
-	}
+	const fault = classifyParseFailure(parse);
+	if (fault === null) return { status: "no-brain-aide", instructions: NO_BRAIN_AIDE_PROSE, found: false };
+	return { status: "brain-aide-invalid", instructions: composeOutdatedRemediation(fault), found: false };
 }

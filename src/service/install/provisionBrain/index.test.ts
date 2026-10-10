@@ -31,6 +31,7 @@ import obsidianBrainAideTemplate from "./obsidianBrainAideTemplate/index.js";
 import { parseBrainAideFromString, interpolateArgs } from "@/service/parseBrainAide/index.js";
 import brainContract from "@/service/brainContract/index.js";
 import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
+import listBrainSections from "./buildBrainAideStep/summarizeBrainConfig/listBrainSections/index.js";
 import type { BrainSectionField } from "@/types/index.js";
 
 const mockPlatform = vi.mocked(platform);
@@ -667,22 +668,22 @@ describe("provisionBrain", () => {
 	});
 
 	// -----------------------------------------------------------------------
-	// Brain config step publishes the contract and the repair prescription
+	// Brain config step publishes the content-free summary
 	// -----------------------------------------------------------------------
 
-	it("brain config step carries brainContract on both the absent and present branches", async () => {
+	it("brain config step carries brainSummary.sections on both the absent and present branches", async () => {
 		const projectRoot = makeProjectRoot();
 		const mcpPath = makeMcpPath();
 
 		const cold = await provisionBrain(projectRoot, mcpPath);
-		expect(cold[0].brainContract).toEqual(brainContract);
+		expect(cold[0].brainSummary?.sections).toEqual(listBrainSections());
 
 		const aideConfigDir = join(projectRoot, ".aide", "config");
 		await mkdir(aideConfigDir, { recursive: true });
 		await writeFile(join(aideConfigDir, "brain.aide"), makeBrainAide(makeBrainPath()), "utf-8");
 
 		const warm = await provisionBrain(projectRoot, mcpPath);
-		expect(warm[0].brainContract).toEqual(brainContract);
+		expect(warm[0].brainSummary?.sections).toEqual(listBrainSections());
 	});
 
 	it("no step for a path under .aide/config/ is ever would-overwrite, including the outdated case", async () => {
@@ -707,7 +708,9 @@ describe("provisionBrain", () => {
 		const outdated = steps[0];
 		expect(outdated.status).toBe("exists");
 		expect(outdated.content).toBeUndefined();
-		expect(outdated.brainRepair?.length).toBe(brainContract.length - 2);
+		expect(outdated.brainSummary?.missingSections).toEqual(
+			brainContract.slice(2).map((entry) => entry.marker),
+		);
 	});
 
 	// -----------------------------------------------------------------------

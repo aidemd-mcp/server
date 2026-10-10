@@ -1,16 +1,15 @@
-import type { BrainSectionRepair } from "@/types/index.js";
+import type { BrainSectionRepair, ParseBrainAideResult } from "@/types/index.js";
 import brainContract from "@/service/brainContract/index.js";
 import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
-import parseBrainAide, { parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
-import obsidianBrainAideTemplate from "../../obsidianBrainAideTemplate/index.js";
+import parseBundledTemplate from "../parseBundledTemplate/index.js";
 
 /**
  * Plan the insertion-only repair for an outdated brain config.
  *
  * Applies only when the user's `.aide/config/brain.aide` parses to `missing-sections`
  * (every present marker pair is sound, one or more whole pairs are absent). Any other
- * parse result (`ok`, `missing`, `malformed-frontmatter`, `malformed-body`) returns
- * `undefined`: there is nothing to add, or the file is not safely repairable by insertion.
+ * parse result (`ok`, `missing`, `unreadable`, `malformed-frontmatter`, `malformed-body`)
+ * returns `undefined`: there is nothing to add, or the file is not safely repairable by insertion.
  *
  * The missing sections' bytes come only from the latest bundled template. The contract is
  * walked in order with a running anchor that starts at `null` (start of the body). A present
@@ -19,25 +18,21 @@ import obsidianBrainAideTemplate from "../../obsidianBrainAideTemplate/index.js"
  * then moves the anchor to its own close marker. The consumer applies the entries in array
  * order under provisionBrain brief commitment #6.
  *
- * Read-only: reads the user's file (through the parser) and the in-memory template, writes nothing.
+ * Consumer: aide_upgrade's brain insertion, which parses the user's file once and hands the
+ * parse here. Read-only and pure: no filesystem access, the parse and the in-memory template
+ * are the only inputs, nothing is written.
  *
+ * @param userParse - The parse of the user's `.aide/config/brain.aide`.
  * @throws An error named `BundledTemplateIntegrityError` when the bundled template does not
- *   parse `ok`. That is a programming error, guarded by the template's own completeness test.
+ *   parse `ok` (raised by `parseBundledTemplate`). That is a programming error, guarded by the
+ *   template's own completeness test.
  */
-export default async function planBrainRepair(
-	projectRoot: string,
-): Promise<BrainSectionRepair[] | undefined> {
-	const userParse = await parseBrainAide(projectRoot);
+export default function planBrainRepair(
+	userParse: ParseBrainAideResult,
+): BrainSectionRepair[] | undefined {
 	if (userParse.kind !== "missing-sections") return undefined;
 
-	const templateParse = parseBrainAideFromString(obsidianBrainAideTemplate());
-	if (templateParse.kind !== "ok") {
-		const error = new Error(
-			`Bundled brain.aide template failed to parse (${templateParse.kind}); it must satisfy the full section contract.`,
-		);
-		error.name = "BundledTemplateIntegrityError";
-		throw error;
-	}
+	const templateParse = parseBundledTemplate();
 
 	const missing = new Set<string>(userParse.sections);
 	const repairs: BrainSectionRepair[] = [];

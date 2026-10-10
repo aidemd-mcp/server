@@ -1,5 +1,6 @@
 /**
- * Tests for brain tool — BrainState-contract branching + verbatim-bytes invariants.
+ * Tests for brain tool — BrainState-contract branching, verbatim-bytes invariants,
+ * and the `found` / `purpose` response keys.
  *
  * Branches covered: one describe block per BrainState status (`ok`, `no-brain-aide`,
  * `brain-aide-invalid`, `no-mcp-entry`, `mcp-drift`) plus the defensive-fallback path. Tests are written
@@ -22,6 +23,7 @@ vi.mock("@/service/parseBrainAide/index.js");
 import buildBrainState from "@/service/buildBrainState/index.js";
 import parseBrainAide from "@/service/parseBrainAide/index.js";
 import brainContract from "@/service/brainContract/index.js";
+import type { BrainSectionMarker } from "@/service/brainContract/index.js";
 import brain, { BrainInput } from "./index.js";
 
 const mockBuildBrainState = buildBrainState as ReturnType<typeof vi.fn>;
@@ -49,6 +51,11 @@ function makeOkState(name = "obsidian") {
 	};
 }
 
+/** no-mcp-entry / mcp-drift state fixture. */
+function makeWiringState(status: "no-mcp-entry" | "mcp-drift") {
+	return { status, name: "obsidian", hints: [] };
+}
+
 /**
  * Verbatim orientation string with characters a substitution pass would transform:
  * a ${rootPath} sequence, a [[reference]], and markdown formatting. Content is
@@ -65,28 +72,67 @@ const VERBATIM_ORIENTATION =
 const VERBATIM_CONFIG =
 	"config section with literal ${rootPath} and a [[config-reference]] and *italic*";
 
-/** Minimal ok parse result fixture — all six fields required by ParseBrainAideResult["ok"]. */
+/** Section markers drawn from the published contract, never hand-typed. */
+const CONTRACT_MARKERS = brainContract.map((entry) => entry.marker);
+const MISSING_MARKERS = CONTRACT_MARKERS.slice(-2);
+
+/** A seed marker (the first non-live entry) used where one seed case is enough. */
+const SEED_MARKER: BrainSectionMarker = brainContract.find((entry) => entry.role === "seed")!.marker;
+
+/** Contract purpose for a marker, read straight from the published contract. */
+function contractPurpose(marker: BrainSectionMarker): string {
+	return brainContract.find((entry) => entry.marker === marker)!.purpose;
+}
+
+/**
+ * Verbatim bytes for one contract field. Includes `${...}`, CRLF and
+ * leading/trailing blank lines so a transforming pass would be caught.
+ */
+function verbatimBytes(field: string): string {
+	return `\r\n\r\n${field} section with literal \${rootPath}\r\nand [[${field}-reference]]\r\n\r\n`;
+}
+
+/**
+ * Ok parse result fixture with every contract field populated from
+ * `brainContract` (not hand-listed). `orientation` and `config` can be overridden.
+ */
 function makeOkParseResult(overrides: { orientation?: string; config?: string } = {}) {
+	const fields = Object.fromEntries(brainContract.map((entry) => [entry.field, verbatimBytes(entry.field)]));
 	return {
 		kind: "ok" as const,
 		name: "obsidian",
 		mcpServerConfig: MINIMAL_CONFIG.mcpServerConfig,
+		...fields,
 		orientation: overrides.orientation ?? VERBATIM_ORIENTATION,
 		config: overrides.config ?? VERBATIM_CONFIG,
-		playbookIndex: "playbook-index-placeholder",
-		studyPlaybook: "study-playbook-placeholder",
-		updatePlaybook: "update-playbook-placeholder",
-		researchIndex: "research-index-placeholder",
 	};
 }
 
+/** Field name of a contract marker. */
+function fieldOf(marker: BrainSectionMarker): string {
+	return brainContract.find((entry) => entry.marker === marker)!.field;
+}
+
 /**
- * Section markers drawn from the published contract (never hand-typed), so the
- * missing-sections fixtures follow the contract if it grows. Two entries from
- * the tail of the contract order.
+ * missing-sections parse fixture: `sections` are absent, every other contract
+ * field is present with verbatim bytes (orientation and config fixed).
  */
-const CONTRACT_MARKERS = brainContract.map((entry) => entry.marker);
-const MISSING_MARKERS = CONTRACT_MARKERS.slice(-2);
+function makeMissingSectionsParse(sections: string[] = MISSING_MARKERS) {
+	const present: Record<string, string> = {};
+	for (const entry of brainContract) {
+		if (sections.includes(entry.marker)) continue;
+		present[entry.field] = verbatimBytes(entry.field);
+	}
+	if (!sections.includes("orientation")) present.orientation = VERBATIM_ORIENTATION;
+	if (!sections.includes("config")) present.config = VERBATIM_CONFIG;
+	return {
+		kind: "missing-sections" as const,
+		sections,
+		name: "obsidian",
+		mcpServerConfig: MINIMAL_CONFIG.mcpServerConfig,
+		present,
+	};
+}
 
 /** Malformed reason fixture; the composer must carry it verbatim. */
 const MALFORMED_REASON = "required field name is missing";
@@ -112,6 +158,19 @@ function makeMalformedState(reason = MALFORMED_REASON) {
 /** The absent-file sentence; it must never describe a present-but-invalid file. */
 const ABSENT_SENTENCE = "No `.aide/config/brain.aide` is present";
 
+/** Exact brief #14 missing-sections text for a list of markers. */
+function missingSectionsText(sections: string[]): string {
+	return `\`.aide/config/brain.aide\` is missing required sections: ${sections.join(", ")}. With the user's consent, call \`aide_upgrade\` with \`category: "brain"\` — it inserts only the missing sections and leaves every existing section untouched — then re-check brain state with \`aide_info\`.`;
+}
+
+/** Exact brief #14 malformed text for a reason. */
+function malformedText(reason: string): string {
+	return `\`.aide/config/brain.aide\` exists but is malformed: ${reason}. Fix it by hand with the user at the place that reason names, then re-check brain state with \`aide_info\`. Do not proceed with this task as if the brain were available.`;
+}
+
+const FOUND_KEYS = ["found", "instructions", "purpose", "status"];
+const NOT_FOUND_KEYS = ["found", "instructions", "status"];
+
 // ---------------------------------------------------------------------------
 // Test setup
 // ---------------------------------------------------------------------------
@@ -121,26 +180,30 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Step 5a-5c. ok — orientation kind (default and explicit)
+// ok — orientation kind (default and explicit)
 // ---------------------------------------------------------------------------
 
 describe("brain — ok: orientation kind", () => {
-	it("returns VERBATIM_ORIENTATION when called with no input (default kind)", async () => {
+	it("returns VERBATIM_ORIENTATION with found and purpose when called with no input (default kind)", async () => {
 		mockBuildBrainState.mockResolvedValue(makeOkState());
 		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
 
 		const result = await brain("/root");
 
 		expect(result.instructions).toBe(VERBATIM_ORIENTATION);
+		expect(result.found).toBe(true);
+		expect(result.purpose).toBe(contractPurpose("orientation"));
 	});
 
-	it("returns VERBATIM_ORIENTATION when called with kind: orientation (explicit)", async () => {
+	it("returns VERBATIM_ORIENTATION with found and purpose when called with kind: orientation (explicit)", async () => {
 		mockBuildBrainState.mockResolvedValue(makeOkState());
 		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
 
 		const result = await brain("/root", { kind: "orientation" });
 
 		expect(result.instructions).toBe(VERBATIM_ORIENTATION);
+		expect(result.found).toBe(true);
+		expect(result.purpose).toBe(contractPurpose("orientation"));
 	});
 
 	it("NEVER returns VERBATIM_CONFIG on the orientation path (cross-section bleed-through)", async () => {
@@ -154,17 +217,19 @@ describe("brain — ok: orientation kind", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Step 5d. ok — config kind
+// ok — config kind
 // ---------------------------------------------------------------------------
 
 describe("brain — ok: config kind", () => {
-	it("returns VERBATIM_CONFIG when called with kind: config", async () => {
+	it("returns VERBATIM_CONFIG with found and purpose when called with kind: config", async () => {
 		mockBuildBrainState.mockResolvedValue(makeOkState());
 		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
 
 		const result = await brain("/root", { kind: "config" });
 
 		expect(result.instructions).toBe(VERBATIM_CONFIG);
+		expect(result.found).toBe(true);
+		expect(result.purpose).toBe(contractPurpose("config"));
 	});
 
 	it("NEVER returns VERBATIM_ORIENTATION on the config path (cross-section bleed-through)", async () => {
@@ -178,7 +243,25 @@ describe("brain — ok: config kind", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Step 5e. No substitution on either kind — ${...} sequences preserved verbatim
+// ok — every contract marker returns its own field's bytes
+// ---------------------------------------------------------------------------
+
+describe("brain — ok: every contract marker", () => {
+	it.each(CONTRACT_MARKERS)("returns the %s section's bytes untouched with found and purpose", async (marker) => {
+		const parse = makeOkParseResult();
+		mockBuildBrainState.mockResolvedValue(makeOkState());
+		mockParseBrainAide.mockResolvedValue(parse);
+
+		const result = await brain("/root", { kind: marker });
+
+		expect(result.instructions).toBe((parse as Record<string, unknown>)[fieldOf(marker)]);
+		expect(result.found).toBe(true);
+		expect(result.purpose).toBe(contractPurpose(marker));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// No substitution on either kind — ${...} sequences preserved verbatim
 // ---------------------------------------------------------------------------
 
 describe("brain — no substitution on either kind", () => {
@@ -190,6 +273,8 @@ describe("brain — no substitution on either kind", () => {
 		const result = await brain("/root", { kind: "orientation" });
 
 		expect(result.instructions).toBe(orientationWithPlaceholder);
+		expect(result.found).toBe(true);
+		expect(result.purpose).toBe(contractPurpose("orientation"));
 	});
 
 	it("preserves literal ${...} sequences byte-identical in config", async () => {
@@ -200,92 +285,40 @@ describe("brain — no substitution on either kind", () => {
 		const result = await brain("/root", { kind: "config" });
 
 		expect(result.instructions).toBe(configWithPlaceholder);
+		expect(result.found).toBe(true);
+		expect(result.purpose).toBe(contractPurpose("config"));
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Step 6a-6b. ok — response shape has no `name`, `backend`, `connector`, or `kind` field
+// Response shape — exact key sets, no `name`, `backend`, `connector`, or `kind`
 // ---------------------------------------------------------------------------
 
-describe("brain — ok: no name, backend, connector, or kind field on response", () => {
-	it("does NOT include a backend field on the ok orientation path", async () => {
+describe("brain — no name, backend, connector, or kind field on response", () => {
+	it.each([
+		["orientation (default)", undefined],
+		["orientation", { kind: "orientation" as const }],
+		["config", { kind: "config" as const }],
+		[SEED_MARKER, { kind: SEED_MARKER }],
+	])("responds with exactly found, instructions, purpose and status on the found branch (%s)", async (_label, input) => {
 		mockBuildBrainState.mockResolvedValue(makeOkState());
 		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
 
-		const result = await brain("/root", { kind: "orientation" });
+		const result = await brain("/root", input);
 
+		expect(Object.keys(result).sort()).toEqual(FOUND_KEYS);
 		expect(result).not.toHaveProperty("backend");
-	});
-
-	it("does NOT include a name field on the ok orientation path", async () => {
-		mockBuildBrainState.mockResolvedValue(makeOkState());
-		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
-
-		const result = await brain("/root", { kind: "orientation" });
-
 		expect(result).not.toHaveProperty("name");
-	});
-
-	it("does NOT include a connector field on the ok orientation path", async () => {
-		mockBuildBrainState.mockResolvedValue(makeOkState());
-		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
-
-		const result = await brain("/root", { kind: "orientation" });
-
 		expect(result).not.toHaveProperty("connector");
-	});
-
-	it("does NOT include a backend field on the ok config path", async () => {
-		mockBuildBrainState.mockResolvedValue(makeOkState());
-		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
-
-		const result = await brain("/root", { kind: "config" });
-
-		expect(result).not.toHaveProperty("backend");
-	});
-
-	it("does NOT include a name field on the ok config path", async () => {
-		mockBuildBrainState.mockResolvedValue(makeOkState());
-		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
-
-		const result = await brain("/root", { kind: "config" });
-
-		expect(result).not.toHaveProperty("name");
-	});
-
-	it("does NOT include a connector field on the ok config path", async () => {
-		mockBuildBrainState.mockResolvedValue(makeOkState());
-		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
-
-		const result = await brain("/root", { kind: "config" });
-
-		expect(result).not.toHaveProperty("connector");
-	});
-
-	// Step 6b — kind must NOT be echoed back on the wire
-	it("does NOT include a kind field on the response when kind: orientation was supplied", async () => {
-		mockBuildBrainState.mockResolvedValue(makeOkState());
-		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
-
-		const result = await brain("/root", { kind: "orientation" });
-
 		expect(result).not.toHaveProperty("kind");
 	});
 
-	it("does NOT include a kind field on the response when kind: config was supplied", async () => {
-		mockBuildBrainState.mockResolvedValue(makeOkState());
-		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
-
-		const result = await brain("/root", { kind: "config" });
-
-		expect(result).not.toHaveProperty("kind");
-	});
-
-	it("does NOT include a name field on a non-ok branch", async () => {
+	it("responds with exactly found, instructions and status on a non-ok branch", async () => {
 		mockBuildBrainState.mockResolvedValue({ status: "no-brain-aide", hints: [] });
 
 		const result = await brain("/root");
 
+		expect(Object.keys(result).sort()).toEqual(NOT_FOUND_KEYS);
 		expect(result).not.toHaveProperty("name");
 		expect(result).not.toHaveProperty("backend");
 		expect(result).not.toHaveProperty("connector");
@@ -293,11 +326,11 @@ describe("brain — ok: no name, backend, connector, or kind field on response",
 });
 
 // ---------------------------------------------------------------------------
-// Step 6c. No name dispatch — ok branch output is identical across names, for both kinds
+// No name dispatch — ok branch output is identical across names, for both kinds
 // ---------------------------------------------------------------------------
 
 describe("brain — no name dispatch", () => {
-	it("returns byte-identical instructions for obsidian and notion on orientation kind", async () => {
+	it("returns byte-identical results for obsidian and notion on orientation kind", async () => {
 		const orientationText = "identical orientation for both names";
 
 		mockBuildBrainState.mockResolvedValue(makeOkState("obsidian"));
@@ -305,16 +338,14 @@ describe("brain — no name dispatch", () => {
 		const obsidianResult = await brain("/root", { kind: "orientation" });
 
 		mockBuildBrainState.mockResolvedValue(makeOkState("notion"));
-		mockParseBrainAide.mockResolvedValue(
-			makeOkParseResult({ orientation: orientationText }),
-		);
+		mockParseBrainAide.mockResolvedValue(makeOkParseResult({ orientation: orientationText }));
 		const notionResult = await brain("/root", { kind: "orientation" });
 
-		// Identical orientation input must produce identical instructions — no name-keyed branching.
-		expect(obsidianResult.instructions).toBe(notionResult.instructions);
+		expect(Object.keys(obsidianResult).sort()).toEqual(FOUND_KEYS);
+		expect(obsidianResult).toEqual(notionResult);
 	});
 
-	it("returns byte-identical instructions for obsidian and notion on config kind", async () => {
+	it("returns byte-identical results for obsidian and notion on config kind", async () => {
 		const configText = "identical config for both names";
 
 		mockBuildBrainState.mockResolvedValue(makeOkState("obsidian"));
@@ -325,35 +356,35 @@ describe("brain — no name dispatch", () => {
 		mockParseBrainAide.mockResolvedValue(makeOkParseResult({ config: configText }));
 		const notionResult = await brain("/root", { kind: "config" });
 
-		// Identical config input must produce identical instructions — no name-keyed branching.
-		expect(obsidianResult.instructions).toBe(notionResult.instructions);
+		expect(Object.keys(obsidianResult).sort()).toEqual(FOUND_KEYS);
+		expect(obsidianResult).toEqual(notionResult);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Step 7a-7b. Non-ok branches — kind-agnosticism
+// no-brain-aide
 // ---------------------------------------------------------------------------
 
 describe("brain — no-brain-aide: remediation prose", () => {
-	it("returns status no-brain-aide with prose routing to /aide:brain config", async () => {
+	it("returns status no-brain-aide with prose routing to /aide:brain config and found: false", async () => {
 		mockBuildBrainState.mockResolvedValue({ status: "no-brain-aide", hints: [] });
 
 		const result = await brain("/root");
 
 		expect(result.status).toBe("no-brain-aide");
+		expect(result.found).toBe(false);
 		// Load-bearing phrase: the agent must surface the config command, not the retired CLI init.
 		expect(result.instructions).toContain("/aide:brain config");
 		expect(result.instructions).not.toContain("init");
 	});
 
-	it("returns byte-identical instructions for orientation and config on no-brain-aide branch", async () => {
+	it("returns byte-identical results for orientation and config on no-brain-aide branch", async () => {
 		mockBuildBrainState.mockResolvedValue({ status: "no-brain-aide", hints: [] });
 
 		const orientationResult = await brain("/root", { kind: "orientation" });
 		const configResult = await brain("/root", { kind: "config" });
 
-		expect(orientationResult.status).toBe(configResult.status);
-		expect(orientationResult.instructions).toBe(configResult.instructions);
+		expect(orientationResult).toEqual(configResult);
 	});
 
 	it("never calls parseBrainAide on the no-brain-aide branch regardless of kind", async () => {
@@ -366,171 +397,142 @@ describe("brain — no-brain-aide: remediation prose", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// brain-aide-invalid
+// ---------------------------------------------------------------------------
+
 describe("brain — brain-aide-invalid: remediation prose", () => {
-	it("returns brain-aide-invalid with instructions naming every missing section", async () => {
+	it("returns the missing-sections remediation with found: false when the requested marker is missing", async () => {
+		const requested = MISSING_MARKERS[0];
 		mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
+		mockParseBrainAide.mockResolvedValue(makeMissingSectionsParse());
+
+		const result = await brain("/root", { kind: requested });
+
+		expect(result.status).toBe("brain-aide-invalid");
+		expect(result.found).toBe(false);
+		expect(result.instructions).toBe(missingSectionsText(MISSING_MARKERS));
+		expect(result.instructions).not.toContain("/aide:brain config");
+		expect(Object.keys(result).sort()).toEqual(NOT_FOUND_KEYS);
+	});
+
+	it("returns a present section's bytes with found: true and the status unchanged when the requested marker is present", async () => {
+		const parse = makeMissingSectionsParse();
+		mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
+		mockParseBrainAide.mockResolvedValue(parse);
+
+		const result = await brain("/root", { kind: "config" });
+
+		expect(result.status).toBe("brain-aide-invalid");
+		expect(result.found).toBe(true);
+		expect(result.instructions).toBe(VERBATIM_CONFIG);
+		expect(result.purpose).toBe(contractPurpose("config"));
+		expect(Object.keys(result).sort()).toEqual(FOUND_KEYS);
+	});
+
+	it("returns orientation by default when orientation is present", async () => {
+		mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
+		mockParseBrainAide.mockResolvedValue(makeMissingSectionsParse());
 
 		const result = await brain("/root");
 
 		expect(result.status).toBe("brain-aide-invalid");
-		for (const marker of MISSING_MARKERS) {
-			expect(result.instructions).toContain(marker);
-		}
-		expect(result.instructions).toContain(`missing required sections: ${MISSING_MARKERS.join(", ")}.`);
-		expect(result.instructions).toContain("/aide:brain config");
+		expect(result.found).toBe(true);
+		expect(result.instructions).toBe(VERBATIM_ORIENTATION);
+		expect(result.purpose).toBe(contractPurpose("orientation"));
 	});
 
-	it("carries the malformed reason verbatim in the instructions", async () => {
+	it("returns the malformed remediation with the reason verbatim and found: false", async () => {
 		mockBuildBrainState.mockResolvedValue(makeMalformedState());
 
 		const result = await brain("/root");
 
 		expect(result.status).toBe("brain-aide-invalid");
-		expect(result.instructions).toContain(`exists but is malformed: ${MALFORMED_REASON}.`);
-		expect(result.instructions).toContain("/aide:brain config");
+		expect(result.found).toBe(false);
+		expect(result.instructions).toBe(malformedText(MALFORMED_REASON));
+		expect(result.instructions).not.toContain("/aide:brain config");
+		expect(Object.keys(result).sort()).toEqual(NOT_FOUND_KEYS);
 	});
 
-	it.each([
-		["missing-sections", makeMissingSectionsState()],
-		["malformed", makeMalformedState()],
-	])("returns byte-identical instructions for orientation and config on a %s fault", async (_label, state) => {
-		mockBuildBrainState.mockResolvedValue(state);
+	it("returns byte-identical malformed remediation for orientation and config", async () => {
+		mockBuildBrainState.mockResolvedValue(makeMalformedState());
 
 		const orientationResult = await brain("/root", { kind: "orientation" });
 		const configResult = await brain("/root", { kind: "config" });
 
-		expect(orientationResult.status).toBe("brain-aide-invalid");
-		expect(orientationResult.status).toBe(configResult.status);
-		expect(orientationResult.instructions).toBe(configResult.instructions);
+		expect(orientationResult).toEqual(configResult);
 	});
 
 	it.each([
-		["missing-sections", makeMissingSectionsState()],
-		["malformed", makeMalformedState()],
-	])("responds with exactly the keys status and instructions on a %s fault", async (_label, state) => {
+		["missing-sections", makeMissingSectionsState(), makeMissingSectionsParse()],
+		["malformed", makeMalformedState(), undefined],
+	])("never calls a present file absent on a %s fault", async (_label, state, parse) => {
 		mockBuildBrainState.mockResolvedValue(state);
+		mockParseBrainAide.mockResolvedValue(parse);
 
-		const result = await brain("/root");
-
-		expect(Object.keys(result).sort()).toEqual(["instructions", "status"]);
-	});
-
-	it.each([
-		["missing-sections", makeMissingSectionsState()],
-		["malformed", makeMalformedState()],
-	])("never calls a present file absent on a %s fault", async (_label, state) => {
-		mockBuildBrainState.mockResolvedValue(state);
-
-		const result = await brain("/root");
+		const result = await brain("/root", { kind: MISSING_MARKERS[0] });
 
 		expect(result.instructions).not.toContain(ABSENT_SENTENCE);
 	});
 
-	it.each([
-		["missing-sections", makeMissingSectionsState()],
-		["malformed", makeMalformedState()],
-	])("returns non-empty instructions on a %s fault", async (_label, state) => {
-		mockBuildBrainState.mockResolvedValue(state);
+	it("never calls parseBrainAide on a malformed fault regardless of kind", async () => {
+		mockBuildBrainState.mockResolvedValue(makeMalformedState());
 
-		const result = await brain("/root");
+		await brain("/root", { kind: "orientation" });
+		await brain("/root", { kind: "config" });
 
-		expect(result.instructions.length).toBeGreaterThan(0);
+		expect(mockParseBrainAide).not.toHaveBeenCalled();
 	});
 
-	it("never calls parseBrainAide on the brain-aide-invalid branch regardless of kind", async () => {
+	it("calls parseBrainAide exactly once on a missing-sections fault", async () => {
 		mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
+		mockParseBrainAide.mockResolvedValue(makeMissingSectionsParse());
 
 		await brain("/root", { kind: "orientation" });
-		await brain("/root", { kind: "config" });
 
-		expect(mockParseBrainAide).not.toHaveBeenCalled();
-	});
-});
-
-describe("brain — no-mcp-entry: remediation prose", () => {
-	it("returns status no-mcp-entry with prose naming the launcher-matching sync command", async () => {
-		mockBuildBrainState.mockResolvedValue({
-			status: "no-mcp-entry",
-			name: "obsidian",
-			hints: [],
-		});
-
-		const result = await brain("/root");
-
-		expect(result.status).toBe("no-mcp-entry");
-		// Load-bearing phrase: sync is the only recovery command for a missing entry.
-		expect(result.instructions).toContain("npx -y @aidemd-mcp/server@<version> sync");
-		expect(result.instructions).toContain("aidemd-mcp sync");
-		expect(result.instructions).toContain("same launcher their project's `aide` MCP entry uses");
-		expect(result.instructions).not.toContain("@latest");
-	});
-
-	it("returns byte-identical instructions for orientation and config on no-mcp-entry branch", async () => {
-		mockBuildBrainState.mockResolvedValue({ status: "no-mcp-entry", name: "obsidian", hints: [] });
-
-		const orientationResult = await brain("/root", { kind: "orientation" });
-		const configResult = await brain("/root", { kind: "config" });
-
-		expect(orientationResult.status).toBe(configResult.status);
-		expect(orientationResult.instructions).toBe(configResult.instructions);
-	});
-
-	it("never calls parseBrainAide on the no-mcp-entry branch regardless of kind", async () => {
-		mockBuildBrainState.mockResolvedValue({ status: "no-mcp-entry", name: "obsidian", hints: [] });
-
-		await brain("/root", { kind: "orientation" });
-		await brain("/root", { kind: "config" });
-
-		expect(mockParseBrainAide).not.toHaveBeenCalled();
-	});
-});
-
-describe("brain — mcp-drift: remediation prose", () => {
-	it("returns status mcp-drift with prose containing sync command and drift mention", async () => {
-		mockBuildBrainState.mockResolvedValue({
-			status: "mcp-drift",
-			name: "obsidian",
-			hints: [],
-		});
-
-		const result = await brain("/root");
-
-		expect(result.status).toBe("mcp-drift");
-		// Load-bearing phrases: sync is the recovery command; prose must name drift.
-		expect(result.instructions).toContain("npx -y @aidemd-mcp/server@<version> sync");
-		expect(result.instructions).toContain("aidemd-mcp sync");
-		expect(result.instructions).toContain("same launcher their project's `aide` MCP entry uses");
-		expect(result.instructions).not.toContain("@latest");
-		expect(result.instructions.toLowerCase()).toContain("disagree");
-	});
-
-	it("returns byte-identical instructions for orientation and config on mcp-drift branch", async () => {
-		mockBuildBrainState.mockResolvedValue({ status: "mcp-drift", name: "obsidian", hints: [] });
-
-		const orientationResult = await brain("/root", { kind: "orientation" });
-		const configResult = await brain("/root", { kind: "config" });
-
-		expect(orientationResult.status).toBe(configResult.status);
-		expect(orientationResult.instructions).toBe(configResult.instructions);
-	});
-
-	it("never calls parseBrainAide on the mcp-drift branch regardless of kind", async () => {
-		mockBuildBrainState.mockResolvedValue({ status: "mcp-drift", name: "obsidian", hints: [] });
-
-		await brain("/root", { kind: "orientation" });
-		await brain("/root", { kind: "config" });
-
-		expect(mockParseBrainAide).not.toHaveBeenCalled();
+		expect(mockParseBrainAide).toHaveBeenCalledTimes(1);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Step 8a-8b. Defensive fallback — parseBrainAide non-ok despite ok state, both kinds
+// no-mcp-entry and mcp-drift — the section is returned, the status is unchanged
+// ---------------------------------------------------------------------------
+
+describe.each(["no-mcp-entry", "mcp-drift"] as const)("brain — %s: section read", (status) => {
+	it.each([
+		["orientation (default)", undefined, VERBATIM_ORIENTATION, "orientation" as const],
+		["config", { kind: "config" as const }, VERBATIM_CONFIG, "config" as const],
+		[SEED_MARKER, { kind: SEED_MARKER }, verbatimBytes(fieldOf(SEED_MARKER)), SEED_MARKER],
+	])("returns the requested section verbatim with found: true and the status unchanged (%s)", async (_label, input, bytes, marker) => {
+		mockBuildBrainState.mockResolvedValue(makeWiringState(status));
+		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
+
+		const result = await brain("/root", input);
+
+		expect(result.status).toBe(status);
+		expect(result.found).toBe(true);
+		expect(result.instructions).toBe(bytes);
+		expect(result.purpose).toBe(contractPurpose(marker));
+		expect(Object.keys(result).sort()).toEqual(FOUND_KEYS);
+	});
+
+	it("calls parseBrainAide exactly once", async () => {
+		mockBuildBrainState.mockResolvedValue(makeWiringState(status));
+		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
+
+		await brain("/root", { kind: "config" });
+
+		expect(mockParseBrainAide).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Defensive fallback — parseBrainAide non-ok despite ok state, both kinds
 // ---------------------------------------------------------------------------
 
 describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 	it.each(["orientation", "config"] as const)(
-		"returns no-brain-aide routing to /aide:brain config on kind=%s when parseBrainAide returns missing",
+		"returns no-brain-aide routing to /aide:brain config with found: false on kind=%s when parseBrainAide returns missing",
 		async (kind) => {
 			// Simulate the upstream contract violation: buildBrainState says ok but
 			// parseBrainAide returns missing (e.g. file deleted between the two calls).
@@ -540,6 +542,7 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 			const result = await brain("/root", { kind });
 
 			expect(result.status).toBe("no-brain-aide");
+			expect(result.found).toBe(false);
 			expect(result.instructions.length).toBeGreaterThan(0);
 			expect(result.instructions).toContain("/aide:brain config");
 			expect(result.instructions).toContain(ABSENT_SENTENCE);
@@ -547,7 +550,7 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 	);
 
 	it.each(["orientation", "config"] as const)(
-		"returns brain-aide-invalid naming the missing sections on kind=%s when parseBrainAide returns missing-sections",
+		"returns brain-aide-invalid naming the missing sections with found: false on kind=%s when parseBrainAide returns missing-sections",
 		async (kind) => {
 			mockBuildBrainState.mockResolvedValue(makeOkState());
 			mockParseBrainAide.mockResolvedValue({
@@ -561,14 +564,15 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 			const result = await brain("/root", { kind });
 
 			expect(result.status).toBe("brain-aide-invalid");
-			expect(result.instructions).toContain(`missing required sections: ${MISSING_MARKERS.join(", ")}.`);
+			expect(result.found).toBe(false);
+			expect(result.instructions).toBe(missingSectionsText(MISSING_MARKERS));
 			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
 			expect(result.instructions).not.toContain("pkg@1.0.0");
 		},
 	);
 
 	it.each(["orientation", "config"] as const)(
-		"returns brain-aide-invalid carrying the reason on kind=%s when parseBrainAide returns malformed-frontmatter",
+		"returns brain-aide-invalid carrying the reason with found: false on kind=%s when parseBrainAide returns malformed-frontmatter",
 		async (kind) => {
 			mockBuildBrainState.mockResolvedValue(makeOkState());
 			mockParseBrainAide.mockResolvedValue({
@@ -579,13 +583,14 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 			const result = await brain("/root", { kind });
 
 			expect(result.status).toBe("brain-aide-invalid");
+			expect(result.found).toBe(false);
 			expect(result.instructions).toContain(`exists but is malformed: ${MALFORMED_REASON}.`);
 			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
 		},
 	);
 
 	it.each(["orientation", "config"] as const)(
-		"returns brain-aide-invalid naming the read error, never 'not present', on kind=%s when parseBrainAide returns unreadable",
+		"returns brain-aide-invalid naming the read error, never 'not present', with found: false on kind=%s when parseBrainAide returns unreadable",
 		async (kind) => {
 			const reason = "cannot read .aide/config/brain.aide: permission denied (EACCES)";
 			mockBuildBrainState.mockResolvedValue(makeOkState());
@@ -594,15 +599,15 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 			const result = await brain("/root", { kind });
 
 			expect(result.status).toBe("brain-aide-invalid");
+			expect(result.found).toBe(false);
 			expect(result.instructions).toContain(reason);
 			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
 			expect(result.instructions).not.toContain("not present");
 		},
 	);
 
-	// Step 8b — third non-ok parser kind: malformed-body
 	it.each(["orientation", "config"] as const)(
-		"returns brain-aide-invalid carrying the reason on kind=%s when parseBrainAide returns malformed-body",
+		"returns brain-aide-invalid carrying the reason with found: false on kind=%s when parseBrainAide returns malformed-body",
 		async (kind) => {
 			const reason = "unbalanced markers: <!-- aide-orientation-start -->";
 			mockBuildBrainState.mockResolvedValue(makeOkState());
@@ -611,6 +616,7 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 			const result = await brain("/root", { kind });
 
 			expect(result.status).toBe("brain-aide-invalid");
+			expect(result.found).toBe(false);
 			expect(result.instructions).toContain(`exists but is malformed: ${reason}.`);
 			expect(result.instructions).not.toContain(ABSENT_SENTENCE);
 		},
@@ -618,7 +624,86 @@ describe("brain — defensive fallback: parseBrainAide non-ok", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Step 9a-9b. instructions always non-empty — (state × kind) matrix
+// purpose comes from the published contract
+// ---------------------------------------------------------------------------
+
+describe("brain — purpose comes from the published contract", () => {
+	it.each([
+		["orientation (default)", undefined, "orientation" as const],
+		["config", { kind: "config" as const }, "config" as const],
+		[SEED_MARKER, { kind: SEED_MARKER }, SEED_MARKER],
+	])("equals the contract entry's purpose on ok for %s", async (_label, input, marker) => {
+		mockBuildBrainState.mockResolvedValue(makeOkState());
+		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
+
+		const result = await brain("/root", input);
+
+		expect(result.purpose).toBe(contractPurpose(marker));
+	});
+
+	it("equals the contract entry's purpose for a present marker on a missing-sections parse", async () => {
+		mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
+		mockParseBrainAide.mockResolvedValue(makeMissingSectionsParse());
+
+		const result = await brain("/root", { kind: "config" });
+
+		expect(result.found).toBe(true);
+		expect(result.purpose).toBe(contractPurpose("config"));
+	});
+
+	it.each(["no-mcp-entry", "mcp-drift"] as const)("equals the contract entry's purpose on %s", async (status) => {
+		mockBuildBrainState.mockResolvedValue(makeWiringState(status));
+		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
+
+		const result = await brain("/root", { kind: SEED_MARKER });
+
+		expect(result.purpose).toBe(contractPurpose(SEED_MARKER));
+	});
+
+	it("is still the contract string when the user's section text carries a purpose-looking line", async () => {
+		const decoy = "purpose: the user's own redefinition of this section\nmore text";
+		mockBuildBrainState.mockResolvedValue(makeOkState());
+		mockParseBrainAide.mockResolvedValue({ ...makeOkParseResult({ orientation: decoy }), purpose: "frontmatter purpose decoy" });
+
+		const result = await brain("/root", { kind: "orientation" });
+
+		expect(result.instructions).toBe(decoy);
+		expect(result.purpose).toBe(contractPurpose("orientation"));
+		expect(result.purpose).not.toContain("redefinition");
+		expect(result.purpose).not.toContain("decoy");
+	});
+
+	it.each([
+		["no-brain-aide", async () => {
+			mockBuildBrainState.mockResolvedValue({ status: "no-brain-aide", hints: [] });
+		}],
+		["malformed", async () => {
+			mockBuildBrainState.mockResolvedValue(makeMalformedState());
+		}],
+		["requested marker missing", async () => {
+			mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
+			mockParseBrainAide.mockResolvedValue(makeMissingSectionsParse(["orientation"]));
+		}],
+		["defensive fallback (absent)", async () => {
+			mockBuildBrainState.mockResolvedValue(makeOkState());
+			mockParseBrainAide.mockResolvedValue({ kind: "missing" });
+		}],
+		["defensive fallback (malformed)", async () => {
+			mockBuildBrainState.mockResolvedValue(makeOkState());
+			mockParseBrainAide.mockResolvedValue({ kind: "malformed-body", reason: "bad markers" });
+		}],
+	])("has no purpose key on the %s branch", async (_label, arrange) => {
+		await arrange();
+
+		const result = await brain("/root");
+
+		expect(result.found).toBe(false);
+		expect("purpose" in result).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// instructions always non-empty — (state × kind) matrix
 // ---------------------------------------------------------------------------
 
 describe("brain — instructions always non-empty", () => {
@@ -626,13 +711,14 @@ describe("brain — instructions always non-empty", () => {
 		["no-brain-aide", { status: "no-brain-aide" as const, hints: [] }],
 		["brain-aide-invalid (missing-sections)", makeMissingSectionsState()],
 		["brain-aide-invalid (malformed)", makeMalformedState()],
-		["no-mcp-entry", { status: "no-mcp-entry" as const, name: "obsidian", hints: [] }],
-		["mcp-drift", { status: "mcp-drift" as const, name: "obsidian", hints: [] }],
+		["no-mcp-entry", makeWiringState("no-mcp-entry")],
+		["mcp-drift", makeWiringState("mcp-drift")],
 	])(
-		"instructions is non-empty on %s branch (both kinds)",
+		"instructions is non-empty on %s branch (orientation, config and a seed marker)",
 		async (_label, state) => {
-			for (const kind of ["orientation", "config"] as const) {
+			for (const kind of ["orientation", "config", SEED_MARKER] as const) {
 				mockBuildBrainState.mockResolvedValue(state);
+				mockParseBrainAide.mockResolvedValue(makeMissingSectionsParse());
 
 				const result = await brain("/root", { kind });
 
@@ -641,7 +727,6 @@ describe("brain — instructions always non-empty", () => {
 		},
 	);
 
-	// Step 9b — ok cell: both kind values produce non-empty instructions
 	it("instructions is non-empty on ok orientation branch", async () => {
 		mockBuildBrainState.mockResolvedValue(makeOkState());
 		mockParseBrainAide.mockResolvedValue(makeOkParseResult({ orientation: "non-empty orientation" }));
@@ -657,6 +742,25 @@ describe("brain — instructions always non-empty", () => {
 
 		const result = await brain("/root", { kind: "config" });
 
+		expect(result.instructions.length).toBeGreaterThan(0);
+	});
+
+	it("instructions is non-empty on ok seed-marker branch", async () => {
+		mockBuildBrainState.mockResolvedValue(makeOkState());
+		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
+
+		const result = await brain("/root", { kind: SEED_MARKER });
+
+		expect(result.instructions.length).toBeGreaterThan(0);
+	});
+
+	it("instructions is non-empty on the missing-sections remediation branch", async () => {
+		mockBuildBrainState.mockResolvedValue(makeMissingSectionsState());
+		mockParseBrainAide.mockResolvedValue(makeMissingSectionsParse());
+
+		const result = await brain("/root", { kind: MISSING_MARKERS[0] });
+
+		expect(result.found).toBe(false);
 		expect(result.instructions.length).toBeGreaterThan(0);
 	});
 
@@ -682,38 +786,35 @@ describe("brain — instructions always non-empty", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Step 10. BrainInput schema — vocabulary enforcement
+// One parse per call, no cache across calls
 // ---------------------------------------------------------------------------
 
-describe("BrainInput schema rejects seed-section spellings", () => {
-	// Step 10a — each seed spelling must be rejected
-	it.each([
-		"playbookIndex",
-		"playbook-index",
-		"studyPlaybook",
-		"study-playbook",
-		"updatePlaybook",
-		"update-playbook",
-		"researchIndex",
-		"research-index",
-	])('rejects kind: "%s"', (spelling) => {
-		expect(BrainInput.safeParse({ kind: spelling }).success).toBe(false);
-	});
+describe("brain — one parse per call", () => {
+	it("calls parseBrainAide once per call across two consecutive calls", async () => {
+		mockBuildBrainState.mockResolvedValue(makeOkState());
+		mockParseBrainAide.mockResolvedValue(makeOkParseResult());
 
-	// Step 10b — the three accepted values
-	it('accepts kind: "orientation"', () => {
-		expect(BrainInput.safeParse({ kind: "orientation" }).success).toBe(true);
-	});
+		await brain("/root", { kind: "config" });
+		expect(mockParseBrainAide).toHaveBeenCalledTimes(1);
 
-	it('accepts kind: "config"', () => {
-		expect(BrainInput.safeParse({ kind: "config" }).success).toBe(true);
+		await brain("/root", { kind: "config" });
+		expect(mockParseBrainAide).toHaveBeenCalledTimes(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// BrainInput schema — vocabulary enforcement
+// ---------------------------------------------------------------------------
+
+describe("BrainInput schema accepts exactly the contract markers", () => {
+	it.each(CONTRACT_MARKERS)('accepts kind: "%s"', (marker) => {
+		expect(BrainInput.safeParse({ kind: marker }).success).toBe(true);
 	});
 
 	it("accepts omitted kind (empty object)", () => {
 		expect(BrainInput.safeParse({}).success).toBe(true);
 	});
 
-	// Step 10c — unknown-but-not-seed values are rejected at the schema boundary
 	it('rejects kind: "banana" (unknown value)', () => {
 		expect(BrainInput.safeParse({ kind: "banana" }).success).toBe(false);
 	});
@@ -721,4 +822,11 @@ describe("BrainInput schema rejects seed-section spellings", () => {
 	it('rejects kind: "" (empty string)', () => {
 		expect(BrainInput.safeParse({ kind: "" }).success).toBe(false);
 	});
+
+	it.each(brainContract.filter((entry) => entry.field !== entry.marker).map((entry) => entry.field))(
+		'rejects the camelCase field spelling kind: "%s"',
+		(field) => {
+			expect(BrainInput.safeParse({ kind: field }).success).toBe(false);
+		},
+	);
 });

@@ -2,28 +2,75 @@
 scope: src/service/install/provisionBrain
 description: "Provisions the brain layer at install time by scaffolding the user-owned brain config from the bundled template and planning the brain MCP entry derived from it."
 intent: >
-  provisionBrain is the install category that stands up the brain layer
-  on a host. It scaffolds the brain config file from the bundled
-  template into the user-owned configuration directory, leaving every
-  unwired slot as the structural unwired-slot signal so the user
-  finishes wiring later. It then plans the brain MCP server entry
-  from the scaffolded brain config, never from a launcher constant. The
-  bundled template is written for Obsidian and is the default way to satisfy the required-section contract and repair's
-  only source of current section text.
-  The category also self-heals whenever the brain config is missing.
+  provisionBrain is the install category that stands up the brain layer on
+  a host. It scaffolds the brain config file from the bundled template
+  into the user-owned configuration directory, leaving every unwired slot
+  as the structural unwired-slot signal so the user finishes wiring later.
+  It plans the brain MCP entry from the scaffolded config, never from a
+  launcher constant. The bundled template is written for Obsidian and is
+  the default way to satisfy the required-section contract and repair's
+  only source of section text. It self-heals a missing config and reports
+  brain state to the install summary as metadata only.
 outcomes:
   desired:
     - The brain config is scaffolded from the bundled template at first install, with unwired slots left as the structural unwired-slot signal so the user finishes wiring after install. The default template targets Obsidian, and a user-authored config for any other backend that satisfies the required-section contract is equally valid.
     - "Brain config idempotency is presence-only: once the file lands inside the user-owned configuration directory the user owns it forever, customizations are never proposed for overwrite, and a missing file self-heals on the next call."
     - The brain MCP entry's prescription is always derived from the scaffolded brain config — its launcher shape, its arguments, and any unwired slots flow from the config bytes through the parser and interpolator unchanged. The scaffolded config's launcher follows the launch mode chosen for the brain server, global by command name alone or local through the package runner.
-    - This category plans only the brain config scaffold and the brain MCP entry. Brain entry-point artifacts and the brain root itself are seeded later by the integration's own prose, not by this category.
+    - This category plans only the brain config scaffold and the brain MCP entry, leaving brain entry-point artifacts and the brain root to the integration's own prose. Its brain step in the install summary carries only state flags, section markers and sizes, on every brain status.
     - The bundled template satisfies the current required-section contract in full, so a fresh scaffold boots clean, and its section text is written for Obsidian, the backend it targets. Its kanban seeds plant a short kanban index and one guide per kanban operation, written for the per-project folder layout where a task's folder is its column, that reproduce the user's working kanban conventions exactly, so an agent reads the index plus only the operation it is performing.
-    - The brain configuration command the template teaches creates a missing brain config after asking which backend and which launch mode — the bundled template for Obsidian, agent-written wiring plus user-confirmed sections for any other — and repairs an existing one by adding missing required sections and offering each section whose text is a known outdated template version, and any legacy launcher, as its own shown before/after change that is skipped unless the user says yes. Agents read the published contract, the missing-section blocks and the known outdated section versions from the latest template through the install action's read-only brain step, adapt sections with the user when the backend is not the template's, seed brain-side files for new seed sections skip-on-exists, and validate the result against the real parser before finishing.
+    - "The brain configuration command the template teaches creates a missing brain config after asking which backend and which launch mode, and repairs an existing one by consent: missing sections are inserted tool-side byte-identical from the latest bundled template when the brain integration is the template's, otherwise named for the user to adapt, and each outdated section or legacy launcher is shown as its own before/after change and applied only on the user's yes. Agents read one section at a time through the runtime brain tool, fetch only the seeds the brain is actually missing, adapt sections with the user when the backend is not the template's, and validate the result against the real parser before finishing."
   undesired:
     - This category writing any brain entry-point artifact, the brain root, or other user-storage content, or introspecting which brain config argument slot means what — by index, sentinel string, token-shape matcher, or declared slot kinds. Slot semantics belong to the integration's prose, never to this package.
     - Template kanban seeds that drift from the user's working kanban (task format, priorities, project linking, or the per-project folder layout), that reintroduce a board file or a plugin-specific board format, that are rewritten in backend-neutral language, or that collapse into one large guide an agent must read in full to perform a single operation.
-    - "A would-overwrite step returned for any path inside the user-owned configuration directory under any rationale, including landing newer template defaults. The directory is the ownership boundary."
-    - Constructing the brain MCP entry inline from a launcher constant, hardcoded command, or hardcoded argument list, or scaffolding a launcher in a mode the user did not choose or pinned to one machine's path. The scaffolded brain config is the single source of truth for launcher bytes.
-    - Substituting the structural unwired-slot signal for an empty string, a literal placeholder, a fallback path, or a dropped array element anywhere along the plan path. The unwired-slot signal must reach the MCP entry prescription verbatim so the downstream write surface can refuse to land a partially-wired entry.
-    - A repair that changes an existing section, the launcher wiring, or any user customization without the user's explicit yes to that one shown change, that flags a section stale on a guess when its text matches no known outdated template version, or that draws section text from anywhere but the latest bundled template. Repair never replaces a customized section as stale, never inserts Obsidian-specific text unadapted into another backend's config, and the runtime brain tool never returns seed bytes.
+    - A would-overwrite step returned for any path inside the user-owned configuration directory under any rationale, including landing newer template defaults. The directory is the ownership boundary.
+    - Constructing the brain MCP entry from a launcher constant, hardcoded command or argument list, scaffolding a launcher in a mode the user did not choose or pinned to one machine's path, or replacing the unwired-slot signal with an empty string, placeholder, fallback path or dropped element anywhere along the plan path. The scaffolded config is the single source of launcher bytes, and the unwired-slot signal reaches the prescription verbatim so the write surface can refuse a partially-wired entry.
+    - An install summary whose brain step carries section text, section purposes, seed blocks or migration before/after bodies on any brain status, including an invalid or outdated config. Section bytes cross to the agent only one requested section at a time.
+    - A repair that rewrites, reorders or reformats any existing section, the launcher wiring, or any user customization without the user's yes to that one shown change, that flags a section stale when its text matches no known outdated template version, or that draws section text from anywhere but the latest bundled template. Repair never offers a customized section as stale and never inserts Obsidian-specific text unadapted into another backend's config.
 ---
+
+## Context
+
+A brain config drifts behind the bundled template as the required-section contract grows: sections go missing, shipped sections go stale, launchers go legacy. Repairing it touches four parties with different reach. The package can read and write the config and holds the latest template; only the agent can reach the brain itself; only the user can approve a change to text they own; the launcher config follows the brain config only through sync.
+
+The failure this flow exists to prevent was observed on 2026-10-10. A first, metadata-only install summary for a config reported as invalid carried the contract, every missing section's seed block and every migration's before and after text — about 74 KB of a 77 KB response. The harness offloaded it to a file and the agent scripted a parser to read it back. Every one of the eight seeds already existed in the brain, so the right number of seed bytes to send was zero.
+
+The governing rule narrows the root's proportional-cost strategy to tool responses: a tool returns no more text than its caller needs. Bytes cross to the agent only where judgment is required, one decision's worth at a time; everything deterministic — finding where a section goes, matching line endings, checking the backend, guarding against a stale diff — stays inside the tool. The target for the observed session is a status check, one repair call, two small diffs with two approvals, then sync: about 3 KB through the agent's context instead of 77 KB.
+
+## Strategy
+
+**Detection reports state, never text.** The status check and the install summary describe a drifted config by status, fault, section markers, sizes and flags, on every brain status including invalid and outdated ones. A response that pre-loads the text the agent might want is the observed failure: it ships every byte of every branch to serve whichever one the agent takes. The agent asks for text only after it knows which decision it is making.
+
+**Missing sections are inserted tool-side in one consented call.** On the user's yes, the upgrade's brain category inserts every missing section from the latest bundled template, insertion-only, in the file's existing line endings, and returns only the markers it inserted. Placement, ordering and line-ending matching are deterministic, so nothing about them needs the agent. Existing sections, launcher wiring and customizations are never read for rewrite, so the user's yes covers additions alone.
+
+**Template text lands only in the template's own backend.** Before inserting, the repair checks whether the config's integration is the one the template targets. If so, sections go in byte-identical; if not, nothing goes in verbatim and the response names the sections the user must adapt with the agent. Holding this rule inside the tool means a careless agent cannot paste Obsidian instructions into another backend's config.
+
+**Seeding fetches only what the brain lacks, one section at a time.** Only the agent can see the brain, so it checks each seed's presence there first and fetches only the missing ones, each by marker through the runtime brain tool, writing each to its seed path. Single-section reads work on every status where the file exists and is well-formed, so a config that is outdated but readable never blocks seeding. A present seed is never shipped.
+
+**Each migration is one shown change, guarded by its exact bytes.** A stale section or legacy launcher is fetched as one before/after diff, shown, and applied only on that yes, carrying a byte-exact fingerprint of the before text. The tool refuses if the section changed at all since the fetch; a whitespace-tolerant match would overwrite an edit made after review. Only text matching a known outdated template version is ever offered, so customized sections never are.
+
+**The order is insert, seed, migrate, validate, sync.** Insertion first makes the file contract-complete, so every later single-section read succeeds. Migrations follow, so each diff is taken against the file's final shape. Validation runs against the real parser before sync, because sync propagates the brain entry into the launcher config, and a broken config must never be propagated.
+
+**Every exit names the next actionable step, and every step is safe to repeat.** Missing sections point to the repair call; a malformed file names the exact fault and where it is, for a hand fix with the user and a re-check of status — never "run the command you are already running." Re-running repair with nothing missing inserts nothing; a refused stale diff means fetch it again; a seed already present is skipped.
+
+## Good examples
+
+The observed session, done right: status reports the config invalid with eight missing sections and two stale ones. The user approves the repair; one call inserts all eight sections in the file's Windows line endings and returns eight markers. The agent finds all eight seeds already in the brain and fetches none. It shows two small diffs, gets two yeses, validates, and syncs — about 3 KB of context in total.
+
+A user on a non-Obsidian backend runs repair with two sections missing. Nothing is inserted; the response names both sections. The agent reads each template section on its own, drafts the backend-specific version with the user, writes it, and validates against the parser.
+
+The user reviews a stale-section diff, then tidies that section by hand before approving. The apply is refused because the before bytes no longer match; the agent fetches a fresh diff, which now shows the section as customized, and drops the offer.
+
+## Bad examples
+
+An install summary that leaves seed blocks out on a healthy config but includes them "to save a round trip" when the config is invalid. It passes the healthy-path tests and recreates the 74 KB response in exactly the case that produced it.
+
+A repair that inserts sections with bare line feeds into a file written with carriage-return line endings. Every marker is present and the parser accepts it, but the file now has mixed line endings and the user's editor and diff tools show the whole file as changed.
+
+A migration that checks the before text by a whitespace-normalized fingerprint. A user who reflowed a paragraph after seeing the diff passes the check and loses the edit to the template's version without ever approving that.
+
+## References
+
+- Brain config repair flow, settled with the user and relayed by the orchestrator (2026-10-10) -- the five-step order, the tool-side versus agent-side split, the byte-exact stale-diff guard, the backend check on insertion, and the recovery and re-entry rules.
+- Observed brain-aide-invalid repair session in another project (2026-10-10, relayed by the orchestrator) -- the 74 KB of 77 KB response size, harness offload, eight already-present seeds, and the about-3 KB target.
+- `.aide/intent.aide` (Strategy) -- the proportional-cost decision this flow narrows to tool-response size.
+- `src/.aide` (frontmatter) -- only install, sync and consent-gated upgrade surfaces write host files, which places the insertion in the upgrade's brain category.

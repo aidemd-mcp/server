@@ -1,27 +1,76 @@
 ---
 scope: src/tools/brain
 status: aligned
-description: "Runtime brain entry-point — when an agent reaches for the brain mid-task, returns the verbatim bytes of the user-authored named section the request selected."
+description: "Runtime brain entry-point that returns the verbatim bytes of one named brain config section, live or seed, for mid-task brain reads and one-section-at-a-time setup and repair."
 intent: >
-  aide_brain is the live entry-point agents call when they need the brain
-  mid-task. The request names which agent-facing section to read; the
-  response carries either that section's verbatim bytes (on the healthy
-  branch) or remediation naming the exact command that recovers the brain
-  and, when the file exists but falls short, what is missing or malformed
-  (on every unhealthy branch). The user's hand-written prose is the
-  contract; the server selects, never composes or transforms.
+  aide_brain is the entry-point agents call when they need the brain mid-
+  task, or one section of the brain config while setting it up or
+  repairing it. The request names any section from the published contract;
+  the response carries either that one section's verbatim bytes with its
+  contract purpose, or remediation naming the actionable next step and, when the config exists
+  but falls short, what is missing or malformed. A present section stays
+  readable on every status where the config exists and is well-formed. The
+  user's hand-written prose is the contract; the server selects, never
+  composes or transforms.
 outcomes:
   desired:
-    - The request's section selector accepts only the live agent-facing vocabulary the parent governs, and a default selector is honored when none is supplied. Any other value is rejected at the framework boundary, before the handler runs.
-    - On the healthy branch, the response carries the verbatim bytes the parser already extracted for the requested section — byte-identical to what the user wrote, with no trimming, normalization, template rendering, or substitution pass.
-    - The response shape is the same single-discriminant pair on every branch. The user's brain label and the requested selector never cross the wire as response fields.
-    - The unhealthy branches forward the brain-state vocabulary unchanged from the upstream detector, each mapping to remediation that names the exact command the user must run and does not vary by which section was requested. When the config exists but is outdated or malformed, the remediation names the missing sections or the fault.
-    - The remediation field is non-empty on every branch, including the defensive fallback when the detector says healthy but the parser disagrees. A caller can unconditionally surface the field and get an actionable response.
+    - The request's section selector accepts any section marker in the published contract, live or seed, and a default selector is honored when none is supplied. Any other value is rejected at the framework boundary, before the handler runs.
+    - On every status where the config exists and is well-formed, including one missing sections or not yet synced, a requested section that is present comes back as the verbatim bytes the parser extracted for it — byte-identical to what the user wrote, with no trimming, normalization, template rendering, or substitution pass.
+    - On every branch the response carries the brain status, the text field, and a found flag that is true only when the text is the requested section's verbatim bytes, plus, only when found, that section's one-line purpose from the published contract. Existing callers keep working unchanged, and the user's brain label and the requested selector never cross the wire as response fields.
+    - The unhealthy branches forward the brain-state vocabulary unchanged from the upstream detector, each mapping to remediation that names the exact next action and does not vary by which section was requested. Missing sections are named with the repair call that adds them; a malformed file gets the exact fault and where it is, a hand fix with the user, and a re-check of brain state.
+    - The text field is non-empty on every branch — the requested section when found, otherwise actionable remediation — including the defensive fallback when the detector says healthy but the parser disagrees. A caller can unconditionally surface the field and tell from the found flag which one it got.
   undesired:
-    - The handler accepting any selector outside the sanctioned live vocabulary, falling back to a default for an unrecognized value, throwing instead of relying on the registered schema, or surfacing any install-time seed section under any selector. Seed bytes belong to install; exposing them here re-creates a dual source of truth for content the brain owns post-install.
-    - Returning any response field beyond the sanctioned single-discriminant pair — a brain label, an echoed selector, a section name, a connector identifier, or any other label a caller could branch on programmatically. Each is the registry-dispatch regression in different clothing on the consumer side.
+    - The handler accepting any selector outside the published contract's section markers, falling back to a default for an unrecognized value, or throwing instead of relying on the registered schema.
+    - Returning any response field beyond the status, the text, the found flag and the found section's contract purpose — a brain label, an echoed selector, a section name, a connector identifier, or any other label a caller could branch on programmatically — or a found flag that disagrees with what the text carries. A purpose sent when nothing was found, or read from the user's file instead of the published contract, is the same registry-dispatch regression in different clothing on the consumer side.
     - The handler running any transformation between the parser's extracted bytes and the response — placeholder rendering, interpolation, template engines, concatenation across sections, or remediation prose composed from anything beyond the detector's state and its reported missing sections or fault. The user's prose is the contract; the server is a selector, not a renderer.
-    - The handler reaching past the section the request selected — inspecting other parsed fields to vary behavior, re-implementing the parse inline, re-reading the file per call, or caching results across calls. One parse per healthy invocation; in-memory dispatch on the parser's already-named fields; nothing else.
+    - The handler reaching past the section the request selected — returning other sections or whole-template text, varying behavior on other parsed fields, re-implementing the parse inline, re-reading the file per call, or caching results across calls. One parse per invocation; in-memory dispatch on the parser's already-named fields; nothing else.
     - The remediation sentences varying by which section was requested, naming the connector brand, or going empty on any branch. The recovery is the same regardless of which section the agent was reaching for.
-    - Telling the user the brain config is absent when it exists but is outdated or malformed. A user told to create a file they already have is sent down the wrong recovery path.
+    - Telling the user the brain config is absent when it exists but falls short, or answering a config that falls short with remediation that names the command the caller is already running instead of the specific repair or hand fix it needs. Either sends the caller down a dead-end recovery path.
 ---
+
+## Context
+
+The runtime brain tool has two callers with different needs. An agent mid-task wants the orientation briefing so it can reach the brain. The brain configuration flow wants one section at a time — the wiring flow, a seed the brain lacks, a section the user must adapt for another backend — while the config is still being created, repaired or synced.
+
+The second caller is the one an unhealthy config hurts. Repair inserts missing sections, seeds and migrations follow, and sync comes last, so for most of the flow the brain state is something other than healthy. A tool that refuses every read until the state is healthy, or answers an unhealthy state with "run the configuration command", stops exactly the caller that is already running that command and needs one more section to finish.
+
+Adapting a section for a backend other than the template's needs to know what the section must do, and the install summary no longer carries section purposes. The agent learns it here: a found section arrives with its one-line purpose from the published contract.
+
+The tool also sits under the root rule that only install, sync and consent-gated upgrade write host files. Everything the repair flow changes is changed elsewhere; this tool only reads and selects.
+
+## Strategy
+
+**Any section in the published contract is a valid request, and nothing else is.** The selector's vocabulary is the contract itself, so a section added to the contract becomes readable without touching the tool, and seeds, wiring flow and orientation all come through one door. An unknown value is refused at the boundary, not defaulted: a misspelled seed answered with orientation would put the wrong text in the brain. No selector means orientation, for the mid-task caller.
+
+**One request returns one section, verbatim.** The text field carries the parser's bytes between that section's markers and nothing more — never other sections or the whole template — with only the section's contract purpose alongside, so each call costs one decision's worth of context. Bytes are not trimmed, rendered or joined: the user's prose is the contract, and a seed written into the brain must match the template exactly, or later presence and staleness checks disagree with the user.
+
+**A readable config is read on every status.** Whenever the file exists and its sections can be located — healthy, missing sections, no launcher entry, launcher drift — a present section comes back. Seeds and adapted sections are needed precisely while sections are missing or before sync has run; mid-task orientation should not stall over an absent, unrelated kanban guide. Only a missing file or a malformed or unreadable one returns remediation alone, because there is nothing trustworthy to slice.
+
+**Status says how the config is; the found flag says what the text is.** The detector's state is forwarded unchanged even when a section comes back, so a caller mid-repair knows the config is not yet healthy. A readable but unhealthy config can return a section or remediation, so a found flag is true only for the section's bytes, and only then does its contract purpose ride along. No "partial" status, echoed selector or section name is ever added.
+
+**Remediation names the next action, the same for every selector.** A requested section that is absent points to the repair call that inserts missing sections. A malformed file gets the exact fault and where it is, a hand fix made with the user, then a re-check of brain state. Neither points to the configuration command: it is this tool's main repair-time caller, so that would loop. Built only from the detector's state and fault, remediation cannot vary by section or backend.
+
+**Read-only, one parse per call, no memory between calls.** Insertion and guarded migration belong to the upgrade's brain category; a write here would be the second mutation surface the root forbids. Each call reads the file fresh because the repair flow changes it between calls — a cached parse would answer the seed fetch right after insertion with the pre-insertion file and report the new section as still missing.
+
+## Good examples
+
+Repair has inserted eight sections but sync has not run, so status is "no launcher entry". The agent asks for one missing kanban guide seed by its marker, gets exactly that section's bytes with found set, the section's contract purpose alongside and the status still reported, and writes the bytes to the brain unchanged.
+
+A config is missing one kanban guide section. An agent mid-task calls the tool with no selector and gets the orientation briefing with found set; it carries on. Asking for the missing guide itself returns found unset and the repair call, so the agent surfaces that instead of writing remediation into the brain.
+
+A config has an unterminated section marker. Whichever section is requested, the answer names the fault and the marker token it concerns, asks the agent to fix it by hand with the user, and to re-check brain state afterwards.
+
+## Bad examples
+
+Returning a seed with its trailing newline trimmed "for tidiness". It looks identical in a terminal and passes a contains-check, but the copy written to the brain no longer matches the template byte for byte, and later staleness detection flags a section the user never touched.
+
+A missing-section remediation that says to run the brain configuration command, returned while that command is the caller. Every test asserting "names a next step" passes, and the repair flow loops instead of making the repair call.
+
+Setting the found flag from the status — true whenever the config is healthy, false otherwise. Healthy-path tests pass, but a seed fetched mid-repair arrives marked not found and is discarded, so seeding cannot finish until after sync, the step it must precede.
+
+## References
+
+- Brain config repair flow, settled with the user and relayed by the orchestrator (2026-10-10) -- this tool's slice: any-marker selector, one verbatim section per call, reads on every readable status, remediation naming the repair call or the hand fix.
+- User decision relayed by the orchestrator (2026-10-10) -- a found section carries its one-line purpose from the published contract, because adapting a section for another backend needs it and the install summary no longer carries purposes.
+- `src/service/install/provisionBrain/.aide` (body) -- the end-to-end order (insert, seed, migrate, validate, sync) and the one-decision-of-bytes rule this slice serves.
+- `src/.aide` (frontmatter) -- only install, sync and consent-gated upgrade write host files, which keeps this tool read-only.

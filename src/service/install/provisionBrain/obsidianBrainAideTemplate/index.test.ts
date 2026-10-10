@@ -590,14 +590,17 @@ describe("config section ships the Obsidian wiring flow", () => {
 		expect(result.config).toContain("mcp__brain__write_note");
 	});
 
-	it("config seeds from the published contract: names brainContract, role seed and seedPath", async () => {
+	it("config seeds from the content-free summary: names brainSummary.sections, role seed, seedPath, aide_brain and found", async () => {
 		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
 
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 
-		expect(result.config).toContain("brainContract");
+		expect(result.config).toContain("brainSummary.sections");
+		expect(result.config).toContain("aide_brain");
+		expect(result.config).toContain("found");
+		expect(result.config).not.toContain("brainContract");
 		expect(result.config).toContain("`seed`");
 		expect(result.config).toContain("seedPath");
 		expect(result.config).toContain("Brain config (brain.aide)");

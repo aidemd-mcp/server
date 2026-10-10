@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import brainContract from "@/service/brainContract/index.js";
@@ -43,7 +43,7 @@ import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import parseBrainAide from "@/service/parseBrainAide/index.js";
-import upgrade from "./index.js";
+import upgrade, { UpgradeInput } from "./index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -668,122 +668,48 @@ describe("upgrade — apply mode (handler simulation)", () => {
 		expect(applied).toHaveLength(1);
 		expect(applied[0].category).toBe("commands");
 	});
+});
 
-	// ── Test 6a: Brain missing → instructions, no write ──────────────────────
-	it("apply mode brain: missing → instructions, no write", async () => {
-		wireDefaultMocks();
-		vi.mocked(parseBrainAide).mockResolvedValue({ kind: "missing" });
+describe("UpgradeInput — brainChange and beforeHash", () => {
+	const hash = "a".repeat(64);
 
-		// applyFiles adds instructions and leaves status as "missing"
-		vi.mocked(applyFiles).mockImplementation(async (files) =>
-			files.map((f) => {
-				if (f.category === "brain" && f.status === "missing") {
-					return { ...f, instructions: "Run /aide:brain config to set up the brain.", canonicalContent: undefined };
-				}
-				return f;
-			}),
-		);
+	it.each([...brainContract.map(({ marker }) => marker), "launcher"])(
+		"accepts brainChange %s with category brain",
+		(brainChange) => {
+			expect(UpgradeInput.safeParse({ category: "brain", brainChange }).success).toBe(true);
+		},
+	);
 
-		const result = await upgrade(tempDir);
-		const applied = await simulateApplyMode(result, "brain");
-
-		expect(applied).toHaveLength(1);
-		const file = applied[0].files[0];
-		expect(file.instructions).toBe("Run /aide:brain config to set up the brain.");
-		expect(file.status).toBe("missing");
-		expect(file).not.toHaveProperty("canonicalContent");
+	it("accepts brainChange with a 64-char lowercase hex beforeHash", () => {
+		expect(
+			UpgradeInput.safeParse({ category: "brain", brainChange: "launcher", beforeHash: hash }).success,
+		).toBe(true);
 	});
 
-	// ── Test 6b: Brain malformed → instructions, no write ────────────────────
-	it("apply mode brain: malformed → instructions, no write", async () => {
-		wireDefaultMocks();
-		vi.mocked(parseBrainAide).mockResolvedValue({
-			kind: "malformed-frontmatter",
-			reason: "name is required and must be a non-empty string",
-		});
-
-		// applyFiles adds instructions and leaves status as "malformed"
-		vi.mocked(applyFiles).mockImplementation(async (files) =>
-			files.map((f) => {
-				if (f.category === "brain" && f.status === "malformed") {
-					return { ...f, instructions: "Run /aide:brain config to set up the brain.", canonicalContent: undefined };
-				}
-				return f;
-			}),
-		);
-
-		const result = await upgrade(tempDir);
-		const applied = await simulateApplyMode(result, "brain");
-
-		expect(applied).toHaveLength(1);
-		const file = applied[0].files[0];
-		expect(file.instructions).toBe("Run /aide:brain config to set up the brain.");
-		expect(file.status).toBe("malformed");
-		expect(file).not.toHaveProperty("canonicalContent");
+	it("accepts a call with neither brainChange nor beforeHash", () => {
+		expect(UpgradeInput.safeParse({ category: "brain" }).success).toBe(true);
+		expect(UpgradeInput.safeParse({}).success).toBe(true);
 	});
 
-	// ── Test 6c: Brain matches → unchanged, no instructions ──────────────────
-	it("apply mode brain: matches → unchanged, no instructions", async () => {
-		wireDefaultMocks();
-		// Default parseBrainAide mock already returns { kind: "ok" } → status "matches"
-
-		// applyFiles maps matches → "unchanged" (the standard matches branch)
-		vi.mocked(applyFiles).mockImplementation(async (files) =>
-			files.map((f) => {
-				if (f.category === "brain" && f.status === "matches") {
-					return { ...f, status: "unchanged" as const, canonicalContent: undefined };
-				}
-				return f;
-			}),
-		);
-
-		const result = await upgrade(tempDir);
-		const applied = await simulateApplyMode(result, "brain");
-
-		expect(applied).toHaveLength(1);
-		const file = applied[0].files[0];
-		expect(file.status).toBe("unchanged");
-		expect(file.instructions).toBeUndefined();
-		expect(file).not.toHaveProperty("canonicalContent");
+	it("rejects an unknown brainChange", () => {
+		expect(UpgradeInput.safeParse({ category: "brain", brainChange: "not-a-section" }).success).toBe(false);
 	});
 
-	// ── Test 6d: Brain behind → section-naming instructions; brain.aide never written ─
-	it("apply mode brain: behind -> section-naming instructions, brain.aide byte-identical", async () => {
-		wireDefaultMocks();
-		vi.mocked(parseBrainAide).mockResolvedValue({
-			kind: "missing-sections",
-			name: "obsidian",
-			mcpServerConfig: { command: "x", args: [] },
-			present: {},
-			sections: ["kanban-index", "kanban-create"],
-		});
+	it("rejects brainChange with another category or no category", () => {
+		expect(UpgradeInput.safeParse({ category: "agents", brainChange: "launcher" }).success).toBe(false);
+		expect(UpgradeInput.safeParse({ brainChange: "launcher" }).success).toBe(false);
+	});
 
-		// Drive the real applyFiles so a write attempt would hit the real filesystem
-		const actual = await vi.importActual<typeof import("./applyFiles/index.js")>("./applyFiles/index.js");
-		vi.mocked(applyFiles).mockImplementation(actual.default);
+	it("rejects beforeHash without brainChange", () => {
+		expect(UpgradeInput.safeParse({ category: "brain", beforeHash: hash }).success).toBe(false);
+	});
 
-		const brainPath = join(tempDir, ".aide", "config", "brain.aide");
-		await mkdir(join(tempDir, ".aide", "config"), { recursive: true });
-		await writeFile(brainPath, "user-owned brain config bytes", "utf-8");
-		const before = await readFile(brainPath);
-		const beforeMtime = (await stat(brainPath)).mtimeMs;
-
-		const result = await upgrade(tempDir);
-		const applied = await simulateApplyMode(result, "brain");
-
-		expect(applied).toHaveLength(1);
-		const file = applied[0].files[0];
-		expect(file.status).toBe("differs");
-		expect(file.missingSections).toEqual(["kanban-index", "kanban-create"]);
-		expect(file.instructions).toBe(
-			"Brain config is behind — missing required sections: kanban-index, kanban-create. Run /aide:brain config to add them.",
-		);
-		expect(file).not.toHaveProperty("canonicalContent");
-		expect(applied[0].summary.differs).toBe(1);
-
-		// The upgrade tool must never write .aide/config/brain.aide
-		const after = await readFile(brainPath);
-		expect(after.equals(before)).toBe(true);
-		expect((await stat(brainPath)).mtimeMs).toBe(beforeMtime);
+	it("rejects an uppercase or 63-char beforeHash", () => {
+		expect(
+			UpgradeInput.safeParse({ category: "brain", brainChange: "launcher", beforeHash: "A".repeat(64) }).success,
+		).toBe(false);
+		expect(
+			UpgradeInput.safeParse({ category: "brain", brainChange: "launcher", beforeHash: "a".repeat(63) }).success,
+		).toBe(false);
 	});
 });

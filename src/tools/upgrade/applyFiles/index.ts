@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { UpgradeFileResult } from "@/types/index.js";
-import composeBrainInstructions from "./composeBrainInstructions/index.js";
 
 /**
  * Apply mode writer for aide_upgrade — turns comparison results into disk state
@@ -26,19 +25,11 @@ import composeBrainInstructions from "./composeBrainInstructions/index.js";
  * - `"differs"` or `"missing"` IDE Zed step:
  *   Has `canonicalContent` — written to disk normally via the regular file path.
  *
- * - brain category, status `"missing"` or `"malformed"`:
- *   No disk write. Returned with an `instructions` field directing the agent to
- *   run `/aide:brain config`, which is the single canonical home for brain.aide
- *   creation and repair. Status is preserved as-is so the manifest carries the
- *   precise distinction.
- *
- * - brain category, status `"differs"` (config has drifted):
- *   No disk write. Returned with an `instructions` field from
- *   `composeBrainInstructions` that names each drift kind present on its own —
- *   `missingSections`, `staleSections` (outdated template text) and
- *   `legacyLauncher` — and directs the agent to run `/aide:brain config`.
- *   Status stays `"differs"` so the summary still counts the behind file.
- *   The brain category never reaches the generic write path below.
+ * - brain category, any status:
+ *   Returned unchanged — never written here and never given `instructions`.
+ *   The brain category is applied by `brainCategory`, not by this writer; this
+ *   pass-through is the defence that keeps the user-owned brain config out of
+ *   the generic write path even if a caller feeds it a brain result.
  *
  * - `"matches"`:
  *   Returned as `"unchanged"` — already current, no write needed. This maps
@@ -53,14 +44,8 @@ export default async function applyFiles(files: UpgradeFileResult[]): Promise<Up
 }
 
 async function applyFile(file: UpgradeFileResult): Promise<UpgradeFileResult> {
-	// Brain config is detection-only — direct the agent to /aide:brain config for
-	// creation and repair; never write the file from inside upgrade
-	if (file.category === "brain" && file.status === "differs") {
-		return { ...file, instructions: composeBrainInstructions(file) };
-	}
-	if (file.category === "brain" && (file.status === "missing" || file.status === "malformed")) {
-		return { ...file, instructions: "Run /aide:brain config to set up the brain." };
-	}
+	// Brain config is user-owned — brainCategory applies it; never write it from here
+	if (file.category === "brain") return file;
 
 	// Files that already match canonical are reported as "unchanged" in apply output
 	if (file.status === "matches") {

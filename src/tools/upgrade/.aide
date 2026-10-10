@@ -2,27 +2,72 @@
 scope: src/tools/upgrade
 description: "Agent-driven interactive upgrade that detects per-category drift between a host project's installed methodology artifacts and canonical AIDE, applying only what the user confirms."
 intent: >
-  aide_upgrade closes the gap that aide_init's never-overwrite stance leaves
-  open. When canonical doctrine evolves, host projects drift silently because
-  init refuses to clobber existing files. Upgrade is the controlled,
-  interactive complement: it surfaces drift the agent walks the user through
-  per category, and applies only the categories the user confirms. The flow
-  is consent-first by design — the user sees what would change before
-  anything is written, and a category is the unit of confirmation, not an
-  individual file.
+  aide_upgrade closes the gap that aide_init's never-overwrite stance
+  leaves open. When canonical doctrine evolves, host projects drift
+  silently because init refuses to clobber existing files. Upgrade is the
+  controlled, interactive complement: it surfaces drift the agent walks
+  the user through per category, and applies only what the user confirms.
+  The flow is consent-first by design — the user sees what would change
+  before anything is written. A category is the unit of confirmation,
+  except in the user-owned brain config, where each outdated section is
+  its own decision.
 outcomes:
   desired:
     - Drift detection runs read-only and groups results by methodology category, so the agent can present each category to the user as a discrete decision.
-    - Application happens only on per-category user confirmation, and a confirmed category is applied as a unit — partial application within a category is not offered, preventing mixed-version artifacts.
+    - Application happens only on per-category user confirmation, and a confirmed category is applied as a unit so no mixed-version artifacts result. The brain config's outdated sections and legacy launcher are the exception, each applied only on its own shown change and confirmation.
     - The tool is the executor for files it owns, so the agent never sees canonical content for those categories and cannot hallucinate it; the agent's role is consent-gathering and surfacing results.
     - Files outside the methodology surface are invisible to the tool. User code and user-authored intent specs are never read, compared, or written.
-    - The brain step reports missing required sections, existing sections whose text is a known outdated template version, and a legacy brain launcher (unpinned, unversioned, missing auto-confirm, or older than the bundled pin) as distinct kinds of brain drift, and routes the user to the brain configuration command. The upgrade never writes the user-owned brain config, and custom launchers are left unflagged.
+    - The brain category reports missing required sections, sections whose text is a known outdated template version, and a legacy launcher as distinct kinds of drift, leaving custom launchers and customized sections unflagged. On the user's yes it inserts every missing section byte-identical from the latest bundled template when the brain integration is the template's, otherwise naming the sections the user must adapt, and it applies one confirmed migration at a time, refusing if that section's bytes changed at all since its diff was shown.
     - The MCP step judges each server entry against the canonical shape for the launch mode that entry already uses, so a global entry stays global and a local entry stays local.
   undesired:
     - An apply path that fires without per-category user confirmation, or that treats the whole upgrade as one all-or-nothing decision. Either silently destroys customizations the user would have kept.
-    - The tool returning canonical file content to the agent for the agent to write itself. This invites hallucinated content and bypasses the tool-as-executor contract.
+    - The tool returning canonical file content to the agent for the agent to write itself, or returning more brain template text than the one section a migration decision needs. Either bypasses the tool-as-executor contract and floods the agent with bytes it has no judgment to apply.
     - A drift-detection pass that mutates the host's disk. Comparison must be observably read-only; any side effect during detection is a regression.
     - The tool reading, comparing, or writing files outside the methodology surface — user code, user intent specs, or any artifact aide_init did not install.
-    - The brain step writing anything into the user-owned brain config, or reporting brain drift as a generic mismatch that folds stale sections or a legacy launcher into the missing-section report without naming each and where to repair it. Flagging a custom launcher or a customized section as legacy is equally a regression.
+    - A brain write that rewrites, reorders or reformats any existing section, the launcher wiring or a customization beyond the one confirmed change, applies a migration over a section whose bytes changed after its diff was shown, leaves mixed line endings in the file, or inserts template text into a config for any other integration. Folding stale sections or a legacy launcher into the missing-section report, or flagging a custom launcher or customized section as legacy, is equally a regression.
     - An upgrade that proposes switching a server entry between global and local launch, or reports a correctly wired global entry as drift.
 ---
+
+## Context
+
+Init never overwrites, so canonical doctrine drifts away from what a host installed. Upgrade is the complement that closes the gap, and it touches two kinds of host artifact that need different handling. Methodology files belong to the package: the latest version is the correct one, so the only question for the user is whether to take it. The brain config belongs to the user: it holds wiring and customizations no canonical copy knows about, and it drifts in three separate ways — sections the contract now requires but the file lacks, shipped sections whose text is an old template version, and a launcher in a legacy shape.
+
+Three parties are involved and each can do only part of the work. The tool holds the latest canonical bytes and can write host files. The agent can talk to the user but cannot be trusted to reproduce canonical text it was handed. The user is the only one who can approve a change to anything they own. Under the source tree's rule, only install, sync and a consent-gated upgrade may write host files, so the brain config's repairs have to come through here, gated by consent.
+
+The end-to-end brain repair order, and the reason tool responses stay small, are set out in the brain provisioning spec. This spec covers only what upgrade decides inside that flow.
+
+## Strategy
+
+**Detecting drift and applying it are separate calls.** A detection call reads every category, writes nothing and returns status, counts and names only. Applying a change is a separate call that names one category. The user's decision sits between the two calls, so no single invocation can both find drift and act on it, and a detection pass has nothing to apply. The agent shows each category as its own decision; nothing upgrades the whole surface on one yes.
+
+**For package-owned categories the category is the unit, and the tool does the writing.** On a confirmed category the tool writes every differing or missing file from canonical and returns a manifest. Half a category would leave artifacts referencing each other at mismatched versions. The agent never receives canonical bytes, so it cannot paraphrase or invent them. Server entries are judged against their existing launch mode, because the user chose it and switching it is not drift repair.
+
+**The brain config is written only with consent and only by insertion.** A yes to the brain category inserts every missing section and touches nothing that is already there. The user approved additions, not edits to text they own, so existing sections, launcher wiring, frontmatter and customizations are never rewritten, reordered or reformatted. This is the source tree's consent-gated write. Inserting tool-side avoids a template round trip through the agent, where text gets garbled.
+
+**Template text is inserted only into the template's own integration.** The bundled template is written for Obsidian. Before inserting, the tool checks the config's integration. If it is Obsidian, the sections go in byte-identical. If it is anything else, the tool inserts nothing and returns the names of the sections the user must adapt with the agent. Pasting Obsidian instructions into a config for another backend would satisfy the parser and still mislead every agent that reads it later.
+
+**An insertion returns markers, matches line endings, and can be repeated safely.** The manifest lists only the inserted markers: the agent needs to know which sections landed, not their text, so zero template bytes is the right amount. Inserted text uses the file's existing line endings, because a mixed file looks fully rewritten in editors and diffs. A re-run with nothing missing inserts nothing and returns an empty manifest, so an interrupted repair is safe to retry.
+
+**Inside the brain config, each outdated section is its own decision, guarded by its exact bytes.** Stale sections and a legacy launcher sit outside the category yes; each is shown as its own before-and-after change and applied alone. The apply carries a byte-exact fingerprint of the before text the user saw; any change since is refused with an instruction to re-fetch the diff, because a whitespace-tolerant match would overwrite an edit made after review. Only text matching a known outdated template version is offered, so customized sections never are.
+
+## Good examples
+
+The user approves the agents category, which has three files that differ and one that is missing. The tool writes all four and returns their names. The agent reports "four agent files updated" without ever having seen what is in them.
+
+A brain config is missing two sections and has one stale section. The user approves the brain category. One call inserts both sections in the file's existing line endings and returns two markers. The stale section is offered separately as a small diff, the user says no, and it stays as it is. A second run of the brain category returns an empty manifest.
+
+A config for a non-Obsidian backend is missing one section. The brain category call writes nothing and names that section. The agent drafts a version for that backend with the user instead of copying the template.
+
+## Bad examples
+
+A yes to the brain category that rewrites the config from the template "to bring it fully current." Every missing section appears, but the user's launcher wiring and an edited section are replaced without their approval.
+
+An insertion manifest that echoes each inserted block "so the agent can confirm it." Tests pass, and the response grows by the full template size on every repair, which is the bloat the flow exists to remove.
+
+A migration apply that folds the legacy launcher and every stale section into one confirmation because they were all found in the same file. The user agrees to one diff and gets four changes.
+
+## References
+
+- `src/service/install/provisionBrain/.aide` (body) -- the end-to-end repair order, the zero-template-bytes rule for responses, and the observed 74 KB-of-77 KB failure this slice inherits rather than restates.
+- `src/.aide` (frontmatter) -- only install, sync and consent-gated upgrade write host files, which places the brain config's writes here.
+- Brain config repair flow, settled with the user and relayed by the orchestrator (2026-10-10) -- insertion-only consent, the integration check, markers-only manifests, matching line endings, the byte-exact guard with re-fetch on refusal, and no-op re-runs.

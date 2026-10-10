@@ -25,5 +25,5 @@ outcomes:
     - A tool description that defers a load-bearing rule to an external document, or that was hand-typed as a string duplicating doctrine that lives in the canonical doc set. Either form breaks the single-source-of-truth contract this submodule inherits.
     - An install run that is not idempotent through either entry point — stacked pointer surfaces, duplicated scaffolded files, or divergent on-disk results between the two entry points. The install service is the contract; the entry points are wire shapes that must not be allowed to diverge.
     - The install action eagerly inlining the methodology into the host's always-loaded session-start surface instead of writing a shallow pointer plus an on-demand doc set. This silently reverses progressive disclosure at the delivery layer.
-    - A second mutation surface for any host file the install action wrote, added inside the server runtime to "save the user a command." Visible-command-boundary invariants belong to the install and sync surfaces only; the runtime tools are read-only against the host's wired files.
+    - A second mutation surface for any host file the install action wrote, added inside the server runtime to save the user a command. Only the install, sync and consent-gated upgrade surfaces write host files; every other runtime tool is read-only against them.
 ---

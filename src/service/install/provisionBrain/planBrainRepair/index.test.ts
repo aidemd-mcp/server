@@ -1,29 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { describe, it, expect } from "vitest";
 import planBrainRepair from "./index.js";
-import obsidianBrainAideTemplate from "../../obsidianBrainAideTemplate/index.js";
+import obsidianBrainAideTemplate from "../obsidianBrainAideTemplate/index.js";
 import brainContract from "@/service/brainContract/index.js";
 import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
 import { parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import type { BrainSectionMarker, BrainSectionRepair } from "@/types/index.js";
 
-let projectRoot: string;
-
-beforeEach(async () => {
-	projectRoot = await mkdtemp(join(tmpdir(), "aide-plan-brain-repair-"));
-});
-
-afterEach(async () => {
-	await rm(projectRoot, { recursive: true, force: true });
-});
-
-const brainAidePath = () => join(projectRoot, ".aide", "config", "brain.aide");
-
-async function writeBrainAide(content: string): Promise<void> {
-	await mkdir(join(projectRoot, ".aide", "config"), { recursive: true });
-	await writeFile(brainAidePath(), content, "utf-8");
+/** Plan the repair for a user file given as text, the way aide_upgrade does: parse once, plan from the parse. */
+function planFor(text: string): BrainSectionRepair[] | undefined {
+	return planBrainRepair(parseBrainAideFromString(text));
 }
 
 /** The marker-wrapped section (open marker through close marker) as it appears in `text`. */
@@ -62,31 +47,26 @@ function applyRepair(content: string, repairs: BrainSectionRepair[]): string {
 }
 
 describe("planBrainRepair", () => {
-	it("missing two adjacent sections yields two entries anchored in order", async () => {
-		await writeBrainAide(templateWithout(["kanban-index", "kanban-create"]));
-
-		const repairs = await planBrainRepair(projectRoot);
+	it("missing two adjacent sections yields two entries anchored in order", () => {
+		const repairs = planFor(templateWithout(["kanban-index", "kanban-create"]));
 
 		expect(repairs?.map((r) => r.marker)).toEqual(["kanban-index", "kanban-create"]);
 		expect(repairs?.[0].insertAfter).toBe(toMarkerPair("research-index").close);
 		expect(repairs?.[1].insertAfter).toBe(toMarkerPair("kanban-index").close);
 	});
 
-	it("missing the first section anchors on null", async () => {
-		await writeBrainAide(templateWithout(["orientation"]));
-
-		const repairs = await planBrainRepair(projectRoot);
+	it("missing the first section anchors on null", () => {
+		const repairs = planFor(templateWithout(["orientation"]));
 
 		expect(repairs).toHaveLength(1);
 		expect(repairs?.[0].marker).toBe("orientation");
 		expect(repairs?.[0].insertAfter).toBeNull();
 	});
 
-	it("each block is byte-identical to the template's marker-wrapped section", async () => {
-		await writeBrainAide(templateWithout(["config", "study-playbook", "kanban-index"]));
+	it("each block is byte-identical to the template's marker-wrapped section", () => {
 		const template = obsidianBrainAideTemplate();
 
-		const repairs = await planBrainRepair(projectRoot);
+		const repairs = planFor(templateWithout(["config", "study-playbook", "kanban-index"]));
 
 		expect(repairs).toHaveLength(3);
 		for (const repair of repairs!) {
@@ -94,10 +74,8 @@ describe("planBrainRepair", () => {
 		}
 	});
 
-	it("entries carry every contract field, in contract order", async () => {
-		await writeBrainAide(templateWithout(["playbook-index", "kanban-create"]));
-
-		const repairs = await planBrainRepair(projectRoot);
+	it("entries carry every contract field, in contract order", () => {
+		const repairs = planFor(templateWithout(["playbook-index", "kanban-create"]));
 
 		const expected = brainContract.filter(
 			(e) => e.marker === "playbook-index" || e.marker === "kanban-create",
@@ -108,42 +86,44 @@ describe("planBrainRepair", () => {
 		}
 	});
 
-	it("a complete file yields undefined", async () => {
-		await writeBrainAide(obsidianBrainAideTemplate());
-		expect(await planBrainRepair(projectRoot)).toBeUndefined();
+	it("a complete file yields undefined", () => {
+		expect(planFor(obsidianBrainAideTemplate())).toBeUndefined();
 	});
 
-	it("a malformed file (half-present marker pair) yields undefined", async () => {
-		await writeBrainAide(
-			"---\nname: x\nmcpServerConfig:\n  command: npx\n  args:\n    - a\n---\n\n<!-- aide-orientation-start -->\n\nhalf-present pair, never closed\n",
-		);
-		expect(await planBrainRepair(projectRoot)).toBeUndefined();
+	it("a malformed file (half-present marker pair) yields undefined", () => {
+		expect(
+			planFor(
+				"---\nname: x\nmcpServerConfig:\n  command: npx\n  args:\n    - a\n---\n\n<!-- aide-orientation-start -->\n\nhalf-present pair, never closed\n",
+			),
+		).toBeUndefined();
 	});
 
-	it("an absent file yields undefined", async () => {
-		expect(await planBrainRepair(projectRoot)).toBeUndefined();
+	it("a missing parse yields undefined", () => {
+		expect(planBrainRepair({ kind: "missing" })).toBeUndefined();
 	});
 
-	it("never changes the user's file bytes, including customized sections", async () => {
+	it("never changes the user's file bytes or the parse it was given, including customized sections", () => {
 		const orientationOpen = toMarkerPair("orientation").open;
 		const customized = templateWithout(["kanban-index"]).replace(
 			orientationOpen,
 			`${orientationOpen}\n\nCUSTOMIZED BY USER`,
 		);
-		await writeBrainAide(customized);
+		const userText = customized;
+		const parse = parseBrainAideFromString(userText);
+		const parseBefore = structuredClone(parse);
 
-		await planBrainRepair(projectRoot);
+		planBrainRepair(parse);
 
-		expect(await readFile(brainAidePath(), "utf-8")).toBe(customized);
+		expect(parse).toEqual(parseBefore);
+		expect(userText).toBe(customized);
 	});
 
-	it("applying the prescription yields an ok file and leaves every present section byte-identical", async () => {
+	it("applying the prescription yields an ok file and leaves every present section byte-identical", () => {
 		const missing: BrainSectionMarker[] = ["orientation", "playbook-index", "kanban-index"];
 		const original = templateWithout(missing);
 		expect(parseBrainAideFromString(original).kind).toBe("missing-sections");
-		await writeBrainAide(original);
 
-		const repairs = await planBrainRepair(projectRoot);
+		const repairs = planFor(original);
 		const repaired = applyRepair(original, repairs!);
 
 		const repairedParse = parseBrainAideFromString(repaired);

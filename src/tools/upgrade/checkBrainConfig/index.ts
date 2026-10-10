@@ -25,9 +25,10 @@ import { readBrainMigrationNotice } from "@/service/install/provisionBrain/index
  *   (a present-but-unreadable file is never reported as `"missing"`)
  *
  * The migration notice is consulted only for `ok` and `missing-sections`; broken
- * files never reach it. The brain config is user-owned: upgrade never writes it,
- * and the result never carries `canonicalContent` or a `prescription`. Every kind
- * of drift is repaired through `/aide:brain config`.
+ * files never reach it. Detection is read-only: the result never carries section
+ * bytes, `canonicalContent` or a `prescription`. The brain category's writes
+ * happen in `brainCategory` (missing-section insertion, change preview, guarded
+ * apply), never here.
  */
 export default async function checkBrainConfig(projectRoot: string): Promise<UpgradeFileResult> {
 	const base = {

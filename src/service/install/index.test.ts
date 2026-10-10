@@ -206,7 +206,7 @@ describe("init — structured JSON result", () => {
 		expect(stepsForCategory(result, "skills").length).toBeGreaterThan(0);
 	});
 
-	it("cold project, no brainPath: Brain config step is would-create with template content and the contract", async () => {
+	it("cold project, no brainPath: Brain config step is would-create with template content and the content-free summary", async () => {
 		const result = await init(tempDir);
 
 		const brainAideStep = findStep(result, "Brain config (brain.aide)");
@@ -215,8 +215,11 @@ describe("init — structured JSON result", () => {
 		expect(brainAideStep?.status).toBe("would-create");
 		expect(brainAideStep?.filePath).toBe(join(tempDir, ".aide", "config", "brain.aide"));
 		expect(brainAideStep?.content).toBe(obsidianBrainAideTemplate());
-		expect(brainAideStep?.brainContract).toEqual(brainContract);
-		expect(brainAideStep?.brainRepair).toBeUndefined();
+		expect(brainAideStep?.brainSummary?.sections.map((s) => s.marker)).toEqual(brainContract.map((entry) => entry.marker));
+		expect(brainAideStep?.brainSummary?.missingSections).toEqual([]);
+		for (const removed of ["brainContract", "brainRepair", "brainMigration"]) {
+			expect(brainAideStep).not.toHaveProperty(removed);
+		}
 	});
 
 	it("brain category is the single Brain config step; the brain MCP step is mcp; no retired placeholders", async () => {
@@ -253,7 +256,7 @@ describe("init — structured JSON result", () => {
 		expect(brainMcpStep?.prescription?.entry.command).toBeTruthy();
 	});
 
-	it("outdated brain.aide (kanban sections missing): Brain config step is exists with a kanban-tail brainRepair", async () => {
+	it("outdated brain.aide (kanban sections missing): Brain config step is exists with the kanban tail in brainSummary.missingSections", async () => {
 		const full = obsidianBrainAideTemplate();
 		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-index").open)));
 
@@ -262,9 +265,7 @@ describe("init — structured JSON result", () => {
 		const brainAideStep = findStep(result, "Brain config (brain.aide)");
 		expect(brainAideStep?.status).toBe("exists");
 		expect(brainAideStep?.content).toBeUndefined();
-		expect(brainAideStep?.brainContract).toEqual(brainContract);
-		expect(brainAideStep?.brainRepair).toHaveLength(kanbanTail.length);
-		expect(brainAideStep?.brainRepair?.map((r) => r.marker)).toEqual(kanbanTail);
+		expect(brainAideStep?.brainSummary?.missingSections).toEqual(kanbanTail);
 	});
 
 	it("idempotency — re-running on initialized content returns exists steps", async () => {
@@ -437,17 +438,80 @@ describe("init — response shaping (server-handler logic)", () => {
 		expect(mcpSteps.length).toBe(originalMcpSteps.length);
 	});
 
-	it("summary mode: brain step loses content but keeps brainContract and brainRepair", async () => {
+	it("summary mode: brain step loses content and carries only brainSummary", async () => {
 		const full = obsidianBrainAideTemplate();
 		const coldStripped = stripContent(await init(tempDir)).steps.find((s) => s.name === "Brain config (brain.aide)");
 		expect(coldStripped).not.toHaveProperty("content");
-		expect(coldStripped?.brainContract).toEqual(brainContract);
+		expect(coldStripped?.brainSummary).toBeDefined();
+		for (const removed of ["brainContract", "brainRepair", "brainMigration"]) {
+			expect(coldStripped).not.toHaveProperty(removed);
+		}
 
 		await writeBrainAide(full.slice(0, full.indexOf(toMarkerPair("kanban-index").open)));
 		const outdatedStripped = stripContent(await init(tempDir)).steps.find((s) => s.name === "Brain config (brain.aide)");
 		expect(outdatedStripped).not.toHaveProperty("content");
-		expect(outdatedStripped?.brainContract).toEqual(brainContract);
-		expect(outdatedStripped?.brainRepair).toHaveLength(kanbanTail.length);
+		for (const removed of ["brainContract", "brainRepair", "brainMigration"]) {
+			expect(outdatedStripped).not.toHaveProperty(removed);
+		}
+		expect(outdatedStripped?.brainSummary?.missingSections).toEqual(kanbanTail);
+	});
+
+	describe("summary mode: the brain step stays small on every brain status", () => {
+		const template = obsidianBrainAideTemplate();
+
+		/** Bytes strictly between a section's markers in the bundled template. */
+		function templateSection(marker: Parameters<typeof toMarkerPair>[0]): string {
+			const { open, close } = toMarkerPair(marker);
+			return template.slice(template.indexOf(open) + open.length, template.indexOf(close));
+		}
+
+		/** JSON-escaped form of a line, so the substring check matches how it would serialize. */
+		function serializedForm(line: string): string {
+			return JSON.stringify(line).slice(1, -1);
+		}
+
+		const orientationLines = templateSection("orientation")
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0);
+		const seedHeadings = brainContract
+			.filter((entry) => entry.role === "seed")
+			.map((entry) => templateSection(entry.marker).split("\n").find((line) => line.startsWith("#")))
+			.filter((line): line is string => line !== undefined);
+
+		const statuses: Array<[string, () => Promise<void>]> = [
+			["cold project", async () => {}],
+			["current template on disk", () => writeBrainAide(template)],
+			["kanban-tail-missing file", () => writeBrainAide(template.slice(0, template.indexOf(toMarkerPair("kanban-index").open)))],
+			[
+				"v0.9.0 config",
+				async () =>
+					writeBrainAide(
+						await readFile(
+							join(process.cwd(), "src", "service", "install", "provisionBrain", "detectBrainMigration", "__fixtures__", "v0.9.0-brain.txt"),
+							"utf-8",
+						),
+					),
+			],
+			["malformed config (half-present marker pair)", () => writeBrainAide(template.replace(toMarkerPair("kanban-index").close, ""))],
+		];
+
+		it("has seed headings and orientation lines to check against", () => {
+			expect(orientationLines.length).toBeGreaterThan(0);
+			expect(seedHeadings.length).toBeGreaterThan(0);
+		});
+
+		it.each(statuses)("%s: serialized brain step is under 4096 bytes and carries no section text", async (_status, arrange) => {
+			await arrange();
+
+			const step = stripContent(await init(tempDir)).steps.find((s) => s.name === "Brain config (brain.aide)");
+			expect(step).toBeDefined();
+			const serialized = JSON.stringify(step);
+
+			expect(serialized.length).toBeLessThan(4096);
+			for (const line of orientationLines) expect(serialized).not.toContain(serializedForm(line));
+			for (const heading of seedHeadings) expect(serialized).not.toContain(serializedForm(heading));
+		});
 	});
 
 	it("category filter: returns only steps of the specified category", async () => {

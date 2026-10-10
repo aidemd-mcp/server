@@ -102,8 +102,8 @@ export default async function init(
 	const mcpStep = await wireMcp(join(projectRoot, config.mcpConfigPath), modes.aide);
 
 	// The brain category is always planned. The brain config step is presence-only
-	// (an existing .aide/config/brain.aide is never overwritten), carries the published
-	// brainContract, and carries a brainRepair prescription when the config is outdated.
+	// (an existing .aide/config/brain.aide is never overwritten) and carries only the
+	// content-free brainSummary; insertion and migrations belong to aide_upgrade's brain category.
 	// The brain root is not this layer's concern: the config prose seeds the brain.
 	// brainHints stay interview material for the agent and never feed the plan.
 	const brainMcpPath = join(projectRoot, config.mcpConfigPath);

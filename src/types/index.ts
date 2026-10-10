@@ -237,32 +237,48 @@ export interface InitStep {
 	 */
 	instructions?: string;
 	/**
-	 * The full published brain config required-section contract. Present only
-	 * on the brain config (brain.aide) step, so agents read the required list
-	 * and order from `aide_init` rather than from prose.
+	 * Content-free summary of the brain config. Present only on the brain config
+	 * (brain.aide) step, on every status. Carries no section text, purposes,
+	 * repair blocks or migration bodies.
 	 */
-	brainContract?: readonly BrainSectionContractEntry[];
-	/**
-	 * Per-section repair prescriptions. Present only on an `exists` brain config
-	 * step whose file parses to `missing-sections`; one entry per absent section,
-	 * in contract order.
-	 */
-	brainRepair?: BrainSectionRepair[];
-	/**
-	 * Migration offers for the brain config. Present only on an `exists` brain
-	 * config step whose file parses `ok` or `missing-sections` and has a stale
-	 * section or a legacy launcher. Every change is offered for the user's yes
-	 * and is never applied by the tool.
-	 */
-	brainMigration?: BrainMigration;
+	brainSummary?: BrainStepSummary;
 }
+
+/**
+ * One contract section as the `InitStep.brainSummary` reports it. `seedPath` is
+ * present only on seed entries. `templateBytes` is the UTF-8 byte length of the
+ * latest bundled template's section (the bytes strictly between its markers).
+ */
+export type BrainStepSection = {
+	marker: BrainSectionMarker;
+	role: "live" | "seed";
+	seedPath?: string;
+	templateBytes: number;
+};
+
+/**
+ * Content-free summary of the brain config carried on `InitStep.brainSummary`.
+ * `sections` is the contract in order. `missingSections` and `staleSections`
+ * name markers only. `legacyLauncher` lists the reasons the launcher is legacy,
+ * or `null`. `templateIntegration` is whether the launcher is the bundled
+ * template integration, or `null` when the file is absent or unparseable. A
+ * would-create step, and an unparseable file, report empty arrays and `null`s.
+ */
+export type BrainStepSummary = {
+	sections: BrainStepSection[];
+	missingSections: BrainSectionMarker[];
+	staleSections: BrainSectionMarker[];
+	legacyLauncher: LegacyLauncherReason[] | null;
+	templateIntegration: boolean | null;
+};
 
 /**
  * One absent brain config section plus the bytes and position needed to insert
  * it. `block` is the full marker-wrapped section, byte-identical to the latest
  * bundled template. `insertAfter` is the exact close-marker text the block goes
- * directly after, or `null` for the start of the body. Insertion semantics are
- * defined in provisionBrain brief commitment #6.
+ * directly after, or `null` for the start of the body. Consumed by aide_upgrade's
+ * brain insertion, not by the agent. Insertion semantics are defined in
+ * provisionBrain brief commitment #6.
  */
 export type BrainSectionRepair = BrainSectionContractEntry & {
 	block: string;
@@ -281,8 +297,8 @@ export type LegacyLauncherReason = "unpinned" | "unversioned" | "older-pin" | "m
 /**
  * A proposed launcher rewrite for a legacy brain launcher. `before` is the
  * user's `mcpServerConfig` as parsed; `after` is the replacement for each
- * launch mode. Produced by provisionBrain; consumed by `BrainMigration` and
- * read by `/aide:brain config`.
+ * launch mode. Produced by provisionBrain; consumed by aide_upgrade's brain
+ * preview and apply via `BrainMigration`, no longer carried on `InitStep`.
  */
 export type BrainLauncherOffer = {
 	reasons: LegacyLauncherReason[];
@@ -294,7 +310,8 @@ export type BrainLauncherOffer = {
  * One stale brain config section plus its replacement. `before` and `after`
  * are the bytes strictly between that section's markers: `before` is the
  * user's, verbatim, and `after` is the latest bundled template's. Produced by
- * provisionBrain; consumed by `BrainMigration`.
+ * provisionBrain; consumed by aide_upgrade's brain preview and apply via
+ * `BrainMigration`, no longer carried on `InitStep`.
  */
 export type BrainStaleSectionOffer = BrainSectionContractEntry & {
 	before: string;
@@ -303,9 +320,9 @@ export type BrainStaleSectionOffer = BrainSectionContractEntry & {
 
 /**
  * Everything aide_init offers to migrate in an existing brain config: stale
- * sections and a legacy launcher. Produced by provisionBrain and carried on
- * `InitStep.brainMigration`; each change is applied only after the user says
- * yes to it.
+ * sections and a legacy launcher. Produced by provisionBrain and consumed by
+ * aide_upgrade's brain preview and apply; no longer carried on `InitStep`. Each
+ * change is applied only after the user says yes to it.
  */
 export type BrainMigration = {
 	staleSections: BrainStaleSectionOffer[];
@@ -322,6 +339,37 @@ export type BrainMigrationNotice = {
 	staleSections: BrainSectionMarker[];
 	legacyLauncher: LegacyLauncherReason[] | null;
 };
+
+/** What a brain change touches: one contract section, or the launcher. */
+export type BrainChangeTarget = BrainSectionMarker | "launcher";
+
+/**
+ * Result of aide_upgrade's `category: "brain"`, discriminated on `outcome`.
+ * `beforeHash` is the lowercase hex SHA-256 of `before` as UTF-8, so the agent
+ * never computes a hash.
+ */
+export type BrainCategoryResult =
+	/** Missing contract sections were inserted into brain.aide; lists their markers. */
+	| { outcome: "inserted"; inserted: BrainSectionMarker[] }
+	/** Inserted seed sections need adapting to this brain; `instructions` says how. */
+	| { outcome: "adapt"; adapt: BrainSectionMarker[]; instructions: string }
+	/** One previewed change: `before` is the exact text hashed into `beforeHash`, `after` the replacement. */
+	| { outcome: "change"; target: BrainChangeTarget; before: string; after: string; beforeHash: string }
+	/** The target section is absent from the file; `template` is the bundled section to insert. */
+	| { outcome: "missing"; target: BrainSectionMarker; template: string; instructions: string }
+	/** The hash-guarded change was written to brain.aide. */
+	| { outcome: "applied"; target: BrainChangeTarget }
+	/** The request was refused; `instructions` says why and what to do. */
+	| { outcome: "refused"; instructions: string };
+
+/**
+ * Internal to aide_upgrade's brain category. `before` is the exact text hashed
+ * into `beforeHash`; `after` is in the file's line ending; `text` is the whole
+ * file with the change spliced in (not yet validated or written).
+ */
+export type BrainChangeOffer =
+	| { kind: "offer"; target: BrainChangeTarget; before: string; after: string; text: string }
+	| { kind: "refused"; instructions: string };
 
 /**
  * One recorded outdated version of a bundled template section: the fingerprint
@@ -552,7 +600,8 @@ export type BrainAideFault =
  *
  * - `brain-aide-invalid` - the file is present but falls short of the contract:
  *   missing sections, malformed frontmatter, malformed body, or unreadable. Carries the
- *   `fault` detail and `hints` - no `name`. Remediation: `/aide:brain config`.
+ *   `fault` detail and `hints` - no `name`. Remediation: missing sections are
+ *   inserted with `aide_upgrade` `category: "brain"`; a malformed file is fixed by hand.
  *
  * - `no-mcp-entry` - brain.aide parsed successfully, but the host's `.mcp.json`
  *   cannot be read (ENOENT or any I/O failure), cannot be parsed as JSON, or has
@@ -612,16 +661,31 @@ export type BrainState =
  *
  * - `status` mirrors `BrainState["status"]` exactly, so an agent that already
  *   saw boot-time brain state from `aide_info` does not learn new terms.
- * - `instructions` is always non-empty — ready-to-execute prose composed by the
- *   server. On `"ok"`, it tells the agent which MCP tools to call and how to
- *   reach the wired backend's seeded entry-point file. On non-ok branches, it
- *   carries remediation prose directing the agent to surface a wiring prompt to
- *   the user. A response with `status: "ok"` and empty `instructions` is a
- *   forbidden state.
+ * - `instructions` is always non-empty. On `"ok"`, it is the requested section's
+ *   text. On a remediation branch it is prose composed by the server directing
+ *   the agent to surface a wiring prompt to the user. A readable non-ok config
+ *   can still return a section. A response with `status: "ok"` and empty
+ *   `instructions` is a forbidden state.
+ * - `found` says what `instructions` carries.
+ * - `purpose` is the requested section's one-line purpose from the published
+ *   `brainContract`; present only when `found` is true, absent on every
+ *   remediation branch.
  */
 export type BrainToolResult = {
 	status: BrainState["status"];
 	instructions: string;
+	/**
+	 * True only when `instructions` is the requested section's verbatim bytes;
+	 * false on every remediation branch. Never derived from `status`.
+	 */
+	found: boolean;
+	/**
+	 * The requested section's one-line purpose, read from the published
+	 * `brainContract` entry for that marker (never from the user's brain.aide).
+	 * Present only when `found` is true; the key is absent on every remediation
+	 * branch.
+	 */
+	purpose?: string;
 };
 
 /**
@@ -912,3 +976,6 @@ export const SKIP_DIRS = [
 	"coverage",
 	"__pycache__",
 ] as const;
+
+/** One `args` item of a brain.aide `mcpServerConfig` located in the frontmatter region: its whole source line and its parsed value. */
+export type ArgLine = { start: number; end: number; value: string | null };

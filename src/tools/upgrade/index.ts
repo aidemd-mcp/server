@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { join, dirname, isAbsolute } from "node:path";
+import { join, dirname } from "node:path";
+import brainContract from "@/service/brainContract/index.js";
 import type {
+	BrainChangeTarget,
 	FrameworkType,
 	UpgradeCategory,
 	UpgradeCategoryResult,
@@ -11,12 +13,16 @@ import detectFramework from "@/service/install/detectFramework/index.js";
 import { readCanonicalDoc, listMethodologyDocs, listAgents, listSkills } from "@/service/install/initContent/index.js";
 import { COMMANDS } from "@/service/install/scaffoldCommands/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
+import resolveProjectRoot from "./resolveProjectRoot/index.js";
 import compareFile from "./compareFile/index.js";
 import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkBrainConfig from "./checkBrainConfig/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig } from "./checkIdeConfig/index.js";
+
+const brainChangeTargets: BrainChangeTarget[] = [...brainContract.map(({ marker }) => marker), "launcher"];
+const BRAIN_CHANGE_TARGETS = brainChangeTargets as [BrainChangeTarget, ...BrainChangeTarget[]];
 
 export const UpgradeInput = z.object({
 	framework: z
@@ -30,7 +36,31 @@ export const UpgradeInput = z.object({
 	category: z
 		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "readme", "brain"])
 		.optional()
-		.describe("When provided, write all differs/missing files for this category to disk and return a manifest (no canonicalContent). When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
+		.describe("When provided, applies that category. For package-owned categories the call writes all differs/missing files to disk and returns a manifest (no canonicalContent). For `brain` it inserts missing sections (no `brainChange`), previews one change (`brainChange` alone), or applies it (`brainChange` + `beforeHash`); it never rewrites an existing section outside an applied change. When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
+	brainChange: z
+		.enum(BRAIN_CHANGE_TARGETS)
+		.optional()
+		.describe("Brain-category-only selector for one stale section (its marker) or the legacy launcher (`launcher`). Without `beforeHash` the call previews that one change read-only; with `beforeHash` it applies it."),
+	beforeHash: z
+		.string()
+		.regex(/^[0-9a-f]{64}$/)
+		.optional()
+		.describe("The `beforeHash` a `brainChange` preview returned. Turns the call into the guarded apply: the change is written only if the current bytes still hash to this value."),
+}).superRefine((input, ctx) => {
+	if (input.brainChange !== undefined && input.category !== "brain") {
+		ctx.addIssue({
+			code: "custom",
+			path: ["brainChange"],
+			message: "brainChange is only valid with category \"brain\"",
+		});
+	}
+	if (input.beforeHash !== undefined && input.brainChange === undefined) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["beforeHash"],
+			message: "beforeHash requires brainChange",
+		});
+	}
 });
 
 /** Build an `UpgradeCategoryResult` from a flat list of file results. */
@@ -60,7 +90,7 @@ export default async function upgrade(
 	framework?: FrameworkType,
 	path?: string,
 ): Promise<UpgradeResult> {
-	const projectRoot = path ? (isAbsolute(path) ? path : join(root, path)) : root;
+	const projectRoot = resolveProjectRoot(root, path);
 	const config = await detectFramework(projectRoot, framework);
 
 	const docHubAbsolute = join(projectRoot, config.docHubDir);

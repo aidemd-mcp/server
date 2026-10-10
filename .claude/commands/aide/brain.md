@@ -45,11 +45,13 @@ Return what you found, or write what they asked you to write, synthesized in res
 
 When `$ARGUMENTS` starts with `config`, run this flow. It owns every brain config state: creating a missing `.aide/config/brain.aide` for any backend, repairing one that is missing required sections, validating the result, then wiring and seeding the brain.
 
-**This command never lists the brain config's sections itself.** The required sections — their markers, purposes, roles (`live` or `seed`) and seed paths — are a published contract. Read them from `brainContract` on the `aide_init` step named `Brain config (brain.aide)`. Never write a section list from memory.
+**This command never lists the brain config's sections itself.** The required sections are a published contract. Their markers, roles (`live` or `seed`) and seed paths come from `brainSummary.sections` on the `aide_init` step named `Brain config (brain.aide)`. A section's purpose comes from `aide_brain({ kind: <marker> })`, which returns it as `purpose` whenever it returns the section. Never write a section list or a purpose from memory.
 
 **Every step below is mandatory and runs in order.** `brain.status` is a status code, not a runbook. If you find yourself drafting "next steps" for the user from your own understanding of a status code, you have skipped a step — go back.
 
-**Reading the contract, the repair prescription and the migration offers.** Call `aide_init` with **no arguments**. That is a read-only summary call; it writes nothing. Find the step named `Brain config (brain.aide)` and read `brainContract` (always present), `brainRepair` (present only when the config is missing sections) and `brainMigration` (present only when an existing config has outdated sections or a legacy launcher) from it.
+**Reading the summary.** Call `aide_init` with **no arguments**. That is a read-only summary call; it writes nothing. Find the step named `Brain config (brain.aide)` and read its `brainSummary`: `sections`, `missingSections`, `staleSections`, `legacyLauncher` (reasons, or null) and `templateIntegration` (whether the config launches the bundled template's own brain server). It carries no section text. Section bytes reach you one section at a time, through `aide_brain` or an `aide_upgrade` preview.
+
+**Writes go through `aide_upgrade`.** Inserting missing sections and applying a migration are tool-side writes: `aide_upgrade({ category: "brain" })` and its `brainChange` / `beforeHash` calls. Hand-edit `.aide/config/brain.aide` only where a step below says so: adapting sections for a backend other than the template's, and fixing a malformed file.
 
 ### Step 1 — Call `aide_info`
 
@@ -68,7 +70,7 @@ Call `aide_info`. Read `brain.status`, `brain.fault` (present only on `brain-aid
 
    The answer is `brainMode`: `"global"` or `"local"`.
 3. **Scaffold.** Call `aide_init({ category: "brain", brainMode })`. It writes `.aide/config/brain.aide` from the latest bundled template, with YAML null at the unwired path slot of `mcpServerConfig.args`. YAML null is the structural unwired-slot signal; there is no literal-string placeholder.
-4. **Non-Obsidian backend only — adapt the scaffold.** The bundled template is written for Obsidian, seed sections included: its seeds use Obsidian wiki links, the board plugin's frontmatter and trailing settings block, and the Obsidian brain tool names. None of that carries over to another backend, so every seed section needs adapting, not only the generic ones. Read `brainContract` from the summary call, then edit `.aide/config/brain.aide`:
+4. **Non-Obsidian backend only — adapt the scaffold.** The bundled template is written for Obsidian, seed sections included: its seeds use Obsidian wiki links, the board plugin's frontmatter and trailing settings block, and the Obsidian brain tool names. None of that carries over to another backend, so every seed section needs adapting, not only the generic ones. Take the section list from `brainSummary.sections` (summary call), and for each section call `aide_brain({ kind: <marker> })`: `instructions` is the scaffolded text and `purpose` is what the section must do. Then edit `.aide/config/brain.aide`:
    - **Frontmatter launcher.** Rewrite `name` and `mcpServerConfig` (`command`, `args`) for the user's backend. Leave YAML null at the slot the user's brain location fills. Add no other frontmatter field — the parser rejects extras.
      - **Global mode:** the launcher is the backend's bare command name, never an absolute path. Run that backend's global-install check (for an npm package, `npm ls -g <package> --depth=0`). If it is not installed, offer `npm i -g <package>` and run it only with the user's OK.
      - **On a decline or a failed install,** write the pinned local form instead (`npx -y <package>@<version>`, through `cmd /c` on Windows) and tell the user.
@@ -85,19 +87,17 @@ Branch on `brain.fault.kind`.
 
 **`missing-sections`:**
 
-1. Call `aide_init` with no arguments and read `brainRepair` from the `Brain config (brain.aide)` step. Each entry carries the contract fields (`marker`, `purpose`, `role`, and `seedPath` for seeds), plus `block` — the full marker-wrapped section from the latest bundled template — and `insertAfter`.
-2. Show the user the marker and purpose of each missing section, then confirm with `AskUserQuestion` (repair now / skip). On skip, STOP.
-3. **Adapt every block on a non-Obsidian config first.** If this config's frontmatter launcher is not the bundled Obsidian one, every template block — live and seed alike — is Obsidian-specific (wiki links, the board plugin's frontmatter and settings, Obsidian brain tool names). Adapt each one with the user before inserting it:
-   - **Live blocks** (`role: "live"`): rewrite the bytes between the markers so the section fulfills its contract `purpose` for this backend — the backend's own tool names, entry points and wiring flow.
-   - **Seed blocks** (`role: "seed"`): walk them one at a time. Show the user the marker and purpose, adapt the bytes between the markers for this backend, and confirm with the user before moving to the next.
-   - Keep both marker lines of every block byte-identical; only the bytes between them change.
+1. Call `aide_init` with no arguments and read `brainSummary.missingSections` from the `Brain config (brain.aide)` step.
+2. Show the user the markers of the missing sections, then confirm with `AskUserQuestion` (repair now / skip). On skip, STOP.
+3. **Insert.** Call `aide_upgrade({ category: "brain" })`. It reads the file, inserts only the missing sections and touches nothing else. It returns one of:
+   - **`{ outcome: "inserted", inserted }`** — the config launches the template's own brain server, so the missing sections went in byte-identical from the latest bundled template, in the file's line endings. `inserted` lists their markers. Done.
+   - **`{ outcome: "adapt", adapt, instructions }`** — the config launches another backend, so nothing was inserted: the template text is Obsidian-specific (wiki links, the board plugin's frontmatter and settings, Obsidian brain tool names). Write each section in `adapt` with the user, one at a time:
+     - Call `aide_upgrade({ category: "brain", brainChange: <marker> })`. It returns `{ outcome: "missing", target, template, instructions }`: `template` is the template's version of that one section.
+     - Show the user the marker and the template text, rewrite it for this backend (its own tool names, entry points, link syntax, frontmatter and board format) and confirm with the user before moving to the next.
+     - Insert the result into `.aide/config/brain.aide` with its two marker lines, right after the close marker of the section that comes before it in `brainSummary.sections` order. Leave one blank line between sections and use the file's line endings. Change no other byte.
+   - **`{ outcome: "refused", instructions }`** — show `instructions` to the user and follow them.
 
-   On the bundled Obsidian launcher, insert every block as given.
-4. **Insert, and change nothing else.** Edit `.aide/config/brain.aide`, applying the entries in array order:
-   - `insertAfter` is a close-marker string → insert `"\n\n" + block` immediately after the first occurrence of that exact string.
-   - `insertAfter` is `null` → insert `block + "\n\n"` at the start of the body, immediately after the line holding the frontmatter's closing `---`.
-
-   No other byte of the file changes. Never rewrite the file wholesale, never reorder or reformat existing sections, never touch the frontmatter.
+   Once a section exists, `aide_brain({ kind: <marker> })` returns it with its `purpose`, so you can check the adapted text against what the section must do.
 
 Then go to Step 4.
 
@@ -112,31 +112,27 @@ Call `aide_info` again. This is a parser check of the file on disk, not a brain 
 
 ### Step 5 — SEED (sections added by a repair)
 
-For each `role: "seed"` entry you inserted in Step 3, write it to its `seedPath` in the brain:
+For each seed section you inserted in Step 3 (its `role` is `seed` in `brainSummary.sections`, which also gives its `seedPath`), write it to its `seedPath` in the brain:
 
-- **Brain MCP tools loaded in this session:** presence-check `seedPath`; a missing folder means the file is absent. If it exists, skip it — never overwrite user-edited content. If absent, take the bytes between that section's markers in `brain.aide`, drop the empty lines at their start and end, and write them to `seedPath` with the brain's write tool. When those bytes open with a `---` frontmatter block, pass that block in whatever form the write tool expects for frontmatter (for example a separate frontmatter argument), and pass only the text after its closing `---` (leading empty lines dropped) as the body. Never leave a frontmatter block inside the body text, or the file will not get real frontmatter.
+- **Brain MCP tools loaded in this session:** presence-check `seedPath`; a missing folder means the file is absent. If it exists, skip it — never fetch or overwrite it. If absent, call `aide_brain({ kind: <marker> })`. With `found: true`, take `instructions` (that section's exact bytes), drop the empty lines at their start and end, and write them to `seedPath` with the brain's write tool. With `found: false`, show `instructions` to the user and do not write that seed. When those bytes open with a `---` frontmatter block, pass that block in whatever form the write tool expects for frontmatter (for example a separate frontmatter argument), and pass only the text after its closing `---` (leading empty lines dropped) as the body. Never leave a frontmatter block inside the body text, or the file will not get real frontmatter.
 - **Brain MCP tools not loaded:** tell the user the new seed files will be written once they restart Claude Code and re-run `/aide:brain config`. Never fall back to native filesystem tools to write the brain.
 
 After a CREATE, skip this step — Step 6's config prose seeds every seed section.
 
 ### Step 5b — MIGRATE (outdated sections and a legacy launcher)
 
-Call `aide_init` with no arguments and read `brainMigration` from the `Brain config (brain.aide)` step. If it is absent, go to Step 6. A file created in Step 2 never carries it.
+Call `aide_init` with no arguments and read `brainSummary.staleSections` and `brainSummary.legacyLauncher` from the `Brain config (brain.aide)` step. If both are empty, go to Step 6. A file created in Step 2 never has either.
 
-`brainMigration` holds offers only. **Nothing changes without the user's explicit yes to that one change, and the default is skip.** The user's existing bytes cannot be recovered once replaced, so never batch offers under a single yes and never apply an offer the user did not see.
+A section is listed as stale only when its text matches a known earlier template version, so a section the user edited is never offered. **Nothing changes without the user's explicit yes to that one change, and the default is skip.** The user's existing bytes cannot be recovered once replaced, so never batch changes under a single yes and never apply a change the user did not see.
 
-1. **Outdated sections** (`staleSections`). Each entry carries the contract fields (`marker`, `purpose`, `role`, and `seedPath` for seeds) plus `before` — the user's bytes between that section's markers, verbatim — and `after` — the latest bundled template's bytes for the same section. A section is listed only when its text matches a known earlier template version exactly (line endings and trailing spaces aside), so a section the user edited is never offered. For each entry, one at a time:
-   - Show the marker and purpose, then the `before` and `after` text.
-   - On a non-Obsidian config, `after` is Obsidian-specific. Adapt it for the backend with the user first, as Step 3 does for repair blocks.
-   - Ask with `AskUserQuestion` (replace this section / keep mine). On keep, move on.
-   - On replace, edit `.aide/config/brain.aide`: replace exactly the bytes between that section's two marker lines with `after`. Both marker lines and every other byte of the file stay as they are.
-2. **Legacy launcher** (`legacyLauncher`). It carries `reasons` (`unpinned`, `unversioned`, `older-pin`, `missing-auto-confirm`), `before` — the frontmatter `mcpServerConfig` as it is — and `after.local` / `after.global`, the replacement for each launch mode. Show the reasons and `before`, then ask with `AskUserQuestion`, exactly as worded:
-   - **Global (recommended)** — personal machine, reliable startup; stays on its installed version; one-time `npm i -g`.
-   - **Local** — shared repos, cloud/CI; pinned to one version that /aide:brain config moves forward; flaky cold start.
-   - **Keep my launcher** — change nothing.
+Each change is one preview and one apply:
 
-   On Global, run the backend package's global-install check (for an npm package, `npm ls -g <package> --depth=0`). If it is not installed, offer `npm i -g <package>` and run it only with the user's OK; on a decline or a failed install, offer `after.local` instead. Then edit only the frontmatter's `mcpServerConfig` to the chosen `after`. Keep `name`, every other frontmatter field and the body untouched.
-3. Call `aide_info` and confirm `brain.status` is not `no-brain-aide` or `brain-aide-invalid`. If it is, show the status and fault and help the user fix the edit; do not continue until it parses.
+- **Preview:** `aide_upgrade({ category: "brain", brainChange: <target> })` is read-only and returns `{ outcome: "change", target, before, after, beforeHash }` — the current text and its replacement, in the file's line endings. It may return `{ outcome: "refused", instructions }` instead. Show `instructions` and move on; for example, the tool refuses to offer template text for a config that launches another backend.
+- **Apply:** on the user's yes, call the same thing with the `beforeHash` the preview returned. It returns `{ outcome: "applied", target }`, or `refused` when the bytes changed since the preview. On that refusal, preview again and show the new diff before asking again.
+
+1. **Outdated sections.** For each marker in `staleSections`, one at a time: preview it, call `aide_brain({ kind: <marker> })` for its `purpose`, show the marker, the purpose and the `before` and `after` text, and ask with `AskUserQuestion` (replace this section / keep mine). On keep, move on. On replace, apply it.
+2. **Legacy launcher.** When `legacyLauncher` lists reasons (`unpinned`, `unversioned`, `older-pin`, `missing-auto-confirm`), preview `brainChange: "launcher"`. The `after` keeps the launcher's current launch mode with a pinned version, and unchanged arg lines stay byte-identical. Show the reasons and the `before` and `after` frontmatter, and ask with `AskUserQuestion` (update the launcher / keep mine). On update, apply it. When the preview refuses because the args can't be safely rewritten in place, its `instructions` carry the replacement args. Help the user make that one edit by hand, changing nothing else in the frontmatter.
+3. Call `aide_info` and confirm `brain.status` is not `no-brain-aide` or `brain-aide-invalid`. If it is, show the status and fault and help the user fix it; do not continue until it parses.
 
 Then go to Step 6, which runs sync so `.mcp.json` picks up a changed launcher.
 
@@ -144,11 +140,7 @@ Then go to Step 6, which runs sync so `.mcp.json` picks up a changed launcher.
 
 Get the backend's config prose, then execute it verbatim:
 
-- **`brain.status` is `ok`** → call `aide_brain({ kind: "config" })`. It returns the section of `.aide/config/brain.aide` that holds the contract's config entry, verbatim.
-- **Any other status (e.g. `no-mcp-entry`, `mcp-drift`)** → `aide_brain` returns remediation prose there, not the section. Derive the section's markers from the contract, then read the file directly:
-  1. In `brainContract` (from the `aide_init` summary step `Brain config (brain.aide)`), take the contract's config entry — the `role: "live"` entry whose `purpose` is the backend's wiring and seeding flow this command runs.
-  2. Build its markers from that entry's `marker` value with the marker grammar: the open marker is an HTML comment whose text is `aide-<marker>-start`, and the close marker is an HTML comment whose text is `aide-<marker>-end`.
-  3. Read `.aide/config/brain.aide` and take the bytes between those two marker lines.
+Call `aide_brain({ kind: "config" })`. On every status that reaches this step (`ok`, `no-mcp-entry`, `mcp-drift`) it returns `found: true` with that section of `.aide/config/brain.aide` verbatim in `instructions`. If it returns `found: false`, show its `instructions` to the user and STOP.
 
 Forward `$ARGUMENTS` opaquely to that prose — this command does not parse it. The prose owns everything from here: what `$ARGUMENTS` means for this backend, asking the user for the brain location (`AskUserQuestion` plus `aide_info.brain.hints` when appropriate), landing the resolved value into the YAML-null slot, running sync via the Bash command recovered from `.mcp.json["mcpServers"]["aide"]`, seeding each seed section in the published contract (skip-on-exists), and emitting the restart message.
 
@@ -160,10 +152,10 @@ The prose also owns the brain launcher before sync runs: the brain's global-inst
 
 - Telling the user to run sync themselves. Sync runs via your own Bash tool, recovered from `.mcp.json["mcpServers"]["aide"]` (`command` + `args` + `"sync"` appended). The user invoked `/aide:brain config` expecting it to complete the wiring, not to hand them homework.
 - Concluding `brain.aide` is wired or unwired without quoting the actual bytes at the path slot. The prose's first step reads and quotes that value — you cannot quote what you did not read.
-- Treating `brain.status` as a runbook, or acting on `aide_brain`'s remediation prose as if it were the config section.
-- Listing, restating or inventing the brain config's sections instead of reading `brainContract` / `brainRepair`.
-- Rewriting, reordering or reformatting existing sections during a repair.
-- Applying a `brainMigration` offer without the user's yes to that specific change, or replacing a section or launcher that `brainMigration` did not list.
+- Treating `brain.status` as a runbook, or treating an `aide_brain` reply with `found: false` as if it were the requested section.
+- Listing, restating or inventing the brain config's sections or their purposes instead of reading `brainSummary.sections` and `aide_brain`'s `purpose`.
+- Hand-inserting missing sections or hand-applying a migration that `aide_upgrade` can do, or rewriting, reordering or reformatting existing sections during a repair.
+- Applying a change without the user's yes to that specific preview, reusing a `beforeHash` after a refusal, or changing a section or launcher the summary did not list.
 - Comparing the config prose against guidance outside it. The prose is the authority — follow it as written.
 - Falling back to native filesystem tools (`Read`, `Write`, `Glob`, Bash `ls`, etc.) to inspect or write the **brain** when the brain MCP tools are unreachable. The brain is backend-agnostic; if its tools are unreachable, STOP and tell the user to restart. (Editing `.aide/config/brain.aide` is fine — it is a project file, not the brain.)
 

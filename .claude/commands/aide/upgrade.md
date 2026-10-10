@@ -83,9 +83,9 @@ On confirmation, read the config, merge the prescription, write with the Write t
 - **The local pin moves forward here.** A local npx entry not pinned to the current version gets the pinned prescription. This is how the pin moves forward.
 - **Custom entries are left alone.** A custom aide entry (neither npx nor `aidemd-mcp`, e.g. a dev `node ./dist/index.js`) reports `matches` and is never offered a change.
 - **Tips are information.** If a file carries a `tip`, surface it once, as information. Never turn it into a merge question.
-- **The brain's launcher is not upgrade's.** The brain's launcher and pin change only through `/aide:brain config`.
+- **The brain's launcher is not part of this step.** A legacy brain launcher is changed through `/aide:brain config`, which previews and applies it with the brain category's `brainChange: "launcher"` call.
 
-**brain:** Upgrade never writes the brain config — not to create it, not to add sections, not to fix it. `.aide/config/brain.aide` is user-owned, and its canonical home for creation and repair is `/aide:brain config`. Skip the generic "Yes, update" question for this category and use the case below that matches the file's `status`. (Calling `aide_upgrade` with `category: "brain"` is safe — it writes nothing and returns the file with an `instructions` field.)
+**brain:** `.aide/config/brain.aide` is user-owned, so this category is not applied like the others. `/aide:brain config` drives it: that flow inserts missing sections with `aide_upgrade({ category: "brain" })`, previews and applies each outdated section or legacy launcher one at a time (`brainChange`, then `beforeHash`), adapts sections for a non-template backend, and seeds the brain. Do NOT call `aide_upgrade` with `category: "brain"` from this command — without `brainChange` it inserts missing sections. Skip the generic "Yes, update" question for this category and use the case below that matches the file's `status`.
 
 - **Behind** (`status` is `differs`, with `missingSections`): the config is missing required sections. Use `AskUserQuestion`:
 
