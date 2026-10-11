@@ -3,12 +3,17 @@ import type { CleanupResult } from "@/types/index.js";
 
 // Registered request handlers keyed by their (mocked) schema object. A map, not
 // mock.calls, so afterEach(vi.clearAllMocks) cannot erase the capture.
-const { handlers, mockCleanup, mockBrainCategory, mockUpgrade } = vi.hoisted(() => ({
-	handlers: new Map<unknown, (request?: unknown) => Promise<any>>(),
-	mockCleanup: vi.fn(),
-	mockBrainCategory: vi.fn(),
-	mockUpgrade: vi.fn(),
-}));
+const { handlers, mockCleanup, mockBrainCategory, mockUpgrade, mockBrain, mockReadTemplateSection, mockListContract, mockValidateDraft } =
+	vi.hoisted(() => ({
+		handlers: new Map<unknown, (request?: unknown) => Promise<any>>(),
+		mockCleanup: vi.fn(),
+		mockBrainCategory: vi.fn(),
+		mockUpgrade: vi.fn(),
+		mockBrain: vi.fn(),
+		mockReadTemplateSection: vi.fn(),
+		mockListContract: vi.fn(),
+		mockValidateDraft: vi.fn(),
+	}));
 
 // Mock the init CLI module to prevent its IIFE from executing during tests.
 vi.mock("./cli/init/index.js", () => ({}));
@@ -45,8 +50,20 @@ vi.mock("@/tools/upgrade/index.js", async (importOriginal) => {
 	return { ...original, default: mockUpgrade };
 });
 
+// Keep the real BrainInput (zod) so the cross-field rules are exercised; stub the host read.
+vi.mock("@/tools/brain/index.js", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@/tools/brain/index.js")>();
+	return { ...original, default: mockBrain };
+});
+
+// Stub the three non-host mode helpers; the handler's routing is what is under test.
+vi.mock("@/tools/brain/readTemplateSection/index.js", () => ({ default: mockReadTemplateSection }));
+vi.mock("@/tools/brain/listContract/index.js", () => ({ default: mockListContract }));
+vi.mock("@/tools/brain/validateDraft/index.js", () => ({ default: mockValidateDraft }));
+
 // Import the exported function under test after mocks are declared.
 import { routeSubcommand } from "./index.js";
+import { BrainInput } from "@/tools/brain/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -316,10 +333,42 @@ describe("aide_upgrade registration", () => {
 });
 
 describe("aide_brain registration", () => {
-	it("registers kind as the contract markers", async () => {
+	it("registers kind as the contract markers plus launcher", async () => {
 		const { inputSchema } = await findTool("aide_brain");
 
-		expect(inputSchema.properties.kind.enum).toEqual(brainMarkers);
+		expect(inputSchema.properties.kind.enum).toEqual([...brainMarkers, "launcher"]);
+	});
+
+	it("registers source as a string with the four modes", async () => {
+		const { inputSchema } = await findTool("aide_brain");
+
+		expect(inputSchema.properties.source.type).toBe("string");
+		expect(inputSchema.properties.source.enum).toEqual(["host", "template", "contract", "draft"]);
+	});
+
+	it("registers path as a string", async () => {
+		const { inputSchema } = await findTool("aide_brain");
+
+		expect(inputSchema.properties.path.type).toBe("string");
+	});
+
+	it("marks no property as required", async () => {
+		const { inputSchema } = await findTool("aide_brain");
+
+		expect(inputSchema).not.toHaveProperty("required");
+	});
+
+	it("registers only values BrainInput accepts in at least one valid combination", async () => {
+		const { inputSchema } = await findTool("aide_brain");
+		const extras: Record<string, Record<string, string>> = { draft: { path: "drafts/brain.aide" } };
+
+		for (const source of inputSchema.properties.source.enum!) {
+			expect(BrainInput.safeParse({ source, ...extras[source] }).success, `source ${source}`).toBe(true);
+		}
+		for (const kind of inputSchema.properties.kind.enum!) {
+			const accepted = [{ kind }, { source: "template", kind }].some((candidate) => BrainInput.safeParse(candidate).success);
+			expect(accepted, `kind ${kind}`).toBe(true);
+		}
 	});
 
 	it("describes found and purpose and drops the two-field claim", async () => {
@@ -328,6 +377,90 @@ describe("aide_brain registration", () => {
 		expect(description).toContain("found");
 		expect(description).toContain("purpose");
 		expect(description).not.toContain("exactly two fields");
+	});
+
+	it.each(["source", '"template"', '"contract"', '"draft"', "launcher", "path", "found", "purpose", "read-only"])(
+		"teaches %s in the description",
+		async (term) => {
+			const { description } = await findTool("aide_brain");
+
+			expect(description).toContain(term);
+		},
+	);
+});
+
+describe("aide_brain routing", () => {
+	const root = process.cwd();
+	const helpers = [mockReadTemplateSection, mockListContract, mockValidateDraft];
+
+	it.each([
+		["no arguments", {}],
+		["an explicit host read", { source: "host", kind: "config" }],
+	])("routes %s to the host read only", async (_label, args) => {
+		const hostResult = { status: "ok", instructions: "x", found: true };
+		mockBrain.mockResolvedValue(hostResult);
+
+		const response = await callTool("aide_brain", args);
+
+		expect(mockBrain).toHaveBeenCalledWith(root, args);
+		for (const helper of helpers) expect(helper).not.toHaveBeenCalled();
+		expect(response.content[0].text).toBe(JSON.stringify(hostResult, null, 2));
+	});
+
+	it("routes a template read to readTemplateSection only", async () => {
+		const templateResult = { template: "bytes", purpose: "p" };
+		mockReadTemplateSection.mockReturnValue(templateResult);
+
+		const response = await callTool("aide_brain", { source: "template", kind: "launcher" });
+
+		expect(mockReadTemplateSection).toHaveBeenCalledWith({ kind: "launcher" });
+		expect(mockBrain).not.toHaveBeenCalled();
+		expect(mockListContract).not.toHaveBeenCalled();
+		expect(mockValidateDraft).not.toHaveBeenCalled();
+		expect(response.content[0].text).toBe(JSON.stringify(templateResult, null, 2));
+	});
+
+	it("routes a contract read to listContract only", async () => {
+		const contractResult = { sections: [{ marker: "orientation", role: "live", purpose: "p" }] };
+		mockListContract.mockReturnValue(contractResult);
+
+		const response = await callTool("aide_brain", { source: "contract" });
+
+		expect(mockListContract).toHaveBeenCalledTimes(1);
+		expect(mockBrain).not.toHaveBeenCalled();
+		expect(mockReadTemplateSection).not.toHaveBeenCalled();
+		expect(mockValidateDraft).not.toHaveBeenCalled();
+		expect(response.content[0].text).toBe(JSON.stringify(contractResult, null, 2));
+	});
+
+	it("routes a draft check to validateDraft only, with the root and path", async () => {
+		const draftResult = { outcome: "valid", instructions: "ok" };
+		mockValidateDraft.mockResolvedValue(draftResult);
+
+		const response = await callTool("aide_brain", { source: "draft", path: "drafts/brain.aide" });
+
+		expect(mockValidateDraft).toHaveBeenCalledWith({ root, path: "drafts/brain.aide" });
+		expect(mockBrain).not.toHaveBeenCalled();
+		expect(mockReadTemplateSection).not.toHaveBeenCalled();
+		expect(mockListContract).not.toHaveBeenCalled();
+		expect(response.content[0].text).toBe(JSON.stringify(draftResult, null, 2));
+	});
+});
+
+describe("aide_brain boundary", () => {
+	it.each([
+		["launcher on a host read", { kind: "launcher" }],
+		["kind on a contract read", { source: "contract", kind: "orientation" }],
+		["a draft read without path", { source: "draft" }],
+		["path on a template read", { source: "template", path: "x" }],
+		["an unknown kind", { kind: "banana" }],
+	])("rejects %s before any handler runs", async (_label, args) => {
+		await expect(callTool("aide_brain", args)).rejects.toThrow();
+
+		expect(mockBrain).not.toHaveBeenCalled();
+		expect(mockReadTemplateSection).not.toHaveBeenCalled();
+		expect(mockListContract).not.toHaveBeenCalled();
+		expect(mockValidateDraft).not.toHaveBeenCalled();
 	});
 });
 

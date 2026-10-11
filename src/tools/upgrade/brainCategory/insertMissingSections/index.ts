@@ -45,7 +45,7 @@ export default async function insertMissingSections({
 			outcome: "adapt",
 			adapt: parse.sections,
 			instructions:
-				'This brain config launches a different brain server than the bundled template targets, so no template text was inserted. For each section in `adapt`, call `aide_upgrade` with `category: "brain"` and `brainChange` set to its marker to read the template\'s version, write a version for this config\'s brain with the user between that section\'s markers, then re-check brain state with `aide_info`.',
+				'This brain config launches a different brain server than the bundled template targets, so no template text was inserted. Invoke the `aide-brain-author` skill to add the sections in `adapt`: it writes each one for this config\'s brain with the user, inserts it between that section\'s markers and re-checks brain state with `aide_info`. To read one section\'s template text yourself, call `aide_upgrade` with `category: "brain"` and `brainChange` set to its marker.',
 		};
 	}
 

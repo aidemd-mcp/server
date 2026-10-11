@@ -16,17 +16,34 @@ import selectSection from "./selectSection/index.js";
 const NO_BRAIN_AIDE_PROSE =
 	"No `.aide/config/brain.aide` is present in this project. Tell the user to run `/aide:brain config` — it asks which brain backend they use and creates the config. Do not proceed with this task as if the brain were available — the file must exist before brain-dependent work continues.";
 
+const SECTION_MARKERS = brainContract.map(({ marker }) => marker) as [BrainSectionMarker, ...BrainSectionMarker[]];
+
 /**
- * Input schema for `aide_brain`. Accepts an optional `kind` field whose
- * vocabulary is every section marker of the published `brainContract`, derived
- * from it rather than hand-typed. Unknown values are rejected at the schema
- * boundary — the handler never sees them. The handler resolves the default
- * (`"orientation"`) after parsing, so an absent `kind` field remains absent
- * (not coerced) at the schema level.
+ * Input schema for `aide_brain`: a union of four strict variants keyed on
+ * `source`, which names what the call reads.
+ *
+ * - host: `{ source?: "host", kind? }` — the project's own `brain.aide`. An
+ *   absent `source` is a host read. `kind` is any section marker of the
+ *   published `brainContract`, derived from it rather than hand-typed.
+ * - template: `{ source: "template", kind? }` — the bundled template. `kind` is
+ *   those markers plus the literal `"launcher"`.
+ * - contract: `{ source: "contract" }` — the section listing; takes nothing else.
+ * - draft: `{ source: "draft", path }` — a draft config inside the project;
+ *   `path` is required and non-empty.
+ *
+ * Every cross-field rule (`"launcher"` only on a template read; no `kind` on
+ * contract or draft; `path` required on draft and nowhere else; no unknown
+ * keys) is enforced here, so no handler re-checks and unknown values never
+ * reach one. Handlers resolve the default `kind` (`"orientation"`) after
+ * parsing, so an absent `kind` field remains absent (not coerced) at the
+ * schema level.
  */
-export const BrainInput = z.object({
-	kind: z.enum(brainContract.map(({ marker }) => marker) as [BrainSectionMarker, ...BrainSectionMarker[]]).optional(),
-});
+export const BrainInput = z.union([
+	z.object({ source: z.literal("host").optional(), kind: z.enum(SECTION_MARKERS).optional() }).strict(),
+	z.object({ source: z.literal("template"), kind: z.enum([...SECTION_MARKERS, "launcher"]).optional() }).strict(),
+	z.object({ source: z.literal("contract") }).strict(),
+	z.object({ source: z.literal("draft"), path: z.string().min(1) }).strict(),
+]);
 
 /**
  * Runtime brain entry-point tool. Called **on demand** — when an agent needs

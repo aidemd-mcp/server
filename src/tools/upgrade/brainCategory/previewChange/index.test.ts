@@ -111,7 +111,7 @@ describe("previewChange", () => {
 			target: "kanban-index",
 			template: template.kanbanIndex,
 			instructions:
-				"Section `kanban-index` is missing and this config launches a different brain server than the bundled template targets. `template` is the bundled template's version: write a version for this config's brain with the user between that section's markers, then re-check brain state with `aide_info`.",
+				"Section `kanban-index` is missing and this config launches a different brain server than the bundled template targets. `template` is the bundled template's version. The `aide-brain-author` skill writes a version for this config's brain with the user between that section's markers, then re-checks brain state with `aide_info`.",
 		});
 	});
 

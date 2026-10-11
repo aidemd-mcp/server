@@ -35,7 +35,7 @@ The orchestrator (`/aide`) delegates to these agents by name. Each agent gets fr
 
 ## Skills
 
-AIDE ships five canonical skills that `aide_init` installs to `.claude/skills/`:
+AIDE ships six canonical skills that `aide_init` installs to `.claude/skills/`:
 
 | Skill | Purpose |
 |---|---|
@@ -44,5 +44,6 @@ AIDE ships five canonical skills that `aide_init` installs to `.claude/skills/`:
 | `aide` | The pipeline orchestrator behind `/aide` — boot sequence, phase routing, delegation to the pipeline agents |
 | `aide-handoff` | Records pipeline state to `.aide/session.aide` by delegating the write to `aide-spec-writer` |
 | `kanban` | Works the project's kanban board (create, work, manage, move, complete, stash, review); routes board reads and writes to `kanban-maintainer`. Works in any project, AIDE or not |
+| `aide-brain-author` | Writes a brain config for any backend, section by section with the user, from the bundled template and each section's published purpose; `/aide:brain config` hands off to it for any backend other than the bundled default |
 
 The `aide-architect` and `aide-auditor` agents declare `study-playbook` in their frontmatter to load conventions before planning. Host teams build their own coding playbook inside the brain — an external, team-shareable knowledge store that the `brain` skill points at and the `/aide:brain` command navigates.

@@ -340,7 +340,7 @@ export type BrainMigrationNotice = {
 	legacyLauncher: LegacyLauncherReason[] | null;
 };
 
-/** What a brain change touches: one contract section, or the launcher. */
+/** What a brain change touches, or what a template read selects: one contract section, or the launcher. */
 export type BrainChangeTarget = BrainSectionMarker | "launcher";
 
 /**
@@ -687,6 +687,63 @@ export type BrainToolResult = {
 	 */
 	purpose?: string;
 };
+
+/**
+ * Result of an `aide_brain` template read. Produced by the template mode of
+ * `aide_brain`; consumed by the agent and the `aide-brain-author` skill as the
+ * worked example for one contract section or the launcher. Carries no `status`
+ * and no `found`: the answer does not depend on the host's config.
+ */
+export type BrainTemplateResult = {
+	/** The bundled template's verbatim bytes for one contract section (strictly between its markers) or for the launcher (the frontmatter region). */
+	template: string;
+	/** That section's contract purpose, or the launcher purpose. */
+	purpose: string;
+};
+
+/**
+ * One section in an `aide_brain` contract listing. Produced by the contract
+ * mode of `aide_brain`; consumed by the agent and the `aide-brain-author`
+ * skill. Carries no `field`, no `seedPath` and no text.
+ */
+export type BrainContractSection = {
+	marker: BrainSectionMarker;
+	role: BrainSectionContractEntry["role"];
+	purpose: BrainSectionContractEntry["purpose"];
+};
+
+/**
+ * Result of an `aide_brain` contract listing. Produced by the contract mode of
+ * `aide_brain`; consumed by the agent and the `aide-brain-author` skill.
+ */
+export type BrainContractListing = {
+	/** Every contract section, in contract order. */
+	sections: BrainContractSection[];
+};
+
+/**
+ * What the structural check found at a draft path. Produced by the draft
+ * validation mode of `aide_brain`; consumed by the agent and the
+ * `aide-brain-author` skill. The fault arm reuses the host check's
+ * `BrainAideFault` vocabulary unchanged.
+ */
+export type BrainDraftFinding = { kind: "valid" } | { kind: "absent" } | BrainAideFault;
+
+/**
+ * Result of an `aide_brain` draft validation, discriminated on `outcome` (the
+ * discriminant `BrainCategoryResult` already uses). `fault` is carried only on
+ * `invalid`, so a found flag can never disagree with the text.
+ *
+ * - `valid` - the draft passes the structural check.
+ * - `invalid` - the draft is present but falls short; `fault` says how.
+ * - `absent` - nothing exists at the draft path.
+ * - `refused` - the path is outside the project; nothing was read.
+ */
+export type BrainDraftResult =
+	| { outcome: "valid"; instructions: string }
+	| { outcome: "invalid"; fault: BrainAideFault; instructions: string }
+	| { outcome: "absent"; instructions: string }
+	| { outcome: "refused"; instructions: string };
 
 /**
  * Result returned by aide_info — the passive boot-time reporter.

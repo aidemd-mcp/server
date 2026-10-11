@@ -1,31 +1,32 @@
 ---
 scope: src/tools/brain
 status: aligned
-description: "Runtime brain entry-point that returns the verbatim bytes of one named brain config section, live or seed, for mid-task brain reads and one-section-at-a-time setup and repair."
+description: "Read-only brain entry-point: one config section with its purpose, the same from the bundled template, the contract's section list, and a structural check of a config draft."
 intent: >
-  aide_brain is the entry-point agents call when they need the brain mid-
-  task, or one section of the brain config while setting it up or
-  repairing it. The request names any section from the published contract;
-  the response carries either that one section's verbatim bytes with its
-  contract purpose, or remediation naming the actionable next step and, when the config exists
-  but falls short, what is missing or malformed. A present section stays
-  readable on every status where the config exists and is well-formed. The
-  user's hand-written prose is the contract; the server selects, never
-  composes or transforms.
+  Agents use aide_brain, read-only, to reach the brain mid-task and to set
+  up, repair or author a brain config one decision at a time. It returns
+  one section of the host's config verbatim with its contract purpose, or
+  remediation naming the next step; one section or the launcher of the
+  bundled template with its purpose, whatever state the host's config is
+  in; the contract's sections with roles and purposes; or a
+  structural check of a draft config elsewhere in the project. The user's
+  prose is the contract: the server selects and checks structure, never
+  composes, transforms or judges content.
 outcomes:
   desired:
-    - The request's section selector accepts any section marker in the published contract, live or seed, and a default selector is honored when none is supplied. Any other value is rejected at the framework boundary, before the handler runs.
-    - On every status where the config exists and is well-formed, including one missing sections or not yet synced, a requested section that is present comes back as the verbatim bytes the parser extracted for it — byte-identical to what the user wrote, with no trimming, normalization, template rendering, or substitution pass.
-    - On every branch the response carries the brain status, the text field, and a found flag that is true only when the text is the requested section's verbatim bytes, plus, only when found, that section's one-line purpose from the published contract. Existing callers keep working unchanged, and the user's brain label and the requested selector never cross the wire as response fields.
+    - The section selector accepts any section marker in the published contract, live or seed, plus the launcher for a template read, and a default selector is honored when none is supplied. Any other value is rejected at the framework boundary, before the handler runs.
+    - On every status where the host's config exists and is well-formed, including one missing sections or not yet synced, a requested section that is present comes back as the verbatim bytes the parser extracted for it — byte-identical to what the user wrote, with no trimming, normalization, template rendering, or substitution pass.
+    - On every host-config read the response carries the brain status, a text field that is never empty, and a found flag true only when the text is the requested section's verbatim bytes, plus, only when found, that section's one-line purpose from the published contract. Otherwise the text is actionable remediation, even when the detector says healthy but the parser disagrees, existing callers keep working unchanged, and the user's brain label and the requested selector never cross the wire.
     - The unhealthy branches forward the brain-state vocabulary unchanged from the upstream detector, each mapping to remediation that names the exact next action and does not vary by which section was requested. Missing sections are named with the repair call that adds them; a malformed file gets the exact fault and where it is, a hand fix with the user, and a re-check of brain state.
-    - The text field is non-empty on every branch — the requested section when found, otherwise actionable remediation — including the defensive fallback when the detector says healthy but the parser disagrees. A caller can unconditionally surface the field and tell from the found flag which one it got.
+    - A template read returns one contract section or the launcher as the bundled template's bytes with that section's published purpose, identical whether the host's config is absent, malformed, healthy or written for another backend. A contract listing returns every section in contract order with its role and purpose and no section text.
+    - Validating a draft at another path inside the project applies the host config check's required-field and required-section rules and fault vocabulary, naming exactly what is missing or malformed and where. A draft that passes is structurally ready to swap in, and no mode writes anything to disk.
   undesired:
-    - The handler accepting any selector outside the published contract's section markers, falling back to a default for an unrecognized value, or throwing instead of relying on the registered schema.
-    - Returning any response field beyond the status, the text, the found flag and the found section's contract purpose — a brain label, an echoed selector, a section name, a connector identifier, or any other label a caller could branch on programmatically — or a found flag that disagrees with what the text carries. A purpose sent when nothing was found, or read from the user's file instead of the published contract, is the same registry-dispatch regression in different clothing on the consumer side.
-    - The handler running any transformation between the parser's extracted bytes and the response — placeholder rendering, interpolation, template engines, concatenation across sections, or remediation prose composed from anything beyond the detector's state and its reported missing sections or fault. The user's prose is the contract; the server is a selector, not a renderer.
-    - The handler reaching past the section the request selected — returning other sections or whole-template text, varying behavior on other parsed fields, re-implementing the parse inline, re-reading the file per call, or caching results across calls. One parse per invocation; in-memory dispatch on the parser's already-named fields; nothing else.
-    - The remediation sentences varying by which section was requested, naming the connector brand, or going empty on any branch. The recovery is the same regardless of which section the agent was reaching for.
-    - Telling the user the brain config is absent when it exists but falls short, or answering a config that falls short with remediation that names the command the caller is already running instead of the specific repair or hand fix it needs. Either sends the caller down a dead-end recovery path.
+    - The handler accepting any selector outside the published contract's section markers and the launcher, falling back to a default for an unrecognized value, or throwing instead of relying on the registered schema.
+    - Returning any host-read field beyond the status, the text, the found flag and the found section's contract purpose — a brain label, an echoed selector, a section name, a connector identifier — or a found flag that disagrees with the text. A purpose sent when nothing was found, or any section list, role or purpose taken from anywhere but the one published contract, is the same registry-dispatch regression in different clothing.
+    - Any transformation between the source bytes and the response — rendering, interpolation, concatenation, remediation composed beyond the detector's state and fault — or reaching past one decision's worth of brain text, such as several sections or a whole template in one reply, varying on other parsed fields, re-parsing inline, re-reading the file per call, or caching across calls. The server is a selector, not a renderer.
+    - Remediation that varies by requested section, names the connector brand, goes empty, tells the user the config is absent when it exists but falls short, or names the command the caller is already running instead of the specific repair or hand fix. Each sends the caller down a dead-end recovery path.
+    - A template read or contract listing that reads, depends on or alters the host's config, so its answer changes with that config's state, or any mode writing to disk.
+    - Draft validation that judges content, or applies rules or fault wording different from the host config check, so a draft passes as a draft but fails once swapped in. Validating or reading any path outside the project is the same failure.
 ---
 
 ## Context

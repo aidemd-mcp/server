@@ -9,8 +9,9 @@ description: >
   / research / conventions, invoke the `/aide:brain` slash command and let it
   discover and navigate the brain. This skill does NOT navigate the brain
   itself. Do NOT trigger for coding conventions or patterns (use `study-playbook`
-  instead) or for first-time brain wiring (that's `/aide:brain config`, which
-  `/aide` routes to directly).
+  instead), for first-time brain wiring (that's `/aide:brain config`, which
+  `/aide` routes to directly) or for writing a brain config for another
+  backend (that's the `aide-brain-author` skill).
 ---
 
 # brain — Signpost to the Brain

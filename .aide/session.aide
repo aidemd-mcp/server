@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server: v0.10.4 shipped; versions manifest release hygiene built and QA-passed (committed, unpublished).
+  Session record for the aidemd-mcp server: v0.10.4 shipped; versions manifest hygiene committed (260c82e, ships with next release); aide-brain-author skill + read-only aide_brain modes built and QA-passed (uncommitted).
 ---
 
 # AIDE SESSION
@@ -10,7 +10,25 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-10, between tasks — hygiene fix awaiting release decision)
+## State summary (set 2026-10-10, brain authoring skill built — pausing)
+
+Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend` is built and QA passed with notes; no todo.aide.
+
+What landed (uncommitted):
+
+- aide_brain read-only modes per decision #26: template, contract and draft; the host read is unchanged.
+- launcherPurpose in brainContract.
+- Result types in src/types.
+- The `aide-brain-author` skill, registered in initContent (6 skills).
+- /aide:brain config create (non-default backend) and custom-backend repair now hand off to the skill.
+- The upgrade adapt/missing messages point to the skill.
+- Docs: index.md (six skills), brain-aide.md (aide_brain parameters section, lifecycle), README, the brain skill description.
+
+Gate: tsc 0; 2336 tests; build OK. Ephemerals were removed in src/tools/brain (plan + brief), src/service/brainContract, src/types, src/service/install/initContent, src/tools/upgrade/brainCategory and src.
+
+The aide-maintainer prose now names aide_cleanup's `path` parameter; all 6 maintainers had guessed a wrong name first.
+
+versions.json lists 43 artifacts because the new skill has no git history yet. After commit, a rebuild gives 44.
 
 Feature `versions-manifest-release-hygiene` (In Review) is built, has passed QA, and is committed on main. It is not published; latest release is still v0.10.4.
 
@@ -25,7 +43,7 @@ Gate: tsc 0; 2160 tests; the clean build removes stale dist files; dist/versions
 
 QA passed with no todo.aide (no retro). plan.aide was removed through aide_cleanup. With the stale host file gone, aide_info in this repo reports no outdated artifacts.
 
-User impact: the published v0.10.4 (and earlier CI-built) manifests stamp every artifact with the release HEAD. So after each release every host's aide_info reports every artifact outdated, even unchanged ones. The fix reaches users only through a publish. The first full-history publish flags everything once more vs 0.10.4; after that only artifacts that actually changed are flagged.
+User impact (corrected with the user, 2026-10-10): the recurring 'outdated' prompt happened only in this repo. Its stale committed .aide/versions.json was never rewritten, because this repo is never upgraded onto itself. In host projects the prompt shows once per release and accepting the upgrade clears it. The depth-1 stamping only inflates that one prompt's count, all 43 instead of just the changed artifacts, so it is cosmetic. The in-repo fix is complete without a publish. The full-history manifest ships with the next release, whenever that is; it does not warrant a release on its own.
 
 Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (boot upgrade gate), v0.10.2 (content-free brain responses), v0.10.1 a broken tag; global install 0.10.4; aidemd.dev synced to 0.10.4 (site commit 160ad91).
 
@@ -33,12 +51,12 @@ Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (b
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `versions-manifest-release-hygiene` (In Review, P2) — built, QA passed, committed; ships with the next publish.
+- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (In Progress, P2, dx) — built and QA passed; awaiting commit and the move to In Review.
+- `versions-manifest-release-hygiene` (In Review, P2) — built, QA passed, committed 260c82e; ships with the next release (no dedicated publish).
 - `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done) — content-free brain responses; shipped in 0.10.2.
-- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (Backlog, P2, dx) — standalone skill that authors a brain.aide for any backend, section by section using aide_brain's purpose; /aide:brain config's create and custom-backend repair hand off to it.
 - `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Done) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer removes ephemerals through it, never rm. Built, QA passed.
 - `aide-scaffold-creates-and-reformats-session-aide` (Done) — dropped, won't do — the user never asked for it.
-- `aide-scaffold-overwrites-existing-files` (Backlog, P1, bug) — aide_scaffold overwrites an existing todo/plan/.aide/research file with a blank template.
+- `aide-scaffold-overwrites-existing-files` (Backlog, P1, bug) — skipped for now by the user; next candidate after the pause.
 - `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (In Review, P1, pre-publish) — read-only detection of outdated brain.aide sections and legacy brain launchers; /aide:brain config offers each change, applied only on the user's yes.
 - `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (In Review, P1, pre-publish) — synthesize runs when the feature is a pipeline (the pipeline test), independent of research. Done as prose; one follow-up outside this repo: reword the Showfold `research-implies-strategy` memory rule.
 - `rename-cards-to-tasks-in-kanban-prose` (Done) — kanban items are called tasks everywhere; existing copies (global skill/agent, brain guides) updated.
@@ -123,6 +141,20 @@ The tasks on the board this work touches, in work order; the full record of the 
     - `git rm .aide/versions.json` plus a .gitignore entry.
 
     No change to parseGitLog, previousCommit, readVersionsManifest or resolveOutdated. The first full-history publish changes every artifact's sourceCommit vs v0.10.4, so hosts see everything outdated once more on that upgrade. This is a one-time correction.
+25. **Brain authoring skill is `aide-brain-author` (user, 2026-10-10).** It is a canonical shipped skill. Its SKILL.md is prose and is edited directly by the main agent. Its registration in the install, upgrade and versions-manifest code goes through the pipeline.
+26. **aide_brain parameter shape (architect, approved with plans pending; 2026-10-10).** `aide_brain { source?, kind?, path? }`:
+    - `source` is one of "host" | "template" | "contract" | "draft". Omitted means "host".
+    - Host (default): kind is any contract marker, omitted means "orientation". It returns `{ status, instructions, found, purpose? }`, unchanged.
+    - template: kind is any contract marker or "launcher", omitted means "orientation". It returns `{ template, purpose }` with the bundled template's verbatim bytes. The launcher is the frontmatter region in the default local launch mode. The launcher purpose lives in brainContract (launcherPurpose), not in the contract array.
+    - contract: takes no other param. It returns `{ sections: [{ marker, role, purpose }] }` in contract order, with no text and no launcher.
+    - draft: `path` is required and project-relative. It returns `{ outcome: valid | invalid (fault missing-sections/sections or malformed/reason) | absent | refused (outside project; nothing read, path not echoed), instructions }`. It uses parseBrainAideFromString and classifyParseFailure, so faults match the host check.
+    - BrainInput is a zod union of strict variants. Rejected: launcher outside template, kind with contract or draft, path outside draft, unknown keys.
+    - No mode writes to disk. Draft remediation never points to aide_upgrade or /aide:brain config.
+27. **aide-brain-author skill shape (orchestrator prose, 2026-10-10).**
+    - The skill writes a whole config to `.aide/config/brain.aide.draft`, checks it with `aide_brain({ source: "draft" })`, then: swaps it in when no config existed; on replace, renames the current file to `.aide/config/brain.aide.bak` first; on beside, leaves the draft.
+    - Its repair mode (adding missing sections, handed off from /aide:brain config's adapt branch) edits the live config in place, then re-checks with aide_info.
+    - It asks the launch mode itself with the same Global/Local wording as /aide:brain config.
+    - It never runs sync or seeds the brain; /aide:brain config owns wiring and seeding.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -140,19 +172,20 @@ The tasks on the board this work touches, in work order; the full record of the 
 - **No tool returns more brain text than one decision needs** — the aide_init summary brain step stays under 4 KB on every status (test); aide_brain returns one section; aide_upgrade's brain preview returns one before/after.
 - **Check `git status` before publishing** — publish.mjs commits everything already staged.
 - **Published manifests come from a full clone** — scripts/build-versions.ts must refuse to build on a shallow clone; every workflow that builds keeps `fetch-depth: 0`; this repo never commits or ships `.aide/versions.json`.
+- **Template read and contract listing never read the host config** — their answers are identical whatever state .aide/config/brain.aide is in; draft validation reuses the host check's parser and fault mapping and refuses paths outside the project.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Nothing paused. versions-manifest-release-hygiene is complete in the repo and awaits the user's release decision.
+Nothing paused. `brain-authoring-skill-create-a-brain-aide-for-any-backend` is built and QA-passed, uncommitted; the user is pausing.
 
 ### What the next agent must do
 
-1. Ask the user whether to publish a patch release for the hygiene fix (it changes user-facing behavior: accurate per-artifact outdated reports). If yes, follow the release process in Process discipline. Then move `versions-manifest-release-hygiene` to Done once the user confirms.
-2. Next steps:
-   - Run a kanban cleanup pass via /kanban manage.
-   - Review the three stale tasks with the user (`configurevscode-is-dead-code-never-called-from-install-orche`, `restructure-aidemd-dev-landing-page`, `create-per-command-aide-specs-under-claude-commands-aide`).
-   - Propose moving `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` and `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` to Done.
-3. Next feature candidates: `aide-scaffold-overwrites-existing-files` (P1 bug), `brain-authoring-skill-create-a-brain-aide-for-any-backend` (P2).
+1. With the user's OK: commit the feature, the session.aide corrections and the aide-maintainer prose fix. Rebuild (`npm run build`) so versions.json picks up the new skill (expect 44). Move the task to In Review. Push 260c82e and the new commit when the user asks.
+2. Pending user calls:
+   - move `versions-manifest-release-hygiene` to Done;
+   - close `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` and `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`;
+   - drop `create-per-command-aide-specs-under-claude-commands-aide` and `bring-the-kanban-board-into-aide` (suggested).
+3. Next feature after the pause: `aide-scaffold-overwrites-existing-files` (P1 bug).
 
 ### What's already done and validated
 
@@ -166,17 +199,22 @@ Nothing paused. versions-manifest-release-hygiene is complete in the repo and aw
 - Board: `rename-cards-to-tasks-in-kanban-prose` and `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` moved to Done; `brain-authoring-skill-create-a-brain-aide-for-any-backend` created (Backlog, P2).
 - v0.10.4 released 2026-10-11 (commits 6f1dcc2, b406037, 8e1a8fb, 65c2bca; release 6085ad9); global install updated to 0.10.4.
 - aidemd.dev synced to 0.10.4 from npm and deployed (site commit 160ad91), run headless: `claude -p` from the site folder with only aide_info, aide_upgrade, read and git tools allowed.
-- Feature `versions-manifest-release-hygiene` (In Review): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed (unpublished).
+- Feature `versions-manifest-release-hygiene` (In Review): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed as 260c82e (not pushed, unpublished).
+- Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup.
 
 ### What's left after the current cycle
 
-- aide_upgrade's brain `missing` preview returns no section purpose (minor; fold into the brain authoring skill task).
 - The upgrade spec could name the one-section adapt read explicitly (QA spec-gap note).
 - The server reports its version as "0.2.0" in MCP serverInfo — a stale hard-coded label.
 - aidemd.dev's `docs:verify` expects 33 files, counts 42 — stale count in the site's script.
 - Retro rules for the architect agent (always include `foundations/conventions` in step Read lists; single-source pinned strings) — ship with a future release if the user wants them.
-- `/aide:brain config` create flow could hand off to the brain authoring skill once it exists (decision 21).
-- Release the hygiene fix (publish + aidemd.dev headless sync) once QA passes — only when the user asks to publish.
+- The hygiene fix ships with the next release. The first full-history manifest flags everything once more for hosts on 0.10.4; that is expected.
+- src/tools/brain/.aide body (Context/Strategy/examples) is stale vs the revised frontmatter and needs a strategist pass.
+- A draft path equal to the project root yields reason "cannot read  (EISDIR)" with an empty path.
+- The draft unreadable-file wording differs from the host check's labels (allowed by the brief, but inconsistent).
+- The launcher-region logic is duplicated between readTemplateLauncher and upgrade's locateFrontmatter.
+- The marker line format is spelled out in SKILL.md (drift risk if the format changes).
+- The aide-brain-author skill ships with the next release.
 
 session.aide is rewritten, never deleted (decision 18).
 

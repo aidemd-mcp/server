@@ -122,6 +122,7 @@ describe("insertMissingSections", () => {
 		expect(result.outcome).toBe("adapt");
 		if (result.outcome !== "adapt") throw new Error("expected adapt");
 		expect(result.adapt).toEqual(kanbanTail);
+		expect(result.instructions).toContain("aide-brain-author");
 		expect(result.instructions).toContain("`brainChange`");
 		expect(result.instructions).not.toContain("/aide:brain config");
 		expect(await readFile(brainAidePath, "utf-8")).toBe(fixture);

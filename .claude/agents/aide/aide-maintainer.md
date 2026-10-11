@@ -53,7 +53,7 @@ The aide server cannot see the brain, so this check is yours.
 
 ### Step 3 — Call `aide_cleanup`
 
-Call `aide_cleanup` with the module path (and `allowEmptyPlan: true` only if Step 1 found that explicit statement). Do not call it with `dryRun`.
+Call `aide_cleanup({ path: "<module path>" })`. The parameter is named `path`, relative to the project root. Add `allowEmptyPlan: true` only if Step 1 found that explicit statement. Do not call it with `dryRun`.
 
 - **Removed** — the tool lists what it removed. Continue to the report.
 - **Refused** — nothing was removed. Return REFUSED with the tool's refusal text verbatim (it names every unchecked item, file and line). Recommend `/aide:fix` for open `todo.aide` items, or finishing the build for open `plan.aide` items.

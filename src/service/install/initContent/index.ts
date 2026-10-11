@@ -74,6 +74,7 @@ const DOC_PATHS = {
 	"skills/aide": ".claude/skills/aide/SKILL.md",
 	"skills/aide-handoff": ".claude/skills/aide-handoff/SKILL.md",
 	"skills/kanban": ".claude/skills/kanban/SKILL.md",
+	"skills/aide-brain-author": ".claude/skills/aide-brain-author/SKILL.md",
 	"bin/aide-tree": ".aide/bin/aide-tree.mjs",
 } as const;
 
@@ -161,6 +162,7 @@ const SKILL_DOCS: readonly SkillDocEntry[] = [
 	{ canonical: "skills/aide", hostPath: "aide/SKILL.md" },
 	{ canonical: "skills/aide-handoff", hostPath: "aide-handoff/SKILL.md" },
 	{ canonical: "skills/kanban", hostPath: "kanban/SKILL.md" },
+	{ canonical: "skills/aide-brain-author", hostPath: "aide-brain-author/SKILL.md" },
 ];
 
 /** Per-process cache. Populated from disk reads in this process only — never

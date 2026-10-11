@@ -206,6 +206,53 @@ describe("kanban board agent", () => {
 	);
 });
 
+// Narrower than BANNED_PATTERNS: this skill writes configs for any backend, so it
+// legitimately names example backends and talks about pages and notes (`\bnotes?\b`,
+// `\bhubs?\b` would fail on honest prose). What must never appear is the bundled
+// template's own backend wiring: its tool namespace, link syntax, plugin name, and
+// the backend's name and storage term.
+const AUTHOR_BANNED_PATTERNS: RegExp[] = [
+	/mcp__/i,
+	/\[\[/,
+	/wikilink/i,
+	/kanban-plugin/i,
+	/\bvault\b/i,
+	/\bobsidian\b/i,
+];
+
+describe("aide-brain-author skill", () => {
+	it("is readable through readCanonicalDoc and matches the file on disk", () => {
+		const onDisk = readFileSync(join(REPO_ROOT, ".claude", "skills", "aide-brain-author", "SKILL.md"), "utf-8");
+		expect(readCanonicalDoc("skills/aide-brain-author")).toBe(onDisk);
+	});
+
+	it("is registered last in listSkills with hostPath aide-brain-author/SKILL.md", () => {
+		const skills = listSkills();
+		const entry = skills.find((s) => s.canonical === "skills/aide-brain-author");
+		expect(entry).toBeDefined();
+		expect(entry!.hostPath).toBe("aide-brain-author/SKILL.md");
+		expect(skills[skills.length - 1]).toBe(entry);
+	});
+
+	it("declares frontmatter name 'aide-brain-author'", () => {
+		expect(readCanonicalDoc("skills/aide-brain-author")).toMatch(/^---\r?\nname: aide-brain-author\r?\n/);
+	});
+
+	it.each(["aide_brain", "source", "path", '"template"', '"contract"', '"draft"', '"launcher"'])(
+		"names the tool mode %s it drives",
+		(token) => {
+			expect(readCanonicalDoc("skills/aide-brain-author")).toContain(token);
+		},
+	);
+
+	it.each(AUTHOR_BANNED_PATTERNS.map((pattern) => [pattern.source, pattern] as const))(
+		"matches no backend-wiring pattern %s",
+		(_source, pattern) => {
+			expect(readCanonicalDoc("skills/aide-brain-author")).not.toMatch(pattern);
+		},
+	);
+});
+
 describe("published package file set", () => {
 	const files: string[] = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf-8")).files;
 

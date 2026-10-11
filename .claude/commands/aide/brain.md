@@ -43,7 +43,7 @@ Return what you found, or write what they asked you to write, synthesized in res
 
 ## Mode 2: Config — Create, Repair, Validate and Wire (`/aide:brain config`)
 
-When `$ARGUMENTS` starts with `config`, run this flow. It owns every brain config state: creating a missing `.aide/config/brain.aide` for any backend, repairing one that is missing required sections, validating the result, then wiring and seeding the brain.
+When `$ARGUMENTS` starts with `config`, run this flow. It owns every brain config state: creating a missing `.aide/config/brain.aide`, repairing one that is missing required sections, validating the result, then wiring and seeding the brain. Writing a config, or missing sections, for a backend other than the bundled default is handed off to the `aide-brain-author` skill.
 
 **This command never lists the brain config's sections itself.** The required sections are a published contract. Their markers, roles (`live` or `seed`) and seed paths come from `brainSummary.sections` on the `aide_init` step named `Brain config (brain.aide)`. A section's purpose comes from `aide_brain({ kind: <marker> })`, which returns it as `purpose` whenever it returns the section. Never write a section list or a purpose from memory.
 
@@ -51,7 +51,7 @@ When `$ARGUMENTS` starts with `config`, run this flow. It owns every brain confi
 
 **Reading the summary.** Call `aide_init` with **no arguments**. That is a read-only summary call; it writes nothing. Find the step named `Brain config (brain.aide)` and read its `brainSummary`: `sections`, `missingSections`, `staleSections`, `legacyLauncher` (reasons, or null) and `templateIntegration` (whether the config launches the bundled template's own brain server). It carries no section text. Section bytes reach you one section at a time, through `aide_brain` or an `aide_upgrade` preview.
 
-**Writes go through `aide_upgrade`.** Inserting missing sections and applying a migration are tool-side writes: `aide_upgrade({ category: "brain" })` and its `brainChange` / `beforeHash` calls. Hand-edit `.aide/config/brain.aide` only where a step below says so: adapting sections for a backend other than the template's, and fixing a malformed file.
+**Writes go through `aide_upgrade`.** Inserting missing sections and applying a migration are tool-side writes: `aide_upgrade({ category: "brain" })` and its `brainChange` / `beforeHash` calls. Hand-edit `.aide/config/brain.aide` only to fix a malformed file. Writing for a backend other than the template's belongs to the `aide-brain-author` skill.
 
 ### Step 1 — Call `aide_info`
 
@@ -63,21 +63,13 @@ Call `aide_info`. Read `brain.status`, `brain.fault` (present only on `brain-aid
 
 ### Step 2 — CREATE (status `no-brain-aide`)
 
-1. **Ask which backend.** Use `AskUserQuestion`: the bundled default (Obsidian) or another backend. If another, ask which one and how its MCP server is launched.
+1. **Ask which backend.** Use `AskUserQuestion`: the bundled default (Obsidian) or another backend. **Another backend:** invoke the `aide-brain-author` skill (`Skill(skill="aide-brain-author")`). It asks the launch mode, writes the config section by section with the user, checks the draft and swaps it in. When it returns, go to Step 4.
 2. **Ask the launch mode.** Use `AskUserQuestion` with these two options, exactly as worded:
    - **Global (recommended)** — personal machine, reliable startup; stays on its installed version; one-time `npm i -g`.
    - **Local** — shared repos, cloud/CI; pinned to one version that /aide:brain config moves forward; flaky cold start.
 
    The answer is `brainMode`: `"global"` or `"local"`.
 3. **Scaffold.** Call `aide_init({ category: "brain", brainMode })`. It writes `.aide/config/brain.aide` from the latest bundled template, with YAML null at the unwired path slot of `mcpServerConfig.args`. YAML null is the structural unwired-slot signal; there is no literal-string placeholder.
-4. **Non-Obsidian backend only — adapt the scaffold.** The bundled template is written for Obsidian, seed sections included: its seeds use Obsidian wiki links, the board plugin's frontmatter and trailing settings block, and the Obsidian brain tool names. None of that carries over to another backend, so every seed section needs adapting, not only the generic ones. Take the section list from `brainSummary.sections` (summary call), and for each section call `aide_brain({ kind: <marker> })`: `instructions` is the scaffolded text and `purpose` is what the section must do. Then edit `.aide/config/brain.aide`:
-   - **Frontmatter launcher.** Rewrite `name` and `mcpServerConfig` (`command`, `args`) for the user's backend. Leave YAML null at the slot the user's brain location fills. Add no other frontmatter field — the parser rejects extras.
-     - **Global mode:** the launcher is the backend's bare command name, never an absolute path. Run that backend's global-install check (for an npm package, `npm ls -g <package> --depth=0`). If it is not installed, offer `npm i -g <package>` and run it only with the user's OK.
-     - **On a decline or a failed install,** write the pinned local form instead (`npx -y <package>@<version>`, through `cmd /c` on Windows) and tell the user.
-     - **Local mode:** write the pinned local form directly.
-   - **Live sections** (`role: "live"`). Rewrite each section's body so it fulfills its contract `purpose` for this backend: the backend's own tool names, entry points and wiring flow.
-   - **Seed sections** (`role: "seed"`). Walk every one of them, one at a time: show the user the section's marker and purpose, rewrite its link syntax, frontmatter, board format and tool names for the user's backend, and confirm with the user before moving on.
-   - Keep every marker line byte-identical and every section in place. Only the bytes between a section's markers change.
 
 Then go to Step 4.
 
@@ -91,13 +83,8 @@ Branch on `brain.fault.kind`.
 2. Show the user the markers of the missing sections, then confirm with `AskUserQuestion` (repair now / skip). On skip, STOP.
 3. **Insert.** Call `aide_upgrade({ category: "brain" })`. It reads the file, inserts only the missing sections and touches nothing else. It returns one of:
    - **`{ outcome: "inserted", inserted }`** — the config launches the template's own brain server, so the missing sections went in byte-identical from the latest bundled template, in the file's line endings. `inserted` lists their markers. Done.
-   - **`{ outcome: "adapt", adapt, instructions }`** — the config launches another backend, so nothing was inserted: the template text is Obsidian-specific (wiki links, the board plugin's frontmatter and settings, Obsidian brain tool names). Write each section in `adapt` with the user, one at a time:
-     - Call `aide_upgrade({ category: "brain", brainChange: <marker> })`. It returns `{ outcome: "missing", target, template, instructions }`: `template` is the template's version of that one section.
-     - Show the user the marker and the template text, rewrite it for this backend (its own tool names, entry points, link syntax, frontmatter and board format) and confirm with the user before moving to the next.
-     - Insert the result into `.aide/config/brain.aide` with its two marker lines, right after the close marker of the section that comes before it in `brainSummary.sections` order. Leave one blank line between sections and use the file's line endings. Change no other byte.
+   - **`{ outcome: "adapt", adapt, instructions }`** — the config launches another backend, so nothing was inserted: the template text is Obsidian-specific (wiki links, the board plugin's frontmatter and settings, Obsidian brain tool names). Invoke the `aide-brain-author` skill (`Skill(skill="aide-brain-author", args="add missing sections: <the markers in adapt>")`). It writes each missing section with the user and inserts it in place. When it returns, go on.
    - **`{ outcome: "refused", instructions }`** — show `instructions` to the user and follow them.
-
-   Once a section exists, `aide_brain({ kind: <marker> })` returns it with its `purpose`, so you can check the adapted text against what the section must do.
 
 Then go to Step 4.
 

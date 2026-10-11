@@ -53,7 +53,7 @@ This command:
 - Writes the bundled brain config template to `.aide/config/brain.aide` (the brain location stays unset until `/aide:brain config` fills it and writes the brain MCP entry)
 - Writes every pipeline slash command to `.claude/commands/aide/`
 - Installs 10 canonical pipeline agents to `.claude/agents/aide/` and the `kanban-maintainer` board agent to `.claude/agents/kanban/`
-- Installs skills (`study-playbook`, `brain`, `aide`, `aide-handoff`, `kanban`) to `.claude/skills/`
+- Installs skills (`study-playbook`, `brain`, `aide`, `aide-handoff`, `kanban`, `aide-brain-author`) to `.claude/skills/`
 - Installs the methodology docs hub to `.aide/docs/`
 - Writes the `aide-tree` launcher to `.aide/bin/aide-tree.mjs`
 - Adds an AIDE badge to `README.md` (appends if not present)

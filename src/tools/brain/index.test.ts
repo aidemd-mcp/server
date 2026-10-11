@@ -830,3 +830,50 @@ describe("BrainInput schema accepts exactly the contract markers", () => {
 		},
 	);
 });
+
+// ---------------------------------------------------------------------------
+// BrainInput — four modes
+// ---------------------------------------------------------------------------
+
+describe("BrainInput — four modes", () => {
+	const accepted: [string, unknown][] = [
+		["{}", {}],
+		...CONTRACT_MARKERS.map((m): [string, unknown] => [`host kind: ${m}`, { kind: m }]),
+		...CONTRACT_MARKERS.map((m): [string, unknown] => [`explicit host kind: ${m}`, { source: "host", kind: m }]),
+		["template with no kind", { source: "template" }],
+		...CONTRACT_MARKERS.map((m): [string, unknown] => [`template kind: ${m}`, { source: "template", kind: m }]),
+		["template kind: launcher", { source: "template", kind: "launcher" }],
+		["contract", { source: "contract" }],
+		["draft with path", { source: "draft", path: "drafts/brain.aide" }],
+	];
+
+	const rejected: [string, unknown][] = [
+		["host kind: launcher", { kind: "launcher" }],
+		["explicit host kind: launcher", { source: "host", kind: "launcher" }],
+		["template kind: banana", { source: "template", kind: "banana" }],
+		["contract with kind", { source: "contract", kind: "orientation" }],
+		["draft without path", { source: "draft" }],
+		["draft with empty path", { source: "draft", path: "" }],
+		["draft with kind", { source: "draft", path: "x", kind: "config" }],
+		["template with path", { source: "template", path: "x" }],
+		["unknown source", { source: "banana" }],
+		["host kind with path", { kind: "orientation", path: "x" }],
+		["host kind with unknown key", { kind: "orientation", extra: 1 }],
+	];
+
+	it.each(accepted)("accepts %s", (_label, input) => {
+		expect(BrainInput.safeParse(input).success).toBe(true);
+	});
+
+	it.each(rejected)("rejects %s", (_label, input) => {
+		expect(BrainInput.safeParse(input).success).toBe(false);
+	});
+
+	it("parses {} to {} (no default injected at the schema)", () => {
+		expect(BrainInput.parse({})).toEqual({});
+	});
+
+	it("parses { kind: config } to { kind: config } (no default injected at the schema)", () => {
+		expect(BrainInput.parse({ kind: "config" })).toEqual({ kind: "config" });
+	});
+});

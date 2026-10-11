@@ -20,6 +20,9 @@ import brainCategory from "@/tools/upgrade/brainCategory/index.js";
 import brainContract from "@/service/brainContract/index.js";
 import info, { InfoInput } from "@/tools/info/index.js";
 import brain, { BrainInput } from "@/tools/brain/index.js";
+import readTemplateSection from "@/tools/brain/readTemplateSection/index.js";
+import listContract from "@/tools/brain/listContract/index.js";
+import validateDraft from "@/tools/brain/validateDraft/index.js";
 import inspect, { InspectInput } from "@/tools/inspect/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
 import describeAideCommand from "@/service/install/shared/describeAideCommand/index.js";
@@ -226,15 +229,26 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_brain",
 			description:
-				"On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every /aide boot. Boot-time brain precondition state is already reported by aide_info.brain.status; firing aide_brain at boot duplicates that work unnecessarily.\n\n**Optional `kind` parameter** — any section marker of the published brain contract (see the enum), live or seed. Omitting it means `\"orientation\"`, the runtime briefing for reaching the brain mid-task. `\"config\"` is the integration's wiring flow that `/aide:brain config` runs. Seed sections are fetched one per call while seeding.\n\n**Response shape: exactly `{ status, instructions, found, purpose? }`.** No `backend`, no `connector`, no `name`, no `kind`.\n\n- `found: true` — `instructions` is that section's verbatim bytes from the host's `.aide/config/brain.aide`: no trimming, no normalization, no `${...}` substitution. `purpose` is that section's one-line purpose from the published contract; use it when adapting the section for another backend.\n- `found: false` — `instructions` is remediation, and `purpose` is absent. An absent file → run `/aide:brain config`. A requested section missing from the file → with the user's consent, call `aide_upgrade` with `category: \"brain\"`. A malformed or unreadable file → the exact fault, a hand fix with the user, then re-check with `aide_info`. Do not proceed as if the section were available.\n\nThe section is returned on every status where the config exists and is well-formed, including `brain-aide-invalid` with missing sections, `no-mcp-entry` and `mcp-drift`.\n\n`status` mirrors the `BrainState` tagged union from `buildBrainState`, with five values: `ok`, `no-brain-aide`, `brain-aide-invalid`, `no-mcp-entry`, `mcp-drift`. Branch on `found` for \"did I get the section\" and on `status` for \"is the brain healthy\".",
+				"On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every /aide boot. Boot-time brain precondition state is already reported by aide_info.brain.status; firing aide_brain at boot duplicates that work unnecessarily. It is also how a brain config is set up, repaired or written for any backend, one decision at a time. Every mode is read-only: no call writes to disk.\n\n**Optional `source` parameter** — which read runs. Omitted means `\"host\"`.\n- `\"host\"` — one section of the host's `.aide/config/brain.aide`, described below.\n- `\"template\"` — `{ template, purpose }`: one section of the bundled template (or its launcher, with `kind: \"launcher\"`) as verbatim bytes, and that section's one-line purpose from the published contract. The answer is the same whatever state the host's config is in. Use it as a worked example when writing that section for another backend.\n- `\"contract\"` — `{ sections }`: every contract section in order, each with `marker`, `role` (`live` or `seed`) and `purpose`, and no section text.\n- `\"draft\"` — a structural check of the draft config at `path`, with the same rules and fault vocabulary as the host config check, so a draft that passes is ready to swap in. Returns `{ outcome, instructions }`: `valid`; `invalid` with `fault` (`missing-sections` and its `sections`, or `malformed` and its `reason`); `absent` when no file is at `path`; `refused` when `path` is outside the project, and nothing is read. It checks structure, never content.\n\n**Optional `kind` parameter** — host and template reads only: any section marker of the published brain contract (see the enum), live or seed; `\"launcher\"` only with `source: \"template\"`. Omitting it means `\"orientation\"`, the runtime briefing for reaching the brain mid-task. `\"config\"` is the integration's wiring flow that `/aide:brain config` runs. Seed sections are fetched one per call while seeding. `path` is required with `source: \"draft\"` and accepted nowhere else; any other combination is rejected before the tool runs.\n\n**Host read response shape: exactly `{ status, instructions, found, purpose? }`.** No `backend`, no `connector`, no `name`, no `kind`.\n\n- `found: true` — `instructions` is that section's verbatim bytes from the host's `.aide/config/brain.aide`: no trimming, no normalization, no `${...}` substitution. `purpose` is that section's one-line purpose from the published contract; use it when adapting the section for another backend.\n- `found: false` — `instructions` is remediation, and `purpose` is absent. An absent file → run `/aide:brain config`. A requested section missing from the file → with the user's consent, call `aide_upgrade` with `category: \"brain\"`. A malformed or unreadable file → the exact fault, a hand fix with the user, then re-check with `aide_info`. Do not proceed as if the section were available.\n\nThe section is returned on every status where the config exists and is well-formed, including `brain-aide-invalid` with missing sections, `no-mcp-entry` and `mcp-drift`.\n\n`status` mirrors the `BrainState` tagged union from `buildBrainState`, with five values: `ok`, `no-brain-aide`, `brain-aide-invalid`, `no-mcp-entry`, `mcp-drift`. Branch on `found` for \"did I get the section\" and on `status` for \"is the brain healthy\".",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
+					source: {
+						type: "string",
+						enum: ["host", "template", "contract", "draft"],
+						description:
+							"Which read runs. Omitted means `host`: one section of the host's `.aide/config/brain.aide`. `template`: one section or the launcher of the bundled template, with its purpose. `contract`: every contract section with its role and purpose. `draft`: a structural check of the draft config at `path`.",
+					},
 					kind: {
 						type: "string",
-						enum: brainMarkers,
+						enum: [...brainMarkers, "launcher"],
 						description:
-							"Which section of brain.aide to return: any section marker of the published contract, live or seed. Omitted means `orientation`. Seed sections are fetched one per call while seeding.",
+							'Which section: any section marker of the published contract, live or seed, or `launcher` with `source: "template"` only. Omitted means `orientation`. Not accepted with `contract` or `draft`. Seed sections are fetched one per call while seeding.',
+					},
+					path: {
+						type: "string",
+						description:
+							'Project-relative path of a draft brain config. Required with `source: "draft"` and accepted nowhere else; a path outside the project is refused unread.',
 					},
 				},
 			},
@@ -408,6 +422,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		}
 		case "aide_brain": {
 			const parsed = BrainInput.parse(args);
+			// Step 1 — template read: one section or the launcher of the bundled template.
+			if (parsed.source === "template") {
+				const result = readTemplateSection({ kind: parsed.kind });
+				return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+			}
+			// Step 2 — contract read: every contract section with role and purpose.
+			if (parsed.source === "contract") {
+				const result = listContract();
+				return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+			}
+			// Step 3 — draft check: structural validation of the draft at `path`.
+			if (parsed.source === "draft") {
+				const result = await validateDraft({ root, path: parsed.path });
+				return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+			}
+			// Step 4 — host read (`source` absent or "host"): unchanged.
 			const result = await brain(root, parsed);
 			return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 		}

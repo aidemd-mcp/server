@@ -79,7 +79,7 @@ The sync verb and boot reporter read frontmatter only; the body sections are irr
 **Outdated is reported, never silently accepted.** The policy for a present file that falls short of the contract:
 
 - It is reported with its fault. The package never reads a short file as if it were complete.
-- `/aide:brain config` repairs a `missing-sections` file after the user confirms, by calling `aide_upgrade` with `category: "brain"`. The tool inserts only the missing sections, byte-identical from the latest bundled template and in the file's line endings, and only when the config launches the template's own brain server. For any other backend it inserts nothing and names the sections the user writes for that backend. Existing sections, launcher wiring and customizations are never touched.
+- `/aide:brain config` repairs a `missing-sections` file after the user confirms, by calling `aide_upgrade` with `category: "brain"`. The tool inserts only the missing sections, byte-identical from the latest bundled template and in the file's line endings, and only when the config launches the template's own brain server. For any other backend it inserts nothing and names the sections, which the `aide-brain-author` skill then writes with the user for that backend. Existing sections, launcher wiring and customizations are never touched.
 - Structural faults are shown to the user with the parser's reason, for hand repair. The package does not guess intent.
 - Install never writes `.aide/config/` after the first scaffold, and upgrade writes the brain config only through the consent-gated brain category. See `## The .aide/config/ directory contract`.
 - A retired-marker file (one whose sections use markers no contract entry names) reports every section as missing. There is no rename rewrite and no transitional read path.
@@ -96,16 +96,26 @@ YAML null entries in `mcpServerConfig.args` pass through `interpolateArgs` uncha
 
 The substitution surface is `mcpServerConfig.args` and only `mcpServerConfig.args`. It runs only at sync time. It NEVER applies to any body section. All body sections return verbatim, byte-identical to what the user wrote between the recognized markers.
 
-## aide_brain kind parameter
+## aide_brain parameters
 
-`aide_brain` accepts an optional `kind` parameter:
+`aide_brain` is read-only. Its optional `source` picks what it reads; omitted, it reads the host's config:
 
 ```ts
 aide_brain({ kind?: <any section marker in the published contract> })
 // → { status, instructions, found, purpose? }
+aide_brain({ source: "template", kind?: <marker> | "launcher" })
+// → { template, purpose }
+aide_brain({ source: "contract" })
+// → { sections: { marker, role, purpose }[] }
+aide_brain({ source: "draft", path: <project-relative path> })
+// → { outcome: "valid" | "invalid" | "absent" | "refused", instructions, fault? }
 ```
 
-`kind` defaults to `"orientation"`; any other contract marker, live or seed, selects that section, and a value outside the contract is refused. The reply:
+- **Template read** returns one section, or the launcher (the frontmatter between the `---` fences), of the bundled template with its purpose, whatever state the host's config is in.
+- **Contract listing** returns every section in contract order with its role and purpose, and no text.
+- **Draft check** parses a draft config at a path inside the project with the same parser and fault wording as the host check, so a `valid` draft is structurally ready to swap in. A path outside the project is refused unread.
+
+For a host read, `kind` defaults to `"orientation"`; any other contract marker, live or seed, selects that section, and a value outside the contract is refused. The reply:
 
 - **`found: true`** — `instructions` is the requested section's bytes between its marker pair, verbatim, and `purpose` is that section's one-line purpose from the published contract (never read from the user's file). This happens on every status where the file exists and parses: `ok`, `brain-aide-invalid` with that section present, `no-mcp-entry` and `mcp-drift`. `status` still reports the brain's real state.
 - **`found: false`** — `instructions` is remediation and `purpose` is absent. An absent file (`no-brain-aide`) routes to `/aide:brain config`. A requested section missing from the file names `aide_upgrade` with `category: "brain"`, the call that inserts it. A malformed or unreadable file gives the parser's reason, a hand fix with the user, and a re-check with `aide_info`.
@@ -141,7 +151,7 @@ The brain server's global or local launcher lives in `mcpServerConfig`, and a lo
 
 ## Lifecycle
 
-1. **Created or repaired** by `/aide:brain config`. When `.aide/config/brain.aide` is missing, the command asks which backend the user wants. For the bundled Obsidian default it uses the template `aide_init` returns, which carries YAML null at the unwired launcher slot until step 2 (a cold `cli/init` install also scaffolds that template once, if the file is absent). For any other backend the agent adapts the launcher and every section with the user, section by section, using each section's `purpose` from `aide_brain` and the section list from `aide_init`'s `brainSummary.sections`. When the file exists but is outdated, the command repairs it as described under `### Body shape`. Either way the result is validated with the real parser through `aide_info`; a hand-written file counts only if the parser accepts it.
+1. **Created or repaired** by `/aide:brain config`. When `.aide/config/brain.aide` is missing, the command asks which backend the user wants. For the bundled Obsidian default it uses the template `aide_init` returns, which carries YAML null at the unwired launcher slot until step 2 (a cold `cli/init` install also scaffolds that template once, if the file is absent). For any other backend it hands off to the `aide-brain-author` skill, which writes the launcher and every section with the user, section by section, from the contract listing and each section's template text and `purpose` (`aide_brain` with `source: "contract"` and `source: "template"`), checks the draft with `source: "draft"`, then swaps it in or leaves it beside an existing config. When the file exists but is outdated, the command repairs it as described under `### Body shape`. Either way the result is validated with the real parser through `aide_info`; a hand-written file counts only if the parser accepts it.
 
 2. **Filled** by the user via `/aide:brain config`. The config section's prose runs, asks the user for whatever values the YAML-null slots need (e.g. the brain root path for the bundled Obsidian default), and edits `brain.aide` to land the resolved values into the args slots. Retargeting, switching brains, swapping the MCP launcher and rewriting any body section are also edits to this one file.
 
