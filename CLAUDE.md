@@ -45,7 +45,14 @@ This bumps `package.json`, syncs `server.json`, commits (e.g. `0.3.16: fix scori
 
 **Before publishing,** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship.
 
-**After every publish, keep the aidemd.dev site in sync.** The publish always comes first. Then update the globally installed server (`npm i -g @aidemd-mcp/server@<version>`) — the site runs `aide` from the global install — and run `/aide:upgrade` in a session in the site's own project, so the files come from the published package. Never copy files from this repo's local build or edit the site from this repo's session. Commit the result as `chore(aide): sync methodology to <version>` and deploy the site. The site's local checkout location lives in the maintainer's private notes, not here.
+**After every publish, keep the aidemd.dev site in sync — the agent does this every time, unprompted.** The publish always comes first and must succeed. Then:
+
+1. Update the globally installed server: `npm i -g @aidemd-mcp/server@<version>` (the site runs `aide` from the global install).
+2. Run a headless Claude session from inside the site's checkout (`claude -p`) that calls `aide_info` (expecting the new version), applies every drifted package-owned category with `aide_upgrade` — never `mcp` or `brain` — then commits `chore(aide): sync methodology to <version>` and pushes to `main`. Limit its `--allowedTools` to `aide_info`, `aide_upgrade`, read tools and `git status/add/commit/push/diff/log`.
+3. The push deploys the site (GitHub Pages workflow). Confirm the deploy run succeeds.
+4. If the headless run reports `brainMigration`, tell the user — `/aide:brain config` needs their consent and is not run headless.
+
+Never hand-edit the site's files from this repo's session and never copy files from this repo's local build — the files come from the published package through the site's own `aide` tools. The site's checkout location and the exact command live in the maintainer's private notes, not here.
 
 ## Fixes Go in Canonical Docs, Not Memory
 

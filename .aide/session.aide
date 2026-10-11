@@ -12,7 +12,7 @@ superseded design decisions are cut, not annotated.
 
 ## State summary (set 2026-10-11, between tasks)
 
-No feature in flight. Latest release v0.10.4 (npm + MCP Registry, CI green): session.aide is the full session record again (the pre-2026-10-09 format plus the required ## Kanban links; task stashes alongside), kept up to date as the agent works. Previous: v0.10.3 (/aide boot stops and suggests the upgrade), v0.10.2 (content-free brain responses + kanban project-tag fix); v0.10.1 is a broken tag that never published. Global install @aidemd-mcp/server 0.10.4; this repo's and aidemd.dev's `aide` entries run the global `aidemd-mcp`. Everything committed and pushed. Pending outside this repo: the user is syncing aidemd.dev to 0.10.4 (run /aide in a session started in the aidemd.dev folder, then push to deploy).
+No feature in flight. Latest release v0.10.4 (npm + MCP Registry, CI green): session.aide is the full session record again (the pre-2026-10-09 format plus the required ## Kanban links; task stashes alongside), kept up to date as the agent works. Previous: v0.10.3 (/aide boot stops and suggests the upgrade), v0.10.2 (content-free brain responses + kanban project-tag fix); v0.10.1 is a broken tag that never published. Global install @aidemd-mcp/server 0.10.4; this repo's and aidemd.dev's `aide` entries run the global `aidemd-mcp`. Everything committed and pushed. aidemd.dev synced to 0.10.4 (site commit 160ad91) and deployed (GitHub Pages green); its brain config needs nothing (brainMigration null).
 
 ## Kanban
 
@@ -124,16 +124,14 @@ Nothing paused; between features.
 
 ### What the next agent must do
 
-1. Confirm aidemd.dev was synced to 0.10.4 and deployed (site's `chore(aide): sync methodology to 0.10.4` commit, GitHub Pages deploy green).
-2. `versions-manifest-release-hygiene` — since the 0.10.3 boot gate, /aide in this repo stops on "outdated" every run because the committed .aide/versions.json is stale; fix it first.
-3. Kanban cleanup pass per project through /kanban manage.
-4. Review the three stale tasks with the user (`configurevscode-is-dead-code-never-called-from-install-orche`, `restructure-aidemd-dev-landing-page`, `create-per-command-aide-specs-under-claude-commands-aide`).
-5. Next feature from the board — candidates: `aide-scaffold-overwrites-existing-files` (P1 bug), `brain-authoring-skill-create-a-brain-aide-for-any-backend` (P2).
+1. `versions-manifest-release-hygiene` — since the 0.10.3 boot gate, /aide in this repo stops on "outdated" every run because the committed .aide/versions.json is stale; fix it first.
+2. Kanban cleanup pass per project through /kanban manage.
+3. Review the three stale tasks with the user (`configurevscode-is-dead-code-never-called-from-install-orche`, `restructure-aidemd-dev-landing-page`, `create-per-command-aide-specs-under-claude-commands-aide`).
+4. Next feature from the board — candidates: `aide-scaffold-overwrites-existing-files` (P1 bug), `brain-authoring-skill-create-a-brain-aide-for-any-backend` (P2).
 
 ### What's already done and validated
 
-- Feature `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done): aide_init brain step carries only `brainSummary` (under 4 KB on every status, tested); aide_upgrade brain category inserts missing sections tool-side (byte-identical only for the template's mcpvault launcher, else names sections to adapt), previews one change and applies it with a byte-exact SHA-256 `beforeHash`; aide_brain returns any contract section on every well-formed status with `found` and `purpose`; parseBrainAide CRLF fix (stray 
- in quoted last frontmatter line). Full gate green (tsc 0, 2155 tests, build). QA passed all 7 modules; upgrade fix loop cleared 4 low-severity playbook items. Ephemerals cleaned via aide_cleanup. Retro at process/retro/2026-10-10-aidemd-content-free-brain-responses.md.
+- Feature `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done): aide_init brain step carries only `brainSummary` (under 4 KB on every status, tested); aide_upgrade brain category inserts missing sections tool-side (byte-identical only for the template's mcpvault launcher, else names sections to adapt), previews one change and applies it with a byte-exact SHA-256 `beforeHash`; aide_brain returns any contract section on every well-formed status with `found` and `purpose`; parseBrainAide CRLF fix (stray \r in quoted last frontmatter line). Full gate green (tsc 0, 2155 tests, build). QA passed all 7 modules; upgrade fix loop cleared 4 low-severity playbook items. Ephemerals cleaned via aide_cleanup. Retro at process/retro/2026-10-10-aidemd-content-free-brain-responses.md.
 - Prose rewritten to match: /aide:brain config, /aide:upgrade, brain-aide.md, the aide_init / aide_upgrade / aide_brain tool descriptions.
 - Releases: v0.10.2 (feature + kanban project-tag fix); v0.10.3 (/aide boot stops and suggests the upgrade before Step 4). v0.10.1 is a git tag on a broken commit that never published.
 - Kanban skill records the project tag once in the instructions file; this repo's CLAUDE.md declares `Kanban project tag: aidemd-mcp`; the user's global kanban skill copy synced.
@@ -142,6 +140,7 @@ Nothing paused; between features.
 - This repo's brain.aide stale sections updated (committed, pushed).
 - Board: `rename-cards-to-tasks-in-kanban-prose` and `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` moved to Done; `brain-authoring-skill-create-a-brain-aide-for-any-backend` created (Backlog, P2).
 - v0.10.4 released 2026-10-11 (commits 6f1dcc2, b406037, 8e1a8fb, 65c2bca; release 6085ad9); global install updated to 0.10.4.
+- aidemd.dev synced to 0.10.4 from npm and deployed (site commit 160ad91), run headless: `claude -p` from the site folder with only aide_info, aide_upgrade, read and git tools allowed.
 
 ### What's left after the current cycle
 
@@ -162,5 +161,5 @@ session.aide is rewritten, never deleted (decision 18).
 - Every /aide session checks the board at boot and keeps the feature's tasks and `## Kanban` links current.
 - Record the work in session.aide in full (decision 23); stash into tasks alongside.
 - Cleanup of plan/todo/brief goes through aide_cleanup via aide-maintainer.
-- Publishing: check `git status` (publish.mjs commits everything staged), publish, `npm i -g @aidemd-mcp/server@<version>`, then the user runs /aide in a session started from the aidemd.dev folder and pushes (push to main deploys). Never edit the site from this repo's session.
+- Release process (user, 2026-10-11), done by the agent every time it publishes: check `git status` (publish.mjs commits everything staged) → publish and confirm the Publish workflow and npm version → `npm i -g @aidemd-mcp/server@<version>` → run a headless `claude -p` session from inside the aidemd.dev checkout that applies the drifted package-owned upgrade categories through aide_upgrade (never mcp or brain), commits `chore(aide): sync methodology to <version>` and pushes to main (the push deploys via GitHub Pages) → confirm the deploy → update session.aide. Never hand-edit the site's files from this repo's session; the headless session in the site folder does the work through aide's own tools. If it reports brainMigration, tell the user (/aide:brain config needs their consent).
 - Keep session.aide up to date as you work (decision 22).
