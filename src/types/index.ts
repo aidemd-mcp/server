@@ -846,8 +846,16 @@ export type CleanupRefusal =
 	| { kind: "not-a-directory" }
 	/** An ephemeral name exists but is not a regular file (directory, symlink). */
 	| { kind: "not-a-file"; file: CleanupEphemeral }
-	/** The module has no plan.aide. */
-	| { kind: "no-plan" }
+	/** The folder holds none of plan.aide, todo.aide or brief.aide, so there is nothing to remove. */
+	| { kind: "no-ephemerals" }
+	/**
+	 * brief.aide is present with no plan.aide; a brief has no checkboxes, so it is
+	 * removed only together with its plan. `items` lists any unchecked todo.aide
+	 * items in line order and is empty when there is no todo.aide or it is fully checked.
+	 */
+	| { kind: "brief-without-plan"; items: OpenCheckbox[] }
+	/** With no plan.aide, the only file present is a todo.aide with no checkboxes, so nothing shows its cycle closed. `allowEmptyPlan` never lifts this. */
+	| { kind: "todo-without-checkboxes" }
 	/**
 	 * plan.aide exists but contains no checkbox, so completion cannot be
 	 * verified. This is the default; the caller can lift it only by passing

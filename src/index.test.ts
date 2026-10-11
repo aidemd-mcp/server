@@ -178,7 +178,7 @@ describe("aide_cleanup registration", () => {
 		expect(inputSchema.properties.allowEmptyPlan.type).toBe("boolean");
 	});
 
-	it("describes the ephemerals, the out-of-reach session file, and the optional dry run", async () => {
+	it("describes the ephemerals, the out-of-reach session file, the no-plan path, and the optional dry run", async () => {
 		const { description } = await findCleanup();
 
 		expect(description).toContain("plan.aide");
@@ -186,6 +186,8 @@ describe("aide_cleanup registration", () => {
 		expect(description).toContain("brief.aide");
 		expect(description).toContain("session.aide");
 		expect(description).toMatch(/dryRun is an optional preview/);
+		expect(description).toMatch(/no plan\.aide/);
+		expect(description).not.toMatch(/refuses unless plan\.aide exists/);
 	});
 
 	it("calls cleanup with the root and defaulted flags", async () => {
@@ -216,13 +218,13 @@ describe("aide_cleanup registration", () => {
 		mockCleanup.mockResolvedValue({
 			kind: "refused",
 			module: "src/x",
-			refusal: { kind: "no-plan" },
+			refusal: { kind: "brief-without-plan", items: [] },
 		} satisfies CleanupResult);
 
 		const response = await callTool("aide_cleanup", { path: "src/x" });
 
 		expect(response.isError).toBe(true);
-		expect(response.content[0].text).toContain("no plan.aide");
+		expect(response.content[0].text).toContain("brief.aide has no checkboxes");
 	});
 
 	it("does not flag a removal as an error", async () => {

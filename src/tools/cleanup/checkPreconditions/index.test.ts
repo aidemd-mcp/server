@@ -29,9 +29,63 @@ async function makeModule(files: Partial<Record<CleanupEphemeral, string>>): Pro
 }
 
 describe("checkPreconditions", () => {
-	it("returns no-plan when plan.aide is absent, even with a todo present", async () => {
+	it.each([false, true])("returns no-ephemerals for an empty present list (allowEmptyPlan %s)", async (allowEmptyPlan) => {
+		expect(await checkPreconditions(dir, [], allowEmptyPlan)).toEqual({ kind: "no-ephemerals" });
+	});
+
+	it("returns null for a fully checked todo with no plan", async () => {
 		const present = await makeModule({ "todo.aide": CHECKED });
-		expect(await checkPreconditions(dir, present, false)).toEqual({ kind: "no-plan" });
+		expect(await checkPreconditions(dir, present, false)).toBeNull();
+	});
+
+	it("ignores allowEmptyPlan for a fully checked todo with no plan", async () => {
+		const present = await makeModule({ "todo.aide": CHECKED });
+		expect(await checkPreconditions(dir, present, true)).toBeNull();
+	});
+
+	it("returns the unchecked item of a todo with no plan", async () => {
+		const present = await makeModule({ "todo.aide": UNCHECKED_TODO });
+		expect(await checkPreconditions(dir, present, false)).toEqual({
+			kind: "unchecked-items",
+			items: [{ file: "todo.aide", line: 3, text: "open todo item" }],
+		});
+	});
+
+	it.each([false, true])(
+		"refuses a todo with zero checkboxes and no plan (allowEmptyPlan %s)",
+		async (allowEmptyPlan) => {
+			const present = await makeModule({ "todo.aide": NO_CHECKBOXES });
+			expect(await checkPreconditions(dir, present, allowEmptyPlan)).toEqual({ kind: "todo-without-checkboxes" });
+		},
+	);
+
+	it.each([false, true])(
+		"refuses a lone brief with no items (allowEmptyPlan %s)",
+		async (allowEmptyPlan) => {
+			const present = await makeModule({ "brief.aide": NO_CHECKBOXES });
+			expect(await checkPreconditions(dir, present, allowEmptyPlan)).toEqual({
+				kind: "brief-without-plan",
+				items: [],
+			});
+		},
+	);
+
+	it("never reads the checkboxes of a lone brief", async () => {
+		const present = await makeModule({ "brief.aide": "- [ ] not a gate\n" });
+		expect(await checkPreconditions(dir, present, false)).toEqual({ kind: "brief-without-plan", items: [] });
+	});
+
+	it("refuses a brief plus a fully checked todo with no plan", async () => {
+		const present = await makeModule({ "brief.aide": NO_CHECKBOXES, "todo.aide": CHECKED });
+		expect(await checkPreconditions(dir, present, false)).toEqual({ kind: "brief-without-plan", items: [] });
+	});
+
+	it("names the todo's unchecked item when a brief has no plan", async () => {
+		const present = await makeModule({ "brief.aide": NO_CHECKBOXES, "todo.aide": UNCHECKED_TODO });
+		expect(await checkPreconditions(dir, present, false)).toEqual({
+			kind: "brief-without-plan",
+			items: [{ file: "todo.aide", line: 3, text: "open todo item" }],
+		});
 	});
 
 	it("returns null for a fully checked plan with no todo", async () => {
@@ -95,11 +149,6 @@ describe("checkPreconditions", () => {
 			kind: "unchecked-items",
 			items: [{ file: "plan.aide", line: 2, text: "open plan item" }],
 		});
-	});
-
-	it("still returns no-plan when allowEmptyPlan is true", async () => {
-		const present = await makeModule({ "brief.aide": NO_CHECKBOXES });
-		expect(await checkPreconditions(dir, present, true)).toEqual({ kind: "no-plan" });
 	});
 
 	it("allows a todo with zero checkboxes alongside a checked plan", async () => {

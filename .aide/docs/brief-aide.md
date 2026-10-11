@@ -77,7 +77,7 @@ section when picking up an interrupted brief.
    - The architect appends commitments and resolves open questions when planning — new architectural decisions made during plan land here.
    - The implementor updates commitments and resolves open questions when build decisions land them — e.g. an open question "should we cache parsed results within an init invocation?" becomes commitment #14 "parsed results are cached within a single init invocation, not across runs."
    - The QA agent does NOT update the file — its job is to verify, not to commit.
-4. **Deleted** by the maintainer agent after QA passes. Once `todo.aide` is fully checked AND the retro is promoted to brain, the maintainer cleans up the per-module ephemeral artifacts (`brief.aide`, `plan.aide`, `todo.aide`). After deletion, the code itself documents the architectural shape per progressive disclosure (Tier 1 folder structure, Tier 2 JSDoc + signatures, Tier 3 orchestrator inline comments). The `brief.aide` was scaffolding for the in-flight work; the code is the durable artifact.
+4. **Deleted** by the maintainer agent after QA passes. Once `todo.aide` is fully checked AND the retro is promoted to brain, the maintainer cleans up the per-module ephemeral artifacts (`brief.aide`, `plan.aide`, `todo.aide`) through `aide_cleanup`. A brief has no checkboxes of its own, so it is removed only together with a fully checked `plan.aide` in the same folder; a `brief.aide` with no plan beside it is refused. After deletion, the code itself documents the architectural shape per progressive disclosure (Tier 1 folder structure, Tier 2 JSDoc + signatures, Tier 3 orchestrator inline comments). The `brief.aide` was scaffolding for the in-flight work; the code is the durable artifact.
 
 ## Placement
 

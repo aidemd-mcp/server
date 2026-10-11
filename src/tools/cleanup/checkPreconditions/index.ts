@@ -13,17 +13,35 @@ async function scanFile(dir: string, file: CheckedEphemeral) {
 /**
  * The closure gate: decides whether a module's ephemerals may be removed.
  * Returns the first refusal that applies, or `null` when removal may proceed.
- * Reads only plan.aide and todo.aide (brief.aide has no checkbox contract), and
- * only after the cheap `no-plan` check passes. `allowEmptyPlan` is consulted in
- * exactly one branch: it lifts `plan-without-checkboxes` and nothing else.
+ * Reads only plan.aide and todo.aide; brief.aide's own checkboxes are never read.
+ *
+ * With a plan.aide, the plan proves closure: `allowEmptyPlan` lifts only
+ * `plan-without-checkboxes`, and any unchecked plan or todo item refuses.
+ * Without a plan.aide, a fully checked todo.aide is its own proof of closure.
+ * A brief.aide is never removed without its plan, and a todo.aide with no
+ * checkboxes proves nothing, so both refuse. `allowEmptyPlan` has no effect there.
  */
 export default async function checkPreconditions(
 	dir: string,
 	present: CleanupEphemeral[],
 	allowEmptyPlan: boolean,
 ): Promise<CleanupRefusal | null> {
-	// No plan means the module's cycle cannot be shown closed; nothing is read.
-	if (!present.includes("plan.aide")) return { kind: "no-plan" };
+	// Nothing to remove; nothing is read.
+	if (present.length === 0) return { kind: "no-ephemerals" };
+
+	if (!present.includes("plan.aide")) {
+		// todo.aide is the only checkbox-bearing file left, so it is the only one scanned.
+		const todo = present.includes("todo.aide") ? await scanFile(dir, "todo.aide") : null;
+
+		// A brief has no checkboxes to show its cycle closed; it goes only with its plan.
+		// Any unchecked todo items ride along so the refusal hides no remaining work.
+		if (present.includes("brief.aide")) return { kind: "brief-without-plan", items: todo?.items ?? [] };
+
+		// Only todo.aide is present: no boxes proves nothing, open boxes block, all checked passes.
+		if (todo!.total === 0) return { kind: "todo-without-checkboxes" };
+		if (todo!.items.length > 0) return { kind: "unchecked-items", items: todo!.items };
+		return null;
+	}
 
 	const plan = await scanFile(dir, "plan.aide");
 	// A plan with no checkboxes gives no evidence of completion unless the caller opted in.

@@ -1,10 +1,18 @@
-import type { CleanupRefusal, CleanupResult } from "@/types/index.js";
+import type { CleanupRefusal, CleanupResult, OpenCheckbox } from "@/types/index.js";
 
 type Report = { text: string; isError: boolean };
 
 /** Renders `<module>/<file>`, or just `<file>` when the module is the project root. */
 function formatPath(module: string, file: string): string {
 	return module === "." ? file : `${module}/${file}`;
+}
+
+/** Renders the unchecked-item count line followed by one `<module>/<file>:<line>: <text>` line per item. */
+function describeItems(module: string, items: OpenCheckbox[]): string[] {
+	return [
+		`${items.length} unchecked item${items.length === 1 ? "" : "s"} remain:`,
+		...items.map((item) => `${formatPath(module, item.file)}:${item.line}: ${item.text}`),
+	];
 }
 
 /** Turns one refusal into its reason lines; unchecked items get a count line plus one line per item. */
@@ -18,18 +26,26 @@ function describeRefusal(module: string, refusal: CleanupRefusal): string[] {
 			return ["Reason: the path is not a directory."];
 		case "not-a-file":
 			return [`Reason: ${formatPath(module, refusal.file)} is not a regular file.`];
-		case "no-plan":
-			return ["Reason: no plan.aide, so the module's cycle cannot be shown closed."];
+		case "no-ephemerals":
+			return ["Reason: there is no plan.aide, todo.aide or brief.aide here to remove."];
+		case "brief-without-plan":
+			return [
+				`Reason: ${formatPath(module, "brief.aide")} has no checkboxes to show its cycle closed, so it is removed only together with a plan.aide, and there is none here.`,
+				...(refusal.items.length > 0 ? describeItems(module, refusal.items) : []),
+			];
+		case "todo-without-checkboxes":
+			return [
+				`Reason: ${formatPath(module, "todo.aide")} has no checkboxes to show its cycle closed, and there is no plan.aide here.`,
+			];
 		case "plan-without-checkboxes":
 			return [
 				"Reason: plan.aide has no checkboxes to verify, so completion cannot be shown.",
 				"Pass allowEmptyPlan: true only if the plan is intentionally empty.",
 			];
-		case "unchecked-items":
-			return [
-				`Reason: ${refusal.items.length} unchecked item${refusal.items.length === 1 ? "" : "s"} remain:`,
-				...refusal.items.map((item) => `${formatPath(module, item.file)}:${item.line}: ${item.text}`),
-			];
+		case "unchecked-items": {
+			const [count, ...lines] = describeItems(module, refusal.items);
+			return [`Reason: ${count}`, ...lines];
+		}
 	}
 }
 

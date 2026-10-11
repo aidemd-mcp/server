@@ -10,6 +10,7 @@ const PLAN_UNCHECKED = "# Plan\n\n- [x] Step one\n- [ ] Step two still open\n";
 const PLAN_EMPTY = "# Plan\n\nNo checkboxes anywhere in here.\n";
 const TODO_CHECKED = "# Todo\n\n- [x] Fixed it\n";
 const TODO_UNCHECKED = "# Todo\n\n- [x] Fixed it\n- [ ] Fix the other thing\n";
+const TODO_EMPTY = "# Todo\n\n## Retro\n\nNo checkboxes.\n";
 const BRIEF = "# Brief\n\n- [ ] Not a checkbox contract\n";
 
 type ModuleContents = { plan?: string; todo?: string; brief?: string };
@@ -186,6 +187,101 @@ describe("cleanup named refusals", () => {
 	});
 });
 
+describe("cleanup without a plan", () => {
+	const NEIGHBOURS = [".aide", "index.ts", "session.aide"];
+
+	/** Builds a module with the given ephemerals plus the non-ephemeral neighbours that must survive. */
+	async function makeNeighbouredModule(contents: ModuleContents) {
+		const mod = join(root, "mod");
+		await makeModule(mod, contents);
+		for (const name of NEIGHBOURS) await writeFile(join(mod, name), `content of ${name}`);
+		return mod;
+	}
+
+	it.each([false, true])("removes a fully checked todo alone and leaves its neighbours (allowEmptyPlan %s)", async (allowEmptyPlan) => {
+		await makeNeighbouredModule({ todo: TODO_CHECKED });
+		const before = await snapshot(root);
+
+		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan });
+
+		expect(result).toEqual({ kind: "removed", module: "mod", files: ["todo.aide"] });
+		const expected = Object.fromEntries(Object.entries(before).filter(([file]) => file !== "mod/todo.aide"));
+		expect(await snapshot(root)).toEqual(expected);
+	});
+
+	it("refuses a todo with an unchecked item, naming it, and changes nothing", async () => {
+		await makeNeighbouredModule({ todo: TODO_UNCHECKED });
+		const before = await snapshot(root);
+
+		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+
+		expect(result).toEqual({
+			kind: "refused",
+			module: "mod",
+			refusal: { kind: "unchecked-items", items: [{ file: "todo.aide", line: 4, text: "Fix the other thing" }] },
+		});
+		expect(await snapshot(root)).toEqual(before);
+	});
+
+	it.each([false, true])("refuses a todo with no checkboxes and changes nothing (allowEmptyPlan %s)", async (allowEmptyPlan) => {
+		await makeNeighbouredModule({ todo: TODO_EMPTY });
+		const before = await snapshot(root);
+
+		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan });
+
+		expect(result).toEqual({ kind: "refused", module: "mod", refusal: { kind: "todo-without-checkboxes" } });
+		expect(await snapshot(root)).toEqual(before);
+	});
+
+	it.each([false, true])("refuses a brief alone and changes nothing (allowEmptyPlan %s)", async (allowEmptyPlan) => {
+		await makeNeighbouredModule({ brief: BRIEF });
+		const before = await snapshot(root);
+
+		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan });
+
+		expect(result).toEqual({ kind: "refused", module: "mod", refusal: { kind: "brief-without-plan", items: [] } });
+		expect(await snapshot(root)).toEqual(before);
+	});
+
+	it("refuses a brief plus an unchecked todo, naming the todo item, and changes nothing", async () => {
+		await makeNeighbouredModule({ todo: TODO_UNCHECKED, brief: BRIEF });
+		const before = await snapshot(root);
+
+		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+
+		expect(result).toEqual({
+			kind: "refused",
+			module: "mod",
+			refusal: { kind: "brief-without-plan", items: [{ file: "todo.aide", line: 4, text: "Fix the other thing" }] },
+		});
+		expect(await snapshot(root)).toEqual(before);
+	});
+});
+
+describe("cleanup folder refusals", () => {
+	it("refuses a missing folder and changes nothing", async () => {
+		const before = await snapshot(base);
+
+		const result = await cleanup(root, { path: "nope", dryRun: false, allowEmptyPlan: false });
+
+		expect(result).toMatchObject({ kind: "refused", refusal: { kind: "missing" } });
+		expect(await snapshot(base)).toEqual(before);
+	});
+
+	it("refuses a folder holding no ephemerals and changes nothing", async () => {
+		const mod = join(root, "mod");
+		await makeModule(mod, {});
+		await writeFile(join(mod, ".aide"), "content of .aide");
+		await writeFile(join(mod, "index.ts"), "content of index.ts");
+		const before = await snapshot(base);
+
+		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+
+		expect(result).toEqual({ kind: "refused", module: "mod", refusal: { kind: "no-ephemerals" } });
+		expect(await snapshot(base)).toEqual(before);
+	});
+});
+
 describe("cleanup empty-plan opt-in", () => {
 	it("refuses a plan without checkboxes by default and removes both files with allowEmptyPlan", async () => {
 		const mod = join(root, "mod");
@@ -257,6 +353,50 @@ describe("cleanup dry-run parity", () => {
 			name: "empty plan plus unchecked todo with allowEmptyPlan",
 			allowEmptyPlan: true,
 			build: async () => (await makeModule(join(root, "mod"), { plan: PLAN_EMPTY, todo: TODO_UNCHECKED, brief: BRIEF }), "mod"),
+		},
+		{
+			name: "todo only, checked",
+			allowEmptyPlan: false,
+			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_CHECKED }), "mod"),
+		},
+		{
+			name: "todo only, checked, with allowEmptyPlan",
+			allowEmptyPlan: true,
+			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_CHECKED }), "mod"),
+		},
+		{
+			name: "todo only, unchecked",
+			allowEmptyPlan: false,
+			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_UNCHECKED }), "mod"),
+		},
+		{
+			name: "todo only, no checkboxes",
+			allowEmptyPlan: false,
+			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_EMPTY }), "mod"),
+		},
+		{
+			name: "brief only",
+			allowEmptyPlan: false,
+			build: async () => (await makeModule(join(root, "mod"), { brief: BRIEF }), "mod"),
+		},
+		{
+			name: "brief only with allowEmptyPlan",
+			allowEmptyPlan: true,
+			build: async () => (await makeModule(join(root, "mod"), { brief: BRIEF }), "mod"),
+		},
+		{
+			name: "no ephemerals",
+			allowEmptyPlan: false,
+			build: async () => {
+				await makeModule(join(root, "mod"), {});
+				await writeFile(join(root, "mod", "index.ts"), "content of index.ts");
+				return "mod";
+			},
+		},
+		{
+			name: "missing folder",
+			allowEmptyPlan: false,
+			build: async () => "nope",
 		},
 		{
 			name: "outside root",
@@ -334,6 +474,7 @@ describe("cleanup file-system access", () => {
 
 	it.each([
 		{ name: "a successful real call", contents: { plan: PLAN_CHECKED, todo: TODO_CHECKED, brief: BRIEF }, kind: "removed" },
+		{ name: "a todo-only real call", contents: { todo: TODO_CHECKED }, kind: "removed" },
 		{ name: "a refused call", contents: { plan: PLAN_UNCHECKED, todo: TODO_CHECKED, brief: BRIEF }, kind: "refused" },
 	])("touches only the root, the module dir and its three ephemerals during $name", async ({ contents, kind }) => {
 		const mod = join(root, "mod");

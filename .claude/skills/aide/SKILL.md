@@ -444,7 +444,7 @@ When all issues are resolved:
    - The **brain path of the promoted retro** (e.g. `process/retro/2026-05-08-<module>.md`) — the maintainer reads it back to verify the promotion landed — or the explicit statement that QA wrote no `todo.aide`
    - **Only if the user confirmed it:** that the module's `plan.aide` is intentionally empty
 
-   The maintainer verifies the retro, then calls the `aide_cleanup` MCP tool, which refuses — removing nothing — on any unchecked `plan.aide` or `todo.aide` item (naming each one), on a missing plan, or on a path outside the project. It returns CLEANED / REFUSED / PARTIAL with the tool's report. If REFUSED, route to the appropriate fix step (e.g. `/aide:fix` for unchecked `todo.aide` items) and re-delegate after.
+   The maintainer verifies the retro, then calls the `aide_cleanup` MCP tool, which refuses — removing nothing — on any unchecked `plan.aide` or `todo.aide` item (naming each one), on a `brief.aide` with no `plan.aide` beside it, or on a path outside the project. A fully checked `todo.aide` in a folder with no `plan.aide` is removed on its own. It returns CLEANED / REFUSED / PARTIAL with the tool's report. If REFUSED, route to the appropriate fix step (e.g. `/aide:fix` for unchecked `todo.aide` items) and re-delegate after.
 
 3. **Update `session.aide`.** It is never deleted. Invoke `aide-handoff` to record the closed task and rewrite `## Where this cycle stopped` for the next task.
 

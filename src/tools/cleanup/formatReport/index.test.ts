@@ -38,7 +38,12 @@ describe("formatReport — refused", () => {
 		[{ kind: "missing" }, /no such directory/],
 		[{ kind: "not-a-directory" }, /not a directory/],
 		[{ kind: "not-a-file", file: "todo.aide" }, /src\/x\/todo\.aide is not a regular file/],
-		[{ kind: "no-plan" }, /no plan\.aide/],
+		[{ kind: "no-ephemerals" }, /no plan\.aide, todo\.aide or brief\.aide here/],
+		[
+			{ kind: "brief-without-plan", items: [] },
+			/src\/x\/brief\.aide has no checkboxes.*only together with a plan\.aide/,
+		],
+		[{ kind: "todo-without-checkboxes" }, /src\/x\/todo\.aide has no checkboxes/],
 		[{ kind: "plan-without-checkboxes" }, /no checkboxes/],
 	];
 
@@ -92,6 +97,58 @@ describe("formatReport — refused", () => {
 	});
 });
 
+describe("formatReport — refusals without a plan", () => {
+	it("prints the brief reason, then the count line and each todo item", () => {
+		const report = formatReport({
+			kind: "refused",
+			module: "src/x",
+			refusal: {
+				kind: "brief-without-plan",
+				items: [
+					{ file: "todo.aide", line: 3, text: "Fix the edge case" },
+					{ file: "todo.aide", line: 5, text: "Add the test" },
+				],
+			},
+		});
+		const lines = report.text.split("\n");
+		expect(lines[1]).toMatch(/src\/x\/brief\.aide has no checkboxes/);
+		expect(lines[2]).toBe("2 unchecked items remain:");
+		expect(lines[3]).toBe("src/x/todo.aide:3: Fix the edge case");
+		expect(lines[4]).toBe("src/x/todo.aide:5: Add the test");
+	});
+
+	it("prints no count line and no unchecked text when the brief refusal has no items", () => {
+		const report = formatReport({
+			kind: "refused",
+			module: "src/x",
+			refusal: { kind: "brief-without-plan", items: [] },
+		});
+		expect(report.text).not.toMatch(/unchecked/);
+		expect(report.text.split("\n")).toHaveLength(2);
+	});
+
+	const noAdvice: CleanupRefusal[] = [
+		{ kind: "no-ephemerals" },
+		{ kind: "brief-without-plan", items: [] },
+		{ kind: "todo-without-checkboxes" },
+	];
+
+	it.each(noAdvice)("never mentions allowEmptyPlan or suggests creating a file for %j", (refusal) => {
+		const { text } = formatReport({ kind: "refused", module: "src/x", refusal });
+		expect(text).not.toContain("allowEmptyPlan");
+		expect(text).not.toContain("create");
+	});
+
+	it("renders the root module without a module prefix", () => {
+		const report = formatReport({
+			kind: "refused",
+			module: ".",
+			refusal: { kind: "brief-without-plan", items: [] },
+		});
+		expect(report.text).toContain("Reason: brief.aide has no checkboxes");
+	});
+});
+
 describe("formatReport — incomplete", () => {
 	const result: CleanupResult = {
 		kind: "incomplete",
@@ -121,7 +178,7 @@ describe("formatReport — forbidden content", () => {
 	const results: CleanupResult[] = [
 		{ kind: "removed", module: "src/x", files: ["plan.aide"] },
 		{ kind: "would-remove", module: "src/x", files: ["plan.aide"] },
-		{ kind: "refused", module: "src/x", refusal: { kind: "no-plan" } },
+		{ kind: "refused", module: "src/x", refusal: { kind: "brief-without-plan", items: [] } },
 		{ kind: "incomplete", module: "src/x", removed: [], remaining: ["plan.aide"], error: "boom" },
 	];
 

@@ -146,7 +146,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_cleanup",
 			description:
-				"Remove a module's pipeline ephemerals (plan.aide, todo.aide, brief.aide) once that module's cycle has closed, leaving the code and the intent specs as the durable record. It never removes, rewrites or reads anything else: intent specs, research specs, code, and .aide/session.aide are all out of reach.\n\nIt refuses unless plan.aide exists with every checkbox checked and any todo.aide present is fully checked. A missing todo.aide does not block. A refusal lists each unchecked item with its file and line, and nothing is removed. By default a plan.aide with no checkboxes is refused; passing allowEmptyPlan: true explicitly lets such a plan pass, and it never overrides unchecked items, a missing plan, or any other refusal.\n\nCall it directly, because the real call is already safe. dryRun is an optional preview for inspection only and is never a required step before the real call.\n\nThis is the cross-platform replacement for a shell delete, so it can be permitted by name.",
+				"Remove a module's pipeline ephemerals (plan.aide, todo.aide, brief.aide) once that module's cycle has closed, leaving the code and the intent specs as the durable record. It never removes, rewrites or reads anything else: intent specs, research specs, code, and .aide/session.aide are all out of reach.\n\nWhere plan.aide exists, it refuses unless every plan checkbox is checked and any todo.aide present is fully checked; a missing todo.aide does not block. Where there is no plan.aide, it removes a todo.aide that is fully checked, and refuses a brief.aide (which is removed only together with its plan), a todo.aide with no checkboxes, or a folder with no ephemerals at all. A refusal lists each unchecked item with its file and line, and nothing is removed. By default a plan.aide with no checkboxes is refused; passing allowEmptyPlan: true lets such a plan pass, overrides nothing else, and has no effect where there is no plan.aide.\n\nCall it directly, because the real call is already safe. dryRun is an optional preview for inspection only and is never a required step before the real call.\n\nThis is the cross-platform replacement for a shell delete, so it can be permitted by name.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -160,7 +160,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 					},
 					allowEmptyPlan: {
 						type: "boolean",
-						description: "Optional, off by default. Lets a plan.aide with no checkboxes pass. Overrides nothing else.",
+						description: "Optional, off by default. Lets a plan.aide with no checkboxes pass. Overrides nothing else, and has no effect where there is no plan.aide.",
 					},
 				},
 				required: ["path"],

@@ -110,7 +110,7 @@ without re-deriving it.
 1. **Created** by the architect agent during `/aide:plan`.
 2. **Presented to the user** for approval before `/aide:build` begins. The orchestrator pauses here.
 3. **Consumed** by the implementor during `/aide:build` — checkboxes track progress.
-4. **Deleted** by the maintainer agent after QA passes — the code is the durable artifact, the plan was scaffolding for the build. Future audit goes to git history + the code itself.
+4. **Deleted** by the maintainer agent after QA passes — the code is the durable artifact, the plan was scaffolding for the build. Future audit goes to git history + the code itself. Removal goes through `aide_cleanup`, which removes a plan only when every checkbox is checked, together with the module's `todo.aide` (if fully checked) and `brief.aide`. A plan with no checkboxes passes only on the explicit `allowEmptyPlan` opt-in. QA may write a `todo.aide` in a module this plan built but does not live in; that todo is removed on its own once fully checked.
 
 ## Placement
 

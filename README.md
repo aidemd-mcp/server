@@ -295,13 +295,13 @@ Create new `.aide` spec files with automatic naming convention enforcement. Hand
 
 ### aide_cleanup
 
-Remove a closed module's pipeline ephemerals — `brief.aide`, `todo.aide` and `plan.aide` — and nothing else. The preconditions are enforced in code: the module must have a `plan.aide` with every checkbox checked, and a `todo.aide`, if present, must be fully checked. Otherwise the tool refuses, removes nothing, and names each unchecked item with its file and line. It never touches intent specs, code or `.aide/session.aide`, and it refuses paths outside the project. Cross-platform with no shell, so cleanup needs no `rm` permission — allow the tool by name.
+Remove a closed module's pipeline ephemerals — `brief.aide`, `todo.aide` and `plan.aide` — and nothing else. The preconditions are enforced in code. Where the module has a `plan.aide`, every plan checkbox must be checked and a `todo.aide`, if present, must be fully checked. Where it has no `plan.aide`, a fully checked `todo.aide` is removed on its own, while a `brief.aide` (removed only together with its plan), a `todo.aide` with no checkboxes, or a folder with no ephemerals is refused. A refusal removes nothing and names each unchecked item with its file and line. It never touches intent specs, code or `.aide/session.aide`, and it refuses paths outside the project. Cross-platform with no shell, so cleanup needs no `rm` permission — allow the tool by name.
 
 **Inputs:**
 
 - `path` (string, required): Module folder that holds the ephemerals, relative to the project root.
 - `dryRun` (boolean, optional): Report what would be removed, or what blocks removal, without removing anything. For inspection only — the real call is already safe.
-- `allowEmptyPlan` (boolean, optional): Let a `plan.aide` with no checkboxes pass. Overrides nothing else.
+- `allowEmptyPlan` (boolean, optional): Let a `plan.aide` with no checkboxes pass. Overrides nothing else, and has no effect where there is no `plan.aide`.
 
 ### aide_inspect
 
