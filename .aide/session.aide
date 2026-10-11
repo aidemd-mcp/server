@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server: v0.10.4 shipped; unreleased on main (not pushed): versions manifest hygiene (260c82e) and the aide-brain-author skill with read-only aide_brain modes (6d85560). Paused.
+  Session record for the aidemd-mcp server: v0.11.0 shipped (aide-brain-author skill, read-only aide_brain modes, full-history versions manifest); next — aide_cleanup strands a fully checked todo.aide in a folder with no plan.aide.
 ---
 
 # AIDE SESSION
@@ -10,11 +10,19 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-10, paused — two unpushed commits)
+## State summary (set 2026-10-11, v0.11.0 released)
+
+v0.11.0 is released (release commit 566a5a5, tag v0.11.0; Publish and CI workflows green; npm serves 0.11.0). It ships versions manifest hygiene (260c82e) and the aide-brain-author skill with read-only aide_brain modes (6d85560).
+
+The global install is @aidemd-mcp/server 0.11.0. Its published dist/versions.json has 44 entries with 22 distinct sourceCommits and previousCommit on 41, and includes skills/aide-brain-author. This is the first full-history CI manifest, so the fetch-depth fix is confirmed in real CI.
+
+aidemd.dev was synced headless to 0.11.0 (site commit d956b97: methodology-docs, version-metadata, commands, agents and skills, including the new aide-brain-author skill) and deployed; GitHub Pages is green. Its brainMigration is null.
+
+New bug reported by the user (2026-10-11), not yet triaged: aide_cleanup refuses to remove a fully checked todo.aide in a folder with no plan.aide. QA writes todo.aide beside the code it verifies, which can be a folder whose build was planned elsewhere, so the todo is stranded.
 
 Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend` is built and QA passed with notes; no todo.aide.
 
-What landed (commit 6d85560, not pushed):
+What landed (commit 6d85560, released in v0.11.0):
 
 - aide_brain read-only modes per decision #26: template, contract and draft; the host read is unchanged.
 - launcherPurpose in brainContract.
@@ -30,7 +38,7 @@ The aide-maintainer prose now names aide_cleanup's `path` parameter; all 6 maint
 
 Rebuild after commit: versions.json has 44 artifacts, including the new skill.
 
-Feature `versions-manifest-release-hygiene` (In Review) is built, has passed QA, and is committed on main. It is not published; latest release is still v0.10.4.
+Feature `versions-manifest-release-hygiene` (In Review) is built, has passed QA, and is committed on main (260c82e), released in v0.11.0.
 
 What landed:
 
@@ -43,7 +51,7 @@ Gate: tsc 0; 2160 tests; the clean build removes stale dist files; dist/versions
 
 QA passed with no todo.aide (no retro). plan.aide was removed through aide_cleanup. With the stale host file gone, aide_info in this repo reports no outdated artifacts.
 
-User impact (corrected with the user, 2026-10-10): the recurring 'outdated' prompt happened only in this repo. Its stale committed .aide/versions.json was never rewritten, because this repo is never upgraded onto itself. In host projects the prompt shows once per release and accepting the upgrade clears it. The depth-1 stamping only inflates that one prompt's count, all 43 instead of just the changed artifacts, so it is cosmetic. The in-repo fix is complete without a publish. The full-history manifest ships with the next release, whenever that is; it does not warrant a release on its own.
+User impact (corrected with the user, 2026-10-10): the recurring 'outdated' prompt happened only in this repo. Its stale committed .aide/versions.json was never rewritten, because this repo is never upgraded onto itself. In host projects the prompt shows once per release and accepting the upgrade clears it. The depth-1 stamping only inflates that one prompt's count, all 43 instead of just the changed artifacts, so it is cosmetic. The in-repo fix is complete without a publish. The full-history manifest is released in v0.11.0.
 
 Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (boot upgrade gate), v0.10.2 (content-free brain responses), v0.10.1 a broken tag; global install 0.10.4; aidemd.dev synced to 0.10.4 (site commit 160ad91).
 
@@ -51,8 +59,8 @@ Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (b
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (In Review, P2, dx) — committed 6d85560; ships with the next release.
-- `versions-manifest-release-hygiene` (In Review, P2) — built, QA passed, committed 260c82e; ships with the next release (no dedicated publish).
+- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (In Review, P2, dx) — committed 6d85560; released in v0.11.0.
+- `versions-manifest-release-hygiene` (In Review, P2) — built, QA passed, committed 260c82e; released in v0.11.0.
 - `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done) — content-free brain responses; shipped in 0.10.2.
 - `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Done) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer removes ephemerals through it, never rm. Built, QA passed.
 - `aide-scaffold-creates-and-reformats-session-aide` (Done) — dropped, won't do — the user never asked for it.
@@ -176,16 +184,16 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Paused by the user. Nothing in flight. Two commits on main are not pushed: 260c82e (versions manifest hygiene) and 6d85560 (aide-brain-author + aide_brain modes). Both ship with the next release.
+v0.11.0 released and the site synced. Next: triage and fix the aide_cleanup orphan-todo bug the user reported.
 
 ### What the next agent must do
 
-1. Ask the user whether to push 260c82e and 6d85560, and whether to release now. If yes, follow the release process in Process discipline.
+1. Create a board task for the aide_cleanup orphan-todo bug (user approval), then run it through the pipeline: spec update to src/tools/cleanup/.aide → plan → build → QA → cleanup. Prose (tool description, aide-maintainer, todo-aide.md, plan-aide.md, index.md) is edited directly by the main agent.
 2. Pending user calls:
    - move `versions-manifest-release-hygiene` and `brain-authoring-skill-create-a-brain-aide-for-any-backend` to Done;
    - close `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` and `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`;
    - drop `create-per-command-aide-specs-under-claude-commands-aide` and `bring-the-kanban-board-into-aide` (suggested).
-3. Next feature: `aide-scaffold-overwrites-existing-files` (P1 bug).
+3. Then `aide-scaffold-overwrites-existing-files` (P1 bug).
 
 ### What's already done and validated
 
@@ -199,8 +207,9 @@ Paused by the user. Nothing in flight. Two commits on main are not pushed: 260c8
 - Board: `rename-cards-to-tasks-in-kanban-prose` and `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` moved to Done; `brain-authoring-skill-create-a-brain-aide-for-any-backend` created (Backlog, P2).
 - v0.10.4 released 2026-10-11 (commits 6f1dcc2, b406037, 8e1a8fb, 65c2bca; release 6085ad9); global install updated to 0.10.4.
 - aidemd.dev synced to 0.10.4 from npm and deployed (site commit 160ad91), run headless: `claude -p` from the site folder with only aide_info, aide_upgrade, read and git tools allowed.
-- Feature `versions-manifest-release-hygiene` (In Review): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed as 260c82e (not pushed, unpublished).
-- Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup, committed 6d85560 (not pushed), task In Review.
+- Feature `versions-manifest-release-hygiene` (In Review): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed as 260c82e, released in v0.11.0.
+- Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup, committed 6d85560, released in v0.11.0, task In Review.
+- v0.11.0 released 2026-10-11 (566a5a5); global install 0.11.0; aidemd.dev synced (d956b97) and deployed.
 
 ### What's left after the current cycle
 
@@ -208,13 +217,11 @@ Paused by the user. Nothing in flight. Two commits on main are not pushed: 260c8
 - The server reports its version as "0.2.0" in MCP serverInfo — a stale hard-coded label.
 - aidemd.dev's `docs:verify` expects 33 files, counts 42 — stale count in the site's script.
 - Retro rules for the architect agent (always include `foundations/conventions` in step Read lists; single-source pinned strings) — ship with a future release if the user wants them.
-- The hygiene fix ships with the next release. The first full-history manifest flags everything once more for hosts on 0.10.4; that is expected.
 - src/tools/brain/.aide body (Context/Strategy/examples) is stale vs the revised frontmatter and needs a strategist pass.
 - A draft path equal to the project root yields reason "cannot read  (EISDIR)" with an empty path.
 - The draft unreadable-file wording differs from the host check's labels (allowed by the brief, but inconsistent).
 - The launcher-region logic is duplicated between readTemplateLauncher and upgrade's locateFrontmatter.
 - The marker line format is spelled out in SKILL.md (drift risk if the format changes).
-- The aide-brain-author skill ships with the next release.
 
 session.aide is rewritten, never deleted (decision 18).
 
