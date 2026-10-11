@@ -10,9 +10,9 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-10, between tasks)
+## State summary (set 2026-10-11, between tasks)
 
-No feature in flight. Latest release v0.10.3 (npm + MCP Registry, CI green). Global install @aidemd-mcp/server 0.10.3; this repo's and aidemd.dev's `aide` MCP entries run the global `aidemd-mcp`. Unreleased and committed locally, not pushed: 6f1dcc2 (session.aide kept up to date as the agent works), b406037 (session decision 22), 8e1a8fb (session.aide restored to the full session record, linked to the board). They ship with the next release.
+No feature in flight. Latest release v0.10.4 (npm + MCP Registry, CI green): session.aide is the full session record again (the pre-2026-10-09 format plus the required ## Kanban links; task stashes alongside), kept up to date as the agent works. Previous: v0.10.3 (/aide boot stops and suggests the upgrade), v0.10.2 (content-free brain responses + kanban project-tag fix); v0.10.1 is a broken tag that never published. Global install @aidemd-mcp/server 0.10.4; this repo's and aidemd.dev's `aide` entries run the global `aidemd-mcp`. Everything committed and pushed. Pending outside this repo: the user is syncing aidemd.dev to 0.10.4 (run /aide in a session started in the aidemd.dev folder, then push to deploy).
 
 ## Kanban
 
@@ -124,7 +124,7 @@ Nothing paused; between features.
 
 ### What the next agent must do
 
-1. Decide with the user whether to push 6f1dcc2, b406037 and 8e1a8fb now or hold them for the next release.
+1. Confirm aidemd.dev was synced to 0.10.4 and deployed (site's `chore(aide): sync methodology to 0.10.4` commit, GitHub Pages deploy green).
 2. `versions-manifest-release-hygiene` — since the 0.10.3 boot gate, /aide in this repo stops on "outdated" every run because the committed .aide/versions.json is stale; fix it first.
 3. Kanban cleanup pass per project through /kanban manage.
 4. Review the three stale tasks with the user (`configurevscode-is-dead-code-never-called-from-install-orche`, `restructure-aidemd-dev-landing-page`, `create-per-command-aide-specs-under-claude-commands-aide`).
@@ -141,6 +141,7 @@ Nothing paused; between features.
 - aidemd.dev synced to 0.10.3 from npm and deployed (site commit 6deda6a); its `aide` entry switched to the global launcher; its brain.aide repaired.
 - This repo's brain.aide stale sections updated (committed, pushed).
 - Board: `rename-cards-to-tasks-in-kanban-prose` and `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` moved to Done; `brain-authoring-skill-create-a-brain-aide-for-any-backend` created (Backlog, P2).
+- v0.10.4 released 2026-10-11 (commits 6f1dcc2, b406037, 8e1a8fb, 65c2bca; release 6085ad9); global install updated to 0.10.4.
 
 ### What's left after the current cycle
 
