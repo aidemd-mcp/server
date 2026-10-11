@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server: v0.10.4 shipped; versions manifest hygiene committed (260c82e, ships with next release); aide-brain-author skill + read-only aide_brain modes built and QA-passed (uncommitted).
+  Session record for the aidemd-mcp server: v0.10.4 shipped; unreleased on main (not pushed): versions manifest hygiene (260c82e) and the aide-brain-author skill with read-only aide_brain modes (6d85560). Paused.
 ---
 
 # AIDE SESSION
@@ -10,11 +10,11 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-10, brain authoring skill built — pausing)
+## State summary (set 2026-10-10, paused — two unpushed commits)
 
 Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend` is built and QA passed with notes; no todo.aide.
 
-What landed (uncommitted):
+What landed (commit 6d85560, not pushed):
 
 - aide_brain read-only modes per decision #26: template, contract and draft; the host read is unchanged.
 - launcherPurpose in brainContract.
@@ -28,7 +28,7 @@ Gate: tsc 0; 2336 tests; build OK. Ephemerals were removed in src/tools/brain (p
 
 The aide-maintainer prose now names aide_cleanup's `path` parameter; all 6 maintainers had guessed a wrong name first.
 
-versions.json lists 43 artifacts because the new skill has no git history yet. After commit, a rebuild gives 44.
+Rebuild after commit: versions.json has 44 artifacts, including the new skill.
 
 Feature `versions-manifest-release-hygiene` (In Review) is built, has passed QA, and is committed on main. It is not published; latest release is still v0.10.4.
 
@@ -51,7 +51,7 @@ Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (b
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (In Progress, P2, dx) — built and QA passed; awaiting commit and the move to In Review.
+- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (In Review, P2, dx) — committed 6d85560; ships with the next release.
 - `versions-manifest-release-hygiene` (In Review, P2) — built, QA passed, committed 260c82e; ships with the next release (no dedicated publish).
 - `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done) — content-free brain responses; shipped in 0.10.2.
 - `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Done) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer removes ephemerals through it, never rm. Built, QA passed.
@@ -142,7 +142,7 @@ The tasks on the board this work touches, in work order; the full record of the 
 
     No change to parseGitLog, previousCommit, readVersionsManifest or resolveOutdated. The first full-history publish changes every artifact's sourceCommit vs v0.10.4, so hosts see everything outdated once more on that upgrade. This is a one-time correction.
 25. **Brain authoring skill is `aide-brain-author` (user, 2026-10-10).** It is a canonical shipped skill. Its SKILL.md is prose and is edited directly by the main agent. Its registration in the install, upgrade and versions-manifest code goes through the pipeline.
-26. **aide_brain parameter shape (architect, approved with plans pending; 2026-10-10).** `aide_brain { source?, kind?, path? }`:
+26. **aide_brain parameter shape (architect, user-approved and built; 2026-10-10).** `aide_brain { source?, kind?, path? }`:
     - `source` is one of "host" | "template" | "contract" | "draft". Omitted means "host".
     - Host (default): kind is any contract marker, omitted means "orientation". It returns `{ status, instructions, found, purpose? }`, unchanged.
     - template: kind is any contract marker or "launcher", omitted means "orientation". It returns `{ template, purpose }` with the bundled template's verbatim bytes. The launcher is the frontmatter region in the default local launch mode. The launcher purpose lives in brainContract (launcherPurpose), not in the contract array.
@@ -176,16 +176,16 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Nothing paused. `brain-authoring-skill-create-a-brain-aide-for-any-backend` is built and QA-passed, uncommitted; the user is pausing.
+Paused by the user. Nothing in flight. Two commits on main are not pushed: 260c82e (versions manifest hygiene) and 6d85560 (aide-brain-author + aide_brain modes). Both ship with the next release.
 
 ### What the next agent must do
 
-1. With the user's OK: commit the feature, the session.aide corrections and the aide-maintainer prose fix. Rebuild (`npm run build`) so versions.json picks up the new skill (expect 44). Move the task to In Review. Push 260c82e and the new commit when the user asks.
+1. Ask the user whether to push 260c82e and 6d85560, and whether to release now. If yes, follow the release process in Process discipline.
 2. Pending user calls:
-   - move `versions-manifest-release-hygiene` to Done;
+   - move `versions-manifest-release-hygiene` and `brain-authoring-skill-create-a-brain-aide-for-any-backend` to Done;
    - close `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` and `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`;
    - drop `create-per-command-aide-specs-under-claude-commands-aide` and `bring-the-kanban-board-into-aide` (suggested).
-3. Next feature after the pause: `aide-scaffold-overwrites-existing-files` (P1 bug).
+3. Next feature: `aide-scaffold-overwrites-existing-files` (P1 bug).
 
 ### What's already done and validated
 
@@ -200,7 +200,7 @@ Nothing paused. `brain-authoring-skill-create-a-brain-aide-for-any-backend` is b
 - v0.10.4 released 2026-10-11 (commits 6f1dcc2, b406037, 8e1a8fb, 65c2bca; release 6085ad9); global install updated to 0.10.4.
 - aidemd.dev synced to 0.10.4 from npm and deployed (site commit 160ad91), run headless: `claude -p` from the site folder with only aide_info, aide_upgrade, read and git tools allowed.
 - Feature `versions-manifest-release-hygiene` (In Review): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed as 260c82e (not pushed, unpublished).
-- Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup.
+- Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup, committed 6d85560 (not pushed), task In Review.
 
 ### What's left after the current cycle
 
