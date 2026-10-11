@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server: v0.11.0 shipped (aide-brain-author skill, read-only aide_brain modes, full-history versions manifest); next — aide_cleanup strands a fully checked todo.aide in a folder with no plan.aide.
+  Session record for the aidemd-mcp server: v0.11.1 shipped (aide_cleanup removes a fully checked todo.aide with no plan.aide); v0.11.0 shipped the aide-brain-author skill, read-only aide_brain modes and the full-history versions manifest. Between tasks.
 ---
 
 # AIDE SESSION
@@ -10,7 +10,7 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-11, v0.11.0 released)
+## State summary (set 2026-10-11, v0.11.1 released — between tasks)
 
 v0.11.0 is released (release commit 566a5a5, tag v0.11.0; Publish and CI workflows green; npm serves 0.11.0). It ships versions manifest hygiene (260c82e) and the aide-brain-author skill with read-only aide_brain modes (6d85560).
 
@@ -18,7 +18,15 @@ The global install is @aidemd-mcp/server 0.11.0. Its published dist/versions.jso
 
 aidemd.dev was synced headless to 0.11.0 (site commit d956b97: methodology-docs, version-metadata, commands, agents and skills, including the new aide-brain-author skill) and deployed; GitHub Pages is green. Its brainMigration is null.
 
-New bug reported by the user (2026-10-11), not yet triaged: aide_cleanup refuses to remove a fully checked todo.aide in a folder with no plan.aide. QA writes todo.aide beside the code it verifies, which can be a folder whose build was planned elsewhere, so the todo is stranded.
+v0.11.1 is released: fix commit 08807f9, then the release commit and tag v0.11.1, with Publish and CI green and npm serving 0.11.1. aide_cleanup with no plan.aide now removes what is present when every file it would remove is fully checked.
+
+- A brief.aide with no plan, a todo.aide with no checkboxes and no plan, and a folder with no ephemerals are refused. Missing and outside paths stay refused.
+- Folders with a plan.aide behave as before. allowEmptyPlan has no effect where there is no plan.
+- The refusal kinds no-ephemerals, brief-without-plan and todo-without-checkboxes replace no-plan.
+- Prose updated: tool description, aide-maintainer, the aide skill's Completion step, README, and the todo/plan/brief docs. todo-aide.md says QA may write todo.aide beside code planned in another module.
+- Gate: tsc 0, 2373 tests, build OK. QA passed with no todo.aide. Ephemerals were cleaned in src/tools/cleanup, src/types and src.
+
+The global install is 0.11.1. aidemd.dev was synced headless (site commit 04232be) and deployed; Pages is green and brainMigration is null. The user said not to touch private-report-server: the orphan todo.aide there is theirs to clean up.
 
 Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend` is built and QA passed with notes; no todo.aide.
 
@@ -59,6 +67,7 @@ Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (b
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
+- `aide-cleanup-strands-a-fully-checked-todo-aide-in-a-folder` (In Review, P1, bug) — fixed and released in v0.11.1.
 - `brain-authoring-skill-create-a-brain-aide-for-any-backend` (In Review, P2, dx) — committed 6d85560; released in v0.11.0.
 - `versions-manifest-release-hygiene` (In Review, P2) — built, QA passed, committed 260c82e; released in v0.11.0.
 - `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done) — content-free brain responses; shipped in 0.10.2.
@@ -163,6 +172,10 @@ The tasks on the board this work touches, in work order; the full record of the 
     - Its repair mode (adding missing sections, handed off from /aide:brain config's adapt branch) edits the live config in place, then re-checks with aide_info.
     - It asks the launch mode itself with the same Global/Local wording as /aide:brain config.
     - It never runs sync or seeds the brain; /aide:brain config owns wiring and seeding.
+28. **aide_cleanup closure rule (user, 2026-10-11).**
+    - Where a plan.aide exists, the plan must be fully checked, and any todo.aide present must be fully checked. A missing todo never blocks. allowEmptyPlan lets only a plan with no checkboxes pass.
+    - Where there is no plan.aide, a fully checked todo.aide is removed on its own. Refused: a brief.aide (removed only together with its plan); a todo.aide with no checkboxes; a folder with no ephemerals. allowEmptyPlan is ignored there.
+    - A refusal names each unchecked item by file and line and removes nothing.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -181,19 +194,19 @@ The tasks on the board this work touches, in work order; the full record of the 
 - **Check `git status` before publishing** — publish.mjs commits everything already staged.
 - **Published manifests come from a full clone** — scripts/build-versions.ts must refuse to build on a shallow clone; every workflow that builds keeps `fetch-depth: 0`; this repo never commits or ships `.aide/versions.json`.
 - **Template read and contract listing never read the host config** — their answers are identical whatever state .aide/config/brain.aide is in; draft validation reuses the host check's parser and fault mapping and refuses paths outside the project.
+- **A fully checked todo.aide is never stranded** — aide_cleanup removes it with or without a plan beside it. A brief.aide is never removed without its plan.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-v0.11.0 released and the site synced. Next: triage and fix the aide_cleanup orphan-todo bug the user reported.
+Nothing in flight. v0.11.1 released; site synced.
 
 ### What the next agent must do
 
-1. Create a board task for the aide_cleanup orphan-todo bug (user approval), then run it through the pipeline: spec update to src/tools/cleanup/.aide → plan → build → QA → cleanup. Prose (tool description, aide-maintainer, todo-aide.md, plan-aide.md, index.md) is edited directly by the main agent.
-2. Pending user calls:
-   - move `versions-manifest-release-hygiene` and `brain-authoring-skill-create-a-brain-aide-for-any-backend` to Done;
+1. Pending user calls:
+   - move to Done: `versions-manifest-release-hygiene`, `brain-authoring-skill-create-a-brain-aide-for-any-backend`, `aide-cleanup-strands-a-fully-checked-todo-aide-in-a-folder`;
    - close `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` and `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`;
    - drop `create-per-command-aide-specs-under-claude-commands-aide` and `bring-the-kanban-board-into-aide` (suggested).
-3. Then `aide-scaffold-overwrites-existing-files` (P1 bug).
+2. Next feature: `aide-scaffold-overwrites-existing-files` (P1 bug).
 
 ### What's already done and validated
 
@@ -210,6 +223,7 @@ v0.11.0 released and the site synced. Next: triage and fix the aide_cleanup orph
 - Feature `versions-manifest-release-hygiene` (In Review): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed as 260c82e, released in v0.11.0.
 - Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup, committed 6d85560, released in v0.11.0, task In Review.
 - v0.11.0 released 2026-10-11 (566a5a5); global install 0.11.0; aidemd.dev synced (d956b97) and deployed.
+- v0.11.1 released 2026-10-11 (fix 08807f9): aide_cleanup no-plan rule; global install 0.11.1; aidemd.dev synced (04232be) and deployed.
 
 ### What's left after the current cycle
 
@@ -222,6 +236,7 @@ v0.11.0 released and the site synced. Next: triage and fix the aide_cleanup orph
 - The draft unreadable-file wording differs from the host check's labels (allowed by the brief, but inconsistent).
 - The launcher-region logic is duplicated between readTemplateLauncher and upgrade's locateFrontmatter.
 - The marker line format is spelled out in SKILL.md (drift risk if the format changes).
+- aide-maintainer agents loaded before the prose fix still guess aide_cleanup's parameter name on the first try. The shipped prose now names `path`, so new sessions pick it up.
 
 session.aide is rewritten, never deleted (decision 18).
 
