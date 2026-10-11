@@ -10,9 +10,10 @@
 	},
 	"main": "dist/index.js",
 	"scripts": {
-		"build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && npm run build:versions",
+		"clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+		"build": "npm run clean && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && npm run build:versions",
 		"build:versions": "tsx scripts/build-versions.ts",
-		"prepublishOnly": "rm -rf dist && npm run build",
+		"prepublishOnly": "npm run build",
 		"dev": "tsc --watch",
 		"test": "vitest run",
 		"export-pdf": "tsx scripts/export-pdf.ts",
@@ -41,7 +42,8 @@
 		".claude/commands/aide",
 		".claude/agents/aide",
 		".claude/agents/kanban",
-		".claude/skills"
+		".claude/skills",
+		"!.aide/versions.json"
 	],
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.12.1",

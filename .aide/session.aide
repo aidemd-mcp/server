@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server: content-free brain responses shipped (0.10.2–0.10.3); boot upgrade gate; session.aide restored to the full session record and kept current as the agent works.
+  Session record for the aidemd-mcp server: v0.10.4 shipped; versions manifest release hygiene built and QA-passed (committed, unpublished).
 ---
 
 # AIDE SESSION
@@ -10,14 +10,30 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-11, between tasks)
+## State summary (set 2026-10-10, between tasks — hygiene fix awaiting release decision)
 
-No feature in flight. Latest release v0.10.4 (npm + MCP Registry, CI green): session.aide is the full session record again (the pre-2026-10-09 format plus the required ## Kanban links; task stashes alongside), kept up to date as the agent works. Previous: v0.10.3 (/aide boot stops and suggests the upgrade), v0.10.2 (content-free brain responses + kanban project-tag fix); v0.10.1 is a broken tag that never published. Global install @aidemd-mcp/server 0.10.4; this repo's and aidemd.dev's `aide` entries run the global `aidemd-mcp`. Everything committed and pushed. aidemd.dev synced to 0.10.4 (site commit 160ad91) and deployed (GitHub Pages green); its brain config needs nothing (brainMigration null).
+Feature `versions-manifest-release-hygiene` (In Review) is built, has passed QA, and is committed on main. It is not published; latest release is still v0.10.4.
+
+What landed:
+
+- New build-time helper assertFullClone (src/tools/upgrade/buildVersionsMeta/assertFullClone) with 5 tests. scripts/build-versions.ts exits 1 on a shallow or unknown-depth clone.
+- `fetch-depth: 0` in publish.yml and ci.yml.
+- package.json: a `clean` script (node fs.rmSync) runs first in `build`. prepublishOnly is `npm run build`. files gets "!.aide/versions.json".
+- .aide/versions.json removed from git and gitignored.
+
+Gate: tsc 0; 2160 tests; the clean build removes stale dist files; dist/versions.json has 43 entries with 22 distinct sourceCommits and previousCommit on 41; a real depth-1 clone aborts the build; npm pack excludes .aide/versions.json even when present.
+
+QA passed with no todo.aide (no retro). plan.aide was removed through aide_cleanup. With the stale host file gone, aide_info in this repo reports no outdated artifacts.
+
+User impact: the published v0.10.4 (and earlier CI-built) manifests stamp every artifact with the release HEAD. So after each release every host's aide_info reports every artifact outdated, even unchanged ones. The fix reaches users only through a publish. The first full-history publish flags everything once more vs 0.10.4; after that only artifacts that actually changed are flagged.
+
+Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (boot upgrade gate), v0.10.2 (content-free brain responses), v0.10.1 a broken tag; global install 0.10.4; aidemd.dev synced to 0.10.4 (site commit 160ad91).
 
 ## Kanban
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
+- `versions-manifest-release-hygiene` (In Review, P2) — built, QA passed, committed; ships with the next publish.
 - `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done) — content-free brain responses; shipped in 0.10.2.
 - `brain-authoring-skill-create-a-brain-aide-for-any-backend` (Backlog, P2, dx) — standalone skill that authors a brain.aide for any backend, section by section using aide_brain's purpose; /aide:brain config's create and custom-backend repair hand off to it.
 - `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Done) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer removes ephemerals through it, never rm. Built, QA passed.
@@ -30,7 +46,6 @@ The tasks on the board this work touches, in work order; the full record of the 
 - `fix-malformed-unreadable-brain-aide-wording-in-brain-md-upgr` (Backlog, P2) — housekeeping.
 - `aide-brain-remediation-tells-users-to-run-npx-sync-themselve` (Backlog, P2) — housekeeping.
 - `update-the-design-handoff-and-handoff-start-skills-to-kanban` (Backlog, P2) — housekeeping.
-- `versions-manifest-release-hygiene` (Backlog, P2) — stale committed .aide/versions.json; with the 0.10.3 boot gate it makes /aide in this repo stop every run — next up.
 - `fix-flaky-5s-install-suite-test-timeouts` (Backlog, P2) — housekeeping.
 - `session-cwd-root-resolution-bug` (Backlog, P2) — housekeeping.
 - `spec-accuracy-for-installagents-and-missing-helper-specs` (Backlog, P3) — housekeeping.
@@ -101,6 +116,13 @@ The tasks on the board this work touches, in work order; the full record of the 
 21. **Brain config authoring is its own skill (user, 2026-10-10).** Validation stays structural — every required field and section must exist; content is the user's responsibility. Authoring a brain.aide for any backend becomes a standalone skill (task `brain-authoring-skill-create-a-brain-aide-for-any-backend`); /aide:brain config keeps detection, Obsidian repair, migration, validation and sync, and hands create and custom-backend adapting to that skill once it exists.
 22. **session.aide is always current (user, 2026-10-10).** The orchestrator updates session.aide through aide-handoff whenever anything changes what it says — not only at pipeline milestones — and never ends a turn or a session with it behind.
 23. **session.aide is the full session record, linked to the board (user, 2026-10-10).** It holds what was done, every decision settled, what is validated and what comes next, in full — a fresh agent needs only this file to resume. `## Kanban` slug links stay required. Task stashes continue alongside but never replace the record. This reverses the 2026-10-09 'index to the board' slim-down (c913d8d).
+24. **Versions manifest hygiene (user, 2026-10-10).** One plan at src/tools/upgrade/buildVersionsMeta covers:
+    - `fetch-depth: 0` on the checkout in publish.yml and ci.yml (ci.yml runs `npm run build`).
+    - A new src helper `assertFullClone(repoRoot)`. It runs `git rev-parse --is-shallow-repository`, resolves only on exactly "false", and throws on "true" or anything else. It is wired into scripts/build-versions.ts after the git --version check and exits 1 like the existing aborts.
+    - package.json gets `"clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""`. `build` starts with `npm run clean &&`, `prepublishOnly` becomes `npm run build`, and `files` gets `"!.aide/versions.json"`.
+    - `git rm .aide/versions.json` plus a .gitignore entry.
+
+    No change to parseGitLog, previousCommit, readVersionsManifest or resolveOutdated. The first full-history publish changes every artifact's sourceCommit vs v0.10.4, so hosts see everything outdated once more on that upgrade. This is a one-time correction.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -117,17 +139,20 @@ The tasks on the board this work touches, in work order; the full record of the 
 - **A template section edit appends the previous fingerprint** — when any bundled brain template section's prose changes, append its old fingerprint to the outdated-sections record and update the drift pin, or old configs stop being recognized.
 - **No tool returns more brain text than one decision needs** — the aide_init summary brain step stays under 4 KB on every status (test); aide_brain returns one section; aide_upgrade's brain preview returns one before/after.
 - **Check `git status` before publishing** — publish.mjs commits everything already staged.
+- **Published manifests come from a full clone** — scripts/build-versions.ts must refuse to build on a shallow clone; every workflow that builds keeps `fetch-depth: 0`; this repo never commits or ships `.aide/versions.json`.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Nothing paused; between features.
+Nothing paused. versions-manifest-release-hygiene is complete in the repo and awaits the user's release decision.
 
 ### What the next agent must do
 
-1. `versions-manifest-release-hygiene` — since the 0.10.3 boot gate, /aide in this repo stops on "outdated" every run because the committed .aide/versions.json is stale; fix it first.
-2. Kanban cleanup pass per project through /kanban manage.
-3. Review the three stale tasks with the user (`configurevscode-is-dead-code-never-called-from-install-orche`, `restructure-aidemd-dev-landing-page`, `create-per-command-aide-specs-under-claude-commands-aide`).
-4. Next feature from the board — candidates: `aide-scaffold-overwrites-existing-files` (P1 bug), `brain-authoring-skill-create-a-brain-aide-for-any-backend` (P2).
+1. Ask the user whether to publish a patch release for the hygiene fix (it changes user-facing behavior: accurate per-artifact outdated reports). If yes, follow the release process in Process discipline. Then move `versions-manifest-release-hygiene` to Done once the user confirms.
+2. Next steps:
+   - Run a kanban cleanup pass via /kanban manage.
+   - Review the three stale tasks with the user (`configurevscode-is-dead-code-never-called-from-install-orche`, `restructure-aidemd-dev-landing-page`, `create-per-command-aide-specs-under-claude-commands-aide`).
+   - Propose moving `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` and `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` to Done.
+3. Next feature candidates: `aide-scaffold-overwrites-existing-files` (P1 bug), `brain-authoring-skill-create-a-brain-aide-for-any-backend` (P2).
 
 ### What's already done and validated
 
@@ -141,6 +166,7 @@ Nothing paused; between features.
 - Board: `rename-cards-to-tasks-in-kanban-prose` and `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` moved to Done; `brain-authoring-skill-create-a-brain-aide-for-any-backend` created (Backlog, P2).
 - v0.10.4 released 2026-10-11 (commits 6f1dcc2, b406037, 8e1a8fb, 65c2bca; release 6085ad9); global install updated to 0.10.4.
 - aidemd.dev synced to 0.10.4 from npm and deployed (site commit 160ad91), run headless: `claude -p` from the site folder with only aide_info, aide_upgrade, read and git tools allowed.
+- Feature `versions-manifest-release-hygiene` (In Review): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed (unpublished).
 
 ### What's left after the current cycle
 
@@ -150,6 +176,7 @@ Nothing paused; between features.
 - aidemd.dev's `docs:verify` expects 33 files, counts 42 — stale count in the site's script.
 - Retro rules for the architect agent (always include `foundations/conventions` in step Read lists; single-source pinned strings) — ship with a future release if the user wants them.
 - `/aide:brain config` create flow could hand off to the brain authoring skill once it exists (decision 21).
+- Release the hygiene fix (publish + aidemd.dev headless sync) once QA passes — only when the user asks to publish.
 
 session.aide is rewritten, never deleted (decision 18).
 

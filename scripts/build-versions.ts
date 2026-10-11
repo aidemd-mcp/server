@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import assertFullClone from "@/tools/upgrade/buildVersionsMeta/assertFullClone/index.js";
 import enumerateArtifacts from "@/tools/upgrade/buildVersionsMeta/enumerateArtifacts/index.js";
 import type {
 	VersionMeta,
@@ -63,6 +64,16 @@ async function main(): Promise<void> {
 		await execFileAsync("git", ["--version"], { cwd: REPO_ROOT });
 	} catch (cause) {
 		process.stderr.write("build-versions: git is not available\n");
+		process.exit(1);
+	}
+
+	// A shallow clone collapses every artifact to HEAD, so the build aborts rather than ship that manifest.
+	try {
+		await assertFullClone(REPO_ROOT);
+	} catch (error) {
+		process.stderr.write(
+			`${error instanceof Error ? error.message : "build-versions: shallow-clone check failed"}\n`,
+		);
 		process.exit(1);
 	}
 

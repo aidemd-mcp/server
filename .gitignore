@@ -6,3 +6,4 @@ coverage/
 *.tsbuildinfo
 *.stackdump
 .aide/tools.md
+.aide/versions.json
