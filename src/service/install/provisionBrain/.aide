@@ -1,5 +1,6 @@
 ---
 scope: src/service/install/provisionBrain
+alignment: unreviewed
 description: "Provisions the brain layer at install time by scaffolding the user-owned brain config from the bundled template and planning the brain MCP entry derived from it."
 intent: >
   provisionBrain is the install category that stands up the brain layer on

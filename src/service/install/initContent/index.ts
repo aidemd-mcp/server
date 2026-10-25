@@ -21,6 +21,9 @@ const METHODOLOGY_MARKER = "<!-- aide-methodology -->";
  * Canonical content lives under two subtrees of the repo root — `.aide/docs/`
  * for methodology and `.claude/commands/aide/` for slash command templates —
  * so DOC_PATHS values carry the subtree prefix and we resolve from the root.
+ * The changelog is the one exception: it is read from the repo root itself
+ * (`CHANGELOG.md`), which the same four-hop walk reaches from `src/` and from
+ * `dist/` because the published package keeps it at its root.
  */
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(MODULE_DIR, "..", "..", "..", "..");
@@ -66,9 +69,11 @@ const DOC_PATHS = {
 	"agents/aide/aide-aligner": ".claude/agents/aide/aide-aligner.md",
 	"agents/aide/aide-explorer": ".claude/agents/aide/aide-explorer.md",
 	"agents/aide/aide-maintainer": ".claude/agents/aide/aide-maintainer.md",
+	"agents/aide/aide-upgrader": ".claude/agents/aide/aide-upgrader.md",
 	"agents/kanban/kanban-maintainer": ".claude/agents/kanban/kanban-maintainer.md",
 	"commands/aide/align": ".claude/commands/aide/align.md",
 	"cascading-alignment": ".aide/docs/cascading-alignment.md",
+	"changelog": "CHANGELOG.md",
 	"skills/study-playbook": ".claude/skills/study-playbook/SKILL.md",
 	"skills/brain": ".claude/skills/brain/SKILL.md",
 	"skills/aide": ".claude/skills/aide/SKILL.md",
@@ -113,6 +118,7 @@ const METHODOLOGY_DOCS: readonly MethodologyDocEntry[] = [
 	{ canonical: "session-aide", hostFilename: "session-aide.md" },
 	{ canonical: "brain-aide", hostFilename: "brain-aide.md" },
 	{ canonical: "cascading-alignment", hostFilename: "cascading-alignment.md" },
+	{ canonical: "changelog", hostFilename: "changelog.md" },
 ];
 
 /**
@@ -149,6 +155,7 @@ const AGENT_DOCS: readonly AgentDocEntry[] = [
 	{ canonical: "agents/aide/aide-aligner", hostFilename: "aide/aide-aligner.md" },
 	{ canonical: "agents/aide/aide-explorer", hostFilename: "aide/aide-explorer.md" },
 	{ canonical: "agents/aide/aide-maintainer", hostFilename: "aide/aide-maintainer.md" },
+	{ canonical: "agents/aide/aide-upgrader", hostFilename: "aide/aide-upgrader.md" },
 	{ canonical: "agents/kanban/kanban-maintainer", hostFilename: "kanban/kanban-maintainer.md" },
 ];
 

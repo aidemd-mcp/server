@@ -1,6 +1,9 @@
 import type { BrainSectionContractEntry, BrainSectionField, BrainSectionMarker } from "@/service/brainContract/index.js";
 
+import type { AlignmentValue, WorkStatus } from "@/tools/frontmatter/types/index.js";
+
 export type { BrainSectionContractEntry, BrainSectionField, BrainSectionMarker } from "@/service/brainContract/index.js";
+export type { GovernedKind, GovernedField, AlignmentValue, WorkStatus } from "@/tools/frontmatter/types/index.js";
 
 /** The four .aide spec types: intent, research, plan, todo. */
 export type AideFileType = "intent" | "research" | "todo" | "plan";
@@ -18,12 +21,6 @@ export interface AideFrontmatter {
 		desired: string[];
 		undesired: string[];
 	};
-	/**
-	 * Alignment state. Omit for pending (the implicit default — no review yet).
-	 * Set to "aligned" by the aligner agent; set to "misaligned" by QA on drift.
-	 * "pending" is never stored or surfaced — its absence is the signal.
-	 */
-	status?: "aligned" | "misaligned";
 }
 
 /** A parsed body section split on `##` headings. */
@@ -48,8 +45,10 @@ export interface AideFile {
 	summary: string;
 	/** Frontmatter description field — one-line human-readable summary. Empty string when absent. */
 	description?: string;
-	/** Alignment status from frontmatter — present only when explicitly set. */
-	status?: "aligned" | "misaligned";
+	/** Alignment from frontmatter — set only for intent specs, read under either the `alignment` key or the older `status` name. */
+	alignment?: AlignmentValue;
+	/** Work status from frontmatter — set only for plan.aide and todo.aide. */
+	workStatus?: WorkStatus;
 	/** YAML parse error message — present only when frontmatter failed to parse. */
 	parseError?: string;
 }
@@ -72,7 +71,9 @@ export interface ValidationWarning {
 		| "broken-link"
 		| "orphaned-research"
 		| "missing-description"
-		| "parse-error";
+		| "parse-error"
+		| "missing-alignment"
+		| "invalid-alignment";
 	/** Path relative to project root where the issue was found. */
 	path: string;
 	/** Human-readable description of the issue. */
@@ -231,9 +232,12 @@ export interface InitStep {
 	globalPackage?: GlobalPackageStatus;
 	/**
 	 * CLI command the agent should execute for steps that require external
-	 * tooling (e.g. `code --install-extension <vsixPath>` for VS Code).
-	 * Present only on `would-create` IDE VS Code steps that pass through
-	 * applySteps without being written to disk.
+	 * tooling (e.g. `code --install-extension <vsixPath>` for VS Code), and for
+	 * the session record step, where it tells the agent to call aide_scaffold
+	 * with type "session".
+	 * Present only on `would-create` steps (the IDE VS Code step and the
+	 * session record step) that pass through applySteps without being written
+	 * to disk.
 	 */
 	instructions?: string;
 	/**
@@ -820,15 +824,12 @@ export type InspectResult = {
  */
 export type CleanupEphemeral = "plan.aide" | "todo.aide" | "brief.aide";
 
-/** The two ephemerals whose checkboxes gate removal. */
-export type CheckedEphemeral = Extract<CleanupEphemeral, "plan.aide" | "todo.aide">;
-
 /**
  * One unchecked item: the file it sits in, its 1-based line number, and the
  * item text after the checkbox marker, trimmed.
  */
 export type OpenCheckbox = {
-	file: CheckedEphemeral;
+	file: CleanupEphemeral;
 	line: number;
 	text: string;
 };
@@ -849,19 +850,26 @@ export type CleanupRefusal =
 	/** The folder holds none of plan.aide, todo.aide or brief.aide, so there is nothing to remove. */
 	| { kind: "no-ephemerals" }
 	/**
-	 * brief.aide is present with no plan.aide; a brief has no checkboxes, so it is
-	 * removed only together with its plan. `items` lists any unchecked todo.aide
-	 * items in line order and is empty when there is no todo.aide or it is fully checked.
+	 * brief.aide is present with no plan.aide; a brief is removed only together
+	 * with its plan, whatever the brief records. `items`
+	 * lists any unchecked todo.aide items in line order and is empty when there
+	 * is no todo.aide or it is fully checked.
 	 */
 	| { kind: "brief-without-plan"; items: OpenCheckbox[] }
-	/** With no plan.aide, the only file present is a todo.aide with no checkboxes, so nothing shows its cycle closed. `allowEmptyPlan` never lifts this. */
+	/** With no plan.aide, the only file present is a todo.aide with no checkboxes and no recorded status, so nothing shows its cycle closed. */
 	| { kind: "todo-without-checkboxes" }
-	/**
-	 * plan.aide exists but contains no checkbox, so completion cannot be
-	 * verified. This is the default; the caller can lift it only by passing
-	 * `allowEmptyPlan: true`.
-	 */
+	/** plan.aide exists with no checkbox and no recorded status, so completion cannot be verified. */
 	| { kind: "plan-without-checkboxes" }
+	/**
+	 * At least one of plan.aide, todo.aide, brief.aide records proposed or approved, so the
+	 * work is not closed. `files` names each such file with its recorded status;
+	 * `items` lists the open plan and todo items, plan first.
+	 */
+	| { kind: "open-status"; files: { file: CleanupEphemeral; status: string }[]; items: OpenCheckbox[] }
+	/** A plan, todo or brief records completed while checkbox items are still open. `items` is non-empty. */
+	| { kind: "completed-with-open-items"; items: OpenCheckbox[] }
+	/** A file's recorded status is not a value of the lifecycle; `detail` says what it holds. */
+	| { kind: "invalid-status"; file: CleanupEphemeral; detail: string }
 	/** At least one unchecked item. `items` is non-empty: plan.aide items first, then todo.aide items, each in line order. */
 	| { kind: "unchecked-items"; items: OpenCheckbox[] };
 

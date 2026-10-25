@@ -16,6 +16,7 @@ But the *architect* needs that implementation context to plan. The *implementor*
 
 ```yaml
 ---
+status: proposed
 intent: >
   One-line summary of what this brief is about. Mirrors the `.aide` intent
   but framed as "the slice of work currently in flight."
@@ -67,17 +68,17 @@ section when picking up an interrupted brief.
 - **Numbered commitments are stable references.** When a plan step says "honor commitment #11," that number must keep meaning the same thing throughout the brief. Removing a commitment leaves a gap; new commitments append.
 - **No cascading.** Each `brief.aide` stands alone. There is no inheritance from parent or root briefs — these are local working notes, not propagated intent.
 - **Not aligned, not validated.** The aligner does not walk `brief.aide` files. They are working memory, not intent. `aide_validate` does not warn about them.
-- **No frontmatter beyond `intent`.** No `scope`, no `outcomes`, no `status`. The file is per-feature working memory, not a structural artifact.
+- **No frontmatter beyond `status` and `intent`.** No `scope`, no `outcomes`. `status` follows the plan's lifecycle: a brief starts `proposed`, is approved together with its plan, completes only once its plan is `completed`, and goes with an `abandoned` plan. Revising an approved brief drops it back to `proposed`. Every change goes through `aide_frontmatter`. The file is per-feature working memory, not a structural artifact.
 
 ## Lifecycle
 
-1. **Created** by the strategist during `/aide:synthesize` as a sibling of the `.aide` spec. The strategist authors `brief.aide` alongside the body sections — implementation contracts that surfaced during synthesis (type-level commitments the strategy implies, exact strings the domain requires, cross-module contracts emerging from the research) land here, NOT in the `.aide` body. The architect reads it during plan to decide what to build.
+1. **Created** by the strategist during `/aide:synthesize` as a sibling of the `.aide` spec, starting `status: proposed`. The strategist authors `brief.aide` alongside the body sections — implementation contracts that surfaced during synthesis (type-level commitments the strategy implies, exact strings the domain requires, cross-module contracts emerging from the research) land here, NOT in the `.aide` body. The architect reads it during plan to decide what to build.
 2. **Read** by the architect during `/aide:plan` — it is the architect's pre-read, providing the implementation context needed to write `plan.aide`. Read by the implementor during `/aide:build` — provides the contracts the code must honor. Read by QA during `/aide:qa` — clarifies what valid output looks like at the structural level.
 3. **Updated** mid-pipeline:
    - The architect appends commitments and resolves open questions when planning — new architectural decisions made during plan land here.
    - The implementor updates commitments and resolves open questions when build decisions land them — e.g. an open question "should we cache parsed results within an init invocation?" becomes commitment #14 "parsed results are cached within a single init invocation, not across runs."
    - The QA agent does NOT update the file — its job is to verify, not to commit.
-4. **Deleted** by the maintainer agent after QA passes. Once `todo.aide` is fully checked AND the retro is promoted to brain, the maintainer cleans up the per-module ephemeral artifacts (`brief.aide`, `plan.aide`, `todo.aide`) through `aide_cleanup`. A brief has no checkboxes of its own, so it is removed only together with a fully checked `plan.aide` in the same folder; a `brief.aide` with no plan beside it is refused. After deletion, the code itself documents the architectural shape per progressive disclosure (Tier 1 folder structure, Tier 2 JSDoc + signatures, Tier 3 orchestrator inline comments). The `brief.aide` was scaffolding for the in-flight work; the code is the durable artifact.
+4. **Deleted** by the maintainer agent after QA passes. Once `todo.aide` is closed AND the retro is promoted to brain, the maintainer records each file's closing status through `aide_frontmatter` and cleans up the per-module ephemeral artifacts (`brief.aide`, `plan.aide`, `todo.aide`) through `aide_cleanup`. A brief is removed only together with its `plan.aide`, after the plan is `completed` (or the plan is `abandoned`, which takes the brief with it); a `brief.aide` with no plan beside it is refused. After deletion, the code itself documents the architectural shape per progressive disclosure (Tier 1 folder structure, Tier 2 JSDoc + signatures, Tier 3 orchestrator inline comments). The `brief.aide` was scaffolding for the work in progress; the code is the durable artifact.
 
 ## Placement
 
@@ -120,4 +121,4 @@ A plan is a recipe. A brief is the kitchen's current state. The recipe says what
 
 ## Distinction from `session.aide`
 
-`session.aide` is a different artifact entirely — a single root-level pipeline-position log at `.aide/session.aide` that tracks where the in-flight feature stands across cycles. `brief.aide` is per-module and carries implementation contracts; `session.aide` is project-wide and carries pipeline state. See [session.aide spec](./session-aide.md).
+`session.aide` is a different artifact entirely — a single root-level pipeline-position log at `.aide/session.aide` that tracks where the current feature stands across cycles. `brief.aide` is per-module and carries implementation contracts; `session.aide` is project-wide and carries pipeline state. See [session.aide spec](./session-aide.md).

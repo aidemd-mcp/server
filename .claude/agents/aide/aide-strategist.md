@@ -55,11 +55,12 @@ You receive a delegation to fill the body sections of a `.aide` spec whose front
 10. **Verify traceability.** Every strategy decision must trace back to an `outcomes.desired` entry or guard against an `outcomes.undesired` entry. Cut anything that doesn't serve the intent.
 
 11. **Author `brief.aide`** as a sibling of the `.aide` spec. Format follows `.aide/docs/brief-aide.md`. This is the architect's pre-read — implementation contracts that surfaced during synthesis but are forbidden in the durable spec by the Brevity Contract land here.
-    - **Frontmatter:** `intent` only — one-line summary of the slice of work this brief covers.
+    - **Frontmatter:** `status: proposed` (first line) and `intent` — one-line summary of the slice of work this brief covers. The brief is approved together with its plan later; never set any other status yourself.
+    - **After filling the spec's body sections,** move the spec's `alignment` to `unreviewed` with `aide_frontmatter({ path, field: "alignment", value: "unreviewed" })` — any edit to a spec voids an earlier `aligned`.
     - **`## Commitments`** — numbered list of architectural commitments the strategy implies. Each commitment is a stable fact about the module's shape: a type-level commitment surfaced by domain analysis, an exact string the domain requires, a schema cardinality the strategy depends on, an enumeration of accepted values. One commitment per number; numbers persist across edits (gaps stay when commitments are removed). The architect will append more during plan; you author the strategist-derived ones.
     - **`## Cross-module contracts`** — what this module promises to neighbors and what it consumes from them, when synthesis surfaces these contracts.
     - **`## Open questions`** — design decisions you flagged during synthesis that the architect or implementor will need to settle. Cleared as they are answered downstream.
-    - If a `brief.aide` already exists (e.g., a prior in-flight feature), UPDATE it rather than overwriting: append new commitments at the next available number, refine cross-module contracts, carry forward existing commitments still in force. Numbers must remain stable references.
+    - If a `brief.aide` already exists (e.g., from a feature still in progress), UPDATE it rather than overwriting: append new commitments at the next available number, refine cross-module contracts, carry forward existing commitments still in force. Numbers must remain stable references.
     - **What does NOT go in `brief.aide`:** domain reasoning (lives in `.aide` Strategy), build steps (live in `plan.aide`), QA findings (live in `todo.aide`).
 
 ## Forbidden content (anywhere in the body)

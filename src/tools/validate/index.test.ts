@@ -19,7 +19,7 @@ describe("validate", () => {
 		await writeFile(join(tempDir, "index.ts"), "export default function() {}");
 		await writeFile(
 			join(tempDir, ".aide"),
-			"---\ndescription: A healthy spec with all required fields\n---\nClean spec with no links",
+			"---\ndescription: A healthy spec with all required fields\nalignment: unreviewed\n---\nClean spec with no links",
 		);
 
 		const result = await validate(tempDir);
@@ -94,5 +94,48 @@ describe("validate", () => {
 		const missing = result.warnings.find((w) => w.kind === "missing-description");
 
 		expect(missing).toBeUndefined();
+	});
+
+	describe("alignment", () => {
+		const isAlignment = (w: { kind: string }) =>
+			w.kind === "missing-alignment" || w.kind === "invalid-alignment";
+
+		it("warns once, for the one intent spec that records no alignment", async () => {
+			const spec = (extra: string) => `---\ndescription: A spec\n${extra}---\n`;
+			await mkdir(join(tempDir, "src", "a"), { recursive: true });
+			await mkdir(join(tempDir, "src", "b"), { recursive: true });
+			await writeFile(join(tempDir, "index.ts"), "export default function() {}");
+			await writeFile(join(tempDir, ".aide"), spec(""));
+			await writeFile(join(tempDir, "src", "a", ".aide"), spec("alignment: aligned\n"));
+			await writeFile(join(tempDir, "src", "b", ".aide"), spec("status: misaligned\n"));
+			await writeFile(
+				join(tempDir, "src", "a", "plan.aide"),
+				"---\nstatus: approved\nintent: Plan it\n---\n",
+			);
+			await writeFile(
+				join(tempDir, "src", "b", "todo.aide"),
+				"---\nstatus: proposed\nintent: Fix it\n---\n",
+			);
+
+			const result = await validate(tempDir);
+			const alignment = result.warnings.filter(isAlignment);
+
+			expect(alignment).toHaveLength(1);
+			expect(alignment[0].kind).toBe("missing-alignment");
+			expect(alignment[0].path).toBe(".aide");
+		});
+
+		it("respects a scoped path", async () => {
+			await mkdir(join(tempDir, "src", "a"), { recursive: true });
+			await writeFile(join(tempDir, ".aide"), "---\ndescription: Root spec\n---\n");
+			await writeFile(
+				join(tempDir, "src", "a", ".aide"),
+				"---\ndescription: A spec\nalignment: aligned\n---\n",
+			);
+
+			const result = await validate(tempDir, "src/a");
+
+			expect(result.warnings.filter(isAlignment)).toHaveLength(0);
+		});
 	});
 });

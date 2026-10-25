@@ -4,7 +4,7 @@ The session record. A single `session.aide` lives at the project root inside `.a
 
 It replaces the legacy `handoff.aide` pattern: same content, fixed location, integrated into the methodology rather than hand-written ad hoc.
 
-It is **long-lived and never deleted**: created the first time a feature pipeline needs a durable tracker, it survives every build/QA/fix cycle and every feature after it. When a feature closes, the next handoff rewrites it for the work that comes next — the board almost always has a next task.
+It **always exists and is never deleted**. It starts as an empty placeholder created by `aide_scaffold type=session`: `aide_init` has the agent create it, and the `/aide` boot creates it in any project that lacks it. From then on the agent writes to it as it works, from the first piece of work, whether or not that work has a task. It survives every build/QA/fix cycle and every feature after it. When a feature closes, the next handoff rewrites it for the work that comes next.
 
 ## Why This Exists
 
@@ -109,14 +109,55 @@ Decisions still in flight that need user input or further investigation
 before the work can advance.
 ```
 
+## Placeholder
+
+The empty file `aide_scaffold type=session` writes — the placeholder's single source, used by `aide_init` and the `/aide` boot. A test keeps this block byte-identical with scaffold's template. Every section heading is present and every section is empty, so the first write fills in sections instead of inventing the layout:
+
+```markdown
+---
+intent: >
+  Nothing recorded yet.
+---
+
+# AIDE SESSION
+
+Cold-start protocol for agents reorienting on this project. This is a
+snapshot of the current architectural intent and the anti-regression
+invariants every build phase must hold. It is NOT historical commentary —
+superseded design decisions are cut, not annotated.
+
+## State summary
+
+## Kanban
+
+## The architectural intent (what the specs say after the rewrite)
+
+## Anti-regression invariants future build phases must hold
+
+## Where this cycle stopped (CRITICAL READING)
+
+### What the next agent must do
+
+### What's already done and validated
+
+### What's left after the current cycle
+
+## Process discipline (permanent)
+
+## Open questions
+```
+
+An empty section is valid at any time. A section stays empty until there is something true to put in it.
+
 ## Rules
 
+- **Always present.** The file exists in every AIDE project from install on. Nothing waits on a task, a feature or a pipeline stage before writing it; the first piece of work recorded goes straight into it.
 - **One file per project, not per module.** `session.aide` lives at `.aide/session.aide` and ONLY there. Per-module pipeline state lives in `brief.aide`, `plan.aide`, and `todo.aide`. This file is the project-wide tracker.
-- **Always links the board.** `## Kanban` is required: every task tied to the work appears by slug with its column, and every item in `## Where this cycle stopped` that has a task names its slug. The `/aide` orchestrator checks the board at boot and reads these links; work with no task gets one through the kanban skill before the file is written.
+- **Links the board when there is a task.** Every task tied to the work appears in `## Kanban` by slug with its column, and every item in `## Where this cycle stopped` that has a task names its slug. `## Kanban` may be empty: work with no task is still recorded, never held back until a task exists. The `/aide` orchestrator checks the board at boot and reads these links.
 - **The full session record, not just an index.** What was done, every decision, what is validated and what comes next live here, in full. Stashing progress into the task through the kanban skill still happens alongside, but `session.aide` never defers to a stash — a fresh agent reading only this file knows where everything stands.
 - **Replaces `handoff.aide`.** Pre-doctrine projects may still have a `.aide/handoff.aide` file — under the new doctrine that file is renamed to `.aide/session.aide` and integrated into the pipeline's resume protocol. Do not maintain both.
 - **Numbered architectural decisions are stable references.** When a plan or brief says "see session decision #21," that number must keep meaning the same thing across edits. Removing a decision leaves a gap; new decisions append.
-- **No domain reasoning.** Why-the-business-needs-this lives in `.aide/intent.aide` and module specs. `session.aide` is what's true *right now* about the in-flight feature, not why the feature exists.
+- **No domain reasoning.** Why-the-business-needs-this lives in `.aide/intent.aide` and module specs. `session.aide` is what's true *right now* about the work in progress, not why the feature exists.
 - **Not cascaded, not aligned, not validated.** The aligner does not walk `session.aide`. `aide_validate` does not warn about it. It is operational state, not durable intent.
 - **Implementation contracts welcome.** Type shapes, exact strings, schema details, marker tokens, slot indexes — anything that helps an agent reorient without re-deriving the architecture from code.
 - **Cut superseded decisions.** When a design decision is replaced by a new one, delete the old text. Git history preserves it. The session file describes the *current* state, not the journey.
@@ -124,11 +165,11 @@ before the work can advance.
 
 ## Lifecycle
 
-`session.aide` is authored and updated by the `aide-spec-writer` agent (the structured-file writer that also owns `.aide` frontmatter — both are "format orchestrator-supplied context into a canonical AIDE file" operations). Nothing deletes it — not the `aide-maintainer` agent, not the `aide_cleanup` tool. The orchestrator decides WHEN the file needs to be created or updated, and supplies the content; the spec-writer transcribes the orchestrator's supplied state into the canonical format and writes the file. This preserves the orchestrator's "delegate everything; never write files" constraint while giving each lifecycle stage a clear specialized owner.
+`session.aide` is created empty by `aide_scaffold type=session` and updated by the `aide-spec-writer` agent (the structured-file writer that also owns `.aide` frontmatter — both are "format orchestrator-supplied context into a canonical AIDE file" operations). Nothing deletes it — not the `aide-maintainer` agent, not the `aide_cleanup` tool. The orchestrator decides WHEN the file needs to be updated, and supplies the content; the spec-writer transcribes the orchestrator's supplied state into the canonical format and writes the file. This preserves the orchestrator's "delegate everything; never write files" constraint while giving each lifecycle stage a clear specialized owner.
 
-1. **Created** by the `aide-spec-writer` agent on orchestrator demand, the first time the orchestrator starts tracked work in the project and the file does not exist yet. The orchestrator's delegation prompt supplies the initial content (feature intent, current stage, task links in work order, settled decisions, anti-regression invariants, the next task); the spec-writer formats and writes the file.
+1. **Created empty** by `aide_scaffold type=session`, which writes the [placeholder](#placeholder) and never overwrites. `aide_init` directs the agent to call it when AIDE is installed; in a project that lacks the file, the `/aide` boot calls it before any other work. Nothing else creates it, and nothing waits for it to be filled.
 2. **Read at boot** by the `/aide` orchestrator on every invocation if the file exists. The orchestrator's resume protocol consults `## Where this cycle stopped` first, then `## The architectural intent` for the settled-decisions list. The file alone is enough to resume.
-3. **Kept up to date as the agent works.** The `aide-spec-writer` agent updates it on orchestrator demand whenever anything changes what it says, not only at pipeline milestones: a stage starts, completes or pauses for review; a decision is settled or an invariant added; a task is created, moved or finished; a release ships; or work outside the pipeline (a direct prose edit, a fix, a config or environment change) changes the state or the next step. The orchestrator never ends a turn or a session with the file behind. The orchestrator's delegation prompt names what changed and supplies the new content; the spec-writer applies the update — appending decisions at the next stable number, rewriting the `## Where this cycle stopped` section and the `## Kanban` links, moving finished work into `### What's already done and validated`, cutting superseded prose. The spec-writer never invents content; it transcribes what the orchestrator describes.
+3. **Kept up to date as the agent works.** Every write after the placeholder is an update, the first one included. The `aide-spec-writer` agent updates it on orchestrator demand whenever anything changes what it says, not only at pipeline milestones: a stage starts, completes or pauses for review; a decision is settled or an invariant added; a task is created, moved or finished; a release ships; or work outside the pipeline (a direct prose edit, a fix, a config or environment change) changes the state or the next step. The orchestrator never ends a turn or a session with the file behind. The orchestrator's delegation prompt names what changed and supplies the new content; the spec-writer applies the update — appending decisions at the next stable number, rewriting the `## Where this cycle stopped` section and the `## Kanban` links, moving finished work into `### What's already done and validated`, cutting superseded prose. The spec-writer never invents content and never refuses for missing content; it transcribes what the orchestrator describes and leaves the rest as it is.
 4. **Rewritten, never deleted,** when a feature closes. The closing handoff records the finished tasks in `## Kanban` and rewrites `## State summary` and `## Where this cycle stopped` around the next task on the board; decisions and invariants that no longer span live work are cut.
 
 ## Placement
@@ -152,7 +193,7 @@ It does NOT live next to module specs. Per-module ephemeral state lives in `brie
 | Scope | Per module | Project-wide (one file at root) |
 | Content | Implementation contracts for one module | Pipeline state across the whole feature |
 | Lifespan | Per feature (removed post-QA) | Long-lived; never deleted, rewritten as features close |
-| Owner | Strategist creates; architect + implementor update | `aide-spec-writer` creates and updates (orchestrator supplies the content) |
+| Owner | Strategist creates; architect + implementor update | `aide_scaffold` creates the empty placeholder; `aide-spec-writer` updates (orchestrator supplies the content) |
 | Resume target | The architect picking up plan revision | The orchestrator picking up the whole pipeline |
 
 A `brief.aide` answers "what shape must the code in *this module* take?" `session.aide` answers "where does the pipeline stand on *this feature*?" Both are operational state; neither is durable intent.

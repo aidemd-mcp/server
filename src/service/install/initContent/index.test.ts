@@ -1,4 +1,4 @@
-import { readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
@@ -85,7 +85,7 @@ describe("listMethodologyDocs — brain-aide registration (Step 4a/4c)", () => {
 		// METHODOLOGY_DOCS. Failing here means the registry changed without a
 		// corresponding update to this guard — making the omission visible at CI
 		// time rather than shipping a silently incomplete methodology install.
-		expect(listMethodologyDocs()).toHaveLength(12);
+		expect(listMethodologyDocs()).toHaveLength(13);
 	});
 
 	it("lists brain-aide after todo-aide (doc index reading-order invariant)", () => {
@@ -206,6 +206,217 @@ describe("kanban board agent", () => {
 	);
 });
 
+describe("aide-upgrader agent", () => {
+	it("is readable through readCanonicalDoc and matches the file on disk", () => {
+		const onDisk = readFileSync(join(REPO_ROOT, ".claude", "agents", "aide", "aide-upgrader.md"), "utf-8");
+		expect(readCanonicalDoc("agents/aide/aide-upgrader")).toBe(onDisk);
+	});
+
+	it("is registered in listAgents with hostFilename aide/aide-upgrader.md, between the maintainer and the board agent", () => {
+		const agents = listAgents();
+		const index = agents.findIndex((a) => a.canonical === "agents/aide/aide-upgrader");
+		expect(index).toBeGreaterThanOrEqual(0);
+		expect(agents[index].hostFilename).toBe("aide/aide-upgrader.md");
+		expect(agents[index - 1]?.canonical).toBe("agents/aide/aide-maintainer");
+		expect(agents[index + 1]?.canonical).toBe("agents/kanban/kanban-maintainer");
+	});
+
+	it("declares frontmatter name 'aide-upgrader'", () => {
+		expect(readCanonicalDoc("agents/aide/aide-upgrader")).toMatch(/^---\r?\nname: aide-upgrader\r?\n/);
+	});
+});
+
+type ChangelogFault = { line: number; reason: string };
+
+/** Splits text on LF or CRLF into numbered lines, marking fence lines and the lines between them as fenced. */
+function numberLines(text: string): { line: number; text: string; fenced: boolean }[] {
+	let inFence = false;
+	return text.split(/\r?\n/).map((lineText, index) => {
+		const isFence = lineText.startsWith("```");
+		const fenced = inFence || isFence;
+		if (isFence) inFence = !inFence;
+		return { line: index + 1, text: lineText, fenced };
+	});
+}
+
+/** Faults for every level-2 heading outside code fences that is neither `## [Unreleased]` nor `## [x.y.z] - YYYY-MM-DD`. */
+function findReleaseHeadingFaults(text: string): ChangelogFault[] {
+	const faults: ChangelogFault[] = [];
+	for (const { line, text: lineText, fenced } of numberLines(text)) {
+		if (fenced || !lineText.startsWith("## ")) continue;
+		const valid = /^## \[Unreleased\]$/.test(lineText) || /^## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}$/.test(lineText);
+		if (!valid) faults.push({ line, reason: `release heading "${lineText}" is neither "## [Unreleased]" nor "## [x.y.z] - YYYY-MM-DD"` });
+	}
+	return faults;
+}
+
+/** Counts `- [migration] <text>` bullets at column 0 outside code fences. */
+function countMigrations(text: string): number {
+	return numberLines(text).filter(({ text: lineText, fenced }) => !fenced && /^- \[migration\] \S/.test(lineText)).length;
+}
+
+/** Faults for malformed `[migration]` bullets: wrong bullet shape, stray block lines, sub-bullets not Detect/Migrate/Confirm in order, blank text, or a Confirm that is neither "once, as a batch" nor "per file ...". */
+function findMigrationFaults(text: string): ChangelogFault[] {
+	const faults: ChangelogFault[] = [];
+	const lines = numberLines(text);
+	for (let i = 0; i < lines.length; i++) {
+		const { line, text: lineText, fenced } = lines[i];
+		if (fenced) continue;
+		if (!/^- \[migration\] \S/.test(lineText)) {
+			if (/^\s*[-*] \[migration\]/.test(lineText)) {
+				faults.push({ line, reason: `migration bullet must be "- [migration] <text>" at column 0, found "${lineText}"` });
+			}
+			continue;
+		}
+
+		const subBullets: { line: number; label: string; text: string }[] = [];
+		for (let j = i + 1; j < lines.length; j++) {
+			const next = lines[j];
+			if (next.fenced || next.text.trim() === "" || !/^\s/.test(next.text)) break;
+			if (/^ {2}- /.test(next.text)) {
+				const rest = next.text.slice(4);
+				const colon = rest.indexOf(":");
+				subBullets.push({
+					line: next.line,
+					label: colon < 0 ? rest : rest.slice(0, colon),
+					text: colon < 0 ? "" : rest.slice(colon + 1).trim(),
+				});
+			} else if (/^ {4,}\S/.test(next.text) && subBullets.length > 0) {
+				continue;
+			} else {
+				faults.push({ line: next.line, reason: `unexpected line in migration block: "${next.text}"` });
+			}
+		}
+
+		const expected = ["Detect", "Migrate", "Confirm"];
+		const found = subBullets.map((s) => s.label);
+		if (found.length !== expected.length || found.some((label, index) => label !== expected[index])) {
+			faults.push({
+				line,
+				reason: `migration bullet needs sub-bullets ${expected.join(", ")} in order, found ${found.length > 0 ? found.join(", ") : "none"}`,
+			});
+			continue;
+		}
+		for (const sub of subBullets) {
+			if (sub.text === "") faults.push({ line: sub.line, reason: `${sub.label} sub-bullet has no text` });
+		}
+		const confirm = subBullets[2];
+		if (confirm.text !== "" && !/^once, as a batch\.?$/.test(confirm.text) && !/^per file\b/.test(confirm.text)) {
+			faults.push({ line: confirm.line, reason: `Confirm must be "once, as a batch" or start "per file", found "${confirm.text}"` });
+		}
+	}
+	return faults;
+}
+
+/** One fault per line as `CHANGELOG.md:<line>: <reason>`, empty when there are none. */
+function formatFaults(faults: ChangelogFault[]): string {
+	return faults.map(({ line, reason }) => `CHANGELOG.md:${line}: ${reason}`).join("\n");
+}
+
+describe("changelog", () => {
+	it("is readable through readCanonicalDoc and matches CHANGELOG.md at the repo root", () => {
+		const onDisk = readFileSync(join(REPO_ROOT, "CHANGELOG.md"), "utf-8");
+		expect(readCanonicalDoc("changelog")).toBe(onDisk);
+	});
+
+	it("resolves to the repo-root path and is the last methodology doc", () => {
+		expect(getCanonicalPath("changelog")).toBe("CHANGELOG.md");
+		const docs = listMethodologyDocs();
+		expect(docs[docs.length - 1]).toEqual({ canonical: "changelog", hostFilename: "changelog.md" });
+	});
+
+	it("has one source: no copy of the changelog exists under .aide/docs", () => {
+		// The root file is the only source; a copy under .aide/docs/ would fork it and land in
+		// src/retiredVocabulary.test.ts's scanned set, where the migration entries' old forms would be flagged.
+		expect(existsSync(join(REPO_ROOT, ".aide", "docs", "changelog.md"))).toBe(false);
+	});
+
+	it("headings: every level-2 heading is [Unreleased] or [x.y.z] - YYYY-MM-DD", () => {
+		expect(formatFaults(findReleaseHeadingFaults(readCanonicalDoc("changelog")))).toBe("");
+	});
+
+	it("migrations: every [migration] bullet carries Detect, Migrate and Confirm in the documented form", () => {
+		const text = readCanonicalDoc("changelog");
+		expect(formatFaults(findMigrationFaults(text))).toBe("");
+		expect(countMigrations(text)).toBeGreaterThan(0);
+	});
+});
+
+describe("changelog rules — self-test", () => {
+	const entry = (confirm: string, extra: string[] = []) => [
+		"- [migration] Something changed.",
+		"  - Detect: a file with the old form.",
+		"  - Migrate: set the new form.",
+		`  - Confirm: ${confirm}`,
+		...extra,
+	];
+
+	it("accepts a once-as-a-batch entry and a per-file entry", () => {
+		expect(findMigrationFaults(entry("once, as a batch.").join("\n"))).toEqual([]);
+		expect(findMigrationFaults(entry("per file, offering the suggestion with its evidence.").join("\n"))).toEqual([]);
+	});
+
+	it("accepts a sub-bullet that wraps onto a four-space continuation line", () => {
+		const lines = entry("once, as a batch.");
+		lines.splice(2, 0, "    and wraps onto a second line.");
+		expect(findMigrationFaults(lines.join("\n"))).toEqual([]);
+	});
+
+	it("faults a missing Confirm on the bullet line", () => {
+		const lines = entry("once, as a batch.").slice(0, 3);
+		expect(findMigrationFaults(lines.join("\n")).map((f) => f.line)).toEqual([1]);
+	});
+
+	it("faults an extra fourth sub-bullet on the bullet line", () => {
+		const lines = entry("once, as a batch.", ["  - Note: more."]);
+		expect(findMigrationFaults(lines.join("\n")).map((f) => f.line)).toEqual([1]);
+	});
+
+	it("faults Migrate before Detect on the bullet line", () => {
+		const lines = entry("once, as a batch.");
+		[lines[1], lines[2]] = [lines[2], lines[1]];
+		expect(findMigrationFaults(lines.join("\n")).map((f) => f.line)).toEqual([1]);
+	});
+
+	it("faults an unknown Confirm form on the Confirm line", () => {
+		expect(findMigrationFaults(entry("whenever").join("\n")).map((f) => f.line)).toEqual([4]);
+	});
+
+	it("faults an indented migration bullet on its own line", () => {
+		const text = ["### Changed", "  - [migration] x"].join("\n");
+		expect(findMigrationFaults(text).map((f) => f.line)).toEqual([2]);
+	});
+
+	it("counts migration bullets", () => {
+		expect(countMigrations([...entry("once, as a batch."), "", ...entry("per file, x")].join("\n"))).toBe(2);
+	});
+
+	it("accepts [Unreleased] and a dated release heading", () => {
+		expect(findReleaseHeadingFaults("## [Unreleased]\n\n## [0.11.1] - 2026-10-10")).toEqual([]);
+	});
+
+	it.each(["## 0.11.1 - 2026-10-10", "## [0.11.1]", "## [0.11] - 2026-10-10"])("faults the heading %s", (heading) => {
+		expect(findReleaseHeadingFaults(`# Changelog\n\n${heading}`).map((f) => f.line)).toEqual([3]);
+	});
+
+	it("ignores a level-2 heading inside a fenced block", () => {
+		expect(findReleaseHeadingFaults("```\n## nope\n```")).toEqual([]);
+	});
+
+	it("gives the same faults for CRLF input as for LF input", () => {
+		const lf = [
+			"## nope",
+			...entry("whenever"),
+			"- [migration] Second.",
+			"  - Detect: a.",
+		].join("\n");
+		const crlf = lf.replace(/\n/g, "\r\n");
+		expect(findReleaseHeadingFaults(crlf)).toEqual(findReleaseHeadingFaults(lf));
+		expect(findMigrationFaults(crlf)).toEqual(findMigrationFaults(lf));
+		expect(findMigrationFaults(lf).length).toBeGreaterThan(0);
+	});
+});
+
 // Narrower than BANNED_PATTERNS: this skill writes configs for any backend, so it
 // legitimately names example backends and talks about pages and notes (`\bnotes?\b`,
 // `\bhubs?\b` would fail on honest prose). What must never appear is the bundled
@@ -270,6 +481,13 @@ describe("published package file set", () => {
 	it("covers every listSkills path with a package.json files entry", () => {
 		for (const skill of listSkills()) {
 			const path = getCanonicalPath(skill.canonical);
+			expect(isShipped(path), `${path} is not covered by package.json "files"`).toBe(true);
+		}
+	});
+
+	it("covers every listMethodologyDocs path with a package.json files entry", () => {
+		for (const doc of listMethodologyDocs()) {
+			const path = getCanonicalPath(doc.canonical);
 			expect(isShipped(path), `${path} is not covered by package.json "files"`).toBe(true);
 		}
 	});

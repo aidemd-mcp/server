@@ -168,6 +168,62 @@ describe("buildAncestorChain", () => {
 		expect(result).not.toContain(" — ");
 	});
 
+	it("shows [aligned] badge when the spec records alignment: aligned", async () => {
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+		await writeFile(
+			join(tempDir, ".aide", "intent.aide"),
+			"---\ndescription: Aligned spec\nalignment: aligned\n---\n",
+		);
+		await mkdir(join(tempDir, "sub"), { recursive: true });
+
+		const result = await buildAncestorChain(tempDir, join(tempDir, "sub"));
+
+		expect(result).toContain("Aligned spec [aligned]");
+	});
+
+	it("shows [misaligned] badge when the spec records alignment: misaligned", async () => {
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+		await writeFile(
+			join(tempDir, ".aide", "intent.aide"),
+			"---\ndescription: Drifted spec\nalignment: misaligned\n---\n",
+		);
+		await mkdir(join(tempDir, "sub"), { recursive: true });
+
+		const result = await buildAncestorChain(tempDir, join(tempDir, "sub"));
+
+		expect(result).toContain("Drifted spec [misaligned]");
+	});
+
+	it("renders the line with its description and no badge when alignment is unreviewed", async () => {
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+		await writeFile(
+			join(tempDir, ".aide", "intent.aide"),
+			"---\ndescription: Fresh spec\nalignment: unreviewed\n---\n",
+		);
+		await mkdir(join(tempDir, "sub"), { recursive: true });
+
+		const result = await buildAncestorChain(tempDir, join(tempDir, "sub"));
+
+		expect(result).toContain(".aide/intent.aide — Fresh spec");
+		expect(result).not.toContain("[unreviewed]");
+		expect(result).not.toContain("[aligned]");
+		expect(result).not.toContain("[misaligned]");
+	});
+
+	it("badges from alignment when the spec holds both alignment and the older status name", async () => {
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+		await writeFile(
+			join(tempDir, ".aide", "intent.aide"),
+			"---\ndescription: Both names\nalignment: misaligned\nstatus: aligned\n---\n",
+		);
+		await mkdir(join(tempDir, "sub"), { recursive: true });
+
+		const result = await buildAncestorChain(tempDir, join(tempDir, "sub"));
+
+		expect(result).toContain("Both names [misaligned]");
+		expect(result).not.toContain("[aligned]");
+	});
+
 	it("does not show any badge when status is absent", async () => {
 		await mkdir(join(tempDir, ".aide"), { recursive: true });
 		await writeFile(

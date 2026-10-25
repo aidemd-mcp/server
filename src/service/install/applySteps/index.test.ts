@@ -158,6 +158,24 @@ describe("applySteps", () => {
 		expect(await pathExists(filePath)).toBe(false);
 	});
 
+	it("session record step (would-create, instructions, no content): returns deep-equal to its input and writes nothing", async () => {
+		const filePath = join(tempDir, ".aide", "session.aide");
+		const step: InitStep = {
+			name: "Session record (session.aide)",
+			status: "would-create",
+			category: "methodology",
+			filePath,
+			instructions:
+				'Call aide_scaffold with directory "." and type "session" to create the empty session record at .aide/session.aide.',
+		};
+
+		const [result] = await applySteps([step]);
+
+		expect(result).toEqual(step);
+		expect(await pathExists(filePath)).toBe(false);
+		expect(await pathExists(join(tempDir, ".aide"))).toBe(false);
+	});
+
 	it("IDE VS Code step: passes through without writing to disk", async () => {
 		const filePath = join(tempDir, "aide-markdown.vsix");
 		const step: InitStep = {

@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/initContent
-status: aligned
+alignment: aligned
 description: "Single reader of the canonical doc set for the install subtree, returning content verbatim and owning the registry of named docs and methodology subsets."
 intent: >
   initContent is the install subtree's sole reader of canonical content

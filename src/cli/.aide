@@ -1,6 +1,6 @@
 ---
 scope: cli
-status: aligned
+alignment: aligned
 description: Terminal-native intent-tree explorer that lets a human browse and inspect any project's `.aide` hierarchy as agents see it.
 intent: >
   This module is the human-facing window onto the intent tree. It exists so a

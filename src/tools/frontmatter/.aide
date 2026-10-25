@@ -1,0 +1,30 @@
+---
+scope: src/tools/frontmatter
+alignment: unreviewed
+description: Guarded writer that moves a governed frontmatter value of an AIDE file, a spec's alignment or a plan's status, to another value allowed for that field, leaving every other byte untouched.
+intent: >
+  Hand-editing an AIDE file's frontmatter lets one slip corrupt state
+  every tool reads; this tool makes that write safe. Intent specs carry an
+  alignment; plans, todo lists and briefs share one ordered status. Work
+  in progress is a plan beside the spec, never a spec value; completed
+  means every item checked. The tool never decides when a value changes:
+  alignment comes from the aligner and QA and resets after spec edits,
+  approval after review by the user, or by the agent when the project
+  skips human review, abandonment after the user discards work. Spec
+  content stays with the spec writer.
+outcomes:
+  desired:
+    - An intent spec's alignment moves only among unreviewed, aligned and misaligned, and any alignment can return to unreviewed once the spec is edited. A plan, brief or todo list moves only proposed → approved → completed, from approved back to proposed when revised, or from either open state to abandoned, with completed and abandoned final.
+    - An older spec that still records its alignment under the old status name is read as having that alignment, and writing alignment to it moves the value to the new name.
+    - Only the targeted value changes, and it is present afterward, added where it was missing and never removed. Every other byte of the file, other frontmatter and the body alike, stays exactly as it was, and the tool never creates or deletes a file.
+    - Every successful call reports in plain language the file, the field and old value → new value, setting the value a file already holds reports as no change, and a caller can read a file's governed values without changing anything to confirm its state.
+    - Every refusal says exactly why, whether a value or move not allowed for that file type and field (naming the allowed next values), completed while an item is still open or a brief's plan is not completed, the session record, a research spec, a non-AIDE file, a path outside the project or frontmatter it cannot parse. A refused call leaves the file untouched.
+    - Building may begin only on an approved plan and brief, approved by the user or by the agent when the project skips human review, and fixing only on an approved todo list, which the agent approves after triaging the findings. Approved always means that exact file was approved, a brief together with its plan, and revising an approved file drops it back to proposed until it is approved again.
+  undesired:
+    - A write that accepts a value from another file type or field, such as abandoning an intent spec, aligning a plan, marking a spec as being worked on, or recording a plan or todo list as completed while an item is still open, or a brief whose plan is not completed. Or one that skips a step, moves a completed or abandoned file, removes a value or leaves it empty.
+    - A correct value change that also reformats, reorders or rewrites anything else in the file, or leaves a renamed older spec carrying both the old and new name, silently corrupting the state it was meant to protect.
+    - Any change to the session record, a research spec, a non-AIDE file or a file outside the project, or a partial write to a file whose frontmatter could not be parsed.
+    - The tool choosing a value on its own, inferring alignment, approval or abandonment from a file's content, age or the caller's phrasing, instead of writing exactly the value asked for.
+    - A spec's intent, description or outcomes changed through this tool, bypassing the judgment and brevity limits the spec writer owns.
+    - A result or refusal that only says it succeeded or failed, without naming the file, the field and either the old and new values or the reason.
+---

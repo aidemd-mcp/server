@@ -30,7 +30,7 @@ function describeRefusal(module: string, refusal: CleanupRefusal): string[] {
 			return ["Reason: there is no plan.aide, todo.aide or brief.aide here to remove."];
 		case "brief-without-plan":
 			return [
-				`Reason: ${formatPath(module, "brief.aide")} has no checkboxes to show its cycle closed, so it is removed only together with a plan.aide, and there is none here.`,
+				`Reason: ${formatPath(module, "brief.aide")} has no plan.aide beside it, and a brief is removed only together with its plan.`,
 				...(refusal.items.length > 0 ? describeItems(module, refusal.items) : []),
 			];
 		case "todo-without-checkboxes":
@@ -38,9 +38,23 @@ function describeRefusal(module: string, refusal: CleanupRefusal): string[] {
 				`Reason: ${formatPath(module, "todo.aide")} has no checkboxes to show its cycle closed, and there is no plan.aide here.`,
 			];
 		case "plan-without-checkboxes":
+			return ["Reason: plan.aide has no checkboxes to verify, so completion cannot be shown."];
+		case "open-status":
 			return [
-				"Reason: plan.aide has no checkboxes to verify, so completion cannot be shown.",
-				"Pass allowEmptyPlan: true only if the plan is intentionally empty.",
+				...refusal.files.map(
+					({ file, status }) =>
+						`Reason: ${formatPath(module, file)} is recorded ${status}, so its cycle has not closed.`,
+				),
+				...(refusal.items.length > 0 ? describeItems(module, refusal.items) : []),
+			];
+		case "completed-with-open-items":
+			return [
+				"Reason: a file recorded completed still has unchecked items.",
+				...describeItems(module, refusal.items),
+			];
+		case "invalid-status":
+			return [
+				`Reason: ${formatPath(module, refusal.file)} has a status cleanup cannot read: ${refusal.detail}.`,
 			];
 		case "unchecked-items": {
 			const [count, ...lines] = describeItems(module, refusal.items);

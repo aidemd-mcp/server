@@ -55,9 +55,9 @@ function renderRow(
 		const intentChild = node.children.find((c) => c.kind === "file" && c.file.type === "intent");
 		const intentFile = intentChild?.kind === "file" ? intentChild.file : null;
 		const dirStatusBadge =
-			intentFile?.status === "aligned"
+			intentFile?.alignment === "aligned"
 				? { text: " [aligned]", color: "green" as const }
-				: intentFile?.status === "misaligned"
+				: intentFile?.alignment === "misaligned"
 					? { text: " [misaligned]", color: "red" as const }
 					: null;
 		const dirDescription = intentFile?.description ?? "";
@@ -91,11 +91,15 @@ function renderRow(
 	const tag = TYPE_TAG[file.type] ?? file.type;
 	const tagColor = TYPE_COLOR[file.type] ?? "white";
 	const prefix = `${indent}${connector}${filename} `;
-	const tagStr = `[${tag}]`;
+	// Plan and todo rows carry their work status inside the tag, matching discover: [plan: approved].
+	const tagStr =
+		(file.type === "plan" || file.type === "todo") && file.workStatus
+			? `[${tag}: ${file.workStatus}]`
+			: `[${tag}]`;
 
-	// Determine status badge text and color when a status flag is present.
-	const statusBadge = file.status
-		? file.status === "aligned"
+	// Determine status badge text and color when the spec is reviewed (aligned or misaligned; unreviewed shows no badge).
+	const statusBadge = file.alignment === "aligned" || file.alignment === "misaligned"
+		? file.alignment === "aligned"
 			? { text: " [aligned]", color: "green" as const }
 			: { text: " [misaligned]", color: "red" as const }
 		: null;

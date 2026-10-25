@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/writeMethodology
-status: aligned
+alignment: aligned
 description: "Installs a short marker-bounded pointer stub into the host framework's session-start config that names AIDE, locates the on-disk doc set, and triggers a crawl before any AIDE work."
 intent: >
   writeMethodology owns the host-side pointer surface — a short

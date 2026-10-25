@@ -1,28 +1,30 @@
 ---
 scope: src/tools/cleanup
-description: Guarded eraser that removes a closed module's pipeline ephemerals only when every file it would remove is fully checked, refusing with the exact items still open.
+alignment: unreviewed
+description: Guarded eraser that removes a closed module's pipeline ephemerals only when each file it would remove is recorded completed or abandoned, refusing with the items still open.
 intent: >
   cleanup is the eraser that pairs with scaffold's pen. When a module's
-  pipeline cycle closes, its plan, todo list, and brief have served their
-  purpose and should disappear, leaving code and intent specs as the
-  durable record. A raw shell delete is blocked by safety tooling and
-  enforces nothing, so this tool holds the safety rules in code: it removes
-  ephemerals only when every file it would remove proves its cycle closed,
-  and otherwise refuses with exactly what remains. A fully checked todo
-  list is its own proof, even with no plan beside it.
+  cycle closes, its plan, todo list, and brief have served their
+  purpose and go, leaving code and intent specs as the durable record. A
+  raw shell delete is blocked by safety tooling and enforces nothing, so
+  this tool holds the safety rules in code: it removes ephemerals only when
+  every file it would remove records its cycle closed, completed with every
+  item checked or abandoned, and otherwise refuses with exactly what
+  remains. It reads statuses and never sets one. A closed todo list needs
+  no plan beside it.
 outcomes:
   desired:
     - Given a module, the tool removes only that module's plan, todo list, and brief. Intent specs, research specs, code, the session log, and every other file survive every call untouched.
-    - Where a plan exists, removal proceeds only when the plan has every item checked and any todo list present is fully checked; a missing todo list never blocks. The opt-in that accepts a plan with no checkboxes relaxes that one check and nothing else.
-    - Where no plan exists, the tool removes what is present once every file it would remove is fully checked, so a finished todo list written beside code planned in another module is never stranded. A brief is removed only together with its plan, because a brief alone proves nothing closed.
+    - Removal proceeds only when every file it would remove is recorded completed, with every item re-checked and really checked, or recorded abandoned. A file from before statuses existed that records none but has every item checked is also removable, so nothing is stranded.
+    - A missing todo list never blocks, and where no plan exists a closed todo list is still removed, so one written beside code planned in another module is never stranded. A brief is removed only together with its plan, and an abandoned plan takes its brief with it so discarded work can start over cleanly.
     - Every precondition, including that the path is an existing folder inside the project holding ephemerals, is settled before anything is removed, so a call cleans completely or removes nothing. A refusal names each unchecked item by file and line, so the caller knows exactly what work remains.
     - Because the real call is already safe, an agent closing a module calls it directly with no preview step. An opt-in dry run exists for inspection only, changes nothing, and never disagrees with what the real call would do against the same state.
     - Cleanup is a single cross-platform action a user can permit by name, so closing a module never requires a raw shell delete or a broad delete permission.
   undesired:
-    - A call that removes, rewrites, or even reads the session log, an intent spec, a research spec, code, or any file that is not a pipeline ephemeral of the named module, however the module was named. Nor does any call serve as a listing of what a folder holds.
-    - Removal that proceeds with an unchecked item in any file it would remove, that removes a brief whose plan is absent, or that lets the empty-plan opt-in waive anything beyond a plan with no checkboxes.
-    - A fully checked todo list refused only because no plan sits beside it, leaving a manual shell delete as the only way out.
+    - A call that removes, rewrites, or even reads the session log, an intent spec, a research spec, code, or any file that is not a pipeline ephemeral of the named module, however the module was named. The session log stays even when recorded abandoned, and no call serves as a listing of what a folder holds.
+    - Removal of any plan, brief, or todo list still proposed or approved, a file recorded completed while an item is still open, or a brief whose plan is absent. Equally, a refusal that only says it refused, without naming each unchecked item and the file holding it.
+    - A closed todo list, or a fully checked file from before statuses existed, refused only because no plan sits beside it or no status is recorded, leaving a manual shell delete as the only way out.
     - A half-cleaned module, with some ephemerals removed and others left behind, or a call against a path outside the project, a missing folder, or a folder with no ephemerals that reports success.
     - A dry run that predicts a different result than the real call, or a cleanup flow that treats a dry run as a required step before the real call.
-    - A refusal that only says it refused, without naming the unchecked items or the file holding them.
+    - A status the tool decides on its own, by setting or changing it, or by treating a file as completed or abandoned because of its age, its emptiness, or the caller asking, instead of the status already recorded in the file.
 ---

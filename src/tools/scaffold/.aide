@@ -1,24 +1,30 @@
 ---
 scope: src/tools/scaffold
-status: aligned
-description: Naming-enforcement tool that creates spec files under their canonical names and applies the auto-rename rule when research enters a folder.
+alignment: unreviewed
+description: Tool that creates every AIDE working file, from specs to plans, todo lists and the session record, from its blank template under its canonical name and never over an existing file.
 intent: >
-  scaffold is the pen agents call to create new spec files. Its reason
-  for existing is not "write a file"; it is to enforce the naming
-  conventions so an agent can never accidentally corrupt a folder's
-  spec layout. The auto-rename rule — the default single-spec form
-  must give way to the explicit name the moment research enters the
-  folder — is the rule agents are most likely to get wrong by hand,
-  and this tool is the one place that rule is implemented and trusted.
+  scaffold is the pen agents call to create any AIDE working file from its
+  blank template. Its reason for existing is not "write a file"; it is to
+  enforce naming and placement so an agent can never corrupt a folder's
+  layout or destroy work. The auto-rename rule — the
+  default single-spec form must give way to the explicit name the moment
+  research enters the folder — is the rule agents most often get wrong by
+  hand. The project's session record comes only from here, so its empty
+  placeholder has one source. scaffold creates; it never overwrites and
+  never deletes.
 outcomes:
   desired:
     - The caller picks a desired end state for the folder; the tool resolves which canonical name applies and lands the spec under that name. Callers never reason about which form is legal.
     - When research enters a folder that already holds a default-form spec, the same call renames the default to the explicit form and creates the research spec alongside it. The two-name post-state is reached atomically.
-    - Re-running scaffold against a folder that already holds the requested spec is a no-op and reports as such. Existing files are skipped, never overwritten.
+    - A session record request always lands at the project's one fixed location, whatever folder the caller names, as the empty placeholder with every canonical section heading, nothing under them and no alignment or status. Install and the boot both get the file by calling scaffold, so the placeholder has a single source.
+    - A request for any file that already exists, whether spec, plan, todo list or session record, filled or empty, is a no-op that reports as such. Replacing a file is the caller's job, done by removing it first through the separate cleanup step; scaffold never overwrites and never deletes.
+    - A new intent spec starts unreviewed, and a new plan or todo list starts proposed so it waits for review, while a research spec carries none of these. Scaffold only sets the starting value; changing it later belongs to a separate tool.
     - Every action the tool takes is reported as a plain-English line per action so the agent can confirm and cite what changed.
   undesired:
     - A scaffold call that lands the default single-spec form in a folder that already holds a research spec, producing the forbidden coexistence the tool was built to prevent.
     - A scaffold call that produces both the default form and the explicit form in the same folder, or that renames the default to the explicit form when no research is being introduced.
-    - A scaffold call that overwrites an existing spec instead of skipping it. The caller meant to create; destruction is never the intended path.
+    - A scaffold call that resets a filled session record, plan, todo list or spec (or any existing file) to its blank template, or deletes one to make room. The caller meant to create; destruction is never the intended path.
+    - A session record created anywhere but the project's one fixed location, or a placeholder missing a canonical section heading or carrying content under one or an alignment or status. A new intent spec that does not start unreviewed, or a new plan or todo list that does not start proposed, is the same near-miss.
+    - Install or the boot producing the session record from a copy of their own instead of calling scaffold, so two placeholders drift apart.
     - A scaffold result returned as a serialized envelope instead of one readable line per action, burying the signal the agent reads to confirm what happened.
 ---

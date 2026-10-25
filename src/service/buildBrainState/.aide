@@ -1,6 +1,6 @@
 ---
 scope: src/service/buildBrainState
-status: aligned
+alignment: aligned
 description: Read-only detector that classifies the host's brain wiring state into a closed status vocabulary both runtime probe and brain tool consume identically.
 intent: >
   buildBrainState resolves the host project's brain precondition into a

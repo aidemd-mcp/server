@@ -6,6 +6,7 @@ The architect's implementation plan. A `plan.aide` lives next to the `.aide` int
 
 ```yaml
 ---
+status: proposed
 intent: >
   One-line summary of what this plan delivers. Mirrors the `.aide` intent
   but scoped to the concrete work this plan covers — enough for the
@@ -89,9 +90,10 @@ without re-deriving it.
 
 ## Rules
 
+- **`status` is always present.** It is the plan's lifecycle state: `proposed` → `approved` → `completed`, an `approved` plan drops back to `proposed` when it is revised, and an open plan can be `abandoned`. `completed` and `abandoned` are final. Scaffold writes `proposed`; every later change goes through `aide_frontmatter`, never a hand edit. The plan records its own state, never the work's: an `approved` plan is what lets implementation start.
 - **Single-module scoping.** A plan.aide only describes what gets built inside the module it lives in. The Project Structure tree shows the proposed state of THAT scope directory after implementation — nothing outside it.
 - **Multi-plan splitting.** When a feature requires work across multiple modules, the architect produces multiple plan.aide files — one per module that needs new code. Prerequisite modules get their plan.aide first; dependent modules declare them in `## Prerequisites`. Each plan is scoped to its own directory and follows the same rules independently. The orchestrator (`/aide:build`) executes them in dependency order — prerequisites before dependents.
-- **Frontmatter is minimal.** `intent` only. No `status`, no `spec` pointer — the plan lives next to the spec it implements, and progressive disclosure makes the relationship obvious.
+- **Frontmatter is minimal.** `status` and `intent` only. No `spec` pointer — the plan lives next to the spec it implements, and progressive disclosure makes the relationship obvious.
 - **`## Project Structure` is required — always, unconditionally.** Every plan must include a `## Project Structure` section (after frontmatter, before `## Plan`) containing the complete annotated folder tree of the module, rooted at the scope directory. This applies to every plan — greenfield, additive, refactor, any kind. The implementor must never have to figure out the module's structure; that is the architect's job. Every file that will exist after execution appears in the tree, annotated with what it does and its function signature (parameters and return type). For additive plans, annotate which files are new vs. already existing. `.aide` specs appear next to orchestrator `index` files; helper folders do not get specs.
 - **Changes to existing code are surgical.** When a plan touches existing code, change only the functions and lines the spec's outcomes require — no rewrites of working modules, no restructuring, renames, or opportunistic cleanups. Prefer adding a small new helper over reshaping an existing one. In `## Project Structure`, every MODIFIED file carries a one-line note naming exactly what changes and why. A rewrite is allowed only when the spec explicitly calls for it (e.g. a refactor plan) and `## Decisions` justifies it.
 - **Every step gets a checkbox.** The implementor checks each box as it completes during `/aide:build`. Unchecked boxes are pending work; checked boxes are done.
@@ -107,10 +109,10 @@ without re-deriving it.
 
 ## Lifecycle
 
-1. **Created** by the architect agent during `/aide:plan`.
-2. **Presented to the user** for approval before `/aide:build` begins. The orchestrator pauses here.
-3. **Consumed** by the implementor during `/aide:build` — checkboxes track progress.
-4. **Deleted** by the maintainer agent after QA passes — the code is the durable artifact, the plan was scaffolding for the build. Future audit goes to git history + the code itself. Removal goes through `aide_cleanup`, which removes a plan only when every checkbox is checked, together with the module's `todo.aide` (if fully checked) and `brief.aide`. A plan with no checkboxes passes only on the explicit `allowEmptyPlan` opt-in. QA may write a `todo.aide` in a module this plan built but does not live in; that todo is removed on its own once fully checked.
+1. **Created** by the architect agent during `/aide:plan`, starting `proposed`.
+2. **Presented to the user** for approval before `/aide:build` begins. The orchestrator pauses here; on the user's yes (or the agent's, when the project skips human review) it moves the plan — and its `brief.aide`, if there is one — to `approved` through `aide_frontmatter`. Revising an approved plan drops it back to `proposed` until it is approved again.
+3. **Consumed** by the implementor during `/aide:build` — only while the plan reads `approved`; checkboxes track progress.
+4. **Deleted** by the maintainer agent after QA passes — the code is the durable artifact, the plan was scaffolding for the build. Future audit goes to git history + the code itself. Before removal the maintainer moves the plan to `completed` through `aide_frontmatter`, which refuses while any step is unchecked. Removal goes through `aide_cleanup`, which removes a plan only when it is `completed` (re-checked) or `abandoned`, together with the module's `todo.aide` (if closed) and `brief.aide`. A plan the user discards — abandoned halfway, or never used — is marked `abandoned` instead and goes with its brief. QA may write a `todo.aide` in a module this plan built but does not live in; that todo is removed on its own once closed.
 
 ## Placement
 

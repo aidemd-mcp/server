@@ -43,6 +43,41 @@ describe("enumerateArtifacts", () => {
 		});
 	});
 
+	it("includes the aide-upgrader agent and the changelog doc from the repo root", () => {
+		const entries = enumerateArtifacts();
+
+		expect(entries).toContainEqual({
+			slug: "agents/aide/aide-upgrader",
+			repoPath: ".claude/agents/aide/aide-upgrader.md",
+		});
+		expect(entries).toContainEqual({
+			slug: "docs/changelog",
+			repoPath: "CHANGELOG.md",
+		});
+
+		for (const entry of entries) {
+			expect(entry.repoPath.replace(/\\/g, "/"), `repoPath "${entry.repoPath}" is the host copy of the changelog`).not.toBe(
+				".aide/docs/changelog.md",
+			);
+		}
+	});
+
+	// The session record is user-owned state created by aide_scaffold; an artifact
+	// entry would let aide_upgrade report it as drifted and offer an overwrite.
+	it("never enumerates the project's session record as an artifact", () => {
+		const entries = enumerateArtifacts();
+
+		for (const entry of entries) {
+			const repoPath = entry.repoPath.replace(/\\/g, "/");
+			expect(repoPath, `repoPath "${entry.repoPath}" is the session record`).not.toBe(".aide/session.aide");
+			expect(repoPath.endsWith("/session.aide"), `repoPath "${entry.repoPath}" is a session record`).toBe(false);
+			expect(entry.slug, `slug "${entry.slug}" is the session record`).not.toBe("session");
+			expect(entry.slug.endsWith("/session"), `slug "${entry.slug}" is a session record`).toBe(false);
+		}
+
+		expect(entries.map((e) => e.slug)).toContain("docs/session-aide");
+	});
+
 	it("each slug starts with its category prefix", () => {
 		const entries = enumerateArtifacts();
 		const validPrefixes = ["docs/", "commands/", "agents/", "skills/", "bin/", "extensions/"];

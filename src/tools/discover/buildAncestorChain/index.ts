@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join, relative, dirname } from "node:path";
 import parseFrontmatter from "@/util/parseFrontmatter/index.js";
+import readGovernedValue from "@/tools/frontmatter/readGovernedValue/index.js";
 
 /**
  * Walk from `targetPath` up to `root`, collecting .aide specs at each directory
@@ -10,6 +11,11 @@ import parseFrontmatter from "@/util/parseFrontmatter/index.js";
  * The target directory's own specs are excluded — those appear in the subtree
  * section rendered by buildTree. This function is concerned only with the
  * inherited lineage above the target.
+ *
+ * Each line carries a badge for the spec's alignment, read through the shared
+ * governed-value reader so the older `status` name is understood: `[aligned]` or
+ * `[misaligned]`. The default `unreviewed`, an unset or invalid value and an
+ * unparsable block render no badge.
  *
  * Root-level spec detection uses the canonical `.aide/intent.aide` path
  * (per aide-spec.md placement rules). At all other directory levels, checks
@@ -84,7 +90,8 @@ export default async function buildAncestorChain(root: string, targetPath: strin
 
 		const { frontmatter, parseError } = parseFrontmatter(spec.content);
 		const description = frontmatter?.description || (frontmatter?.intent ? frontmatter.intent.split(/[.\n]/)[0] : undefined);
-		const status = frontmatter?.status;
+		const governed = readGovernedValue({ content: spec.content, kind: "intent-spec" });
+		const alignment = governed.status === "ok" && governed.current.state === "set" ? governed.current.value : undefined;
 
 		// Compute a display path relative to the project root
 		const rel = relative(absRoot, spec.specPath).replace(/\\/g, "/");
@@ -94,14 +101,14 @@ export default async function buildAncestorChain(root: string, targetPath: strin
 		if (description) {
 			line += ` — ${description}`;
 		}
-		// Status badge renders whenever set, regardless of whether description is present
-		if (status === "aligned" || status === "misaligned") {
-			line += ` [${status}]`;
+		// Alignment badge renders whenever aligned or misaligned, regardless of whether description is present
+		if (alignment === "aligned" || alignment === "misaligned") {
+			line += ` [${alignment}]`;
 		}
 		if (parseError) {
 			line += ` ⚠ YAML parse error: ${parseError}`;
 		}
-		// If no description and no status, show path alone (no em-dash, no fabrication)
+		// If no description and no badge, show path alone (no em-dash, no fabrication)
 
 		lines.push(line);
 	}

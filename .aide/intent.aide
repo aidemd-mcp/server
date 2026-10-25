@@ -1,6 +1,6 @@
 ---
 scope: .
-status: misaligned
+alignment: misaligned
 description: "AIDE — a methodology that puts intent at the center of agent-driven engineering, delivered as a coherent product to teams adopting it rather than a pattern they reauthor."
 intent: >
   AIDE exists so a team can adopt a complete agent-engineering methodology

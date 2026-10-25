@@ -14,18 +14,13 @@ export const CleanupInput = z.object({
 		.boolean()
 		.default(false)
 		.describe("Optional preview that removes nothing; agents closing a module call without it"),
-	allowEmptyPlan: z
-		.boolean()
-		.default(false)
-		.describe(
-			"Optional; lets a plan.aide that contains no checkboxes pass. It does not override unchecked boxes, a brief.aide with no plan, a todo.aide with no checkboxes, or any other refusal, and has no effect where there is no plan.aide. Off by default",
-		),
 });
 
 /**
  * Guarded eraser for a closed module's ephemerals. Flow: resolve the module
  * path safely inside the project root, locate which of the three fixed
- * ephemerals exist, check the closure preconditions, then either report what
+ * ephemerals exist, check the closure preconditions (judged per file from the
+ * status recorded in its own frontmatter), then either report what
  * would be removed (dry run) or remove it. The closure check covers both a
  * module with a plan.aide and one without. Every refusal happens before the
  * first unlink, so cleanup is all-or-nothing. A dry run and a real call share
@@ -52,7 +47,7 @@ export default async function cleanup(
 	const { present } = located;
 
 	// Settle every precondition before anything is removed.
-	const refusal = await checkPreconditions(dir, present, input.allowEmptyPlan);
+	const refusal = await checkPreconditions(dir, present);
 	if (refusal) return { kind: "refused", module, refusal };
 
 	// Removal gate: a dry run stops here with exactly what a real call would remove.

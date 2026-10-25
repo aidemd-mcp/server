@@ -13,6 +13,11 @@ const TODO_UNCHECKED = "# Todo\n\n- [x] Fixed it\n- [ ] Fix the other thing\n";
 const TODO_EMPTY = "# Todo\n\n## Retro\n\nNo checkboxes.\n";
 const BRIEF = "# Brief\n\n- [ ] Not a checkbox contract\n";
 
+/** Prefixes a body with a frontmatter block recording the given status value. */
+function withStatus(status: string, body: string): string {
+	return `---\nstatus: ${status}\n---\n${body}`;
+}
+
 type ModuleContents = { plan?: string; todo?: string; brief?: string };
 
 /** Writes the given ephemerals into `dir`, creating it first. */
@@ -55,8 +60,12 @@ afterEach(async () => {
 });
 
 describe("cleanup input schema", () => {
-	it("defaults dryRun and allowEmptyPlan to false", () => {
-		expect(CleanupInput.parse({ path: "src/x" })).toEqual({ path: "src/x", dryRun: false, allowEmptyPlan: false });
+	it("defaults dryRun to false", () => {
+		expect(CleanupInput.parse({ path: "src/x" })).toEqual({ path: "src/x", dryRun: false });
+	});
+
+	it("drops an allowEmptyPlan key a caller still sends", () => {
+		expect(CleanupInput.parse({ path: "src/x", allowEmptyPlan: true })).not.toHaveProperty("allowEmptyPlan");
 	});
 
 	it("rejects an empty path", () => {
@@ -75,7 +84,7 @@ describe("cleanup scope", () => {
 		await writeFile(join(root, "parent", "plan.aide"), PLAN_UNCHECKED);
 		const before = await snapshot(root);
 
-		const result = await cleanup(root, { path: "parent/mod", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "parent/mod", dryRun: false });
 
 		expect(result).toEqual({ kind: "removed", module: "parent/mod", files: ["brief.aide", "todo.aide", "plan.aide"] });
 		const after = await snapshot(root);
@@ -92,7 +101,7 @@ describe("cleanup scope", () => {
 		await mkdir(join(root, ".aide"));
 		await writeFile(join(root, ".aide", "session.aide"), "session state");
 
-		const result = await cleanup(root, { path: ".", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: ".", dryRun: false });
 
 		expect(result).toEqual({ kind: "removed", module: ".", files: ["brief.aide", "todo.aide", "plan.aide"] });
 		expect(await snapshot(root)).toEqual({ ".aide/session.aide": "session state" });
@@ -113,7 +122,7 @@ describe("cleanup path tricks", () => {
 	])("refuses $name and changes nothing", async ({ path, refusal }) => {
 		const before = await snapshot(base);
 
-		const result = await cleanup(root, { path: path(), dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: path(), dryRun: false });
 
 		expect(result.kind).toBe("refused");
 		expect(result).toMatchObject({ refusal });
@@ -124,7 +133,7 @@ describe("cleanup path tricks", () => {
 		await symlink(outside, join(root, "link"), "junction");
 		const before = await snapshot(base);
 
-		const result = await cleanup(root, { path: "link", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "link", dryRun: false });
 
 		expect(result).toMatchObject({ kind: "refused", refusal: { kind: "outside-root" } });
 		expect(await snapshot(base)).toEqual(before);
@@ -141,7 +150,7 @@ describe("cleanup all-or-nothing", () => {
 		await makeModule(mod, contents);
 		const before = await snapshot(mod);
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result.kind).toBe("refused");
 		expect(await snapshot(mod)).toEqual(before);
@@ -154,7 +163,7 @@ describe("cleanup all-or-nothing", () => {
 		const mod = join(root, "mod");
 		await makeModule(mod, { plan: PLAN_CHECKED, brief: BRIEF });
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({ kind: "removed", module: "mod", files: ["brief.aide", "plan.aide"] });
 		expect(existsSync(join(mod, "plan.aide"))).toBe(false);
@@ -170,7 +179,7 @@ describe("cleanup named refusals", () => {
 			brief: BRIEF,
 		});
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({
 			kind: "refused",
@@ -198,11 +207,11 @@ describe("cleanup without a plan", () => {
 		return mod;
 	}
 
-	it.each([false, true])("removes a fully checked todo alone and leaves its neighbours (allowEmptyPlan %s)", async (allowEmptyPlan) => {
+	it("removes a fully checked todo alone and leaves its neighbours", async () => {
 		await makeNeighbouredModule({ todo: TODO_CHECKED });
 		const before = await snapshot(root);
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({ kind: "removed", module: "mod", files: ["todo.aide"] });
 		const expected = Object.fromEntries(Object.entries(before).filter(([file]) => file !== "mod/todo.aide"));
@@ -213,7 +222,7 @@ describe("cleanup without a plan", () => {
 		await makeNeighbouredModule({ todo: TODO_UNCHECKED });
 		const before = await snapshot(root);
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({
 			kind: "refused",
@@ -223,21 +232,21 @@ describe("cleanup without a plan", () => {
 		expect(await snapshot(root)).toEqual(before);
 	});
 
-	it.each([false, true])("refuses a todo with no checkboxes and changes nothing (allowEmptyPlan %s)", async (allowEmptyPlan) => {
+	it("refuses a todo with no checkboxes and changes nothing", async () => {
 		await makeNeighbouredModule({ todo: TODO_EMPTY });
 		const before = await snapshot(root);
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({ kind: "refused", module: "mod", refusal: { kind: "todo-without-checkboxes" } });
 		expect(await snapshot(root)).toEqual(before);
 	});
 
-	it.each([false, true])("refuses a brief alone and changes nothing (allowEmptyPlan %s)", async (allowEmptyPlan) => {
+	it("refuses a brief alone and changes nothing", async () => {
 		await makeNeighbouredModule({ brief: BRIEF });
 		const before = await snapshot(root);
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({ kind: "refused", module: "mod", refusal: { kind: "brief-without-plan", items: [] } });
 		expect(await snapshot(root)).toEqual(before);
@@ -247,7 +256,7 @@ describe("cleanup without a plan", () => {
 		await makeNeighbouredModule({ todo: TODO_UNCHECKED, brief: BRIEF });
 		const before = await snapshot(root);
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({
 			kind: "refused",
@@ -262,7 +271,7 @@ describe("cleanup folder refusals", () => {
 	it("refuses a missing folder and changes nothing", async () => {
 		const before = await snapshot(base);
 
-		const result = await cleanup(root, { path: "nope", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "nope", dryRun: false });
 
 		expect(result).toMatchObject({ kind: "refused", refusal: { kind: "missing" } });
 		expect(await snapshot(base)).toEqual(before);
@@ -275,118 +284,121 @@ describe("cleanup folder refusals", () => {
 		await writeFile(join(mod, "index.ts"), "content of index.ts");
 		const before = await snapshot(base);
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({ kind: "refused", module: "mod", refusal: { kind: "no-ephemerals" } });
 		expect(await snapshot(base)).toEqual(before);
 	});
 });
 
-describe("cleanup empty-plan opt-in", () => {
-	it("refuses a plan without checkboxes by default and removes both files with allowEmptyPlan", async () => {
+describe("cleanup by recorded status", () => {
+	it("refuses a status-less plan without checkboxes and removes nothing", async () => {
 		const mod = join(root, "mod");
 		await makeModule(mod, { plan: PLAN_EMPTY, brief: BRIEF });
 
-		const refused = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
-		expect(refused).toEqual({ kind: "refused", module: "mod", refusal: { kind: "plan-without-checkboxes" } });
+		expect(result).toEqual({ kind: "refused", module: "mod", refusal: { kind: "plan-without-checkboxes" } });
 		expect(existsSync(join(mod, "plan.aide"))).toBe(true);
 		expect(existsSync(join(mod, "brief.aide"))).toBe(true);
-
-		const removed = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: true });
-
-		expect(removed).toEqual({ kind: "removed", module: "mod", files: ["brief.aide", "plan.aide"] });
-		expect(existsSync(join(mod, "plan.aide"))).toBe(false);
-		expect(existsSync(join(mod, "brief.aide"))).toBe(false);
 	});
 
-	it("still refuses an empty plan plus an unchecked todo item and removes nothing", async () => {
+	it("removes an abandoned plan with open items plus an approved brief and leaves neighbours byte-identical", async () => {
 		const mod = join(root, "mod");
-		await makeModule(mod, { plan: PLAN_EMPTY, todo: TODO_UNCHECKED, brief: BRIEF });
+		await makeModule(mod, { plan: withStatus("abandoned", PLAN_UNCHECKED), brief: withStatus("approved", BRIEF) });
+		for (const name of [".aide", "index.ts", "session.aide"]) await writeFile(join(mod, name), `content of ${name}`);
+		const before = await snapshot(root);
 
-		const result = await cleanup(root, { path: "mod", dryRun: false, allowEmptyPlan: true });
+		const result = await cleanup(root, { path: "mod", dryRun: false });
+
+		expect(result).toEqual({ kind: "removed", module: "mod", files: ["brief.aide", "plan.aide"] });
+		const expected = Object.fromEntries(
+			Object.entries(before).filter(([file]) => file !== "mod/plan.aide" && file !== "mod/brief.aide"),
+		);
+		expect(await snapshot(root)).toEqual(expected);
+	});
+
+	it("refuses a proposed plan and removes nothing", async () => {
+		const mod = join(root, "mod");
+		await makeModule(mod, { plan: withStatus("proposed", PLAN_CHECKED), todo: TODO_CHECKED, brief: BRIEF });
+		const before = await snapshot(root);
+
+		const result = await cleanup(root, { path: "mod", dryRun: false });
 
 		expect(result).toEqual({
 			kind: "refused",
 			module: "mod",
-			refusal: { kind: "unchecked-items", items: [{ file: "todo.aide", line: 4, text: "Fix the other thing" }] },
+			refusal: { kind: "open-status", files: [{ file: "plan.aide", status: "proposed" }], items: [] },
 		});
-		for (const name of EPHEMERALS) expect(existsSync(join(mod, name))).toBe(true);
+		expect(await snapshot(root)).toEqual(before);
 	});
 });
 
 describe("cleanup dry-run parity", () => {
-	type Fixture = { name: string; allowEmptyPlan: boolean; build: () => Promise<string> };
+	type Fixture = { name: string; build: () => Promise<string> };
 
 	const fixtures: Fixture[] = [
 		{
 			name: "closed",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(join(root, "mod"), { plan: PLAN_CHECKED, todo: TODO_CHECKED, brief: BRIEF }), "mod"),
 		},
 		{
 			name: "unchecked plan",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(join(root, "mod"), { plan: PLAN_UNCHECKED, todo: TODO_CHECKED, brief: BRIEF }), "mod"),
 		},
 		{
 			name: "unchecked todo",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(join(root, "mod"), { plan: PLAN_CHECKED, todo: TODO_UNCHECKED, brief: BRIEF }), "mod"),
 		},
 		{
 			name: "no plan",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_CHECKED, brief: BRIEF }), "mod"),
 		},
 		{
-			name: "plan without checkboxes (default)",
-			allowEmptyPlan: false,
+			name: "plan without checkboxes",
 			build: async () => (await makeModule(join(root, "mod"), { plan: PLAN_EMPTY, brief: BRIEF }), "mod"),
-		},
-		{
-			name: "plan without checkboxes with allowEmptyPlan",
-			allowEmptyPlan: true,
-			build: async () => (await makeModule(join(root, "mod"), { plan: PLAN_EMPTY, brief: BRIEF }), "mod"),
-		},
-		{
-			name: "empty plan plus unchecked todo with allowEmptyPlan",
-			allowEmptyPlan: true,
-			build: async () => (await makeModule(join(root, "mod"), { plan: PLAN_EMPTY, todo: TODO_UNCHECKED, brief: BRIEF }), "mod"),
 		},
 		{
 			name: "todo only, checked",
-			allowEmptyPlan: false,
-			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_CHECKED }), "mod"),
-		},
-		{
-			name: "todo only, checked, with allowEmptyPlan",
-			allowEmptyPlan: true,
 			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_CHECKED }), "mod"),
 		},
 		{
 			name: "todo only, unchecked",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_UNCHECKED }), "mod"),
 		},
 		{
 			name: "todo only, no checkboxes",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(join(root, "mod"), { todo: TODO_EMPTY }), "mod"),
 		},
 		{
 			name: "brief only",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(join(root, "mod"), { brief: BRIEF }), "mod"),
 		},
 		{
-			name: "brief only with allowEmptyPlan",
-			allowEmptyPlan: true,
-			build: async () => (await makeModule(join(root, "mod"), { brief: BRIEF }), "mod"),
+			name: "completed plan plus completed brief",
+			build: async () =>
+				(await makeModule(join(root, "mod"), { plan: withStatus("completed", PLAN_CHECKED), brief: withStatus("completed", BRIEF) }), "mod"),
+		},
+		{
+			name: "abandoned plan plus brief",
+			build: async () =>
+				(await makeModule(join(root, "mod"), { plan: withStatus("abandoned", PLAN_UNCHECKED), brief: withStatus("approved", BRIEF) }), "mod"),
+		},
+		{
+			name: "abandoned plan plus approved todo",
+			build: async () =>
+				(await makeModule(join(root, "mod"), { plan: withStatus("abandoned", PLAN_UNCHECKED), todo: withStatus("approved", TODO_CHECKED) }), "mod"),
+		},
+		{
+			name: "completed todo alone",
+			build: async () => (await makeModule(join(root, "mod"), { todo: withStatus("completed", TODO_CHECKED) }), "mod"),
+		},
+		{
+			name: "completed plan with an open item",
+			build: async () => (await makeModule(join(root, "mod"), { plan: withStatus("completed", PLAN_UNCHECKED) }), "mod"),
 		},
 		{
 			name: "no ephemerals",
-			allowEmptyPlan: false,
 			build: async () => {
 				await makeModule(join(root, "mod"), {});
 				await writeFile(join(root, "mod", "index.ts"), "content of index.ts");
@@ -395,30 +407,27 @@ describe("cleanup dry-run parity", () => {
 		},
 		{
 			name: "missing folder",
-			allowEmptyPlan: false,
 			build: async () => "nope",
 		},
 		{
 			name: "outside root",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(outside, { plan: PLAN_CHECKED, todo: TODO_CHECKED, brief: BRIEF }), outside),
 		},
 		{
 			name: "not a directory",
-			allowEmptyPlan: false,
 			build: async () => (await makeModule(join(root, "mod"), { plan: PLAN_CHECKED, brief: BRIEF }), "mod/plan.aide"),
 		},
 	];
 
-	it.each(fixtures)("dry run matches the real call: $name", async ({ build, allowEmptyPlan }) => {
+	it.each(fixtures)("dry run matches the real call: $name", async ({ build }) => {
 		const path = await build();
 		const before = await snapshot(base);
 
-		const dryRun = await cleanup(root, { path, dryRun: true, allowEmptyPlan });
+		const dryRun = await cleanup(root, { path, dryRun: true });
 
 		expect(await snapshot(base)).toEqual(before);
 
-		const real = await cleanup(root, { path, dryRun: false, allowEmptyPlan });
+		const real = await cleanup(root, { path, dryRun: false });
 
 		if (dryRun.kind === "refused") {
 			expect(real).toEqual(dryRun);
@@ -473,27 +482,41 @@ describe("cleanup file-system access", () => {
 	});
 
 	it.each([
-		{ name: "a successful real call", contents: { plan: PLAN_CHECKED, todo: TODO_CHECKED, brief: BRIEF }, kind: "removed" },
-		{ name: "a todo-only real call", contents: { todo: TODO_CHECKED }, kind: "removed" },
-		{ name: "a refused call", contents: { plan: PLAN_UNCHECKED, todo: TODO_CHECKED, brief: BRIEF }, kind: "refused" },
-	])("touches only the root, the module dir and its three ephemerals during $name", async ({ contents, kind }) => {
-		const mod = join(root, "mod");
+		{ name: "a successful real call", path: "mod", contents: { plan: PLAN_CHECKED, todo: TODO_CHECKED, brief: BRIEF }, kind: "removed" },
+		{ name: "a todo-only real call", path: "mod", contents: { todo: TODO_CHECKED }, kind: "removed" },
+		{ name: "a refused call", path: "mod", contents: { plan: PLAN_UNCHECKED, todo: TODO_CHECKED, brief: BRIEF }, kind: "refused" },
+		{
+			name: "a project-root call beside an abandoned session.aide",
+			path: ".",
+			contents: { plan: withStatus("completed", PLAN_CHECKED), todo: TODO_CHECKED, brief: BRIEF },
+			kind: "removed",
+		},
+	])("touches only the root, the module dir and its three ephemerals during $name", async ({ contents, kind, path }) => {
+		const mod = path === "." ? root : join(root, path);
 		await makeModule(mod, contents);
-		for (const name of [".aide", "intent.aide", "research.aide", "index.ts", "session.aide"]) {
+		for (const name of ["intent.aide", "research.aide", "index.ts", "session.aide"]) {
 			await writeFile(join(mod, name), `content of ${name}`);
 		}
+		if (path === ".") {
+			await mkdir(join(mod, ".aide"));
+			await writeFile(join(mod, ".aide", "session.aide"), withStatus("abandoned", "session state\n"));
+		} else {
+			await writeFile(join(mod, ".aide"), "content of .aide");
+		}
+		const sessionBefore = path === "." ? await readFile(join(mod, ".aide", "session.aide"), "utf-8") : null;
 		calls.length = 0;
 
-		const result = await run(root, { path: "mod", dryRun: false, allowEmptyPlan: false });
+		const result = await run(root, { path, dryRun: false });
 
 		expect(result.kind).toBe(kind);
 		const recorded = await Promise.all(calls.flatMap(({ paths }) => paths).map(normalize));
 		const realMod = await realpath(mod);
 		const allowed = [await realpath(root), realMod, ...EPHEMERALS.map((name) => join(realMod, name))];
 		expect(recorded.length).toBeGreaterThan(0);
-		for (const path of recorded) expect(allowed).toContain(path);
+		for (const recordedPath of recorded) expect(allowed).toContain(recordedPath);
 		const forbidden = ["session.aide", ".aide", "intent.aide", "research.aide", "index.ts"];
-		for (const path of recorded) expect(forbidden).not.toContain(basename(path));
+		for (const recordedPath of recorded) expect(forbidden).not.toContain(basename(recordedPath));
 		expect(calls.filter(({ name }) => name === "readdir")).toEqual([]);
+		if (sessionBefore !== null) expect(await readFile(join(mod, ".aide", "session.aide"), "utf-8")).toBe(sessionBefore);
 	});
 });

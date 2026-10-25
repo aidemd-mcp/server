@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/scaffoldCommands
-status: aligned
+alignment: aligned
 description: "Scaffolds the AIDE pipeline slash commands into a host project from canonical templates so the methodology's documented phases become runnable agent sessions."
 intent: >
   scaffoldCommands turns the methodology's documented pipeline into the

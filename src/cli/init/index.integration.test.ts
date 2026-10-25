@@ -8,17 +8,17 @@
  * No module-level vi.mock() calls — real dependencies are exercised. This
  * mirrors the pattern established in src/cli/sync/index.test.ts.
  *
- * The vi.hoisted guard suppresses the IIFE's process.exit call that fires when
- * the module is imported in the test environment — the same pattern used in the
- * unit test file (index.test.ts).
+ * The vi.hoisted guard replaces process.exit with a spy so the CLI entry's exit
+ * calls cannot terminate the test runner — the same pattern used in the unit
+ * test file (index.test.ts).
  *
- * Tests 7c-vi and 7c-vii exercise the IIFE's forbidden-flag and unknown-brain-value
- * paths. Because the IIFE fires at module import time, each case resets modules
- * and re-imports after setting process.argv.
+ * Importing the module has no side effect. Tests 7c-vi, 7c-vii and 7c-x
+ * exercise `runInitCli`'s forbidden-flag, unknown-brain-value and unknown-mode
+ * paths by setting process.argv and calling it explicitly.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Intercept process.exit before the module loads so the IIFE's process.exit
+// Intercept process.exit before the module loads so runInitCli's process.exit
 // calls are no-ops in the test environment. The handle is returned so tests
 // can assert calls and clear between runs.
 const { mockExit } = vi.hoisted(() => {
@@ -30,7 +30,8 @@ const { mockExit } = vi.hoisted(() => {
 import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runInit } from "./index.js";
+import { runInit, runInitCli } from "./index.js";
+import sessionTemplate from "@/tools/scaffold/sessionTemplate/index.js";
 import { mcpEntry } from "@/service/install/wireMcp/index.js";
 import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
@@ -113,6 +114,11 @@ describe("7c-i — cold install happy path, default integration (no options arg)
 		const brainLine = lines.find((l) => l.startsWith("[created] .aide/config/brain.aide"));
 		expect(brainLine).toBeDefined();
 		expect(brainLine).toContain("bundled brain template");
+
+		// The empty session record is created from the canonical placeholder and logged.
+		const sessionRecord = await readFile(join(tempDir, ".aide", "session.aide"), "utf-8");
+		expect(sessionRecord).toBe(sessionTemplate);
+		expect(lines).toContain("[created] .aide/session.aide — empty session record");
 	});
 });
 
@@ -216,6 +222,11 @@ describe("7c-iv — idempotent re-run: second runInit changes nothing", () => {
 		// First run — creates everything.
 		await runInit(tempDir, () => {});
 
+		// Fill the session record: a user-owned record must survive the second run.
+		const sessionPath = join(tempDir, ".aide", "session.aide");
+		const filledSession = "---\nintent: filled by the user\n---\n\n# Filled session\n";
+		await writeFile(sessionPath, filledSession, "utf-8");
+
 		// Snapshot .mcp.json and brain.aide bytes before the second run.
 		const mcpBefore = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		const brainAideBefore = await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8");
@@ -237,6 +248,10 @@ describe("7c-iv — idempotent re-run: second runInit changes nothing", () => {
 		// .mcp.json bytes must be unchanged.
 		const mcpAfter = await readFile(join(tempDir, ".mcp.json"), "utf-8");
 		expect(mcpAfter).toBe(mcpBefore);
+
+		// The filled session record is byte-identical and reported as already present.
+		expect(await readFile(sessionPath, "utf-8")).toBe(filledSession);
+		expect(lines).toContain("[exists] .aide/session.aide — already present");
 
 		// brain.aide bytes must be unchanged.
 		const brainAideAfter = await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8");
@@ -300,14 +315,23 @@ describe("7c-vi — forbidden flags cause process.exit(1) before any file is wri
 			return true;
 		}) as unknown as typeof process.stderr.write;
 
-		// Override process.argv so the IIFE sees the forbidden flag.
+		// Override process.argv so runInitCli sees the forbidden flag.
 		const originalArgv = process.argv;
 		process.argv = ["node", "index.js", flag, "/some/path"];
 
+		// runInitCli installs into process.cwd(), so the repo root must stay untouched.
+		const rootVersions = join(process.cwd(), ".aide", "versions.json");
+		const rootVersionsBefore = await readFile(rootVersions, "utf-8").catch(() => null);
+
 		try {
-			// Reset module registry and re-import so the IIFE fires with the new argv.
-			vi.resetModules();
-			await import("./index.js");
+			await runInitCli();
+
+			// Exit was called exactly once, with 1, and the CLI returned without installing.
+			expect(mockExit).toHaveBeenCalledTimes(1);
+
+			// Nothing may be written under process.cwd() (runInitCli's install target).
+			const rootVersionsAfter = await readFile(rootVersions, "utf-8").catch(() => null);
+			expect(rootVersionsAfter).toBe(rootVersionsBefore);
 
 			const stderrJoined = stderrChunks.join("");
 
@@ -320,9 +344,8 @@ describe("7c-vi — forbidden flags cause process.exit(1) before any file is wri
 			// stderr must route the user to /aide:brain config.
 			expect(stderrJoined).toContain("/aide:brain config");
 
-			// No files should have been written to tempDir (the IIFE uses process.cwd()
+			// No files should have been written to tempDir (runInitCli uses process.cwd()
 			// and exits before runInit is called, so nothing lands on disk under tempDir).
-			// Verify the aide config directory was NOT created under tempDir.
 			await expect(
 				readFile(join(tempDir, ".mcp.json"), "utf-8"),
 			).rejects.toThrow();
@@ -332,9 +355,7 @@ describe("7c-vi — forbidden flags cause process.exit(1) before any file is wri
 		} finally {
 			process.argv = originalArgv;
 			process.stderr.write = originalStderrWrite;
-			// Re-arm the exit mock for subsequent tests.
 			mockExit.mockClear();
-			vi.resetModules();
 		}
 	});
 });
@@ -356,8 +377,7 @@ describe("7c-vii — unknown --brain value causes process.exit(1) before any fil
 		process.argv = ["node", "index.js", "--brain", "mem0"];
 
 		try {
-			vi.resetModules();
-			await import("./index.js");
+			await runInitCli();
 
 			const stderrJoined = stderrChunks.join("");
 
@@ -377,7 +397,6 @@ describe("7c-vii — unknown --brain value causes process.exit(1) before any fil
 			process.argv = originalArgv;
 			process.stderr.write = originalStderrWrite;
 			mockExit.mockClear();
-			vi.resetModules();
 		}
 	});
 });
@@ -454,8 +473,7 @@ describe("7c-x — unknown --mode value causes process.exit(1) before any file i
 		process.argv = ["node", "index.js", "--mode", "remote"];
 
 		try {
-			vi.resetModules();
-			await import("./index.js");
+			await runInitCli();
 
 			const stderrJoined = stderrChunks.join("");
 
@@ -470,7 +488,6 @@ describe("7c-x — unknown --mode value causes process.exit(1) before any file i
 			process.argv = originalArgv;
 			process.stderr.write = originalStderrWrite;
 			mockExit.mockClear();
-			vi.resetModules();
 		}
 	});
 });

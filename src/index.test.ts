@@ -3,10 +3,12 @@ import type { CleanupResult } from "@/types/index.js";
 
 // Registered request handlers keyed by their (mocked) schema object. A map, not
 // mock.calls, so afterEach(vi.clearAllMocks) cannot erase the capture.
-const { handlers, mockCleanup, mockBrainCategory, mockUpgrade, mockBrain, mockReadTemplateSection, mockListContract, mockValidateDraft } =
+const { handlers, mockCleanup, mockScaffold, mockFrontmatter, mockBrainCategory, mockUpgrade, mockBrain, mockReadTemplateSection, mockListContract, mockValidateDraft } =
 	vi.hoisted(() => ({
 		handlers: new Map<unknown, (request?: unknown) => Promise<any>>(),
 		mockCleanup: vi.fn(),
+		mockScaffold: vi.fn(),
+		mockFrontmatter: vi.fn(),
 		mockBrainCategory: vi.fn(),
 		mockUpgrade: vi.fn(),
 		mockBrain: vi.fn(),
@@ -15,8 +17,9 @@ const { handlers, mockCleanup, mockBrainCategory, mockUpgrade, mockBrain, mockRe
 		mockValidateDraft: vi.fn(),
 	}));
 
-// Mock the init CLI module to prevent its IIFE from executing during tests.
-vi.mock("./cli/init/index.js", () => ({}));
+// Mock the init CLI module so routeSubcommand never runs a real install.
+const { mockRunInitCli } = vi.hoisted(() => ({ mockRunInitCli: vi.fn() }));
+vi.mock("./cli/init/index.js", () => ({ runInitCli: mockRunInitCli }));
 
 // Mock MCP SDK modules to prevent real server instantiation.
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
@@ -39,6 +42,18 @@ vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
 vi.mock("@/tools/cleanup/index.js", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@/tools/cleanup/index.js")>();
 	return { ...original, default: mockCleanup };
+});
+
+// Keep the real ScaffoldInput (zod) so the type enum is exercised; stub the work (the real scaffold writes into the cwd).
+vi.mock("@/tools/scaffold/index.js", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@/tools/scaffold/index.js")>();
+	return { ...original, default: mockScaffold };
+});
+
+// Keep the real FrontmatterInput (zod) and formatResult so parsing and report text are exercised; stub the work.
+vi.mock("@/tools/frontmatter/index.js", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@/tools/frontmatter/index.js")>();
+	return { ...original, default: mockFrontmatter };
 });
 
 // Stub the brain category orchestrator; the handler's routing is what is under test.
@@ -80,15 +95,13 @@ afterEach(() => {
 });
 
 describe("routeSubcommand", () => {
-	it("dynamically imports ./cli/init/index.js and returns true when argv[2] is 'init'", async () => {
+	it("dynamically imports ./cli/init/index.js, runs runInitCli and returns true when argv[2] is 'init'", async () => {
 		process.argv = ["node", "dist/index.js", "init"];
 
 		const handled = await routeSubcommand();
 
 		expect(handled).toBe(true);
-		// The dynamic import of the mocked module must have been attempted.
-		// We verify by confirming routeSubcommand returned true, which only
-		// happens when the import branch executes.
+		expect(mockRunInitCli).toHaveBeenCalledTimes(1);
 	});
 
 	it("returns false and does not import the init module when argv[2] is not 'init'", async () => {
@@ -169,13 +182,13 @@ describe("aide_cleanup registration", () => {
 		return tool;
 	}
 
-	it("lists aide_cleanup requiring path, with optional boolean dryRun and allowEmptyPlan", async () => {
+	it("lists aide_cleanup requiring path, with optional boolean dryRun and no allowEmptyPlan", async () => {
 		const { inputSchema } = await findCleanup();
 
 		expect(inputSchema.required).toEqual(["path"]);
 		expect(inputSchema.properties.path.type).toBe("string");
 		expect(inputSchema.properties.dryRun.type).toBe("boolean");
-		expect(inputSchema.properties.allowEmptyPlan.type).toBe("boolean");
+		expect(inputSchema.properties).not.toHaveProperty("allowEmptyPlan");
 	});
 
 	it("describes the ephemerals, the out-of-reach session file, the no-plan path, and the optional dry run", async () => {
@@ -195,7 +208,7 @@ describe("aide_cleanup registration", () => {
 
 		await callTool("aide_cleanup", { path: "src/x" });
 
-		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: false, allowEmptyPlan: false });
+		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: false });
 	});
 
 	it("passes dryRun through", async () => {
@@ -203,15 +216,15 @@ describe("aide_cleanup registration", () => {
 
 		await callTool("aide_cleanup", { path: "src/x", dryRun: true });
 
-		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: true, allowEmptyPlan: false });
+		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: true });
 	});
 
-	it("passes allowEmptyPlan through", async () => {
+	it("drops a stale allowEmptyPlan argument", async () => {
 		mockCleanup.mockResolvedValue({ kind: "removed", module: "src/x", files: ["plan.aide"] } satisfies CleanupResult);
 
 		await callTool("aide_cleanup", { path: "src/x", allowEmptyPlan: true });
 
-		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: false, allowEmptyPlan: true });
+		expect(mockCleanup).toHaveBeenCalledWith(root, { path: "src/x", dryRun: false });
 	});
 
 	it("flags a refusal as an error and carries the refusal text", async () => {
@@ -224,7 +237,7 @@ describe("aide_cleanup registration", () => {
 		const response = await callTool("aide_cleanup", { path: "src/x" });
 
 		expect(response.isError).toBe(true);
-		expect(response.content[0].text).toContain("brief.aide has no checkboxes");
+		expect(response.content[0].text).toContain("brief.aide has no plan.aide beside it, and a brief is removed only together with its plan.");
 	});
 
 	it("does not flag a removal as an error", async () => {
@@ -258,6 +271,93 @@ async function findTool(name: string) {
 async function callTool(name: string, args: unknown) {
 	return handlers.get(CallToolRequestSchema)!({ params: { name, arguments: args } });
 }
+
+describe("aide_scaffold registration", () => {
+	const root = process.cwd();
+
+	it("lists the session type and requires directory and type", async () => {
+		const { inputSchema } = (await findTool("aide_scaffold")) as unknown as {
+			inputSchema: { properties: { type: { enum: string[] } }; required: string[] };
+		};
+
+		expect(inputSchema.properties.type.enum).toContain("session");
+		expect(inputSchema.required).toEqual(["directory", "type"]);
+	});
+
+	it("accepts type session and passes it to scaffold", async () => {
+		mockScaffold.mockResolvedValue("Created .aide/session.aide");
+
+		const response = await callTool("aide_scaffold", { directory: "src/anything", type: "session" });
+
+		expect(mockScaffold).toHaveBeenCalledWith(root, "src/anything", "session");
+		expect(response.content[0].text).toBe("Created .aide/session.aide");
+	});
+});
+
+describe("aide_frontmatter registration", () => {
+	const root = process.cwd();
+
+	it("lists aide_frontmatter requiring path, with path, field and value properties", async () => {
+		const { inputSchema } = (await findTool("aide_frontmatter")) as unknown as {
+			inputSchema: { properties: Record<string, { type: string }>; required: string[] };
+		};
+
+		expect(inputSchema.required).toEqual(["path"]);
+		expect(Object.keys(inputSchema.properties)).toEqual(["path", "field", "value"]);
+	});
+
+	it("does not mention @latest in its description", async () => {
+		const { description } = await findTool("aide_frontmatter");
+
+		expect(description).not.toContain("@latest");
+	});
+
+	it("passes a read call to frontmatter with the root and the parsed input", async () => {
+		mockFrontmatter.mockResolvedValue({
+			kind: "read",
+			path: "src/x/plan.aide",
+			field: "status",
+			current: { state: "set", value: "approved" },
+			legacy: false,
+		});
+
+		const response = await callTool("aide_frontmatter", { path: "src/x/plan.aide" });
+
+		expect(mockFrontmatter).toHaveBeenCalledWith(root, { path: "src/x/plan.aide" });
+		expect(response.isError).toBe(false);
+		expect(response.content[0].text).toContain("src/x/plan.aide");
+	});
+
+	it("passes a write call to frontmatter and reports a change without an error", async () => {
+		mockFrontmatter.mockResolvedValue({
+			kind: "changed",
+			path: "src/x/plan.aide",
+			field: "status",
+			from: { state: "set", value: "proposed" },
+			to: "approved",
+			movedFromLegacy: false,
+		});
+
+		const response = await callTool("aide_frontmatter", { path: "src/x/plan.aide", field: "status", value: "approved" });
+
+		expect(mockFrontmatter).toHaveBeenCalledWith(root, { path: "src/x/plan.aide", field: "status", value: "approved" });
+		expect(response.isError).toBe(false);
+		expect(response.content[0].text).toContain("approved");
+	});
+
+	it("flags a refused outcome as an error and carries the refusal text", async () => {
+		mockFrontmatter.mockResolvedValue({ kind: "refused", path: "src/x/plan.aide", refusal: { kind: "pairing" } });
+
+		const response = await callTool("aide_frontmatter", { path: "src/x/plan.aide", field: "status" });
+
+		expect(response.isError).toBe(true);
+		expect(response.content[0].text).toContain("field and value go together");
+	});
+
+	it("rejects a call without path", async () => {
+		await expect(callTool("aide_frontmatter", {})).rejects.toThrow();
+	});
+});
 
 describe("aide_upgrade brain category routing", () => {
 	const root = process.cwd();

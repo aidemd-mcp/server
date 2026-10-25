@@ -1,6 +1,6 @@
 ---
 scope: src/cli/init
-status: aligned
+alignment: aligned
 description: "Cold-start npx entry point that drives the install service end-to-end from a plain terminal, before any agent session exists."
 intent: >
   cli/init is the install consumer for users at a fresh terminal who

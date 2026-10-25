@@ -1,6 +1,6 @@
 ---
 scope: src/cli/sync
-status: aligned
+alignment: aligned
 description: The user-typed terminal verb that propagates the host's brain config into the host's MCP launcher entry, refusing to write while any slot is unwired.
 intent: >
   sync is the terminal verb the user types to propagate the host's brain

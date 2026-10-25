@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/scaffoldReadme
-status: aligned
+alignment: aligned
 description: "Install category that ensures the host project has a project-root README with the AIDE adoption badge visible at the top."
 intent: >
   scaffoldReadme is the install category that makes AIDE adoption

@@ -1,5 +1,6 @@
 ---
 scope: src/service/brainContract
+alignment: unreviewed
 description: "The single published source of the brain config's required-section contract, naming each section's marker, purpose, and role as a live runtime section or a seed written into the brain."
 intent: >
   brainContract is the one place the brain config's required sections are

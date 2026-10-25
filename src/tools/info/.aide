@@ -1,5 +1,6 @@
 ---
 scope: src/tools/info
+alignment: unreviewed
 description: "Boot-time reporter that returns AIDE artifact staleness and brain-precondition state in one read-only pass so the orchestrator can branch on each before pipeline work runs."
 intent: >
   aide_info is the passive precondition reporter the orchestrator calls

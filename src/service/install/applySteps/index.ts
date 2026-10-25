@@ -28,6 +28,9 @@ import type { InitStep } from "@/types/index.js";
  * - `"would-create"` / `"would-overwrite"` IDE VS Code steps (name contains
  *   "VS Code"): passed through unchanged — requires the external `code` CLI.
  *   The agent executes the extension install command.
+ * - `"would-create"` steps carrying `instructions` and no `content` (the session
+ *   record step): passed through unchanged for the agent to act on. Never written
+ *   by this helper.
  * - `"exists"`, `"would-skip"` steps: passed through unchanged.
  * - `"created"`, `"overwritten"` steps (already applied): passed through
  *   unchanged (idempotent).

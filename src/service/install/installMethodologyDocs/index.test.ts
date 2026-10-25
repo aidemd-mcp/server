@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import installMethodologyDocs from "./index.js";
+import { getCanonicalPath, listMethodologyDocs } from "@/service/install/initContent/index.js";
 import type { InitStep } from "@/types/index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
@@ -23,6 +24,7 @@ const METHODOLOGY_FILES = [
 	"session-aide.md",
 	"brain-aide.md",
 	"cascading-alignment.md",
+	"changelog.md",
 ];
 
 // ---------------------------------------------------------------------------
@@ -77,11 +79,35 @@ describe("installMethodologyDocs", () => {
 
 		const results = await installMethodologyDocs(hubDir);
 
+		const sourceByHostFilename = new Map(
+			listMethodologyDocs().map((doc) => [doc.hostFilename, getCanonicalPath(doc.canonical)]),
+		);
+
 		for (const result of results) {
 			const filename = result.name.replace(".aide/", "");
-			const canonical = readFileSync(join(METHODOLOGY_ROOT, filename), "utf-8");
+			const sourcePath = sourceByHostFilename.get(filename)!;
+			const canonical = readFileSync(join(REPO_ROOT, sourcePath), "utf-8");
 			expect(result.content).toBe(canonical);
 		}
+	});
+
+	it("plans changelog.md from the repo-root CHANGELOG.md", async () => {
+		const hubDir = join(tempDir, ".aide");
+		const changelog = readFileSync(join(REPO_ROOT, "CHANGELOG.md"), "utf-8");
+
+		const cold = await installMethodologyDocs(hubDir);
+		const coldStep = cold.find((r) => r.name === ".aide/changelog.md")!;
+		expect(coldStep.status).toBe("would-create");
+		expect(coldStep.filePath).toBe(join(hubDir, "changelog.md"));
+		expect(coldStep.content).toBe(changelog);
+
+		await mkdir(hubDir, { recursive: true });
+		await writeFile(join(hubDir, "changelog.md"), changelog, "utf-8");
+
+		const warm = await installMethodologyDocs(hubDir);
+		const warmStep = warm.find((r) => r.name === ".aide/changelog.md")!;
+		expect(warmStep.status).toBe("exists");
+		expect(warmStep.content).toBeUndefined();
 	});
 
 	it("returns exists when a doc on disk is byte-identical to canonical", async () => {

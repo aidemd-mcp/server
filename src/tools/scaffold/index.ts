@@ -1,16 +1,21 @@
 import { z } from "zod";
-import { readdir, writeFile, rename, mkdir } from "node:fs/promises";
+import { readdir, rename, mkdir } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
+import sessionTemplate from "./sessionTemplate/index.js";
+import writeIfAbsent from "./writeIfAbsent/index.js";
 
 export const ScaffoldInput = z.object({
 	directory: z.string().describe("Directory where the .aide file(s) will be created"),
 	type: z
-		.enum(["intent", "research", "both", "todo", "plan"])
-		.describe("Type of .aide file to create (intent, research, both, todo, or plan)"),
+		.enum(["intent", "research", "both", "todo", "plan", "session"])
+		.describe(
+			"Type of .aide file to create (intent, research, both, todo, plan, or session; session always creates .aide/session.aide at the project root and ignores directory)",
+		),
 });
 
 const INTENT_TEMPLATE = `---
 scope: <module path>
+alignment: unreviewed
 description: <one-line purpose statement>
 intent: >
   <what this module does and the conditions of success>
@@ -56,6 +61,7 @@ const RESEARCH_TEMPLATE = `# Research
 `;
 
 const TODO_TEMPLATE = `---
+status: proposed
 description: >
   <one-line summary of what QA found>
 ---
@@ -66,6 +72,7 @@ description: >
 `;
 
 const PLAN_TEMPLATE = `---
+status: proposed
 description: >
   <one-line summary of what this plan implements>
 intent: >
@@ -90,21 +97,40 @@ async function existingAideFiles(dir: string): Promise<string[]> {
 	}
 }
 
+/** The report line for a target that already exists and was left untouched. */
+function skippedLine(name: string): string {
+	return `Skipped ${name} — it already exists and was left untouched`;
+}
+
 /**
  * Create new .aide files with correct naming conventions.
+ * No type ever overwrites or deletes: an existing target is reported as a
+ * Skipped line and left untouched.
+ * New files start with their kind's starting value, and scaffold never changes a value afterwards.
  * Handles auto-rename logic:
  * - type=intent + no research.aide → creates .aide
  * - type=intent + research.aide exists → creates intent.aide
+ * - type=intent + the folder already holds .aide or intent.aide → skips
  * - type=research → creates research.aide; renames existing .aide to intent.aide
+ *   (no rename when research.aide already exists)
  * - type=both → creates research.aide + intent.aide
  * - type=todo → creates todo.aide
  * - type=plan → creates plan.aide
+ * - type=session → creates .aide/session.aide at the project root, ignoring directory
  */
 export default async function scaffold(
 	root: string,
 	directory: string,
-	type: "intent" | "research" | "both" | "todo" | "plan",
+	type: z.infer<typeof ScaffoldInput>["type"],
 ): Promise<string> {
+	if (type === "session") {
+		// The session record has one fixed location, so the passed directory is never created, listed or touched.
+		await mkdir(join(root, ".aide"), { recursive: true });
+		const outcome = await writeIfAbsent(join(root, ".aide", "session.aide"), sessionTemplate);
+		if (outcome === "exists") return skippedLine(".aide/session.aide");
+		return "Created .aide/session.aide";
+	}
+
 	const dir = isAbsolute(directory) ? directory : join(root, directory);
 
 	// Ensure directory exists
@@ -114,44 +140,56 @@ export default async function scaffold(
 	const actions: string[] = [];
 
 	if (type === "todo") {
-		const target = join(dir, "todo.aide");
-		await writeFile(target, TODO_TEMPLATE, "utf-8");
-		actions.push("Created todo.aide");
+		const outcome = await writeIfAbsent(join(dir, "todo.aide"), TODO_TEMPLATE);
+		actions.push(outcome === "exists" ? skippedLine("todo.aide") : "Created todo.aide");
 	} else if (type === "plan") {
-		const target = join(dir, "plan.aide");
-		await writeFile(target, PLAN_TEMPLATE, "utf-8");
-		actions.push("Created plan.aide");
+		const outcome = await writeIfAbsent(join(dir, "plan.aide"), PLAN_TEMPLATE);
+		actions.push(outcome === "exists" ? skippedLine("plan.aide") : "Created plan.aide");
 	} else if (type === "intent") {
-		if (existing.includes("research.aide")) {
-			const target = join(dir, "intent.aide");
-			await writeFile(target, INTENT_TEMPLATE, "utf-8");
-			actions.push("Created intent.aide (research.aide exists, so using explicit name)");
+		const researchExists = existing.includes("research.aide");
+		const name = researchExists ? "intent.aide" : ".aide";
+		const otherName = researchExists ? ".aide" : "intent.aide";
+		if (existing.includes(name)) {
+			actions.push(skippedLine(name));
+		} else if (existing.includes(otherName)) {
+			actions.push(
+				`Skipped ${name} — ${otherName} already holds this folder's intent spec and was left untouched`,
+			);
 		} else {
-			const target = join(dir, ".aide");
-			await writeFile(target, INTENT_TEMPLATE, "utf-8");
-			actions.push("Created .aide");
+			const outcome = await writeIfAbsent(join(dir, name), INTENT_TEMPLATE);
+			if (outcome === "exists") actions.push(skippedLine(name));
+			else if (researchExists) {
+				actions.push("Created intent.aide (research.aide exists, so using explicit name)");
+			} else actions.push("Created .aide");
 		}
 	} else if (type === "research") {
-		// If .aide exists, rename to intent.aide first
-		if (existing.includes(".aide") && !existing.includes("intent.aide")) {
-			await rename(join(dir, ".aide"), join(dir, "intent.aide"));
-			actions.push("Renamed .aide → intent.aide");
+		if (existing.includes("research.aide")) {
+			actions.push(skippedLine("research.aide"));
+		} else {
+			// If .aide exists, rename to intent.aide first
+			if (existing.includes(".aide") && !existing.includes("intent.aide")) {
+				await rename(join(dir, ".aide"), join(dir, "intent.aide"));
+				actions.push("Renamed .aide → intent.aide");
+			}
+			const outcome = await writeIfAbsent(join(dir, "research.aide"), RESEARCH_TEMPLATE);
+			actions.push(outcome === "exists" ? skippedLine("research.aide") : "Created research.aide");
 		}
-		const target = join(dir, "research.aide");
-		await writeFile(target, RESEARCH_TEMPLATE, "utf-8");
-		actions.push("Created research.aide");
 	} else if (type === "both") {
-		// If .aide exists, remove it since we're creating intent.aide
-		if (existing.includes(".aide") && !existing.includes("intent.aide")) {
+		if (existing.includes("intent.aide")) {
+			actions.push(skippedLine("intent.aide"));
+		} else if (existing.includes(".aide")) {
+			// .aide becomes the explicit intent.aide since research is being introduced
 			await rename(join(dir, ".aide"), join(dir, "intent.aide"));
 			actions.push("Renamed .aide → intent.aide");
-		} else if (!existing.includes("intent.aide")) {
-			await writeFile(join(dir, "intent.aide"), INTENT_TEMPLATE, "utf-8");
-			actions.push("Created intent.aide");
+		} else {
+			const outcome = await writeIfAbsent(join(dir, "intent.aide"), INTENT_TEMPLATE);
+			actions.push(outcome === "exists" ? skippedLine("intent.aide") : "Created intent.aide");
 		}
-		if (!existing.includes("research.aide")) {
-			await writeFile(join(dir, "research.aide"), RESEARCH_TEMPLATE, "utf-8");
-			actions.push("Created research.aide");
+		if (existing.includes("research.aide")) {
+			actions.push(skippedLine("research.aide"));
+		} else {
+			const outcome = await writeIfAbsent(join(dir, "research.aide"), RESEARCH_TEMPLATE);
+			actions.push(outcome === "exists" ? skippedLine("research.aide") : "Created research.aide");
 		}
 	}
 

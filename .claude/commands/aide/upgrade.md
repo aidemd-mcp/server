@@ -26,7 +26,7 @@ The tool uses a **two-call pattern**. The first call (no `category`) returns a l
 
 Call `aide_upgrade` with no arguments. The response is JSON with `framework` and `categories`. Each category has `files` (metadata only — no `canonicalContent`) and a `summary` with counts.
 
-If all categories have `differs: 0` and `missing: 0`, tell the user everything is current and stop.
+If all categories have `differs: 0` and `missing: 0`, skip to **Project files** below — the project's own files can still be on an older format even when the package files are current.
 
 Otherwise, proceed to walk through drifted categories one at a time.
 
@@ -123,9 +123,25 @@ On "Yes," invoke `Skill(skill="aide:brain", args="config")`. On "Skip," move to 
 
 ---
 
+### Project files: run the upgrader — every time
+
+The categories above refresh what the package ships. The project's own AIDE files — intent specs, plans, todo lists, briefs — may still be on an older format. Bringing them current is the `aide-upgrader` agent's job, and it runs at the end of **every** upgrade, with no condition to check first.
+
+1. Delegate to `aide-upgrader` (via Agent tool, `subagent_type: aide-upgrader`) in **REPORT** mode. It reads the `[migration]` entries in `.aide/docs/changelog.md` (just refreshed by the docs category) and returns what is out of date, with a suggested value and evidence for each file that needs judgment.
+2. **UP TO DATE** → say so in one line and go to the summary.
+3. **MIGRATIONS FOUND** → walk the user through them with `AskUserQuestion`, one decision at a time:
+   - **Batch entries** (`Confirm: once, as a batch`): one question per entry — name the change and the file count. Apply or skip.
+   - **Per-file entries** (`Confirm: per file`): one question per file, offering the upgrader's suggested value first (with its evidence in the description) and the other allowed values as options.
+   - Never apply anything the user did not choose.
+4. Delegate the approved changes to `aide-upgrader` in **APPLY** mode, listing each one exactly.
+5. Relay what it changed and anything a tool refused.
+
+---
+
 ### Final step: Summary
 
 Report what was done:
 - Files updated per category
 - Categories that were already current
 - Categories the user skipped
+- Project files migrated by the upgrader, and any the user left as they were

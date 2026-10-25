@@ -12,9 +12,10 @@ export const DiscoverInput = z.object({
 /**
  * Scan for .aide files and return a progressive disclosure tree map.
  *
- * Without a path: shallow scan of the entire project — returns file locations
- * and types only (no summaries, no content reading). This is the project map
- * the agent uses to understand where specs live.
+ * Without a path: shallow scan of the entire project — returns file locations,
+ * type tags and each spec's one-line description, with a plan or todo tag
+ * carrying its status. Only a bounded head of each file is read. This is the
+ * project map the agent uses to understand where specs live.
  *
  * With a path: deep scan of that subtree — includes summaries extracted from
  * file content, plus anomaly warnings. This is how the agent drills into the

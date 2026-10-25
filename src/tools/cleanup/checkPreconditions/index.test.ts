@@ -28,61 +28,52 @@ async function makeModule(files: Partial<Record<CleanupEphemeral, string>>): Pro
 	return present;
 }
 
+/** Prefixes a body with a frontmatter block recording the given status value. */
+function withStatus(status: string, body: string): string {
+	return `---\nstatus: ${status}\n---\n${body}`;
+}
+
 describe("checkPreconditions", () => {
-	it.each([false, true])("returns no-ephemerals for an empty present list (allowEmptyPlan %s)", async (allowEmptyPlan) => {
-		expect(await checkPreconditions(dir, [], allowEmptyPlan)).toEqual({ kind: "no-ephemerals" });
+	it("returns no-ephemerals for an empty present list", async () => {
+		expect(await checkPreconditions(dir, [])).toEqual({ kind: "no-ephemerals" });
 	});
 
 	it("returns null for a fully checked todo with no plan", async () => {
 		const present = await makeModule({ "todo.aide": CHECKED });
-		expect(await checkPreconditions(dir, present, false)).toBeNull();
-	});
-
-	it("ignores allowEmptyPlan for a fully checked todo with no plan", async () => {
-		const present = await makeModule({ "todo.aide": CHECKED });
-		expect(await checkPreconditions(dir, present, true)).toBeNull();
+		expect(await checkPreconditions(dir, present)).toBeNull();
 	});
 
 	it("returns the unchecked item of a todo with no plan", async () => {
 		const present = await makeModule({ "todo.aide": UNCHECKED_TODO });
-		expect(await checkPreconditions(dir, present, false)).toEqual({
+		expect(await checkPreconditions(dir, present)).toEqual({
 			kind: "unchecked-items",
 			items: [{ file: "todo.aide", line: 3, text: "open todo item" }],
 		});
 	});
 
-	it.each([false, true])(
-		"refuses a todo with zero checkboxes and no plan (allowEmptyPlan %s)",
-		async (allowEmptyPlan) => {
-			const present = await makeModule({ "todo.aide": NO_CHECKBOXES });
-			expect(await checkPreconditions(dir, present, allowEmptyPlan)).toEqual({ kind: "todo-without-checkboxes" });
-		},
-	);
+	it("refuses a todo with zero checkboxes and no plan", async () => {
+		const present = await makeModule({ "todo.aide": NO_CHECKBOXES });
+		expect(await checkPreconditions(dir, present)).toEqual({ kind: "todo-without-checkboxes" });
+	});
 
-	it.each([false, true])(
-		"refuses a lone brief with no items (allowEmptyPlan %s)",
-		async (allowEmptyPlan) => {
-			const present = await makeModule({ "brief.aide": NO_CHECKBOXES });
-			expect(await checkPreconditions(dir, present, allowEmptyPlan)).toEqual({
-				kind: "brief-without-plan",
-				items: [],
-			});
-		},
-	);
+	it("refuses a lone brief with no items", async () => {
+		const present = await makeModule({ "brief.aide": NO_CHECKBOXES });
+		expect(await checkPreconditions(dir, present)).toEqual({ kind: "brief-without-plan", items: [] });
+	});
 
 	it("never reads the checkboxes of a lone brief", async () => {
 		const present = await makeModule({ "brief.aide": "- [ ] not a gate\n" });
-		expect(await checkPreconditions(dir, present, false)).toEqual({ kind: "brief-without-plan", items: [] });
+		expect(await checkPreconditions(dir, present)).toEqual({ kind: "brief-without-plan", items: [] });
 	});
 
 	it("refuses a brief plus a fully checked todo with no plan", async () => {
 		const present = await makeModule({ "brief.aide": NO_CHECKBOXES, "todo.aide": CHECKED });
-		expect(await checkPreconditions(dir, present, false)).toEqual({ kind: "brief-without-plan", items: [] });
+		expect(await checkPreconditions(dir, present)).toEqual({ kind: "brief-without-plan", items: [] });
 	});
 
 	it("names the todo's unchecked item when a brief has no plan", async () => {
 		const present = await makeModule({ "brief.aide": NO_CHECKBOXES, "todo.aide": UNCHECKED_TODO });
-		expect(await checkPreconditions(dir, present, false)).toEqual({
+		expect(await checkPreconditions(dir, present)).toEqual({
 			kind: "brief-without-plan",
 			items: [{ file: "todo.aide", line: 3, text: "open todo item" }],
 		});
@@ -90,17 +81,17 @@ describe("checkPreconditions", () => {
 
 	it("returns null for a fully checked plan with no todo", async () => {
 		const present = await makeModule({ "plan.aide": CHECKED });
-		expect(await checkPreconditions(dir, present, false)).toBeNull();
+		expect(await checkPreconditions(dir, present)).toBeNull();
 	});
 
 	it("returns null for a fully checked plan plus a fully checked todo", async () => {
 		const present = await makeModule({ "plan.aide": CHECKED, "todo.aide": CHECKED });
-		expect(await checkPreconditions(dir, present, false)).toBeNull();
+		expect(await checkPreconditions(dir, present)).toBeNull();
 	});
 
 	it("returns an unchecked plan item with file, line and text", async () => {
 		const present = await makeModule({ "plan.aide": UNCHECKED_PLAN });
-		expect(await checkPreconditions(dir, present, false)).toEqual({
+		expect(await checkPreconditions(dir, present)).toEqual({
 			kind: "unchecked-items",
 			items: [{ file: "plan.aide", line: 2, text: "open plan item" }],
 		});
@@ -108,7 +99,7 @@ describe("checkPreconditions", () => {
 
 	it("returns an unchecked todo item with file, line and text", async () => {
 		const present = await makeModule({ "plan.aide": CHECKED, "todo.aide": UNCHECKED_TODO });
-		expect(await checkPreconditions(dir, present, false)).toEqual({
+		expect(await checkPreconditions(dir, present)).toEqual({
 			kind: "unchecked-items",
 			items: [{ file: "todo.aide", line: 3, text: "open todo item" }],
 		});
@@ -116,7 +107,7 @@ describe("checkPreconditions", () => {
 
 	it("returns unchecked items from both files, plan first", async () => {
 		const present = await makeModule({ "plan.aide": UNCHECKED_PLAN, "todo.aide": UNCHECKED_TODO });
-		expect(await checkPreconditions(dir, present, false)).toEqual({
+		expect(await checkPreconditions(dir, present)).toEqual({
 			kind: "unchecked-items",
 			items: [
 				{ file: "plan.aide", line: 2, text: "open plan item" },
@@ -125,39 +116,207 @@ describe("checkPreconditions", () => {
 		});
 	});
 
-	it("refuses a plan with zero checkboxes by default", async () => {
+	it("refuses a plan with zero checkboxes", async () => {
 		const present = await makeModule({ "plan.aide": NO_CHECKBOXES });
-		expect(await checkPreconditions(dir, present, false)).toEqual({ kind: "plan-without-checkboxes" });
+		expect(await checkPreconditions(dir, present)).toEqual({ kind: "plan-without-checkboxes" });
 	});
 
-	it("passes a plan with zero checkboxes when allowEmptyPlan is true", async () => {
-		const present = await makeModule({ "plan.aide": NO_CHECKBOXES });
-		expect(await checkPreconditions(dir, present, true)).toBeNull();
+	it("allows a todo with zero checkboxes alongside a checked plan", async () => {
+		const present = await makeModule({ "plan.aide": CHECKED, "todo.aide": NO_CHECKBOXES });
+		expect(await checkPreconditions(dir, present)).toBeNull();
 	});
 
-	it("still refuses an empty plan plus an unchecked todo when allowEmptyPlan is true", async () => {
-		const present = await makeModule({ "plan.aide": NO_CHECKBOXES, "todo.aide": UNCHECKED_TODO });
-		expect(await checkPreconditions(dir, present, true)).toEqual({
+	it("never lets a status-less brief.aide's checkboxes block", async () => {
+		const present = await makeModule({ "plan.aide": CHECKED, "brief.aide": "- [ ] not a gate\n" });
+		expect(await checkPreconditions(dir, present)).toBeNull();
+	});
+});
+
+describe("checkPreconditions with a recorded status", () => {
+	it("refuses a completed plan plus a completed brief that holds an open item, naming brief.aide", async () => {
+		const present = await makeModule({
+			"plan.aide": withStatus("completed", CHECKED),
+			"brief.aide": withStatus("completed", "- [x] done\n- [ ] still open\n"),
+		});
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "completed-with-open-items",
+			items: [{ file: "brief.aide", line: 5, text: "still open" }],
+		});
+	});
+
+	it("passes a completed plan plus a completed brief", async () => {
+		const present = await makeModule({
+			"plan.aide": withStatus("completed", CHECKED),
+			"brief.aide": withStatus("completed", ""),
+		});
+		expect(await checkPreconditions(dir, present)).toBeNull();
+	});
+
+	it.each(["approved", "proposed"])("refuses a completed plan plus a %s brief, naming brief.aide", async (status) => {
+		const present = await makeModule({
+			"plan.aide": withStatus("completed", CHECKED),
+			"brief.aide": withStatus(status, ""),
+		});
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "open-status",
+			files: [{ file: "brief.aide", status }],
+			items: [],
+		});
+	});
+
+	it("passes a completed plan plus a brief with no status", async () => {
+		const present = await makeModule({ "plan.aide": withStatus("completed", CHECKED), "brief.aide": "# Brief\n" });
+		expect(await checkPreconditions(dir, present)).toBeNull();
+	});
+
+	it("refuses a completed plan with one open item, naming it", async () => {
+		const present = await makeModule({ "plan.aide": withStatus("completed", UNCHECKED_PLAN) });
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "completed-with-open-items",
+			items: [{ file: "plan.aide", line: 5, text: "open plan item" }],
+		});
+	});
+
+	it("passes a completed plan with zero checkboxes", async () => {
+		const present = await makeModule({ "plan.aide": withStatus("completed", NO_CHECKBOXES) });
+		expect(await checkPreconditions(dir, present)).toBeNull();
+	});
+
+	it.each(["proposed", "approved"])("refuses a fully checked %s plan as open-status", async (status) => {
+		const present = await makeModule({ "plan.aide": withStatus(status, CHECKED) });
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "open-status",
+			files: [{ file: "plan.aide", status }],
+			items: [],
+		});
+	});
+
+	it("lists every open-status file in plan, todo, brief order with the plan and todo items", async () => {
+		const present = await makeModule({
+			"plan.aide": withStatus("approved", UNCHECKED_PLAN),
+			"todo.aide": withStatus("proposed", UNCHECKED_TODO),
+			"brief.aide": withStatus("approved", ""),
+		});
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "open-status",
+			files: [
+				{ file: "plan.aide", status: "approved" },
+				{ file: "todo.aide", status: "proposed" },
+				{ file: "brief.aide", status: "approved" },
+			],
+			items: [
+				{ file: "plan.aide", line: 5, text: "open plan item" },
+				{ file: "todo.aide", line: 6, text: "open todo item" },
+			],
+		});
+	});
+
+	it("passes an abandoned plan with open items plus an approved brief", async () => {
+		const present = await makeModule({
+			"plan.aide": withStatus("abandoned", UNCHECKED_PLAN),
+			"brief.aide": withStatus("approved", ""),
+		});
+		expect(await checkPreconditions(dir, present)).toBeNull();
+	});
+
+	it.each(["approved", "proposed"])("refuses an abandoned plan plus a %s todo, naming only todo.aide", async (status) => {
+		const present = await makeModule({
+			"plan.aide": withStatus("abandoned", UNCHECKED_PLAN),
+			"todo.aide": withStatus(status, CHECKED),
+			"brief.aide": withStatus("approved", ""),
+		});
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "open-status",
+			files: [{ file: "todo.aide", status }],
+			items: [],
+		});
+	});
+
+	it("passes an abandoned plan plus an abandoned todo with open items", async () => {
+		const present = await makeModule({
+			"plan.aide": withStatus("abandoned", UNCHECKED_PLAN),
+			"todo.aide": withStatus("abandoned", UNCHECKED_TODO),
+		});
+		expect(await checkPreconditions(dir, present)).toBeNull();
+	});
+
+	it("refuses an abandoned plan plus a status-less todo with open items, naming only the todo items", async () => {
+		const present = await makeModule({
+			"plan.aide": withStatus("abandoned", UNCHECKED_PLAN),
+			"todo.aide": UNCHECKED_TODO,
+		});
+		expect(await checkPreconditions(dir, present)).toEqual({
 			kind: "unchecked-items",
 			items: [{ file: "todo.aide", line: 3, text: "open todo item" }],
 		});
 	});
 
-	it("still refuses a plan with an unchecked item when allowEmptyPlan is true", async () => {
-		const present = await makeModule({ "plan.aide": UNCHECKED_PLAN });
-		expect(await checkPreconditions(dir, present, true)).toEqual({
-			kind: "unchecked-items",
-			items: [{ file: "plan.aide", line: 2, text: "open plan item" }],
+	it("passes an abandoned todo with open items and no plan", async () => {
+		const present = await makeModule({ "todo.aide": withStatus("abandoned", UNCHECKED_TODO) });
+		expect(await checkPreconditions(dir, present)).toBeNull();
+	});
+
+	it("passes a completed todo, all checked, with no plan", async () => {
+		const present = await makeModule({ "todo.aide": withStatus("completed", CHECKED) });
+		expect(await checkPreconditions(dir, present)).toBeNull();
+	});
+
+	it.each(["proposed", "approved"])("refuses a fully checked %s todo with no plan as open-status", async (status) => {
+		const present = await makeModule({ "todo.aide": withStatus(status, CHECKED) });
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "open-status",
+			files: [{ file: "todo.aide", status }],
+			items: [],
 		});
 	});
 
-	it("allows a todo with zero checkboxes alongside a checked plan", async () => {
-		const present = await makeModule({ "plan.aide": CHECKED, "todo.aide": NO_CHECKBOXES });
-		expect(await checkPreconditions(dir, present, false)).toBeNull();
+	it("refuses a completed todo with an open item and no plan", async () => {
+		const present = await makeModule({ "todo.aide": withStatus("completed", UNCHECKED_TODO) });
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "completed-with-open-items",
+			items: [{ file: "todo.aide", line: 6, text: "open todo item" }],
+		});
 	});
 
-	it("never lets brief.aide checkboxes block", async () => {
-		const present = await makeModule({ "plan.aide": CHECKED, "brief.aide": "- [ ] not a gate\n" });
-		expect(await checkPreconditions(dir, present, false)).toBeNull();
+	it("refuses a brief plus an abandoned todo with no plan, carrying no items", async () => {
+		const present = await makeModule({
+			"brief.aide": NO_CHECKBOXES,
+			"todo.aide": withStatus("abandoned", UNCHECKED_TODO),
+		});
+		expect(await checkPreconditions(dir, present)).toEqual({ kind: "brief-without-plan", items: [] });
+	});
+
+	it("refuses an abandoned brief alone", async () => {
+		const present = await makeModule({ "brief.aide": withStatus("abandoned", "") });
+		expect(await checkPreconditions(dir, present)).toEqual({ kind: "brief-without-plan", items: [] });
+	});
+
+	it("refuses a plan recording status: done as invalid-status naming plan.aide", async () => {
+		const present = await makeModule({ "plan.aide": withStatus("done", CHECKED) });
+		expect(await checkPreconditions(dir, present)).toEqual({
+			kind: "invalid-status",
+			file: "plan.aide",
+			detail: 'status "done" is not a valid status here',
+		});
+	});
+
+	it("refuses a brief with unparsable frontmatter beside a completed plan", async () => {
+		const present = await makeModule({
+			"plan.aide": withStatus("completed", CHECKED),
+			"brief.aide": "---\nkey: [unclosed\n---\n",
+		});
+		expect(await checkPreconditions(dir, present)).toMatchObject({
+			kind: "invalid-status",
+			file: "brief.aide",
+			detail: expect.stringContaining("its frontmatter cannot be parsed"),
+		});
+	});
+
+	it("does not judge the same brief beside an abandoned plan", async () => {
+		const present = await makeModule({
+			"plan.aide": withStatus("abandoned", UNCHECKED_PLAN),
+			"brief.aide": "---\nkey: [unclosed\n---\n",
+		});
+		expect(await checkPreconditions(dir, present)).toBeNull();
 	});
 });

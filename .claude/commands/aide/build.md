@@ -6,6 +6,7 @@ Execute the architect's implementation plan. This is the implementor phase in bu
 
 ## Checklist
 
+- [ ] Check the approval gate first: read `plan.aide`'s status with `aide_frontmatter` (read mode), and a sibling `brief.aide`'s if there is one. Start only if each reads `status: approved`; otherwise stop and report back without changing anything
 - [ ] Read `plan.aide` in the target module. This is the primary input — it names files, sequencing, and which existing helpers to reuse
 - [ ] Read `brief.aide` in the same folder — the architectural-commitments file authored by the strategist during synthesize and refined by the architect during plan. Type shapes, exact strings, cross-module contracts, schema cardinality. Honor every commitment exactly. When a plan step says "honor commitment #11," #11 in `brief.aide` is the source of truth
 - [ ] Check `## Prerequisites`. If the plan declares prerequisites, verify they exist and export the expected contracts before writing any code. If a prerequisite is missing or doesn't match, stop and escalate back to the orchestrator — do not improvise

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import path from "node:path";
 
-// Intercept process.exit before the module loads so the IIFE's process.exit
+// Intercept process.exit before the module loads so runInitCli's process.exit
 // calls are no-ops. vi.hoisted runs before vi.mock hoisting and before any
-// module imports resolve, ensuring the spy is in place when the IIFE executes.
+// module imports resolve, ensuring the spy is in place first.
 const { mockExit } = vi.hoisted(() => {
 	const mockExit = vi.fn();
 	process.exit = mockExit as unknown as typeof process.exit;
@@ -56,6 +56,12 @@ vi.mock("@/service/install/applySteps/index.js", () => ({
 vi.mock("@/service/install/index.js", () => ({
 	planBrainCategory: vi.fn(),
 }));
+vi.mock("@/service/install/planSessionRecord/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("@/tools/scaffold/index.js", () => ({
+	default: vi.fn(),
+}));
 vi.mock("@/tools/upgrade/buildVersionsMeta/index.js", () => ({
 	default: vi.fn(),
 }));
@@ -65,6 +71,8 @@ vi.mock("@/service/install/shared/compareBytes/index.js", () => ({
 
 import { runInit } from "./index.js";
 import { planBrainCategory } from "@/service/install/index.js";
+import planSessionRecord from "@/service/install/planSessionRecord/index.js";
+import scaffold from "@/tools/scaffold/index.js";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
 import resolveLaunchModes from "./resolveLaunchModes/index.js";
@@ -82,6 +90,8 @@ import compareBytes from "@/service/install/shared/compareBytes/index.js";
 import type { InitStep } from "@/types/index.js";
 
 const mockPlanBrainCategory = vi.mocked(planBrainCategory);
+const mockPlanSessionRecord = vi.mocked(planSessionRecord);
+const mockScaffold = vi.mocked(scaffold);
 const mockWriteMcpEntry = vi.mocked(writeMcpEntry);
 const mockRenderWarning = vi.mocked(renderWarning);
 const mockResolveLaunchModes = vi.mocked(resolveLaunchModes);
@@ -118,6 +128,18 @@ const CLAUDE_CONFIG = {
 
 const CWD = "/fake/cwd";
 const BRAIN_AIDE_PATH = `${CWD}/.aide/config/brain.aide`;
+const SESSION_PATH = `${CWD}/.aide/session.aide`;
+
+/** Session-record step as planSessionRecord returns it. */
+function makeSessionStep(status: "would-create" | "exists" = "exists"): InitStep {
+	return {
+		name: "Session record (session.aide)",
+		status,
+		category: "methodology",
+		filePath: SESSION_PATH,
+		...(status === "would-create" ? { instructions: "Call aide_scaffold with directory \".\" and type \"session\"." } : {}),
+	};
+}
 
 /** Build an InitStep with sensible defaults — override per test. */
 function makeStep(
@@ -171,6 +193,8 @@ beforeEach(() => {
 		makeBrainScaffoldStep("exists"),
 		makeBrainMcpStep(),
 	]);
+	mockPlanSessionRecord.mockResolvedValue(makeSessionStep("exists"));
+	mockScaffold.mockResolvedValue("Created .aide/session.aide");
 	mockResolveLaunchModes.mockResolvedValue({ aide: "local", brain: "local" });
 	mockWriteMcpEntry.mockResolvedValue({ status: "created", message: "aide MCP server entry" });
 	mockDetectFramework.mockResolvedValue(CLAUDE_CONFIG);
@@ -477,6 +501,54 @@ describe("missing canonical content — would-skip step from a planner", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Session record — planSessionRecord status drives scaffold
+// ---------------------------------------------------------------------------
+describe("session record — acted on from the planner's status", () => {
+	const bracketed = (lines: string[]) => lines.filter((l) => l.startsWith("["));
+
+	it("would-create: scaffold is called once with (CWD, \".\", \"session\") and the [created] line is last among bracketed lines", async () => {
+		mockPlanSessionRecord.mockResolvedValue(makeSessionStep("would-create"));
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(mockScaffold).toHaveBeenCalledTimes(1);
+		expect(mockScaffold).toHaveBeenCalledWith(CWD, ".", "session");
+		const logged = bracketed(lines);
+		expect(logged[logged.length - 1]).toBe("[created] .aide/session.aide — empty session record");
+	});
+
+	it("would-create: the step never reaches applySteps and never enters the warning", async () => {
+		mockPlanSessionRecord.mockResolvedValue(makeSessionStep("would-create"));
+
+		await runInit(CWD, () => {});
+
+		const applied: InitStep[] = mockApplySteps.mock.calls.flatMap(([steps]) => steps);
+		expect(applied.some((s) => s.filePath === SESSION_PATH)).toBe(false);
+		const call = mockRenderWarning.mock.calls[0][0];
+		expect(call.skipped).toEqual([]);
+		expect(call.failed).toEqual([]);
+	});
+
+	it("exists: scaffold is not called and the [exists] line is last among bracketed lines", async () => {
+		mockPlanSessionRecord.mockResolvedValue(makeSessionStep("exists"));
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(mockScaffold).not.toHaveBeenCalled();
+		const logged = bracketed(lines);
+		expect(logged[logged.length - 1]).toBe("[exists] .aide/session.aide — already present");
+	});
+
+	it("plans the step with the project root", async () => {
+		await runInit(CWD, () => {});
+
+		expect(mockPlanSessionRecord).toHaveBeenCalledWith(CWD);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Abort path — writeMcpEntry throws (malformed .mcp.json)
 // ---------------------------------------------------------------------------
 describe("abort path — writeMcpEntry throws", () => {
@@ -507,6 +579,8 @@ describe("abort path — writeMcpEntry throws", () => {
 		expect(mockInstallSkills).not.toHaveBeenCalled();
 		expect(mockInstallAideTree).not.toHaveBeenCalled();
 		expect(mockScaffoldReadme).not.toHaveBeenCalled();
+		expect(mockPlanSessionRecord).not.toHaveBeenCalled();
+		expect(mockScaffold).not.toHaveBeenCalled();
 		expect(mockRenderWarning).not.toHaveBeenCalled();
 	});
 });
@@ -1004,6 +1078,8 @@ describe("6d-v — abort path: writeMcpEntry rejects", () => {
 		expect(mockInstallSkills).not.toHaveBeenCalled();
 		expect(mockInstallAideTree).not.toHaveBeenCalled();
 		expect(mockScaffoldReadme).not.toHaveBeenCalled();
+		expect(mockPlanSessionRecord).not.toHaveBeenCalled();
+		expect(mockScaffold).not.toHaveBeenCalled();
 		expect(mockRenderWarning).not.toHaveBeenCalled();
 	});
 });

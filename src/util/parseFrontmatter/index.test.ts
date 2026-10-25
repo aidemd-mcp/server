@@ -160,57 +160,25 @@ intent: Find .aide files.
 		expect(result.frontmatter!.description).toBeUndefined();
 	});
 
-	it("parses status: aligned", () => {
+	it.each([
+		["status: aligned"],
+		["status: misaligned"],
+		["status: approved"],
+		["alignment: aligned"],
+	])("never surfaces a status key for %s", (line) => {
 		const raw = `---
 scope: src
 description: MCP server delivery channels
-status: aligned
+intent: Deliver the tools.
+${line}
 ---
 `;
 
 		const result = parseFrontmatter(raw);
 
 		expect(result.frontmatter).not.toBeNull();
-		expect(result.frontmatter!.status).toBe("aligned");
-	});
-
-	it("parses status: misaligned", () => {
-		const raw = `---
-scope: src/service
-description: Service modules
-status: misaligned
----
-`;
-
-		const result = parseFrontmatter(raw);
-
-		expect(result.frontmatter).not.toBeNull();
-		expect(result.frontmatter!.status).toBe("misaligned");
-	});
-
-	it("silently drops status when value is not a valid literal", () => {
-		const raw = `---
-scope: src
-status: pending
----
-`;
-
-		const result = parseFrontmatter(raw);
-
-		expect(result.frontmatter).not.toBeNull();
-		expect(result.frontmatter!.status).toBeUndefined();
-	});
-
-	it("silently drops status when value is an arbitrary string", () => {
-		const raw = `---
-scope: src
-status: in-review
----
-`;
-
-		const result = parseFrontmatter(raw);
-
-		expect(result.frontmatter).not.toBeNull();
-		expect(result.frontmatter!.status).toBeUndefined();
+		expect(result.frontmatter).not.toHaveProperty("status");
+		expect(result.frontmatter!.intent).toBe("Deliver the tools.");
+		expect(result.frontmatter!.description).toBe("MCP server delivery channels");
 	});
 });

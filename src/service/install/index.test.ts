@@ -8,6 +8,7 @@ import aidePackage from "./shared/aidePackage/index.js";
 import applySteps from "./applySteps/index.js";
 import { composeStub } from "./writeMethodology/index.js";
 import obsidianBrainAideTemplate from "./provisionBrain/obsidianBrainAideTemplate/index.js";
+import scaffold from "@/tools/scaffold/index.js";
 import brainContract from "@/service/brainContract/index.js";
 import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
 import type { InitResult, InitStep } from "@/types/index.js";
@@ -61,6 +62,10 @@ function stepsForCategory(result: InitResult, category: InitStep["category"]): I
 	return result.steps.filter((s) => s.category === category);
 }
 
+const SESSION_STEP_NAME = "Session record (session.aide)";
+const SESSION_INSTRUCTION =
+	'Call aide_scaffold with directory "." and type "session" to create the empty session record at .aide/session.aide.';
+
 const kanbanTail = brainContract
 	.slice(brainContract.findIndex((entry) => entry.marker === "kanban-index"))
 	.map((entry) => entry.marker);
@@ -91,13 +96,16 @@ describe("init — structured JSON result", () => {
 		expect(statuses.every((s) => s === "would-create" || s === "would-skip")).toBe(true);
 	});
 
-	it("fresh project: would-create steps carry content or prescription", async () => {
+	it("fresh project: would-create steps carry content, prescription or instructions", async () => {
 		const result = await init(tempDir);
 
 		for (const step of result.steps) {
 			if (step.status === "would-create") {
-				// MCP steps carry prescription; file steps carry content
-				if (step.category === "mcp") {
+				// MCP steps carry prescription; the session step carries instructions; file steps carry content
+				if (step.name === SESSION_STEP_NAME) {
+					expect(step.instructions).toBe(SESSION_INSTRUCTION);
+					expect(step.content).toBeUndefined();
+				} else if (step.category === "mcp") {
 					// MCP steps carry a prescription derived from the brain.aide template;
 					if (step.prescription) {
 						expect(step.prescription.key).toBeTruthy();
@@ -188,6 +196,22 @@ describe("init — structured JSON result", () => {
 		const pointer = findStep(result, "Methodology pointer");
 		expect(pointer).toBeDefined();
 		expect(pointer?.category).toBe("methodology");
+	});
+
+	it("fresh project: exactly one session record step, methodology would-create with the verbatim instruction, right after versions.json", async () => {
+		const result = await init(tempDir);
+
+		const sessionSteps = result.steps.filter((s) => s.name === SESSION_STEP_NAME);
+		expect(sessionSteps).toHaveLength(1);
+		const [session] = sessionSteps;
+		expect(session.category).toBe("methodology");
+		expect(session.status).toBe("would-create");
+		expect(session.instructions).toBe(SESSION_INSTRUCTION);
+		expect(session).not.toHaveProperty("content");
+		expect(session.filePath).toBe(join(tempDir, ".aide", "session.aide"));
+
+		const versionsIndex = result.steps.findIndex((s) => s.name === "versions.json");
+		expect(result.steps[versionsIndex + 1]).toBe(session);
 	});
 
 	it("fresh project: commands category includes aide:research", async () => {
@@ -429,6 +453,14 @@ describe("init — response shaping (server-handler logic)", () => {
 		}
 	});
 
+	it("summary mode: the session record step keeps its instructions", async () => {
+		const stripped = stripContent(await init(tempDir));
+
+		const session = stripped.steps.find((s) => s.name === SESSION_STEP_NAME);
+		expect(session?.status).toBe("would-create");
+		expect(session?.instructions).toBe(SESSION_INSTRUCTION);
+	});
+
 	it("summary mode: prescriptions are preserved (not stripped)", async () => {
 		const result = await init(tempDir);
 		const stripped = stripContent(result);
@@ -598,6 +630,32 @@ describe("init — apply mode (category call)", () => {
 		expect(await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8")).toBe(outdated);
 	});
 
+	it("session record: applySteps over a fresh project's methodology steps does not create .aide/session.aide", async () => {
+		const result = await init(tempDir);
+
+		const applied = await applySteps(result.steps.filter((s) => s.category === "methodology"));
+
+		const session = applied.find((s) => s.name === SESSION_STEP_NAME);
+		expect(session?.status).toBe("would-create");
+		expect(session?.instructions).toBe(SESSION_INSTRUCTION);
+		expect(await pathExists(join(tempDir, ".aide", "session.aide"))).toBe(false);
+	});
+
+	it("session record: a filled .aide/session.aide is exists and its bytes survive applySteps", async () => {
+		const filled = "# my session\n\nstate the user wrote\n";
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+		await writeFile(join(tempDir, ".aide", "session.aide"), filled, "utf-8");
+
+		const result = await init(tempDir);
+		const session = findStep(result, SESSION_STEP_NAME);
+		expect(session?.status).toBe("exists");
+		expect(session?.instructions).toBeUndefined();
+
+		await applySteps(result.steps.filter((s) => s.category !== "mcp"));
+
+		expect(await readFile(join(tempDir, ".aide", "session.aide"), "utf-8")).toBe(filled);
+	});
+
 	it("MCP steps in a category call: prescription is preserved in the returned manifest", async () => {
 		const result = await init(tempDir);
 		const mcpSteps = result.steps.filter((s) => s.category === "mcp" && s.prescription);
@@ -664,6 +722,8 @@ describe("init — would-overwrite and silent-create invariants", () => {
 		const firstRun = await init(tempDir);
 		// Apply all non-MCP steps (MCP is a prescription, not written to disk)
 		await applySteps(firstRun.steps.filter((s) => s.category !== "mcp"));
+		// The session record step is content-free: the agent follows its instruction and calls scaffold
+		await scaffold(tempDir, ".", "session");
 
 		// Write the canonical MCP config so wireMcp returns exists
 		await writeFile(

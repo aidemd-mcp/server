@@ -14,6 +14,7 @@ import installAideTree from "./installAideTree/index.js";
 import wireMcp from "./wireMcp/index.js";
 import provisionBrain from "./provisionBrain/index.js";
 import scaffoldReadme from "./scaffoldReadme/index.js";
+import planSessionRecord from "./planSessionRecord/index.js";
 import compareBytes from "./shared/compareBytes/index.js";
 
 /**
@@ -92,7 +93,9 @@ export default async function init(
 	const brainHints = await resolveBrainHints(projectRoot);
 
 	// Collect planning steps from each helper. Order follows the spec's category
-	// list: methodology, commands, agents, skills, mcp, brain, ide.
+	// list: methodology (pointer, docs, versions.json, session record), commands,
+	// agents, skills, mcp, brain, ide. The session record step is content-free: it
+	// carries an instruction for the agent to call aide_scaffold, never file bytes.
 	const docSteps = await installMethodologyDocs(join(projectRoot, config.docHubDir), config.docHubDir);
 	const methodologyStep = await writeMethodology(join(projectRoot, config.configPath), config.docHubDir);
 	const commandSteps = await scaffoldCommands(join(projectRoot, config.commandDir));
@@ -124,6 +127,8 @@ export default async function init(
 		...(versionsBytesResult !== "would-skip" ? { content: versionsJson } : {}),
 	};
 
+	const sessionStep = await planSessionRecord(projectRoot);
+
 	const zedStep = await configureZed(projectRoot);
 	const readmeStep = await scaffoldReadme(projectRoot);
 
@@ -131,6 +136,7 @@ export default async function init(
 		methodologyStep,
 		...docSteps,
 		versionsStep,
+		sessionStep,
 		...commandSteps,
 		...agentSteps,
 		...skillSteps,

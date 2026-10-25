@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/installMethodologyDocs
-status: aligned
+alignment: aligned
 description: "Plans the methodology doc set scaffold — every canonical doc copied byte-faithfully into the host-side hub as an individually idempotent step."
 intent: >
   installMethodologyDocs plans the host-side scaffold of the AIDE

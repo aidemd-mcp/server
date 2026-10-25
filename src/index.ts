@@ -11,6 +11,8 @@ import read, { ReadInput } from "@/tools/read/index.js";
 import scaffold, { ScaffoldInput } from "@/tools/scaffold/index.js";
 import cleanup, { CleanupInput } from "@/tools/cleanup/index.js";
 import formatReport from "@/tools/cleanup/formatReport/index.js";
+import frontmatter, { FrontmatterInput } from "@/tools/frontmatter/index.js";
+import formatFrontmatterResult from "@/tools/frontmatter/formatResult/index.js";
 import validate, { ValidateInput } from "@/tools/validate/index.js";
 import init, { InitInput } from "@/service/install/index.js";
 import applySteps from "@/service/install/applySteps/index.js";
@@ -35,7 +37,8 @@ import launchModeChoices from "@/service/install/shared/launchModeChoices/index.
  */
 export async function routeSubcommand(): Promise<boolean> {
 	if (process.argv[2] === "init") {
-		await import("./cli/init/index.js");
+		const { runInitCli } = await import("./cli/init/index.js");
+		await runInitCli();
 		return true;
 	}
 	if (process.argv[2] === "sync") {
@@ -96,14 +99,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_discover",
 			description:
-				"Scan for .aide spec files in this project. Returns a tree map of where specs live, following progressive disclosure.\n\nWithout a path: returns a lightweight project-wide map — file locations and types only, no content. Use this once to understand the project's spec architecture.\n\nWith a path: the response opens with the ancestor chain — the cascading intent lineage from project root down to the target directory, with each ancestor showing its description and alignment status (aligned/misaligned when set). The ancestor chain gives you the full inherited context before you read a single spec body. After the ancestor chain comes the detailed subtree of the target directory — summaries extracted from file content and anomaly warnings. Use this to drill into the area you're working on.\n\n.aide files are progressive disclosure specs that live next to orchestrator code — they contain intent (strategy, implementation contracts, anti-patterns), research (sources, data, patterns), or QA checklists (todo). Read .aide files BEFORE reading code — they are the context layer between folder structure and implementation details.\n\nFile types (.aide, intent.aide, research.aide, plan.aide, todo.aide):\n- .aide — Intent spec (default). Strategy, contracts, anti-patterns.\n- intent.aide — Same as .aide, used only when research.aide exists in the same folder.\n- research.aide — Raw research. Sources, data points, pattern synthesis.\n- plan.aide -- Architect's implementation plan. Checkboxed steps for the implementor.\n- todo.aide — QA re-alignment document. Captures where implementation drifted from intent.\n\nNever have both .aide and intent.aide in the same folder.",
+				"Scan for .aide spec files in this project. Returns a tree map of where specs live, following progressive disclosure.\n\nWithout a path: returns a lightweight project-wide map — file locations, type tags and each spec's one-line description; a plan or todo tag carries its status, e.g. [plan: approved]. Only the head of each file is read. Use this once to understand the project's spec architecture.\n\nWith a path: the response opens with the ancestor chain — the cascading intent lineage from project root down to the target directory, with each ancestor showing its description and alignment status (aligned/misaligned when set). The ancestor chain gives you the full inherited context before you read a single spec body. After the ancestor chain comes the detailed subtree of the target directory — summaries extracted from file content and anomaly warnings. Use this to drill into the area you're working on.\n\n.aide files are progressive disclosure specs that live next to orchestrator code — they contain intent (strategy, implementation contracts, anti-patterns), research (sources, data, patterns), or QA checklists (todo). Read .aide files BEFORE reading code — they are the context layer between folder structure and implementation details.\n\nFile types (.aide, intent.aide, research.aide, plan.aide, todo.aide):\n- .aide — Intent spec (default). Strategy, contracts, anti-patterns.\n- intent.aide — Same as .aide, used only when research.aide exists in the same folder.\n- research.aide — Raw research. Sources, data points, pattern synthesis.\n- plan.aide -- Architect's implementation plan. Checkboxed steps for the implementor.\n- todo.aide — QA re-alignment document. Captures where implementation drifted from intent.\n\nNever have both .aide and intent.aide in the same folder.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
 					path: {
 						type: "string",
 						description:
-							"Subdirectory to drill into. When provided, the response opens with the ancestor chain — the cascading intent lineage from root to target, each ancestor showing its description and alignment status — followed by the detailed subtree with summaries and warnings. When omitted, returns a shallow project-wide map (locations and types only).",
+							"Subdirectory to drill into. When provided, the response opens with the ancestor chain — the cascading intent lineage from root to target, each ancestor showing its description and alignment status — followed by the detailed subtree with summaries and warnings. When omitted, returns a shallow project-wide map (locations, type tags with plan/todo status, and spec descriptions).",
 					},
 				},
 			},
@@ -126,7 +129,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_scaffold",
 			description:
-				"Create new .aide spec files with automatic naming convention enforcement. Handles the naming rules: intent specs are .aide by default, but become intent.aide when research.aide exists in the same folder. Creating a research.aide auto-renames any existing .aide to intent.aide.\n\nTypes:\n- intent — Strategy, contracts, anti-patterns\n- research — Sources, data, patterns (triggers rename of existing .aide)\n- both — Creates research.aide + intent.aide pair\n- todo — QA re-alignment document for QA agents\n- plan -- Architect's implementation plan (no naming interaction with intent/research)",
+				"Create a new AIDE working file from its blank template, under its canonical name. It never overwrites: a request for a file that already exists, filled or empty, is a no-op reported as a skip line — remove a file first with aide_cleanup to replace it. New files start with their starting value: an intent spec alignment: unreviewed, a plan or todo list status: proposed. Handles the naming rules: intent specs are .aide by default, but become intent.aide when research.aide exists in the same folder. Creating a research.aide auto-renames any existing .aide to intent.aide.\n\nTypes:\n- intent — Strategy, contracts, anti-patterns\n- research — Sources, data, patterns (triggers rename of existing .aide)\n- both — Creates research.aide + intent.aide pair\n- todo — QA re-alignment document for QA agents\n- plan — Architect's implementation plan (no naming interaction with intent/research)\n- session — The project's session record, always at .aide/session.aide whatever directory you pass: the empty placeholder with every section heading. Its single source; never write the placeholder by hand.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -136,8 +139,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 					},
 					type: {
 						type: "string",
-						enum: ["intent", "research", "both", "todo", "plan"],
-						description: "Type of .aide file to create",
+						enum: ["intent", "research", "both", "todo", "plan", "session"],
+						description: "Type of file to create: intent, research, both, todo, plan, or session (always .aide/session.aide)",
 					},
 				},
 				required: ["directory", "type"],
@@ -146,7 +149,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_cleanup",
 			description:
-				"Remove a module's pipeline ephemerals (plan.aide, todo.aide, brief.aide) once that module's cycle has closed, leaving the code and the intent specs as the durable record. It never removes, rewrites or reads anything else: intent specs, research specs, code, and .aide/session.aide are all out of reach.\n\nWhere plan.aide exists, it refuses unless every plan checkbox is checked and any todo.aide present is fully checked; a missing todo.aide does not block. Where there is no plan.aide, it removes a todo.aide that is fully checked, and refuses a brief.aide (which is removed only together with its plan), a todo.aide with no checkboxes, or a folder with no ephemerals at all. A refusal lists each unchecked item with its file and line, and nothing is removed. By default a plan.aide with no checkboxes is refused; passing allowEmptyPlan: true lets such a plan pass, overrides nothing else, and has no effect where there is no plan.aide.\n\nCall it directly, because the real call is already safe. dryRun is an optional preview for inspection only and is never a required step before the real call.\n\nThis is the cross-platform replacement for a shell delete, so it can be permitted by name.",
+				"Remove a module's pipeline ephemerals (plan.aide, todo.aide, brief.aide) once that module's cycle has closed, leaving the code and the intent specs as the durable record. It never removes, rewrites or reads anything else: intent specs, research specs, code, and .aide/session.aide are all out of reach.\n\nEach file it would remove must record a closed status: completed (re-checked — every checkbox really checked) or abandoned. A file from before statuses existed, with no status but every checkbox checked, also passes. It refuses anything still proposed or approved, a completed file with an open item, a brief.aide with no plan.aide beside it, and a folder with no ephemerals. An abandoned plan takes its brief with it, and where there is no plan.aide a closed todo.aide is removed on its own. A refusal names each open file or item with its file and line, and nothing is removed. Record a closing status with aide_frontmatter first; this tool never sets or infers one.\n\nCall it directly, because the real call is already safe. dryRun is an optional preview for inspection only and is never a required step before the real call.\n\nThis is the cross-platform replacement for a shell delete, so it can be permitted by name.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -158,9 +161,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 						type: "boolean",
 						description: "Optional. Removes nothing and only reports what a real call would remove. Agents closing a module omit it.",
 					},
-					allowEmptyPlan: {
-						type: "boolean",
-						description: "Optional, off by default. Lets a plan.aide with no checkboxes pass. Overrides nothing else, and has no effect where there is no plan.aide.",
+				},
+				required: ["path"],
+			},
+		},
+		{
+			name: "aide_frontmatter",
+			description:
+				"Read or change one governed frontmatter value of an AIDE file, leaving every other byte untouched. Intent specs carry alignment (unreviewed, aligned, misaligned). plan.aide, brief.aide and todo.aide carry one status lifecycle: proposed, approved, completed, abandoned. Only allowed moves are accepted, completed is refused while any item is unchecked or, for a brief, until its plan is completed, and a refusal names the allowed next values. Call with path alone to read a file's governed value without changing it. The session record, research specs and brain.aide carry no governed values. The tool never chooses a value; the caller decides.",
+			inputSchema: {
+				type: "object" as const,
+				properties: {
+					path: {
+						type: "string",
+						description: "Path of the AIDE file, relative to the project root",
+					},
+					field: {
+						type: "string",
+						description: "Governed field to change: alignment (intent specs) or status (plans, todo lists, briefs). Omit with value to read.",
+					},
+					value: {
+						type: "string",
+						description: "New value for field. Omit with field to read.",
 					},
 				},
 				required: ["path"],
@@ -169,7 +191,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_validate",
 			description:
-				"Health check for .aide spec files in the project. Detects orphaned specs (in folders with no orchestrator), missing specs (orchestrators with 3+ helper imports but no .aide), naming conflicts (.aide + intent.aide in same folder), broken links, orphaned research (research.aide without intent spec), and missing descriptions (specs with no description field in frontmatter).",
+				"Health check for .aide spec files in the project. Detects orphaned specs (in folders with no orchestrator), missing specs (orchestrators with 3+ helper imports but no .aide), naming conflicts (.aide + intent.aide in same folder), broken links, orphaned research (research.aide without intent spec), missing descriptions (specs with no description field in frontmatter), files whose frontmatter cannot be parsed, and intent specs whose alignment is missing (missing-alignment) or not one of unreviewed, aligned, misaligned (invalid-alignment).",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -256,7 +278,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_init",
 			description:
-				"Bootstrap the AIDE development environment into a project. Returns structured JSON for agent consumption — not prose.\n\nThe tool uses a two-call pattern for progressive disclosure:\n\n**First call (no `category` param):** Returns a lightweight summary — every step with `name`, `status` (would-create/would-overwrite/would-skip/exists), `category`, and `filePath`, but NO `content` fields. Also returns `brainHints` (brain root candidates) and detected `framework`. Use this to understand what needs to be done and which categories require user prompts.\n\n**Second call (with `category` param):** The tool writes all `would-create` AND approved `would-overwrite` files directly to disk itself and returns a manifest — steps with `filePath`, `status` (`created`, `overwritten`, or `exists`), and `name`, but NO `content`. `would-skip` steps stay `would-skip` in the manifest (tool writes nothing for them). The agent never sees file content and never uses the Write tool for new files.\n\n**Exception — MCP steps:** For MCP steps, the manifest includes `prescription` data (key name and entry object) so the agent can read the existing config, merge, and write. The tool never touches MCP config directly.\n\n**Exception — brain category:** The `Brain config (brain.aide)` step carries `brainSummary` on every call, including the summary: `sections` (each section's `marker`, `role`, `seedPath` for seeds, and `templateBytes`), `missingSections`, `staleSections`, `legacyLauncher` reasons and `templateIntegration`. It never carries section text, purposes, repair blocks or before/after bodies. Missing sections are inserted with `aide_upgrade` `category: \"brain\"`, seeds are read one at a time with `aide_brain`, and migrations are previewed and applied one at a time through `aide_upgrade`. Sections the user edited and custom launchers are never offered. The tool creates `.aide/config/brain.aide` when it is absent and never overwrites an existing one.\n\n**Exception — IDE VS Code steps:** IDE steps that need external tooling (VS Code CLI) return instructions for the agent to execute, since those aren't simple file writes.\n\n**Agent branch logic — silent-on-create, prompt-on-overwrite:**\n\nAfter the first call, walk the categories using this rule:\n- **Pure-create category** (all steps are `would-create`, `would-skip`, or `exists`): apply silently by calling with `category=X` immediately — no AskUserQuestion. A category with nothing on disk to overwrite has no decision the user can inform.\n- **Overwrite-bearing category** (any step is `would-overwrite`): pause and use AskUserQuestion with structured options. Name the files that would be overwritten. If the user approves, call with `category=X` — the tool overwrites and returns `overwritten` in the manifest. If the user declines an overwrite but wants the new files, call with `category=X` — the tool writes only `would-create` steps; the `would-overwrite` step stays `would-overwrite` in the manifest.\n- **Inherent-decision categories** (framework, brain root path, MCP config merge, launch mode, IDE choice): always use AskUserQuestion regardless of disk state. These are not file-write decisions — filesystem contents cannot resolve them.\n\n**IMPORTANT — one-at-a-time wizard pattern using AskUserQuestion:**\nDo NOT present a summary table of all categories. Do NOT offer \"all\" as an option. Do NOT ask conversational questions — use the `AskUserQuestion` tool with structured options at every pause point.\n\n1. Call without `category` first to get the metadata\n2. Present ONLY the detected framework — use AskUserQuestion with Yes/{alternatives} options. STOP.\n3. Walk categories in order: methodology, commands, agents, skills, mcp, brain, ide, readme. For each:\n   - Pure-create: apply silently (call with `category=X`), report results, move to next.\n   - Overwrite-bearing: use AskUserQuestion naming the would-overwrite files. STOP. Wait for selection, then call with `category=X`. Report manifest (created N, overwrote M). Move to next.\n   - Inherent decision: always use AskUserQuestion. STOP.\n4. For brain: read `brainSummary` from the step, then direct the user to `/aide:brain config`. Call with `category=brain` only to receive the manifest; the tool creates `.aide/config/brain.aide` only when absent and never overwrites an existing one. `/aide:brain config` asks the brain's launch mode and passes `brainMode`.\n5. For MCP: when the aide step is would-create, first ask the aide server's launch mode with AskUserQuestion — \"" + launchModeChoices.global.label + "\" (" + launchModeChoices.global.explanation + ") or \"" + launchModeChoices.local.label + "\" (" + launchModeChoices.local.explanation + ") — and call with `category=mcp` and `aideMode`. If the returned step carries `globalPackage` with `installed: false`, ask whether to run its `installCommand`; run it via Bash only on yes. If the user declines or the install fails, call again with `aideMode: \"local\"` and tell the user the server will launch locally. Then use AskUserQuestion with Merge/Skip and merge the `prescription` entry into the existing config yourself (read → merge → write). Never replace an existing aide entry. STOP.\n6. For IDE: use AskUserQuestion with multiSelect for Zed/VS Code/Neither. STOP.\n\nEach pause point is ONE AskUserQuestion → wait for selection → then proceed. Never show multiple categories at once. Never ask open-ended conversational questions.",
+				"Bootstrap the AIDE development environment into a project. Returns structured JSON for agent consumption — not prose.\n\nThe tool uses a two-call pattern for progressive disclosure:\n\n**First call (no `category` param):** Returns a lightweight summary — every step with `name`, `status` (would-create/would-overwrite/would-skip/exists), `category`, and `filePath`, but NO `content` fields. Also returns `brainHints` (brain root candidates) and detected `framework`. Use this to understand what needs to be done and which categories require user prompts.\n\n**Second call (with `category` param):** The tool writes all `would-create` AND approved `would-overwrite` files directly to disk itself and returns a manifest — steps with `filePath`, `status` (`created`, `overwritten`, or `exists`), and `name`, but NO `content`. `would-skip` steps stay `would-skip` in the manifest (tool writes nothing for them). The agent never sees file content and never uses the Write tool for new files.\n\n**Exception — MCP steps:** For MCP steps, the manifest includes `prescription` data (key name and entry object) so the agent can read the existing config, merge, and write. The tool never touches MCP config directly.\n\n**Exception — brain category:** The `Brain config (brain.aide)` step carries `brainSummary` on every call, including the summary: `sections` (each section's `marker`, `role`, `seedPath` for seeds, and `templateBytes`), `missingSections`, `staleSections`, `legacyLauncher` reasons and `templateIntegration`. It never carries section text, purposes, repair blocks or before/after bodies. Missing sections are inserted with `aide_upgrade` `category: \"brain\"`, seeds are read one at a time with `aide_brain`, and migrations are previewed and applied one at a time through `aide_upgrade`. Sections the user edited and custom launchers are never offered. The tool creates `.aide/config/brain.aide` when it is absent and never overwrites an existing one.\n\n**Exception — session record:** The `Session record (session.aide)` step never carries content and the tool never writes it. When it is `would-create`, its `instructions` tell you to call `aide_scaffold` with directory \".\" and type \"session\" — do that, unprompted. When `.aide/session.aide` exists it is `exists` and is never overwritten.\n\n**Exception — IDE VS Code steps:** IDE steps that need external tooling (VS Code CLI) return instructions for the agent to execute, since those aren't simple file writes.\n\n**Agent branch logic — silent-on-create, prompt-on-overwrite:**\n\nAfter the first call, walk the categories using this rule:\n- **Pure-create category** (all steps are `would-create`, `would-skip`, or `exists`): apply silently by calling with `category=X` immediately — no AskUserQuestion. A category with nothing on disk to overwrite has no decision the user can inform.\n- **Overwrite-bearing category** (any step is `would-overwrite`): pause and use AskUserQuestion with structured options. Name the files that would be overwritten. If the user approves, call with `category=X` — the tool overwrites and returns `overwritten` in the manifest. If the user declines an overwrite but wants the new files, call with `category=X` — the tool writes only `would-create` steps; the `would-overwrite` step stays `would-overwrite` in the manifest.\n- **Inherent-decision categories** (framework, brain root path, MCP config merge, launch mode, IDE choice): always use AskUserQuestion regardless of disk state. These are not file-write decisions — filesystem contents cannot resolve them.\n\n**IMPORTANT — one-at-a-time wizard pattern using AskUserQuestion:**\nDo NOT present a summary table of all categories. Do NOT offer \"all\" as an option. Do NOT ask conversational questions — use the `AskUserQuestion` tool with structured options at every pause point.\n\n1. Call without `category` first to get the metadata\n2. Present ONLY the detected framework — use AskUserQuestion with Yes/{alternatives} options. STOP.\n3. Walk categories in order: methodology, commands, agents, skills, mcp, brain, ide, readme. For each:\n   - Pure-create: apply silently (call with `category=X`), report results, move to next.\n   - Overwrite-bearing: use AskUserQuestion naming the would-overwrite files. STOP. Wait for selection, then call with `category=X`. Report manifest (created N, overwrote M). Move to next.\n   - Inherent decision: always use AskUserQuestion. STOP.\n4. For brain: read `brainSummary` from the step, then direct the user to `/aide:brain config`. Call with `category=brain` only to receive the manifest; the tool creates `.aide/config/brain.aide` only when absent and never overwrites an existing one. `/aide:brain config` asks the brain's launch mode and passes `brainMode`.\n5. For MCP: when the aide step is would-create, first ask the aide server's launch mode with AskUserQuestion — \"" + launchModeChoices.global.label + "\" (" + launchModeChoices.global.explanation + ") or \"" + launchModeChoices.local.label + "\" (" + launchModeChoices.local.explanation + ") — and call with `category=mcp` and `aideMode`. If the returned step carries `globalPackage` with `installed: false`, ask whether to run its `installCommand`; run it via Bash only on yes. If the user declines or the install fails, call again with `aideMode: \"local\"` and tell the user the server will launch locally. Then use AskUserQuestion with Merge/Skip and merge the `prescription` entry into the existing config yourself (read → merge → write). Never replace an existing aide entry. STOP.\n6. For IDE: use AskUserQuestion with multiSelect for Zed/VS Code/Neither. STOP.\n\nEach pause point is ONE AskUserQuestion → wait for selection → then proceed. Never show multiple categories at once. Never ask open-ended conversational questions.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
@@ -342,6 +364,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 			const parsed = CleanupInput.parse(args);
 			const result = await cleanup(root, parsed);
 			const { text, isError } = formatReport(result);
+			return { content: [{ type: "text", text }], isError };
+		}
+		case "aide_frontmatter": {
+			const parsed = FrontmatterInput.parse(args);
+			const outcome = await frontmatter(root, parsed);
+			const { text, isError } = formatFrontmatterResult(outcome);
 			return { content: [{ type: "text", text }], isError };
 		}
 		case "aide_validate": {

@@ -1,6 +1,6 @@
 ---
 scope: src/service/parseBrainAide
-status: aligned
+alignment: aligned
 description: "Single canonical reader for the host's brain config — enforces the published required-section contract and names exactly what is missing or malformed when a file falls short."
 intent: >
   parseBrainAide is the one place in the project that reads the host's

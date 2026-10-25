@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { readFile, access } from "node:fs/promises";
-import { join, dirname, isAbsolute } from "node:path";
+import { join, dirname, basename, isAbsolute } from "node:path";
 import type { ValidationResult, ValidationWarning } from "@/types/index.js";
 import scan from "@/util/scan/index.js";
 import { detectAnomalies } from "@/util/classify/index.js";
 import parseFrontmatter from "@/util/parseFrontmatter/index.js";
+import checkAlignment from "./checkAlignment/index.js";
 
 export const ValidateInput = z.object({
 	path: z.string().optional().describe("Subdirectory to validate (defaults to entire project)"),
@@ -45,6 +46,7 @@ async function checkBrokenLinks(
  * - Naming conflicts (.aide + intent.aide in same folder)
  * - Broken links (relative paths in spec content that don't resolve)
  * - Orphaned research (research.aide without corresponding intent spec)
+ * - Missing or unreadable alignment (intent specs only; an older status: aligned|misaligned counts)
  */
 export default async function validate(root: string, path?: string): Promise<ValidationResult> {
 	const result = await scan(root, path);
@@ -67,16 +69,25 @@ export default async function validate(root: string, path?: string): Promise<Val
 					path: file.relativePath,
 					message: `YAML frontmatter parse error: ${parseError}`,
 				});
-			} else if (file.type === "intent" || file.type === "research") {
-				// plan.aide and todo.aide use `intent` frontmatter (not `description`) per
-				// the plan-aide canonical doc — only intent and research specs require description.
-				if (!frontmatter?.description) {
-					warnings.push({
-						kind: "missing-description",
-						path: file.relativePath,
-						message: "Missing or empty description field in frontmatter",
-					});
+			} else {
+				if (file.type === "intent" || file.type === "research") {
+					// plan.aide and todo.aide use `intent` frontmatter (not `description`) per
+					// the plan-aide canonical doc — only intent and research specs require description.
+					if (!frontmatter?.description) {
+						warnings.push({
+							kind: "missing-description",
+							path: file.relativePath,
+							message: "Missing or empty description field in frontmatter",
+						});
+					}
 				}
+
+				const alignmentWarning = checkAlignment({
+					fileName: basename(file.path),
+					content,
+					relativePath: file.relativePath,
+				});
+				if (alignmentWarning) warnings.push(alignmentWarning);
 			}
 		} catch {
 			// skip unreadable files

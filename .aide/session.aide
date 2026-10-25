@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server: v0.11.1 shipped (aide_cleanup removes a fully checked todo.aide with no plan.aide); v0.11.0 shipped the aide-brain-author skill, read-only aide_brain modes and the full-history versions manifest. Between tasks.
+  Session record for the aidemd-mcp server. In flight: session.aide always exists (from aide_scaffold), aide_scaffold never overwrites, and AIDE files record state through a new aide_frontmatter tool (spec alignment; plan/todo/brief status). Latest release v0.11.1.
 ---
 
 # AIDE SESSION
@@ -10,7 +10,11 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-11, v0.11.1 released — between tasks)
+## State summary (set 2026-10-25, fix loop + prose sweep done; re-QA running)
+
+Task `let-session-aide-exist-without-a-linked-kanban-task` (In Progress), with the P1 bug `aide-scaffold-overwrites-existing-files` folded in (In Progress). The user redesigned the feature on 2026-10-25. The session record is a working file like a plan or todo list, not methodology, so it comes from aide_scaffold. aide_scaffold gets type "session" (always .aide/session.aide), and its blank template is the one source of the placeholder. aide_scaffold never overwrites any file of any type. aide_init tells the agent to call aide_scaffold type=session instead of writing the file itself, and /aide boot calls the same tool when the file is missing. aide_cleanup removes a plan/todo/brief only when it is fully checked OR carries `status: abandoned` in the file. The agent sets that mark only after the user discards the work. The rule is per file, an abandoned plan takes its brief, and allowEmptyPlan is removed. The earlier three aide_init plans (methodology-category seed step) were discarded and, with the user's OK, shell-deleted once, because aide_cleanup can't remove unbuilt plans yet. Specs amended and approved: src/tools/scaffold/.aide, src/tools/cleanup/.aide, src/service/install/.aide.
+
+This repo's stray `.aide/versions.json` (`{}`) came from the cli/init integration tests running a real init in the repo. That's fixed (see above), and a full test run no longer creates it.
 
 v0.11.0 is released (release commit 566a5a5, tag v0.11.0; Publish and CI workflows green; npm serves 0.11.0). It ships versions manifest hygiene (260c82e) and the aide-brain-author skill with read-only aide_brain modes (6d85560).
 
@@ -46,7 +50,7 @@ The aide-maintainer prose now names aide_cleanup's `path` parameter; all 6 maint
 
 Rebuild after commit: versions.json has 44 artifacts, including the new skill.
 
-Feature `versions-manifest-release-hygiene` (In Review) is built, has passed QA, and is committed on main (260c82e), released in v0.11.0.
+Feature `versions-manifest-release-hygiene` (Done) is built, has passed QA, and is committed on main (260c82e), released in v0.11.0.
 
 What landed:
 
@@ -63,21 +67,28 @@ User impact (corrected with the user, 2026-10-10): the recurring 'outdated' prom
 
 Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (boot upgrade gate), v0.10.2 (content-free brain responses), v0.10.1 a broken tag; global install 0.10.4; aidemd.dev synced to 0.10.4 (site commit 160ad91).
 
+Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | aligned | misaligned; editing a spec resets it to unreviewed). Plans, briefs AND todo lists share ONE lifecycle: proposed → approved → completed, approved → proposed when revised, proposed|approved → abandoned. completed and abandoned are final, and `in-flight` was retired. An approved plan means its implementation is in flight. A brief is approved with its plan and completes after it. QA's todo list needs approval before the fix loop runs. Building needs an approved plan (and brief); fixing needs an approved todo list. The user approved the plans: 9 plans in build order frontmatter → scaffold → install → cli/init → buildVersionsMeta → cleanup → discover → validate → src, plus the shared src/tools/frontmatter/brief.aide. Bootstrap exception: aide_frontmatter doesn't exist yet, so the architect set `status: approved` by hand, once, on the 9 plans and the brief. The build runs one implementor per numbered step. A new guard test, src/retiredVocabulary.test.ts, is red by design until the main agent's prose sweep lands; no release before that.
+
+All 9 plans are built. QA found 9 in-scope items across the modules, and the fix loop fixed them: frontmatter reader raw-value echo; cli/init test isolation (the root cause of the stray `.aide/versions.json` `{}`: the forbidden-flag test mocked process.exit, and the module's import-time IIFE ran a real init in the repo; init is now an exported runInitCli() called by the dispatcher, and no test writes into the repo any more); cleanup re-checks a completed brief's boxes; cleanup brief-without-plan wording; discover spec wording; TreePanel status tag and badge test; the guard timeouts; discover's shallow mode reads only a bounded head. Out of scope and left unchecked in src/tools/validate/todo.aide (to offer as tasks): detectAnomalies ignores the scoped path, its test gap, and findings printed with equal confidence. The prose sweep is done and src/retiredVocabulary.test.ts is green: agents (aligner, QA, maintainer, implementor, architect, strategist, spec writer, new aide-upgrader), commands (build, fix, align, upgrade), skills (aide, aide-handoff), docs (cascading-alignment, aide-spec, aide-template, plan/todo/brief/session-aide, index), README, tool descriptions in src/index.ts, init --help, CleanupRefusal JSDoc. CHANGELOG.md was written (Keep a Changelog, every tag back to v0.3.1, [Unreleased] with two [migration] entries), and CLAUDE.md got a ## Changelog section with the [migration] Detect/Migrate/Confirm rule. The full suite was green at 2845/2845 before re-QA. Running now: re-QA of the 7 modules with todo lists, and the architect planning the aide-upgrader + changelog registration (needs user approval before build).
+
 ## Kanban
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `aide-cleanup-strands-a-fully-checked-todo-aide-in-a-folder` (In Review, P1, bug) — fixed and released in v0.11.1.
-- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (In Review, P2, dx) — committed 6d85560; released in v0.11.0.
-- `versions-manifest-release-hygiene` (In Review, P2) — built, QA passed, committed 260c82e; released in v0.11.0.
+- `let-session-aide-exist-without-a-linked-kanban-task` (In Progress, p2, change) — session.aide always exists as an empty placeholder (aide_init + /aide boot); handoffs never refuse for missing content or tasks; also adds the aide-upgrader migration agent.
+- `aide-scaffold-overwrites-existing-files` (In Progress, P1, bug) — folded into the session task: aide_scaffold never overwrites any file.
+- `architect-sets-the-folder-structure-before-any-spec-below-th` (Todo, p2, change) — the architect proposes the folder tree for approval before any spec below the root (from leave-some-for-gupshaz, 2026-10-25). Next after the current task.
+- `aide-auto-mode-agent-approves-its-own-plans-and-specs` (Backlog, p2, change) — a project setting that skips human review. The agent still reviews plans and moves them proposed → approved itself, and session.aide records who approved. Depends on the session task.
+- `aide-cleanup-strands-a-fully-checked-todo-aide-in-a-folder` (Done, P1, bug) — fixed and released in v0.11.1; moved to Done by the user, 2026-10-25.
+- `brain-authoring-skill-create-a-brain-aide-for-any-backend` (Done, P2, dx) — committed 6d85560; released in v0.11.0; moved to Done by the user, 2026-10-25.
+- `versions-manifest-release-hygiene` (Done, P2) — built, QA passed, committed 260c82e; released in v0.11.0; moved to Done by the user, 2026-10-25.
 - `aide-init-brain-step-returns-full-template-bytes-in-the-meta` (Done) — content-free brain responses; shipped in 0.10.2.
 - `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` (Done) — aide_cleanup MCP tool with code-enforced preconditions; the maintainer removes ephemerals through it, never rm. Built, QA passed.
 - `aide-scaffold-creates-and-reformats-session-aide` (Done) — dropped, won't do — the user never asked for it.
-- `aide-scaffold-overwrites-existing-files` (Backlog, P1, bug) — skipped for now by the user; next candidate after the pause.
-- `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (In Review, P1, pre-publish) — read-only detection of outdated brain.aide sections and legacy brain launchers; /aide:brain config offers each change, applied only on the user's yes.
-- `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (In Review, P1, pre-publish) — synthesize runs when the feature is a pipeline (the pipeline test), independent of research. Done as prose; one follow-up outside this repo: reword the Showfold `research-implies-strategy` memory rule.
+- `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` (Done, P1, pre-publish) — read-only detection of outdated brain.aide sections and legacy brain launchers; /aide:brain config offers each change, applied only on the user's yes. Moved to Done by the user, 2026-10-25.
+- `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order` (Done, P1, pre-publish) — moved to Done by the user, 2026-10-25. Synthesize runs when the feature is a pipeline (the pipeline test), independent of research. Done as prose; one follow-up outside this repo: reword the Showfold `research-implies-strategy` memory rule.
 - `rename-cards-to-tasks-in-kanban-prose` (Done) — kanban items are called tasks everywhere; existing copies (global skill/agent, brain guides) updated.
-- `bring-the-kanban-board-into-aide` (Backlog, P2) — task ↔ feature linking; partly delivered; needs re-scoping.
+- `bring-the-kanban-board-into-aide` (Done) — dropped, won't do (user, 2026-10-25).
 - `fix-malformed-unreadable-brain-aide-wording-in-brain-md-upgr` (Backlog, P2) — housekeeping.
 - `aide-brain-remediation-tells-users-to-run-npx-sync-themselve` (Backlog, P2) — housekeeping.
 - `update-the-design-handoff-and-handoff-start-skills-to-kanban` (Backlog, P2) — housekeeping.
@@ -88,7 +99,7 @@ The tasks on the board this work touches, in work order; the full record of the 
 - `align-the-root-intent-and-resolve-the-orphaned-src-cli-spec` (Backlog, P3) — housekeeping.
 - `configurevscode-is-dead-code-never-called-from-install-orche` (Todo, P2) — stale, to review with the user.
 - `restructure-aidemd-dev-landing-page` (Backlog, P1) — stale, to review with the user.
-- `create-per-command-aide-specs-under-claude-commands-aide` (Backlog, P2) — stale, to review with the user; likely stale under the rule against .aide specs on .claude/ files.
+- `create-per-command-aide-specs-under-claude-commands-aide` (Done) — dropped, won't do (user, 2026-10-25).
 - `replace-the-plugin-board-with-per-project-card-folders` (Done, P1) — folders are the board; user's board migrated.
 - `ship-a-kanban-board-agent-that-finds-and-returns-cards-and` (Done, P1) — the kanban-maintainer board agent
 - `brain-contract-and-create-repair-command` (Done) — done.
@@ -176,6 +187,16 @@ The tasks on the board this work touches, in work order; the full record of the 
     - Where a plan.aide exists, the plan must be fully checked, and any todo.aide present must be fully checked. A missing todo never blocks. allowEmptyPlan lets only a plan with no checkboxes pass.
     - Where there is no plan.aide, a fully checked todo.aide is removed on its own. Refused: a brief.aide (removed only together with its plan); a todo.aide with no checkboxes; a folder with no ephemerals. allowEmptyPlan is ignored there.
     - A refusal names each unchecked item by file and line and removes nothing.
+29. **session.aide always exists, and comes from aide_scaffold (user, 2026-10-25).** It is an empty placeholder (intent 'Nothing recorded yet.' plus every canonical section heading, each empty) from aide_scaffold type "session", the single template source. aide_init instructs the agent to call it, and /aide boot calls it when the file is missing. Every handoff is an UPDATE that writes whatever the agent has. It never refuses for missing content, and ## Kanban may be empty. aide_scaffold never overwrites, so nothing resets a filled record. This amends #15 and #23; board tracking still stands but never gates a write.
+30. **aide_scaffold never overwrites; replacement is a separate delete (user, 2026-10-25).** Every type (intent, research, both, todo, plan, session) is a no-op on an existing target, reported as such. Replacing a file means removing it through aide_cleanup first.
+31. **Abandon mark (user, 2026-10-25).** plan.aide, todo.aide and brief.aide can carry the `abandoned` status, set through aide_frontmatter by an agent only after the user says to discard the work (for example, abandoned halfway through to start over, or a never-used blank scaffold). aide_cleanup removes a file that is fully checked or marked abandoned. The rule is per file (an abandoned plan next to an open todo list is refused), and an abandoned plan takes its brief. Cleanup never sets or infers the mark. allowEmptyPlan is removed. session.aide is never removed. This amends #28.
+32. **Recorded state through aide_frontmatter (user, 2026-10-25).** Two governed fields. Specs carry `alignment` (unreviewed/aligned/misaligned; editing a spec resets it to unreviewed; the old `status: aligned|misaligned` on a spec is read as alignment and renamed on the next write). Plans, briefs and todo lists share one `status` lifecycle (proposed/approved/completed/abandoned; approved drops to proposed when revised); `in-flight` is retired. aide_frontmatter enforces the transitions (no skipped steps; completed and abandoned are final; completed only with every item checked; a brief completes only with its plan), never removes a value, changes only the one line, and refuses the session record, research specs, non-AIDE files and outside paths. It never decides when a value changes. Who approved a plan goes in session.aide, not in a status. No `revising` or `review-bypassed` status. This repo's specs get a one-time backfill.
+33. **Build gate (user, 2026-10-25).** Building needs the plan, and its brief if present, approved; fixing needs the todo list approved. /aide:build, /aide:fix and the aide-implementor each read the status through aide_frontmatter's read mode first (exact line `<path> — status: approved`) and stop otherwise. Revising an approved file drops it back to proposed.
+34. **Spec edits reset alignment (user, 2026-10-25).** The spec writer and strategist set alignment back to unreviewed through aide_frontmatter after editing a spec; the aligner restores aligned. The backfill sets install and scaffold (rewritten today) to unreviewed, and cleanup and frontmatter (no value) to unreviewed; all others keep their value under `alignment`.
+35. **aide-upgrader agent (user, 2026-10-25).** A new canonical agent, shaped like kanban-maintainer. It never talks to the user. REPORT mode finds every AIDE file on an older format: intent specs on the old `status` name or with no alignment, and plans/todos/briefs with no status. For each one it suggests a value with evidence from the checkboxes, the git history of what the steps built, a todo beside it, and session/task mentions. APPLY mode carries out exactly the changes the user approved, through aide_frontmatter only, and verifies each one. The upgrader runs at the end of EVERY /aide:upgrade, reading the changelog's [migration] entries; there is no notice and no condition. Specs migrate as one batch on a single yes; each status-less plan/todo/brief is confirmed with the user, using the upgrader's suggestion. Future format changes reuse the same agent. Code: register the new agent wherever installs/upgrades list agents, plus the versions manifest (pipeline). Prose: the agent definition, and /aide:upgrade's final step (main agent).
+36. **The fix loop is autonomous (user, 2026-10-25).** QA's todo list is agents checking agents. The orchestrator triages it, approves it itself through aide_frontmatter, and routes each item by misalignment tag: implementation-drift/test-gap → implementor; plan-gap/strategy-gap → architect amends the plan first; spec-gap/spec-bloat → spec-writer/strategist; research-gap → domain expert. The user is interrupted only for an outcome change, a scope change, or an item still failing after two attempts; otherwise they hear one line in the completion report. Out-of-scope defects stay unchecked with a note and are offered as tasks. Written into the aide skill's Stage 7 and /aide:fix.
+37. **Changelog drives migrations (user, 2026-10-25).** CHANGELOG.md at the repo root (Keep a Changelog) ships to hosts as .aide/docs/changelog.md. Format-changing bullets start with [migration] and carry exactly Detect / Migrate / Confirm (Confirm: once, as a batch | per file). aide-upgrader reads only those bullets, detects by the file's current form (idempotent, catches up skipped releases), and uses the host's git history as evidence for per-file suggestions. This repo's CLAUDE.md requires an [Unreleased] entry with every user-visible change and a [migration] entry for every format change; a release missing one is not shippable.
+38. **Session record from aide_scaffold only (user, 2026-10-25).** Boot, aide-handoff and the spec writer's CREATE all call aide_scaffold type=session; nobody writes the placeholder by hand. aide_init's session step only instructs the agent to call it; the CLI calls the same scaffold function.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -186,7 +207,7 @@ The tasks on the board this work touches, in work order; the full record of the 
 - No real contract marker token (aide-<marker>-start/-end) may appear in .claude/ or .aide/docs/ prose; the guard test enforces it.
 - No user-facing `@aidemd-mcp/server@latest` in src/ (guard test), .claude/, README.md or .aide/docs/.
 - Changes to existing code are surgical (doctrine in plan-aide.md and the architect, implementor and QA agents).
-- **session.aide always links the board** — every handoff carries `## Kanban` slug links for the feature's tasks; the shipped aide/handoff/spec-writer prose must keep that requirement and stay backend-neutral (no storage vocabulary).
+- **session.aide always exists and never blocks a write.** Every task tied to the work is linked by slug when there is one. A handoff is never refused or held back for missing content or a missing task. The install seeds the placeholder once and never overwrites the file. Shipped aide/handoff/spec-writer prose stays backend-neutral (no storage vocabulary).
 - **aide_cleanup touches only plan.aide, todo.aide, brief.aide in the named module** — fixed names, never a directory listing, never session.aide, specs or code.
 - **Pipeline ephemerals are removed only through aide_cleanup** — never a shell delete; the maintainer verifies the retro, then calls the tool; dryRun is never a required step.
 - **A template section edit appends the previous fingerprint** — when any bundled brain template section's prose changes, append its old fingerprint to the outdated-sections record and update the drift pin, or old configs stop being recognized.
@@ -194,19 +215,23 @@ The tasks on the board this work touches, in work order; the full record of the 
 - **Check `git status` before publishing** — publish.mjs commits everything already staged.
 - **Published manifests come from a full clone** — scripts/build-versions.ts must refuse to build on a shallow clone; every workflow that builds keeps `fetch-depth: 0`; this repo never commits or ships `.aide/versions.json`.
 - **Template read and contract listing never read the host config** — their answers are identical whatever state .aide/config/brain.aide is in; draft validation reuses the host check's parser and fault mapping and refuses paths outside the project.
-- **A fully checked todo.aide is never stranded** — aide_cleanup removes it with or without a plan beside it. A brief.aide is never removed without its plan.
+- **A completed, abandoned or fully checked no-status ephemeral is never stranded** — aide_cleanup removes it (completed re-checked) with or without a plan beside it; anything still proposed or approved is refused; a brief.aide never goes without its plan.
+- **aide_scaffold never overwrites any existing file** — every type is a no-op on an existing target.
+- **No build or fix starts on anything not approved** — building needs the plan (and its brief, if present) approved, and fixing needs the todo list approved, each checked through aide_frontmatter's read mode by the build/fix stage and the implementor.
+- **Recorded state changes only through aide_frontmatter** — never a hand edit of alignment or status.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Nothing in flight. v0.11.1 released; site synced.
+Re-QA of the fixed modules and the architect's registration plan for aide-upgrader + changelog are running.
 
 ### What the next agent must do
 
-1. Pending user calls:
-   - move to Done: `versions-manifest-release-hygiene`, `brain-authoring-skill-create-a-brain-aide-for-any-backend`, `aide-cleanup-strands-a-fully-checked-todo-aide-in-a-folder`;
-   - close `migrate-legacy-brain-aide-launchers-and-stale-sections-on-up` and `strategy-for-pipelines-when-modules-hand-off-in-a-specific-order`;
-   - drop `create-per-command-aide-specs-under-claude-commands-aide` and `bring-the-kanban-board-into-aide` (suggested).
-2. Next feature: `aide-scaffold-overwrites-existing-files` (P1 bug).
+1. Collect the re-QA verdicts; route any open in-scope item through the fix loop.
+2. Present the registration plan to the user for approval; bootstrap it to approved by hand, logged here (aide_frontmatter isn't in the global 0.11.1 server); then build, QA, fix.
+3. Offer the 3 validate items as backlog tasks (plus: aide-spec.md says aide_init creates the root intent.aide but no code does; an empty frontmatter block reads as unparsable; aide_validate flags briefs/session/brain.aide for missing description).
+4. Commit: source and prose only, never plans/todos/briefs or .aide/versions.json. Release 0.12.0 when the user says go: move [Unreleased] under 0.12.0, then publish.mjs minor, global install, aidemd.dev sync.
+5. After restarting on 0.12.0: close every plan, brief and todo list (completed through aide_frontmatter), promote retros, run aide-maintainer cleanup, run /aide:align on the 9 unreviewed specs, and update this file and the board.
+6. Next task: `architect-sets-the-folder-structure-before-any-spec-below-th`.
 
 ### What's already done and validated
 
@@ -220,10 +245,11 @@ Nothing in flight. v0.11.1 released; site synced.
 - Board: `rename-cards-to-tasks-in-kanban-prose` and `add-an-aide-cleanup-mcp-tool-that-deletes-pipeline` moved to Done; `brain-authoring-skill-create-a-brain-aide-for-any-backend` created (Backlog, P2).
 - v0.10.4 released 2026-10-11 (commits 6f1dcc2, b406037, 8e1a8fb, 65c2bca; release 6085ad9); global install updated to 0.10.4.
 - aidemd.dev synced to 0.10.4 from npm and deployed (site commit 160ad91), run headless: `claude -p` from the site folder with only aide_info, aide_upgrade, read and git tools allowed.
-- Feature `versions-manifest-release-hygiene` (In Review): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed as 260c82e, released in v0.11.0.
-- Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup, committed 6d85560, released in v0.11.0, task In Review.
+- Feature `versions-manifest-release-hygiene` (Done): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed as 260c82e, released in v0.11.0.
+- Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup, committed 6d85560, released in v0.11.0, task Done.
 - v0.11.0 released 2026-10-11 (566a5a5); global install 0.11.0; aidemd.dev synced (d956b97) and deployed.
 - v0.11.1 released 2026-10-11 (fix 08807f9): aide_cleanup no-plan rule; global install 0.11.1; aidemd.dev synced (04232be) and deployed.
+- Board cleanup 2026-10-25: 5 released/closed tasks → Done; 2 stale tasks dropped; the current task → In Progress.
 
 ### What's left after the current cycle
 
@@ -250,3 +276,5 @@ session.aide is rewritten, never deleted (decision 18).
 - Cleanup of plan/todo/brief goes through aide_cleanup via aide-maintainer.
 - Release process (user, 2026-10-11), done by the agent every time it publishes: check `git status` (publish.mjs commits everything staged) → publish and confirm the Publish workflow and npm version → `npm i -g @aidemd-mcp/server@<version>` → run a headless `claude -p` session from inside the aidemd.dev checkout that applies the drifted package-owned upgrade categories through aide_upgrade (never mcp or brain), commits `chore(aide): sync methodology to <version>` and pushes to main (the push deploys via GitHub Pages) → confirm the deploy → update session.aide. Never hand-edit the site's files from this repo's session; the headless session in the site folder does the work through aide's own tools. If it reports brainMigration, tell the user (/aide:brain config needs their consent).
 - Keep session.aide up to date as you work (decision 22).
+
+## Open questions

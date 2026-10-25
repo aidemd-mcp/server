@@ -1,12 +1,12 @@
 ---
 scope: src/service/install
-status: aligned
+alignment: unreviewed
 description: "Plans and executes the cold-start scaffold that turns a fresh host project into an AIDE-ready project, organized as a fixed set of categories the consumer applies."
 intent: >
   The install layer turns a cold host project into an AIDE-ready
   project through a fixed set of categories — methodology pointer,
-  doc set, pipeline pieces, MCP registrations, brain provisioning,
-  IDE wiring. Each category returns a structured plan of would-create,
+  doc set, session record, pipeline pieces, MCP registrations, brain
+  provisioning, IDE wiring. Each returns a structured plan of would-create,
   would-overwrite, would-skip, and exists steps for the consumer to
   act on. The service stays silent on cold-start creation, pauses
   only on overwrites or decisions the filesystem cannot resolve, and treats
@@ -20,13 +20,13 @@ outcomes:
     - A category whose plan contains only would-create steps applies silently. A category whose plan contains any would-overwrite step pauses for confirmation; categories pause independently so the user decides one at a time.
     - Decisions the filesystem cannot resolve — framework detection, brain root location, MCP merge into an existing config, IDE choice, each MCP server's global-or-local launch mode — always pause for user input, regardless of whether anything would be overwritten. Choosing global for a server whose package is not installed globally pauses again to offer that install, run only with the user's OK, before the server is wired.
     - MCP server registrations are returned as prescriptions naming the entry the host's config must contain, in the launch mode chosen for that server, with a global entry naming the command alone and never a path specific to one machine. The consumer merges and writes; this layer never edits the host's MCP config directly.
-    - User-owned configuration is untouchable after the first scaffold. Subsequent runs never return the user-owned config directory's contents as would-overwrite, never patch them, and never migrate them.
+    - A fresh project ends its first install with an empty session record, which the install directs the agent to create through the same scaffolding every working file uses rather than writing its own copy. Later install runs leave both the session record and user-owned configuration alone — never returning them as would-overwrite, patching or migrating them.
     - The brain MCP entry's wire shape is derived from the user-owned brain.aide rather than supplied by this package. The package ships a default template the user can edit; the install never owns launcher bytes.
   undesired:
     - A category that conflates cold-create and overwrite into the same path, so the consumer cannot tell whether the user has anything to lose. The plan must distinguish would-create from would-overwrite explicitly, every step.
     - A would-overwrite step applied silently, a would-create step that interrupts the user, or a global package install run without the user's OK. Each inverts the silent-on-create / pause-on-overwrite contract that defines this layer's user experience.
     - The install layer reaching into the host's MCP config and editing it instead of returning a prescription. Direct writes here put unrelated server entries at risk on malformed configs and break the consumer's visibility into the merge.
-    - A subsequent run that overwrites, patches, or migrates anything under the user-owned config directory, or silently switches an existing server entry between global and local launch. After first scaffold, that directory and each server's launch mode are the user's settled choices.
+    - A later install run that overwrites, patches, or migrates anything under the user-owned config directory or the session record, resets a filled session record to the placeholder, or silently switches an existing server entry between global and local launch. After first scaffold, the install leaves that directory, the session record and each server's launch mode to the user and their agents.
     - The package supplying the brain's launcher command, args, or backend identity instead of deriving them from brain.aide. This re-introduces the connector-enum coupling the methodology has explicitly retired.
     - A new install category added by extending the consumers' wire shapes instead of by adding to the category set this layer owns. The category model is the contract; the consumers must remain thin.
 ---

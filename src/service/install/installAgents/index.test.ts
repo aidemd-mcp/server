@@ -22,6 +22,7 @@ const AGENT_FILES = [
 	"aide/aide-aligner.md",
 	"aide/aide-explorer.md",
 	"aide/aide-maintainer.md",
+	"aide/aide-upgrader.md",
 	"kanban/kanban-maintainer.md",
 ];
 
@@ -82,6 +83,18 @@ describe("installAgents", () => {
 			const canonical = readFileSync(join(CANONICAL_AGENTS_ROOT, relativePath), "utf-8");
 			expect(result.content).toBe(canonical);
 		}
+	});
+
+	it("lands the aide-upgrader agent byte-identical to canonical on a cold run", async () => {
+		const agentDir = join(tempDir, "agents");
+
+		const results = await installAgents(agentDir);
+		const step = results.find((r) => r.name === "agents/aide/aide-upgrader.md")!;
+
+		const canonical = readFileSync(join(AGENTS_ROOT, "aide-upgrader.md"), "utf-8");
+		expect(step.status).toBe("would-create");
+		expect(step.filePath).toBe(join(agentDir, "aide", "aide-upgrader.md"));
+		expect(step.content).toBe(canonical);
 	});
 
 	it("returns would-overwrite for an agent that exists on disk with modified content", async () => {

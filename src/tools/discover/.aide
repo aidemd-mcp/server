@@ -1,6 +1,6 @@
 ---
 scope: src/tools/discover
-status: aligned
+alignment: unreviewed
 description: Map-making tool that returns spec locations, ancestor intent chains, and misalignment flags.
 intent: >
   aide_discover is the tool an agent calls first to orient on a project's intent
@@ -10,15 +10,15 @@ intent: >
   before reading any spec body.
 outcomes:
   desired:
-    - A no-path call returns a project-wide tree map with locations and type tags only — cheap enough to call speculatively at session start.
-    - A path-scoped call opens with the ancestor chain (root to target, each carrying its description and any non-default status) before the subtree detail.
-    - Misaligned specs surface inline in the chain so any agent walking the tree notices drift without a separate validation call.
+    - A no-path call returns a project-wide tree map of locations, type tags and each spec's description, a plan or todo tag carrying its status, and nothing more — cheap enough to call speculatively at session start.
+    - A path-scoped call opens with the ancestor chain (root to target, each carrying its description and, when reviewed, its alignment) before the subtree detail.
+    - Aligned and misaligned specs show their alignment inline so any agent walking the tree notices drift without a separate validation call. Plans and todo lists show their status inline the same way.
     - "Output is human-scannable: a tree the agent reads visually, not parses."
   undesired:
-    - The shallow mode reads file contents, silently turning a cheap map call into an unpredictable expense.
+    - The shallow mode reads more of a file than its tag and description need or renders anything beyond locations, tags and descriptions, silently turning a cheap map call into an unpredictable expense.
     - A path-scoped call omits the ancestor chain and forces the agent to manually walk upward to reconstruct inherited context.
     - Misalignment flags block the call or require remediation before the response returns — the flag is informational, never a gate.
-    - Output drowns aligned/misaligned signals in noise — rendering "pending" on every unreviewed spec, trailing em-dashes on empty summaries.
+    - Output drowns aligned/misaligned signals in noise — badging every unreviewed spec, trailing em-dashes on empty summaries.
 ---
 
 ## Context
@@ -29,23 +29,23 @@ discover is where an agent first meets the AIDE convention in practice. Every ot
 
 **Two modes, one switch — the presence of `path`.** No path means a shallow project-wide map; with a path means a deep subtree scan opening with the ancestor chain. The switch is `path` itself, not a hidden flag, because that is the same field the agent is already using to scope its attention.
 
-**Shallow is cheap on purpose.** Reading file contents in shallow mode would turn a cheap, predictable map into an unpredictable expense and force agents to guess when it is "safe" to call. The cheapness is the feature that earns the tool a place at every session start.
+**Shallow is cheap on purpose.** Reading more than a tag and description need in shallow mode would turn a cheap, predictable map into an unpredictable expense and force agents to guess when it is "safe" to call. The cheapness is the feature that earns the tool a place at every session start.
 
 **Deep mode returns the ancestor chain before the subtree.** Inherited context must be established before the agent interprets the subtree's own specs. The chain is always part of a path-scoped response — never a separate flag — because a subtree without its lineage is a leaf without a branch.
 
-**Description and status make the chain self-contained.** Each ancestor renders with its description and any non-default status, so the agent understands the lineage without opening any spec. Pending (the default) is not rendered — it is the absence of review, not a finding, and showing it everywhere drowns out the meaningful signals.
+**Description and alignment make the chain self-contained.** Each ancestor renders with its description and, when reviewed, its alignment, so the agent understands the lineage without opening any spec. Unreviewed (the default) is never shown — it is the absence of review, not a finding, and showing it everywhere drowns out the meaningful signals.
 
 **Let the tool's own behavior teach the pattern.** An agent reading discover's description learns "call with no path for the map, call with a path to drill in and see your ancestor chain" — and that pattern *is* cascading intent through progressive disclosure. Discover is the only tool whose behavior is part of what it teaches.
 
 ## Good examples
 
-An agent starts a session in an unfamiliar project and calls `aide_discover` with no arguments. It receives a flat tree of every spec location with type tags and no content read — enough to see the project's spec architecture and decide where to drill in next.
+An agent starts a session in an unfamiliar project and calls `aide_discover` with no arguments. It receives a flat tree of every spec location with type tags, spec descriptions and plan/todo status, read from each file's head only — enough to see the project's spec architecture and decide where to drill in next.
 
 The same agent then calls `aide_discover` with a path. The response opens with an ancestor chain — three or four lines naming each ancestor, its description, and any alignment status — followed by the subtree of the requested directory. The agent has the inherited context and the focused subtree in a single call.
 
 ## Bad examples
 
-A shallow call that has silently inspected file contents and rendered summaries beside each spec. The map is no longer cheap; agents that called it speculatively just paid for context they did not mean to spend.
+A shallow call that has silently read more than a tag and description need and rendered summaries beside each spec. The map is no longer cheap; agents that called it speculatively just paid for context they did not mean to spend.
 
 A path-scoped call that returns only the subtree, omitting the ancestor chain. The agent now has to walk upward and call discover again at every parent level to reconstruct what would have been one call.
 

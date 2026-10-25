@@ -15,6 +15,8 @@ import installAideTree from "@/service/install/installAideTree/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import applySteps from "@/service/install/applySteps/index.js";
 import { planBrainCategory } from "@/service/install/index.js";
+import planSessionRecord from "@/service/install/planSessionRecord/index.js";
+import scaffold from "@/tools/scaffold/index.js";
 import detectFramework from "@/service/install/detectFramework/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import compareBytes from "@/service/install/shared/compareBytes/index.js";
@@ -100,10 +102,17 @@ function deferredCategories(): readonly string[] {
  *
  * 6. **`applySteps(toApply)`** writes only the `would-create` steps.
  *
- * 7. **Per-file log** — one `[status] displayPath — message` line per
- *    artifact in original order, with the brain.aide result prepended.
+ * 7. **Session record** — the install service's `planSessionRecord` step is kept
+ *    out of the planned steps and handled on its own. The CLI has no agent to
+ *    follow the step's instruction, so when the step is `would-create` it runs
+ *    the same `scaffold(cwd, ".", "session")` the instruction names; an
+ *    existing record is reported and left alone.
  *
- * 8. **Warning block** — `renderWarning` receives every `skipped-drift` and
+ * 8. **Per-file log** — one `[status] displayPath — message` line per
+ *    artifact in original order, with the brain.aide result prepended and the
+ *    session record result last.
+ *
+ * 9. **Warning block** — `renderWarning` receives every `skipped-drift` and
  *    `skipped-missing-canonical` result, an empty `failed` array, and the
  *    two-item `deferredCategories()` array.
  *
@@ -178,6 +187,7 @@ export async function runInit(
 	const skillSteps = await installSkills(join(cwd, config.skillDir));
 	const aideTreeSteps = await installAideTree(cwd);
 	const readmeStep = await scaffoldReadme(cwd);
+	const sessionStep = await planSessionRecord(cwd);
 
 	// Inline versions.json step — mirrors how src/tools/init/index.ts builds
 	// `versionsStep`: compute the host path, read the manifest, stringify it,
@@ -217,6 +227,19 @@ export async function runInit(
 	// Step 6 — Apply only the would-create steps. applySteps returns the same
 	// steps with status flipped to "created" (for writes that succeeded).
 	await applySteps(toApply);
+
+	// Step 6b — Session record. The CLI has no agent to follow the step's
+	// instruction, so it runs the same scaffold function the instruction names;
+	// the placeholder lives only in scaffold. The step stays out of plannedSteps
+	// because applySteps would pass it through unwritten and the loop below
+	// would log a false [created].
+	const sessionResult: InstallResult = await (async () => {
+		if (sessionStep.status === "would-create") {
+			await scaffold(cwd, ".", "session");
+			return { status: "created" as const, displayPath: ".aide/session.aide", message: "empty session record" };
+		}
+		return { status: "exists" as const, displayPath: ".aide/session.aide", message: "already present" };
+	})();
 
 	// Step 7 — Build the per-file log input. Brain.aide result is first
 	// (always present), MCP result is second, then every planned step in order.
@@ -260,6 +283,9 @@ export async function runInit(
 			`Unexpected step status "${step.status}" for ${step.filePath} — the would-create filter is broken.`,
 		);
 	}
+
+	// The session record result is last among the per-file lines.
+	results.push(sessionResult);
 
 	// Step 8 — Print the per-file log: one line per artifact in collected order.
 	for (const r of results) write(`[${r.status}] ${r.displayPath} — ${r.message}`);
@@ -362,7 +388,17 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 	}
 }
 
-(async () => {
+/**
+ * CLI entry for `init`: prints help, refuses forbidden flags, parses
+ * `--brain` / `--mode`, runs the install against `process.cwd()` and exits
+ * with its code. Every exit path returns immediately after `process.exit` so
+ * a stubbed exit can never fall through to a real install.
+ *
+ * Importing this module has no side effect: the top-level dispatcher
+ * (`routeSubcommand` in src/index.ts) awaits this function when
+ * `argv[2] === "init"`, mirroring how it drives `runSync`.
+ */
+export async function runInitCli(): Promise<void> {
 	if (process.argv.includes("--help")) {
 		process.stdout.write(
 			`Usage: ${aidePackage.command} init [--brain <integration>] [--mode global|local] [--ide <choice>] (global)\n` +
@@ -376,7 +412,9 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 				"  aide MCP server entry additively merged into .mcp.json, the aide-tree\n" +
 				"  launcher at .aide/bin/aide-tree.mjs, the README badge, and the bundled\n" +
 				"  brain.aide template selected by --brain at .aide/config/brain.aide (with\n" +
-				"  YAML null at the unwired slot). Never overwrites existing files.\n\n" +
+				"  YAML null at the unwired slot), and the empty session record at\n" +
+				"  .aide/session.aide (from the same scaffold the aide_scaffold tool uses).\n" +
+				"  Never overwrites existing files.\n\n" +
 				"What it does NOT do:\n" +
 				"  Never writes a .mcp.json brain entry (sync owns that, after the null slot\n" +
 				"  is filled). Never seeds the brain's entry-point artifacts (playbook,\n" +
@@ -398,7 +436,7 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 				`                                   brain: ${launchModeChoices.localBrain.explanation}\n` +
 				"                          Omitted: asked in a terminal (global recommended); local when no terminal.\n" +
 				"  --ide <choice>          Select which IDE preview wiring scaffolds. (Not yet\n" +
-				"                          implemented; see todo.aide.)\n\n" +
+				"                          implemented.)\n\n" +
 				"Post-install follow-up:\n" +
 				"  Brain wiring       — open Claude Code and run /aide; on the first run,\n" +
 				"                       /aide:brain config will fill the unwired slot in\n" +
@@ -410,6 +448,7 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 				"  Skipped artifacts  — run /aide:upgrade for guided reconciliation.\n",
 		);
 		process.exit(0);
+		return;
 	}
 
 	try {
@@ -418,6 +457,7 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 		const message = err instanceof Error ? err.message : String(err);
 		process.stderr.write(`Error: ${message}\n`);
 		process.exit(1);
+		return;
 	}
 
 	try {
@@ -430,4 +470,4 @@ function assertNoForbiddenFlags(argv: readonly string[]): void {
 		process.stderr.write(`Error: ${message}\n`);
 		process.exit(1);
 	}
-})();
+}

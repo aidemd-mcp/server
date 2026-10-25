@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/installAgents
-status: aligned
+alignment: aligned
 description: "Installs the canonical AIDE pipeline agents and the generic brain-pointer skills into the host project, byte-faithful and skip-on-exists."
 intent: >
   Plant the canonical AIDE agent set and the generic brain-pointer

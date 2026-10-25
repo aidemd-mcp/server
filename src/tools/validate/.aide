@@ -1,6 +1,6 @@
 ---
 scope: src/tools/validate
-status: aligned
+alignment: aligned
 description: Health-check tool that surfaces spec-layout drift — naming conflicts, orphaned research, missing or orphaned specs, broken relative links — so agents can fix it before the layout decays.
 intent: >
   aide_validate is the layout health check. An agent calls it to find

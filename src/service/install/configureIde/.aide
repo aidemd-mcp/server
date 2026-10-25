@@ -1,6 +1,6 @@
 ---
 scope: src/service/install/configureIde
-status: aligned
+alignment: aligned
 description: "Wires every supported IDE so .aide files render with the editor's full Markdown experience — same syntax highlighting and same preview behavior as a .md file."
 intent: >
   configureIde makes the .aide suffix visually first-class in every

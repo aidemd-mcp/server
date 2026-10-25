@@ -43,7 +43,28 @@ node scripts/publish.mjs <patch|minor|major> [message]
 
 This bumps `package.json`, syncs `server.json`, commits (e.g. `0.3.16: fix scoring tool`), tags `v0.3.16`, and pushes — the CI does the rest (npm publish + MCP Registry publish).
 
-**Before publishing,** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship.
+**Before publishing,** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship. Then move the changelog's `## [Unreleased]` entries under the new version heading (see "Changelog" below) and stage that with the release.
+
+## Changelog
+
+`CHANGELOG.md` at the repo root follows [Keep a Changelog](https://keepachangelog.com): newest version first, an `## [Unreleased]` section on top, and the standard `Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security` headings. It ships to every host project (install and upgrade copy it to `.aide/docs/changelog.md`), and the `aide-upgrader` agent reads it there to bring old projects up to date.
+
+**Keep it current as you work, unprompted.** Whenever a change lands that a user of the package would notice (a tool, a behavior, an agent, a command, a skill, a doc), add a bullet under `## [Unreleased]` in the same piece of work. Don't batch them up for release time.
+
+**Any change to an AIDE file format needs a `[migration]` entry.** A format change is anything that makes an existing host file out of date: a frontmatter field renamed, added or given new values, a section required or retired, a file moved or renamed. Start the bullet with `[migration]` (the upgrader reads only those bullets) and give it exactly three sub-bullets:
+
+```markdown
+- [migration] Intent specs record `alignment` instead of `status`.
+  - Detect: an intent spec with `status:` and no `alignment:`.
+  - Migrate: rename the field, keeping the value; a spec with neither gets `unreviewed`.
+  - Confirm: once, as a batch.
+```
+
+- **Detect:** how to recognize a file still on the old form, checkable from the file alone.
+- **Migrate:** what the new form is, and which tool writes it (never a hand edit where an AIDE tool owns the field).
+- **Confirm:** `once, as a batch` for mechanical changes, or `per file` when the right value needs the user's judgment. Name the evidence the upgrader should offer (checkboxes, git history).
+
+Write the entry so it is safe to apply twice: a file already on the new form must not match `Detect`. A release with a format change and no `[migration]` entry is not shippable, because projects that upgrade would be left on the old form with nothing telling the upgrader to fix it.
 
 **After every publish, keep the aidemd.dev site in sync — the agent does this every time, unprompted.** The publish always comes first and must succeed. Then:
 

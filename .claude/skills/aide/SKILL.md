@@ -5,12 +5,12 @@ description: >
   spec → research → synthesize → plan → build → QA → fix flow. Drives each
   phase by delegating to specialized subagents (aide-spec-writer,
   aide-architect, aide-implementor, aide-qa, etc.). Invoked when the user
-  types /aide, asks to start an AIDE feature pipeline, asks to resume an
-  in-flight pipeline, or asks to align/refactor specs across the intent
+  types /aide, asks to start an AIDE feature pipeline, asks to resume a
+  pipeline already under way, or asks to align/refactor specs across the intent
   tree. **MANDATORY**: this skill begins with a non-skippable boot sequence
   — call `aide_info`, gate on brain status, read 6 methodology docs in
-  parallel, run `aide_discover`, read `.aide/session.aide` if it exists,
-  then check the board through the `kanban` skill for open tasks.
+  parallel, run `aide_discover`, read `.aide/session.aide` (writing the
+  empty placeholder if it is missing), then check the board through the `kanban` skill for open tasks.
   You MUST execute boot before reading or acting on the user's request,
   even when you think you have enough context. Skipping boot means
   orchestrating a methodology you don't know — you will guess at file
@@ -117,18 +117,18 @@ Now — and only now — run these 8 calls in parallel:
 5. `Read` → `.aide/docs/brief-aide.md`
 6. `Read` → `.aide/docs/session-aide.md`
 7. `aide_discover` (MCP tool, no arguments)
-8. `Read` → `.aide/session.aide` (only if it exists — the project-root pipeline-position log; if absent, no feature pipeline is in flight)
+8. `Read` → `.aide/session.aide` (the project-root session record; it always exists, starting as an empty placeholder)
 
-**Only after all calls return** move on to Step 5.
+**Only after all calls return** move on. If `.aide/session.aide` was missing, call `aide_scaffold({ directory: ".", type: "session" })` now — the placeholder's single source; it never overwrites — before Step 5. From here on you write to it as you work (see "Session state management").
 
 ### Step 5 — Check the board
 
 Every pipeline's work is tracked on the project's kanban board. Invoke the `kanban` skill (`Skill(skill="kanban")`) and, as it directs, have the `kanban-maintainer` agent LIST the project's **open tasks** — every column except Done. You get back a report — per task its column, slug, priority, title, a short excerpt and its path; never list or search the tasks with other tools. Read a task in full from its reported path whenever you need more than the excerpt. Get the project tag the way the kanban skill says: from the `Kanban project tag:` line in the project's instructions file, or, when that line is missing, by asking the user once and recording the answer there — never guess.
 
-Then cross-check the open tasks against `.aide/session.aide` (if present) and the discover output:
+Then cross-check the open tasks against `.aide/session.aide` and the discover output:
 
-- **Session links.** `session.aide`'s `## Kanban` section names the in-flight feature's tasks by slug. Open those tasks first — they are the feature's task list.
-- **Drift.** Flag tasks that `session.aide` says are finished but sit outside Done, in-flight work with no task, tasks `session.aide` names that the agent cannot find, and stale In Progress tasks.
+- **Session links.** `session.aide`'s `## Kanban` section names the current feature's tasks by slug. Open those tasks first — they are the feature's task list.
+- **Drift.** Flag tasks that `session.aide` says are finished but sit outside Done, work under way with no task, tasks `session.aide` names that the agent cannot find, and stale In Progress tasks.
 
 Report the open tasks and any drift to the user in a few lines, and propose the moves or new tasks that would fix it. If `session.aide` names the next task, propose continuing it; otherwise ask the user which task to work on. Never move or create a task silently — every task change goes through the kanban skill's own operations and their approval gates.
 
@@ -183,7 +183,8 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 - Refactor: `aide-auditor` (one per `.aide` section, then `aide-implementor` + `aide-qa`)
 - Align: `aide-aligner`
 - `.aide/session.aide` CREATE and UPDATE: `aide-spec-writer` (same structured-file writer that owns `.aide` frontmatter — see "Session state management" below)
-- Completion cleanup (remove per-module ephemerals through the `aide_cleanup` tool; `session.aide` is never deleted): `aide-maintainer` (post-QA, after retro promotion)
+- Completion cleanup (record each file's closing status, then remove per-module ephemerals through the `aide_cleanup` tool; `session.aide` is never deleted): `aide-maintainer` (post-QA, after retro promotion)
+- Migrating the project's own files to the current format: `aide-upgrader` — run by `/aide:upgrade` at its end, never mid-pipeline
 - Bug investigation / non-pipeline work: `aide-explorer` (read-only) or `general-purpose` (if it needs to write files)
 
 **Stages 2 and 3 are skipped by default.** Most modules are navigation stubs whose intent and outcomes alone are sufficient for planning. Research runs only when the domain is genuinely unknown territory; synthesize runs when the feature is a pipeline — several modules handing off to each other in a specific order — so the order and hand-offs persist alongside the spec. The spec-writer signals both needs in its return; the user confirms; the orchestrator routes accordingly. When both are skipped, the orchestrator passes the user's implementation instructions directly to the architect — the architect plans against frontmatter + user context + coding playbook.
@@ -216,11 +217,11 @@ You are an orchestrator for a methodology you do not inherently know. The `.aide
 - **`plan-aide.md`** — what a `plan.aide` looks like. Tells you what the architect produces and what "unchecked items" means.
 - **`todo-aide.md`** — what a `todo.aide` looks like. Tells you what the QA agent produces.
 - **`brief-aide.md`** — what a per-module `brief.aide` looks like. Tells you what the strategist authors during synthesize and the architect refines during plan.
-- **`session-aide.md`** — what the project-root `.aide/session.aide` looks like. Tells you the pipeline-position log format if a feature is in flight.
+- **`session-aide.md`** — what the project-root `.aide/session.aide` looks like. Tells you the pipeline-position log format and its empty placeholder.
 
 You also read **`brief-aide.md`** at boot — `brief.aide` files are per-module pipeline state you detect during resume. The strategist authors them during synthesize; the architect refines them during plan; the implementor and QA consume them; the maintainer agent deletes them after QA passes.
 
-You also read **`session-aide.md`** at boot — `session.aide` is a single project-root pipeline-position log at `.aide/session.aide` (replacing the legacy `handoff.aide` pattern). It tracks the in-flight feature's state, settled architectural decisions, and where the cycle paused. If it exists, read it during boot (Step 4 call 8) — it tells you exactly where to resume. It is never deleted: when a feature closes, the next handoff rewrites it for the work that comes next.
+You also read **`session-aide.md`** at boot — `session.aide` is a single project-root pipeline-position log at `.aide/session.aide` (replacing the legacy `handoff.aide` pattern). It tracks the current work's state, settled architectural decisions, and where the cycle paused. It always exists — empty until work is recorded. Read it during boot (Step 4 call 8) — it tells you exactly where to resume. It is never deleted: when a feature closes, the next handoff rewrites it for the work that comes next.
 
 **You do NOT need to read** `progressive-disclosure.md`, `agent-readable-code.md`, `automated-qa.md`, `cascading-alignment.md`, or `aide-template.md` — those are implementation details for the subagents, not for you.
 
@@ -253,7 +254,7 @@ Explicit requests override file state. Examples:
 - "synthesize" or "fill the body" → **Stage 3 (Synthesize)** — explicit opt-in even when defaults would skip it
 - "run QA" → **Stage 6 (QA)**, even if `plan.aide` has unchecked items
 - "build it" → **Stage 5 (Build)**, even if no plan exists yet (ask for one first)
-- "handoff", "save session state", "record where we are", "/aide:handoff" → **Session Handoff** — delegate to `aide-spec-writer` to write `.aide/session.aide`. CREATE if file is missing, UPDATE if it exists. The Session state management section below covers what content to gather and supply in the delegation prompt.
+- "handoff", "save session state", "record where we are", "/aide:handoff" → **Session Handoff** — invoke the `aide-handoff` skill, which delegates an UPDATE of `.aide/session.aide` to `aide-spec-writer`. The Session state management section below covers what content to gather and supply in the delegation prompt.
 
 **The Resume Protocol only fires when the user's request is ambiguous** — when they invoke `/aide` without specifying a phase, or describe what they want to do without naming a specific pipeline stage. In those cases, use file state to infer where to pick up.
 
@@ -267,22 +268,24 @@ When the user's request does not map to a specific phase, the discover output te
 | `.aide` exists with frontmatter only (no body sections), no `plan.aide` | **Decision gate** — body sections being absent is valid (synthesize was skipped). Ask the user: "Do you want me to plan this directly, or run synthesize first to fill body sections?" Default: route to **Plan** (gather user implementation context, hand to architect). Route to **Synthesize** only on explicit user request. |
 | `.aide` exists with body sections filled, no `brief.aide` | **Synthesize** — body landed without brief, route back to strategist to author the brief |
 | `.aide` (any shape) and `plan.aide` does not yet exist | **Plan** — spec ready, no plan written yet |
-| `plan.aide` exists with unchecked items | **Build** — plan is ready |
+| `plan.aide` reads `status: proposed` | **Plan approval** — present it; build only after it is `approved` |
+| `plan.aide` reads `approved` with unchecked items | **Build** — plan is ready |
 | `plan.aide` fully checked, no `todo.aide` | **QA** — build is done |
-| `todo.aide` exists with unchecked items | **Fix** — QA found issues |
-| `todo.aide` fully checked | **Done** — promote retro to brain, hand off to maintainer to remove `brief.aide` (if present)/`plan.aide`/`todo.aide` through `aide_cleanup`, update `session.aide` through `aide-handoff`, report completion |
+| `todo.aide` exists with unchecked items | **Fix** — QA found issues; triage and approve it yourself, then run the loop |
+| `todo.aide` fully checked | **Done** — promote retro to brain, hand off to maintainer to mark the files `completed` through `aide_frontmatter` and remove `brief.aide` (if present)/`plan.aide`/`todo.aide` through `aide_cleanup`, update `session.aide` through `aide-handoff`, report completion |
 
 ## Session state management — `.aide/session.aide`
 
-`.aide/session.aide` is the project-wide pipeline-position log — the long-lived session record, linked to the kanban board. It is never deleted; when a feature closes, the next handoff rewrites it for the work that comes next. **You decide WHEN it needs to be written; the `aide-handoff` skill owns HOW.** You never write the file yourself, and you do NOT duplicate the handoff operation logic in this skill — invoke `aide-handoff` and let it carry the operation.
+`.aide/session.aide` is the project-wide pipeline-position log — the long-lived session record, linked to the kanban board when there are tasks. It always exists: `aide_init` has the agent create the empty placeholder with `aide_scaffold type=session`, and boot does the same if it is missing. You write to it as you work, from the first piece of work on, whether or not that work has a task. It is never deleted; when a feature closes, the next handoff rewrites it for the work that comes next. **You decide WHEN it needs to be written; the `aide-handoff` skill owns HOW.** You never write the file yourself, and you do NOT duplicate the handoff operation logic in this skill — invoke `aide-handoff` and let it carry the operation.
 
-The user-facing entry point is `/aide:handoff`; the implementation lives in the `aide-handoff` skill which detects CREATE vs UPDATE, gathers content from your conversation context, and delegates the actual write to `aide-spec-writer` in `session.aide` mode. Nothing deletes `session.aide`.
+The user-facing entry point is `/aide:handoff`; the implementation lives in the `aide-handoff` skill which gathers content from your conversation context, and delegates the actual write to `aide-spec-writer` in `session.aide` mode. Nothing deletes `session.aide`.
 
 ### When to invoke `aide-handoff`
 
 **`session.aide` is always kept up to date as you work.** Whenever something changes what it says — the state summary, the task links, the decisions, the invariants or the next step — invoke it right then, without waiting for the user and without waiting for a pipeline milestone. A stale `session.aide` sends the next session down the wrong path. That includes, among others:
 
-- A pipeline stage starts or completes, or the pipeline pauses for review → CREATE (if missing) or UPDATE
+- Any work starts — a pipeline stage, an interview, a root intent spec, anything worth resuming → UPDATE
+- A pipeline stage starts or completes, or the pipeline pauses for review → UPDATE
 - An architectural decision is settled, or an anti-regression invariant is added → UPDATE
 - A task is created, moved, finished, or newly tied to the work → UPDATE
 - An open question resolves or a new one surfaces → UPDATE
@@ -295,18 +298,17 @@ Batch only within one burst of work: never end a turn, hand back to the user, or
 
 `aide-handoff` cannot read your conversation context — it can only read its delegation prompt. When you invoke it, your `args` should supply the content the skill needs to construct the spec-writer delegation:
 
-- **For CREATE:** feature intent (one line), state summary (what was just done, what is paused or blocking, commit/publish state, task in progress by slug), `## Kanban` task links (see below), `## Where this cycle stopped` content (which stage paused and why, artifact statuses, the numbered next steps), what's already done and validated, what's left after the current cycle, every settled decision (numbered), anti-regression invariants (bulleted, if any), optional process discipline notes, optional open questions awaiting the user
+Every handoff is an UPDATE. Supply the change description (what happened) and section-targeted edits for whatever you have — e.g. "fill the intent with: ...", "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ...". The first handoff after the placeholder fills in what is known: the one-line intent, the state summary (what was just done, what is paused or blocking, commit/publish state, the task in progress by slug if there is one), `## Where this cycle stopped` (which stage paused and why, artifact statuses, the numbered next steps), what's done and validated, what's left, settled decisions (numbered), invariants, open questions.
 
-`session.aide` is the full session record, and it also links the board. Give the handoff the whole picture — what was done, every decision, what is validated, what comes next — not just slugs. Stashing progress into the task through the kanban skill still happens alongside; it never replaces what goes into `session.aide`.
-- **For UPDATE:** the change description (what transition occurred) and section-targeted edits (which section gets new content, e.g. "append decision #4: ...", "rewrite `## Where this cycle stopped` to: ..."). Whenever a task is created, moved, finished, or newly tied to the feature, include the matching `## Kanban` edit.
+`session.aide` is the full session record. Give the handoff the whole picture — what was done, every decision, what is validated, what comes next — not just slugs. Stashing progress into the task through the kanban skill still happens alongside; it never replaces what goes into `session.aide`.
 
-**Task links are mandatory.** Every handoff supplies the `## Kanban` links: one line per task tied to the feature — its slug, its column, and one line on what it covers. The slug is the stable link; the kanban skill finds the task by slug in whatever column it sits. Items in `## Where this cycle stopped` that correspond to a task name its slug. A feature with no task yet gets one through the kanban skill before the handoff, never a handoff without links.
+**Link tasks when there are tasks.** Whenever a task is created, moved, finished, or newly tied to the work, include the matching `## Kanban` edit: its slug, its column, and one line on what it covers. The slug is the stable link; the kanban skill finds the task by slug in whatever column it sits. Items in `## Where this cycle stopped` that correspond to a task name its slug. Work with no task is still recorded — `## Kanban` stays empty until there is one.
 
-If you don't have the content yet, gather it from conversation first; if it isn't in conversation, ask the user before invoking the skill. The skill will REFUSE on missing load-bearing content (feature intent, `## Kanban` task links, `## Where this cycle stopped`) rather than fabricate.
+Never hold a handoff back for content you don't have yet. Write what you have now; an empty section stays empty until there is something true to put in it. The skill never refuses for missing content.
 
 ## Board tracking — the kanban skill
 
-Every piece of pipeline work is tracked on a task, always. Board bookkeeping is a job the orchestrator runs itself (like interviewing and relaying) — through the `kanban` skill's operations, never by editing the board another way. You hold each operation's approval gates with the user; the `kanban-maintainer` agent does the file work and returns what changed.
+Every piece of pipeline work is tracked on a task. Board tracking never gates `session.aide`: work that has no task yet — or that the user doesn't track on the board — is still recorded there. Board bookkeeping is a job the orchestrator runs itself (like interviewing and relaying) — through the `kanban` skill's operations, never by editing the board another way. You hold each operation's approval gates with the user; the `kanban-maintainer` agent does the file work and returns what changed.
 
 - **Start.** When a feature pipeline starts or resumes, tie it to an open task from the Step 5 list, or create one with the kanban skill's create operation. Move it to In Progress with the move operation.
 - **Transitions.** At every transition that triggers `aide-handoff`, stash progress into the task with the stash operation, and hand the task link to the handoff (see "What you owe the skill").
@@ -391,11 +393,11 @@ After the agent returns, present the completed spec AND the new `brief.aide` to 
 
 The architect reads the spec, pulls the playbook, scans the codebase, writes `plan.aide`, and creates `brief.aide` only if planning surfaces commitments worth recording (Shape B usually doesn't need one).
 
-**PAUSE for user approval.** After the agent returns, present `plan.aide` (and `brief.aide` if it exists) to the user. Do not proceed to build until the user explicitly approves. If the user requests changes, re-delegate to the architect — do NOT edit any file yourself.
+**PAUSE for user approval.** After the agent returns, present `plan.aide` (and `brief.aide` if it exists) to the user. Both start `proposed`. Do not proceed to build until the user explicitly approves. On the yes, record it: move the plan, and its brief, to `approved` with `aide_frontmatter({ path, field: "status", value: "approved" })` — the one file write you make yourself, like board bookkeeping. Note in `session.aide` who approved. If the user requests changes, re-delegate to the architect — do NOT edit any file yourself; a revision of an approved plan drops it back to `proposed`, so it needs approval again.
 
 ### Stage 5: Build → `aide:build`
 
-**Your job (orchestrator):** Confirm the plan is approved, then read `plan.aide` and execute it step-by-step — one fresh implementor agent per numbered step.
+**Your job (orchestrator):** Read the plan's status with `aide_frontmatter` (read mode) — and its `brief.aide`'s, if there is one. Build only on `approved`. A plan still `proposed` goes back to Stage 4's approval pause; never start a build on it. Then read `plan.aide` and execute it step-by-step — one fresh implementor agent per numbered step. Each implementor checks the same gate itself before touching code.
 
 **How to iterate:**
 1. Read `plan.aide` to identify the next unchecked numbered step
@@ -425,13 +427,26 @@ If the agent reports no issues, skip to completion.
 
 ### Stage 7: Fix loop → `aide:fix`
 
-**Your job (orchestrator):** Read `todo.aide` to identify unchecked items, then delegate each fix one at a time.
+**The fix loop is autonomous.** QA's todo list is agents checking agents' work — a second pass over the build, not a review point. Do not show the user the findings, do not ask the user to approve the list, and do not narrate the loop. You triage the list yourself, move it to `approved` with `aide_frontmatter`, and run the loop to the end.
 
-For each unchecked item:
-1. **Delegate** to the `aide-implementor` agent (via Agent tool, `subagent_type: aide-implementor`) to fix exactly ONE item
-2. **Delegate** to the `aide-qa` agent (via Agent tool, `subagent_type: aide-qa`) to re-validate
+**Your job (orchestrator):** Read `todo.aide`, triage each unchecked item by its `Misalignment` tag, and route it:
 
-Repeat until `todo.aide` is clear. Do NOT fix anything yourself — always delegate to the implementor.
+| Tag | Route |
+|---|---|
+| `implementation-drift`, `test-gap` | Straight to a fresh `aide-implementor` (fix mode). The plan was right; the code or tests missed it. |
+| `plan-gap`, `strategy-gap` | First to the `aide-architect` to amend the module's `plan.aide` with the missing step or decision (the amendment drops the plan back to `proposed`; you approve it yourself under the same triage), then to a fresh `aide-implementor`. Never leave a design decision for the implementor to improvise. |
+| `spec-gap`, `spec-bloat` | To the `aide-spec-writer` (or `aide-strategist` for body sections). If the fix only brings the spec's wording in line with what the user already decided, it stays in the loop. If it would change what an outcome promises, it is an intent change — that is the user's call. |
+| `research-gap` | To the `aide-domain-expert`, then back through the routes above. |
+
+For each item, after its fix:
+1. **Delegate** to the `aide-qa` agent to re-validate the module.
+2. Repeat until `todo.aide` is clear.
+
+An item that is out of scope for the feature — a defect the feature did not cause — is not fixed in the loop: leave it unchecked with a one-line note, and offer it to the user as a task at the end.
+
+**Interrupt the user only for a decision:** an outcome change, a scope change, or an item still failing after two fix attempts. Otherwise the user hears about the loop once, in the completion report — "QA found N issues; all fixed" — and nothing else.
+
+Do NOT fix anything yourself — always delegate.
 
 ### Completion
 
@@ -467,7 +482,7 @@ Do NOT delete any of these files yourself — always delegate to the maintainer,
 
 - "Refactor", "clean up code", "convention drift", "playbook conformance" → default mode
 - "Slim the specs", "the .aide files are too long", "spec bloat", "trim", "compress the specs", or any reference to spec rot / oversized intent docs → `--specs` mode
-- When `aide_discover` output shows `status: misaligned` on multiple nodes, ask the user whether the misalignment is cascade drift or bloat — if bloat, route to `--specs` mode
+- When `aide_discover` output shows `[misaligned]` on multiple nodes, ask the user whether the misalignment is cascade drift or bloat — if bloat, route to `--specs` mode
 
 **Refactor requires a path argument.** If the user doesn't provide one, ask for it. Never run a full-app refactor unscoped.
 
@@ -534,13 +549,13 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
    - **Brevity (`spec-bloat`) issues dominate** → suggest `/aide:refactor --specs <path>` for a batched cascade-aware sweep instead of per-spec rewrites
 
 **Suggesting alignment (proactive guidance):** The orchestrator should suggest `/aide:align` in two situations — it is a suggestion, not automatic invocation:
-- When `aide_discover` output shows `status: misaligned` on any spec in the tree
+- When `aide_discover` output shows `[misaligned]` on any spec in the tree
 - When a spec edit (Stage 1) modifies `outcomes.desired` or `outcomes.undesired` — a changed outcome may now conflict with a child or ancestor spec
 
 ## Rules
 
 - **DELEGATE EVERYTHING.** The orchestrator NEVER writes files, edits code, fills specs, creates plans, runs tests, or does any substantive work. Every phase is handled by its specialized agent via the Agent tool. This is the single most important rule. If you are tempted to "just do it quickly" — don't. Spawn the agent. Two named exceptions: board bookkeeping through the `kanban` skill, and prose edits (agent instructions, documentation, wording-only text changes), which you make yourself.
-- **Track every feature on the board.** Check the open tasks at boot (Step 5), keep the feature's task current through the `kanban` skill at start, at every transition, and at close, and make sure `session.aide`'s `## Kanban` section links every task tied to the feature by slug.
+- **Track every feature on the board.** Check the open tasks at boot (Step 5), keep the feature's task current through the `kanban` skill at start, at every transition, and at close, and make sure `session.aide`'s `## Kanban` section links every task tied to the feature by slug. Work with no task is still recorded in `session.aide` — never held back until a task exists.
 - **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, and entries persisted to the brain.
 - **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context.
 - **Pause for approval twice:** after spec frontmatter (Stage 1) and after plan (Stage 4). These are the two points where the user's input shapes the work. (Synthesize, when it runs, also pauses to present the filled body — but synthesize is conditional, so it isn't always in the path.)
@@ -550,5 +565,5 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
 - **Research is filed by domain.** Research entries go to `research/<domain>/` in the brain, not `research/<project>/`. The knowledge is reusable across projects.
 - **Retro is promoted.** When the fix loop closes, extract the `## Retro` section and persist it to `process/retro/` in the brain. This is how the pipeline learns.
 - **No shortcuts.** Even if the task seems trivial, the pipeline exists to maintain intent alignment. A "simple" task handled outside the pipeline is how drift starts. Always delegate.
-- **Suggest alignment, don't force it.** When discover output shows `status: misaligned` on any spec, or when a spec edit touches outcomes, suggest `/aide:align` to the user. Do not invoke it automatically — misalignment is informational, not a pipeline gate. The user decides whether to act.
-- **`.aide/session.aide` is written by `aide-spec-writer`, never by you, and never deleted.** You hold the content (current stage, task links, settled decisions, where the cycle stopped) because the conversation belongs to you. But the canonical-format write belongs to the spec-writer (same agent that owns `.aide` frontmatter). Delegate a CREATE the first time tracked work starts, and an UPDATE whenever anything changes what the file says — keep it up to date as you work. If you find yourself about to call Write/Edit on `.aide/session.aide`, STOP — construct a delegation prompt instead.
+- **Suggest alignment, don't force it.** When discover output shows `[misaligned]` on any spec, or when a spec edit touches outcomes, suggest `/aide:align` to the user. Do not invoke it automatically — misalignment is informational, not a pipeline gate. The user decides whether to act.
+- **`.aide/session.aide` is written by `aide-spec-writer`, never by you, and never deleted.** You hold the content (current stage, task links, settled decisions, where the cycle stopped) because the conversation belongs to you. But the canonical-format write belongs to the spec-writer (same agent that owns `.aide` frontmatter). Boot creates it with `aide_scaffold type=session` when it is missing; delegate an UPDATE whenever anything changes what the file says, from the first piece of work on — keep it up to date as you work. If you find yourself about to call Write/Edit on `.aide/session.aide`, STOP — construct a delegation prompt instead.

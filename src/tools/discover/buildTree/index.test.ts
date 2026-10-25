@@ -7,8 +7,16 @@ function makeAideFile(
 	type: AideFile["type"],
 	summary = "",
 	description = "",
+	workStatus?: AideFile["workStatus"],
 ): AideFile {
-	return { path: `/project/${relativePath}`, relativePath, type, summary, description };
+	return {
+		path: `/project/${relativePath}`,
+		relativePath,
+		type,
+		summary,
+		description,
+		...(workStatus ? { workStatus } : {}),
+	};
 }
 
 describe("buildTree", () => {
@@ -70,5 +78,40 @@ describe("buildTree", () => {
 		const tree = buildTree(files, "/project");
 
 		expect(tree).toContain("— Strategy and contracts");
+	});
+
+	it.each(["proposed", "approved", "completed"] as const)(
+		"renders a plan with workStatus %s as [plan: %s]",
+		(workStatus) => {
+			const files = [makeAideFile("src/plan.aide", "plan", "3/5 done", "", workStatus)];
+			const tree = buildTree(files, "/project");
+
+			expect(tree).toContain(`plan.aide [plan: ${workStatus}] — 3/5 done`);
+		},
+	);
+
+	it.each(["approved", "abandoned"] as const)(
+		"renders a todo with workStatus %s as [todo: %s]",
+		(workStatus) => {
+			const files = [makeAideFile("src/todo.aide", "todo", "1/2 done", "", workStatus)];
+			const tree = buildTree(files, "/project");
+
+			expect(tree).toContain(`todo.aide [todo: ${workStatus}] — 1/2 done`);
+		},
+	);
+
+	it("renders a plan without workStatus as [plan]", () => {
+		const files = [makeAideFile("src/plan.aide", "plan", "3/5 done")];
+		const tree = buildTree(files, "/project");
+
+		expect(tree).toContain("plan.aide [plan] — 3/5 done");
+	});
+
+	it("renders an intent file carrying a stray workStatus as [intent]", () => {
+		const files = [makeAideFile("src/.aide", "intent", "", "Spec", "approved")];
+		const tree = buildTree(files, "/project");
+
+		expect(tree).toContain(".aide [intent] — Spec");
+		expect(tree).not.toContain("[intent:");
 	});
 });

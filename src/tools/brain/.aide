@@ -1,6 +1,6 @@
 ---
 scope: src/tools/brain
-status: aligned
+alignment: aligned
 description: "Read-only brain entry-point: one config section with its purpose, the same from the bundled template, the contract's section list, and a structural check of a config draft."
 intent: >
   Agents use aide_brain, read-only, to reach the brain mid-task and to set

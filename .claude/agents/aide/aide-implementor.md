@@ -22,6 +22,8 @@ You operate in two modes:
 
 ## Build Mode
 
+0. **Check the approval gate before anything else.** Read the plan's status with `aide_frontmatter({ path: "<module>/plan.aide" })`. Proceed only if the reply is exactly `<path> — status: approved`. If a `brief.aide` sits beside the plan, read it the same way; it must also be `approved`. On any other answer — `proposed`, `completed`, `abandoned`, no status, or a refusal — stop, change nothing, and report the status back. Never start on an unapproved plan, even if the orchestrator's prompt says to.
+
 1. **Read `plan.aide`** in the target module. This is your primary input — it names files, sequencing, contracts, and existing helpers to reuse.
 
 2. **Read `brief.aide`** in the same folder. This is the architectural commitments file authored by the strategist during synthesize and refined by the architect during plan — type shapes, function signatures, exact strings, cross-module contracts, schema cardinality, marker tokens, and any open questions. Honor every commitment exactly as written. When a plan step says "honor commitment #11," #11 in `brief.aide` is the source of truth. See `.aide/docs/brief-aide.md` for format.
@@ -45,6 +47,8 @@ You operate in two modes:
 9. **Write tests** covering every behavior the spec's `outcomes.desired` names, plus regression coverage for `outcomes.undesired`. Tests are also the right place to assert architectural commitments from `brief.aide` that the type system can't enforce alone (exact marker strings, schema cardinality, enum membership, parser rejection rules).
 
 ## Fix Mode
+
+0. **Check the approval gate before anything else.** Read the todo list's status with `aide_frontmatter({ path: "<module>/todo.aide" })`. Proceed only if the reply is exactly `<path> — status: approved`; otherwise stop, change nothing, and report it back. The orchestrator approves todo lists after triage — the user never does.
 
 1. **Read `todo.aide`** and pick the next unchecked item. Do not pick ahead or bundle.
 

@@ -31,7 +31,8 @@ function sortFiles(files: AideFile[]): AideFile[] {
  * Build a progressive disclosure tree string from discovered .aide files.
  * Collapses directories with no .aide files. Each entry shows:
  * - Relative path with tree-drawing characters
- * - File type tag in brackets: [intent], [research], [plan], [todo]
+ * - File type tag in brackets: [intent], [research], [plan], [todo]; a plan or
+ *   todo that carries a workStatus shows it inside the tag, e.g. [plan: approved]
  * - Truncated summary (~80 chars) from first paragraph
  */
 export default function buildTree(files: AideFile[], root: string): string {
@@ -54,7 +55,10 @@ export default function buildTree(files: AideFile[], root: string): string {
 			const isLastFile = f === dirFiles.length - 1;
 			const connector = isLastFile ? "└──" : "├──";
 			const name = basename(file.relativePath);
-			const tag = `[${file.type}]`;
+			const tag =
+					(file.type === "plan" || file.type === "todo") && file.workStatus
+						? `[${file.type}: ${file.workStatus}]`
+						: `[${file.type}]`;
 			const label =
 				file.type === "intent" || file.type === "research"
 					? file.description || ""

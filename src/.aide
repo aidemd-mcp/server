@@ -1,6 +1,6 @@
 ---
 scope: src
-status: aligned
+alignment: aligned
 description: "MCP server delivering AIDE to host projects through two channels: a handshake that teaches AIDE via tool descriptions and an install action that scaffolds the methodology onto the host's disk."
 intent: >
   src/ implements the two delivery channels through which aidemd-mcp carries

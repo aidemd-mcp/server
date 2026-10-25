@@ -17,8 +17,8 @@ The aligner produces `todo.aide` at every misaligned node with concrete items ta
 - [ ] **Cascade pass:** compare each child's `outcomes.desired` and `outcomes.undesired` against every ancestor's outcomes — look for contradictions, undermining, and critical omissions. Tag findings `Misalignment: spec-gap`.
 - [ ] **Brevity pass:** measure every spec against the Brevity Contract caps and scan for forbidden content (type signatures, file paths, exact strings, function names, argument indexes, implementation contracts, migration history). Tag findings `Misalignment: spec-bloat`.
 - [ ] **Sibling-redundancy pass:** at every parent with multiple children specs, compare children's content for material that appears in two or more. Flag the children (not the parent) with `Misalignment: spec-gap`, naming the duplicated content and where it should live (parent).
-- [ ] For misaligned specs: set `status: misaligned` on the leaf spec's frontmatter and produce `todo.aide` at the leaf with items from any pass that found drift
-- [ ] For aligned specs (no drift across all three passes): set `status: aligned` on the spec's frontmatter
+- [ ] For misaligned specs: move the leaf spec's `alignment` to `misaligned` with `aide_frontmatter` and produce `todo.aide` at the leaf with items from any pass that found drift
+- [ ] For aligned specs (no drift across all three passes): move the spec's `alignment` to `aligned` with `aide_frontmatter`
 - [ ] Report results with verdict (ALIGNED/MISALIGNED), count of specs checked, total drift count broken down by pass (cascade / brevity / sibling-redundancy), and `todo.aide` paths created
 - [ ] Recommended next step depends on the dominant category: cascade or sibling-redundancy → `/aide:spec` to revise the flagged specs; brevity → `/aide:refactor --specs <path>` for a batched cascade-aware sweep
 - [ ] Do NOT rewrite specs — flag only

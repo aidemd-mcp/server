@@ -1,6 +1,6 @@
 ---
 scope: src/tools/inspect
-status: aligned
+alignment: aligned
 description: Code introspection tool that returns a named symbol's documentation, signature, and kind without opening the full source file.
 intent: >
   aide_inspect gives agents Tier 2 progressive disclosure for code — the

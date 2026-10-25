@@ -97,6 +97,20 @@ describe("discover", () => {
 		expect(ancestorIndex).toBeLessThan(treeIndex);
 	});
 
+	it("deep scan shows [aligned] on the ancestor line of a spec that records alignment: aligned", async () => {
+		await mkdir(join(tempDir, "src", "tools"), { recursive: true });
+		await writeFile(
+			join(tempDir, "src", ".aide"),
+			"---\ndescription: Src spec\nalignment: aligned\n---\n",
+		);
+		await writeFile(join(tempDir, "src", "tools", ".aide"), "---\ndescription: Tools spec\n---\n");
+
+		const result = await discover(tempDir, "src/tools");
+
+		expect(result).toContain("Ancestor chain:");
+		expect(result).toContain("src/.aide — Src spec [aligned]");
+	});
+
 	it("deep scan with no ancestors above target omits ancestor chain section", async () => {
 		// No specs above the target — only a spec inside the target
 		await mkdir(join(tempDir, "sub"), { recursive: true });

@@ -71,11 +71,13 @@ When you finish, return:
 - **Outcomes violated**: which desired outcomes are not met or which undesired outcomes were tripped
 - **Recommended next step**: `/aide:fix` if issues exist, or completion if clean
 
-## Status Field Boundary
+## Alignment Field Boundary
 
-During code-vs-spec review, if you notice that a leaf spec's intent directly contradicts an ancestor's intent, you MAY set `status: misaligned` in that leaf spec's frontmatter to flag the contradiction for the pipeline.
+During code-vs-spec review, if you notice that a leaf spec's intent directly contradicts an ancestor's intent, you MAY move that leaf spec's `alignment` to `misaligned` with `aide_frontmatter` to flag the contradiction for the pipeline. Never edit the field by hand.
 
-You may NOT set `status: aligned` — only the aligner agent can confirm alignment through a deliberate full-tree walk. Setting `aligned` requires traversing the full ancestor chain, which is outside QA's scope. See `cascading-alignment.md` for the full protocol.
+You may NOT set `aligned` — only the aligner agent can confirm alignment through a deliberate full-tree walk. Setting `aligned` requires traversing the full ancestor chain, which is outside QA's scope. See `cascading-alignment.md` for the full protocol.
+
+You never change the `status` of a plan, brief or todo list. Your `todo.aide` comes from `aide_scaffold type=todo`, which starts it `proposed`; the orchestrator triages and approves it.
 
 ## What You Do NOT Do
 

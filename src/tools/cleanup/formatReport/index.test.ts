@@ -41,7 +41,7 @@ describe("formatReport — refused", () => {
 		[{ kind: "no-ephemerals" }, /no plan\.aide, todo\.aide or brief\.aide here/],
 		[
 			{ kind: "brief-without-plan", items: [] },
-			/src\/x\/brief\.aide has no checkboxes.*only together with a plan\.aide/,
+			/src\/x\/brief\.aide has no plan\.aide beside it.*removed only together with its plan\./,
 		],
 		[{ kind: "todo-without-checkboxes" }, /src\/x\/todo\.aide has no checkboxes/],
 		[{ kind: "plan-without-checkboxes" }, /no checkboxes/],
@@ -57,14 +57,95 @@ describe("formatReport — refused", () => {
 		expect(report.text).toMatch(reason);
 	});
 
-	it("tells the caller allowEmptyPlan is only for an intentionally empty plan", () => {
+	it("reports a plan without checkboxes as the header line plus one reason line", () => {
 		const report = formatReport({
 			kind: "refused",
 			module: "src/x",
 			refusal: { kind: "plan-without-checkboxes" },
 		});
-		expect(report.text).toContain("allowEmptyPlan: true");
-		expect(report.text).toMatch(/intentionally empty/);
+		expect(report.text.split("\n")).toEqual([
+			"Cleanup of src/x was refused. Nothing was removed.",
+			"Reason: plan.aide has no checkboxes to verify, so completion cannot be shown.",
+		]);
+	});
+
+	it("names one open-status file with its status and no items", () => {
+		const report = formatReport({
+			kind: "refused",
+			module: "src/x",
+			refusal: { kind: "open-status", files: [{ file: "plan.aide", status: "proposed" }], items: [] },
+		});
+		expect(report.isError).toBe(true);
+		expect(report.text.split("\n")).toEqual([
+			"Cleanup of src/x was refused. Nothing was removed.",
+			"Reason: src/x/plan.aide is recorded proposed, so its cycle has not closed.",
+		]);
+	});
+
+	it("names every open-status file in order, then the items", () => {
+		const report = formatReport({
+			kind: "refused",
+			module: "src/x",
+			refusal: {
+				kind: "open-status",
+				files: [
+					{ file: "plan.aide", status: "approved" },
+					{ file: "brief.aide", status: "proposed" },
+				],
+				items: [{ file: "plan.aide", line: 4, text: "Wire it" }],
+			},
+		});
+		expect(report.text.split("\n")).toEqual([
+			"Cleanup of src/x was refused. Nothing was removed.",
+			"Reason: src/x/plan.aide is recorded approved, so its cycle has not closed.",
+			"Reason: src/x/brief.aide is recorded proposed, so its cycle has not closed.",
+			"1 unchecked item remain:",
+			"src/x/plan.aide:4: Wire it",
+		]);
+	});
+
+	it("renders open-status paths without a prefix for the root module", () => {
+		const report = formatReport({
+			kind: "refused",
+			module: ".",
+			refusal: { kind: "open-status", files: [{ file: "todo.aide", status: "approved" }], items: [] },
+		});
+		expect(report.text).toContain("Reason: todo.aide is recorded approved, so its cycle has not closed.");
+	});
+
+	it("names the unchecked items of a completed file", () => {
+		const report = formatReport({
+			kind: "refused",
+			module: "src/x",
+			refusal: {
+				kind: "completed-with-open-items",
+				items: [
+					{ file: "plan.aide", line: 9, text: "Ship it" },
+					{ file: "todo.aide", line: 2, text: "Fix it" },
+				],
+			},
+		});
+		expect(report.isError).toBe(true);
+		expect(report.text.split("\n")).toEqual([
+			"Cleanup of src/x was refused. Nothing was removed.",
+			"Reason: a file recorded completed still has unchecked items.",
+			"2 unchecked items remain:",
+			"src/x/plan.aide:9: Ship it",
+			"src/x/todo.aide:2: Fix it",
+		]);
+	});
+
+	it("names the file and the detail of an unreadable status", () => {
+		const report = formatReport({
+			kind: "refused",
+			module: "src/x",
+			refusal: { kind: "invalid-status", file: "plan.aide", detail: 'status "done" is not a valid status here' },
+		});
+		expect(report.isError).toBe(true);
+		expect(report.text.split("\n")).toEqual([
+			"Cleanup of src/x was refused. Nothing was removed.",
+			'Reason: src/x/plan.aide has a status cleanup cannot read: status "done" is not a valid status here.',
+		]);
 	});
 
 	it("names every unchecked item with its file, line and text", () => {
@@ -111,7 +192,7 @@ describe("formatReport — refusals without a plan", () => {
 			},
 		});
 		const lines = report.text.split("\n");
-		expect(lines[1]).toMatch(/src\/x\/brief\.aide has no checkboxes/);
+		expect(lines[1]).toMatch(/src\/x\/brief\.aide has no plan\.aide beside it/);
 		expect(lines[2]).toBe("2 unchecked items remain:");
 		expect(lines[3]).toBe("src/x/todo.aide:3: Fix the edge case");
 		expect(lines[4]).toBe("src/x/todo.aide:5: Add the test");
@@ -131,12 +212,19 @@ describe("formatReport — refusals without a plan", () => {
 		{ kind: "no-ephemerals" },
 		{ kind: "brief-without-plan", items: [] },
 		{ kind: "todo-without-checkboxes" },
+		{ kind: "plan-without-checkboxes" },
+		{ kind: "open-status", files: [{ file: "plan.aide", status: "approved" }], items: [] },
+		{ kind: "completed-with-open-items", items: [{ file: "plan.aide", line: 1, text: "Do it" }] },
+		{ kind: "invalid-status", file: "plan.aide", detail: 'status "done" is not a valid status here' },
 	];
 
-	it.each(noAdvice)("never mentions allowEmptyPlan or suggests creating a file for %j", (refusal) => {
+	it.each(noAdvice)("never gives advice on creating a file or changing a status for %j", (refusal) => {
 		const { text } = formatReport({ kind: "refused", module: "src/x", refusal });
 		expect(text).not.toContain("allowEmptyPlan");
+		expect(text).not.toContain("aide_frontmatter");
 		expect(text).not.toContain("create");
+		expect(text).not.toContain("mark");
+		expect(text).not.toContain("set the status");
 	});
 
 	it("renders the root module without a module prefix", () => {
@@ -145,7 +233,7 @@ describe("formatReport — refusals without a plan", () => {
 			module: ".",
 			refusal: { kind: "brief-without-plan", items: [] },
 		});
-		expect(report.text).toContain("Reason: brief.aide has no checkboxes");
+		expect(report.text).toContain("Reason: brief.aide has no plan.aide beside it, and a brief is removed only together with its plan.");
 	});
 });
 

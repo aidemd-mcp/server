@@ -6,6 +6,7 @@ The QA re-alignment document. A `todo.aide` captures where the implementation dr
 
 ```yaml
 ---
+status: proposed
 intent: >
   One-line summary of which `.aide` outcome(s) are violated — the gap
   between what the spec says and what the code actually produces.
@@ -73,8 +74,9 @@ QA writes `todo.aide` beside the code it verifies. That folder need not hold a `
 
 ## Lifecycle
 
-1. **Created** by the QA agent during `/aide:qa` using `aide_scaffold type=todo`.
-2. **Consumed** by the implementor during `/aide:fix` — one item per session.
-3. **Re-validated** by QA after fixes land — may produce a new `todo.aide` if issues remain.
-4. **Retro promoted** by the orchestrator to `process/retro/` in the brain when all items are checked.
-5. **Deleted** by the maintainer agent after QA passes — the issues have been fixed; retro is promoted to brain at `process/retro/` BEFORE deletion. The fixes themselves are the durable artifact; the todo list was scaffolding for the fix loop. Removal goes through `aide_cleanup`, which removes a `todo.aide` only when every item is checked, whether or not a `plan.aide` sits beside it. A `todo.aide` with no checkboxes is removed only together with a fully checked plan.
+1. **Created** by the QA agent during `/aide:qa` using `aide_scaffold type=todo`, starting `status: proposed`.
+2. **Triaged and approved by the orchestrator** — never by the user. The fix loop is agents checking agents' work: the orchestrator routes each item by its misalignment tag and moves the list to `approved` through `aide_frontmatter`.
+3. **Consumed** by the implementor during `/aide:fix` — one item per session, only while the list reads `approved`.
+4. **Re-validated** by QA after fixes land — may produce a new `todo.aide` if issues remain.
+5. **Retro promoted** by the orchestrator to `process/retro/` in the brain when all items are checked.
+6. **Deleted** by the maintainer agent after QA passes — the issues have been fixed; retro is promoted to brain at `process/retro/` BEFORE deletion. The fixes themselves are the durable artifact; the todo list was scaffolding for the fix loop. The maintainer first moves the list to `completed` through `aide_frontmatter`, which refuses while any item is open. Removal goes through `aide_cleanup`, which removes a `todo.aide` only when it is `completed` (re-checked) or `abandoned`, whether or not a `plan.aide` sits beside it.

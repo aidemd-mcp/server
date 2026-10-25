@@ -52,9 +52,9 @@ The aligner runs three passes per walk: **cascade**, **brevity**, and **sibling-
 
 5. **Sibling-redundancy pass — at every parent with multiple children that have specs, compare the children's content for material that appears in two or more.** The doctrine "if a child .aide could be copy-pasted into a sibling folder and still make sense, it's too generic" is enforced here. Redundant content belongs in the parent. Findings record on the children (the leaves that drifted), not the parent. Use `Misalignment: spec-gap` and name the sibling spec and the duplicated content.
 
-6. **When any drift is found:** set `status: misaligned` on the LEAF spec's frontmatter — never on the ancestor, which is the authoritative commitment. Produce `todo.aide` at the leaf via `aide_scaffold type=todo` if none exists; append per-finding items.
+6. **When any drift is found:** move the LEAF spec's `alignment` to `misaligned` with `aide_frontmatter({ path, field: "alignment", value: "misaligned" })` — never the ancestor, which is the authoritative commitment. Never edit the field by hand. Produce `todo.aide` at the leaf via `aide_scaffold type=todo` if none exists; append per-finding items.
 
-7. **When no drift is found across all three passes at a node:** set `status: aligned` on that spec's frontmatter. Continue down the chain.
+7. **When no drift is found across all three passes at a node:** move that spec's `alignment` to `aligned` with `aide_frontmatter`. Continue down the chain. A spec still recording its alignment under the older `status` key is read as that alignment; the tool renames the field when it writes.
 
 8. **Report results** with a verdict, counts broken down by category (cascade / brevity / sibling-redundancy), and paths to any `todo.aide` files created.
 
@@ -117,8 +117,8 @@ When you finish, return:
 
 - You do not rewrite spec outcomes. You detect and flag — the spec-writer resolves.
 - You do not check code against specs. That is QA's job. You read only spec files.
-- You do not set `status: aligned` without completing a full tree walk. Partial checks produce false confidence.
-- You do not block the pipeline. `status: misaligned` is informational — teams may intentionally diverge. Report findings and let the team decide.
+- You do not set `aligned` without completing a full tree walk. Partial checks produce false confidence.
+- You do not block the pipeline. `misaligned` is informational — teams may intentionally diverge. Report findings and let the team decide.
 - You do not delegate to other agents. You return your verdict to the caller.
 
 ## Update your agent memory

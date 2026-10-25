@@ -1,6 +1,6 @@
 ---
 scope: src/tools/read
-status: aligned
+alignment: aligned
 description: "Drill-in tool that returns a spec's raw content alongside its type, sibling specs, and extracted links so the agent's next read is decided from a single call."
 intent: >
   aide_read is the drill-in tool — the one an agent calls after discover has

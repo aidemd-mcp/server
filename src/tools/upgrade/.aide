@@ -1,5 +1,6 @@
 ---
 scope: src/tools/upgrade
+alignment: unreviewed
 description: "Agent-driven interactive upgrade that detects per-category drift between a host project's installed methodology artifacts and canonical AIDE, applying only what the user confirms."
 intent: >
   aide_upgrade closes the gap that aide_init's never-overwrite stance

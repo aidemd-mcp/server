@@ -52,7 +52,7 @@ This command:
 - Merges the AIDE MCP server entry into `.mcp.json`
 - Writes the bundled brain config template to `.aide/config/brain.aide` (the brain location stays unset until `/aide:brain config` fills it and writes the brain MCP entry)
 - Writes every pipeline slash command to `.claude/commands/aide/`
-- Installs 10 canonical pipeline agents to `.claude/agents/aide/` and the `kanban-maintainer` board agent to `.claude/agents/kanban/`
+- Installs 11 canonical agents to `.claude/agents/aide/` (the pipeline agents plus `aide-upgrader`, which `/aide:upgrade` runs to migrate the project's own files) and the `kanban-maintainer` board agent to `.claude/agents/kanban/`
 - Installs skills (`study-playbook`, `brain`, `aide`, `aide-handoff`, `kanban`, `aide-brain-author`) to `.claude/skills/`
 - Installs the methodology docs hub to `.aide/docs/`
 - Writes the `aide-tree` launcher to `.aide/bin/aide-tree.mjs`
@@ -270,7 +270,7 @@ Add to `~/.windsurf/mcp.json`:
 
 ### aide_discover
 
-Scan the project for `.aide` spec files and return a progressive disclosure tree map showing each spec's type, location, and summary.
+Scan the project for `.aide` spec files and return a progressive disclosure tree map showing each spec's type, location, and summary. A plan or todo list carries its status inline, e.g. `[plan: approved]`, and a reviewed spec its alignment.
 
 **Inputs:**
 
@@ -291,17 +291,28 @@ Create new `.aide` spec files with automatic naming convention enforcement. Hand
 **Inputs:**
 
 - `directory` (string, required): Directory where the `.aide` file(s) will be created.
-- `type` (string, required): Type of `.aide` file to create. One of: `intent`, `research`, `both`, `todo`, `plan`.
+- `type` (string, required): Type of file to create. One of: `intent`, `research`, `both`, `todo`, `plan`, `session`. `session` always writes the project's session record at `.aide/session.aide`, whatever `directory` says.
+
+It never overwrites: a file that already exists is skipped and reported. New intent specs start `alignment: unreviewed`; new plans and todo lists start `status: proposed`.
 
 ### aide_cleanup
 
-Remove a closed module's pipeline ephemerals — `brief.aide`, `todo.aide` and `plan.aide` — and nothing else. The preconditions are enforced in code. Where the module has a `plan.aide`, every plan checkbox must be checked and a `todo.aide`, if present, must be fully checked. Where it has no `plan.aide`, a fully checked `todo.aide` is removed on its own, while a `brief.aide` (removed only together with its plan), a `todo.aide` with no checkboxes, or a folder with no ephemerals is refused. A refusal removes nothing and names each unchecked item with its file and line. It never touches intent specs, code or `.aide/session.aide`, and it refuses paths outside the project. Cross-platform with no shell, so cleanup needs no `rm` permission — allow the tool by name.
+Remove a closed module's pipeline ephemerals — `brief.aide`, `todo.aide` and `plan.aide` — and nothing else. The preconditions are enforced in code. Each file it would remove must record a closed status: `completed` (and every checkbox really checked) or `abandoned`; a file from before statuses existed passes when every checkbox is checked. Anything still `proposed` or `approved` is refused. A `brief.aide` is removed only together with its plan, and an abandoned plan takes its brief with it. Where there is no `plan.aide`, a closed `todo.aide` is removed on its own. A refusal removes nothing and names each unchecked item with its file and line. It never touches intent specs, code or `.aide/session.aide`, and it refuses paths outside the project. Cross-platform with no shell, so cleanup needs no `rm` permission — allow the tool by name.
 
 **Inputs:**
 
 - `path` (string, required): Module folder that holds the ephemerals, relative to the project root.
 - `dryRun` (boolean, optional): Report what would be removed, or what blocks removal, without removing anything. For inspection only — the real call is already safe.
-- `allowEmptyPlan` (boolean, optional): Let a `plan.aide` with no checkboxes pass. Overrides nothing else, and has no effect where there is no `plan.aide`.
+
+### aide_frontmatter
+
+Read or change one governed frontmatter value of an AIDE file, leaving every other byte as it was. Intent specs carry `alignment` (`unreviewed`, `aligned`, `misaligned`). Plans, briefs and todo lists carry `status`, moving `proposed` → `approved` → `completed`, or to `abandoned`; `completed` and `abandoned` are final, `completed` needs every item checked, and a revised `approved` file drops back to `proposed`. The tool enforces the allowed moves and refuses the session record, research specs, non-AIDE files and paths outside the project. It never decides when a value changes — the aligner, QA, the user's approval or a discard do.
+
+**Inputs:**
+
+- `path` (string, required): The AIDE file, relative to the project root.
+- `field` (string, optional): `alignment` or `status`. Omit with `value` to read.
+- `value` (string, optional): The new value.
 
 ### aide_inspect
 
@@ -314,7 +325,7 @@ Return the JSDoc block, signature, and kind for a named function, method, class,
 
 ### aide_validate
 
-Run a health check on `.aide` spec files in the project. Detects orphaned specs, missing specs, naming conflicts (`.aide` and `intent.aide` in the same folder), broken links, orphaned research files, and missing frontmatter descriptions.
+Run a health check on `.aide` spec files in the project. Detects orphaned specs, missing specs, naming conflicts (`.aide` and `intent.aide` in the same folder), broken links, orphaned research files, missing frontmatter descriptions, unparsable frontmatter, and intent specs whose `alignment` is missing or not a known value.
 
 **Inputs:**
 
