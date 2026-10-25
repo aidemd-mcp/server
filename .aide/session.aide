@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. In flight: session.aide always exists (from aide_scaffold), aide_scaffold never overwrites, and AIDE files record state through a new aide_frontmatter tool (spec alignment; plan/todo/brief status). Latest release v0.11.1.
+  Session record for the aidemd-mcp server. v0.12.0 released: session record always exists, aide_scaffold never overwrites, aide_frontmatter status model, aide-upgrader + changelog. Closing the feature after a restart on 0.12.0.
 ---
 
 # AIDE SESSION
@@ -10,7 +10,9 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-25, fix loop + prose sweep done; re-QA running)
+## State summary (set 2026-10-25, v0.12.0 released — awaiting restart)
+
+v0.12.0 is released. The feature commit is 2421374, the release commit de56e49, the tag v0.12.0; Publish and CI are green and npm serves 0.12.0. The published dist/versions.json has 46 artifacts, including docs/changelog and agents/aide/aide-upgrader, and the package ships CHANGELOG.md. The global install is @aidemd-mcp/server 0.12.0. The registration plans (root package.json files, initContent registry with the aide-upgrader agent and the changelog doc from the root CHANGELOG.md, installAgents/installMethodologyDocs tests, the buildVersionsMeta release gate) were built and QA passed with no todo. Before release the full suite was 2871 green twice, tsc clean, build OK. The aidemd.dev sync is BLOCKED: the headless `claude -p` in the site folder failed with 'Not logged in · Please run /login'. The user must log the CLI in, then rerun the sync. The site's files were not hand-edited. The plans, todo lists and briefs are still on disk, untracked and uncommitted; they close after the restart, through the real aide_frontmatter.
 
 Task `let-session-aide-exist-without-a-linked-kanban-task` (In Progress), with the P1 bug `aide-scaffold-overwrites-existing-files` folded in (In Progress). The user redesigned the feature on 2026-10-25. The session record is a working file like a plan or todo list, not methodology, so it comes from aide_scaffold. aide_scaffold gets type "session" (always .aide/session.aide), and its blank template is the one source of the placeholder. aide_scaffold never overwrites any file of any type. aide_init tells the agent to call aide_scaffold type=session instead of writing the file itself, and /aide boot calls the same tool when the file is missing. aide_cleanup removes a plan/todo/brief only when it is fully checked OR carries `status: abandoned` in the file. The agent sets that mark only after the user discards the work. The rule is per file, an abandoned plan takes its brief, and allowEmptyPlan is removed. The earlier three aide_init plans (methodology-category seed step) were discarded and, with the user's OK, shell-deleted once, because aide_cleanup can't remove unbuilt plans yet. Specs amended and approved: src/tools/scaffold/.aide, src/tools/cleanup/.aide, src/service/install/.aide.
 
@@ -18,7 +20,7 @@ This repo's stray `.aide/versions.json` (`{}`) came from the cli/init integratio
 
 v0.11.0 is released (release commit 566a5a5, tag v0.11.0; Publish and CI workflows green; npm serves 0.11.0). It ships versions manifest hygiene (260c82e) and the aide-brain-author skill with read-only aide_brain modes (6d85560).
 
-The global install is @aidemd-mcp/server 0.11.0. Its published dist/versions.json has 44 entries with 22 distinct sourceCommits and previousCommit on 41, and includes skills/aide-brain-author. This is the first full-history CI manifest, so the fetch-depth fix is confirmed in real CI.
+At that release the global install went to @aidemd-mcp/server 0.11.0. Its published dist/versions.json had 44 entries with 22 distinct sourceCommits and previousCommit on 41, and included skills/aide-brain-author. It was the first full-history CI manifest, so the fetch-depth fix is confirmed in real CI.
 
 aidemd.dev was synced headless to 0.11.0 (site commit d956b97: methodology-docs, version-metadata, commands, agents and skills, including the new aide-brain-author skill) and deployed; GitHub Pages is green. Its brainMigration is null.
 
@@ -30,7 +32,7 @@ v0.11.1 is released: fix commit 08807f9, then the release commit and tag v0.11.1
 - Prose updated: tool description, aide-maintainer, the aide skill's Completion step, README, and the todo/plan/brief docs. todo-aide.md says QA may write todo.aide beside code planned in another module.
 - Gate: tsc 0, 2373 tests, build OK. QA passed with no todo.aide. Ephemerals were cleaned in src/tools/cleanup, src/types and src.
 
-The global install is 0.11.1. aidemd.dev was synced headless (site commit 04232be) and deployed; Pages is green and brainMigration is null. The user said not to touch private-report-server: the orphan todo.aide there is theirs to clean up.
+At that release the global install went to 0.11.1. aidemd.dev was synced headless (site commit 04232be) and deployed; Pages is green and brainMigration is null. The user said not to touch private-report-server: the orphan todo.aide there is theirs to clean up.
 
 Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend` is built and QA passed with notes; no todo.aide.
 
@@ -65,11 +67,9 @@ QA passed with no todo.aide (no retro). plan.aide was removed through aide_clean
 
 User impact (corrected with the user, 2026-10-10): the recurring 'outdated' prompt happened only in this repo. Its stale committed .aide/versions.json was never rewritten, because this repo is never upgraded onto itself. In host projects the prompt shows once per release and accepting the upgrade clears it. The depth-1 stamping only inflates that one prompt's count, all 43 instead of just the changed artifacts, so it is cosmetic. The in-repo fix is complete without a publish. The full-history manifest is released in v0.11.0.
 
-Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (boot upgrade gate), v0.10.2 (content-free brain responses), v0.10.1 a broken tag; global install 0.10.4; aidemd.dev synced to 0.10.4 (site commit 160ad91).
+Previous releases: v0.10.4 (session.aide is the full session record), v0.10.3 (boot upgrade gate), v0.10.2 (content-free brain responses), v0.10.1 a broken tag; the global install went to 0.10.4 then; aidemd.dev synced to 0.10.4 (site commit 160ad91).
 
 Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | aligned | misaligned; editing a spec resets it to unreviewed). Plans, briefs AND todo lists share ONE lifecycle: proposed → approved → completed, approved → proposed when revised, proposed|approved → abandoned. completed and abandoned are final, and `in-flight` was retired. An approved plan means its implementation is in flight. A brief is approved with its plan and completes after it. QA's todo list needs approval before the fix loop runs. Building needs an approved plan (and brief); fixing needs an approved todo list. The user approved the plans: 9 plans in build order frontmatter → scaffold → install → cli/init → buildVersionsMeta → cleanup → discover → validate → src, plus the shared src/tools/frontmatter/brief.aide. Bootstrap exception: aide_frontmatter doesn't exist yet, so the architect set `status: approved` by hand, once, on the 9 plans and the brief. The build runs one implementor per numbered step. A new guard test, src/retiredVocabulary.test.ts, is red by design until the main agent's prose sweep lands; no release before that.
-
-All 9 plans are built. QA found 9 in-scope items across the modules, and the fix loop fixed them: frontmatter reader raw-value echo; cli/init test isolation (the root cause of the stray `.aide/versions.json` `{}`: the forbidden-flag test mocked process.exit, and the module's import-time IIFE ran a real init in the repo; init is now an exported runInitCli() called by the dispatcher, and no test writes into the repo any more); cleanup re-checks a completed brief's boxes; cleanup brief-without-plan wording; discover spec wording; TreePanel status tag and badge test; the guard timeouts; discover's shallow mode reads only a bounded head. Out of scope and left unchecked in src/tools/validate/todo.aide (to offer as tasks): detectAnomalies ignores the scoped path, its test gap, and findings printed with equal confidence. The prose sweep is done and src/retiredVocabulary.test.ts is green: agents (aligner, QA, maintainer, implementor, architect, strategist, spec writer, new aide-upgrader), commands (build, fix, align, upgrade), skills (aide, aide-handoff), docs (cascading-alignment, aide-spec, aide-template, plan/todo/brief/session-aide, index), README, tool descriptions in src/index.ts, init --help, CleanupRefusal JSDoc. CHANGELOG.md was written (Keep a Changelog, every tag back to v0.3.1, [Unreleased] with two [migration] entries), and CLAUDE.md got a ## Changelog section with the [migration] Detect/Migrate/Confirm rule. The full suite was green at 2845/2845 before re-QA. Running now: re-QA of the 7 modules with todo lists, and the architect planning the aide-upgrader + changelog registration (needs user approval before build).
 
 ## Kanban
 
@@ -222,15 +222,15 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Re-QA of the fixed modules and the architect's registration plan for aide-upgrader + changelog are running.
+v0.12.0 released. Waiting on: the user restarting Claude Code (to load the 0.12.0 tools) and logging the CLI in for the aidemd.dev sync.
 
 ### What the next agent must do
 
-1. Collect the re-QA verdicts; route any open in-scope item through the fix loop.
-2. Present the registration plan to the user for approval; bootstrap it to approved by hand, logged here (aide_frontmatter isn't in the global 0.11.1 server); then build, QA, fix.
-3. Offer the 3 validate items as backlog tasks (plus: aide-spec.md says aide_init creates the root intent.aide but no code does; an empty frontmatter block reads as unparsable; aide_validate flags briefs/session/brain.aide for missing description).
-4. Commit: source and prose only, never plans/todos/briefs or .aide/versions.json. Release 0.12.0 when the user says go: move [Unreleased] under 0.12.0, then publish.mjs minor, global install, aidemd.dev sync.
-5. After restarting on 0.12.0: close every plan, brief and todo list (completed through aide_frontmatter), promote retros, run aide-maintainer cleanup, run /aide:align on the 9 unreviewed specs, and update this file and the board.
+1. Rerun the headless aidemd.dev sync (command in the maintainer's private notes) once the CLI is logged in, confirm the deploy, and report brainMigration.
+2. After the restart: move every plan, brief and todo list from this release to completed through aide_frontmatter (plans: src/tools/frontmatter, src/tools/scaffold, src/service/install, src/cli/init, src/tools/upgrade/buildVersionsMeta, src/tools/cleanup, src/tools/discover, src/tools/validate, src, .aide, src/service/install/initContent, src/service/install/installAgents, src/service/install/installMethodologyDocs; brief: src/tools/frontmatter; todos: src/tools/frontmatter, scaffold, cli/init, cleanup, discover, src). src/tools/validate/todo.aide still has 3 unchecked out-of-scope items: offer them as tasks, then mark that todo abandoned only with the user's OK.
+3. Promote the retros to the brain at process/retro/, then aide-maintainer cleanup per module.
+4. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
+5. Board: the session task and the scaffold P1 bug → Done (on the user's OK); offer the backlog tasks (3 validate items, aide-spec.md's root intent.aide claim, the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description).
 6. Next task: `architect-sets-the-folder-structure-before-any-spec-below-th`.
 
 ### What's already done and validated
@@ -247,9 +247,11 @@ Re-QA of the fixed modules and the architect's registration plan for aide-upgrad
 - aidemd.dev synced to 0.10.4 from npm and deployed (site commit 160ad91), run headless: `claude -p` from the site folder with only aide_info, aide_upgrade, read and git tools allowed.
 - Feature `versions-manifest-release-hygiene` (Done): shallow-clone guard, full-history CI checkouts, cross-platform clean build, stale .aide/versions.json removed/ignored/excluded from tarball. Gate green, QA passed (no todo.aide), plan.aide cleaned via aide_cleanup, committed as 260c82e, released in v0.11.0.
 - Feature `brain-authoring-skill-create-a-brain-aide-for-any-backend`: built (20 steps across 6 plans), gate green (tsc 0, 2336 tests, build), QA passed with notes, ephemerals cleaned via aide_cleanup, committed 6d85560, released in v0.11.0, task Done.
-- v0.11.0 released 2026-10-11 (566a5a5); global install 0.11.0; aidemd.dev synced (d956b97) and deployed.
-- v0.11.1 released 2026-10-11 (fix 08807f9): aide_cleanup no-plan rule; global install 0.11.1; aidemd.dev synced (04232be) and deployed.
+- v0.11.0 released 2026-10-11 (566a5a5); global install updated to 0.11.0; aidemd.dev synced (d956b97) and deployed.
+- v0.11.1 released 2026-10-11 (fix 08807f9): aide_cleanup no-plan rule; global install updated to 0.11.1; aidemd.dev synced (04232be) and deployed.
 - Board cleanup 2026-10-25: 5 released/closed tasks → Done; 2 stale tasks dropped; the current task → In Progress.
+- v0.12.0 released 2026-10-25 (2421374 feature, de56e49 release); global install 0.12.0; the published manifest has the changelog + upgrader.
+- Hand bootstrap (logged): aide_frontmatter wasn't in the 0.11.1 server, so plan/brief/todo statuses for this release were set to approved by hand, once, with the user's approval each time.
 
 ### What's left after the current cycle
 
