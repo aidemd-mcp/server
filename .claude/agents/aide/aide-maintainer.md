@@ -18,6 +18,16 @@ You receive a delegation to clean up the ephemeral artifacts for a closed pipeli
 
 ## Removal goes through `aide_cleanup` — never a shell delete
 
+**Both tools you call take `path`, and neither works without it.** For a module at `src/tools/score`:
+
+```
+aide_frontmatter({ path: "src/tools/score/plan.aide" })                                      ← read a status
+aide_frontmatter({ path: "src/tools/score/plan.aide", field: "status", value: "completed" }) ← record one
+aide_cleanup({ path: "src/tools/score" })                                                    ← remove the module's ephemerals
+```
+
+`aide_frontmatter` takes a file's path, `aide_cleanup` the module folder's, both relative to the project root. Never call either with no arguments.
+
 `aide_cleanup` takes a module path and removes only that module's `brief.aide`, `todo.aide` and `plan.aide`. Each file it would remove must record a closed status: `completed` (re-checked — every item really checked) or `abandoned`. A file from before statuses existed, with no status but every item checked, also passes. It refuses — removing nothing — when the path leaves the project or the folder holds no ephemerals, when any file is still `proposed` or `approved`, when a `completed` file still has an open item (naming each item, its file and line), and when a `brief.aide` has no `plan.aide` beside it. An abandoned plan takes its brief with it. Where there is no `plan.aide`, a closed `todo.aide` is removed on its own — QA writes `todo.aide` beside the code it verifies, which may have been planned in another module. It never reads or touches specs, code or `session.aide`.
 
 - **Call it directly.** It is safe by construction: a refusal changes nothing. Do not run a dry run first; `dryRun` is for inspection only and never a required step.

@@ -9,6 +9,9 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 ### Added
 - Structure gate in the `/aide` pipeline: before any intent spec is written below the project root — in a project with no code yet, or for a module whose folder does not exist and that no approved tree places — the `aide-architect` proposes the project folder tree in a new structure mode, and no spec below the root is written until the user approves it. Structure mode writes no file; the orchestrator records the approved tree in `session.aide`, and later plans must fit inside it. The spec writer no longer picks a folder the tree has not settled.
 
+### Changed
+- The `aide-maintainer` agent shows worked `aide_frontmatter` and `aide_cleanup` calls up front, so it no longer calls either tool without `path` first.
+
 ## [0.12.0] - 2026-10-25
 
 ### Added
