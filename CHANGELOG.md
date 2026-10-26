@@ -6,6 +6,9 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Fixed
+- `/aide:brain config` skips a seeded brain file that already has the new section's text, instead of treating it as edited and asking the user about a file that is already up to date.
+
 ## [0.13.1] - 2026-10-26
 
 ### Changed
