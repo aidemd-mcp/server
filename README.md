@@ -42,7 +42,7 @@ aidemd-mcp init
 **Local** — pick it for shared repos and cloud/CI: pinned to one exact version that `/aide:upgrade` moves forward.
 
 ```bash
-npx -y @aidemd-mcp/server@0.12.0 init
+npx -y @aidemd-mcp/server@0.12.1 init
 ```
 
 `--mode global|local` skips the question (non-interactive runs default to local).
@@ -77,7 +77,7 @@ aidemd-mcp sync
 Local (use the version your `aide` entry pins):
 
 ```bash
-npx -y @aidemd-mcp/server@0.12.0 sync
+npx -y @aidemd-mcp/server@0.12.1 sync
 ```
 
 `sync` reads `.aide/config/brain.aide`, copies `mcpServerConfig` verbatim into `.mcp.json` under the fixed `brain` key, and writes the `name` field as the server label. Every other key in `mcpServers` (including your `aide` entry and any personal MCP integrations) is left byte-identical. If a legacy `obsidian` key is present it is removed in the same write. The command is idempotent — running it twice produces the same `.mcp.json` bytes, and the second invocation prints `already in sync` without touching the file. Exit code is `0` on success (including the no-change case), `1` on a missing or malformed `brain.aide` or invalid `.mcp.json`, and `2` on `--help`.
@@ -120,7 +120,7 @@ Or add to your project's `.mcp.json`:
 **Local, pinned** — for shared repos and cloud/CI:
 
 ```bash
-claude mcp add aide -- npx -y @aidemd-mcp/server@0.12.0
+claude mcp add aide -- npx -y @aidemd-mcp/server@0.12.1
 ```
 
 Or add to your project's `.mcp.json`:
@@ -130,7 +130,7 @@ Or add to your project's `.mcp.json`:
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.12.0"]
+      "args": ["-y", "@aidemd-mcp/server@0.12.1"]
     }
   }
 }
@@ -165,7 +165,7 @@ Config file locations:
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.12.0"]
+      "args": ["-y", "@aidemd-mcp/server@0.12.1"]
     }
   }
 }
@@ -199,7 +199,7 @@ Add to `~/.cursor/mcp.json`:
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.12.0"]
+      "args": ["-y", "@aidemd-mcp/server@0.12.1"]
     }
   }
 }
@@ -228,7 +228,7 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.12.0"]
+      "args": ["-y", "@aidemd-mcp/server@0.12.1"]
     }
   }
 }
@@ -260,7 +260,7 @@ Add to `~/.windsurf/mcp.json`:
   "mcpServers": {
     "aide": {
       "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.12.0"]
+      "args": ["-y", "@aidemd-mcp/server@0.12.1"]
     }
   }
 }
