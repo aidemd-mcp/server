@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.12.0 released; closing its ephemerals is pending. The structure gate (architect proposes the folder tree before any spec below the root) is committed on main, unreleased.
+  Session record for the aidemd-mcp server. v0.12.0 released and closed out except src/tools/validate's open todo. The structure gate is committed on main, unreleased.
 ---
 
 # AIDE SESSION
@@ -10,11 +10,18 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-25, structure gate committed; v0.12.0 close-out pending)
+## State summary (set 2026-10-25, v0.12.0 closed out; structure gate committed)
+
+2026-10-25, v0.12.0 close-out (user-approved):
+
+- The orchestrator moved 13 plans, 1 brief and 6 todo lists to completed through aide_frontmatter (scaffold's todo went proposed → approved → completed, approved by the orchestrator under the autonomous fix-loop rule). src/tools/validate/plan.aide is completed too, but src/tools/validate/todo.aide stays open: 3 unchecked out-of-scope items (detectAnomalies runs the missing-spec walk from the root whatever path is passed; the only scoped-path test can't see out-of-scope findings; every finding prints with the same confidence). It waits on the user: offer them as tasks, mark the todo abandoned only with the user's OK, then clean up src/tools/validate.
+- Retros promoted to the brain at process/retro/2026-10-25-aidemd-status-model-and-session-record.md (cross-cutting lessons + per module).
+- aide-maintainer cleanup via aide_cleanup CLEANED 12 modules: src/tools/frontmatter (plan, brief, todo), src/tools/scaffold, src/cli/init, src/tools/cleanup, src/tools/discover, src (plan + todo each), src/service/install, src/service/install/initContent, installAgents, installMethodologyDocs, src/tools/upgrade/buildVersionsMeta, .aide (plan only). Only src/tools/validate/plan.aide and todo.aide remain on disk.
+- Observed: 4 of 12 fresh maintainers first called aide_cleanup (and one aide_frontmatter) with no arguments, rejected by schema validation, then retried with `path`. The shipped maintainer prose names `path`, so this is a new follow-up: the maintainer prose should show the call shape explicitly (e.g. `aide_cleanup({ path: "<module>" })`).
 
 2026-10-25: (a) The aidemd.dev headless sync was retried and failed again: `claude auth status` from the shell reports loggedIn:false for the npm-global CLI at C:/Users/bestb/AppData/Roaming/npm/claude (v2.1.195), even though the user said they logged in — likely a different install/profile. The user must run `claude auth login` (or `claude /login`) for that CLI, then the sync reruns. (b) Task `architect-sets-the-folder-structure-before-any-spec-below-th` is implemented as prose by the main agent (no pipeline, per process discipline), approved by the user and committed on main (unpushed, unreleased): the aide skill (structure gate section before Stage 1, delegation list, explicit routing, resume table rows for missing root intent and unsettled tree, Stage 1 interview note, rules); the aide-architect agent (structure mode: returns project tree, entity model, playbook mapping, decisions, spec order, open questions; writes no file; plans must fit the approved tree); the aide-spec-writer agent and /aide:spec (below the root, the folder comes from the approved tree, else return to the orchestrator; child-spec splits go through structure mode); docs index.md (architect row), aide-spec.md (bootstrapping paragraph), plan-aide.md (rule: fits the approved project tree); CHANGELOG [Unreleased] Added bullet. No format change, so no [migration] entry. Guard tests and the install/cli-init/upgrade suites are green (1353 tests).
 
-v0.12.0 is released. The feature commit is 2421374, the release commit de56e49, the tag v0.12.0; Publish and CI are green and npm serves 0.12.0. The published dist/versions.json has 46 artifacts, including docs/changelog and agents/aide/aide-upgrader, and the package ships CHANGELOG.md. The global install is @aidemd-mcp/server 0.12.0. The registration plans (root package.json files, initContent registry with the aide-upgrader agent and the changelog doc from the root CHANGELOG.md, installAgents/installMethodologyDocs tests, the buildVersionsMeta release gate) were built and QA passed with no todo. Before release the full suite was 2871 green twice, tsc clean, build OK. The aidemd.dev sync is BLOCKED: the headless `claude -p` in the site folder failed with 'Not logged in · Please run /login'. The user must log the CLI in, then rerun the sync. The site's files were not hand-edited. The plans, todo lists and briefs are still on disk, untracked and uncommitted; they close after the restart, through the real aide_frontmatter.
+v0.12.0 is released. The feature commit is 2421374, the release commit de56e49, the tag v0.12.0; Publish and CI are green and npm serves 0.12.0. The published dist/versions.json has 46 artifacts, including docs/changelog and agents/aide/aide-upgrader, and the package ships CHANGELOG.md. The global install is @aidemd-mcp/server 0.12.0. The registration plans (root package.json files, initContent registry with the aide-upgrader agent and the changelog doc from the root CHANGELOG.md, installAgents/installMethodologyDocs tests, the buildVersionsMeta release gate) were built and QA passed with no todo. Before release the full suite was 2871 green twice, tsc clean, build OK. The aidemd.dev sync is BLOCKED: the headless `claude -p` in the site folder failed with 'Not logged in · Please run /login'. The user must log the CLI in, then rerun the sync. The site's files were not hand-edited.
 
 Task `let-session-aide-exist-without-a-linked-kanban-task` (In Progress), with the P1 bug `aide-scaffold-overwrites-existing-files` folded in (In Progress). The user redesigned the feature on 2026-10-25. The session record is a working file like a plan or todo list, not methodology, so it comes from aide_scaffold. aide_scaffold gets type "session" (always .aide/session.aide), and its blank template is the one source of the placeholder. aide_scaffold never overwrites any file of any type. aide_init tells the agent to call aide_scaffold type=session instead of writing the file itself, and /aide boot calls the same tool when the file is missing. aide_cleanup removes a plan/todo/brief only when it is fully checked OR carries `status: abandoned` in the file. The agent sets that mark only after the user discards the work. The rule is per file, an abandoned plan takes its brief, and allowEmptyPlan is removed. The earlier three aide_init plans (methodology-category seed step) were discarded and, with the user's OK, shell-deleted once, because aide_cleanup can't remove unbuilt plans yet. Specs amended and approved: src/tools/scaffold/.aide, src/tools/cleanup/.aide, src/service/install/.aide.
 
@@ -226,16 +233,15 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Structure gate committed (unreleased). v0.12.0 close-out pending; aidemd.dev sync blocked on the npm-global CLI login.
+v0.12.0 closed out except src/tools/validate's open todo (needs the user). Structure gate committed, unreleased. aidemd.dev sync blocked on the npm-global CLI login.
 
 ### What the next agent must do
 
 1. User logs in the npm-global claude CLI (`claude auth login`), then rerun the aidemd.dev headless sync for 0.12.0, confirm the deploy, report brainMigration.
-2. Move every plan, brief and todo list from v0.12.0 to completed through aide_frontmatter (plans: src/tools/frontmatter, src/tools/scaffold, src/service/install, src/cli/init, src/tools/upgrade/buildVersionsMeta, src/tools/cleanup, src/tools/discover, src/tools/validate, src, .aide, src/service/install/initContent, src/service/install/installAgents, src/service/install/installMethodologyDocs; brief: src/tools/frontmatter; todos: src/tools/frontmatter, scaffold, cli/init, cleanup, discover, src). Offer src/tools/validate/todo.aide's 3 unchecked out-of-scope items as tasks, then mark it abandoned only with the user's OK.
-3. Promote retros to process/retro/, then aide-maintainer cleanup per module.
-4. Board: move `let-session-aide-exist-without-a-linked-kanban-task` and `aide-scaffold-overwrites-existing-files` to Done on the user's OK (the session task's own status note is stale — it still says spec amendments remain); offer the backlog follow-ups.
-5. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
-6. The structure gate ships in the next release (publish + site sync).
+2. src/tools/validate/todo.aide: offer its 3 out-of-scope items as tasks; with the user's OK mark it abandoned through aide_frontmatter, then aide-maintainer cleanup of src/tools/validate.
+3. Board: move `let-session-aide-exist-without-a-linked-kanban-task` and `aide-scaffold-overwrites-existing-files` to Done on the user's OK (the session task's own status note is stale); offer the backlog follow-ups (aide-spec.md's root intent.aide claim, the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
+4. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
+5. The structure gate ships in the next release (publish + site sync).
 
 ### What's already done and validated
 
@@ -261,6 +267,7 @@ Structure gate committed (unreleased). v0.12.0 close-out pending; aidemd.dev syn
 - Prose sweep: aligner, QA, maintainer, implementor, architect, strategist and spec writer; the new aide-upgrader agent; build, fix, align and upgrade commands; the aide and aide-handoff skills; the cascading-alignment, aide-spec, aide-template, plan/todo/brief/session-aide and index docs; README; the tool descriptions in src/index.ts; init --help; the CleanupRefusal JSDoc. src/retiredVocabulary.test.ts is green.
 - CHANGELOG.md written (Keep a Changelog, every tag back to v0.3.1, 0.12.0 with two [migration] entries). This repo's CLAUDE.md has a ## Changelog section requiring an [Unreleased] bullet per user-visible change and a [migration] entry (Detect/Migrate/Confirm) per format change.
 - Structure-gate prose written; guard tests + install/cli-init/upgrade suites green (1353 tests, 2026-10-25); approved by the user and committed on main 2026-10-25, unreleased; task moved to Done.
+- v0.12.0 close-out (2026-10-25): 13 plans, 1 brief, 6 todos completed; retro at process/retro/2026-10-25-aidemd-status-model-and-session-record.md; 12 modules cleaned through aide_cleanup.
 
 ### What's left after the current cycle
 
@@ -274,6 +281,7 @@ Structure gate committed (unreleased). v0.12.0 close-out pending; aidemd.dev syn
 - The launcher-region logic is duplicated between readTemplateLauncher and upgrade's locateFrontmatter.
 - The marker line format is spelled out in SKILL.md (drift risk if the format changes).
 - aide-maintainer agents loaded before the prose fix still guess aide_cleanup's parameter name on the first try. The shipped prose now names `path`, so new sessions pick it up.
+- aide-maintainer prose should show the aide_cleanup call shape explicitly — 4 of 12 fresh maintainers called it with no arguments first (2026-10-25).
 
 session.aide is rewritten, never deleted (decision 18).
 
