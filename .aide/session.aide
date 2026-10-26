@@ -109,6 +109,7 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
 - `track-playbook-conformance-per-module` (Todo, p2, feature) — per-module last-playbook-check field on specs, @playbook pointers in orchestrator headers, suggestions not automatic passes, migrations.
+- `ship-never-truncate-slug-rule-in-brain-template` (Backlog, p3, housekeeping) — the never-truncate slug rule in the bundled template's kanban hub seed and this repo's brain.aide; optional renames of cut-off slugs.
 - `every-plan-requires-an-intent-spec-beside-it` (Done, p1, bug) — released in 0.13.0 (feature dc41576, release fecac4b); moved to Done by the user, 2026-10-26.
 - `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` (Done, p1, bug) — released in 0.12.1; moved to Done by the user, 2026-10-26.
 - `architect-sets-the-folder-structure-before-any-spec-below-th` (Done, p2, change) — structure gate written as prose, approved and committed 2026-10-25; ships in the next release. Released in 0.12.1.
@@ -339,7 +340,7 @@ Read-entry fix committed (7b8756d), unreleased. Next task in Todo: `track-playbo
 - The launcher-region logic is duplicated between readTemplateLauncher and upgrade's locateFrontmatter.
 - The marker line format is spelled out in SKILL.md (drift risk if the format changes).
 - aide_scaffold type=plan writes a `description:` field that plan-aide.md forbids (and the todo template has had a similar mismatch); fix the templates or the doc.
-- Ship the never-truncate slug rule in the bundled brain template's kanban hub seed (pipeline; append the old section fingerprint) and offer it to this repo's brain.aide through /aide:brain config.
+- Ship the never-truncate slug rule in the bundled brain template's kanban hub seed (pipeline; append the old section fingerprint) and offer it to this repo's brain.aide through /aide:brain config — task `ship-never-truncate-slug-rule-in-brain-template`.
 
 session.aide is rewritten, never deleted (decision 18).
 
