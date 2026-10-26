@@ -80,7 +80,8 @@ options:
 On confirmation, read the config, merge the prescription, write with the Write tool. If `malformed`, tell the user and ask how to proceed.
 
 - **Launch mode is kept.** The prescription keeps the aide entry's current launch mode, global or local, and never switches it.
-- **The local pin moves forward here.** A local npx entry not pinned to the current version gets the pinned prescription. This is how the pin moves forward.
+- **Without a target, a local pin is judged against the running server.** A local npx entry not pinned to the running server's version gets the pinned prescription. The running server never knows newer releases, so this cannot move a project to a newer version.
+- **Moving a pin to a newer version goes through `targetVersion`, and the tool writes it.** When the caller knows the latest version (the `/aide` boot passes `aide_info`'s `behind.latest`), call `aide_upgrade` with `targetVersion`: the `mcp` result then carries `pinMove: { from, to }` instead of a `prescription`. Install that version first (`npx -y @aidemd-mcp/server@{to} sync --help`, which exits 2 by design: printed help starting `Usage:` means the version is installed; anything else means it failed, so stop and leave the entry as it is), then apply with `aide_upgrade({ category: "mcp", targetVersion: "{to}" })`. The tool changes only the version in the aide entry and returns `status: "updated"`; never merge a `pinMove` yourself. A result carrying `instructions` means the pin was not moved: relay it.
 - **Custom entries are left alone.** A custom aide entry (neither npx nor `aidemd-mcp`, e.g. a dev `node ./dist/index.js`) reports `matches` and is never offered a change.
 - **Tips are information.** If a file carries a `tip`, surface it once, as information. Never turn it into a merge question.
 - **The brain's launcher is not part of this step.** A legacy brain launcher is changed through `/aide:brain config`, which previews and applies it with the brain category's `brainChange: "launcher"` call.
@@ -145,3 +146,5 @@ Report what was done:
 - Categories that were already current
 - Categories the user skipped
 - Project files migrated by the upgrader, and any the user left as they were
+
+If anything changed — any file written, any pin moved, any project file migrated — tell the user to start a new session before doing more work. This session already loaded the old docs, skills and agents (and, after a pin move, the old server); a new session loads the new ones. If nothing changed, no restart is needed.

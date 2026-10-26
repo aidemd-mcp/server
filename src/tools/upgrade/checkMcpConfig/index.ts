@@ -4,7 +4,13 @@ import aidePackage from "@/service/install/shared/aidePackage/index.js";
 import detectLaunchMode from "@/service/install/shared/detectLaunchMode/index.js";
 import normalizeLaunchedCommand from "@/service/install/shared/normalizeLaunchedCommand/index.js";
 import { mcpEntry } from "@/service/install/wireMcp/index.js";
+import readAidePin from "../shared/readAidePin/index.js";
 import isCanonicalGlobalAideEntry from "./isCanonicalGlobalAideEntry/index.js";
+import isPinBehind from "./isPinBehind/index.js";
+
+/** Instructions for a local aide entry whose version pin cannot be located, so it cannot be moved to `target`. */
+const UNLOCATABLE_PIN = (target: string): string =>
+	`The aide entry runs npx in a form whose version pin cannot be located (another package, or a -p/--package flag), so it cannot be moved to ${target}. Leave the entry as it is and tell the user.`;
 
 /** Informational note for a global aide entry launched by absolute path. Neither drift nor a prescription. */
 const ABSOLUTE_PATH_TIP =
@@ -30,6 +36,12 @@ async function safeReadFile(path: string): Promise<string | undefined> {
  * form adds an informational `tip`). The check never proposes switching modes
  * and never touches the brain launcher.
  *
+ * With a `targetVersion`, a local (npx) aide entry is judged by its version pin
+ * alone (the command form, `-y` and other args are not judged). Drift is
+ * reported as `pinMove` for the tool to write, never as a prescription; an entry
+ * whose pin cannot be located gets `instructions` instead. Without a
+ * `targetVersion` behavior is unchanged. Still read-only.
+ *
  * Returns an `UpgradeFileResult` with category `"mcp"`:
  * - `"malformed"` when the file exists but is not valid JSON.
  * - `"missing"` when the file does not exist. `prescription` carries the
@@ -43,6 +55,7 @@ async function safeReadFile(path: string): Promise<string | undefined> {
  */
 export default async function checkMcpConfig(
 	mcpConfigPath: string,
+	targetVersion?: string,
 ): Promise<UpgradeFileResult> {
 	const name = "MCP config";
 	const localPrescription: McpPrescription = { key: "aide", entry: mcpEntry("local") };
@@ -111,6 +124,27 @@ export default async function checkMcpConfig(
 	if (hasLegacyKey) return differs;
 
 	if (launched?.token === "npx") {
+		if (targetVersion !== undefined) {
+			const pin = readAidePin(aideEntry);
+			if (pin === null) {
+				return {
+					name,
+					filePath: mcpConfigPath,
+					status: "differs",
+					category: "mcp",
+					instructions: UNLOCATABLE_PIN(targetVersion),
+				};
+			}
+			if (!isPinBehind(pin.version, targetVersion)) return matches;
+			return {
+				name,
+				filePath: mcpConfigPath,
+				status: "differs",
+				category: "mcp",
+				pinMove: { from: pin.version, to: targetVersion },
+			};
+		}
+
 		const pinned = mcpEntry("local");
 		const isPinned =
 			aideEntry.command === pinned.command &&

@@ -1,7 +1,7 @@
 import type { BrainAideMcpServerConfig, BrainLauncherOffer, LegacyLauncherReason } from "@/types/index.js";
 import { MCPVAULT_COMMAND, MCPVAULT_PACKAGE, MCPVAULT_VERSION } from "../../obsidianBrainAideTemplate/index.js";
-import isOlderVersion from "./isOlderVersion/index.js";
-import readNpxPackageSpec from "./readNpxPackageSpec/index.js";
+import isOlderVersion from "@/service/install/shared/isOlderVersion/index.js";
+import readNpxPackageSpec from "@/service/install/shared/readNpxPackageSpec/index.js";
 
 /** Matches an exact `major.minor.patch` version. */
 const EXACT_VERSION = /^\d+\.\d+\.\d+$/;

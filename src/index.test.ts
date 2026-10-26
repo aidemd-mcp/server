@@ -440,7 +440,52 @@ describe("aide_upgrade brain category routing", () => {
 	});
 });
 
+describe("aide_upgrade targetVersion", () => {
+	const root = process.cwd();
+
+	it("passes targetVersion with category mcp to upgrade and never to brainCategory", async () => {
+		mockUpgrade.mockResolvedValue({ categories: [] });
+
+		await callTool("aide_upgrade", { category: "mcp", targetVersion: "0.13.1" });
+
+		expect(mockUpgrade).toHaveBeenCalledWith(root, undefined, undefined, "0.13.1");
+		expect(mockBrainCategory).not.toHaveBeenCalled();
+	});
+
+	it("passes targetVersion through on a detection call", async () => {
+		mockUpgrade.mockResolvedValue({ categories: [] });
+
+		await callTool("aide_upgrade", { targetVersion: "0.13.1" });
+
+		expect(mockUpgrade).toHaveBeenCalledWith(root, undefined, undefined, "0.13.1");
+	});
+
+	it("passes undefined when no targetVersion is given", async () => {
+		mockUpgrade.mockResolvedValue({ categories: [] });
+
+		await callTool("aide_upgrade", { category: "commands" });
+
+		expect(mockUpgrade).toHaveBeenCalledWith(root, undefined, undefined, undefined);
+	});
+
+	it.each([
+		["a non-mcp category", { category: "commands", targetVersion: "0.13.1" }],
+		["the brain category", { category: "brain", targetVersion: "0.13.1" }],
+		["a non-exact version", { targetVersion: "latest" }],
+	])("rejects targetVersion with %s", async (_label, args) => {
+		await expect(callTool("aide_upgrade", args)).rejects.toThrow();
+		expect(mockBrainCategory).not.toHaveBeenCalled();
+		expect(mockUpgrade).not.toHaveBeenCalled();
+	});
+});
+
 describe("aide_upgrade registration", () => {
+	it("registers targetVersion as a string", async () => {
+		const { inputSchema } = await findTool("aide_upgrade");
+
+		expect(inputSchema.properties.targetVersion.type).toBe("string");
+	});
+
 	it("registers brainChange as the contract markers plus launcher", async () => {
 		const { inputSchema } = await findTool("aide_upgrade");
 

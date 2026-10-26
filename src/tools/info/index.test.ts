@@ -496,7 +496,13 @@ describe("info — name field forwarding", () => {
 // ---------------------------------------------------------------------------
 
 describe("info — behind notice", () => {
-	const NOTICE: BehindNotice = { installed: "1.2.3", latest: "1.3.0" };
+	const NOTICE: BehindNotice = {
+		installed: "1.2.3",
+		latest: "1.3.0",
+		launch: "global",
+		versionsBehind: 1,
+		highlights: ["a fixed brain-config skip"],
+	};
 
 	it("forwards the resolveBehind notice verbatim in behind", async () => {
 		mockResolveBehind.mockResolvedValue(NOTICE);
@@ -507,11 +513,37 @@ describe("info — behind notice", () => {
 		expect(mockResolveBehind).toHaveBeenCalledWith("/project/root", "1.2.3");
 	});
 
-	it("returns behind: null when resolveBehind resolves null (offline, non-global or current)", async () => {
+	it("returns behind: null when resolveBehind resolves null (offline, no aide entry or current)", async () => {
 		await expect(info("/project/root")).resolves.toBeDefined();
 		const result = await info("/project/root");
 
 		expect(result.behind).toBeNull();
+	});
+
+	it("forwards a local-launch notice verbatim and leaves outdated and brain as they are without it", async () => {
+		const localNotice: BehindNotice = {
+			installed: "0.12.0",
+			latest: "0.13.1",
+			launch: "local",
+			versionsBehind: 2,
+			highlights: [],
+		};
+		mockBuildBrainState.mockResolvedValue(BRAIN_MCP_DRIFT);
+		mockReadFileSync.mockImplementation((filePath: string) => {
+			if (LOCAL_VERSIONS_PATH_PATTERN.test(filePath)) {
+				return JSON.stringify({ "docs/aide-spec": { sourceCommit: "stale00" } });
+			}
+			return JSON.stringify({ version: "1.2.3" });
+		});
+		mockResolveBehind.mockResolvedValue(null);
+		const without = await info("/project/root");
+
+		mockResolveBehind.mockResolvedValue(localNotice);
+		const withNotice = await info("/project/root");
+
+		expect(withNotice.behind).toEqual(localNotice);
+		expect(withNotice.outdated).toEqual(without.outdated);
+		expect(withNotice.brain).toEqual(without.brain);
 	});
 
 	it("behind non-null does not change outdated or brain", async () => {

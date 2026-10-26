@@ -713,3 +713,44 @@ describe("UpgradeInput — brainChange and beforeHash", () => {
 		).toBe(false);
 	});
 });
+
+describe("UpgradeInput — targetVersion", () => {
+	it.each([{ targetVersion: "0.13.1" }, { category: "mcp", targetVersion: "0.13.1" }])(
+		"accepts %j",
+		(input) => {
+			expect(UpgradeInput.safeParse(input).success).toBe(true);
+		},
+	);
+
+	it.each([
+		{ category: "commands", targetVersion: "0.13.1" },
+		{ category: "brain", targetVersion: "0.13.1" },
+	])("rejects targetVersion with another category: %j", (input) => {
+		expect(UpgradeInput.safeParse(input).success).toBe(false);
+	});
+
+	it.each(["latest", "^0.13.1", "0.13", "v0.13.1", "0.13.1-beta.1", "01.2.3", ""])(
+		"rejects targetVersion %j",
+		(targetVersion) => {
+			expect(UpgradeInput.safeParse({ category: "mcp", targetVersion }).success).toBe(false);
+		},
+	);
+});
+
+describe("upgrade — targetVersion forwarding", () => {
+	it("passes targetVersion to checkMcpConfig", async () => {
+		wireDefaultMocks();
+
+		await upgrade(tempDir, undefined, undefined, "0.13.1");
+
+		expect(vi.mocked(checkMcpConfig)).toHaveBeenCalledWith(join(tempDir, ".mcp.json"), "0.13.1");
+	});
+
+	it("passes undefined to checkMcpConfig when no target is named", async () => {
+		wireDefaultMocks();
+
+		await upgrade(tempDir);
+
+		expect(vi.mocked(checkMcpConfig)).toHaveBeenCalledWith(join(tempDir, ".mcp.json"), undefined);
+	});
+});

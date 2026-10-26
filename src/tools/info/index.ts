@@ -40,10 +40,12 @@ function readServerVersion(): string {
  *   stale. Missing `.aide/versions.json` (pre-version-tracking install)
  *   collapses silently to an empty `outdated` array.
  *
- * - `behind`: staleness of the running server binary against the latest
- *   published npm version. Soft notice independent of `outdated`, never a
- *   gate; `null` when the server is not globally launched, the check is
- *   offline or fails, or the server is current.
+ * - `behind`: staleness of the running server against the latest published
+ *   version, for any launch the project's aide entry uses (global or npx).
+ *   The notice names the launch kind, how many published versions behind the
+ *   server is and up to three one-line highlights. Soft notice independent of
+ *   `outdated`, never a gate; `null` when there is no aide entry, the version
+ *   is unknown, the check is offline or fails, or the server is current.
  *
  * - `brain`: precondition state of the host's brain.
  *   Hard gate — the orchestrator must halt and direct the user to run `/aide`

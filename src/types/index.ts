@@ -114,8 +114,41 @@ export type GlobalPackageStatus = {
 	installCommand: string;
 };
 
-/** The globally installed aide server's version versus the latest published version. */
-export type BehindNotice = { installed: string; latest: string };
+/**
+ * The running aide server is behind the latest published version. `installed`
+ * is the version actually running (a pin edited but not yet restarted still
+ * reports the old running version, which is accurate). `launch` names how the
+ * project's aide entry launches it, so the caller offers the matching remedy
+ * (`"global"`: update the global install; `"local"`: an npx launch, pinned or
+ * unpinned, whose pin moves to `latest`). `versionsBehind` and `highlights`
+ * come from the published release history, which the running server has never
+ * seen.
+ */
+export type BehindNotice = {
+	/** The running server's own version, for every launch kind. */
+	installed: string;
+	/** The latest published version (the registry's `latest` dist-tag). */
+	latest: string;
+	/** How the project's aide entry launches the server. */
+	launch: LaunchMode;
+	/** Published `x.y.z` releases after `installed` up to and including `latest`; always 1 or more. */
+	versionsBehind: number;
+	/** 0 to 3 one-line highlights of what those releases added, fixed or changed; empty when the notes could not be fetched or held nothing to pick. */
+	highlights: string[];
+};
+
+/** The registry's latest dist-tag and every published version string, read in one request by aide_info; `latest` is always one of `versions`. */
+export type PublishedVersions = { latest: string; versions: string[] };
+
+/** The Keep a Changelog subsections a version notice may draw highlights from, in no particular order (the rank lives with the picker). */
+export type ReleaseNoteHeading = "Added" | "Fixed" | "Changed";
+
+/** One top-level changelog bullet under a versioned release heading and one of the highlight subsections, `[migration]` bullets excluded; `text` is the bullet without its leading `- `. */
+export type ReleaseNoteBullet = {
+	version: string;
+	heading: ReleaseNoteHeading;
+	text: string;
+};
 
 /** Resolved paths for a detected agent framework. */
 export interface FrameworkConfig {
@@ -159,6 +192,15 @@ export interface McpPrescription {
 	 */
 	entry: { command: string; args: (string | null)[] };
 }
+
+/**
+ * The aide entry's npx version pin moving to a version the caller named. `from`
+ * is the version in the entry's package spec today, or null when the spec
+ * carries none (`@aidemd-mcp/server` bare); it may be a non-exact tag or range
+ * such as `latest`. `to` is the exact `x.y.z` the caller named. Reported by
+ * aide_upgrade's mcp step; it never carries MCP config text.
+ */
+export type McpPinMove = { from: string | null; to: string };
 
 /**
  * The category of a single init step. The calling agent uses this
@@ -388,10 +430,10 @@ export type OutdatedSectionVersion = {
 };
 
 /**
- * Where the npx package spec sits in a brain launcher's args. Both
- * `argsStart` and `specIndex` are absolute indexes into
- * `mcpServerConfig.args`. Produced and consumed by provisionBrain's launcher
- * check and rewrite.
+ * Where the npx package spec sits in an npx launcher's args. Both
+ * `argsStart` and `specIndex` are absolute indexes into the launcher's `args`;
+ * produced by `readNpxPackageSpec` (src/service/install/shared) and consumed by
+ * provisionBrain's legacy-launcher check and aide_upgrade's aide pin move.
  */
 export type NpxPackageSpec = {
 	argsStart: number;
@@ -481,6 +523,15 @@ export interface UpgradeFileResult {
 	 * results. The agent merges this entry into the existing config.
 	 */
 	prescription?: McpPrescription;
+	/**
+	 * Present only on the `mcp` result when the caller named a target version
+	 * and the project's local aide entry is pinned older than it, unpinned, or
+	 * pinned to a non-exact version. On a detection call it is the proposed move
+	 * (status `differs`); on the mcp category call the tool writes it itself
+	 * (status `updated`), or leaves the file untouched and sets `instructions`
+	 * when it cannot. Never present together with `prescription`.
+	 */
+	pinMove?: McpPinMove;
 	/**
 	 * An informational note on a file result. It is neither drift nor a
 	 * prescription, and it never changes the summary counts.
@@ -1053,3 +1104,6 @@ export const SKIP_DIRS = [
 
 /** One `args` item of a brain.aide `mcpServerConfig` located in the frontmatter region: its whole source line and its parsed value. */
 export type ArgLine = { start: number; end: number; value: string | null };
+
+/** The aide entry's package-spec argument located in the raw MCP config text: `start` and `end` are the offsets of the whole JSON string token, quotes included, and `value` is its decoded string. Produced and consumed inside aide_upgrade's pin move. */
+export type PinToken = { start: number; end: number; value: string };

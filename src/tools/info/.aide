@@ -1,29 +1,71 @@
 ---
 scope: src/tools/info
 alignment: unreviewed
-description: "Boot-time reporter that returns AIDE artifact staleness and brain-precondition state in one read-only pass so the orchestrator can branch on each before pipeline work runs."
+description: "Boot-time reporter that tells the orchestrator, in one read-only pass, whether the server is behind its latest release, whether installed AIDE files lag the running version, and the brain's state."
 intent: >
-  aide_info is the passive precondition reporter the orchestrator calls
-  during its boot sequence. It returns structurally different findings
-  as independent fields — among them artifact staleness and brain
-  configuration state — so the orchestrator can apply different
-  policies to each. Brain detection is forwarded unchanged from the
-  upstream detector; this tool composes nothing, mutates nothing, and
-  surfaces no path-validation state. All pre-init and misconfiguration
-  conditions resolve to structured states, never thrown errors, so the
-  first-ever boot on a cold project completes cleanly.
+  The passive reporter the orchestrator calls at boot. It returns
+  structurally different findings as independent fields so the orchestrator
+  applies a different policy to each: whether the server the project runs
+  is behind the latest published version, with a short incentive to
+  upgrade; whether the project's installed AIDE files lag the version it
+  runs; and the brain's configuration state. It composes no messages,
+  mutates nothing, and resolves every pre-init, misconfiguration or offline
+  condition to a structured state, never a thrown error, so a first-ever or
+  offline boot completes cleanly.
 outcomes:
   desired:
-    - Returns artifact staleness, brain-precondition state, any version notice, and any brain migration notice each as its own independent top-level field, so the orchestrator can branch on each without scanning the others.
-    - Treats artifact staleness, a globally installed server that is behind its published version, and a legacy brain launcher or brain config section whose text is a known outdated template version as soft notifications — the orchestrator may advise the user but the pipeline can still run when artifacts are outdated.
-    - Treats brain-precondition state as a hard gate — any non-ok brain state halts the orchestrator until the user runs the visible remediation command.
-    - Forwards the upstream brain detector's tagged result unchanged; the closed status vocabulary it defines is the only vocabulary this tool surfaces.
-    - Resolves every pre-init and misconfiguration condition (missing config, unreadable wiring, drift) to a structured state, never a thrown error.
+    - Returns the version notice, artifact staleness, brain-precondition state and any brain migration notice each as its own independent top-level field, so the orchestrator can branch on each without scanning the others.
+    - Gives a version notice whenever the server is behind its latest published version, whether it runs from the global install or a pin in the project's configuration, saying which kind of launch it is so the orchestrator offers the matching remedy. The notice says how many published versions behind it is and carries a few short highlights of what those versions added or fixed, brief enough to read at a glance.
+    - Judges installed AIDE files only against the version the project runs, the pinned version for a pinned project, never against the latest published one. This lets the orchestrator upgrade the server first and the files after.
+    - Treats the version notice, artifact staleness and an outdated brain launcher or section text as soft notices the orchestrator may advise on while the pipeline still runs. Any non-ok brain state is a hard gate that halts the orchestrator until the user runs the visible remediation command.
+    - Forwards the upstream brain detector's result unchanged, so its closed status vocabulary is the only one this tool surfaces. No status is added for launcher paths, legacy launchers, outdated section text, or renames of retired states.
+    - Resolves every pre-init, misconfiguration and offline condition to a structured state, never a thrown error. A version check that is offline or fails stays silent.
   undesired:
-    - Throwing or erroring on a cold project where brain configuration and the host's wiring file have never been written, or when the published version cannot be checked. First-ever and offline boots must complete cleanly.
-    - Returning a pre-formatted message instead of structured state. Message composition belongs to the orchestrator, which tailors wording to the user's session context.
-    - Conflating artifact staleness with brain-precondition state — folding them into a single verdict, sentinel value, or shared array — or gating the pipeline on a behind global install or a legacy brain launcher. Their severities differ and the orchestrator branches on each separately.
-    - Auto-repairing drift, auto-syncing the host's wiring, or otherwise mutating any file the user owns. The boot reporter is read-only; remediation flows through the user's visible command boundary.
-    - Surfacing a status that names launcher-path validity. Path resolution is the launcher's responsibility at MCP server startup, not this reporter's.
-    - Extending the brain status vocabulary beyond what the upstream detector defines, including renames or aliases of retired states or a new status for a legacy launcher or outdated section text. The detector is the single source of truth for the closed set.
+    - Throwing or erroring on a cold project whose brain configuration and wiring were never written, or when the published version cannot be checked. First-ever and offline boots must complete cleanly.
+    - Returning a pre-formatted message instead of structured state. Message composition belongs to the orchestrator, which tailors wording to the user's session.
+    - Folding the version notice, artifact staleness and brain state into a single verdict, sentinel or shared list, or gating the pipeline on any soft notice. Their severities differ and the orchestrator branches on each separately.
+    - Auto-repairing drift, syncing the host's wiring, upgrading anything, or otherwise mutating a file the user owns. The reporter is read-only; remediation flows through the user's visible command boundary.
+    - Reporting installed files as outdated merely because a newer version is published when they match the version the project runs. Equally wrong is a pinned project behind latest told nothing, or told to install globally when it never chose that.
+    - A version notice that floods the user with the full changelog or every entry of every skipped version. It is a short incentive to upgrade, not a release history.
 ---
+
+## Context
+
+A project can run the aide server two ways: from a global install, or from a launch pinned to one version in the project's own configuration. The pin arises when the user chooses it, declines the global install, or when setup ran without an interactive terminal and fell back to it. A pinned project is never told a newer version exists, so it silently stays old while the methodology moves on.
+
+Two facts make this hard. An old server knows nothing about what came after it: not how many versions shipped, nor what they added or fixed, so anything worth telling the user has to be learned from the published releases at boot. And a new server or new methodology files take effect only in a fresh session, because the agent has already loaded the old server and read the old docs, skills and agents at boot. Showing it new files mid-session leaves it reasoning from the old ones.
+
+The user also skips notices that flood the screen. An upgrade prompt has to earn attention in a few lines or it gets dismissed unread.
+
+## Strategy
+
+**Two findings, two baselines.** The version notice compares the version the project runs against the latest published release; it is the only comparison against latest. Artifact staleness compares the installed files against the running version and never against latest. Files that match a pinned server are current even when releases have moved on, which keeps a project from being told to refresh files it cannot use until its server moves. This serves the soft-notice outcomes and guards against stale-by-latest reports.
+
+**The running version is the baseline, the launch kind picks the remedy.** The version judged is always the server actually running, which for a pinned project is its pin. The launch kind is reported beside the notice so the orchestrator offers the matching remedy: move the pin forward for a pinned project, update the global install for a global one. A pinned project is never steered toward a global install it did not choose.
+
+**Server first, then files, one restart each.** The orchestrator acts on the version notice before artifact staleness, and installs before it switches: a pin moves only after the target version is fetched, just as a global update installs before its restart. A failed fetch switches nothing and asks no restart, so the next session still starts on a working server. After a switch, boot halts for a new session; the next boot judges files against the new version and halts again only if their upgrade changed something.
+
+**Every boot recomputes from scratch.** The reporter keeps no memory between sessions, so a skipped or repeated step needs no special handling. A server and files that are both current produce no notice. A user who upgraded files but not the server sees only the version notice next time. A declined server upgrade leaves the artifact check running against the current version; not asking again this session is the orchestrator's job.
+
+**The notice is a count and a handful of highlights.** It says how many published versions lie between the running version and latest, plus a few one-line highlights of what those versions added or fixed, favouring features and fixes over migration minutiae. The user asked for an incentive "without throwing a ton of crap on the screen", so the whole changelog is never forwarded. The old server has never seen those releases, so highlights come from the published release history at boot.
+
+**The version comparison gates the notice; highlights only enrich it.** No known latest version means no notice. A known latest with highlights that could not be fetched still yields the notice with its count. Every network step is bounded and fails silent, so an offline or slow registry never delays or blocks boot, and the artifact check runs regardless.
+
+**Reporting and moving stay separate.** The reporter mutates nothing. Moving a pin forward goes through an AIDE tool on the user's yes, prescribing the target version, rather than the orchestrator editing the user's configuration by hand. The existing upgrade path pins to the running version, so it cannot move a pin past itself. That is why the target has to be given explicitly.
+
+## Good examples
+
+- A project pinned two releases back, files matching its pin, network up. The report carries a version notice for a pinned launch, two versions behind, three one-line highlights ("a new board review", "a fixed brain-config skip"), and no artifact staleness. The orchestrator offers to move the pin, the user agrees, and the boot halts asking for a new session. The next boot reports files outdated against the new version, upgrades them, and halts once more.
+- A globally installed server that is current, with files from an older release. The report has no version notice and lists the stale files. One file upgrade and one restart.
+- The same pinned project offline. The report carries no version notice and no error, and the artifact check runs against the pinned version as usual.
+
+## Bad examples
+
+- A pinned project whose files match its pin is told its files are outdated because a newer release exists. The user upgrades files their old server cannot use, then has to upgrade them again after the pin moves.
+- A version notice that pastes every changelog entry of five skipped releases, migration steps included. It is technically accurate and gets scrolled past, so the project stays old.
+- A pinned project is offered "install the server globally" as its remedy, or the pin is moved by the orchestrator editing the configuration itself. Either one overrides a launch choice the user made, or writes a user-owned file outside the consent-gated surfaces.
+
+## References
+
+- User-defined boot upgrade flow, relayed by the orchestrator (2026-10-26) -- the two-finding split, server-then-files order, the restart after each changing upgrade, silence when offline, and the short count-plus-highlights notice.
+- Orchestrator boot skill (in-repo, current boot upgrade step) -- today's consumer, which acts on the version notice only for a global install and does not restart after a file upgrade; the gap this flow closes.

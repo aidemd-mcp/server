@@ -5,10 +5,10 @@ import normalizeLaunchedCommand from "@/service/install/shared/normalizeLaunched
 const PACKAGE_FLAG = /^(-p|--package(=.*)?)$/;
 
 /**
- * Locates the package spec npx launches inside a brain launcher, so legacy
- * detection can judge its version and auto-confirm flag without interpreting any
- * other argument. Returns null when the launcher is not npx, has no positional
- * spec, or names its package with `-p`/`--package` (the user's own shape).
+ * Locates the package spec npx launches inside an MCP server launcher (the brain
+ * launcher, or the project's aide entry), so a caller can judge or move its
+ * version without interpreting any other argument. Returns null when the
+ * launcher is not npx, has no positional spec, or names its package with `-p`/`--package` (the user's own shape).
  * `argsStart` is 0 for the direct form and 2 for `cmd /c npx`; `autoConfirm`
  * counts `-y`/`--yes` only before the spec, since a later flag belongs to the
  * launched package. Pure.

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { UpgradeFileResult } from "@/types/index.js";
+import movePin from "./movePin/index.js";
 
 /**
  * Apply mode writer for aide_upgrade — turns comparison results into disk state
@@ -13,7 +14,12 @@ import type { UpgradeFileResult } from "@/types/index.js";
  *   Returns the result with `status` changed to `"updated"` (was differs) or
  *   `"created"` (was missing), and `canonicalContent` stripped.
  *
- * - `"differs"` or `"missing"`, mcp category:
+ * - `"differs"`, mcp category, result carries `pinMove`:
+ *   Written by `movePin`, which changes only the aide entry's package-spec token.
+ *   Returns status `"updated"`, or the file unchanged with `instructions` when
+ *   the move is refused.
+ *
+ * - any other mcp result (`"differs"` or `"missing"`):
  *   Passed through unchanged with `prescription` intact — the agent merges
  *   prescriptions into the existing MCP config itself. Never written here.
  *
@@ -57,8 +63,10 @@ async function applyFile(file: UpgradeFileResult): Promise<UpgradeFileResult> {
 		return file;
 	}
 
-	// MCP files carry a prescription — the agent merges them; never written here
+	// An mcp pin move is written by the tool; any other mcp result carries a
+	// prescription the agent merges, so it is never written here
 	if (file.category === "mcp") {
+		if (file.pinMove) return movePin({ ...file, pinMove: file.pinMove });
 		return file;
 	}
 

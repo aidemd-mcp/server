@@ -46,7 +46,19 @@ export const UpgradeInput = z.object({
 		.regex(/^[0-9a-f]{64}$/)
 		.optional()
 		.describe("The `beforeHash` a `brainChange` preview returned. Turns the call into the guarded apply: the change is written only if the current bytes still hash to this value."),
+	targetVersion: z
+		.string()
+		.regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)
+		.optional()
+		.describe("Exact published x.y.z version to judge the project's local aide entry's npx pin against. With category \"mcp\" the tool moves the pin to it; with no category the move is shown read-only. Ignored for a global entry, which is never moved."),
 }).superRefine((input, ctx) => {
+	if (input.targetVersion !== undefined && input.category !== undefined && input.category !== "mcp") {
+		ctx.addIssue({
+			code: "custom",
+			path: ["targetVersion"],
+			message: "targetVersion is only valid with category \"mcp\" or with no category",
+		});
+	}
 	if (input.brainChange !== undefined && input.category !== "brain") {
 		ctx.addIssue({
 			code: "custom",
@@ -84,11 +96,16 @@ function buildCategoryResult(
  * The tool is read-only — it never writes files. The calling agent presents
  * per-category results to the user and applies only the categories the user
  * confirms.
+ *
+ * `targetVersion`, when given, is the version a local aide entry's pin is
+ * judged against (normally `aide_info`'s `behind.latest`); detection stays
+ * read-only.
  */
 export default async function upgrade(
 	root: string,
 	framework?: FrameworkType,
 	path?: string,
+	targetVersion?: string,
 ): Promise<UpgradeResult> {
 	const projectRoot = resolveProjectRoot(root, path);
 	const config = await detectFramework(projectRoot, framework);
@@ -181,7 +198,7 @@ export default async function upgrade(
 	}
 
 	// ── g. MCP config ────────────────────────────────────────────────────────
-	const mcpResult = await checkMcpConfig(join(projectRoot, config.mcpConfigPath));
+	const mcpResult = await checkMcpConfig(join(projectRoot, config.mcpConfigPath), targetVersion);
 
 	// ── h. IDE config ────────────────────────────────────────────────────────
 	const zedResult = await checkZedConfig(projectRoot);

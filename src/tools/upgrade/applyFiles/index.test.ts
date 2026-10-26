@@ -7,7 +7,12 @@ vi.mock("node:fs/promises", () => ({
 	writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("./movePin/index.js", () => ({
+	default: vi.fn(),
+}));
+
 import { mkdir, writeFile } from "node:fs/promises";
+import movePin from "./movePin/index.js";
 import applyFiles from "./index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -117,6 +122,26 @@ describe("applyFiles", () => {
 
 		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
 		expect(result.status).toBe("malformed");
+		expect(vi.mocked(movePin)).not.toHaveBeenCalled();
+	});
+
+	// ── MCP file: pinMove → handed to movePin ─────────────────────────────────
+	it("hands an mcp differs file carrying pinMove to movePin and uses its return", async () => {
+		const pinMove = { from: "0.12.0", to: "0.13.1" };
+		const file = makeFile({
+			status: "differs",
+			category: "mcp",
+			pinMove,
+			canonicalContent: undefined,
+		});
+		const moved = { ...file, status: "updated" as const };
+		vi.mocked(movePin).mockResolvedValue(moved);
+
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(movePin)).toHaveBeenCalledWith({ ...file, pinMove });
+		expect(result).toBe(moved);
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
 	});
 
 	// ── IDE VS Code: differs → pass through with instructions ─────────────────

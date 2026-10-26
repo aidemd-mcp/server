@@ -2,9 +2,9 @@
 const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
 
 /**
- * Says whether `version` is strictly older than `pin`, so a pinned-but-stale
- * launcher can be offered the current pin. Only exact `X.Y.Z` strings are
- * comparable: `latest`, ranges and prereleases return false because no order can
+ * Says whether `version` is strictly older than `pin`, so a stale npx pin (a
+ * brain launcher's or the aide entry's) can be told apart from a current or
+ * newer one. Only exact `X.Y.Z` strings are comparable: `latest`, ranges and prereleases return false because no order can
  * be judged safely. Pure.
  */
 export default function isOlderVersion(version: string, pin: string): boolean {
