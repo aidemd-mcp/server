@@ -84,6 +84,16 @@ This project ships agent definitions (`.claude/agents/`), command prompts (`.cla
 
 The test: "Will other projects benefit from this fix?" If yes → canonical doc. If it's purely about how *this user* wants to interact → memory.
 
+## AIDE First: Never Change a Shipped Copy Directly
+
+Some of what AIDE ships also lives outside this repo: the brain's seeded notes (the kanban index and guides, the playbook and research indexes, written from the bundled brain template), the user's global copies of the `kanban` skill and `kanban-maintainer` agent, and every host project's installed `.claude/` and `.aide/docs/` files. **A change to any of them starts here, never in the copy.**
+
+1. **Change the canonical source in this repo first:** the bundled brain template section (append its old fingerprint to the outdated-sections record and update the drift pin), the `.claude/` file, or the `.aide/docs/` doc.
+2. **Log it in `CHANGELOG.md`** under `## [Unreleased]`, with a `[migration]` entry when an existing file goes out of date, so the upgrader can bring every project and brain up to date.
+3. **Only then update the copies,** through the tools that own them: `/aide:upgrade` and `/aide:brain config` for host files and brain configs, and a byte-for-byte copy of the canonical file for the global skill and agent.
+
+If a copy has to change first, because the user needs the fix right away, make the same change here in the same piece of work and log it before the turn ends. A rule that lives only in the brain, a global skill or one host project is drift: the next install or upgrade erases it, and no other project gets it.
+
 ## Local `.mcp.json` for the `aide` Server
 
 This repo IS the `@aidemd-mcp/server` package. That breaks the obvious-looking npx form in local dev.
