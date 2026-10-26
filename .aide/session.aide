@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.12.1 released. 'No plan without an intent spec' built, QA passed, committed dc41576 — unreleased.
+  Session record for the aidemd-mcp server. v0.13.0 released (no plan without an intent spec; orphaned-spec judged by code); global install 0.13.0; aidemd.dev live on 0.13.0. Nothing in flight.
 ---
 
 # AIDE SESSION
@@ -10,9 +10,11 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-26, plan-requires-spec committed dc41576; unreleased)
+## State summary (set 2026-10-26, v0.13.0 released; site live; nothing in flight)
 
-2026-10-26 (latest, built, QA passed, committed): Task `every-plan-requires-an-intent-spec-beside-it` built, QA passed with notes and no todo.aide (no retro), all five plans recorded completed and removed through aide_cleanup (src/tools/scaffold, src/types, src/util/classify, src/tools/validate, src), committed as dc41576 (unpushed, unreleased). Gate: tsc clean, full suite 157 files / 2988 tests. Built: aide_scaffold refuses a plan in a folder with no .aide/intent.aide (hasIntentSpec; nothing created); plan template without description:; "plan-without-spec" finding kind; classify's holdsCode/isCodeFile and the new orphaned-spec rule (only with .aide/intent.aide present, never the project root .aide folder, only when folder + subfolders hold no code; code = any file but *.aide, Markdown and dot-files; dot-folders and SKIP_DIRS skipped); validate's checkPlanSpec; description-pin tests. User decisions folded in: root intent spec exempt ("yeah aide folder doesn't need code"), dot-files ignored. New specs src/types/.aide and src/util/classify/.aide. QA ran local-source validate on this repo: only .aide/docs is orphaned now (accepted — Markdown by design); src/cli, scripts, .aide, .aide/config, .claude no longer flagged; no plan-without-spec. QA notes fixed as prose by the main agent: .aide/tools.md aide_validate section, aide-template.md and aide-spec.md placement wording. Also prose earlier: aide-spec.md, plan-aide.md, aide-architect, /aide:plan, /aide skill Stage 4, aide_scaffold/aide_validate descriptions, CHANGELOG [Unreleased] (Added plan-without-spec; Changed scaffold refusal, spec placement, orphan rule; Fixed plan template). Not added: a [migration] entry for host plans that sit in spec-less folders (the fix needs a real spec, so it isn't mechanical) — open question for the user.
+2026-10-26 (latest, release): v0.13.0 released with the user's yes. publish.mjs minor committed fecac4b ("0.13.0: no plan without an intent spec beside it; orphaned-spec judged by code"; CHANGELOG heading [0.13.0] - 2026-10-26, package.json/server.json/README pins), tagged v0.13.0 and pushed main (0f40fc9..fecac4b, carrying dc41576 and 21871a0). The Publish workflow is green; npm serves 0.13.0; global install 0.13.0. aidemd.dev synced headless to 0.13.0 (site commit a8365d9: methodology-docs aide-spec/aide-template/plan-aide/changelog, version-metadata, commands plan.md, agents aide-architect, skills aide; pointer-stub/ide/readme matched; brainMigration null) and its deploy is green. Task `every-plan-requires-an-intent-spec-beside-it` moved to Done by the user, with a closing stash; In Progress is empty.
+
+2026-10-26 (earlier, built, QA passed, committed): Task `every-plan-requires-an-intent-spec-beside-it` built, QA passed with notes and no todo.aide (no retro), all five plans recorded completed and removed through aide_cleanup (src/tools/scaffold, src/types, src/util/classify, src/tools/validate, src), committed as dc41576 (unpushed, unreleased). Gate: tsc clean, full suite 157 files / 2988 tests. Built: aide_scaffold refuses a plan in a folder with no .aide/intent.aide (hasIntentSpec; nothing created); plan template without description:; "plan-without-spec" finding kind; classify's holdsCode/isCodeFile and the new orphaned-spec rule (only with .aide/intent.aide present, never the project root .aide folder, only when folder + subfolders hold no code; code = any file but *.aide, Markdown and dot-files; dot-folders and SKIP_DIRS skipped); validate's checkPlanSpec; description-pin tests. User decisions folded in: root intent spec exempt ("yeah aide folder doesn't need code"), dot-files ignored. New specs src/types/.aide and src/util/classify/.aide. QA ran local-source validate on this repo: only .aide/docs is orphaned now (accepted — Markdown by design); src/cli, scripts, .aide, .aide/config, .claude no longer flagged; no plan-without-spec. QA notes fixed as prose by the main agent: .aide/tools.md aide_validate section, aide-template.md and aide-spec.md placement wording. Also prose earlier: aide-spec.md, plan-aide.md, aide-architect, /aide:plan, /aide skill Stage 4, aide_scaffold/aide_validate descriptions, CHANGELOG [Unreleased] (Added plan-without-spec; Changed scaffold refusal, spec placement, orphan rule; Fixed plan template). Not added: a [migration] entry for host plans that sit in spec-less folders (the fix needs a real spec, so it isn't mechanical) — open question for the user.
 
 2026-10-26 (earlier, plans): (a) aidemd.dev: the site's deploy.yml pinned both jobs to runs-on: ubuntu-24.04 (site commit 5000bd8, pushed, user-approved); the deploy is green, so the site is live on 0.12.1. (b) Plan-requires-spec task: the user confirmed the validate and scaffold outcomes. The architect planned: src/tools/scaffold/plan.aide (approved by the user and BUILT: new helper hasIntentSpec; a plan in a folder with no .aide/intent.aide is refused before any mkdir with the line "Refused plan.aide — <dir> holds no intent spec (.aide or intent.aide); write the folder's intent spec first, then scaffold the plan"; the plan template no longer writes description:; scaffold 95 tests, full suite 2917, tsc clean), src/tools/validate/plan.aide (proposed; new helper checkPlanSpec and the plan-without-spec warning), src/plan.aide (proposed; pins both tool descriptions). (c) The architect applied the new rule to this repo: src/types and src/util/classify had no spec. The user agreed their intents and decided: code in subfolders counts, and code = any file except *.aide and Markdown. Spec writer created src/types/.aide and src/util/classify/.aide (frontmatter only, unreviewed). The architect then planned src/types/plan.aide (add "plan-without-spec" to the ValidationWarning kind union) and src/util/classify/plan.aide (new holdsCode + isCodeFile helpers, recursive, skipping SKIP_DIRS and dot-folders; orphaned-spec runs only when .aide/intent.aide is present; new message "Spec has nothing to govern: this folder and its subfolders hold no code (only AIDE files and Markdown)."), both proposed. (d) Build order: scaffold (done) → types → classify → validate step 1 (needs types) and step 2 (needs classify) → main agent edits the aide_validate description → src → CHANGELOG → QA. The main agent already edited the aide_scaffold description in src/index.ts (plan refused without a spec; root plans use directory ".aide"). (e) Open points raised by the architect: the root intent spec .aide/intent.aide is judged by what's in .aide/ (not flagged only because .aide/bin exists); dot-files (e.g. .DS_Store) count as code under the literal rule.
 
@@ -102,7 +104,7 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `every-plan-requires-an-intent-spec-beside-it` (In Progress, p1, bug) — built, QA passed, committed dc41576; awaiting release and the user's OK to move to Done.
+- `every-plan-requires-an-intent-spec-beside-it` (Done, p1, bug) — released in 0.13.0 (feature dc41576, release fecac4b); moved to Done by the user, 2026-10-26.
 - `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` (Done, p1, bug) — released in 0.12.1; moved to Done by the user, 2026-10-26.
 - `architect-sets-the-folder-structure-before-any-spec-below-th` (Done, p2, change) — structure gate written as prose, approved and committed 2026-10-25; ships in the next release. Released in 0.12.1.
 - `aide-validate-with-a-path-reports-missing-specs-from-the-who` (Backlog, p2, bug) — detectAnomalies runs the missing-spec walk from the project root whatever path is passed.
@@ -271,13 +273,13 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Plan-requires-spec committed (dc41576), unreleased. Next: release (user's call) and moving the task to Done.
+v0.13.0 released and the site is live on it. No pipeline work in flight; In Progress is empty.
 
 ### What the next agent must do
 
-1. Release the plan-requires-spec change (publish.mjs; check git status first, then CHANGELOG [Unreleased] → version heading), npm i -g, sync aidemd.dev, then move `every-plan-requires-an-intent-spec-beside-it` to Done on the user's OK.
-2. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
-3. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
+1. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
+2. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
+3. Decide with the user whether a [migration] entry should offer specs for host plans in spec-less folders (open question).
 
 ### What's already done and validated
 
@@ -314,6 +316,7 @@ Plan-requires-spec committed (dc41576), unreleased. Next: release (user's call) 
 - aidemd.dev deploy fixed (site 5000bd8, ubuntu-24.04), green 2026-10-26.
 - Scaffold plan-refusal built 2026-10-26 (95 scaffold tests, 2917 full suite, tsc clean).
 - Plan-requires-spec built 2026-10-26 (5 plans, QA passed no todo, plans cleaned, commit dc41576; 2988 tests).
+- v0.13.0 released 2026-10-26 (release fecac4b, tag v0.13.0; Publish green; npm 0.13.0); global install 0.13.0; aidemd.dev synced (a8365d9) and deployed green.
 
 ### What's left after the current cycle
 
