@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.12.0 fully closed out; structure gate committed, unreleased. In flight: aide_scaffold writes the root intent as .aide/intent.aide (plans proposed, awaiting the user's approval).
+  Session record for the aidemd-mcp server. v0.12.1 released (root-intent scaffold fix + structure gate); global install 0.12.1. aidemd.dev sync pending the CLI login.
 ---
 
 # AIDE SESSION
@@ -10,9 +10,13 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-25, root-intent fix Stage 4 plans proposed, awaiting the user's approval; structure gate committed; aidemd.dev sync blocked on CLI login)
+## State summary (set 2026-10-25, v0.12.1 released; site sync pending CLI login)
 
-2026-10-25 (latest): The user confirmed the src/tools/scaffold/.aide frontmatter, and that agents never choose the name (research after intent is already handled by scaffold's rename). Stage 4: aide-architect wrote two Shape B plans, both proposed, no brief: src/tools/scaffold/plan.aide (3 steps; step 3 has 3a–3d) and src/plan.aide (1 step: a test in src/index.test.ts pinning the aide_scaffold registered description — it must contain `.aide/intent.aide`, `project root intent spec` and `research.aide`; build it only after the main agent edits that description). Planning found a second bug, confirmed in a temp project: existingAideFiles matches any name ending in `.aide`, so at directory "." it counts the `.aide/` folder as a spec — type intent reports a false skip, and type research/both RENAMES the whole `.aide/` folder to `intent.aide/`. Key plan decisions are in decision #41. Prose follow-ups for the main agent: the src/index.ts aide_scaffold description; CHANGELOG [Unreleased] Fixed + [migration] (Detect: .aide/.aide exists and .aide/intent.aide does not; Migrate: aide_scaffold({ directory: ".aide", type: "intent" }); Confirm: once, as a batch); the aide-spec.md bootstrapping paragraph; the aide-spec-writer naming bullets. Awaiting the user's plan approval. The `.aide/` folder rename bug was then traced and reproduced in production. The code dates from c123937 (2026-04-09, "Implement all MCP tools and lib modules with tests"), so every published version from v0.3.1 to v0.12.0 has it. Reproduced with the globally installed 0.12.0 dist in a temp project: `aide_scaffold({ directory: ".", type: "research" })` printed "Renamed .aide → intent.aide / Created research.aide" and left the project root holding `intent.aide/` (the whole methodology folder, with docs/ and session.aide inside, contents intact) plus `research.aide`. Nothing is deleted — the folder is moved — so an affected project recovers by renaming `intent.aide/` back to `.aide/`. Trigger: type research or both with directory "." (project-root research); type intent at "." only reports a false skip. The fix is already in the proposed src/tools/scaffold plan.
+2026-10-25 (latest): With the user's yes, 0.12.1 was published. publish.mjs committed 4352788 ("0.12.1: scaffold writes the root intent as .aide/intent.aide and never renames the .aide folder; structure gate"; CHANGELOG heading + package.json/server.json/8 README pins), tagged v0.12.1 and pushed main (1ef7aca..4352788, carrying 3e9bcbe structure gate, the session commits, 516fe5a maintainer prose, c84d27c scaffold fix). The Publish workflow passed and npm serves 0.12.1. Global install updated to @aidemd-mcp/server 0.12.1. The aidemd.dev sync is NOT done: `claude auth status` from this session's shell still reports loggedIn:false.
+
+2026-10-25 (earlier, build): The root-intent fix is built and QA passed with no todo.aide (no retro). Built: src/tools/scaffold — new helpers resolveSpecFolder and placeRootIntent, existingAideFiles counts files only, intent/research/both resolve "." and ".aide" to the project's .aide folder, the root spec is always .aide/intent.aide, a bare .aide/.aide is renamed with content kept; src/index.test.ts pins the aide_scaffold description. Gate: tsc clean, full suite 153 files / 2899 tests; QA ran live against local source in temp projects (the .aide/ folder is no longer renamed by research/both at "."). Prose by the main agent: aide_scaffold description and directory input in src/index.ts, aide-spec.md bootstrapping (aide_init does not create the root intent; the spec writer does with aide_scaffold), aide-spec-writer + /aide:spec leave the filename to scaffold, CHANGELOG Changed/Fixed + [migration] (Detect .aide/.aide with no .aide/intent.aide; Migrate aide_scaffold({ directory: ".aide", type: "intent" }); Confirm once, as a batch). Both plans recorded completed and removed through aide_cleanup (src/tools/scaffold, src). Committed as c84d27c. Released afterwards as 0.12.1 (see latest). Follow-up found: aide_scaffold type=plan writes a `description:` frontmatter field that plan-aide.md forbids (architect had to remove it from both plans).
+
+2026-10-25 (earlier, Stage 4): The user confirmed the src/tools/scaffold/.aide frontmatter, and that agents never choose the name (research after intent is already handled by scaffold's rename). Stage 4: aide-architect wrote two Shape B plans, both proposed, no brief: src/tools/scaffold/plan.aide (3 steps; step 3 has 3a–3d) and src/plan.aide (1 step: a test in src/index.test.ts pinning the aide_scaffold registered description — it must contain `.aide/intent.aide`, `project root intent spec` and `research.aide`; build it only after the main agent edits that description). Planning found a second bug, confirmed in a temp project: existingAideFiles matches any name ending in `.aide`, so at directory "." it counts the `.aide/` folder as a spec — type intent reports a false skip, and type research/both RENAMES the whole `.aide/` folder to `intent.aide/`. Key plan decisions are in decision #41. Prose follow-ups for the main agent: the src/index.ts aide_scaffold description; CHANGELOG [Unreleased] Fixed + [migration] (Detect: .aide/.aide exists and .aide/intent.aide does not; Migrate: aide_scaffold({ directory: ".aide", type: "intent" }); Confirm: once, as a batch); the aide-spec.md bootstrapping paragraph; the aide-spec-writer naming bullets. Awaiting the user's plan approval. The `.aide/` folder rename bug was then traced and reproduced in production. The code dates from c123937 (2026-04-09, "Implement all MCP tools and lib modules with tests"), so every published version from v0.3.1 to v0.12.0 has it. Reproduced with the globally installed 0.12.0 dist in a temp project: `aide_scaffold({ directory: ".", type: "research" })` printed "Renamed .aide → intent.aide / Created research.aide" and left the project root holding `intent.aide/` (the whole methodology folder, with docs/ and session.aide inside, contents intact) plus `research.aide`. Nothing is deleted — the folder is moved — so an affected project recovers by renaming `intent.aide/` back to `.aide/`. Trigger: type research or both with directory "." (project-root research); type intent at "." only reports a false skip. The fix is already in the proposed src/tools/scaffold plan.
 
 2026-10-25 (earlier, Stage 1): A new pipeline started for the root-intent bug. The user decided aide_scaffold writes the project root intent spec as `.aide/intent.aide` (their reasoning: intent.aide is just .aide, but the explicit name is used where many other .aide files sit beside it, as in the project's .aide folder). A [migration] entry ships with it so /aide:upgrade offers to rename a host root spec left as `.aide/.aide` (no `.aide/intent.aide`) — the rename is done by the same aide_scaffold call, mirroring its research-triggered rename. Task `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` created (In Progress, p1, bug). Stage 1: aide-spec-writer amended src/tools/scaffold/.aide frontmatter (intent names the root rule; desired[0] explicit form for the root, desired[1] adds the root rename keeping content unless intent.aide exists; undesired[0] merged the two old naming failures; new undesired[1]: a root spec under the default name isn't recognized as the root, so ancestor chains lose their top). Alignment unreviewed. Signals: Research no, Strategy no → Shape B plan next. Awaiting the user's confirmation of the frontmatter.
 
@@ -92,8 +96,8 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` (In Progress, p1, bug) — scaffold writes the root intent as .aide/intent.aide and renames a bare .aide/.aide root; [migration] entry; then aide-spec.md says what creates the root intent.
-- `architect-sets-the-folder-structure-before-any-spec-below-th` (Done, p2, change) — structure gate written as prose, approved and committed 2026-10-25; ships in the next release.
+- `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` (In Progress, p1, bug) — released in 0.12.1 (fix c84d27c, release 4352788); awaiting the user's OK to move to Done.
+- `architect-sets-the-folder-structure-before-any-spec-below-th` (Done, p2, change) — structure gate written as prose, approved and committed 2026-10-25; ships in the next release. Released in 0.12.1.
 - `aide-validate-with-a-path-reports-missing-specs-from-the-who` (Backlog, p2, bug) — detectAnomalies runs the missing-spec walk from the project root whatever path is passed.
 - `aide-validate-scoped-path-test-cannot-see-out-of-scope-findi` (Backlog, p2, test) — the only scoped-path test can't see out-of-scope findings; add an end-to-end scoped run.
 - `aide-validate-prints-facts-and-inferred-signals-with-the-sam` (Backlog, p2, change) — every finding prints with the same confidence, so facts and inferred signals look alike.
@@ -220,7 +224,7 @@ The tasks on the board this work touches, in work order; the full record of the 
 38. **Session record from aide_scaffold only (user, 2026-10-25).** Boot, aide-handoff and the spec writer's CREATE all call aide_scaffold type=session; nobody writes the placeholder by hand. aide_init's session step only instructs the agent to call it; the CLI calls the same scaffold function.
 39. **Structure gate (user task, 2026-10-25).** No intent spec below the project root is written until the module's place in the folder tree is settled. The gate applies when the project has no code yet, or the target module's folder does not exist and no approved tree in session.aide's architectural intent places it; it never applies to the root intent spec, which comes first. The orchestrator interviews the user, delegates to aide-architect in structure mode (writes no file; returns project tree with .aide folders marked and which spec each narrows, entity model, playbook mapping per layer, decisions, spec order, open questions), pauses for approval, records the approved tree as a numbered session.aide decision, then runs Stage 1 per module parents first. Moving/splitting/re-parenting a module, including spec-writer child-spec splits, goes back through structure mode. Every plan's Project Structure must fit inside the approved tree. The spec writer never picks an unsettled folder.
 40. **Root intent name (user, 2026-10-25).** The project root intent spec is always `.aide/intent.aide`. aide_scaffold type=intent on the project's .aide folder writes intent.aide, and when that folder holds a bare `.aide` and no intent.aide it renames the bare file to intent.aide (content kept); if intent.aide exists, nothing changes. Everywhere else the naming rule is unchanged. A [migration] changelog entry (Detect: a bare `.aide` in the project's `.aide` folder and no `intent.aide`; Migrate: that aide_scaffold call; Confirm: once) lets aide-upgrader fix older hosts. aide-spec.md's bootstrapping paragraph will say the spec writer creates the root spec with aide_scaffold on the first /aide run — not aide_init.
-41. **Scaffold root folder handling (architect, proposed 2026-10-25).**
+41. **Scaffold root folder handling (architect, user-approved, built c84d27c, released 0.12.1).**
     - A new helper resolveSpecFolder({ root, directory }) returns { folder, holdsRootSpec }. ".", "", ".aide", "./.aide/" and their absolute forms are the root spec folder; matching is case-insensitive on Windows; a nested folder named .aide is not the root spec folder.
     - "." resolves to the root spec folder.
     - existingAideFiles counts files only.
@@ -253,15 +257,14 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-Root-intent fix: Stage 4 plans (src/tools/scaffold, src) proposed, awaiting the user's approval. aidemd.dev sync blocked: the CLI won't accept the login from the desktop-app shell; log in from a standalone terminal.
+v0.12.1 released. Waiting on: the CLI login for the aidemd.dev sync, and the user's OK to move the root-intent task to Done.
 
 ### What the next agent must do
 
-1. User logs in from a standalone terminal outside the desktop app (`claude` → /login); confirm `claude auth status` reports loggedIn:true from this shell, then rerun the aidemd.dev headless sync for 0.12.0, confirm the deploy, report brainMigration.
-2. Root intent (task `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of`): user approves the two plans (src/tools/scaffold, src) → move them to approved → build src/tools/scaffold one implementor per step → main agent edits the aide_scaffold description in src/index.ts → build src → QA → fix loop → [migration] + [Unreleased] changelog entries, aide-spec.md bootstrapping paragraph and aide-spec-writer naming bullets (main agent prose) → close out.
+1. User logs in from a standalone terminal outside the desktop app (`claude` → /login); confirm `claude auth status` reports loggedIn:true from this shell, then rerun the aidemd.dev headless sync for 0.12.1, confirm the deploy, report brainMigration.
+2. Move `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` to Done on the user's OK.
 3. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
 4. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
-5. The structure gate ships in the next release (publish + site sync).
 
 ### What's already done and validated
 
@@ -291,6 +294,8 @@ Root-intent fix: Stage 4 plans (src/tools/scaffold, src) proposed, awaiting the 
 - Validate close-out (2026-10-25): 3 items → Backlog p2 tasks (slugs in ## Kanban); todo abandoned with the user's OK; src/tools/validate cleaned.
 - Board (2026-10-25): the session task and the scaffold P1 bug moved to Done by the user.
 - aide-maintainer now shows worked calls with `path` (2026-10-25).
+- Root-intent scaffold fix (2026-10-25): built from 2 plans, QA passed with no todo, plans cleaned, committed c84d27c.
+- v0.12.1 released 2026-10-25 (release 4352788, tag v0.12.1; Publish green; npm 0.12.1); global install 0.12.1.
 
 ### What's left after the current cycle
 
@@ -303,6 +308,7 @@ Root-intent fix: Stage 4 plans (src/tools/scaffold, src) proposed, awaiting the 
 - The draft unreadable-file wording differs from the host check's labels (allowed by the brief, but inconsistent).
 - The launcher-region logic is duplicated between readTemplateLauncher and upgrade's locateFrontmatter.
 - The marker line format is spelled out in SKILL.md (drift risk if the format changes).
+- aide_scaffold type=plan writes a `description:` field that plan-aide.md forbids (and the todo template has had a similar mismatch); fix the templates or the doc.
 
 session.aide is rewritten, never deleted (decision 18).
 
@@ -319,4 +325,4 @@ session.aide is rewritten, never deleted (decision 18).
 
 ## Open questions
 
-- Ship the scaffold fix as a patch release right after QA, since the .aide/ folder rename affects every published version (v0.3.1–v0.12.0)? And should the [migration] entry also detect a project root holding an `intent.aide/` directory with no `.aide/` folder (the bug's footprint) and offer to rename it back?
+- Should a [migration] entry also detect a project root holding an `intent.aide/` folder with no `.aide/` (the old rename bug's footprint) and offer to rename it back? No AIDE tool renames a folder today, so the CHANGELOG currently tells users to rename it by hand.
