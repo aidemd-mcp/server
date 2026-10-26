@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.13.0 released. Unreleased: plans' playbook Read entries are written as exact, tool-accepted addresses and implementors must report loading them.
+  Session record for the aidemd-mcp server. v0.13.0 released. Unreleased on main: the Read-entry addressing fix (7b8756d). Next task: track playbook conformance per module.
 ---
 
 # AIDE SESSION
@@ -10,9 +10,11 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-26, Read-entry addressing fix written; unreleased)
+## State summary (set 2026-10-26, Read-entry fix committed 7b8756d; conformance task created)
 
-2026-10-26 (latest, Read-entry addressing fix): diagnosed why an implementor skipped playbook entries. Root cause: plans write `Read:` entries in a shape the brain's read tool rejects — e.g. `coding-playbook/workflow/type-system` with no `.md`, or `…/conventions#Early Returns Over Nesting` with an anchor — so the first read fails "File not found"; most implementors recovered (added .md / browsed), one fell back on the surrounding code's style; nothing asked for a report and nobody checked. User direction: the architect must write the path exactly as the tool requires, generically, so no prose changes per MCP integration. Fix (prose by the main agent, uncommitted at the time of writing): aide-architect and aide-auditor write each Read entry as the exact address they loaded it with, copied from their own successful read (never retyped from memory, docs examples or links); sections named in words, never as anchors. plan-aide.md rule + examples rewritten as placeholders (`<address of … entry>`). aide-implementor: pass addresses through unchanged; an entry that won't load is found via the brain's navigation or the step stops; never substitute nearby code style; new "Playbook entries" item in its return (loaded / not loaded); fix mode loads entries too. /aide skill Stage 5 step 3 and /aide:build check that report and re-run a step whose entries weren't loaded (or send a bad address back to the architect). CHANGELOG [Unreleased] Fixed bullet. Guard/install/upgrade tests green (1219). Still proposed, not decided by the user: a playbook-conformance check after QA (aide-auditor scoped to the build's changed files, findings into the fix loop) — the "after" side of this fix.
+2026-10-26 (latest, conformance task created): the Read-entry fix is committed and pushed as 7b8756d (unreleased; ships in the next release). The user decided NOT to add an automatic playbook-conformance pass after every QA ("the new rules should solve the problem"). Instead a new task was created: `track-playbook-conformance-per-module-and-suggest-where-to-c` (Todo, p2, feature) — each intent spec records when it was last checked against the playbook (governed field through aide_frontmatter, set by the auditor after a scoped check; staleness judged against the module's git history); playbook pointers survive plan deletion in the orchestrator's header comment (`@playbook "<entry name>" <address>`, written by the implementor from the plan's Read entries; the auditor checks against exactly those and flags any other entry it thinks applies); aide_discover shows the last-check info; the main agent suggests a few modules to check with reasons, never runs a check unasked and never a whole-app pass; checks are scoped /aide:refactor runs on Sonnet; [migration] entries backfill the field and re-resolve Read addresses in hosts' in-flight plans. Open: field shape, header tag format, when the main agent suggests.
+
+2026-10-26 (Read-entry addressing fix): diagnosed why an implementor skipped playbook entries. Root cause: plans write `Read:` entries in a shape the brain's read tool rejects — e.g. `coding-playbook/workflow/type-system` with no `.md`, or `…/conventions#Early Returns Over Nesting` with an anchor — so the first read fails "File not found"; most implementors recovered (added .md / browsed), one fell back on the surrounding code's style; nothing asked for a report and nobody checked. User direction: the architect must write the path exactly as the tool requires, generically, so no prose changes per MCP integration. Fix (prose by the main agent, uncommitted at the time of writing): aide-architect and aide-auditor write each Read entry as the exact address they loaded it with, copied from their own successful read (never retyped from memory, docs examples or links); sections named in words, never as anchors. plan-aide.md rule + examples rewritten as placeholders (`<address of … entry>`). aide-implementor: pass addresses through unchanged; an entry that won't load is found via the brain's navigation or the step stops; never substitute nearby code style; new "Playbook entries" item in its return (loaded / not loaded); fix mode loads entries too. /aide skill Stage 5 step 3 and /aide:build check that report and re-run a step whose entries weren't loaded (or send a bad address back to the architect). CHANGELOG [Unreleased] Fixed bullet. Guard/install/upgrade tests green (1219). The user later decided against an automatic post-QA check (see latest).
 
 2026-10-26 (earlier, release): v0.13.0 released with the user's yes. publish.mjs minor committed fecac4b ("0.13.0: no plan without an intent spec beside it; orphaned-spec judged by code"; CHANGELOG heading [0.13.0] - 2026-10-26, package.json/server.json/README pins), tagged v0.13.0 and pushed main (0f40fc9..fecac4b, carrying dc41576 and 21871a0). The Publish workflow is green; npm serves 0.13.0; global install 0.13.0. aidemd.dev synced headless to 0.13.0 (site commit a8365d9: methodology-docs aide-spec/aide-template/plan-aide/changelog, version-metadata, commands plan.md, agents aide-architect, skills aide; pointer-stub/ide/readme matched; brainMigration null) and its deploy is green. Task `every-plan-requires-an-intent-spec-beside-it` moved to Done by the user, with a closing stash; In Progress is empty.
 
@@ -106,6 +108,7 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
+- `track-playbook-conformance-per-module-and-suggest-where-to-c` (Todo, p2, feature) — per-module last-playbook-check field on specs, @playbook pointers in orchestrator headers, suggestions not automatic passes, migrations.
 - `every-plan-requires-an-intent-spec-beside-it` (Done, p1, bug) — released in 0.13.0 (feature dc41576, release fecac4b); moved to Done by the user, 2026-10-26.
 - `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` (Done, p1, bug) — released in 0.12.1; moved to Done by the user, 2026-10-26.
 - `architect-sets-the-folder-structure-before-any-spec-below-th` (Done, p2, change) — structure gate written as prose, approved and committed 2026-10-25; ships in the next release. Released in 0.12.1.
@@ -248,7 +251,7 @@ The tasks on the board this work touches, in work order; the full record of the 
     - aide_scaffold type=plan refuses when the folder has no intent spec (a research-only folder doesn't count), naming the missing spec.
     - aide_validate flags any plan.aide with no spec beside it, and reports a spec as orphaned only when its folder holds no code — never decided by a plan's presence, since plans are deleted after QA.
     - User additions 2026-10-26: the project root intent spec is never orphaned; dot-files don't count as code. Built dc41576.
-43. **Playbook Read entries are exact addresses (user, 2026-10-26).** The architect/auditor copy each `Read:` entry from their own successful read, character for character; the brain's read tool decides the address shape, so the rule needs no change per brain backend; sections are named in words. The implementor passes addresses unchanged, never substitutes nearby code, stops on an entry it can't load, and reports every entry loaded/not loaded; the orchestrator checks the report per step.
+43. **Playbook Read entries are exact addresses (user, 2026-10-26).** The architect/auditor copy each `Read:` entry from their own successful read, character for character; the brain's read tool decides the address shape, so the rule needs no change per brain backend; sections are named in words. The implementor passes addresses unchanged, never substitutes nearby code, stops on an entry it can't load, and reports every entry loaded/not loaded; the orchestrator checks the report per step. Committed 7b8756d. The user chose no automatic post-QA playbook pass (2026-10-26).
 
 ## Anti-regression invariants future build phases must hold
 
@@ -277,11 +280,11 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-v0.13.0 released. Read-entry addressing fix written and committed, unreleased; post-QA playbook check proposed, awaiting the user.
+Read-entry fix committed (7b8756d), unreleased. Next task in Todo: `track-playbook-conformance-per-module-and-suggest-where-to-c`. Nothing in flight.
 
 ### What the next agent must do
 
-1. Ask the user about adding a playbook-conformance check after QA (aide-auditor on the changed files, findings into the fix loop); ship the Read-entry fix in the next release.
+1. Start `track-playbook-conformance-per-module-and-suggest-where-to-c` in a fresh session (Stage 1 for the affected specs; settle its open questions with the user). Ship the Read-entry fix in the next release.
 2. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
 3. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
 4. Decide with the user whether a [migration] entry should offer specs for host plans in spec-less folders (open question).
@@ -353,4 +356,3 @@ session.aide is rewritten, never deleted (decision 18).
 
 - Should a [migration] entry also detect a project root holding an `intent.aide/` folder with no `.aide/` (the old rename bug's footprint) and offer to rename it back? No AIDE tool renames a folder today, so the CHANGELOG currently tells users to rename it by hand.
 - Should a [migration] entry tell /aide:upgrade to find host plan.aide files with no intent spec beside them and offer to write the spec (per file, with the user)?
-- Add a post-QA playbook-conformance check to the /aide loop (aide-auditor scoped to changed files, or the code-reviewer agent)?
