@@ -11,6 +11,15 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ### Changed
 - The `aide-maintainer` agent shows worked `aide_frontmatter` and `aide_cleanup` calls up front, so it no longer calls either tool without `path` first.
+- The spec writer and `/aide:spec` leave the filename to `aide_scaffold` instead of choosing it, and `aide-spec.md` now says the spec writer creates the root intent spec with `aide_scaffold` on the first `/aide` run (it had said `aide_init` does).
+
+### Fixed
+- `aide_scaffold` wrote the project root intent spec as `.aide/.aide`, which `aide_discover` never reads as the root, so every module's chain of parent specs lost its top. It now always writes `.aide/intent.aide`, for directory `".aide"` or `"."`.
+- `aide_scaffold` counted the project's `.aide/` folder as a spec file. With directory `"."`, type `research` or `both` renamed the whole folder to `intent.aide/` (methodology docs, session record and config inside), and type `intent` falsely reported a skip. Every release from 0.3.1 had it. Scaffold now counts only files, and `"."` means the project's `.aide` folder. A project already hit has an `intent.aide/` folder at its root and no `.aide/`; rename the folder back to `.aide/`.
+- [migration] The project root intent spec is `.aide/intent.aide`, never `.aide/.aide`.
+  - Detect: a project with a `.aide/.aide` file and no `.aide/intent.aide`.
+  - Migrate: call `aide_scaffold({ directory: ".aide", type: "intent" })`, which renames the file to `.aide/intent.aide` and keeps its content.
+  - Confirm: once, as a batch.
 
 ## [0.12.0] - 2026-10-25
 

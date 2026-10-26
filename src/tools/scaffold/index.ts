@@ -3,6 +3,8 @@ import { readdir, rename, mkdir } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 import sessionTemplate from "./sessionTemplate/index.js";
 import writeIfAbsent from "./writeIfAbsent/index.js";
+import resolveSpecFolder from "./resolveSpecFolder/index.js";
+import placeRootIntent from "./placeRootIntent/index.js";
 
 export const ScaffoldInput = z.object({
 	directory: z.string().describe("Directory where the .aide file(s) will be created"),
@@ -87,11 +89,11 @@ intent: >
 
 `;
 
-/** List existing .aide files in a directory. */
+/** List existing .aide files in a directory; directories (such as the .aide methodology folder) are never spec files. */
 async function existingAideFiles(dir: string): Promise<string[]> {
 	try {
-		const entries = await readdir(dir);
-		return entries.filter((name) => name.endsWith(".aide"));
+		const entries = await readdir(dir, { withFileTypes: true });
+		return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".aide")).map((entry) => entry.name);
 	} catch {
 		return [];
 	}
@@ -111,12 +113,16 @@ function skippedLine(name: string): string {
  * - type=intent + no research.aide → creates .aide
  * - type=intent + research.aide exists → creates intent.aide
  * - type=intent + the folder already holds .aide or intent.aide → skips
+ * - type=intent in the project's .aide folder (directory ".aide" or ".") → always intent.aide;
+ *   a bare .aide there with no intent.aide is renamed to intent.aide, content kept;
+ *   intent.aide present → skips
  * - type=research → creates research.aide; renames existing .aide to intent.aide
  *   (no rename when research.aide already exists)
  * - type=both → creates research.aide + intent.aide
  * - type=todo → creates todo.aide
  * - type=plan → creates plan.aide
  * - type=session → creates .aide/session.aide at the project root, ignoring directory
+ * - type=intent, research and both treat "." as the project's .aide folder
  */
 export default async function scaffold(
 	root: string,
@@ -131,7 +137,9 @@ export default async function scaffold(
 		return "Created .aide/session.aide";
 	}
 
-	const dir = isAbsolute(directory) ? directory : join(root, directory);
+	const usesSpecFolder = type === "intent" || type === "research" || type === "both";
+	const { folder, holdsRootSpec } = resolveSpecFolder({ root, directory });
+	const dir = usesSpecFolder ? folder : isAbsolute(directory) ? directory : join(root, directory);
 
 	// Ensure directory exists
 	await mkdir(dir, { recursive: true });
@@ -145,6 +153,15 @@ export default async function scaffold(
 	} else if (type === "plan") {
 		const outcome = await writeIfAbsent(join(dir, "plan.aide"), PLAN_TEMPLATE);
 		actions.push(outcome === "exists" ? skippedLine("plan.aide") : "Created plan.aide");
+	} else if (type === "intent" && holdsRootSpec) {
+		const outcome = await placeRootIntent({ folder: dir, existing, template: INTENT_TEMPLATE });
+		if (outcome === "created") {
+			actions.push("Created .aide/intent.aide (the project root intent spec always takes the explicit name)");
+		} else if (outcome === "renamed") {
+			actions.push(
+				"Renamed .aide/.aide → .aide/intent.aide (the project root intent spec always takes the explicit name; its content is kept)",
+			);
+		} else actions.push(skippedLine(".aide/intent.aide"));
 	} else if (type === "intent") {
 		const researchExists = existing.includes("research.aide");
 		const name = researchExists ? "intent.aide" : ".aide";

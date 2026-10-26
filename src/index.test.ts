@@ -292,6 +292,14 @@ describe("aide_scaffold registration", () => {
 		expect(mockScaffold).toHaveBeenCalledWith(root, "src/anything", "session");
 		expect(response.content[0].text).toBe("Created .aide/session.aide");
 	});
+
+	it("describes the project root intent rule and the module research rename", async () => {
+		const { description } = await findTool("aide_scaffold");
+
+		expect(description).toContain(".aide/intent.aide");
+		expect(description).toContain("project root intent spec");
+		expect(description).toContain("research.aide");
+	});
 });
 
 describe("aide_frontmatter registration", () => {

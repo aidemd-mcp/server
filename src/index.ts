@@ -129,13 +129,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 		{
 			name: "aide_scaffold",
 			description:
-				"Create a new AIDE working file from its blank template, under its canonical name. It never overwrites: a request for a file that already exists, filled or empty, is a no-op reported as a skip line — remove a file first with aide_cleanup to replace it. New files start with their starting value: an intent spec alignment: unreviewed, a plan or todo list status: proposed. Handles the naming rules: intent specs are .aide by default, but become intent.aide when research.aide exists in the same folder. Creating a research.aide auto-renames any existing .aide to intent.aide.\n\nTypes:\n- intent — Strategy, contracts, anti-patterns\n- research — Sources, data, patterns (triggers rename of existing .aide)\n- both — Creates research.aide + intent.aide pair\n- todo — QA re-alignment document for QA agents\n- plan — Architect's implementation plan (no naming interaction with intent/research)\n- session — The project's session record, always at .aide/session.aide whatever directory you pass: the empty placeholder with every section heading. Its single source; never write the placeholder by hand.",
+				"Create a new AIDE working file from its blank template, under its canonical name. It never overwrites: a request for a file that already exists, filled or empty, is a no-op reported as a skip line — remove a file first with aide_cleanup to replace it. New files start with their starting value: an intent spec alignment: unreviewed, a plan or todo list status: proposed. Handles the naming rules, so never pick a name yourself: in a module folder, intent specs are .aide by default, but become intent.aide when research.aide exists in the same folder. Creating a research.aide auto-renames any existing .aide to intent.aide. The project root intent spec always lands at .aide/intent.aide: pass directory \".aide\" or \".\" (both mean the project's .aide folder for intent, research and both). A bare .aide/.aide left by an older project, with no intent.aide beside it, is renamed to .aide/intent.aide with its content kept; if .aide/intent.aide exists, nothing changes. Folders are never treated as spec files.\n\nTypes:\n- intent — Strategy, contracts, anti-patterns\n- research — Sources, data, patterns (triggers rename of existing .aide)\n- both — Creates research.aide + intent.aide pair\n- todo — QA re-alignment document for QA agents\n- plan — Architect's implementation plan (no naming interaction with intent/research)\n- session — The project's session record, always at .aide/session.aide whatever directory you pass: the empty placeholder with every section heading. Its single source; never write the placeholder by hand.",
 			inputSchema: {
 				type: "object" as const,
 				properties: {
 					directory: {
 						type: "string",
-						description: "Directory where the .aide file(s) will be created",
+						description: "Directory where the .aide file(s) will be created. For the project root intent spec pass \".aide\" or \".\"; it lands at .aide/intent.aide",
 					},
 					type: {
 						type: "string",

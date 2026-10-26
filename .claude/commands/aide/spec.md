@@ -9,9 +9,10 @@ Produce the `.aide` intent spec **frontmatter only**. This is the spec-writing p
 - [ ] Read the delegation context from the orchestrator. If insufficient to write specific outcomes (missing: what the module is for, who consumes its output, what success looks like, what failure looks like), return to the orchestrator listing what's missing
 - [ ] For a spec below the project root, take its folder from the approved project tree the orchestrator passes (the structure gate). If the delegation names no approved place for the module, do not pick one — return to the orchestrator saying the tree is not settled
 - [ ] Read the AIDE template before writing — copy the fenced template block from the canonical template doc into the new file
-- [ ] Decide filename:
-  - Use `.aide` if no `research.aide` exists in the target folder
-  - Use `intent.aide` if `research.aide` exists in the same folder (co-located research is an escape hatch — prefer the brain)
+- [ ] Create the file with `aide_scaffold({ directory, type: "intent" })`; it decides the filename, so never pick one:
+  - The project root intent spec is always `.aide/intent.aide` (pass directory `.aide`)
+  - A module spec is `.aide` if no `research.aide` exists in the target folder
+  - It is `intent.aide` if `research.aide` exists in the same folder (co-located research is an escape hatch — prefer the brain)
 - [ ] Fill the frontmatter ONLY against hard caps:
   - `scope` — the module path this spec governs
   - `description` — one sentence, ≤ 200 characters

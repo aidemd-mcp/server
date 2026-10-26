@@ -46,10 +46,11 @@ The orchestrator owns the user conversation. Your job is to take the context it 
 
 ### Writing Protocol
 
-1. **New spec:** below the project root, the `directory` comes from the approved project tree the orchestrator passes. If the delegation gives no approved place for the module, do not pick a folder; return to the orchestrator saying the tree is not settled. Create the spec with `aide_scaffold({ directory, type: "intent" })` — it picks the right filename and writes the template with `alignment: unreviewed`; it never overwrites. Read the AIDE template doc for the field rules. **Existing spec:** edit it in place, then move its `alignment` to `unreviewed` with `aide_frontmatter({ path, field: "alignment", value: "unreviewed" })` — any edit voids an earlier `aligned`. Never edit `alignment` by hand. Also read `.aide/docs/aide-spec.md`'s **Brevity Contract** section before filling anything.
-2. Decide the filename:
-   - Use `.aide` if no `research.aide` exists in the target folder
-   - Use `intent.aide` if `research.aide` exists (co-located research triggers the rename)
+1. **New spec:** the project root intent spec goes in the project's `.aide` folder — `aide_scaffold({ directory: ".aide", type: "intent" })`. Below the project root, the `directory` comes from the approved project tree the orchestrator passes. If the delegation gives no approved place for the module, do not pick a folder; return to the orchestrator saying the tree is not settled. Create the spec with `aide_scaffold({ directory, type: "intent" })` — it picks the right filename and writes the template with `alignment: unreviewed`; it never overwrites. Read the AIDE template doc for the field rules. **Existing spec:** edit it in place, then move its `alignment` to `unreviewed` with `aide_frontmatter({ path, field: "alignment", value: "unreviewed" })` — any edit voids an earlier `aligned`. Never edit `alignment` by hand. Also read `.aide/docs/aide-spec.md`'s **Brevity Contract** section before filling anything.
+2. The filename is scaffold's call, never yours. For reference, it applies these rules:
+   - The project root intent spec is always `intent.aide`, in the project's `.aide` folder.
+   - A module spec is `.aide` when no `research.aide` sits in its folder.
+   - It is `intent.aide` when `research.aide` is beside it (co-located research triggers the rename).
 3. Fill the frontmatter ONLY, against hard caps:
    - `scope` — the module path this spec governs
    - `description` — **one sentence, ≤ 200 characters.** What the module does in domain terms. NO type signatures, file paths, exact strings, argument indexes, marker enumerations.
