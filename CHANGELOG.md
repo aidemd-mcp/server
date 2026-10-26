@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-26
+
 ### Added
 - `aide_validate` reports `plan-without-spec`: a `plan.aide` with no intent spec (`.aide` or `intent.aide`) beside it. The fix is to write the folder's spec, never to delete the plan.
 
