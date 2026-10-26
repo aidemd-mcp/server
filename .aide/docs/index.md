@@ -22,7 +22,7 @@ AIDE ships the canonical pipeline agents that `aide_init` installs to `.claude/a
 | `aide-spec-writer` | opus | spec (`.aide` frontmatter); also writes `session.aide` CREATE/UPDATE on orchestrator demand | none |
 | `aide-domain-expert` | sonnet | research | write |
 | `aide-strategist` | opus | synthesize | read |
-| `aide-architect` | opus | plan | read (playbook + brain) |
+| `aide-architect` | opus | structure (proposes the project folder tree before any spec below the root; writes no file), plan | read (playbook + brain) |
 | `aide-implementor` | sonnet | build, fix | read (playbook) |
 | `aide-qa` | sonnet | qa | none |
 | `aide-aligner` | opus | align | none |

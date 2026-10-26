@@ -173,6 +173,7 @@ This is non-negotiable. No exceptions. No "this is simple enough to handle direc
 **Why this matters:** Each subagent has specialized context, model selection, and instructions that you lack. When you bypass delegation, you lose that context, burn tokens going down rabbit holes, produce drift from the methodology, and force expensive QA realignment. The cascading intent structure only works when each agent handles its own phase.
 
 **Delegation means using the Agent tool** with the correct `subagent_type` for each phase:
+- Structure (gate before any spec below the root): `aide-architect` in structure mode — proposes the project folder tree, writes no file
 - Stage 1 (Spec): `aide-spec-writer`
 - Stage 2 (Research, **conditional**): `aide-domain-expert` — only when the spec-writer signals "Research needed"
 - Stage 3 (Synthesize, **conditional**): `aide-strategist` — only when the spec-writer signals "Strategy needed"
@@ -249,7 +250,8 @@ You already called `aide_discover` during boot (call 7). This section explains h
 Explicit requests override file state. Examples:
 - "run an alignment check" → **Align**, even if file state says QA is next
 - "do a refactor on src/tools/" → **Refactor**, even if no `plan.aide` exists
-- "start the spec for this module" → **Stage 1 (Spec)**, even if a prior spec exists
+- "propose the folder structure", "lay out the project", "where should this live?" → **Structure**, even if a tree is already settled (the user is reopening it)
+- "start the spec for this module" → **Stage 1 (Spec)**, even if a prior spec exists — but still behind the structure gate: a module below the root with no settled place in the tree goes to **Structure** first
 - "plan this" or "just plan it" → **Stage 4 (Plan)**, skipping research and synthesize. The spec is treated as a frontmatter-only navigation stub; the user's request itself is the implementation context the architect needs.
 - "synthesize" or "fill the body" → **Stage 3 (Synthesize)** — explicit opt-in even when defaults would skip it
 - "run QA" → **Stage 6 (QA)**, even if `plan.aide` has unchecked items
@@ -264,6 +266,8 @@ When the user's request does not map to a specific phase, the discover output te
 
 | State detected | Resume from |
 |----------------|-------------|
+| No `.aide/intent.aide` | **Interview** for the root intent spec — it comes before the tree |
+| Target module is below the root and has no settled place in the tree (see the structure gate) | **Structure** — the architect proposes the folder tree; no spec until it is approved |
 | No `.aide` in target module | **Interview** — start from scratch |
 | `.aide` exists with frontmatter only (no body sections), no `plan.aide` | **Decision gate** — body sections being absent is valid (synthesize was skipped). Ask the user: "Do you want me to plan this directly, or run synthesize first to fill body sections?" Default: route to **Plan** (gather user implementation context, hand to architect). Route to **Synthesize** only on explicit user request. |
 | `.aide` exists with body sections filled, no `brief.aide` | **Synthesize** — body landed without brief, route back to strategist to author the brief |
@@ -317,11 +321,32 @@ Every piece of pipeline work is tracked on a task. Board tracking never gates `s
 
 ## Pipeline
 
+### Structure gate — the folder tree comes before any spec below the root
+
+A spec's place in the tree is its scope, and its parent is the spec it narrows. Writing a module spec before the folder structure exists means guessing both, and a wrong guess costs a move and a rewrite of the spec. So no intent spec below the root is written until the module's place in the tree is settled.
+
+**The gate applies** when the user's request needs a new spec below the root and either:
+
+- the project has no code yet (greenfield), or
+- the target module's folder does not exist and no approved tree in `session.aide`'s `## The architectural intent` places it.
+
+**It does not apply** to the root intent spec (`.aide/intent.aide`) — that comes first, because the architect proposes the tree from it — or to a module whose folder already exists in the code, or that an approved tree already places.
+
+**When the gate applies:**
+
+1. **Interview** the user for what the tree must hold: the features or capabilities in scope, the main entities and how they relate, any layers or folders the user already has in mind, and anything the project's existing code or the playbook already fixes. Quote the user's words.
+2. **Delegate** to `aide-architect` in **structure mode** (Agent tool, `subagent_type: aide-architect`). The prompt says it is structure mode, and includes the root intent spec's path, the boot `aide_discover` output, and the interview verbatim. The architect reads the playbook and any existing code and returns the proposed tree. It writes no `plan.aide`, no `brief.aide` and no spec.
+3. **Present** the tree to the user. **PAUSE for approval.** On changes, re-delegate to the architect with the user's feedback; never edit the tree yourself.
+4. **Record** the approved tree through `aide-handoff`, as a numbered decision in `## The architectural intent` — the tree, which folders get a spec, and that the user approved it. This is what settles each module's place for the gate.
+5. **Then run Stage 1** for each module the user wants specced, at the path the approved tree gives it, parents before children.
+
+Changing the approved tree later — a module moves, splits or gets a new parent — goes back through structure mode and a fresh approval. A plan's `## Project Structure` must fit inside the approved tree; a plan that needs the tree changed comes back to you, not to the implementor.
+
 ### Stage 1: Interview → `aide:spec`
 
 **Your job (orchestrator):** YOU own the user interview. The spec-writer does NOT talk to the user — it formats the context you pass it into canonical `.aide` frontmatter. Interview the user thoroughly enough to give the spec-writer everything it needs:
 
-- What module or feature is this for? Where does it live?
+- What module or feature is this for? Where does it live? (Below the root, the approved tree from the structure gate answers this — never guess a path.)
 - What is the module's purpose, in domain terms? (Drives `description` and `intent`.)
 - What does success look like? What does failure look like? Especially the almost-right-but-wrong kind. (Drives `outcomes.desired` and `outcomes.undesired`.)
 - **Is this feature a pipeline?** Several modules that each do one specific thing in a specific order, handing off through calls, events, a clock or state changes. That covers event-driven pipelines and timed lifecycles alike (a drip sequence: start → wait → advance → complete or cancel). If yes, capture in the user's words the real-world problem it solves and how it flows: what starts it, who calls or notifies whom, in what order, what each hand-off carries, and what happens when a step is late, repeated or missing. This is the strategist's main input — pass it verbatim. (See [the pipeline test](../../../.aide/docs/aide-spec.md#when-to-fill-body-sections--the-pipeline-test).)
@@ -558,7 +583,8 @@ This mode is the canonical batched, cascade-aware fix flow when the aligner repo
 - **Track every feature on the board.** Check the open tasks at boot (Step 5), keep the feature's task current through the `kanban` skill at start, at every transition, and at close, and make sure `session.aide`'s `## Kanban` section links every task tied to the feature by slug. Work with no task is still recorded in `session.aide` — never held back until a task exists.
 - **Every stage gets fresh context.** No agent carries conversation from a prior stage. Handoff is via files only: `.aide`, `plan.aide`, `todo.aide`, and entries persisted to the brain.
 - **`aide_discover` is mandatory, not optional.** The orchestrator MUST run `aide_discover` as its very first action on every `/aide` invocation. Do not use native file-search tools (Glob, Grep, Read) to find `.aide` files — the discover tool provides richer, methodology-aware context.
-- **Pause for approval twice:** after spec frontmatter (Stage 1) and after plan (Stage 4). These are the two points where the user's input shapes the work. (Synthesize, when it runs, also pauses to present the filled body — but synthesize is conditional, so it isn't always in the path.)
+- **Pause for approval twice:** after spec frontmatter (Stage 1) and after plan (Stage 4). These are the two points where the user's input shapes the work. (Synthesize, when it runs, also pauses to present the filled body — but synthesize is conditional, so it isn't always in the path. The structure gate, when it applies, pauses too, for the folder tree.)
+- **The folder tree comes before any spec below the root.** When the structure gate applies, the architect proposes the tree in structure mode and the user approves it before Stage 1 runs for any module under the root. Never pick a module's path yourself.
 - **Stages 2 and 3 are conditional, not default.** The default path is Stage 1 → Stage 4 → 5 → 6 → 7. Research runs only when the spec-writer signals "Research needed: yes". Synthesize runs only when "Strategy needed: yes" — when the feature is a pipeline. Self-contained modules are navigation stubs — frontmatter-only specs whose intent + outcomes + the user's implementation context are sufficient for planning. Adding synthesize to a self-contained module bloats the spec tree; skipping it on a pipeline loses the design. When a pipeline comes back "Strategy needed: no", ask the user.
 - **For Shape B plans, pass the user's implementation context to the architect verbatim.** When you skip synthesize, the user's words from the Stage 1 interview ARE the architectural input. Quote them in the architect's delegation prompt; do not paraphrase or summarize.
 - **Detect and resume.** If the user runs `/aide` mid-pipeline, detect state from existing files and resume from the correct stage. Never restart from scratch if prior work exists.

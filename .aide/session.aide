@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.12.0 released: session record always exists, aide_scaffold never overwrites, aide_frontmatter status model, aide-upgrader + changelog. Closing the feature after a restart on 0.12.0.
+  Session record for the aidemd-mcp server. v0.12.0 released; closing its ephemerals is pending. The structure gate (architect proposes the folder tree before any spec below the root) is committed on main, unreleased.
 ---
 
 # AIDE SESSION
@@ -10,7 +10,9 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-25, v0.12.0 released — awaiting restart)
+## State summary (set 2026-10-25, structure gate committed; v0.12.0 close-out pending)
+
+2026-10-25: (a) The aidemd.dev headless sync was retried and failed again: `claude auth status` from the shell reports loggedIn:false for the npm-global CLI at C:/Users/bestb/AppData/Roaming/npm/claude (v2.1.195), even though the user said they logged in — likely a different install/profile. The user must run `claude auth login` (or `claude /login`) for that CLI, then the sync reruns. (b) Task `architect-sets-the-folder-structure-before-any-spec-below-th` is implemented as prose by the main agent (no pipeline, per process discipline), approved by the user and committed on main (unpushed, unreleased): the aide skill (structure gate section before Stage 1, delegation list, explicit routing, resume table rows for missing root intent and unsettled tree, Stage 1 interview note, rules); the aide-architect agent (structure mode: returns project tree, entity model, playbook mapping, decisions, spec order, open questions; writes no file; plans must fit the approved tree); the aide-spec-writer agent and /aide:spec (below the root, the folder comes from the approved tree, else return to the orchestrator; child-spec splits go through structure mode); docs index.md (architect row), aide-spec.md (bootstrapping paragraph), plan-aide.md (rule: fits the approved project tree); CHANGELOG [Unreleased] Added bullet. No format change, so no [migration] entry. Guard tests and the install/cli-init/upgrade suites are green (1353 tests).
 
 v0.12.0 is released. The feature commit is 2421374, the release commit de56e49, the tag v0.12.0; Publish and CI are green and npm serves 0.12.0. The published dist/versions.json has 46 artifacts, including docs/changelog and agents/aide/aide-upgrader, and the package ships CHANGELOG.md. The global install is @aidemd-mcp/server 0.12.0. The registration plans (root package.json files, initContent registry with the aide-upgrader agent and the changelog doc from the root CHANGELOG.md, installAgents/installMethodologyDocs tests, the buildVersionsMeta release gate) were built and QA passed with no todo. Before release the full suite was 2871 green twice, tsc clean, build OK. The aidemd.dev sync is BLOCKED: the headless `claude -p` in the site folder failed with 'Not logged in · Please run /login'. The user must log the CLI in, then rerun the sync. The site's files were not hand-edited. The plans, todo lists and briefs are still on disk, untracked and uncommitted; they close after the restart, through the real aide_frontmatter.
 
@@ -75,9 +77,9 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
+- `architect-sets-the-folder-structure-before-any-spec-below-th` (Done, p2, change) — structure gate written as prose, approved and committed 2026-10-25; ships in the next release.
 - `let-session-aide-exist-without-a-linked-kanban-task` (In Progress, p2, change) — session.aide always exists as an empty placeholder (aide_init + /aide boot); handoffs never refuse for missing content or tasks; also adds the aide-upgrader migration agent.
 - `aide-scaffold-overwrites-existing-files` (In Progress, P1, bug) — folded into the session task: aide_scaffold never overwrites any file.
-- `architect-sets-the-folder-structure-before-any-spec-below-th` (Todo, p2, change) — the architect proposes the folder tree for approval before any spec below the root (from leave-some-for-gupshaz, 2026-10-25). Next after the current task.
 - `aide-auto-mode-agent-approves-its-own-plans-and-specs` (Backlog, p2, change) — a project setting that skips human review. The agent still reviews plans and moves them proposed → approved itself, and session.aide records who approved. Depends on the session task.
 - `aide-cleanup-strands-a-fully-checked-todo-aide-in-a-folder` (Done, P1, bug) — fixed and released in v0.11.1; moved to Done by the user, 2026-10-25.
 - `brain-authoring-skill-create-a-brain-aide-for-any-backend` (Done, P2, dx) — committed 6d85560; released in v0.11.0; moved to Done by the user, 2026-10-25.
@@ -197,6 +199,7 @@ The tasks on the board this work touches, in work order; the full record of the 
 36. **The fix loop is autonomous (user, 2026-10-25).** QA's todo list is agents checking agents. The orchestrator triages it, approves it itself through aide_frontmatter, and routes each item by misalignment tag: implementation-drift/test-gap → implementor; plan-gap/strategy-gap → architect amends the plan first; spec-gap/spec-bloat → spec-writer/strategist; research-gap → domain expert. The user is interrupted only for an outcome change, a scope change, or an item still failing after two attempts; otherwise they hear one line in the completion report. Out-of-scope defects stay unchecked with a note and are offered as tasks. Written into the aide skill's Stage 7 and /aide:fix.
 37. **Changelog drives migrations (user, 2026-10-25).** CHANGELOG.md at the repo root (Keep a Changelog) ships to hosts as .aide/docs/changelog.md. Format-changing bullets start with [migration] and carry exactly Detect / Migrate / Confirm (Confirm: once, as a batch | per file). aide-upgrader reads only those bullets, detects by the file's current form (idempotent, catches up skipped releases), and uses the host's git history as evidence for per-file suggestions. This repo's CLAUDE.md requires an [Unreleased] entry with every user-visible change and a [migration] entry for every format change; a release missing one is not shippable.
 38. **Session record from aide_scaffold only (user, 2026-10-25).** Boot, aide-handoff and the spec writer's CREATE all call aide_scaffold type=session; nobody writes the placeholder by hand. aide_init's session step only instructs the agent to call it; the CLI calls the same scaffold function.
+39. **Structure gate (user task, 2026-10-25).** No intent spec below the project root is written until the module's place in the folder tree is settled. The gate applies when the project has no code yet, or the target module's folder does not exist and no approved tree in session.aide's architectural intent places it; it never applies to the root intent spec, which comes first. The orchestrator interviews the user, delegates to aide-architect in structure mode (writes no file; returns project tree with .aide folders marked and which spec each narrows, entity model, playbook mapping per layer, decisions, spec order, open questions), pauses for approval, records the approved tree as a numbered session.aide decision, then runs Stage 1 per module parents first. Moving/splitting/re-parenting a module, including spec-writer child-spec splits, goes back through structure mode. Every plan's Project Structure must fit inside the approved tree. The spec writer never picks an unsettled folder.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -219,19 +222,20 @@ The tasks on the board this work touches, in work order; the full record of the 
 - **aide_scaffold never overwrites any existing file** — every type is a no-op on an existing target.
 - **No build or fix starts on anything not approved** — building needs the plan (and its brief, if present) approved, and fixing needs the todo list approved, each checked through aide_frontmatter's read mode by the build/fix stage and the implementor.
 - **Recorded state changes only through aide_frontmatter** — never a hand edit of alignment or status.
+- **No spec below the root without a settled place in the tree** — the spec writer takes the folder from the approved tree or returns to the orchestrator.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-v0.12.0 released. Waiting on: the user restarting Claude Code (to load the 0.12.0 tools) and logging the CLI in for the aidemd.dev sync.
+Structure gate committed (unreleased). v0.12.0 close-out pending; aidemd.dev sync blocked on the npm-global CLI login.
 
 ### What the next agent must do
 
-1. Rerun the headless aidemd.dev sync (command in the maintainer's private notes) once the CLI is logged in, confirm the deploy, and report brainMigration.
-2. After the restart: move every plan, brief and todo list from this release to completed through aide_frontmatter (plans: src/tools/frontmatter, src/tools/scaffold, src/service/install, src/cli/init, src/tools/upgrade/buildVersionsMeta, src/tools/cleanup, src/tools/discover, src/tools/validate, src, .aide, src/service/install/initContent, src/service/install/installAgents, src/service/install/installMethodologyDocs; brief: src/tools/frontmatter; todos: src/tools/frontmatter, scaffold, cli/init, cleanup, discover, src). src/tools/validate/todo.aide still has 3 unchecked out-of-scope items: offer them as tasks, then mark that todo abandoned only with the user's OK.
-3. Promote the retros to the brain at process/retro/, then aide-maintainer cleanup per module.
-4. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
-5. Board: the session task and the scaffold P1 bug → Done (on the user's OK); offer the backlog tasks (3 validate items, aide-spec.md's root intent.aide claim, the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description).
-6. Next task: `architect-sets-the-folder-structure-before-any-spec-below-th`.
+1. User logs in the npm-global claude CLI (`claude auth login`), then rerun the aidemd.dev headless sync for 0.12.0, confirm the deploy, report brainMigration.
+2. Move every plan, brief and todo list from v0.12.0 to completed through aide_frontmatter (plans: src/tools/frontmatter, src/tools/scaffold, src/service/install, src/cli/init, src/tools/upgrade/buildVersionsMeta, src/tools/cleanup, src/tools/discover, src/tools/validate, src, .aide, src/service/install/initContent, src/service/install/installAgents, src/service/install/installMethodologyDocs; brief: src/tools/frontmatter; todos: src/tools/frontmatter, scaffold, cli/init, cleanup, discover, src). Offer src/tools/validate/todo.aide's 3 unchecked out-of-scope items as tasks, then mark it abandoned only with the user's OK.
+3. Promote retros to process/retro/, then aide-maintainer cleanup per module.
+4. Board: move `let-session-aide-exist-without-a-linked-kanban-task` and `aide-scaffold-overwrites-existing-files` to Done on the user's OK (the session task's own status note is stale — it still says spec amendments remain); offer the backlog follow-ups.
+5. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
+6. The structure gate ships in the next release (publish + site sync).
 
 ### What's already done and validated
 
@@ -256,6 +260,7 @@ v0.12.0 released. Waiting on: the user restarting Claude Code (to load the 0.12.
 - Root cause of the stray .aide/versions.json `{}`: the cli/init integration tests ran a real init in this repo (a mocked process.exit fell through, and the module's import-time IIFE ran on import). init is now an exported runInitCli() called by the dispatcher, and no test writes into the repo.
 - Prose sweep: aligner, QA, maintainer, implementor, architect, strategist and spec writer; the new aide-upgrader agent; build, fix, align and upgrade commands; the aide and aide-handoff skills; the cascading-alignment, aide-spec, aide-template, plan/todo/brief/session-aide and index docs; README; the tool descriptions in src/index.ts; init --help; the CleanupRefusal JSDoc. src/retiredVocabulary.test.ts is green.
 - CHANGELOG.md written (Keep a Changelog, every tag back to v0.3.1, 0.12.0 with two [migration] entries). This repo's CLAUDE.md has a ## Changelog section requiring an [Unreleased] bullet per user-visible change and a [migration] entry (Detect/Migrate/Confirm) per format change.
+- Structure-gate prose written; guard tests + install/cli-init/upgrade suites green (1353 tests, 2026-10-25); approved by the user and committed on main 2026-10-25, unreleased; task moved to Done.
 
 ### What's left after the current cycle
 

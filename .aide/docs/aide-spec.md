@@ -46,6 +46,8 @@ Every intent tree needs a root. The project root intent spec lives at `.aide/int
 
 `aide_init` creates this file during project bootstrap. On the first `/aide` run against a new project, the spec writer creates it as Stage 1 before any module-level specs exist.
 
+**The folder tree comes next, before any spec below the root.** A spec's folder is its scope, and its parent folder's spec is the intent it narrows, so a module spec written before the folder structure exists has to guess both — and a wrong guess means moving and narrowing the spec later. In a project with no code yet, or for a module whose folder does not exist and that no approved tree places, the architect first proposes the project folder tree from the root intent: the layers, the orchestrators that get a `.aide`, the entity model, and the playbook entries each layer follows. It writes no plan for this. The user approves the tree, the orchestrator records it in `session.aide`, and only then are module specs written, at the folders the tree gives them, parents before children. Moving, splitting or re-parenting a module later goes back through the same proposal and approval.
+
 Without a root intent spec, child specs have nothing to inherit from. They are forced to restate project-level context that belongs at the root — or worse, they omit it entirely, leaving gaps the architect and QA agents can't fill. The root spec establishes the project-wide contract; everything below narrows it.
 
 ### Example: full project intent tree

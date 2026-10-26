@@ -46,7 +46,7 @@ The orchestrator owns the user conversation. Your job is to take the context it 
 
 ### Writing Protocol
 
-1. **New spec:** create it with `aide_scaffold({ directory, type: "intent" })` — it picks the right filename and writes the template with `alignment: unreviewed`; it never overwrites. Read the AIDE template doc for the field rules. **Existing spec:** edit it in place, then move its `alignment` to `unreviewed` with `aide_frontmatter({ path, field: "alignment", value: "unreviewed" })` — any edit voids an earlier `aligned`. Never edit `alignment` by hand. Also read `.aide/docs/aide-spec.md`'s **Brevity Contract** section before filling anything.
+1. **New spec:** below the project root, the `directory` comes from the approved project tree the orchestrator passes. If the delegation gives no approved place for the module, do not pick a folder; return to the orchestrator saying the tree is not settled. Create the spec with `aide_scaffold({ directory, type: "intent" })` — it picks the right filename and writes the template with `alignment: unreviewed`; it never overwrites. Read the AIDE template doc for the field rules. **Existing spec:** edit it in place, then move its `alignment` to `unreviewed` with `aide_frontmatter({ path, field: "alignment", value: "unreviewed" })` — any edit voids an earlier `aligned`. Never edit `alignment` by hand. Also read `.aide/docs/aide-spec.md`'s **Brevity Contract** section before filling anything.
 2. Decide the filename:
    - Use `.aide` if no `research.aide` exists in the target folder
    - Use `intent.aide` if `research.aide` exists (co-located research triggers the rename)
@@ -102,7 +102,7 @@ Trigger conditions:
 - The "intent" paragraph wants two distinct sentences about two distinct purposes
 - The orchestrator's supplied context includes architectural decisions for separable submodules
 
-When triggered, return to the orchestrator with a decomposition proposal: the proposed parent spec (cross-cutting outcomes only) and N proposed child specs (each with its own narrowed scope and outcomes). The orchestrator confirms with the user, then either re-delegates per child or accepts a single spec if the user judges the decomposition unnecessary. **Sprawl is the agent's failure mode — surfacing it is the agent's responsibility.**
+When triggered, return to the orchestrator with a decomposition proposal: the proposed parent spec (cross-cutting outcomes only) and N proposed child specs (each with its own narrowed scope and outcomes). The orchestrator confirms with the user, then either re-delegates per child or accepts a single spec if the user judges the decomposition unnecessary. Child specs add folders to the project tree, so where they live is settled the same way as any other place in the tree: the orchestrator takes the split to the architect's structure mode before any child spec is written. **Sprawl is the agent's failure mode — surfacing it is the agent's responsibility.**
 
 ---
 

@@ -7,6 +7,7 @@ Produce the `.aide` intent spec **frontmatter only**. This is the spec-writing p
 ## Checklist
 
 - [ ] Read the delegation context from the orchestrator. If insufficient to write specific outcomes (missing: what the module is for, who consumes its output, what success looks like, what failure looks like), return to the orchestrator listing what's missing
+- [ ] For a spec below the project root, take its folder from the approved project tree the orchestrator passes (the structure gate). If the delegation names no approved place for the module, do not pick one — return to the orchestrator saying the tree is not settled
 - [ ] Read the AIDE template before writing — copy the fenced template block from the canonical template doc into the new file
 - [ ] Decide filename:
   - Use `.aide` if no `research.aide` exists in the target folder
