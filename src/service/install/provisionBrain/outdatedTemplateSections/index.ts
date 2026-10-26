@@ -79,6 +79,10 @@ const outdatedTemplateSections: Partial<Record<BrainSectionMarker, readonly Outd
 			fingerprint: "44ec6da0282c586b76297338a609fed95b2e4508a2564a0c288d1ae2f4c05b2d",
 			seenIn: "unreleased 24826d4 (\"card\" wording)",
 		},
+		{
+			fingerprint: "17dbab1c27043372a7c3f04b4a9fdf06542e41b61a44a80db1c4e3b63b0a37e7",
+			seenIn: "82cab85 through v0.13.0 (before the never-truncate slug rule)",
+		},
 	],
 	"kanban-create": [
 		{

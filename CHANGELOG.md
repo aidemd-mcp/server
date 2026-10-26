@@ -6,6 +6,9 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Changed
+- The bundled brain template's kanban index (the `kanban-index` section) says a task slug is never cut off at the 60-character limit: a too-long title gets a shorter whole-word slug that still says what the task is, and the title keeps its full wording. Brain configs with the previous wording are offered the new text through `/aide:brain config`, never overwritten.
+
 ### Fixed
 - Implementors could silently skip a plan step's playbook entries. Plans wrote `Read:` entries in a shape the brain's read tool did not accept (no file extension, a section anchor glued on), so the first read failed and the implementor fell back on the surrounding code's style. Now the architect and auditor write each entry as the exact address they loaded it with, copied from their own successful read, whatever the brain backend; a section is named in words, not as an anchor. The implementor passes addresses through unchanged, finds an entry that will not load through the brain's navigation or stops, never substitutes nearby code, and reports every entry as loaded or not loaded. The orchestrator checks that report after each step and re-runs a step whose entries were not loaded.
 

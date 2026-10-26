@@ -14,7 +14,7 @@ const CURRENT_FINGERPRINTS: Record<BrainSectionMarker, string> = {
 	"study-playbook": "884ac5fa4ab21bb9e6ab221eee6f0bf6f01d81da40d7e4c51315e62e2948c7d9",
 	"update-playbook": "06d4b538fb870eec652fec875b62856b1cee6bab0056f635d9525a69f4ac60b3",
 	"research-index": "6162c299a13af5fc55d9ec96a97f9051df3865e652f9085cdd1c5bf2d70da3c0",
-	"kanban-index": "17dbab1c27043372a7c3f04b4a9fdf06542e41b61a44a80db1c4e3b63b0a37e7",
+	"kanban-index": "3a720167b7b022894969a1306e8d9036f3e3387581c8154bc13f28d35769efeb",
 	"kanban-create": "158625ff36d4a3d92e00952aa9b10ffbc92f11be1bf00e81aa5d5de12406f6b2",
 	"kanban-work": "71ae9f8ffed17fc9ab9e81ea8978dbf14d003c21ad8c114ea3596fd9d90bc9a7",
 	"kanban-manage": "f74b371a13170e53f1cbddd6e1f66effc13054ca2f77894ea32adeb2a73fe2d1",
