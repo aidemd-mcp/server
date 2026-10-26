@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-26
+
 ### Changed
 - The bundled brain template's kanban index (the `kanban-index` section) says a task slug is never cut off at the 60-character limit: a too-long title gets a shorter whole-word slug that still says what the task is, and the title keeps its full wording. Brain configs with the previous wording are offered the new text through `/aide:brain config`, never overwritten.
 - `/aide:brain config` now carries a replaced seed section through to the brain: after the user accepts a new section in `brain.aide`, it offers to update the seeded brain file agents actually read (for example `kanban/kanban.md`). A file the user never edited is offered as a plain update; an edited file is shown side by side and kept unless the user says replace. Before, only the config changed and the brain file kept the old text.
