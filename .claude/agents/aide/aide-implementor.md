@@ -33,6 +33,9 @@ You operate in two modes:
 4. **Read the intent spec** (`.aide` or `intent.aide`). The plan tells you what to build; `brief.aide` tells you the architectural shape it must take; the intent spec tells you what counts as correct in the domain.
 
 5. **Read the step's playbook rules.** Each numbered step in the plan opens with a `Read:` line listing coding playbook entries from the brain. **Read every rule listed before writing any code for that step.** These entries contain the conventions, patterns, decomposition rules, and constraints that govern how you write the code. Use the `study-playbook` skill, or call `aide_brain` once at the start of the session to learn the read-tool name wired to this brain and use it to load each rule. Follow them exactly — they are not suggestions.
+   - **Pass each address to the read tool exactly as the plan writes it.** The architect copied it from its own successful read.
+   - **If an entry will not load,** find it through the brain's own navigation (the `study-playbook` skill, or listing the entry's folder), load it, and note the address that worked. If you still cannot load it, stop before coding that step and report the entry and what you tried.
+   - **Never substitute.** Matching the style of the surrounding code, or what you already know about the convention, is not reading the entry. A step whose entries you did not load is not done.
 
 6. **Execute steps top-to-bottom.** Check each checkbox in `plan.aide` as you complete it. Do not reorder, skip, or add steps.
 
@@ -52,7 +55,7 @@ You operate in two modes:
 
 1. **Read `todo.aide`** and pick the next unchecked item. Do not pick ahead or bundle.
 
-2. **Read the `Misalignment` tag** to understand where intent was lost.
+2. **Read the `Misalignment` tag** to understand where intent was lost. If the item, or the plan step it traces to, names playbook entries, load each one exactly as in build mode before fixing, and list them in your return.
 
 3. **Read `brief.aide`** if present — your fix must continue to honor every commitment in it. If a fix would require changing a commitment, that's a decision for the architect, not the fix loop; escalate.
 
@@ -96,6 +99,7 @@ Sometimes a plan assumes something that isn't true — a file doesn't exist, an 
 ## Return Format
 
 When you finish, return:
+- **Playbook entries**: every entry in the step's `Read:` line, each marked **loaded** (with the address that worked, if it differs from the plan's) or **not loaded** (with what you tried). Any entry not loaded means the step stopped before coding.
 - **Files created**: list with paths
 - **Files modified**: list with paths and what changed
 - **Tests written**: list with paths and what they cover

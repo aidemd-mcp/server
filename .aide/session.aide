@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.13.0 released (no plan without an intent spec; orphaned-spec judged by code); global install 0.13.0; aidemd.dev live on 0.13.0. Nothing in flight.
+  Session record for the aidemd-mcp server. v0.13.0 released. Unreleased: plans' playbook Read entries are written as exact, tool-accepted addresses and implementors must report loading them.
 ---
 
 # AIDE SESSION
@@ -10,9 +10,11 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-26, v0.13.0 released; site live; nothing in flight)
+## State summary (set 2026-10-26, Read-entry addressing fix written; unreleased)
 
-2026-10-26 (latest, release): v0.13.0 released with the user's yes. publish.mjs minor committed fecac4b ("0.13.0: no plan without an intent spec beside it; orphaned-spec judged by code"; CHANGELOG heading [0.13.0] - 2026-10-26, package.json/server.json/README pins), tagged v0.13.0 and pushed main (0f40fc9..fecac4b, carrying dc41576 and 21871a0). The Publish workflow is green; npm serves 0.13.0; global install 0.13.0. aidemd.dev synced headless to 0.13.0 (site commit a8365d9: methodology-docs aide-spec/aide-template/plan-aide/changelog, version-metadata, commands plan.md, agents aide-architect, skills aide; pointer-stub/ide/readme matched; brainMigration null) and its deploy is green. Task `every-plan-requires-an-intent-spec-beside-it` moved to Done by the user, with a closing stash; In Progress is empty.
+2026-10-26 (latest, Read-entry addressing fix): diagnosed why an implementor skipped playbook entries. Root cause: plans write `Read:` entries in a shape the brain's read tool rejects — e.g. `coding-playbook/workflow/type-system` with no `.md`, or `…/conventions#Early Returns Over Nesting` with an anchor — so the first read fails "File not found"; most implementors recovered (added .md / browsed), one fell back on the surrounding code's style; nothing asked for a report and nobody checked. User direction: the architect must write the path exactly as the tool requires, generically, so no prose changes per MCP integration. Fix (prose by the main agent, uncommitted at the time of writing): aide-architect and aide-auditor write each Read entry as the exact address they loaded it with, copied from their own successful read (never retyped from memory, docs examples or links); sections named in words, never as anchors. plan-aide.md rule + examples rewritten as placeholders (`<address of … entry>`). aide-implementor: pass addresses through unchanged; an entry that won't load is found via the brain's navigation or the step stops; never substitute nearby code style; new "Playbook entries" item in its return (loaded / not loaded); fix mode loads entries too. /aide skill Stage 5 step 3 and /aide:build check that report and re-run a step whose entries weren't loaded (or send a bad address back to the architect). CHANGELOG [Unreleased] Fixed bullet. Guard/install/upgrade tests green (1219). Still proposed, not decided by the user: a playbook-conformance check after QA (aide-auditor scoped to the build's changed files, findings into the fix loop) — the "after" side of this fix.
+
+2026-10-26 (earlier, release): v0.13.0 released with the user's yes. publish.mjs minor committed fecac4b ("0.13.0: no plan without an intent spec beside it; orphaned-spec judged by code"; CHANGELOG heading [0.13.0] - 2026-10-26, package.json/server.json/README pins), tagged v0.13.0 and pushed main (0f40fc9..fecac4b, carrying dc41576 and 21871a0). The Publish workflow is green; npm serves 0.13.0; global install 0.13.0. aidemd.dev synced headless to 0.13.0 (site commit a8365d9: methodology-docs aide-spec/aide-template/plan-aide/changelog, version-metadata, commands plan.md, agents aide-architect, skills aide; pointer-stub/ide/readme matched; brainMigration null) and its deploy is green. Task `every-plan-requires-an-intent-spec-beside-it` moved to Done by the user, with a closing stash; In Progress is empty.
 
 2026-10-26 (earlier, built, QA passed, committed): Task `every-plan-requires-an-intent-spec-beside-it` built, QA passed with notes and no todo.aide (no retro), all five plans recorded completed and removed through aide_cleanup (src/tools/scaffold, src/types, src/util/classify, src/tools/validate, src), committed as dc41576 (unpushed, unreleased). Gate: tsc clean, full suite 157 files / 2988 tests. Built: aide_scaffold refuses a plan in a folder with no .aide/intent.aide (hasIntentSpec; nothing created); plan template without description:; "plan-without-spec" finding kind; classify's holdsCode/isCodeFile and the new orphaned-spec rule (only with .aide/intent.aide present, never the project root .aide folder, only when folder + subfolders hold no code; code = any file but *.aide, Markdown and dot-files; dot-folders and SKIP_DIRS skipped); validate's checkPlanSpec; description-pin tests. User decisions folded in: root intent spec exempt ("yeah aide folder doesn't need code"), dot-files ignored. New specs src/types/.aide and src/util/classify/.aide. QA ran local-source validate on this repo: only .aide/docs is orphaned now (accepted — Markdown by design); src/cli, scripts, .aide, .aide/config, .claude no longer flagged; no plan-without-spec. QA notes fixed as prose by the main agent: .aide/tools.md aide_validate section, aide-template.md and aide-spec.md placement wording. Also prose earlier: aide-spec.md, plan-aide.md, aide-architect, /aide:plan, /aide skill Stage 4, aide_scaffold/aide_validate descriptions, CHANGELOG [Unreleased] (Added plan-without-spec; Changed scaffold refusal, spec placement, orphan rule; Fixed plan template). Not added: a [migration] entry for host plans that sit in spec-less folders (the fix needs a real spec, so it isn't mechanical) — open question for the user.
 
@@ -246,6 +248,7 @@ The tasks on the board this work touches, in work order; the full record of the 
     - aide_scaffold type=plan refuses when the folder has no intent spec (a research-only folder doesn't count), naming the missing spec.
     - aide_validate flags any plan.aide with no spec beside it, and reports a spec as orphaned only when its folder holds no code — never decided by a plan's presence, since plans are deleted after QA.
     - User additions 2026-10-26: the project root intent spec is never orphaned; dot-files don't count as code. Built dc41576.
+43. **Playbook Read entries are exact addresses (user, 2026-10-26).** The architect/auditor copy each `Read:` entry from their own successful read, character for character; the brain's read tool decides the address shape, so the rule needs no change per brain backend; sections are named in words. The implementor passes addresses unchanged, never substitutes nearby code, stops on an entry it can't load, and reports every entry loaded/not loaded; the orchestrator checks the report per step.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -270,16 +273,18 @@ The tasks on the board this work touches, in work order; the full record of the 
 - **Recorded state changes only through aide_frontmatter** — never a hand edit of alignment or status.
 - **No spec below the root without a settled place in the tree** — the spec writer takes the folder from the approved tree or returns to the orchestrator.
 - **No plan.aide without an intent spec beside it** — aide_scaffold refuses, aide_validate flags; a module's code never rides in another module's plan.
+- **No playbook entry silently skipped** — every build step's report lists each Read entry as loaded or not loaded, and the orchestrator re-runs a step with an unloaded entry.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-v0.13.0 released and the site is live on it. No pipeline work in flight; In Progress is empty.
+v0.13.0 released. Read-entry addressing fix written and committed, unreleased; post-QA playbook check proposed, awaiting the user.
 
 ### What the next agent must do
 
-1. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
-2. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
-3. Decide with the user whether a [migration] entry should offer specs for host plans in spec-less folders (open question).
+1. Ask the user about adding a playbook-conformance check after QA (aide-auditor on the changed files, findings into the fix loop); ship the Read-entry fix in the next release.
+2. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
+3. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
+4. Decide with the user whether a [migration] entry should offer specs for host plans in spec-less folders (open question).
 
 ### What's already done and validated
 
@@ -348,3 +353,4 @@ session.aide is rewritten, never deleted (decision 18).
 
 - Should a [migration] entry also detect a project root holding an `intent.aide/` folder with no `.aide/` (the old rename bug's footprint) and offer to rename it back? No AIDE tool renames a folder today, so the CHANGELOG currently tells users to rename it by hand.
 - Should a [migration] entry tell /aide:upgrade to find host plan.aide files with no intent spec beside them and offer to write the spec (per file, with the user)?
+- Add a post-QA playbook-conformance check to the /aide loop (aide-auditor scoped to changed files, or the code-reviewer agent)?

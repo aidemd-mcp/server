@@ -434,7 +434,7 @@ The architect reads the spec, pulls the playbook, scans the codebase, writes `pl
    - If the step has lettered sub-steps (2a, 2b, 2c), include ALL of them — the agent executes the entire numbered group in one session
 
    **Do NOT include** generic instructions to consult the coding playbook or load conventions from the brain. Each plan step already has a `Read:` list pointing the implementor to the specific playbook entries it needs — the implementor will load those entries itself. Do not duplicate or override the Read list in your delegation prompt.
-3. After the agent returns, verify the step's checkbox is checked
+3. After the agent returns, verify the step's checkbox is checked **and** that its **Playbook entries** report marks every `Read:` entry loaded. An entry not loaded, or a report with no such list, means the conventions were not applied: send a fresh implementor for the same step. If an entry cannot be loaded at all, its address in the plan is wrong — send it back to the architect to correct from a successful read, then rebuild the step.
 4. Repeat from step 1 until all numbered steps are checked
 
 **Lettered sub-steps:** When a plan step has lettered sub-steps (e.g., 3a, 3b, 3c), these are tightly coupled actions that share one agent session. Delegate ALL sub-steps of that number to a single implementor. Do NOT split lettered sub-steps across agents.

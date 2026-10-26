@@ -66,13 +66,13 @@ this plan consumes.
 
 ### 1. Step title — self-contained unit
 
-Read: `coding-playbook/structure/modularization`, `coding-playbook/patterns/orchestrator-helper`
+Read: `<address of the modularization entry>`, `<address of the orchestrator-helper entry>` — section "Thin orchestrators"
 
 - [ ] What to do, which files, what contracts
 
 ### 2. Coupled step title — requires shared context
 
-Read: `coding-playbook/testing/unit-tests`
+Read: `<address of the unit-tests entry>`
 
 - [ ] 2a. First action in the coupled group
 - [ ] 2b. Second action that depends on 2a's in-memory state
@@ -104,7 +104,7 @@ without re-deriving it.
 - **Each numbered step is a unit of delegation.** The orchestrator spawns one fresh implementor agent per numbered step. This means each step must be self-contained: a fresh agent should be able to execute it by reading the plan, the `.aide` spec, and the current code state — without knowing what a prior agent did in-memory. Write steps at a granularity where each one produces a complete, testable change.
 - **Lettered sub-steps for coupled work.** When multiple actions are tightly coupled and cannot be executed independently (e.g., creating a helper and immediately wiring it into the caller), group them as lettered sub-steps under a single number: `1a`, `1b`, `1c`. The orchestrator keeps one agent for all sub-steps of a given number. Use this sparingly — most steps should be independent. If you find yourself lettering more than you're numbering, the steps are too granular.
 - **No implementation code.** No function bodies, no algorithms expressed as code, no copy-paste snippets. But the following ARE allowed because they are architectural decisions, not implementations: type shapes (field names, types, unions), function signatures (what it takes and returns — these also appear in the Project Structure tree annotations), pipeline sequences described declaratively ("compute X → apply Y → check Z → if triggered, override"), threshold values and domain constants from the spec, and API endpoints with their validation schemas. The line is: **if an implementor would have to invent it, it belongs in the plan. If the playbook already covers it** (naming, file size, decomposition, error handling patterns), **it belongs in the Read list.**
-- **Every step has a Read list.** Each numbered step must open with a `Read:` line listing 1-3 coding playbook entries from the brain that the implementor should read before coding that step. These are the **convention entries** — playbook rules that govern how the implementor writes the code for that step (decomposition, naming, file size, patterns, testing style). The architect already consulted the playbook during planning; the Read list tells the implementor exactly which entries to load so it applies the same conventions. The implementor has direct playbook access via the `study-playbook` skill and will read these entries itself — the architect does not need to encode convention details into the plan text.
+- **Every step has a Read list.** Each numbered step must open with a `Read:` line listing 1-3 coding playbook entries from the brain that the implementor should read before coding that step. These are the **convention entries** — playbook rules that govern how the implementor writes the code for that step (decomposition, naming, file size, patterns, testing style). The architect already consulted the playbook during planning; the Read list tells the implementor exactly which entries to load so it applies the same conventions. The implementor has direct playbook access via the `study-playbook` skill and will read these entries itself — the architect does not need to encode convention details into the plan text. **Each entry is the exact address the architect loaded it with**, copied from its own successful read and never retyped: the brain's read tool decides what an address looks like, so the address that worked for the architect works for the implementor, whatever the brain is. A section of an entry is named in words after the address, never as an anchor. The examples in this doc show the shape of a `Read:` line, not any brain's address format.
 - **Every step traces to intent.** Each step must be traceable back to a line in the `.aide` spec, a rule in the coding playbook, or the [progressive disclosure](./progressive-disclosure.md) conventions (orchestrator/helper pattern, modularization, cascading structure). If a step has no source, cut it or find the rule that justifies it.
 - **Tests are steps.** Every behavior the spec's `outcomes.desired` names gets a corresponding test step in the plan.
 - **Decisions section is not optional.** The architect records *why* each structural choice was made. This prevents the implementor from second-guessing decisions mid-build and prevents future architects from re-debating settled choices.

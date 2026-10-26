@@ -47,6 +47,7 @@ You are NOT QA. QA validates implementation against the `.aide` spec's `outcomes
    - **Frontmatter:** `intent` — one-line: "Refactor <module> to conform to coding playbook conventions"
    - **`## Project Structure`** — the complete annotated folder tree of the module, rooted at the scope directory. Every file that will exist after the refactor appears in the tree, annotated with what it does and its function signature. Mark which files are being modified vs. unchanged. The implementor must never have to figure out the module's structure — that is your job.
    - **`## Plan`** — checkboxed steps the implementor executes top-to-bottom:
+     - Each numbered step opens with a `Read:` line of the 1-3 playbook entries it enforces, each written as the exact address you loaded it with — copied from your own successful read, never retyped. The brain's read tool decides what an address looks like. Name a section in words after the address, never as an anchor.
      - Which files to modify
      - What convention each change enforces (cite the specific playbook section)
      - Which existing helpers to reuse or rename
