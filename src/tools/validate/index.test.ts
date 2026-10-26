@@ -138,4 +138,122 @@ describe("validate", () => {
 			expect(result.warnings.filter(isAlignment)).toHaveLength(0);
 		});
 	});
+
+	describe("plan-without-spec", () => {
+		const isPlanWithoutSpec = (w: { kind: string }) => w.kind === "plan-without-spec";
+		const plan = "---\nstatus: approved\nintent: Plan it\n---\n";
+
+		async function writePlanFolder(name: string, planContent = plan) {
+			const dir = join(tempDir, "src", name);
+			await mkdir(dir, { recursive: true });
+			await writeFile(join(dir, "index.ts"), "export default function() {}");
+			await writeFile(join(dir, "plan.aide"), planContent);
+			return dir;
+		}
+
+		it("flags a plan whose folder has no intent spec", async () => {
+			await writePlanFolder("a");
+
+			const result = await validate(tempDir);
+			const flagged = result.warnings.filter(isPlanWithoutSpec);
+
+			expect(flagged).toHaveLength(1);
+			expect(flagged[0].path).toBe("src/a/plan.aide");
+		});
+
+		it("does not flag a plan beside a valid spec", async () => {
+			const dir = await writePlanFolder("a");
+			await writeFile(join(dir, ".aide"), "---\ndescription: A spec\nalignment: unreviewed\n---\n");
+
+			const result = await validate(tempDir);
+
+			expect(result.warnings.filter(isPlanWithoutSpec)).toHaveLength(0);
+		});
+
+		it("respects a scoped path", async () => {
+			await writePlanFolder("a");
+			await writePlanFolder("b");
+
+			const result = await validate(tempDir, "src/a");
+
+			expect(result.warnings.filter(isPlanWithoutSpec).map((w) => w.path)).toEqual(["src/a/plan.aide"]);
+		});
+
+		it("still flags a corrupt plan and keeps scanning other folders", async () => {
+			await writePlanFolder("a", "---\nstatus: [unclosed\nintent: : :\n---\n");
+			await writePlanFolder("b");
+
+			const result = await validate(tempDir);
+
+			const corrupt = result.warnings.filter((w) => w.path === "src/a/plan.aide").map((w) => w.kind);
+			expect(corrupt).toContain("parse-error");
+			expect(corrupt).toContain("plan-without-spec");
+			expect(result.warnings.filter(isPlanWithoutSpec).map((w) => w.path).sort()).toEqual([
+				"src/a/plan.aide",
+				"src/b/plan.aide",
+			]);
+		});
+	});
+
+	describe("orphaned-spec", () => {
+		const spec = "---\ndescription: A spec\nalignment: unreviewed\n---\n";
+		const plan = "---\nstatus: approved\nintent: Plan it\n---\n";
+		const isOrphaned = (w: { kind: string }) => w.kind === "orphaned-spec";
+		const isPlanWithoutSpec = (w: { kind: string }) => w.kind === "plan-without-spec";
+
+		async function writeSpecFolder(relDir: string, code?: [string, string]) {
+			const dir = join(tempDir, ...relDir.split("/"));
+			await mkdir(dir, { recursive: true });
+			await writeFile(join(dir, ".aide"), spec);
+			if (code) await writeFile(join(dir, code[0]), code[1]);
+			return dir;
+		}
+
+		it("does not flag a shared types folder whose index.ts holds only type exports", async () => {
+			await writeSpecFolder("src/types", ["index.ts", "export type Id = string;\n"]);
+
+			const result = await validate(tempDir);
+
+			expect(result.warnings.filter(isOrphaned)).toHaveLength(0);
+		});
+
+		it("does not flag a single-file module folder with no index file", async () => {
+			await writeSpecFolder("src/script", ["run.mjs", "export default function run() {}\n"]);
+
+			const result = await validate(tempDir);
+
+			expect(result.warnings.filter(isOrphaned)).toHaveLength(0);
+		});
+
+		it("flags a folder that holds only a spec", async () => {
+			await writeSpecFolder("src/empty");
+
+			const result = await validate(tempDir);
+			const orphaned = result.warnings.filter(isOrphaned);
+
+			expect(orphaned).toHaveLength(1);
+			expect(orphaned[0].path).toBe("src/empty");
+		});
+
+		it("still flags that folder once a plan is added, and does not flag the plan", async () => {
+			const dir = await writeSpecFolder("src/empty");
+			await writeFile(join(dir, "plan.aide"), plan);
+
+			const result = await validate(tempDir);
+			const orphaned = result.warnings.filter(isOrphaned);
+
+			expect(orphaned).toHaveLength(1);
+			expect(orphaned[0].path).toBe("src/empty");
+			expect(result.warnings.filter(isPlanWithoutSpec)).toHaveLength(0);
+		});
+
+		it("does not flag the types folder once a plan is added", async () => {
+			const dir = await writeSpecFolder("src/types", ["index.ts", "export type Id = string;\n"]);
+			await writeFile(join(dir, "plan.aide"), plan);
+
+			const result = await validate(tempDir);
+
+			expect(result.warnings.filter(isOrphaned)).toHaveLength(0);
+		});
+	});
 });

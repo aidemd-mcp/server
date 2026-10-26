@@ -73,7 +73,8 @@ export interface ValidationWarning {
 		| "missing-description"
 		| "parse-error"
 		| "missing-alignment"
-		| "invalid-alignment";
+		| "invalid-alignment"
+		| "plan-without-spec";
 	/** Path relative to project root where the issue was found. */
 	path: string;
 	/** Human-readable description of the issue. */

@@ -1,0 +1,28 @@
+---
+scope: src/util/classify
+alignment: unreviewed
+description: Classifies AIDE files by kind and detects intent-tree layout anomalies, giving the health check and the tree map one shared answer.
+intent: >
+  Answer two questions once, for every tool that inspects a project's intent
+  tree: what is this AIDE file, and is this folder's layout wrong? The health
+  check and the tree map both rely on that answer, so they never disagree
+  about the same folder. Anomalies are naming conflicts, orphaned research,
+  orphaned specs and orchestrators missing a spec. A spec is orphaned only
+  when there is nothing for it to govern, judged in a way that works for a
+  project in any language, so a legitimate spec on a planned module is never
+  reported as orphaned.
+outcomes:
+  desired:
+    - Every AIDE file is classified by its name alone as an intent spec, research, a plan or a todo list, and every tool that reads the intent tree uses that same classification.
+    - A folder holding both the bare and the renamed intent spec is reported as a naming conflict, and research with no intent spec beside it is reported as orphaned research.
+    - A spec is reported as orphaned only when there is no code in its folder or in any of its subfolders, where code is any file other than AIDE files, Markdown docs and dot-files, and nothing inside dot-folders or build and dependency folders counts.
+    - Specs on planned modules with no orchestrator, such as a shared types folder, a shared-helpers folder, a single-file module or a module whose code lives entirely in helper subfolders, are never reported as orphaned.
+    - An orchestrator that coordinates several helpers but has no spec of its own is reported as missing a spec.
+    - The project root intent spec in the project's .aide folder is never reported as orphaned, since it governs the whole project; a folder named .aide deeper in the tree gets no such exemption.
+  undesired:
+    - The health check and the tree map give different answers about the same file or folder.
+    - A legitimate spec on a planned module is reported as orphaned because the module has no orchestrator or keeps its code only in helper subfolders.
+    - Orphan detection depends on a list of language-specific file extensions, so specs in a project written in an unlisted language are flagged as orphaned.
+    - Whether a plan is present decides orphan status, so a spec turns orphaned once its plan is deleted after QA.
+    - A folder holding only AIDE files, Markdown docs or a stray dot-file such as .DS_Store counts as having code, hiding a spec that truly has nothing to govern.
+---

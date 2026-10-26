@@ -5,6 +5,7 @@ import sessionTemplate from "./sessionTemplate/index.js";
 import writeIfAbsent from "./writeIfAbsent/index.js";
 import resolveSpecFolder from "./resolveSpecFolder/index.js";
 import placeRootIntent from "./placeRootIntent/index.js";
+import hasIntentSpec from "./hasIntentSpec/index.js";
 
 export const ScaffoldInput = z.object({
 	directory: z.string().describe("Directory where the .aide file(s) will be created"),
@@ -75,8 +76,6 @@ description: >
 
 const PLAN_TEMPLATE = `---
 status: proposed
-description: >
-  <one-line summary of what this plan implements>
 intent: >
   <what this plan achieves and why>
 ---
@@ -121,6 +120,7 @@ function skippedLine(name: string): string {
  * - type=both → creates research.aide + intent.aide
  * - type=todo → creates todo.aide
  * - type=plan → creates plan.aide
+ * - type=plan with no .aide or intent.aide in the folder → refused, nothing created
  * - type=session → creates .aide/session.aide at the project root, ignoring directory
  * - type=intent, research and both treat "." as the project's .aide folder
  */
@@ -140,6 +140,11 @@ export default async function scaffold(
 	const usesSpecFolder = type === "intent" || type === "research" || type === "both";
 	const { folder, holdsRootSpec } = resolveSpecFolder({ root, directory });
 	const dir = usesSpecFolder ? folder : isAbsolute(directory) ? directory : join(root, directory);
+
+	// A plan implements a spec, so the gate runs before mkdir: a refusal creates nothing, not even the folder.
+	if (type === "plan" && !hasIntentSpec(await existingAideFiles(dir))) {
+		return `Refused plan.aide — ${directory} holds no intent spec (.aide or intent.aide); write the folder's intent spec first, then scaffold the plan`;
+	}
 
 	// Ensure directory exists
 	await mkdir(dir, { recursive: true });

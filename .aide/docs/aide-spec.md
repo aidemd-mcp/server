@@ -11,7 +11,7 @@ The research layer is optional. It runs only when the module needs domain knowle
 AIDE is a three-layer model:
 
 - **The brain holds durable knowledge.** External to the project — a personal knowledge base, an MCP memory server, a team wiki. Two kinds of content live here: domain research (what the module is supposed to do in the real world) and engineering conventions (how this team writes code — the coding playbook). Different agents pull different slices: the strategist draws on domain research when filling the spec body; the architect draws on the coding playbook when translating intent into a plan. Neither bloats the repo with reference material every session has to re-read.
-- **The `.aide` file holds the intent.** A short, structured brief living next to the orchestrator it governs. Strategy, outcomes, anti-patterns, domain examples. No code. This is the contract.
+- **The `.aide` file holds the intent.** A short, structured brief living in the folder of the module it governs. Strategy, outcomes, anti-patterns, domain examples. No code. This is the contract.
 - **The code holds itself.** The implementation is ephemeral — if the intent changes, the code changes. The spec persists; the code is its current expression.
 
 ## File Types
@@ -30,9 +30,11 @@ AIDE is a three-layer model:
 
 ## Where `.aide` Files Live
 
-`.aide` files live next to orchestrator `index.ts` files — **never next to helpers**. An orchestrator coordinates a pipeline; its spec provides the domain context for that pipeline. Helpers are small, focused functions — their folder name and code are self-explanatory.
+`.aide` files live on **modules** — the folders that are units of planned work. An orchestrator `index.ts` that coordinates helpers is the usual module, and its spec provides the domain context for that pipeline. Helpers inside a module are small, focused functions; their folder name and code are self-explanatory, and the module's spec already covers them.
 
-**Placement rule:** if a folder contains an orchestrator that coordinates helpers, it can have a `.aide`. If it contains a single-purpose helper, it doesn't. The one exception is the project root intent spec at `.aide/intent.aide` — the top of the cascading intent tree. It lives inside the `.aide/` folder because the project root has no orchestrator, and naming it `intent.aide` avoids ambiguity with the `.aide/` directory itself. All other specs inherit from it, directly or transitively.
+**No code without a plan, no plan without a spec.** Every `plan.aide` sits beside the intent spec it implements, so every folder that gets its own plan gets a spec first. That includes modules with no orchestrator: a shared types folder (the domain vocabulary, derived from the schema rather than hand-copied), a shared-helpers folder (pieces used by several modules, with no module-specific logic), a single-file module. A frontmatter-only spec is enough for these, and it is what QA verifies their code against. `aide_scaffold` refuses to create a plan in a folder with no intent spec.
+
+**Placement rule:** a folder that is its own unit of planned work — an orchestrator, or any module that gets its own plan — has a `.aide`. A helper folder inside a module doesn't; it is planned and verified as part of its module. The one exception is the project root intent spec at `.aide/intent.aide` — the top of the cascading intent tree. It lives inside the `.aide/` folder because the project root has no orchestrator, and naming it `intent.aide` avoids ambiguity with the `.aide/` directory itself. All other specs inherit from it, directly or transitively.
 
 ### Inheritance
 
@@ -250,11 +252,12 @@ If the strategy contradicts the intent, the intent wins and the strategy is wron
 |----------|-----------------|
 | New feature with unknown domain | Yes — at the feature root, and in submodules that implement domain logic |
 | New feature with clear requirements | Yes — at the feature root; submodule specs only if domain context is needed |
-| Adding a submodule to an existing feature | Only if the submodule implements domain logic beyond what the code expresses |
-| Simple helper or utility | No — the folder name and code are the spec |
-| Bug fix or simple change | No |
+| Adding a submodule to an existing feature | Yes if it gets its own plan; otherwise it is planned inside its parent module |
+| A shared types or shared-helpers folder, or a single-file module, that gets its own plan | Yes — frontmatter only is enough |
+| Simple helper inside a module | No — the module's spec and plan cover it |
+| Bug fix or simple change | No new spec — the fix is planned in the module whose spec it serves |
 
-The test: if the module implements domain logic that requires context beyond the code itself, it gets a `.aide`. If the folder name + code are self-explanatory, it doesn't.
+The test: a folder that gets its own plan gets a `.aide`, because a plan never exists without the spec it implements. Beyond that, write a body only when the feature is a pipeline (see [the pipeline test](#when-to-fill-body-sections--the-pipeline-test)).
 
 ## Intent Engineering
 

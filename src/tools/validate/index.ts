@@ -6,6 +6,7 @@ import scan from "@/util/scan/index.js";
 import { detectAnomalies } from "@/util/classify/index.js";
 import parseFrontmatter from "@/util/parseFrontmatter/index.js";
 import checkAlignment from "./checkAlignment/index.js";
+import checkPlanSpec from "./checkPlanSpec/index.js";
 
 export const ValidateInput = z.object({
 	path: z.string().optional().describe("Subdirectory to validate (defaults to entire project)"),
@@ -41,11 +42,12 @@ async function checkBrokenLinks(
 
 /**
  * Check project health for .aide file issues:
- * - Orphaned specs (.aide in folders with no orchestrator)
+ * - Orphaned specs (a spec in a folder that holds no code)
  * - Missing specs (orchestrators with 3+ helper imports but no .aide)
  * - Naming conflicts (.aide + intent.aide in same folder)
  * - Broken links (relative paths in spec content that don't resolve)
  * - Orphaned research (research.aide without corresponding intent spec)
+ * - Plans with no intent spec beside it (plan-without-spec)
  * - Missing or unreadable alignment (intent specs only; an older status: aligned|misaligned counts)
  */
 export default async function validate(root: string, path?: string): Promise<ValidationResult> {
@@ -54,6 +56,8 @@ export default async function validate(root: string, path?: string): Promise<Val
 
 	// Structural anomalies
 	const warnings: ValidationWarning[] = await detectAnomalies(files, root);
+	// A plan with no intent spec beside it
+	warnings.push(...checkPlanSpec(files));
 
 	// Broken link and missing-description checks
 	for (const file of files) {

@@ -6,7 +6,7 @@
 
 ## How to use this template
 
-1. Create the new `.aide` file at the correct location (next to the orchestrator `index.ts` it governs, or at `.aide/intent.aide` for the project root — see [placement rules](./aide-spec.md#where-aide-files-live)).
+1. Create the new `.aide` file at the correct location (in the folder of the module it governs — an orchestrator `index.ts`, or any folder that gets its own plan — or at `.aide/intent.aide` for the project root — see [placement rules](./aide-spec.md#where-aide-files-live)).
 2. Copy the entire fenced block under [The Template](#the-template) into the new file, without the surrounding backticks.
 3. Fill in the frontmatter: replace each `<…>` placeholder with a concrete value.
 4. For each of the first four body sections (`## Context`, `## Strategy`, `## Good examples`, `## Bad examples`), read the guidance paragraph, then **replace it** with real content for this module. The guidance is a prompt for you — it does not belong in the finished spec. For `## References`, do not replace the guidance paragraph manually — the synthesis agent populates this section from its reading log during synthesis. If you are the synthesis agent, log every brain entry you actually used (path + one-line description of what you drew from it for the Strategy); discard entries you opened but did not use.

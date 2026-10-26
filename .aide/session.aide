@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.12.1 released (root-intent scaffold fix + structure gate); global install 0.12.1. aidemd.dev sync pending the CLI login.
+  Session record for the aidemd-mcp server. v0.12.1 released. In flight: every plan requires an intent spec beside it (Stage 1 frontmatter for validate and scaffold awaiting the user).
 ---
 
 # AIDE SESSION
@@ -10,9 +10,13 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-10-25, v0.12.1 released; site sync pending CLI login)
+## State summary (set 2026-10-26, plan-requires-spec: scaffold built; types/classify/validate/src plans awaiting the user)
 
-2026-10-25 (latest): With the user's yes, 0.12.1 was published. publish.mjs committed 4352788 ("0.12.1: scaffold writes the root intent as .aide/intent.aide and never renames the .aide folder; structure gate"; CHANGELOG heading + package.json/server.json/8 README pins), tagged v0.12.1 and pushed main (1ef7aca..4352788, carrying 3e9bcbe structure gate, the session commits, 516fe5a maintainer prose, c84d27c scaffold fix). The Publish workflow passed and npm serves 0.12.1. Global install updated to @aidemd-mcp/server 0.12.1. The aidemd.dev sync is NOT done: `claude auth status` from this session's shell still reports loggedIn:false.
+2026-10-26 (latest, plans): (a) aidemd.dev: the site's deploy.yml pinned both jobs to runs-on: ubuntu-24.04 (site commit 5000bd8, pushed, user-approved); the deploy is green, so the site is live on 0.12.1. (b) Plan-requires-spec task: the user confirmed the validate and scaffold outcomes. The architect planned: src/tools/scaffold/plan.aide (approved by the user and BUILT: new helper hasIntentSpec; a plan in a folder with no .aide/intent.aide is refused before any mkdir with the line "Refused plan.aide — <dir> holds no intent spec (.aide or intent.aide); write the folder's intent spec first, then scaffold the plan"; the plan template no longer writes description:; scaffold 95 tests, full suite 2917, tsc clean), src/tools/validate/plan.aide (proposed; new helper checkPlanSpec and the plan-without-spec warning), src/plan.aide (proposed; pins both tool descriptions). (c) The architect applied the new rule to this repo: src/types and src/util/classify had no spec. The user agreed their intents and decided: code in subfolders counts, and code = any file except *.aide and Markdown. Spec writer created src/types/.aide and src/util/classify/.aide (frontmatter only, unreviewed). The architect then planned src/types/plan.aide (add "plan-without-spec" to the ValidationWarning kind union) and src/util/classify/plan.aide (new holdsCode + isCodeFile helpers, recursive, skipping SKIP_DIRS and dot-folders; orphaned-spec runs only when .aide/intent.aide is present; new message "Spec has nothing to govern: this folder and its subfolders hold no code (only AIDE files and Markdown)."), both proposed. (d) Build order: scaffold (done) → types → classify → validate step 1 (needs types) and step 2 (needs classify) → main agent edits the aide_validate description → src → CHANGELOG → QA. The main agent already edited the aide_scaffold description in src/index.ts (plan refused without a spec; root plans use directory ".aide"). (e) Open points raised by the architect: the root intent spec .aide/intent.aide is judged by what's in .aide/ (not flagged only because .aide/bin exists); dot-files (e.g. .DS_Store) count as code under the literal rule.
+
+2026-10-26 (earlier): (a) The root-intent task `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` moved to Done (user OK). The user logged the CLI in from a standalone terminal; `claude auth status` now reports loggedIn:true, and the aidemd.dev headless sync for 0.12.1 is running. (b) New task `every-plan-requires-an-intent-spec-beside-it` (In Progress, p1, bug), created by the user. Rule (user): no code without a plan, no plan without an intent spec beside it. Decisions (user, 2026-10-26; decision #42): any folder that gets its own plan gets an intent spec (frontmatter only is enough — e.g. a shared types folder, a shared-helpers folder, single-file modules); helper folders inside a planned module do not; aide_scaffold type=plan refuses when the folder has no intent spec (a research-only folder doesn't count), naming the missing spec; aide_validate flags any plan.aide with no spec beside it, and reports a spec as orphaned only when its folder holds no code (never decided by a plan's presence, since plans are deleted after QA). (c) Prose done by the main agent (uncommitted): aide-spec.md "Where .aide Files Live" + placement rule + "When to Write a .aide" table; plan-aide.md (new "No plan without a spec" rule, multi-plan wording, project-structure placement lines); aide-architect (No plan without a spec rule, "Modules needing a spec first" return item, placement line); /aide:plan checklist; /aide skill Stage 4. (d) Stage 1: aide-spec-writer amended src/tools/validate/.aide (description adds "plans with no spec"; new desired: plan with no spec is drift; spec orphaned only when its folder holds no code; new undesired: legitimate spec on a planned module reported as orphaned; alignment aligned → unreviewed) and src/tools/scaffold/.aide (intent adds the plan rule; desired[4] merged with the old one-line-per-action outcome; new desired[6] plan only beside an intent spec, else refused naming the missing spec; undesired[4] merged with the old install/boot copy outcome; new undesired[6] plan in a spec-less or research-only folder, or the rule leaking to other types). Both Research no / Strategy no. Awaiting the user's confirmation. (e) Note: the tool help text for aide_validate in src/index.ts still defines orphaned specs as "in folders with no orchestrator" — update with the build. (f) The aidemd.dev headless sync to 0.12.1 succeeded: serverVersion 0.12.1; applied pointer-stub (CLAUDE.md), methodology-docs (8 updated + changelog.md created), commands (5), agents (7 updated + aide-upgrader created), skills (2), version-metadata; ide/readme/mcp matched; brain untouched; site commit 835109a pushed to main; brainMigration null. BUT the site's GitHub Pages deploy run (40336209154) FAILED at "Install Playwright browsers": GitHub's ubuntu-latest moved to Ubuntu 26.04 (from 2026-10-19) and Playwright 1.59.1 does not support chromium on ubuntu26.04-x64. Not caused by the sync — any push to the site fails until the site's deploy.yml pins `runs-on: ubuntu-24.04` or Playwright is upgraded to a version supporting 26.04. That is a change in the site repo; awaiting the user's call (this repo's rule is never to hand-edit the site's files from this session).
+
+2026-10-25 (later, release): With the user's yes, 0.12.1 was published. publish.mjs committed 4352788 ("0.12.1: scaffold writes the root intent as .aide/intent.aide and never renames the .aide folder; structure gate"; CHANGELOG heading + package.json/server.json/8 README pins), tagged v0.12.1 and pushed main (1ef7aca..4352788, carrying 3e9bcbe structure gate, the session commits, 516fe5a maintainer prose, c84d27c scaffold fix). The Publish workflow passed and npm serves 0.12.1. Global install updated to @aidemd-mcp/server 0.12.1. The aidemd.dev sync is NOT done: `claude auth status` from this session's shell still reports loggedIn:false.
 
 2026-10-25 (earlier, build): The root-intent fix is built and QA passed with no todo.aide (no retro). Built: src/tools/scaffold — new helpers resolveSpecFolder and placeRootIntent, existingAideFiles counts files only, intent/research/both resolve "." and ".aide" to the project's .aide folder, the root spec is always .aide/intent.aide, a bare .aide/.aide is renamed with content kept; src/index.test.ts pins the aide_scaffold description. Gate: tsc clean, full suite 153 files / 2899 tests; QA ran live against local source in temp projects (the .aide/ folder is no longer renamed by research/both at "."). Prose by the main agent: aide_scaffold description and directory input in src/index.ts, aide-spec.md bootstrapping (aide_init does not create the root intent; the spec writer does with aide_scaffold), aide-spec-writer + /aide:spec leave the filename to scaffold, CHANGELOG Changed/Fixed + [migration] (Detect .aide/.aide with no .aide/intent.aide; Migrate aide_scaffold({ directory: ".aide", type: "intent" }); Confirm once, as a batch). Both plans recorded completed and removed through aide_cleanup (src/tools/scaffold, src). Committed as c84d27c. Released afterwards as 0.12.1 (see latest). Follow-up found: aide_scaffold type=plan writes a `description:` frontmatter field that plan-aide.md forbids (architect had to remove it from both plans).
 
@@ -96,7 +100,8 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` (In Progress, p1, bug) — released in 0.12.1 (fix c84d27c, release 4352788); awaiting the user's OK to move to Done.
+- `every-plan-requires-an-intent-spec-beside-it` (In Progress, p1, bug) — no plan without an intent spec beside it; specs on any planned module; scaffold refuses spec-less plans; validate flags them and narrows orphaned-spec.
+- `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` (Done, p1, bug) — released in 0.12.1; moved to Done by the user, 2026-10-26.
 - `architect-sets-the-folder-structure-before-any-spec-below-th` (Done, p2, change) — structure gate written as prose, approved and committed 2026-10-25; ships in the next release. Released in 0.12.1.
 - `aide-validate-with-a-path-reports-missing-specs-from-the-who` (Backlog, p2, bug) — detectAnomalies runs the missing-spec walk from the project root whatever path is passed.
 - `aide-validate-scoped-path-test-cannot-see-out-of-scope-findi` (Backlog, p2, test) — the only scoped-path test can't see out-of-scope findings; add an end-to-end scoped run.
@@ -231,6 +236,11 @@ The tasks on the board this work touches, in work order; the full record of the 
     - A new helper placeRootIntent returns created | renamed | exists: if intent.aide exists, nothing changes; else a bare .aide is renamed; else the spec is created. It ignores research.
     - Report lines name paths from the project root.
     - The `.aide/` folder is never treated or renamed as a spec.
+42. **No plan without a spec (user, 2026-10-26).** No code without a plan, no plan without an intent spec beside it.
+    - Any folder that gets its own plan gets an intent spec; frontmatter only is enough (e.g. a shared types folder, a shared-helpers folder, single-file modules).
+    - Helper folders inside a planned module do not.
+    - aide_scaffold type=plan refuses when the folder has no intent spec (a research-only folder doesn't count), naming the missing spec.
+    - aide_validate flags any plan.aide with no spec beside it, and reports a spec as orphaned only when its folder holds no code — never decided by a plan's presence, since plans are deleted after QA.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -254,17 +264,17 @@ The tasks on the board this work touches, in work order; the full record of the 
 - **No build or fix starts on anything not approved** — building needs the plan (and its brief, if present) approved, and fixing needs the todo list approved, each checked through aide_frontmatter's read mode by the build/fix stage and the implementor.
 - **Recorded state changes only through aide_frontmatter** — never a hand edit of alignment or status.
 - **No spec below the root without a settled place in the tree** — the spec writer takes the folder from the approved tree or returns to the orchestrator.
+- **No plan.aide without an intent spec beside it** — aide_scaffold refuses, aide_validate flags; a module's code never rides in another module's plan.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-v0.12.1 released. Waiting on: the CLI login for the aidemd.dev sync, and the user's OK to move the root-intent task to Done.
+Plan-requires-spec: scaffold plan built; plans for src/types, src/util/classify, src/tools/validate and src proposed, awaiting the user's approval (two classify questions open). Site live on 0.12.1.
 
 ### What the next agent must do
 
-1. User logs in from a standalone terminal outside the desktop app (`claude` → /login); confirm `claude auth status` reports loggedIn:true from this shell, then rerun the aidemd.dev headless sync for 0.12.1, confirm the deploy, report brainMigration.
-2. Move `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` to Done on the user's OK.
-3. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
-4. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
+1. User approves the four proposed plans (types, classify, validate, src) → build in order types → classify → validate → edit the aide_validate description → src → CHANGELOG [Unreleased] (Changed: scaffold refuses spec-less plans, orphaned-spec rule; Added: plan-without-spec; Fixed: plan template description) → QA → close out → release.
+2. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
+3. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade).
 
 ### What's already done and validated
 
@@ -296,6 +306,10 @@ v0.12.1 released. Waiting on: the CLI login for the aidemd.dev sync, and the use
 - aide-maintainer now shows worked calls with `path` (2026-10-25).
 - Root-intent scaffold fix (2026-10-25): built from 2 plans, QA passed with no todo, plans cleaned, committed c84d27c.
 - v0.12.1 released 2026-10-25 (release 4352788, tag v0.12.1; Publish green; npm 0.12.1); global install 0.12.1.
+- aidemd.dev synced to 0.12.1 (site commit 835109a, brainMigration null), 2026-10-26; deploy pending the Ubuntu 26.04 fix.
+- Root-intent task moved to Done by the user, 2026-10-26.
+- aidemd.dev deploy fixed (site 5000bd8, ubuntu-24.04), green 2026-10-26.
+- Scaffold plan-refusal built 2026-10-26 (95 scaffold tests, 2917 full suite, tsc clean).
 
 ### What's left after the current cycle
 
@@ -326,3 +340,4 @@ session.aide is rewritten, never deleted (decision 18).
 ## Open questions
 
 - Should a [migration] entry also detect a project root holding an `intent.aide/` folder with no `.aide/` (the old rename bug's footprint) and offer to rename it back? No AIDE tool renames a folder today, so the CHANGELOG currently tells users to rename it by hand.
+- Should the root intent spec (.aide/intent.aide) be exempt from orphan detection, since it governs the whole project? Should dot-files (.DS_Store, .gitkeep) be ignored when deciding a folder holds code?

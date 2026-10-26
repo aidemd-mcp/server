@@ -1,0 +1,25 @@
+---
+scope: src/types
+alignment: unreviewed
+description: The server's shared type vocabulary — every shape that crosses module boundaries, such as findings, statuses and tool results, is defined once and derived from its source.
+intent: >
+  The project's shared type vocabulary. Every shape that crosses a module
+  boundary — a tool's result, a finding the health check reports, a file or
+  work status — is defined once here, so every module that produces or reads
+  it agrees by construction. Where a shape already has an authoritative
+  owner, such as the module that owns a field's allowed values, this
+  vocabulary derives or passes it through rather than restating it. Success
+  is that changing a shape in one place changes it for every consumer;
+  failure is two modules each holding their own copy, which then drift apart.
+outcomes:
+  desired:
+    - Each shape that crosses a module boundary has one definition, and every module that produces or consumes it uses that definition.
+    - A shape whose values are owned elsewhere, such as a field's allowed values or a brain contract entry, is derived from or passed through from its owner, never hand-copied.
+    - Every closed vocabulary (finding kinds, file statuses, alignment values, install and upgrade categories) lists every value its producers emit and its consumers handle. Adding a value is one edit here that reaches every consumer.
+    - The vocabulary holds shapes only. It carries no behavior, defaults or logic, so depending on it never pulls in a module's implementation.
+  undesired:
+    - A module declares its own local copy of a shared shape, or its own list of allowed values, which then drifts from the shared one.
+    - A new value, such as a finding kind or a status, is emitted or handled in one module but never added to the shared vocabulary, so other consumers silently miss it.
+    - A shape is restated here by hand from an owner that already defines it, so the two definitions can disagree.
+    - Logic, constants or runtime checks creep into the vocabulary, so the shared shapes start depending on implementation.
+---

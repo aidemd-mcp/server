@@ -1,7 +1,7 @@
 ---
 scope: src/tools/validate
-alignment: aligned
-description: Health-check tool that surfaces spec-layout drift — naming conflicts, orphaned research, missing or orphaned specs, broken relative links — so agents can fix it before the layout decays.
+alignment: unreviewed
+description: Health-check tool that surfaces spec-layout drift — naming conflicts, orphaned research, missing or orphaned specs, plans with no spec, broken links — so agents can fix it before the layout decays.
 intent: >
   aide_validate is the layout health check. An agent calls it to find
   out whether a project's spec layout is internally consistent, and
@@ -18,9 +18,12 @@ outcomes:
     - Findings separate the confidence class the agent acts on. Facts about the file system are surfaced as errors the agent can fix mechanically; inferred signals are surfaced as warnings the agent investigates before acting on.
     - Findings are reported as readable lines naming the issue class and offending path, not as a structured envelope the agent has to parse. A clean run returns a single explicit success line and nothing else.
     - Relative links inside spec bodies resolve against the spec's own directory. A link that does not resolve is a finding; wikilinks and external URLs are out of scope for this local, offline check.
+    - A plan with no intent spec beside it is surfaced as drift. No plan may exist without the intent it builds toward.
+    - A spec is reported as orphaned only when its folder holds no code for it to govern. Whether a plan is present never decides it, since plans are removed once QA passes.
   undesired:
     - One unreadable file aborts the whole scan. A single corrupt spec must not blind the agent to every other finding in the project.
     - Heuristic findings labeled with the same confidence as deterministic ones, so the agent acts on inferred signals with certainty they do not warrant.
     - A scoped run that emits findings outside the scope the caller passed. The whole point of scoping is keeping output focused on the module under review.
     - A clean project treated as a failure condition — empty output, an error, or a warning about nothing-to-validate. Silence on a clean project is the goal state, not a bug.
+    - A legitimate spec on a planned module with no orchestrator — a shared types folder, a shared-helpers folder, a single-file module — reported as orphaned. That finding steers agents to delete intent the methodology requires.
 ---

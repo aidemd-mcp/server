@@ -21,6 +21,12 @@ afterEach(async () => {
 	await rm(tempDir, { recursive: true, force: true });
 });
 
+/** Gives MODULE the intent spec a plan needs beside it. */
+async function seedSpec(): Promise<void> {
+	await mkdir(moduleDir, { recursive: true });
+	await writeFile(join(moduleDir, ".aide"), "intent spec");
+}
+
 describe("scaffold", () => {
 	it("creates .aide for intent type when no research exists", async () => {
 		const result = await scaffold(tempDir, MODULE, "intent");
@@ -95,12 +101,14 @@ describe("scaffold", () => {
 		expect(content).toContain("outcomes:");
 	});
 
-	it("plan template includes frontmatter with description", async () => {
-		await scaffold(tempDir, ".", "plan");
+	it("plan template carries status and intent and no description", async () => {
+		await seedSpec();
+		await scaffold(tempDir, MODULE, "plan");
 
-		const content = await readFile(join(tempDir, "plan.aide"), "utf-8");
-		expect(content).toContain("---");
-		expect(content).toContain("description:");
+		const content = await readFile(join(moduleDir, "plan.aide"), "utf-8");
+		expect(content).toContain("status: proposed");
+		expect(content).toContain("intent:");
+		expect(content).not.toContain("description:");
 	});
 
 	it("creates directory if it does not exist", async () => {
@@ -168,11 +176,12 @@ describe("scaffold session type", () => {
 describe("scaffold never overwrites", () => {
 	it.each([
 		["todo", "todo.aide", "."],
-		["plan", "plan.aide", "."],
+		["plan", "plan.aide", MODULE],
 		["intent", ".aide", MODULE],
 	] as const)("type=%s over a filled %s is skipped and unchanged", async (type, name, directory) => {
 		const target = join(tempDir, directory, name);
 		await mkdir(join(tempDir, directory), { recursive: true });
+		if (type === "plan") await writeFile(join(tempDir, directory, ".aide"), "intent spec");
 		await writeFile(target, "filled content");
 
 		const result = await scaffold(tempDir, directory, type);
@@ -250,8 +259,10 @@ describe("scaffold never overwrites", () => {
 	it.each(["intent", "research", "both", "todo", "plan", "session"] as const)(
 		"type=%s returns plain text lines, never JSON",
 		async (type) => {
-			const created = await scaffold(tempDir, ".", type);
-			const skipped = await scaffold(tempDir, ".", type);
+			const directory = type === "plan" ? MODULE : ".";
+			if (type === "plan") await seedSpec();
+			const created = await scaffold(tempDir, directory, type);
+			const skipped = await scaffold(tempDir, directory, type);
 
 			expect(created.startsWith("{")).toBe(false);
 			expect(skipped.startsWith("{")).toBe(false);
@@ -259,14 +270,98 @@ describe("scaffold never overwrites", () => {
 	);
 });
 
+describe("scaffold plan refusal", () => {
+	const refusal = (directory: string) =>
+		`Refused plan.aide — ${directory} holds no intent spec (.aide or intent.aide); write the folder's intent spec first, then scaffold the plan`;
+
+	it("refuses a missing folder and does not create it", async () => {
+		const result = await scaffold(tempDir, "src/new", "plan");
+
+		expect(result).toBe(refusal("src/new"));
+		await expect(stat(join(tempDir, "src/new"))).rejects.toThrow();
+	});
+
+	it("refuses an existing empty folder and leaves it empty", async () => {
+		await mkdir(moduleDir, { recursive: true });
+
+		const result = await scaffold(tempDir, MODULE, "plan");
+
+		expect(result).toBe(refusal(MODULE));
+		expect(await readdir(moduleDir)).toEqual([]);
+	});
+
+	it("refuses a folder holding only research.aide", async () => {
+		await mkdir(moduleDir, { recursive: true });
+		await writeFile(join(moduleDir, "research.aide"), "Research");
+
+		const result = await scaffold(tempDir, MODULE, "plan");
+
+		expect(result).toBe(refusal(MODULE));
+		expect(await readdir(moduleDir)).toEqual(["research.aide"]);
+	});
+
+	it("creates plan.aide in a folder holding .aide", async () => {
+		await seedSpec();
+
+		expect(await scaffold(tempDir, MODULE, "plan")).toBe("Created plan.aide");
+	});
+
+	it("creates plan.aide in a folder holding intent.aide and research.aide", async () => {
+		await mkdir(moduleDir, { recursive: true });
+		await writeFile(join(moduleDir, "intent.aide"), "intent spec");
+		await writeFile(join(moduleDir, "research.aide"), "Research");
+
+		expect(await scaffold(tempDir, MODULE, "plan")).toBe("Created plan.aide");
+	});
+
+	it("refuses a spec-less folder that already holds a filled plan.aide and leaves the plan unchanged", async () => {
+		await mkdir(moduleDir, { recursive: true });
+		await writeFile(join(moduleDir, "plan.aide"), "filled plan");
+
+		const result = await scaffold(tempDir, MODULE, "plan");
+
+		expect(result).toBe(refusal(MODULE));
+		expect(await readFile(join(moduleDir, "plan.aide"), "utf-8")).toBe("filled plan");
+	});
+
+	it("does not mistake the .aide methodology folder at the project root for a spec", async () => {
+		await mkdir(join(tempDir, ".aide"), { recursive: true });
+
+		const result = await scaffold(tempDir, ".", "plan");
+
+		expect(result).toBe(refusal("."));
+		await expect(stat(join(tempDir, "plan.aide"))).rejects.toThrow();
+	});
+
+	it.each([
+		["intent", [join(MODULE, ".aide")]],
+		["research", [join(MODULE, "research.aide")]],
+		["both", [join(MODULE, "intent.aide"), join(MODULE, "research.aide")]],
+		["todo", [join(MODULE, "todo.aide")]],
+		["session", [join(".aide", "session.aide")]],
+	] as const)("does not leak: type=%s still creates its file in a spec-less folder", async (type, files) => {
+		await scaffold(tempDir, MODULE, type);
+
+		for (const file of files) await expect(stat(join(tempDir, file))).resolves.toBeDefined();
+	});
+
+	it("the refusal is one line of plain text, not JSON", async () => {
+		const result = await scaffold(tempDir, MODULE, "plan");
+
+		expect(result.includes("\n")).toBe(false);
+		expect(result.startsWith("{")).toBe(false);
+	});
+});
+
 describe("scaffold starting values", () => {
 	const cases = [
 		{ label: "intent (.aide)", type: "intent", directory: MODULE, file: ".aide", kind: "intent-spec" },
-		{ label: "plan", type: "plan", directory: ".", file: "plan.aide", kind: "plan" },
+		{ label: "plan", type: "plan", directory: MODULE, file: "plan.aide", kind: "plan" },
 		{ label: "todo", type: "todo", directory: ".", file: "todo.aide", kind: "todo" },
 	] as const;
 
 	it.each(cases)("a created $label starts at its kind's initial value", async ({ type, directory, file, kind }) => {
+		if (type === "plan") await seedSpec();
 		await scaffold(tempDir, directory, type);
 
 		const read = readGovernedValue({ content: await readFile(join(tempDir, directory, file), "utf-8"), kind });

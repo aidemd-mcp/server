@@ -6,6 +6,17 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Added
+- `aide_validate` reports `plan-without-spec`: a `plan.aide` with no intent spec (`.aide` or `intent.aide`) beside it. The fix is to write the folder's spec, never to delete the plan.
+
+### Changed
+- No code without a plan, and no plan without an intent spec. `aide_scaffold` refuses to create a `plan.aide` in a folder that holds no intent spec, creating nothing and naming the missing spec; a `research.aide` alone does not count. A project-root plan goes in `.aide/`, beside `.aide/intent.aide`.
+- Specs go on any module that gets its own plan, not only on orchestrators: a shared types folder, a shared-helpers folder or a single-file module gets one (frontmatter only is enough); helper folders inside a module still don't. `aide-spec.md`, `plan-aide.md`, the architect, `/aide:plan` and the `/aide` skill say so, and the architect hands back any module it needs that has no spec instead of planning it.
+- A spec is orphaned only when its folder and subfolders hold no code: anything but AIDE files, Markdown and dot-files counts, in any language, and dot-folders and build or dependency folders are skipped. The project root intent spec is never orphaned, and whether a plan is present never decides it. `aide_validate` and `aide_discover` share the rule. Before, any spec in a folder without an `index.ts` or `index.js` was flagged.
+
+### Fixed
+- The `aide_scaffold` plan template no longer writes a `description:` field, which `plan-aide.md` does not allow.
+
 ## [0.12.1] - 2026-10-25
 
 ### Added

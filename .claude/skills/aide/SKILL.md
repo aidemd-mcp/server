@@ -409,6 +409,8 @@ After the agent returns, present the completed spec AND the new `brief.aide` to 
 
 **Your job (orchestrator):** Confirm any prior stages are complete, then delegate to the architect with the right context for whichever shape the spec is in.
 
+**No plan without a spec.** Plan only a folder that holds an intent spec — check it in the `aide_discover` output first; `aide_scaffold` refuses a plan anywhere else. If the architect returns **Modules needing a spec first** (a shared types folder, a shared-helpers folder, a single-file module, a prerequisite), run Stage 1 for each — frontmatter only is enough, and a folder that does not exist yet goes through the structure gate first — then delegate the architect again to plan them. Never let a module's code ride in another module's plan to avoid writing its spec.
+
 **Shape A delegation (synthesize ran):** The spec has filled body sections and a sibling `brief.aide`. Delegation prompt: path to `.aide` and `brief.aide`, plus the rich `aide_discover(path)` output for the target module. The architect reads both, pulls the playbook, scans the codebase, writes `plan.aide`, updates `brief.aide`.
 
 **Shape B delegation (synthesize was skipped):** The spec is frontmatter-only with no `brief.aide`. Delegation prompt MUST include:

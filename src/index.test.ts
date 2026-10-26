@@ -300,6 +300,27 @@ describe("aide_scaffold registration", () => {
 		expect(description).toContain("project root intent spec");
 		expect(description).toContain("research.aide");
 	});
+
+	it("describes the plan refusal", async () => {
+		const { description } = await findTool("aide_scaffold");
+
+		expect(description).toContain("plan");
+		expect(description).toContain("intent spec");
+		expect(description).toContain("refuse");
+		expect(description).toContain(".aide/intent.aide");
+		expect(description).toContain("project root intent spec");
+		expect(description).toContain("research.aide");
+	});
+});
+
+describe("aide_validate registration", () => {
+	it("teaches the plan-without-spec warning and the holds-no-code orphan rule, not the orchestrator one", async () => {
+		const { description } = await findTool("aide_validate");
+
+		expect(description).toContain("plan-without-spec");
+		expect(description).toContain("holds no code");
+		expect(description).not.toContain("no orchestrator");
+	});
 });
 
 describe("aide_frontmatter registration", () => {

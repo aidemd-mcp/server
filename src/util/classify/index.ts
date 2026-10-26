@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, dirname, basename, relative, normalize } from "node:path";
 import type { AideFile, AideFileType, ValidationWarning } from "@/types/index.js";
 import { SKIP_DIRS } from "@/types/index.js";
+import holdsCode from "./holdsCode/index.js";
 
 /**
  * Classify a filename into an AideFileType based on naming conventions:
@@ -72,7 +73,7 @@ async function collectSpecDirs(dir: string, result: Set<string>): Promise<void> 
  * Detect anomalies across a set of .aide files:
  * - .aide + intent.aide in the same folder (naming conflict)
  * - research.aide without a corresponding intent spec (orphaned research)
- * - .aide in a folder with no orchestrator index.ts (orphaned spec)
+ * - an intent spec (.aide or intent.aide) in a folder whose tree holds no code, where code is any file but AIDE files, Markdown and dot-files; the project root intent spec in <root>/.aide is exempt (orphaned spec)
  * - Orchestrators with 3+ helper imports but no .aide (missing spec)
  */
 export async function detectAnomalies(
@@ -119,13 +120,15 @@ export async function detectAnomalies(
 			});
 		}
 
-		// orphaned-spec: .aide in folder with no orchestrator
-		const orchestrator = await findOrchestrator(dir);
-		if (!orchestrator) {
+		// orphaned-spec: intent spec whose folder and subfolders hold no code.
+		// The root intent folder is exempt, so it is checked before the walk.
+		const isRootIntentFolder = normalize(dir) === normalize(join(root, ".aide"));
+		if (hasIntent && !isRootIntentFolder && !(await holdsCode(dir))) {
 			warnings.push({
 				kind: "orphaned-spec",
 				path: relDir,
-				message: "Spec file(s) in folder with no orchestrator (index.ts/index.js).",
+				message:
+					"Spec has nothing to govern: this folder and its subfolders hold no code (only AIDE files, Markdown and dot-files).",
 			});
 		}
 	}
