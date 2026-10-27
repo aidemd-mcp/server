@@ -456,6 +456,7 @@ Operations take their inputs from the user's request (a title, a priority, a tas
 
 - Each task is one markdown file at `kanban/<project>/<column>/<slug>.md`.
 - The slug is the file name without `.md`: the title in lower case, spaces and special characters replaced with hyphens, leading and trailing hyphens stripped, at most 60 characters, unique within the project.
+- **Never cut a slug off at the limit.** When the title's slug would run past 60 characters, write a shorter phrase that still says what the task is and ends on a whole word, so whoever picks the task up can read it. "Track playbook conformance per module and suggest where to check" becomes `track-playbook-conformance-per-module`, not `track-playbook-conformance-per-module-and-suggest-where-to-c`. The title keeps its full wording; only the slug is shortened.
 - Frontmatter:
   - `project`: the project tag, matching the project folder;
   - `priority`: `p0`, `p1`, `p2` or `p3`;
