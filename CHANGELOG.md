@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-26
+
 ### Added
 - `aide_upgrade` takes an optional `targetVersion` (an exact published `x.y.z`). With it, the `mcp` step judges a project's npx-launched aide entry by its version pin alone and reports the move as `pinMove: { from, to }`; with `category: "mcp"` the tool moves the pin itself, changing only the version inside the package argument and leaving the command form, flags, other servers, formatting and line endings byte-identical. It never moves a pin backwards, never touches a global entry, and refuses without writing when the pin changed since it was checked or the config cannot be edited safely. Without `targetVersion`, nothing changes.
 
