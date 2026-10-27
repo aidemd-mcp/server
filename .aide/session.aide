@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.14.0 released (pinned projects told they are behind; aide_upgrade moves the pin; boot upgrades server before files). Pending: /aide:brain config for kanban-index (here and aidemd.dev); board move for the pinned-behind task.
+  Session record for the aidemd-mcp server. v0.14.0 released (pinned projects told they are behind; aide_upgrade moves the pin; boot upgrades server before files). Pending: /aide:brain config for kanban-index (here and aidemd.dev).
 ---
 
 # AIDE SESSION
@@ -118,7 +118,7 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `aide-info-never-tells-a-pinned-project-it-is-behind` (In Progress, p1, bug) — released in 0.14.0 (feature 5bb3c12 + 7367af2, release b62c696); awaiting the user's board move.
+- `aide-info-never-tells-a-pinned-project-it-is-behind` (Done, p1, bug) — released in 0.14.0 (feature 5bb3c12 + 7367af2, release b62c696); moved to Done by the user, 2026-10-26.
 - `track-playbook-conformance-per-module` (Todo, p2, feature) — per-module last-playbook-check field on specs; @playbook pointers in orchestrator headers (what SHOULD govern, from the playbook's routing); plan history via git commit checkpoints plus a brain archive at close-out (squash-proof); suggestions, never automatic passes; migrations.
 - `ship-never-truncate-slug-rule-in-brain-template` (Backlog, p3, housekeeping) — released in 0.13.1; left: /aide:brain config here after a restart (and offered to aidemd.dev); then close.
 - `every-plan-requires-an-intent-spec-beside-it` (Done, p1, bug) — released in 0.13.0 (feature dc41576, release fecac4b); moved to Done by the user, 2026-10-26.
@@ -298,11 +298,11 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-v0.14.0 released, site live on it. Waiting on the user: board move for the pinned-behind task; /aide:brain config for kanban-index.
+v0.14.0 released, site live on it; pinned-behind task Done. Waiting on the user: /aide:brain config for kanban-index (here and aidemd.dev).
 
 ### What the next agent must do
 
-1. Ask the user to move `aide-info-never-tells-a-pinned-project-it-is-behind` to In Review or Done; remind them to delete C:\Users\bestb\node_modules (stray test install).
+1. Remind the user to delete C:\Users\bestb\node_modules (stray test install from 2026-10-26) if still present.
 2. After the user restarts: run /aide:brain config here, take the kanban-index section on the user's yes (the brain file already matches); tell the user aidemd.dev reports the same stale section; then move `ship-never-truncate-slug-rule-in-brain-template` to Done on the user's OK.
 3. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
 4. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
