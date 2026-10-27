@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.14.0 released (pinned projects told they are behind; aide_upgrade moves the pin; boot upgrades server before files). Pending: /aide:brain config for kanban-index in aidemd.dev.
+  Session record for the aidemd-mcp server. v0.14.0 released (pinned projects told they are behind; aide_upgrade moves the pin; boot upgrades server before files). Nothing pending from this cycle.
 ---
 
 # AIDE SESSION
@@ -298,15 +298,14 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-v0.14.0 released, site live; this repo's brain config is current. Pending: aidemd.dev's kanban-index (run /aide:brain config there with the user).
+v0.14.0 released, site live; brain configs here and in aidemd.dev are current. No open step from this cycle.
 
 ### What the next agent must do
 
-1. Offer to run /aide:brain config in aidemd.dev for its stale kanban-index section (needs the user's yes there).
-2. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
-3. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
-4. Decide with the user whether a [migration] entry should offer specs for host plans in spec-less folders (open question).
-5. Start `track-playbook-conformance-per-module` in a fresh session.
+1. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
+2. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
+3. Decide with the user whether a [migration] entry should offer specs for host plans in spec-less folders (open question).
+4. Start `track-playbook-conformance-per-module` in a fresh session.
 
 ### What's already done and validated
 
@@ -349,6 +348,7 @@ v0.14.0 released, site live; this repo's brain config is current. Pending: aidem
 - Pinned-behind task built, QA passed, cleaned (2026-10-26); retro promoted.
 - v0.14.0 released 2026-10-26 (release b62c696, tag v0.14.0; Publish + CI green; npm 0.14.0); global install 0.14.0; aidemd.dev synced (0c3fa7d), deploy green.
 - /aide:brain config here: kanban-index taken (42e2494), 2026-10-26; stray home node_modules deleted.
+- aidemd.dev brain config: kanban-index taken (site 3b19407), deploy green, 2026-10-26.
 
 ### What's left after the current cycle
 
@@ -366,6 +366,7 @@ v0.14.0 released, site live; this repo's brain config is current. Pending: aidem
 - Backlog candidate: running /aide:upgrade without a target when the pin is ahead of the running server still prescribes pinning back to the running version (existing behavior).
 - Backlog candidate: a prerelease npm `latest` dist-tag would yield versionsBehind 0 in aide_info (cosmetic).
 - Maintainers still sometimes call aide_cleanup without `path` first (seen again 2026-10-26).
+- aidemd.dev has no .aide/session.aide (aide_init reports would-create); offer `aide_scaffold type=session` there next time the site is touched.
 
 session.aide is rewritten, never deleted (decision 18).
 
