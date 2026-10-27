@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. v0.14.0 released (pinned projects told they are behind; aide_upgrade moves the pin; boot upgrades server before files). Pending: /aide:brain config for kanban-index (here and aidemd.dev).
+  Session record for the aidemd-mcp server. v0.14.0 released (pinned projects told they are behind; aide_upgrade moves the pin; boot upgrades server before files). Pending: /aide:brain config for kanban-index in aidemd.dev.
 ---
 
 # AIDE SESSION
@@ -120,7 +120,7 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 - `aide-info-never-tells-a-pinned-project-it-is-behind` (Done, p1, bug) — released in 0.14.0 (feature 5bb3c12 + 7367af2, release b62c696); moved to Done by the user, 2026-10-26.
 - `track-playbook-conformance-per-module` (Todo, p2, feature) — per-module last-playbook-check field on specs; @playbook pointers in orchestrator headers (what SHOULD govern, from the playbook's routing); plan history via git commit checkpoints plus a brain archive at close-out (squash-proof); suggestions, never automatic passes; migrations.
-- `ship-never-truncate-slug-rule-in-brain-template` (Backlog, p3, housekeeping) — released in 0.13.1; left: /aide:brain config here after a restart (and offered to aidemd.dev); then close.
+- `ship-never-truncate-slug-rule-in-brain-template` (Done, p3, housekeeping) — released in 0.13.1; this repo's brain config took it 2026-10-26 (42e2494); moved to Done by the user.
 - `every-plan-requires-an-intent-spec-beside-it` (Done, p1, bug) — released in 0.13.0 (feature dc41576, release fecac4b); moved to Done by the user, 2026-10-26.
 - `aide-scaffold-writes-the-root-intent-as-aide-aide-instead-of` (Done, p1, bug) — released in 0.12.1; moved to Done by the user, 2026-10-26.
 - `architect-sets-the-folder-structure-before-any-spec-below-th` (Done, p2, change) — structure gate written as prose, approved and committed 2026-10-25; ships in the next release. Released in 0.12.1.
@@ -298,16 +298,15 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 ## Where this cycle stopped (CRITICAL READING)
 
-v0.14.0 released, site live on it; pinned-behind task Done. Waiting on the user: /aide:brain config for kanban-index (here and aidemd.dev).
+v0.14.0 released, site live; this repo's brain config is current. Pending: aidemd.dev's kanban-index (run /aide:brain config there with the user).
 
 ### What the next agent must do
 
-1. Remind the user to delete C:\Users\bestb\node_modules (stray test install from 2026-10-26) if still present.
-2. After the user restarts: run /aide:brain config here, take the kanban-index section on the user's yes (the brain file already matches); tell the user aidemd.dev reports the same stale section; then move `ship-never-truncate-slug-rule-in-brain-template` to Done on the user's OK.
-3. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
-4. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
-5. Decide with the user whether a [migration] entry should offer specs for host plans in spec-less folders (open question).
-6. Start `track-playbook-conformance-per-module` in a fresh session.
+1. Offer to run /aide:brain config in aidemd.dev for its stale kanban-index section (needs the user's yes there).
+2. Offer the backlog follow-ups (the empty frontmatter block reading as unparsable, validate flagging brief/session/brain.aide for missing description, cli/init --help omitting session.aide and the --ide line pointing at a nonexistent todo.aide).
+3. /aide:align on the unreviewed specs (src/service/install, src/tools/scaffold, src/tools/cleanup, src/tools/frontmatter, src/tools/discover, src/service/brainContract, src/service/install/provisionBrain, src/tools/info, src/tools/upgrade, src/types, src/util/classify, src/tools/validate).
+4. Decide with the user whether a [migration] entry should offer specs for host plans in spec-less folders (open question).
+5. Start `track-playbook-conformance-per-module` in a fresh session.
 
 ### What's already done and validated
 
@@ -349,6 +348,7 @@ v0.14.0 released, site live on it; pinned-behind task Done. Waiting on the user:
 - brain.md Step 5b skips an already-updated brain file (12a5c3a, unreleased), 2026-10-26.
 - Pinned-behind task built, QA passed, cleaned (2026-10-26); retro promoted.
 - v0.14.0 released 2026-10-26 (release b62c696, tag v0.14.0; Publish + CI green; npm 0.14.0); global install 0.14.0; aidemd.dev synced (0c3fa7d), deploy green.
+- /aide:brain config here: kanban-index taken (42e2494), 2026-10-26; stray home node_modules deleted.
 
 ### What's left after the current cycle
 
@@ -362,7 +362,6 @@ v0.14.0 released, site live on it; pinned-behind task Done. Waiting on the user:
 - The launcher-region logic is duplicated between readTemplateLauncher and upgrade's locateFrontmatter.
 - The marker line format is spelled out in SKILL.md (drift risk if the format changes).
 - aide_scaffold type=plan writes a `description:` field that plan-aide.md forbids (and the todo template has had a similar mismatch); fix the templates or the doc.
-- Offer the new kanban-index section to this repo's brain.aide through /aide:brain config after the next release (task `ship-never-truncate-slug-rule-in-brain-template`).
 - Brain note coding-playbook/study-playbook uses ### headings where the template uses ## (cosmetic; reseed or leave).
 - Backlog candidate: running /aide:upgrade without a target when the pin is ahead of the running server still prescribes pinning back to the running version (existing behavior).
 - Backlog candidate: a prerelease npm `latest` dist-tag would yield versionsBehind 0 in aide_info (cosmetic).
