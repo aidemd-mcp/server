@@ -5,16 +5,18 @@
  * end-to-end: brain.aide scaffold → MCP entry write → all planning helpers →
  * applySteps → renderWarning → stdout capture.
  *
- * No module-level vi.mock() calls — real dependencies are exercised. This
- * mirrors the pattern established in src/cli/sync/index.test.ts.
+ * Real dependencies are exercised except the two npm boundaries:
+ * `checkGlobalPackage` is mocked (the package reads as installed unless a test
+ * says otherwise) and `installGlobalPackage` is mocked to fail the test if
+ * called, so no real npm ever runs.
  *
  * The vi.hoisted guard replaces process.exit with a spy so the CLI entry's exit
  * calls cannot terminate the test runner — the same pattern used in the unit
  * test file (index.test.ts).
  *
- * Importing the module has no side effect. Tests 7c-vi, 7c-vii and 7c-x
- * exercise `runInitCli`'s forbidden-flag, unknown-brain-value and unknown-mode
- * paths by setting process.argv and calling it explicitly.
+ * Importing the module has no side effect. Tests 7c-vi and 7c-vii exercise
+ * `runInitCli`'s forbidden-flag and unknown-brain-value paths by setting
+ * process.argv and calling it explicitly.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -27,14 +29,29 @@ const { mockExit } = vi.hoisted(() => {
 	return { mockExit };
 });
 
-import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+// Mocks hoist above the imports. The install helper must never run on the
+// installed path; a test that reaches it overrides the implementation.
+vi.mock("@/service/install/shared/checkGlobalPackage/index.js", () => ({
+	default: vi.fn(),
+}));
+vi.mock("./ensureGlobalAide/installGlobalPackage/index.js", () => ({
+	default: vi.fn(() => {
+		throw new Error("installGlobalPackage must not run in this test");
+	}),
+}));
+
+import { mkdtemp, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runInit, runInitCli } from "./index.js";
 import sessionTemplate from "@/tools/scaffold/sessionTemplate/index.js";
 import { mcpEntry } from "@/service/install/wireMcp/index.js";
 import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
+import installGlobalPackage from "./ensureGlobalAide/installGlobalPackage/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
+
+const mockCheckGlobalPackage = vi.mocked(checkGlobalPackage);
+const mockInstallGlobalPackage = vi.mocked(installGlobalPackage);
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -42,27 +59,18 @@ import aidePackage from "@/service/install/shared/aidePackage/index.js";
 
 let tempDir: string;
 
-// Force the non-interactive path so the real resolveLaunchModes can never
-// prompt a real terminal, wherever the suite is launched from.
-const ttyOwners = [process.stdin, process.stdout] as const;
-const savedTty = ttyOwners.map((stream) => Object.getOwnPropertyDescriptor(stream, "isTTY"));
-
 beforeEach(async () => {
 	tempDir = await mkdtemp(join(tmpdir(), "aide-init-integration-"));
 	// Re-arm process.exit mock so each test starts fresh.
 	mockExit.mockClear();
-	for (const stream of ttyOwners) {
-		Object.defineProperty(stream, "isTTY", { value: false, configurable: true, writable: true });
-	}
+	// Default: the aide package reads as installed globally, so no install runs.
+	mockCheckGlobalPackage.mockReset();
+	mockCheckGlobalPackage.mockResolvedValue(true);
+	mockInstallGlobalPackage.mockClear();
 });
 
 afterEach(async () => {
 	await rm(tempDir, { recursive: true, force: true });
-	ttyOwners.forEach((stream, i) => {
-		const saved = savedTty[i];
-		if (saved) Object.defineProperty(stream, "isTTY", saved);
-		else delete (stream as { isTTY?: boolean }).isTTY;
-	});
 });
 
 // ---------------------------------------------------------------------------
@@ -402,107 +410,81 @@ describe("7c-vii — unknown --brain value causes process.exit(1) before any fil
 });
 
 // ---------------------------------------------------------------------------
-// 7c-viii. --mode local on a cold directory
+// 7c-viii. Cold run writes the bare global entry and a global brain launcher
 // ---------------------------------------------------------------------------
 
-describe("7c-viii — { mode: 'local' } on a cold directory", () => {
-	it("writes the local mcpEntry and a local brain template", async () => {
-		const code = await runInit(tempDir, () => {}, { mode: "local" });
+describe("7c-viii — a cold run with the aide package installed globally", () => {
+	it("writes the bare aidemd-mcp entry and a brain.aide whose launcher is mcpvault, with no install", async () => {
+		const code = await runInit(tempDir, () => {});
 
 		expect(code).toBe(0);
+		expect(mockInstallGlobalPackage).not.toHaveBeenCalled();
 
 		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8")) as {
 			mcpServers: Record<string, unknown>;
 		};
-		expect(mcp.mcpServers.aide).toEqual(mcpEntry("local"));
+		expect(mcp.mcpServers.aide).toEqual({ command: "aidemd-mcp", args: [] });
 
-		const brainAide = await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8");
-		expect(brainAide).toContain("@bitbonsai/mcpvault@");
-		expect(brainAide).not.toContain("command: mcpvault");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// 7c-ix. --mode global without a terminal
-// ---------------------------------------------------------------------------
-
-describe("7c-ix — { mode: 'global' } without a terminal", () => {
-	it("writes the global aide entry when the package is installed globally, else the local entry plus the 'no terminal' line", async () => {
-		// Real checkGlobalPackage: the branch depends on this machine, so assert
-		// whichever branch it reports. Nothing is mocked across the boundary.
-		const installed = await checkGlobalPackage(aidePackage.name);
-		const { lines, write } = makeCapture();
-
-		const code = await runInit(tempDir, write, { mode: "global" });
-
-		expect(code).toBe(0);
-
-		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8")) as {
-			mcpServers: Record<string, unknown>;
-		};
-		const noTerminalLine = `aide MCP server: ${aidePackage.name} is not installed globally and there is no terminal to ask — using local launch (npx).`;
-
-		if (installed) {
-			expect(mcp.mcpServers.aide).toEqual(mcpEntry("global"));
-			expect(lines).not.toContain(noTerminalLine);
-		} else {
-			expect(mcp.mcpServers.aide).toEqual(mcpEntry("local"));
-			expect(lines).toContain(noTerminalLine);
-		}
-
-		// The brain template is global regardless: no package check runs for the brain.
 		const brainAide = await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8");
 		expect(brainAide).toContain("command: mcpvault");
-	}, 30000);
-});
-
-// ---------------------------------------------------------------------------
-// 7c-x. Unknown --mode value fails fast
-// ---------------------------------------------------------------------------
-
-describe("7c-x — unknown --mode value causes process.exit(1) before any file is written", () => {
-	it("--mode remote exits 1, stderr names the value and global/local, no file written", async () => {
-		const stderrChunks: string[] = [];
-		const originalStderrWrite = process.stderr.write.bind(process.stderr);
-		process.stderr.write = ((chunk: string | Uint8Array) => {
-			stderrChunks.push(String(chunk));
-			return true;
-		}) as unknown as typeof process.stderr.write;
-
-		const originalArgv = process.argv;
-		process.argv = ["node", "index.js", "--mode", "remote"];
-
-		try {
-			await runInitCli();
-
-			const stderrJoined = stderrChunks.join("");
-
-			expect(process.exit).toHaveBeenCalledWith(1);
-			expect(stderrJoined).toContain("remote");
-			expect(stderrJoined).toContain("global");
-			expect(stderrJoined).toContain("local");
-
-			await expect(readFile(join(tempDir, ".mcp.json"), "utf-8")).rejects.toThrow();
-			await expect(readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8")).rejects.toThrow();
-		} finally {
-			process.argv = originalArgv;
-			process.stderr.write = originalStderrWrite;
-			mockExit.mockClear();
-		}
+		expect(brainAide).not.toContain("@bitbonsai/mcpvault@");
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 7c-xi. An existing global aide entry survives init
+// 7c-ix. Package missing: install runs first
 // ---------------------------------------------------------------------------
 
-describe("7c-xi — an existing global aide entry survives init untouched", () => {
-	it.each([undefined, "local", "global"] as const)("mode %s: .mcp.json bytes are identical after runInit", async (mode) => {
-		const raw = JSON.stringify({ mcpServers: { aide: mcpEntry("global") } }, null, 2) + "\n";
+describe("7c-ix — a cold run with the aide package missing", () => {
+	it("installs once, announces it, then writes the bare entry", async () => {
+		mockCheckGlobalPackage.mockResolvedValue(false);
+		mockInstallGlobalPackage.mockReset();
+		mockInstallGlobalPackage.mockResolvedValue(true);
+		const { lines, write } = makeCapture();
+
+		const code = await runInit(tempDir, write);
+
+		expect(code).toBe(0);
+		expect(mockInstallGlobalPackage).toHaveBeenCalledTimes(1);
+		expect(mockInstallGlobalPackage).toHaveBeenCalledWith(aidePackage.installCommand);
+		expect(lines[0]).toBe(`Installing ${aidePackage.name} globally: ${aidePackage.installCommand}`);
+
+		const mcp = JSON.parse(await readFile(join(tempDir, ".mcp.json"), "utf-8")) as {
+			mcpServers: Record<string, unknown>;
+		};
+		expect(mcp.mcpServers.aide).toEqual({ command: "aidemd-mcp", args: [] });
+	});
+
+	it("a failed install rejects and leaves neither .mcp.json nor .aide/ behind", async () => {
+		mockCheckGlobalPackage.mockResolvedValue(false);
+		mockInstallGlobalPackage.mockReset();
+		mockInstallGlobalPackage.mockResolvedValue(false);
+
+		await expect(runInit(tempDir, () => {})).rejects.toThrow(
+			`${aidePackage.installCommand} failed, so ${aidePackage.name} is not installed globally. Nothing was written.`,
+		);
+
+		await expect(readFile(join(tempDir, ".mcp.json"), "utf-8")).rejects.toThrow();
+		await expect(stat(join(tempDir, ".aide"))).rejects.toThrow();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 7c-x. An existing aide entry survives init untouched
+// ---------------------------------------------------------------------------
+
+describe("7c-x — an existing aide entry survives init untouched", () => {
+	it.each([
+		["global", mcpEntry()],
+		["npx", { command: "npx", args: ["-y", "@aidemd-mcp/server@latest"] }],
+	] as const)("%s entry: .mcp.json bytes are identical after runInit and nothing is installed", async (_label, entry) => {
+		mockCheckGlobalPackage.mockResolvedValue(false);
+		const raw = JSON.stringify({ mcpServers: { aide: entry } }, null, 2) + "\n";
 		await writeFile(join(tempDir, ".mcp.json"), raw, "utf-8");
 
-		await runInit(tempDir, () => {}, mode ? { mode } : {});
+		await runInit(tempDir, () => {});
 
 		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);
+		expect(mockInstallGlobalPackage).not.toHaveBeenCalled();
 	});
 });

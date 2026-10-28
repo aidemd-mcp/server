@@ -140,14 +140,11 @@ Files outside `.aide/config/` (the methodology docs at `.aide/docs/`, pipeline c
 
 `brain.aide` is the current inhabitant of `.aide/config/`; the convention is forward-compatible with future user-owned config files.
 
-## Launch modes
+## Launching the MCP servers
 
-Each MCP server entry — the `aide` server and the brain server declared in `mcpServerConfig` — launches in one of two modes. Setup asks which one, recommends global, and never switches an existing entry.
+Both MCP servers — the `aide` server and the brain server declared in `mcpServerConfig` — run from a global install, by their bare command names. Setup installs the aide server (`npm i -g @aidemd-mcp/server`) and writes its entry as `aidemd-mcp`; terminal commands are `aidemd-mcp init` and `aidemd-mcp sync`. `/aide:brain config` installs the brain server's own package before it wires the brain's launcher. A global launch starts fast and works offline, and it stays on the installed version until the next `npm i -g`.
 
-- **Global** — pick it on a personal machine. Install once with `npm i -g @aidemd-mcp/server`; the entry runs the installed command by name, and terminal commands are `aidemd-mcp init` and `aidemd-mcp sync`. It stays on the installed version until you reinstall. Global is the fast launcher and the only one that works offline.
-- **Local** — pick it for shared repos and cloud/CI. The entry runs through npx, pinned to one exact version: `npx -y @aidemd-mcp/server@<version> sync`. `/aide:upgrade` moves the aide pin forward when you confirm it. Its first launch after a pin change downloads the package, and even a pinned, cached start still contacts the registry, so an npx cold start can miss Claude Code's 30-second connect window.
-
-The brain server's global or local launcher lives in `mcpServerConfig`, and a local brain launcher is pinned the same way. `/aide:brain config` sets the launcher, offers the global install of the brain's own package, and moves the brain pin forward with your OK. A legacy brain launcher is updated through the brain category's `brainChange: "launcher"` preview and apply, which keeps the current launch mode.
+Entries that launch through npx (`npx -y <package>@<version>`) are out of date: npx contacts the registry on every start, and a cold start can miss Claude Code's 30-second connect window. `/aide:upgrade` offers to switch the aide entry to the global command, after the global install, and `/aide:brain config` does the same for the brain launcher through the brain category's `brainChange: "launcher"` preview and apply. A project pinned to an older aide version first moves its pin once, so that the newer server can make the switch.
 
 ## Lifecycle
 

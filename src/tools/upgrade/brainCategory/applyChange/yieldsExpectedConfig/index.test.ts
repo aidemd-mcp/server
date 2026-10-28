@@ -7,6 +7,8 @@ import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidian
 import parseBundledTemplate from "@/service/install/provisionBrain/parseBundledTemplate/index.js";
 import { parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import type { BrainChangeOffer, BrainChangeTarget, BrainSectionMarker } from "@/types/index.js";
+import locateFrontmatter from "../../shared/locateFrontmatter/index.js";
+import toLineEnding from "../../shared/toLineEnding/index.js";
 import buildChangeOffer from "../../shared/buildChangeOffer/index.js";
 import yieldsExpectedConfig from "./index.js";
 
@@ -104,6 +106,26 @@ describe("yieldsExpectedConfig", () => {
 			const offer: Offer = { kind: "offer", target: "orientation", before: template.orientation, after: template.orientation, text };
 
 			expect(yieldsExpectedConfig({ parse, offer })).toBe(false);
+		});
+	});
+
+	describe.each([
+		["POSIX npx", "npx", "    - '-y'"],
+		["cmd /c npx", "cmd", "    - '/c'\n    - 'npx'\n    - '-y'"],
+	])("%s launcher", (_name, command, leading) => {
+		it.each([
+			["a null slot", "    -"],
+			["a string path", "    - 'D:\\vault'"],
+		])("accepts the real launcher offer with %s and fails a launcher text left unchanged", (_slotName, slotLine) => {
+			const base = obsidianBrainAideTemplate();
+			const { yamlStart, yamlEnd } = locateFrontmatter(base);
+			const region = `name: obsidian\nmcpServerConfig:\n  command: ${command}\n  args:\n${leading}\n    - '@bitbonsai/mcpvault@0.9.0'\n${slotLine}\n`;
+			const raw = toLineEnding({ text: base.slice(0, yamlStart) + region + base.slice(yamlEnd), eol: "\r\n" });
+			const parse = parseBrainAideFromString(raw);
+			const offer = offerFor(raw, "launcher");
+
+			expect(yieldsExpectedConfig({ parse, offer })).toBe(true);
+			expect(yieldsExpectedConfig({ parse, offer: { ...offer, text: raw } })).toBe(false);
 		});
 	});
 

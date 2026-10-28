@@ -44,10 +44,7 @@ Every section list, role, purpose and template text comes from `aide_brain`. Nev
 
 Use `AskUserQuestion`:
 
-1. Which backend holds the brain, and how its MCP server is launched (package or command, and the argument that points it at the brain's location).
-2. The launch mode, with these two options exactly as worded:
-   - **Global (recommended)** — personal machine, reliable startup; stays on its installed version; one-time `npm i -g`.
-   - **Local** — shared repos, cloud/CI; pinned to one version that /aide:brain config moves forward; flaky cold start.
+Which backend holds the brain, and how its MCP server is launched (package or command, and the argument that points it at the brain's location).
 
 ### 2. Check for an existing config
 
@@ -73,9 +70,8 @@ Call `aide_brain({ source: "template", kind: "launcher" })`. Show the user the `
 
 - `name`: a short descriptive label for the brain.
 - `mcpServerConfig`: `command` and `args` that start the backend's MCP server. Leave YAML `null` at the one `args` slot the brain's location fills; `/aide:brain config` fills it during wiring.
-  - **Global mode:** the command is the backend's bare command name, never an absolute path. Run the backend's global-install check (for an npm package, `npm ls -g <package> --depth=0`). If it is missing, offer `npm i -g <package>` and run it only on the user's yes.
-  - **On a decline or a failed install**, write the pinned local form instead (`npx -y <package>@<version>`, through `cmd /c` on Windows) and tell the user.
-  - **Local mode:** write the pinned local form directly.
+  - The command is the backend's bare command name from a global install, never an absolute path and never a package runner such as npx, whose launches time out at session start. Run the backend's global-install check (for an npm package, `npm ls -g <package> --depth=0`). If it is missing, run the install (for an npm package, `npm i -g <package>`).
+  - **On a failed install,** tell the user plainly and stop before writing the draft: a launcher whose command is not installed cannot start.
 - Add no other frontmatter field. The parser rejects extra fields.
 
 Write the draft file with the frontmatter between its two `---` fences.

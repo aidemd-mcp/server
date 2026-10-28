@@ -97,10 +97,7 @@ describe("previewChange", () => {
 	});
 
 	it("returns the bundled template section for an absent section under a non-template launcher", async () => {
-		const foreign = templateWithout("kanban-index").replace(
-			/@bitbonsai\/mcpvault@[^'"\s]*/,
-			"some-other-brain-server",
-		);
+		const foreign = templateWithout("kanban-index").replace("command: mcpvault", "command: some-other-brain-server");
 		expect(foreign).toContain("some-other-brain-server");
 		await writeFixture(foreign);
 
@@ -125,6 +122,25 @@ describe("previewChange", () => {
 			instructions:
 				"Section `config` matches no outdated template version (it is current or customized), so no change is offered.",
 		});
+	});
+
+	it.each([
+		["POSIX npx with a null slot", "npx", "    - '-y'", "    -"],
+		["POSIX npx with a path", "npx", "    - '-y'", "    - 'D:\\vault'"],
+		["cmd /c npx with a null slot", "cmd", "    - '/c'\n    - 'npx'\n    - '-y'", "    -"],
+		["cmd /c npx with a path", "cmd", "    - '/c'\n    - 'npx'\n    - '-y'", "    - 'D:\\vault'"],
+	])("previews the %s launcher as the global mcpvault command, read-only", async (_name, command, leading, slotLine) => {
+		const base = obsidianBrainAideTemplate();
+		const { yamlStart, yamlEnd } = locateFrontmatter(base);
+		const region = `name: obsidian\nmcpServerConfig:\n  command: ${command}\n  args:\n${leading}\n    - '@bitbonsai/mcpvault@0.9.0'\n${slotLine}\n`;
+		await writeFixture(base.slice(0, yamlStart) + region + base.slice(yamlEnd));
+
+		const result = await previewReadOnly("launcher");
+
+		if (result.outcome !== "change") throw new Error(`expected a change, got: ${JSON.stringify(result)}`);
+		expect(result.before).toBe(region);
+		expect(result.after).toBe(`name: obsidian\nmcpServerConfig:\n  command: mcpvault\n  args:\n${slotLine}\n`);
+		expect(result.beforeHash).toBe(hashBytes(result.before));
 	});
 
 	it("refuses the launcher when it is current with R7", async () => {

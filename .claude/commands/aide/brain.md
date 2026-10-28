@@ -63,13 +63,8 @@ Call `aide_info`. Read `brain.status`, `brain.fault` (present only on `brain-aid
 
 ### Step 2 — CREATE (status `no-brain-aide`)
 
-1. **Ask which backend.** Use `AskUserQuestion`: the bundled default (Obsidian) or another backend. **Another backend:** invoke the `aide-brain-author` skill (`Skill(skill="aide-brain-author")`). It asks the launch mode, writes the config section by section with the user, checks the draft and swaps it in. When it returns, go to Step 4.
-2. **Ask the launch mode.** Use `AskUserQuestion` with these two options, exactly as worded:
-   - **Global (recommended)** — personal machine, reliable startup; stays on its installed version; one-time `npm i -g`.
-   - **Local** — shared repos, cloud/CI; pinned to one version that /aide:brain config moves forward; flaky cold start.
-
-   The answer is `brainMode`: `"global"` or `"local"`.
-3. **Scaffold.** Call `aide_init({ category: "brain", brainMode })`. It writes `.aide/config/brain.aide` from the latest bundled template, with YAML null at the unwired path slot of `mcpServerConfig.args`. YAML null is the structural unwired-slot signal; there is no literal-string placeholder.
+1. **Ask which backend.** Use `AskUserQuestion`: the bundled default (Obsidian) or another backend. **Another backend:** invoke the `aide-brain-author` skill (`Skill(skill="aide-brain-author")`). It writes the config section by section with the user, checks the draft and swaps it in. When it returns, go to Step 4.
+2. **Scaffold.** Call `aide_init({ category: "brain" })`. It writes `.aide/config/brain.aide` from the latest bundled template, with YAML null at the unwired path slot of `mcpServerConfig.args`. YAML null is the structural unwired-slot signal; there is no literal-string placeholder. The template's launcher runs the brain server's global command; Step 6 installs the package before wiring it.
 
 Then go to Step 4.
 
@@ -125,7 +120,7 @@ Each change is one preview and one apply:
    - **File differs** (the user edited it): show the file's current text beside the new section, say which rules changed, and ask (replace my file / keep mine), default keep. Replace only on an explicit yes.
    - Brain tools not loaded in this session: tell the user the brain file at `seedPath` still has the old text, and that re-running `/aide:brain config` after a restart offers it.
    - A `live` section has no seed file; replacing it in the config is the whole change.
-2. **Legacy launcher.** When `legacyLauncher` lists reasons (`unpinned`, `unversioned`, `older-pin`, `missing-auto-confirm`), preview `brainChange: "launcher"`. The `after` keeps the launcher's current launch mode with a pinned version, and unchanged arg lines stay byte-identical. Show the reasons and the `before` and `after` frontmatter, and ask with `AskUserQuestion` (update the launcher / keep mine). On update, apply it. When the preview refuses because the args can't be safely rewritten in place, its `instructions` carry the replacement args. Help the user make that one edit by hand, changing nothing else in the frontmatter.
+2. **Legacy launcher.** When `legacyLauncher` lists reasons (`npx-launch`, `unpinned`, `unversioned`, `older-pin`, `missing-auto-confirm`), preview `brainChange: "launcher"`. The `after` runs the brain server's global command, keeps the brain location argument byte-identical, and drops the package runner. Show the reasons and the `before` and `after` frontmatter, and ask with `AskUserQuestion` (switch to the global launcher / keep mine), saying that launches through the package runner time out at session start. On switch, install the brain package globally first (`npm i -g @bitbonsai/mcpvault`); if the install fails, say so and leave the launcher as it is. Then apply it. The apply refuses while the package is not installed globally. When the preview refuses because the args can't be safely rewritten in place, its `instructions` carry the replacement args. Help the user make that one edit by hand, changing nothing else in the frontmatter.
 3. Call `aide_info` and confirm `brain.status` is not `no-brain-aide` or `brain-aide-invalid`. If it is, show the status and fault and help the user fix it; do not continue until it parses.
 
 Then go to Step 6, which runs sync so `.mcp.json` picks up a changed launcher.
@@ -138,7 +133,7 @@ Call `aide_brain({ kind: "config" })`. On every status that reaches this step (`
 
 Forward `$ARGUMENTS` opaquely to that prose — this command does not parse it. The prose owns everything from here: what `$ARGUMENTS` means for this backend, asking the user for the brain location (`AskUserQuestion` plus `aide_info.brain.hints` when appropriate), landing the resolved value into the YAML-null slot, running sync via the Bash command recovered from `.mcp.json["mcpServers"]["aide"]`, seeding each seed section in the published contract (skip-on-exists), and emitting the restart message.
 
-The prose also owns the brain launcher before sync runs: the brain's global-install check (and its install offer) for a global launcher, and moving a local launcher's pin forward. Do not check, install or re-pin the brain package yourself.
+The prose also owns the brain launcher before sync runs: the brain's global-install check and its install. Do not check or install the brain package yourself.
 
 `no-mcp-entry` covers both unwired args (YAML null at the path slot) and unsynced args (a string at the path slot never written to `.mcp.json`). Only the prose's first step tells you which applies.
 

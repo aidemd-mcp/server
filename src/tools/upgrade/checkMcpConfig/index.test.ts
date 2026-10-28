@@ -5,24 +5,33 @@ vi.mock("node:fs/promises", () => ({
 	readFile: vi.fn(),
 }));
 
+vi.mock("@/service/install/shared/checkGlobalPackage/index.js", () => ({
+	default: vi.fn(),
+}));
+
 import { readFile } from "node:fs/promises";
+import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
 import checkMcpConfig from "./index.js";
+import aidePackage from "@/service/install/shared/aidePackage/index.js";
 import { mcpEntry } from "@/service/install/wireMcp/index.js";
 
 const mockReadFile = readFile as Mock;
+const mockCheckGlobalPackage = checkGlobalPackage as Mock;
 
 const MCP_PATH = "/project/.mcp.json";
-const CANONICAL_ENTRY = mcpEntry("local");
-const GLOBAL_ENTRY = mcpEntry("global");
+const GLOBAL_ENTRY = mcpEntry();
 const PATH_TIP =
 	"The aide entry launches the global install by absolute path. A bare `aidemd-mcp` command is more portable if `.mcp.json` is committed.";
+const LEGACY_KEY_PIN =
+	"The aide entry is under the `aidemd-mcp` key, whose version pin this tool does not move. Call aide_upgrade without targetVersion to switch it to the global `aidemd-mcp` command instead.";
+const PKG = aidePackage.name;
+
+function globalPackage(installed: boolean) {
+	return { name: PKG, installed, installCommand: aidePackage.installCommand };
+}
 
 function configWith(entry: { command: unknown; args: unknown }, key = "aide"): string {
 	return JSON.stringify({ mcpServers: { [key]: entry } }, null, 2) + "\n";
-}
-
-function canonical(): string {
-	return configWith(CANONICAL_ENTRY);
 }
 
 function enoent(): NodeJS.ErrnoException {
@@ -33,6 +42,7 @@ function enoent(): NodeJS.ErrnoException {
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	mockCheckGlobalPackage.mockResolvedValue(false);
 });
 
 describe("checkMcpConfig", () => {
@@ -41,24 +51,24 @@ describe("checkMcpConfig", () => {
 			mockReadFile.mockRejectedValue(enoent());
 		});
 
-		it("returns status 'missing'", async () => {
+		it("returns status 'missing' with category 'mcp' and the filePath", async () => {
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("missing");
-		});
-
-		it("returns category 'mcp'", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.category).toBe("mcp");
-		});
-
-		it("includes prescription with key 'aide' and canonical entry", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.prescription).toEqual({ key: "aide", entry: CANONICAL_ENTRY });
-		});
-
-		it("includes filePath", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.filePath).toBe(MCP_PATH);
+		});
+
+		it("prescribes the global entry under the 'aide' key", async () => {
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.prescription).toEqual({ key: "aide", entry: GLOBAL_ENTRY });
+			expect(result.globalSwitch).toBeUndefined();
+		});
+
+		it.each([true, false])("reports globalPackage with installed %s", async (installed) => {
+			mockCheckGlobalPackage.mockResolvedValue(installed);
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(mockCheckGlobalPackage).toHaveBeenCalledWith(PKG);
+			expect(result.globalPackage).toEqual(globalPackage(installed));
 		});
 	});
 
@@ -67,96 +77,140 @@ describe("checkMcpConfig", () => {
 			mockReadFile.mockResolvedValue("{ this is not json }");
 		});
 
-		it("returns status 'malformed'", async () => {
+		it("returns status 'malformed' with no prescription, canonicalContent or npm check", async () => {
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("malformed");
-		});
-
-		it("does not include prescription", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.prescription).toBeUndefined();
-		});
-
-		it("does not include canonicalContent", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.canonicalContent).toBeUndefined();
+			expect(mockCheckGlobalPackage).not.toHaveBeenCalled();
 		});
 	});
 
-	describe("file exists with canonical aide entry", () => {
-		beforeEach(() => {
-			mockReadFile.mockResolvedValue(canonical());
-		});
-
-		it("returns status 'matches'", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.status).toBe("matches");
-		});
-
-		it("does not include prescription", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.prescription).toBeUndefined();
-		});
-	});
-
-	describe("file exists with missing aide entry", () => {
-		beforeEach(() => {
-			mockReadFile.mockResolvedValue(
-				JSON.stringify({ mcpServers: { other: { command: "node", args: ["other.js"] } } }, null, 2) + "\n",
-			);
-		});
-
-		it("returns status 'differs'", async () => {
+	describe("file exists with no aide entry", () => {
+		it.each([
+			["other server only", JSON.stringify({ mcpServers: { other: { command: "node", args: ["other.js"] } } })],
+			["empty mcpServers", JSON.stringify({ mcpServers: {} })],
+			["no mcpServers", JSON.stringify({})],
+			["non-object aide entry", JSON.stringify({ mcpServers: { aide: "nope" } })],
+		])("%s differs with a global prescription and globalPackage", async (_label, content) => {
+			mockCheckGlobalPackage.mockResolvedValue(true);
+			mockReadFile.mockResolvedValue(content);
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("differs");
-		});
-
-		it("includes prescription", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.prescription).toEqual({ key: "aide", entry: CANONICAL_ENTRY });
+			expect(result.prescription).toEqual({ key: "aide", entry: GLOBAL_ENTRY });
+			expect(result.globalPackage).toEqual(globalPackage(true));
+			expect(result.globalSwitch).toBeUndefined();
 		});
 	});
 
-	describe("local npx entries are judged against the pinned canonical", () => {
-		const spec = CANONICAL_ENTRY.args[CANONICAL_ENTRY.args.length - 1] as string;
-		const pkg = spec.slice(0, spec.lastIndexOf("@"));
-		const drifted: Array<[string, string[]]> = [
-			["unpinned", ["-y", pkg]],
-			["@latest", ["-y", `${pkg}@latest`]],
-			["older pin", ["-y", `${pkg}@0.0.1`]],
-			["current pin without -y", [spec]],
+	describe("install-first instructions", () => {
+		const INSTALL_FIRST = `The aide server is not installed globally. Run \`${aidePackage.installCommand}\` via Bash before merging this prescription. If the install fails, tell the user and do not merge the entry.`;
+
+		const prescribed = [
+			["missing file", "missing"],
+			["config with no aide key", "differs"],
+		] as const;
+
+		function stage(label: string): void {
+			if (label === "missing file") mockReadFile.mockRejectedValue(enoent());
+			else mockReadFile.mockResolvedValue(JSON.stringify({ mcpServers: {} }));
+		}
+
+		it.each(prescribed)("%s tells the agent to install first when the package is missing", async (label, status) => {
+			mockCheckGlobalPackage.mockResolvedValue(false);
+			stage(label);
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.status).toBe(status);
+			expect(result.prescription).toEqual({ key: "aide", entry: GLOBAL_ENTRY });
+			expect(result.instructions).toBe(INSTALL_FIRST);
+		});
+
+		it.each(prescribed)("%s carries no instructions when the package is installed", async (label, status) => {
+			mockCheckGlobalPackage.mockResolvedValue(true);
+			stage(label);
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.status).toBe(status);
+			expect(result).not.toHaveProperty("instructions");
+		});
+
+		it("gives a non-canonical aidemd-mcp prescription no install instruction", async () => {
+			mockCheckGlobalPackage.mockResolvedValue(false);
+			mockReadFile.mockResolvedValue(configWith({ command: "aidemd-mcp", args: ["--root", "x"] }));
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.prescription).toEqual({ key: "aide", entry: GLOBAL_ENTRY });
+			expect(result).not.toHaveProperty("instructions");
+		});
+
+		it("gives an npx globalSwitch no install instruction", async () => {
+			mockCheckGlobalPackage.mockResolvedValue(false);
+			mockReadFile.mockResolvedValue(configWith({ command: "npx", args: ["-y", PKG] }));
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.globalSwitch).toBeDefined();
+			expect(result).not.toHaveProperty("instructions");
+		});
+	});
+
+	describe("npx entries are drift toward the global form", () => {
+		const spec = `${PKG}@0.0.1`;
+		const forms: Array<[string, string[]]> = [
+			["pinned old", ["-y", spec]],
+			["unpinned", ["-y", PKG]],
+			["@latest", ["-y", `${PKG}@latest`]],
+			["without -y", [spec]],
 		];
+		const entries = forms.flatMap(([label, args]) => [
+			[`POSIX ${label}`, { command: "npx", args }] as const,
+			[`cmd /c ${label}`, { command: "cmd", args: ["/c", "npx", ...args] }] as const,
+		]);
 
-		it("matches when pinned to the current version, with no prescription and no tip", async () => {
-			mockReadFile.mockResolvedValue(canonical());
+		it.each(entries)("%s under 'aide' reports a globalSwitch and no prescription", async (_label, entry) => {
+			mockCheckGlobalPackage.mockResolvedValue(true);
+			mockReadFile.mockResolvedValue(configWith(entry));
 			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.status).toBe("matches");
+			expect(result.status).toBe("differs");
+			expect(result.globalSwitch).toEqual({ key: "aide", ...globalPackage(true) });
 			expect(result.prescription).toBeUndefined();
-			expect(result.tip).toBeUndefined();
+			expect(result.pinMove).toBeUndefined();
 		});
 
-		it.each(drifted)("differs for %s, prescribing local", async (_label, args) => {
-			mockReadFile.mockResolvedValue(configWith({ command: "npx", args }));
+		it.each(entries)("%s under 'aidemd-mcp' reports globalSwitch.key 'aidemd-mcp'", async (_label, entry) => {
+			mockReadFile.mockResolvedValue(configWith(entry, "aidemd-mcp"));
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("differs");
-			expect(result.prescription).toEqual({ key: "aide", entry: CANONICAL_ENTRY });
+			expect(result.globalSwitch?.key).toBe("aidemd-mcp");
+			expect(result.prescription).toBeUndefined();
 		});
 
-		it.each(drifted)("differs for %s wrapped in cmd /c, prescribing local", async (_label, args) => {
-			mockReadFile.mockResolvedValue(configWith({ command: "cmd", args: ["/c", "npx", ...args] }));
+		it.each([true, false])("globalSwitch.installed mirrors the npm check (%s)", async (installed) => {
+			mockCheckGlobalPackage.mockResolvedValue(installed);
+			mockReadFile.mockResolvedValue(configWith({ command: "npx", args: ["-y", spec] }));
 			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.status).toBe("differs");
-			expect(result.prescription).toEqual({ key: "aide", entry: CANONICAL_ENTRY });
+			expect(result.globalSwitch).toEqual({ key: "aide", ...globalPackage(installed) });
+		});
+
+		it("prefers the 'aide' key when both keys exist", async () => {
+			mockReadFile.mockResolvedValue(
+				JSON.stringify({
+					mcpServers: {
+						"aidemd-mcp": GLOBAL_ENTRY,
+						aide: { command: "npx", args: ["-y", spec] },
+					},
+				}),
+			);
+			const result = await checkMcpConfig(MCP_PATH);
+			expect(result.globalSwitch?.key).toBe("aide");
 		});
 	});
 
 	describe("global aidemd-mcp entries", () => {
-		it("matches the bare name with no tip", async () => {
-			mockReadFile.mockResolvedValue(configWith(GLOBAL_ENTRY));
+		it.each(["aide", "aidemd-mcp"])("a canonical entry under '%s' matches without the npm check", async (key) => {
+			mockReadFile.mockResolvedValue(configWith(GLOBAL_ENTRY, key));
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("matches");
 			expect(result.prescription).toBeUndefined();
+			expect(result.globalSwitch).toBeUndefined();
 			expect(result.tip).toBeUndefined();
+			expect(mockCheckGlobalPackage).not.toHaveBeenCalled();
 		});
 
 		it("matches an absolute-path cmd shim and carries the tip", async () => {
@@ -184,6 +238,7 @@ describe("checkMcpConfig", () => {
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("differs");
 			expect(result.prescription).toEqual({ key: "aide", entry: GLOBAL_ENTRY });
+			expect(result.globalSwitch).toBeUndefined();
 		});
 	});
 
@@ -198,32 +253,9 @@ describe("checkMcpConfig", () => {
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("matches");
 			expect(result.prescription).toBeUndefined();
+			expect(result.globalSwitch).toBeUndefined();
 			expect(result.tip).toBeUndefined();
-		});
-	});
-
-	describe("file exists with legacy 'aidemd-mcp' key", () => {
-		beforeEach(() => {
-			mockReadFile.mockResolvedValue(configWith(CANONICAL_ENTRY, "aidemd-mcp"));
-		});
-
-		it("returns status 'differs' (legacy key is detected as drift)", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.status).toBe("differs");
-		});
-
-		it("includes prescription so agent can migrate to 'aide' key", async () => {
-			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.prescription).toEqual({ key: "aide", entry: CANONICAL_ENTRY });
-		});
-	});
-
-	describe("file exists with legacy 'aidemd-mcp' key holding a global entry", () => {
-		it("differs, prescribing global", async () => {
-			mockReadFile.mockResolvedValue(configWith(GLOBAL_ENTRY, "aidemd-mcp"));
-			const result = await checkMcpConfig(MCP_PATH);
-			expect(result.status).toBe("differs");
-			expect(result.prescription).toEqual({ key: "aide", entry: GLOBAL_ENTRY });
+			expect(mockCheckGlobalPackage).not.toHaveBeenCalled();
 		});
 	});
 
@@ -238,24 +270,22 @@ describe("checkMcpConfig", () => {
 			return JSON.stringify({ mcpServers: { aide, brain } }, null, 2) + "\n";
 		}
 
-		it("matches with no prescription when a legacy brain launcher sits next to the canonical local aide entry", async () => {
-			mockReadFile.mockResolvedValue(configWithBrain(CANONICAL_ENTRY, LEGACY_BRAIN));
+		it("matches with no prescription when a legacy brain launcher sits next to the global aide entry", async () => {
+			mockReadFile.mockResolvedValue(configWithBrain(GLOBAL_ENTRY, LEGACY_BRAIN));
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("matches");
 			expect(result.prescription).toBeUndefined();
 		});
 
-		it("prescribes the aide key, never brain, when the aide entry has drifted", async () => {
-			const spec = CANONICAL_ENTRY.args[CANONICAL_ENTRY.args.length - 1] as string;
-			const pkg = spec.slice(0, spec.lastIndexOf("@"));
-			mockReadFile.mockResolvedValue(configWithBrain({ command: "npx", args: ["-y", pkg] }, LEGACY_BRAIN));
+		it("switches the aide key, never brain, when the aide entry is npx", async () => {
+			mockReadFile.mockResolvedValue(configWithBrain({ command: "npx", args: ["-y", PKG] }, LEGACY_BRAIN));
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("differs");
-			expect(result.prescription?.key).toBe("aide");
-			expect(result.prescription?.key).not.toBe("brain");
+			expect(result.globalSwitch?.key).toBe("aide");
+			expect(result.prescription).toBeUndefined();
 		});
 
-		it("matches with no prescription for a global mcpvault brain entry next to a canonical global aide entry", async () => {
+		it("matches with no prescription for a global mcpvault brain entry next to a global aide entry", async () => {
 			mockReadFile.mockResolvedValue(configWithBrain(GLOBAL_ENTRY, GLOBAL_BRAIN));
 			const result = await checkMcpConfig(MCP_PATH);
 			expect(result.status).toBe("matches");
@@ -274,24 +304,25 @@ describe("checkMcpConfig", () => {
 			["cmd-wrapped", wrap(args)],
 		] as const;
 
-		describe("local entries behind the target", () => {
+		describe("npx entries behind the target", () => {
 			it.each([
 				["-y pinned old", ["-y", "@aidemd-mcp/server@0.0.1"], "0.0.1"],
 				["-y bare", ["-y", "@aidemd-mcp/server"], null],
 				["-y latest", ["-y", "@aidemd-mcp/server@latest"], "latest"],
 				["no -y", ["@aidemd-mcp/server@0.0.1"], "0.0.1"],
-			])("%s reports a pinMove and no prescription", async (_label, args, from) => {
+			])("%s reports a pinMove and no prescription or globalSwitch", async (_label, args, from) => {
 				for (const [, entry] of forms(args)) {
 					mockReadFile.mockResolvedValue(configWith(entry));
 					const result = await checkMcpConfig(MCP_PATH, TARGET);
 					expect(result.status).toBe("differs");
 					expect(result.pinMove).toEqual({ from, to: TARGET });
 					expect(result.prescription).toBeUndefined();
+					expect(result.globalSwitch).toBeUndefined();
 				}
 			});
 		});
 
-		describe("local entries pinned at the target", () => {
+		describe("npx entries pinned at the target", () => {
 			it.each([
 				["with -y", ["-y", `@aidemd-mcp/server@${TARGET}`]],
 				["without -y", [`@aidemd-mcp/server@${TARGET}`]],
@@ -358,32 +389,43 @@ describe("checkMcpConfig", () => {
 			expect(result.pinMove).toBeUndefined();
 		});
 
-		it("keeps the local prescription when the file is missing", async () => {
+		it("keeps the global prescription when the file is missing", async () => {
 			mockReadFile.mockRejectedValue(enoent());
 			const result = await checkMcpConfig(MCP_PATH, TARGET);
 			expect(result.status).toBe("missing");
-			expect(result.prescription).toEqual({ key: "aide", entry: CANONICAL_ENTRY });
+			expect(result.prescription).toEqual({ key: "aide", entry: GLOBAL_ENTRY });
+			expect(result.globalPackage).toEqual(globalPackage(false));
 			expect(result.pinMove).toBeUndefined();
 		});
 
-		it("keeps the local prescription when the aide entry is missing", async () => {
+		it("keeps the global prescription when the aide entry is missing", async () => {
 			mockReadFile.mockResolvedValue(JSON.stringify({ mcpServers: {} }));
 			const result = await checkMcpConfig(MCP_PATH, TARGET);
 			expect(result.status).toBe("differs");
-			expect(result.prescription).toEqual({ key: "aide", entry: CANONICAL_ENTRY });
+			expect(result.prescription).toEqual({ key: "aide", entry: GLOBAL_ENTRY });
 			expect(result.pinMove).toBeUndefined();
 		});
 
-		it("keeps the prescription for the legacy aidemd-mcp key", async () => {
-			mockReadFile.mockResolvedValue(configWith({ command: "npx", args: ["-y", "@aidemd-mcp/server@0.0.1"] }, "aidemd-mcp"));
+		it("reports LEGACY_KEY_PIN for an npx entry under the aidemd-mcp key, with no pinMove", async () => {
+			mockReadFile.mockResolvedValue(
+				configWith({ command: "npx", args: ["-y", "@aidemd-mcp/server@0.0.1"] }, "aidemd-mcp"),
+			);
 			const result = await checkMcpConfig(MCP_PATH, TARGET);
 			expect(result.status).toBe("differs");
-			expect(result.prescription?.key).toBe("aide");
+			expect(result.instructions).toBe(LEGACY_KEY_PIN);
 			expect(result.pinMove).toBeUndefined();
+			expect(result.prescription).toBeUndefined();
+			expect(result.globalSwitch).toBeUndefined();
+		});
+
+		it("does not run the npm check for an npx entry with a target", async () => {
+			mockReadFile.mockResolvedValue(configWith({ command: "npx", args: ["-y", "@aidemd-mcp/server@0.0.1"] }));
+			await checkMcpConfig(MCP_PATH, TARGET);
+			expect(mockCheckGlobalPackage).not.toHaveBeenCalled();
 		});
 
 		it("never writes to disk", async () => {
-			mockReadFile.mockResolvedValue(canonical());
+			mockReadFile.mockResolvedValue(configWith(GLOBAL_ENTRY));
 			await checkMcpConfig(MCP_PATH, TARGET);
 			expect(mockReadFile).toHaveBeenCalledOnce();
 		});
@@ -391,7 +433,7 @@ describe("checkMcpConfig", () => {
 
 	describe("no filesystem writes occur", () => {
 		it("never writes to disk", async () => {
-			mockReadFile.mockResolvedValue(canonical());
+			mockReadFile.mockResolvedValue(configWith(GLOBAL_ENTRY));
 			await checkMcpConfig(MCP_PATH);
 			// readFile was called once; module does not import writeFile
 			expect(mockReadFile).toHaveBeenCalledOnce();

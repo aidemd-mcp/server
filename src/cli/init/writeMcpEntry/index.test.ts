@@ -116,22 +116,30 @@ describe("writeMcpEntry (init wrapper)", () => {
 		expect(servers.brain).toEqual(brainEntry);
 	});
 
-	// --- Launch mode ---
+	// --- Global entry: the bare command on every platform ---
 
-	it("global mode on a fresh project — writes mcpEntry('global')", async () => {
-		const result = await writeMcpEntry(tempDir, "global");
+	it.each(["win32", "linux", "darwin"] as const)(
+		"cold write on %s — aide is { command: \"aidemd-mcp\", args: [] }",
+		async (platform) => {
+			const original = Object.getOwnPropertyDescriptor(process, "platform")!;
+			Object.defineProperty(process, "platform", { value: platform });
+			try {
+				const result = await writeMcpEntry(tempDir);
 
-		expect(result.status).toBe("created");
+				expect(result.status).toBe("created");
+				const parsed = await readMcpJson();
+				const servers = parsed.mcpServers as Record<string, unknown>;
+				expect(servers.aide).toEqual({ command: "aidemd-mcp", args: [] });
+			} finally {
+				Object.defineProperty(process, "platform", original);
+			}
+		},
+	);
 
-		const parsed = await readMcpJson();
-		const servers = parsed.mcpServers as Record<string, unknown>;
-		expect(servers.aide).toEqual(mcpEntry("global"));
-	});
-
-	// --- Keep-existing guard: an existing aide entry is never switched ---
+	// --- Keep-existing guard: an existing aide entry is never overwritten ---
 
 	it("existing global entry — preserved byte-for-byte, returns exists", async () => {
-		const existing = { mcpServers: { aide: mcpEntry("global") } };
+		const existing = { mcpServers: { aide: mcpEntry() } };
 		const raw = JSON.stringify(existing, null, 2) + "\n";
 		await writeFile(join(tempDir, ".mcp.json"), raw, "utf-8");
 
@@ -142,12 +150,12 @@ describe("writeMcpEntry (init wrapper)", () => {
 		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);
 	});
 
-	it("existing local entry — preserved when mode is global", async () => {
-		const existing = { mcpServers: { aide: mcpEntry("local") } };
+	it("existing npx entry — preserved, never replaced by the global entry", async () => {
+		const existing = { mcpServers: { aide: { command: "npx", args: ["-y", "@aidemd-mcp/server@latest"] } } };
 		const raw = JSON.stringify(existing, null, 2) + "\n";
 		await writeFile(join(tempDir, ".mcp.json"), raw, "utf-8");
 
-		const result = await writeMcpEntry(tempDir, "global");
+		const result = await writeMcpEntry(tempDir);
 
 		expect(result.status).toBe("exists");
 		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);
@@ -158,7 +166,7 @@ describe("writeMcpEntry (init wrapper)", () => {
 		const raw = JSON.stringify(existing, null, 2) + "\n";
 		await writeFile(join(tempDir, ".mcp.json"), raw, "utf-8");
 
-		const result = await writeMcpEntry(tempDir, "global");
+		const result = await writeMcpEntry(tempDir);
 
 		expect(result.status).toBe("exists");
 		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);

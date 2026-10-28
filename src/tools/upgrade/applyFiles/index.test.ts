@@ -11,8 +11,13 @@ vi.mock("./movePin/index.js", () => ({
 	default: vi.fn(),
 }));
 
+vi.mock("./switchToGlobal/index.js", () => ({
+	default: vi.fn(),
+}));
+
 import { mkdir, writeFile } from "node:fs/promises";
 import movePin from "./movePin/index.js";
+import switchToGlobal from "./switchToGlobal/index.js";
 import applyFiles from "./index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -142,6 +147,67 @@ describe("applyFiles", () => {
 		expect(vi.mocked(movePin)).toHaveBeenCalledWith({ ...file, pinMove });
 		expect(result).toBe(moved);
 		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+	});
+
+	// ── MCP file: globalSwitch → handed to switchToGlobal ─────────────────────
+	it("hands an mcp differs file carrying globalSwitch to switchToGlobal and uses its return", async () => {
+		const globalSwitch = {
+			key: "aide" as const,
+			name: "@aidemd-mcp/server",
+			installed: true,
+			installCommand: "npm i -g @aidemd-mcp/server",
+		};
+		const file = makeFile({
+			status: "differs",
+			category: "mcp",
+			globalSwitch,
+			canonicalContent: undefined,
+		});
+		const switched = { ...file, status: "updated" as const };
+		vi.mocked(switchToGlobal).mockResolvedValue(switched);
+
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(switchToGlobal)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(switchToGlobal)).toHaveBeenCalledWith({ ...file, globalSwitch });
+		expect(result).toBe(switched);
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+	});
+
+	it("never calls switchToGlobal when the result carries both pinMove and globalSwitch", async () => {
+		const file = makeFile({
+			status: "differs",
+			category: "mcp",
+			pinMove: { from: "0.12.0", to: "0.13.1" },
+			globalSwitch: {
+				key: "aide",
+				name: "@aidemd-mcp/server",
+				installed: true,
+				installCommand: "npm i -g @aidemd-mcp/server",
+			},
+			canonicalContent: undefined,
+		});
+		vi.mocked(movePin).mockResolvedValue(file);
+
+		await applyFiles([file]);
+
+		expect(vi.mocked(movePin)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(switchToGlobal)).not.toHaveBeenCalled();
+	});
+
+	it("passes a prescription-only mcp result through without calling switchToGlobal", async () => {
+		const prescription = { key: "aide", entry: { command: "aidemd-mcp", args: [] } };
+		const file = makeFile({
+			status: "differs",
+			category: "mcp",
+			prescription,
+			canonicalContent: undefined,
+		});
+
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(switchToGlobal)).not.toHaveBeenCalled();
+		expect(result).toEqual(file);
 	});
 
 	// ── IDE VS Code: differs → pass through with instructions ─────────────────

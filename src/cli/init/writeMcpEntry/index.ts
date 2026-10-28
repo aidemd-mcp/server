@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mcpEntry } from "@/service/install/wireMcp/index.js";
 import sharedWriteMcpEntry from "@/cli/shared/writeMcpEntry/index.js";
-import type { LaunchMode, McpServerEntry } from "@/types/index.js";
+import type { McpServerEntry } from "@/types/index.js";
 
 export interface WriteMcpEntryResult {
 	status: "created" | "exists";
@@ -42,17 +42,16 @@ async function hasAideEntry(mcpPath: string): Promise<boolean> {
  * with no write.
  *
  * Never overwrites an existing aide entry, under either the `aide` or the legacy
- * `aidemd-mcp` key, so the user's launch mode is never switched: the shared
- * writer's structural compare would otherwise replace a global entry with the
- * local one on every re-run.
+ * `aidemd-mcp` key, so a user's own launch command (for example an npx entry) is
+ * never switched: the shared writer's structural compare would otherwise replace
+ * it with the global one on every re-run.
+ *
+ * The entry written when none exists is the bare global command
+ * (`{ command: "aidemd-mcp", args: [] }`).
  *
  * @param projectRoot - The project root containing `.mcp.json`.
- * @param mode - Launch mode of the entry to write when none exists. Defaults to `"local"`.
  */
-export default async function writeMcpEntry(
-	projectRoot: string,
-	mode: LaunchMode = "local",
-): Promise<WriteMcpEntryResult> {
+export default async function writeMcpEntry(projectRoot: string): Promise<WriteMcpEntryResult> {
 	if (await hasAideEntry(join(projectRoot, ".mcp.json"))) {
 		return {
 			status: "exists",
@@ -61,7 +60,7 @@ export default async function writeMcpEntry(
 	}
 
 	const entries: Record<string, McpServerEntry | "delete"> = {
-		aide: mcpEntry(mode),
+		aide: mcpEntry(),
 	};
 
 	const result = await sharedWriteMcpEntry(projectRoot, entries);

@@ -115,6 +115,15 @@ export type GlobalPackageStatus = {
 };
 
 /**
+ * An npx-launched aide entry's switch to the global `aidemd-mcp` command, reported
+ * by aide_upgrade's mcp step. `key` is the MCP key that holds the entry (never
+ * renamed), `installed` whether `@aidemd-mcp/server` is installed globally, and
+ * `installCommand` what installs it. The tool writes the switch only once the
+ * package is installed.
+ */
+export type McpGlobalSwitch = GlobalPackageStatus & { key: "aide" | "aidemd-mcp" };
+
+/**
  * The running aide server is behind the latest published version. `installed`
  * is the version actually running (a pin edited but not yet restarted still
  * reports the old running version, which is accurate). `launch` names how the
@@ -269,8 +278,8 @@ export interface InitStep {
 	/** True when the MCP config file exists but cannot be parsed as JSON. */
 	configMalformed?: boolean;
 	/**
-	 * Present only on the aide MCP step when the step was planned in global
-	 * mode and would create the entry.
+	 * Present on every would-create aide MCP step (the entry is always the
+	 * global command); never on `exists`.
 	 */
 	globalPackage?: GlobalPackageStatus;
 	/**
@@ -281,6 +290,10 @@ export interface InitStep {
 	 * Present only on `would-create` steps (the IDE VS Code step and the
 	 * session record step) that pass through applySteps without being written
 	 * to disk.
+	 * Also present on the would-create aide MCP step when `@aidemd-mcp/server`
+	 * is not installed globally: it tells the agent to run the install via Bash
+	 * before merging the prescription, and not to merge if the install fails.
+	 * Absent on that step when the package is installed.
 	 */
 	instructions?: string;
 	/**
@@ -336,21 +349,30 @@ export type BrainSectionRepair = BrainSectionContractEntry & {
  * Why a brain launcher counts as legacy. `unpinned` and `unversioned` mean the
  * npx package spec carries no version; `older-pin` means it pins a version
  * older than this server; `missing-auto-confirm` means the npx args lack the
- * auto-confirm flag. Produced by provisionBrain's launcher check; consumed by
- * `BrainLauncherOffer`, `BrainMigrationNotice` and `UpgradeFileResult`.
+ * auto-confirm flag. `npx-launch` means the launcher runs the bundled brain
+ * package through npx at all, which is legacy because the canonical brain
+ * launcher is the global `mcpvault` command; it is always the first reason, and
+ * the others describe the pin. Produced by provisionBrain's launcher check;
+ * consumed by `BrainLauncherOffer`, `BrainMigrationNotice` and `UpgradeFileResult`.
  */
-export type LegacyLauncherReason = "unpinned" | "unversioned" | "older-pin" | "missing-auto-confirm";
+export type LegacyLauncherReason =
+	| "npx-launch"
+	| "unpinned"
+	| "unversioned"
+	| "older-pin"
+	| "missing-auto-confirm";
 
 /**
  * A proposed launcher rewrite for a legacy brain launcher. `before` is the
- * user's `mcpServerConfig` as parsed; `after` is the replacement for each
- * launch mode. Produced by provisionBrain; consumed by aide_upgrade's brain
+ * user's `mcpServerConfig` as parsed; `after` is the global replacement
+ * (`mcpvault` with every arg after the npx package spec), the one form a legacy
+ * launcher moves to. Produced by provisionBrain; consumed by aide_upgrade's brain
  * preview and apply via `BrainMigration`, no longer carried on `InitStep`.
  */
 export type BrainLauncherOffer = {
 	reasons: LegacyLauncherReason[];
 	before: BrainAideMcpServerConfig;
-	after: Record<LaunchMode, BrainAideMcpServerConfig>;
+	after: BrainAideMcpServerConfig;
 };
 
 /**
@@ -501,7 +523,8 @@ export type UpgradeFileStatus = "matches" | "differs" | "missing" | "malformed" 
  * Result of comparing a single file against its canonical version.
  * For `differs` and `missing` statuses, `canonicalContent` carries the bytes
  * the agent should write. For `mcp` category files, `prescription` carries
- * the server entry to merge.
+ * the server entry to merge, `globalPackage` reports the global install beside
+ * it, and `globalSwitch` reports an npx entry's switch to the global command.
  */
 export interface UpgradeFileResult {
 	/** Human-readable label for this file (e.g. filename or display name). */
@@ -533,15 +556,36 @@ export interface UpgradeFileResult {
 	 */
 	pinMove?: McpPinMove;
 	/**
+	 * Present only on the `mcp` result when the aide entry launches through npx
+	 * and no target version was named. On detection it has status `differs`; after
+	 * a successful mcp category call the status is `updated`; on a refused call it
+	 * is still `differs` with `instructions`. Never present together with
+	 * `prescription` or `pinMove`.
+	 */
+	globalSwitch?: McpGlobalSwitch;
+	/**
+	 * Present only on the `mcp` result beside a `prescription` for a missing
+	 * config or absent aide entry, so the agent installs the package before
+	 * merging the entry. When `installed` is false the same result carries the
+	 * install-first `instructions`.
+	 */
+	globalPackage?: GlobalPackageStatus;
+	/**
 	 * An informational note on a file result. It is neither drift nor a
 	 * prescription, and it never changes the summary counts.
 	 */
 	tip?: string;
 	/**
-	 * CLI command the agent should execute for steps that require external
-	 * tooling (e.g. `code --install-extension <vsixPath>` for VS Code).
-	 * Present only on IDE VS Code steps that pass through applyFiles without
-	 * being written to disk.
+	 * What the agent must do or know next, set by whichever step produced it:
+	 * - the IDE VS Code install command (e.g. `code --install-extension
+	 *   <vsixPath>`), for a step that passes through applyFiles without being
+	 *   written to disk;
+	 * - the reason a pin move was refused (an unlocatable pin, or an npx entry
+	 *   under the `aidemd-mcp` key with a target version);
+	 * - the reason a switch to the global command was refused;
+	 * - on the mcp `missing` result, or the absent-entry `differs` result, the
+	 *   instruction to install the package first when it is not installed
+	 *   globally.
 	 */
 	instructions?: string;
 	/**
@@ -1107,3 +1151,6 @@ export type ArgLine = { start: number; end: number; value: string | null };
 
 /** The aide entry's package-spec argument located in the raw MCP config text: `start` and `end` are the offsets of the whole JSON string token, quotes included, and `value` is its decoded string. Produced and consumed inside aide_upgrade's pin move. */
 export type PinToken = { start: number; end: number; value: string };
+
+/** The byte offsets of one JSON value (a whole string token including quotes, or an array from `[` through `]`) in the raw MCP config text. Produced and consumed inside aide_upgrade's switch to the global command. */
+export type TokenRange = { start: number; end: number };

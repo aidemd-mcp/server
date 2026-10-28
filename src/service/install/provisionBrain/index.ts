@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { InitStep, LaunchMode, McpPrescription } from "@/types/index.js";
+import type { InitStep, McpPrescription } from "@/types/index.js";
 import parseBrainAide, { interpolateArgs, parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import buildBrainAideStep from "./buildBrainAideStep/index.js";
 
@@ -195,14 +195,12 @@ async function buildBrainMcpStep(
  *
  * @param projectRoot - Host project root (where `.aide/config/brain.aide` lives).
  * @param mcpConfigPath - Absolute path to the host's `.mcp.json`.
- * @param brainMode - Optional launch mode for the scaffolded brain launcher; omitted means local.
  */
 export default async function provisionBrain(
 	projectRoot: string,
 	mcpConfigPath: string,
-	brainMode?: LaunchMode,
 ): Promise<InitStep[]> {
-	const brainAideStep = await buildBrainAideStep(projectRoot, brainMode);
+	const brainAideStep = await buildBrainAideStep(projectRoot);
 	const mcpStep = await buildBrainMcpStep(projectRoot, brainAideStep, mcpConfigPath);
 	return [brainAideStep, mcpStep];
 }

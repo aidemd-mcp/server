@@ -17,6 +17,11 @@ const { handlers, mockCleanup, mockScaffold, mockFrontmatter, mockBrainCategory,
 		mockValidateDraft: vi.fn(),
 	}));
 
+// aide_init plans the global entry; keep it from running a real `npm root -g`.
+vi.mock("@/service/install/shared/checkGlobalPackage/index.js", () => ({
+	default: vi.fn(async () => true),
+}));
+
 // Mock the init CLI module so routeSubcommand never runs a real install.
 const { mockRunInitCli } = vi.hoisted(() => ({ mockRunInitCli: vi.fn() }));
 vi.mock("./cli/init/index.js", () => ({ runInitCli: mockRunInitCli }));
@@ -641,6 +646,14 @@ describe("aide_brain boundary", () => {
 });
 
 describe("aide_init registration", () => {
+	it("advertises no launch-mode inputs", async () => {
+		const { inputSchema } = (await findTool("aide_init")) as unknown as {
+			inputSchema: { properties: Record<string, unknown> };
+		};
+
+		expect(Object.keys(inputSchema.properties)).toEqual(["framework", "path", "category"]);
+	});
+
 	it("teaches brainSummary and none of the retired brain contract fields", async () => {
 		const { description } = await findTool("aide_init");
 

@@ -9,8 +9,10 @@ import renderArgLine from "./renderArgLine/index.js";
  * Walks `before` and `after` with two cursors: an equal arg keeps its original source line
  * byte-for-byte; an arg only in `after` (an inserted `-y`) or replacing a `before` arg (a
  * re-pinned spec) becomes a new line in the first item's indentation, single-quoted, ending in
- * the file's line ending; a `before` arg absent from `after` is dropped. Bytes outside the item
- * lines are untouched.
+ * the file's line ending; a `before` arg absent from `after` is dropped. When the next `after` arg
+ * equals a later `before` arg, the `before` args in between are dropped and that surviving arg
+ * keeps its original source line (an npx launcher's leading args removed ahead of the vault path).
+ * Bytes outside the item lines are untouched.
  */
 export default function rewriteLauncherArgs({
 	frontmatter,
@@ -49,6 +51,14 @@ export default function rewriteLauncherArgs({
 				if (line === null) return null;
 				rewritten += line;
 			}
+			continue;
+		}
+
+		// An after arg that survives from a later before position means the args in between were
+		// dropped, so the surviving arg keeps its original source line.
+		const keptAt = j < after.length ? before.indexOf(after[j]!, i + 1) : -1;
+		if (keptAt !== -1) {
+			i = keptAt;
 			continue;
 		}
 

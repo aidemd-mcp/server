@@ -30,26 +30,16 @@ Learn more at [aidemd.dev](https://aidemd.dev).
 
 ### Quick Start (Claude Code)
 
-Pick a launch mode — init asks, recommends global, and never switches an existing entry.
-
-**Global** — pick it on a personal machine: reliable startup, stays on the installed version.
-
-```bash
-npm i -g @aidemd-mcp/server
-aidemd-mcp init
-```
-
-**Local** — pick it for shared repos and cloud/CI: pinned to one exact version that `/aide:upgrade` moves forward.
+Run the installer from your project's root:
 
 ```bash
 npx -y @aidemd-mcp/server@0.14.0 init
 ```
 
-`--mode global|local` skips the question (non-interactive runs default to local).
-
 This command:
 
-- Merges the AIDE MCP server entry into `.mcp.json`
+- Installs the AIDE MCP server globally (`npm i -g @aidemd-mcp/server`); if the install fails, it says so and writes nothing
+- Merges the AIDE MCP server entry into `.mcp.json`, launched by its global command `aidemd-mcp`
 - Writes the bundled brain config template to `.aide/config/brain.aide` (the brain location stays unset until `/aide:brain config` fills it and writes the brain MCP entry)
 - Writes every pipeline slash command to `.claude/commands/aide/`
 - Installs 11 canonical agents to `.claude/agents/aide/` (the pipeline agents plus `aide-upgrader`, which `/aide:upgrade` runs to migrate the project's own files) and the `kanban-maintainer` board agent to `.claude/agents/kanban/`
@@ -68,16 +58,8 @@ After running, open Claude Code and run `/aide`. On the first run it routes to `
 
 Run this after editing `.aide/config/brain.aide` — for example, when you update the brain path argument in `mcpServerConfig.args` or rename the brain in the `name` field:
 
-Global:
-
 ```bash
 aidemd-mcp sync
-```
-
-Local (use the version your `aide` entry pins):
-
-```bash
-npx -y @aidemd-mcp/server@0.14.0 sync
 ```
 
 `sync` reads `.aide/config/brain.aide`, copies `mcpServerConfig` verbatim into `.mcp.json` under the fixed `brain` key, and writes the `name` field as the server label. Every other key in `mcpServers` (including your `aide` entry and any personal MCP integrations) is left byte-identical. If a legacy `obsidian` key is present it is removed in the same write. The command is idempotent — running it twice produces the same `.mcp.json` bytes, and the second invocation prints `already in sync` without touching the file. Exit code is `0` on success (including the no-change case), `1` on a missing or malformed `brain.aide` or invalid `.mcp.json`, and `2` on `--help`.
@@ -98,7 +80,7 @@ If you use a client other than Claude Code, or prefer to configure manually, add
 
 #### Claude Code
 
-**Global** — recommended on your own machine. Install once, then register:
+Install once, then register:
 
 ```bash
 npm i -g @aidemd-mcp/server
@@ -117,25 +99,6 @@ Or add to your project's `.mcp.json`:
 }
 ```
 
-**Local, pinned** — for shared repos and cloud/CI:
-
-```bash
-claude mcp add aide -- npx -y @aidemd-mcp/server@0.14.0
-```
-
-Or add to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "aide": {
-      "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.14.0"]
-    }
-  }
-}
-```
-
 > [!NOTE]
 > The Quick Start command above handles this automatically for Claude Code users.
 
@@ -146,7 +109,7 @@ Config file locations:
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-**Global** — recommended on your own machine (after `npm i -g @aidemd-mcp/server`):
+After `npm i -g @aidemd-mcp/server`:
 
 ```json
 {
@@ -158,21 +121,8 @@ Config file locations:
 }
 ```
 
-**Local, pinned** — for shared repos and cloud/CI:
-
-```json
-{
-  "mcpServers": {
-    "aide": {
-      "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.14.0"]
-    }
-  }
-}
-```
-
 > [!NOTE]
-> Claude Desktop does not inherit the terminal PATH. If you use nvm or Homebrew to manage Node, `npx` may not be found. Run `which npx` in your terminal to get the absolute path and replace `"npx"` with it in the config above.
+> Claude Desktop does not inherit the terminal PATH. If you use nvm or Homebrew to manage Node, `aidemd-mcp` may not be found. Run `which aidemd-mcp` in your terminal to get the absolute path and use it as the command in the config above.
 
 Claude Desktop requires a full quit-and-reopen after any config change.
 
@@ -180,26 +130,13 @@ Claude Desktop requires a full quit-and-reopen after any config change.
 
 Add to `~/.cursor/mcp.json`:
 
-**Global** — recommended on your own machine (after `npm i -g @aidemd-mcp/server`):
+After `npm i -g @aidemd-mcp/server`:
 
 ```json
 {
   "mcpServers": {
     "aide": {
       "command": "aidemd-mcp"
-    }
-  }
-}
-```
-
-**Local, pinned** — for shared repos and cloud/CI:
-
-```json
-{
-  "mcpServers": {
-    "aide": {
-      "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.14.0"]
     }
   }
 }
@@ -209,26 +146,13 @@ Add to `~/.cursor/mcp.json`:
 
 Add to `.vscode/mcp.json`:
 
-**Global** — recommended on your own machine (after `npm i -g @aidemd-mcp/server`):
+After `npm i -g @aidemd-mcp/server`:
 
 ```json
 {
   "servers": {
     "aide": {
       "command": "aidemd-mcp"
-    }
-  }
-}
-```
-
-**Local, pinned** — for shared repos and cloud/CI:
-
-```json
-{
-  "servers": {
-    "aide": {
-      "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.14.0"]
     }
   }
 }
@@ -241,26 +165,13 @@ Add to `.vscode/mcp.json`:
 
 Add to `~/.windsurf/mcp.json`:
 
-**Global** — recommended on your own machine (after `npm i -g @aidemd-mcp/server`):
+After `npm i -g @aidemd-mcp/server`:
 
 ```json
 {
   "mcpServers": {
     "aide": {
       "command": "aidemd-mcp"
-    }
-  }
-}
-```
-
-**Local, pinned** — for shared repos and cloud/CI:
-
-```json
-{
-  "mcpServers": {
-    "aide": {
-      "command": "npx",
-      "args": ["-y", "@aidemd-mcp/server@0.14.0"]
     }
   }
 }
@@ -358,8 +269,8 @@ Bootstrap the AIDE development environment into a project using a guided one-at-
 - `framework` (string, optional): Force a specific framework instead of auto-detecting. One of: `claude`, `cursor`, `windsurf`, `copilot`.
 - `path` (string, optional): Custom project root path. Defaults to the server working directory.
 - `category` (string, optional): Write all `would-create` files for this category and return a manifest. One of: `framework`, `methodology`, `commands`, `agents`, `skills`, `mcp`, `brain`, `ide`, `readme`. Omit on the first call to get a metadata-only summary.
-- `aideMode` (string, optional): Launch mode for the aide MCP entry, `global` (recommended) or `local`. Pass with `category=mcp`.
-- `brainMode` (string, optional): Launch mode for the brain template's launcher, `global` or `local`. Pass with `category=brain`.
+
+The aide MCP entry always launches the global command `aidemd-mcp`. A would-create aide entry carries `globalPackage`; when it is not installed, the agent runs its `installCommand` before merging the entry.
 
 ### aide_upgrade
 

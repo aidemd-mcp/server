@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import brainContract from "@/service/brainContract/index.js";
 import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
-import obsidianBrainAideTemplate, { MCPVAULT_PACKAGE } from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
+import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
 import { parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import type { BrainSectionMarker } from "@/types/index.js";
 import locateFrontmatter from "../shared/locateFrontmatter/index.js";
@@ -114,7 +114,7 @@ describe("insertMissingSections", () => {
 	});
 
 	it("returns adapt without writing when the launcher is not the template's integration", async () => {
-		const fixture = templateWithout(kanbanTail).replaceAll(MCPVAULT_PACKAGE, "other-brain-server");
+		const fixture = templateWithout(kanbanTail).replace("command: mcpvault", "command: other-brain-server");
 		await writeFixture(fixture);
 
 		const result = await insertMissingSections({ projectRoot: root });

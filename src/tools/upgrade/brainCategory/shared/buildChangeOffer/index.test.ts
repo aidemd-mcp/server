@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import toMarkerPair from "@/service/brainContract/toMarkerPair/index.js";
-import obsidianBrainAideTemplate, { MCPVAULT_VERSION } from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
+import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
 import parseBundledTemplate from "@/service/install/provisionBrain/parseBundledTemplate/index.js";
 import { parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import locateFrontmatter from "../locateFrontmatter/index.js";
@@ -54,24 +54,45 @@ describe("buildChangeOffer", () => {
 		expect(offer.text.slice(start + offer.after.length)).toBe(v090.slice(end));
 	});
 
-	it("offers the launcher with args rewritten to the pinned local launcher", () => {
+	it("offers the launcher moved to the global mcpvault command, keeping the vault path line", () => {
 		const offer = offerFor(v090, "launcher");
 		if (offer.kind !== "offer") throw new Error(`expected an offer, got: ${offer.instructions}`);
 
 		const { yamlStart, yamlEnd } = locateFrontmatter(v090);
 		expect(offer.before).toBe(v090.slice(yamlStart, yamlEnd));
-		expect(offer.after).toBe(
-			offer.before.replace(
-				"    - '@bitbonsai/mcpvault'\n",
-				`    - '-y'\n    - '@bitbonsai/mcpvault@${MCPVAULT_VERSION}'\n`,
-			),
-		);
+		expect(offer.after).toBe("name: obsidian\nmcpServerConfig:\n  command: mcpvault\n  args:\n    - 'C:\\vault'\n");
 		expect(offer.text).toBe(v090.slice(0, yamlStart) + offer.after + v090.slice(yamlEnd));
 		const reparsed = parseBrainAideFromString(offer.text);
 		expect(reparsed.kind).toBe("missing-sections");
 		expect(reparsed.kind === "missing-sections" && reparsed.mcpServerConfig).toEqual({
-			command: "cmd",
-			args: ["/c", "npx", "-y", `@bitbonsai/mcpvault@${MCPVAULT_VERSION}`, "C:\\vault"],
+			command: "mcpvault",
+			args: ["C:\\vault"],
+		});
+	});
+
+	describe.each([
+		["POSIX npx", ["npx", "    - '-y'"]],
+		["cmd /c npx", ["cmd", "    - '/c'\n    - 'npx'\n    - '-y'"]],
+	] as const)("%s launcher", (_name, [command, leading]) => {
+		it.each([
+			["a null slot", null, "    -"],
+			["a string path", "D:\\vault", "    - 'D:\\vault'"],
+		] as const)("moves to mcpvault with %s, changing only the command and args lines", (_slotName, slot, slotLine) => {
+			const template = obsidianBrainAideTemplate();
+			const { yamlStart, yamlEnd } = locateFrontmatter(template);
+			const region = `name: obsidian\nmcpServerConfig:\n  command: ${command}\n  args:\n${leading}\n    - '@bitbonsai/mcpvault@0.9.0'\n${slotLine}\n`;
+			const raw = toLineEnding({ text: template.slice(0, yamlStart) + region + template.slice(yamlEnd), eol: "\r\n" });
+
+			const offer = offerFor(raw, "launcher");
+			if (offer.kind !== "offer") throw new Error(`expected an offer, got: ${offer.instructions}`);
+
+			expect(offer.after).toBe(
+				toLineEnding({ text: `name: obsidian\nmcpServerConfig:\n  command: mcpvault\n  args:\n${slotLine}\n`, eol: "\r\n" }),
+			);
+			const reparsed = parseBrainAideFromString(offer.text);
+			expect(reparsed).toMatchObject({ kind: "ok", mcpServerConfig: { command: "mcpvault", args: [slot] } });
+			const start = locateFrontmatter(offer.text);
+			expect(offer.text.slice(start.bodyStart)).toBe(raw.slice(locateFrontmatter(raw).bodyStart));
 		});
 	});
 
@@ -130,7 +151,9 @@ describe("buildChangeOffer", () => {
 
 		const launcher = offerFor(crlf, "launcher");
 		if (launcher.kind !== "offer") throw new Error("expected a launcher offer");
-		expect(launcher.after).toContain(`    - '-y'\r\n    - '@bitbonsai/mcpvault@${MCPVAULT_VERSION}'\r\n`);
+		expect(launcher.after).toBe(
+			toLineEnding({ text: "name: obsidian\nmcpServerConfig:\n  command: mcpvault\n  args:\n    - 'C:\\vault'\n", eol: "\r\n" }),
+		);
 		expect(launcher.text.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
 	});
 

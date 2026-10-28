@@ -1,6 +1,4 @@
 import { describe, it, expect } from "vitest";
-import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
-import locateFrontmatter from "../../../locateFrontmatter/index.js";
 import toLineEnding from "../../../toLineEnding/index.js";
 import rewriteLauncherArgs from "./index.js";
 
@@ -111,6 +109,46 @@ describe("rewriteLauncherArgs", () => {
 		expect(result).toBe("mcpServerConfig:\n  command: npx\n  args:\n    - 'new'\n    -\nname: brain\n");
 	});
 
+	it.each([
+		["unquoted", "    - D:\\vault"],
+		["single-quoted", "    - 'D:\\vault'"],
+	])("drops the leading npx args and keeps a %s path line byte-for-byte", (_label, pathLine) => {
+		const frontmatter = makeRegion({
+			command: "cmd",
+			argLines: ["    - '/c'", "    - 'npx'", "    - '-y'", `    - '${NEW_SPEC}'`, pathLine],
+		});
+		const result = rewriteLauncherArgs({
+			frontmatter,
+			before: ["/c", "npx", "-y", NEW_SPEC, "D:\\vault"],
+			after: ["D:\\vault"],
+			eol: "\n",
+		});
+
+		expect(result).toBe(makeRegion({ command: "cmd", argLines: [pathLine] }));
+	});
+
+	it("keeps a bare dash null slot line when the leading args are dropped", () => {
+		const frontmatter = makeRegion({ command: "npx", argLines: [`    - '${OLD_SPEC}'`, "    -"] });
+		const result = rewriteLauncherArgs({ frontmatter, before: [OLD_SPEC, null], after: [null], eol: "\n" });
+
+		expect(result).toBe(makeRegion({ command: "npx", argLines: ["    -"] }));
+	});
+
+	it("drops the spec and keeps both later lines", () => {
+		const frontmatter = makeRegion({
+			command: "npx",
+			argLines: ["    - -y", `    - "${OLD_SPEC}"`, "    - --rootDir", "    -"],
+		});
+		const result = rewriteLauncherArgs({
+			frontmatter,
+			before: ["-y", OLD_SPEC, "--rootDir", null],
+			after: ["--rootDir", null],
+			eol: "\n",
+		});
+
+		expect(result).toBe(makeRegion({ command: "npx", argLines: ["    - --rootDir", "    -"] }));
+	});
+
 	it("returns null for flow-style args", () => {
 		const frontmatter = "mcpServerConfig:\n  command: npx\n  args: ['a', 'b']\n";
 		expect(rewriteLauncherArgs({ frontmatter, before: ["a", "b"], after: ["-y", "a", "b"], eol: "\n" })).toBeNull();
@@ -130,21 +168,21 @@ describe("rewriteLauncherArgs", () => {
 		expect(rewriteLauncherArgs({ frontmatter: "name: brain\n", before: ["a"], after: ["b"], eol: "\n" })).toBeNull();
 	});
 
-	it("rewrites the bundled template's own CRLF frontmatter region, changing only the spec line", () => {
-		const raw = toLineEnding({ text: obsidianBrainAideTemplate(), eol: "\r\n" });
-		const { yamlStart, yamlEnd } = locateFrontmatter(raw);
-		const region = raw.slice(yamlStart, yamlEnd);
-		const specLine = region.split("\r\n").find((line) => line.includes("@bitbonsai/mcpvault@"))!;
-		const spec = /'([^']+)'/.exec(specLine)![1]!;
+	it("rewrites a literal npx launcher's CRLF frontmatter region, changing only the spec line", () => {
+		const spec = "@bitbonsai/mcpvault@0.9.0";
+		const crlf = (lines: string[]) => lines.join("\r\n");
+		const posixRegion = crlf(["name: obsidian", "mcpServerConfig:", "  command: npx", "  args:", "    - -y", `    - '${spec}'`, "    -", ""]);
+		const win32Region = crlf(["name: obsidian", "mcpServerConfig:", "  command: cmd", "  args:", "    - /c", "    - npx", "    - -y", `    - '${spec}'`, "    -", ""]);
 
-		const posix = rewriteLauncherArgs({ frontmatter: region, before: ["-y", spec, null], after: ["-y", "pkg@2", null], eol: "\r\n" });
+		const posix = rewriteLauncherArgs({ frontmatter: posixRegion, before: ["-y", spec, null], after: ["-y", "pkg@2", null], eol: "\r\n" });
 		const win32 = rewriteLauncherArgs({
-			frontmatter: region,
+			frontmatter: win32Region,
 			before: ["/c", "npx", "-y", spec, null],
 			after: ["/c", "npx", "-y", "pkg@2", null],
 			eol: "\r\n",
 		});
 
-		expect(posix ?? win32).toBe(region.replace(spec, "pkg@2"));
+		expect(posix).toBe(posixRegion.replace(`'${spec}'`, "'pkg@2'"));
+		expect(win32).toBe(win32Region.replace(`'${spec}'`, "'pkg@2'"));
 	});
 });

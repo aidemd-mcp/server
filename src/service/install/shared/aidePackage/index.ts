@@ -2,7 +2,7 @@
  * Single source of AIDE's npm package name, its global bin command, and the
  * global install command. Every launcher, remediation phrase and install offer
  * reads these instead of restating the strings. The version is deliberately not
- * here; see `readAidePackageVersion`.
+ * here; `aide_info` reads the running version through its own path.
  */
 export default {
 	name: "@aidemd-mcp/server",

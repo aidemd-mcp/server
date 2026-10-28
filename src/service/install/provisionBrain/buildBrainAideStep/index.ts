@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import type { InitStep, LaunchMode } from "@/types/index.js";
+import type { InitStep } from "@/types/index.js";
 import parseBrainAide from "@/service/parseBrainAide/index.js";
 import obsidianBrainAideTemplate from "../obsidianBrainAideTemplate/index.js";
 import summarizeBrainConfig from "./summarizeBrainConfig/index.js";
@@ -37,12 +37,8 @@ async function exists(path: string): Promise<boolean> {
  * The step `name` is load-bearing: the `/aide:brain config` prose locates the step by it.
  *
  * @param projectRoot - Host project root (where `.aide/config/brain.aide` lives).
- * @param brainMode - Optional launch mode for the would-create template launcher; omitted means local.
  */
-export default async function buildBrainAideStep(
-	projectRoot: string,
-	brainMode?: LaunchMode,
-): Promise<InitStep> {
+export default async function buildBrainAideStep(projectRoot: string): Promise<InitStep> {
 	const filePath = join(projectRoot, ".aide", "config", "brain.aide");
 	const name = "Brain config (brain.aide)";
 
@@ -62,7 +58,7 @@ export default async function buildBrainAideStep(
 		status: "would-create",
 		category: "brain",
 		filePath,
-		content: obsidianBrainAideTemplate(brainMode),
+		content: obsidianBrainAideTemplate(),
 		brainSummary: summarizeBrainConfig(null),
 	};
 }

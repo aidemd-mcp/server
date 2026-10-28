@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
-import type { McpPrescription, UpgradeFileResult } from "@/types/index.js";
+import type { GlobalPackageStatus, UpgradeFileResult } from "@/types/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
-import detectLaunchMode from "@/service/install/shared/detectLaunchMode/index.js";
+import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
 import normalizeLaunchedCommand from "@/service/install/shared/normalizeLaunchedCommand/index.js";
+import planInstallInstruction from "@/service/install/shared/planInstallInstruction/index.js";
 import { mcpEntry } from "@/service/install/wireMcp/index.js";
 import readAidePin from "../shared/readAidePin/index.js";
 import isCanonicalGlobalAideEntry from "./isCanonicalGlobalAideEntry/index.js";
@@ -11,6 +12,10 @@ import isPinBehind from "./isPinBehind/index.js";
 /** Instructions for a local aide entry whose version pin cannot be located, so it cannot be moved to `target`. */
 const UNLOCATABLE_PIN = (target: string): string =>
 	`The aide entry runs npx in a form whose version pin cannot be located (another package, or a -p/--package flag), so it cannot be moved to ${target}. Leave the entry as it is and tell the user.`;
+
+/** Instructions for an npx aide entry under the `aidemd-mcp` key when a version pin move is requested: the pin move only addresses the `aide` key. */
+const LEGACY_KEY_PIN =
+	"The aide entry is under the `aidemd-mcp` key, whose version pin this tool does not move. Call aide_upgrade without targetVersion to switch it to the global `aidemd-mcp` command instead.";
 
 /** Informational note for a global aide entry launched by absolute path. Neither drift nor a prescription. */
 const ABSOLUTE_PATH_TIP =
@@ -25,50 +30,69 @@ async function safeReadFile(path: string): Promise<string | undefined> {
 	}
 }
 
+/** Report whether the aide package is installed globally, with the command that installs it. */
+async function readGlobalPackage(): Promise<GlobalPackageStatus> {
+	return {
+		name: aidePackage.name,
+		installed: await checkGlobalPackage(aidePackage.name),
+		installCommand: aidePackage.installCommand,
+	};
+}
+
 /**
  * Judge the `aide` / `aidemd-mcp` key in an MCP config file. Read-only — never writes.
  *
- * Only AIDE's own launch forms are judged; a custom entry (any other launched
- * program) is the user's and is left alone, reported as `"matches"` with no
- * prescription. An npx entry matches only when it equals the pinned local entry,
- * so an older or unpinned pin is drift: that is how the pin moves forward. An
- * `aidemd-mcp` entry matches as the bare name or an absolute-path shim (the path
- * form adds an informational `tip`). The check never proposes switching modes
- * and never touches the brain launcher.
+ * The global form is canonical: an entry launching the `aidemd-mcp` bin matches
+ * under either key, so the key alone is never drift. An npx entry is drift
+ * toward the global form, reported as a `globalSwitch` (which key holds it,
+ * whether the package is installed globally, and the install command) for the
+ * tool to write once the package is installed; it is never returned as a
+ * prescription for the agent to merge. A custom entry (any other launched
+ * program) is the user's and is left alone, reported as `"matches"`. An
+ * `aidemd-mcp` entry matches as the bare name or an absolute-path shim (the
+ * path form adds an informational `tip`); extra args are drift with a global
+ * prescription. The brain launcher is never touched.
  *
- * With a `targetVersion`, a local (npx) aide entry is judged by its version pin
- * alone (the command form, `-y` and other args are not judged). Drift is
- * reported as `pinMove` for the tool to write, never as a prescription; an entry
- * whose pin cannot be located gets `instructions` instead. Without a
- * `targetVersion` behavior is unchanged. Still read-only.
+ * With a `targetVersion`, an npx entry under the `aide` key is judged by its
+ * version pin alone: drift is reported as `pinMove` for the tool to write, and
+ * an entry whose pin cannot be located gets `instructions` instead. An npx entry
+ * under the `aidemd-mcp` key gets `instructions` pointing at the switch, since
+ * the pin move does not address that key.
+ *
+ * The npm global check (`npm root -g`) runs only for a missing file, an absent
+ * entry or an npx entry without a `targetVersion`.
  *
  * Returns an `UpgradeFileResult` with category `"mcp"`:
  * - `"malformed"` when the file exists but is not valid JSON.
- * - `"missing"` when the file does not exist. `prescription` carries the
- *   local server entry for the agent to merge.
- * - `"matches"` when the aide entry is canonical in its own mode, or custom.
- * - `"differs"` when the aide entry is absent or drifted. `prescription`
- *   carries the entry, in the detected mode, for the agent to merge.
- *
- * The legacy `"aidemd-mcp"` key (old unscoped package) is detected as
- * `"differs"` so the agent can migrate it to the canonical `"aide"` key.
+ * - `"missing"` when the file does not exist. `prescription` carries the global
+ *   server entry for the agent to merge, with `globalPackage` beside it. When the
+ *   package is not installed, `instructions` also tells the agent to run the
+ *   install before merging, and not to merge if it fails.
+ * - `"matches"` when the aide entry is canonical, or custom.
+ * - `"differs"` when the aide entry is absent (global `prescription` plus
+ *   `globalPackage`, and the same install-first `instructions` when the package
+ *   is not installed), an npx entry (`globalSwitch`), or a non-canonical
+ *   `aidemd-mcp` entry (global `prescription`).
  */
 export default async function checkMcpConfig(
 	mcpConfigPath: string,
 	targetVersion?: string,
 ): Promise<UpgradeFileResult> {
 	const name = "MCP config";
-	const localPrescription: McpPrescription = { key: "aide", entry: mcpEntry("local") };
 
 	const existing = await safeReadFile(mcpConfigPath);
 
 	if (existing === undefined) {
+		const globalPackage = await readGlobalPackage();
+		const instructions = planInstallInstruction(globalPackage);
 		return {
 			name,
 			filePath: mcpConfigPath,
 			status: "missing",
 			category: "mcp",
-			prescription: localPrescription,
+			prescription: { key: "aide", entry: mcpEntry() },
+			globalPackage,
+			...(instructions !== undefined && { instructions }),
 		};
 	}
 
@@ -86,34 +110,25 @@ export default async function checkMcpConfig(
 
 	const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
 
-	// Check both key names init may have used.
-	const hasLegacyKey = "aidemd-mcp" in servers;
-	const aideEntry = ("aide" in servers ? servers["aide"] : servers["aidemd-mcp"]) as
-		| { command?: unknown; args?: unknown }
-		| undefined;
+	// The entry lives under whichever key init used; "aide" wins when both exist.
+	const key = "aide" in servers ? "aide" : "aidemd-mcp";
+	const aideEntry = servers[key] as { command?: unknown; args?: unknown } | undefined;
 
 	if (aideEntry === undefined || aideEntry === null || typeof aideEntry !== "object") {
+		const globalPackage = await readGlobalPackage();
+		const instructions = planInstallInstruction(globalPackage);
 		return {
 			name,
 			filePath: mcpConfigPath,
 			status: "differs",
 			category: "mcp",
-			prescription: localPrescription,
+			prescription: { key: "aide", entry: mcpEntry() },
+			globalPackage,
+			...(instructions !== undefined && { instructions }),
 		};
 	}
 
 	const launched = normalizeLaunchedCommand({ command: aideEntry.command, args: aideEntry.args });
-	const prescription: McpPrescription = {
-		key: "aide",
-		entry: mcpEntry(detectLaunchMode({ command: aideEntry.command, args: aideEntry.args })),
-	};
-	const differs: UpgradeFileResult = {
-		name,
-		filePath: mcpConfigPath,
-		status: "differs",
-		category: "mcp",
-		prescription,
-	};
 	const matches: UpgradeFileResult = {
 		name,
 		filePath: mcpConfigPath,
@@ -121,41 +136,57 @@ export default async function checkMcpConfig(
 		category: "mcp",
 	};
 
-	if (hasLegacyKey) return differs;
-
 	if (launched?.token === "npx") {
-		if (targetVersion !== undefined) {
-			const pin = readAidePin(aideEntry);
-			if (pin === null) {
-				return {
-					name,
-					filePath: mcpConfigPath,
-					status: "differs",
-					category: "mcp",
-					instructions: UNLOCATABLE_PIN(targetVersion),
-				};
-			}
-			if (!isPinBehind(pin.version, targetVersion)) return matches;
+		if (targetVersion === undefined) {
 			return {
 				name,
 				filePath: mcpConfigPath,
 				status: "differs",
 				category: "mcp",
-				pinMove: { from: pin.version, to: targetVersion },
+				globalSwitch: { key, ...(await readGlobalPackage()) },
 			};
 		}
 
-		const pinned = mcpEntry("local");
-		const isPinned =
-			aideEntry.command === pinned.command &&
-			Array.isArray(aideEntry.args) &&
-			aideEntry.args.length === pinned.args.length &&
-			pinned.args.every((a, i) => (aideEntry.args as unknown[])[i] === a);
-		return isPinned ? matches : differs;
+		if (key === "aidemd-mcp") {
+			return {
+				name,
+				filePath: mcpConfigPath,
+				status: "differs",
+				category: "mcp",
+				instructions: LEGACY_KEY_PIN,
+			};
+		}
+
+		const pin = readAidePin(aideEntry);
+		if (pin === null) {
+			return {
+				name,
+				filePath: mcpConfigPath,
+				status: "differs",
+				category: "mcp",
+				instructions: UNLOCATABLE_PIN(targetVersion),
+			};
+		}
+		if (!isPinBehind(pin.version, targetVersion)) return matches;
+		return {
+			name,
+			filePath: mcpConfigPath,
+			status: "differs",
+			category: "mcp",
+			pinMove: { from: pin.version, to: targetVersion },
+		};
 	}
 
 	if (launched?.token === aidePackage.command) {
-		if (!isCanonicalGlobalAideEntry({ command: aideEntry.command, args: aideEntry.args })) return differs;
+		if (!isCanonicalGlobalAideEntry({ command: aideEntry.command, args: aideEntry.args })) {
+			return {
+				name,
+				filePath: mcpConfigPath,
+				status: "differs",
+				category: "mcp",
+				prescription: { key: "aide", entry: mcpEntry() },
+			};
+		}
 		return launched.viaPath ? { ...matches, tip: ABSOLUTE_PATH_TIP } : matches;
 	}
 

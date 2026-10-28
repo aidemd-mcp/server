@@ -9,7 +9,7 @@ import outdatedTemplateSections from "./index.js";
 /** Brief #35: the current template's fingerprint for every contract marker. */
 const CURRENT_FINGERPRINTS: Record<BrainSectionMarker, string> = {
 	orientation: "4928cebf581bd94c5f49ddfbceae88eda1eec4fc323060e5da094af88c7b0ab7",
-	config: "52ce53ec34950de0ecb168f7b3cbd5975b081a27f9fe0ace45c3a2831d860e96",
+	config: "c9f83160559ff1bbdc850fa9f4090a15a10d4344f348e9d4c5b1fd3d7b9ebf6b",
 	"playbook-index": "078d3c940dac5d2f7766de53eab609c3873c67def757c7fec345418cffff6c75",
 	"study-playbook": "884ac5fa4ab21bb9e6ab221eee6f0bf6f01d81da40d7e4c51315e62e2948c7d9",
 	"update-playbook": "06d4b538fb870eec652fec875b62856b1cee6bab0056f635d9525a69f4ac60b3",

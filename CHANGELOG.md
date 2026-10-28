@@ -6,6 +6,22 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Changed
+- Setup installs the aide server globally and wires it by its global command. `npx … init` runs `npm i -g @aidemd-mcp/server` before writing anything and writes the aide entry as `aidemd-mcp`; if the install fails it says so, writes nothing and exits non-zero. `aide_init` prescribes the same entry and reports the install command for the agent to run first. Launches through npx timed out at session start on Windows, where npx contacts the registry on every start and two servers cold-starting together could miss Claude Code's 30-second connect window.
+- The bundled brain template's launcher runs the brain server's global command (`mcpvault <brain path>`). `/aide:brain config` installs the brain package globally before wiring it; setup installs nothing for the brain.
+- `aide_upgrade` treats an npx-launched aide entry as out of date and reports `globalSwitch` for it. After the agent installs the package globally, `category: "mcp"` rewrites only that entry's command and args to the global command, under the key it already uses, and refuses while the package is not installed. The brain category's `brainChange: "launcher"` moves an npx brain launcher to the global command the same way, and `legacyLauncher` reasons gain `npx-launch`. Moving a pin with `targetVersion` is unchanged; it remains the one-time path for a project pinned to an older version.
+
+### Fixed
+- An agent driving `aide_init` could merge the global aide entry without installing the package first, because the install step lived only in the tool's long description. A would-create aide MCP step whose package is not installed globally now carries its own `instructions`: run the install command before merging, and on failure do not merge. `aide_upgrade`'s missing-entry result carries the same instructions.
+
+### Removed
+- The launch-mode choice: `init --mode`, its prompt, and `aide_init`'s `aideMode` and `brainMode` inputs.
+
+- [migration] The aide MCP entry and the brain launcher run their global commands instead of npx.
+  - Detect: `.mcp.json`'s aide entry (under `aide` or `aidemd-mcp`) launches `npx` (directly or through `cmd /c`), or `.aide/config/brain.aide`'s `mcpServerConfig` launches `npx … @bitbonsai/mcpvault`.
+  - Migrate: for the aide entry, run `npm i -g @aidemd-mcp/server`, then `aide_upgrade({ category: "mcp" })`, which rewrites the entry. For the brain launcher, run `/aide:brain config`: it installs `@bitbonsai/mcpvault` globally, applies `brainChange: "launcher"`, then syncs. Never a hand edit. One yes covers both entries; tell the user npx launches time out at session start. A failed install leaves that entry as it is. Ask for a new session afterwards.
+  - Confirm: once, as a batch
+
 ## [0.14.0] - 2026-10-26
 
 ### Added

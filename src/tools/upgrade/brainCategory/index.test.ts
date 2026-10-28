@@ -1,9 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+vi.mock("@/service/install/shared/checkGlobalPackage/index.js", () => ({
+	default: vi.fn(),
+}));
+
+import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
 import { parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import detectBrainMigration from "@/service/install/provisionBrain/detectBrainMigration/index.js";
 import type { BrainChangeTarget } from "@/types/index.js";
@@ -27,6 +32,7 @@ describe("brainCategory", () => {
 	let brainAidePath: string;
 
 	beforeEach(async () => {
+		(checkGlobalPackage as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 		root = await mkdtemp(join(tmpdir(), "brain-category-"));
 		await mkdir(join(root, ".aide", "config"), { recursive: true });
 		brainAidePath = join(root, ".aide", "config", "brain.aide");

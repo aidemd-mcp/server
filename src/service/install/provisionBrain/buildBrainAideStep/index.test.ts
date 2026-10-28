@@ -89,33 +89,6 @@ describe("buildBrainAideStep", () => {
 		expect(step.brainSummary?.templateIntegration).toBeNull();
 	});
 
-	it("absent file with brainMode global: content parses to the global launcher", async () => {
-		const step = await buildBrainAideStep(projectRoot, "global");
-
-		expect(step.status).toBe("would-create");
-		expect(step.content).toBe(obsidianBrainAideTemplate("global"));
-		const parsed = parseBrainAideFromString(step.content!);
-		expect(parsed.kind).toBe("ok");
-		if (parsed.kind !== "ok") return;
-		expect(parsed.mcpServerConfig.command).toBe("mcpvault");
-		expect(parsed.mcpServerConfig.args.at(-1)).toBeNull();
-	});
-
-	it("absent file with brainMode omitted: content equals the default template", async () => {
-		const step = await buildBrainAideStep(projectRoot);
-
-		expect(step.content).toBe(obsidianBrainAideTemplate());
-	});
-
-	it("existing file with brainMode global: still exists with no content (mode never overrides presence)", async () => {
-		await writeBrainAide(obsidianBrainAideTemplate());
-
-		const step = await buildBrainAideStep(projectRoot, "global");
-
-		expect(step.status).toBe("exists");
-		expect(step.content).toBeUndefined();
-	});
-
 	it("existing v0.9.0 file: brainSummary carries missing, stale and legacy reasons, and the file is untouched", async () => {
 		const fixture = await readFile(
 			join(dirname(fileURLToPath(import.meta.url)), "..", "detectBrainMigration", "__fixtures__", "v0.9.0-brain.txt"),
@@ -129,12 +102,12 @@ describe("buildBrainAideStep", () => {
 		expect(step.status).toBe("exists");
 		expect(step.brainSummary?.missingSections).toEqual(kanbanTail);
 		expect(step.brainSummary?.staleSections).toEqual(["orientation", "config"]);
-		expect(step.brainSummary?.legacyLauncher).toEqual(["unpinned", "missing-auto-confirm"]);
+		expect(step.brainSummary?.legacyLauncher).toEqual(["npx-launch", "unpinned", "missing-auto-confirm"]);
 		expect(await readFile(filePath, "utf-8")).toBe(fixture);
 	});
 
-	it("existing current template (local): no stale sections and no legacy launcher", async () => {
-		await writeBrainAide(obsidianBrainAideTemplate("local"));
+	it("existing current template: no stale sections and no legacy launcher", async () => {
+		await writeBrainAide(obsidianBrainAideTemplate());
 
 		const step = await buildBrainAideStep(projectRoot);
 

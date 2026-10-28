@@ -1,9 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+vi.mock("@/service/install/shared/checkGlobalPackage/index.js", () => ({
+	default: vi.fn(),
+}));
+
+import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
+import { MCPVAULT_PACKAGE } from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
 import { parseBrainAideFromString } from "@/service/parseBrainAide/index.js";
 import detectBrainMigration from "@/service/install/provisionBrain/detectBrainMigration/index.js";
 import type { BrainChangeTarget } from "@/types/index.js";
@@ -24,6 +30,8 @@ const v090 = readFileSync(
 /** The v0.9.0 fixture in CRLF. */
 const v090Crlf = toLineEnding({ text: v090, eol: "\r\n" });
 
+const mockCheck = checkGlobalPackage as ReturnType<typeof vi.fn>;
+
 const refusedR9 = (target: string) => ({
 	outcome: "refused",
 	instructions: `The \`${target}\` text changed after its diff was shown, so nothing was written. Fetch the diff again with \`aide_upgrade\`, \`category: "brain"\` and \`brainChange: "${target}"\` (no \`beforeHash\`), show it to the user, and apply only on their yes.`,
@@ -34,6 +42,8 @@ describe("applyChange", () => {
 	let brainAidePath: string;
 
 	beforeEach(async () => {
+		vi.clearAllMocks();
+		mockCheck.mockResolvedValue(true);
 		root = await mkdtemp(join(tmpdir(), "apply-change-"));
 		await mkdir(join(root, ".aide", "config"), { recursive: true });
 		brainAidePath = join(root, ".aide", "config", "brain.aide");
@@ -98,9 +108,9 @@ describe("applyChange", () => {
 		});
 	}
 
-	it("applies the launcher on v0.9.0: mcpServerConfig becomes after.local, path arg and body untouched", async () => {
+	it("applies the launcher on v0.9.0: mcpServerConfig becomes the legacy launcher's after, path arg and body untouched", async () => {
 		await writeFixture(v090);
-		const expected = detectBrainMigration(parseBrainAideFromString(v090))?.legacyLauncher?.after.local;
+		const expected = detectBrainMigration(parseBrainAideFromString(v090))?.legacyLauncher?.after;
 		const change = await preview("launcher");
 
 		expect(await applyChange({ projectRoot: root, target: "launcher", beforeHash: change.beforeHash })).toEqual({
@@ -134,8 +144,37 @@ describe("applyChange", () => {
 		const parsed = parseBrainAideFromString(written);
 		if (parsed.kind !== "ok" && parsed.kind !== "missing-sections") throw new Error(`unexpected parse: ${parsed.kind}`);
 		expect(parsed.mcpServerConfig).toEqual(
-			detectBrainMigration(parseBrainAideFromString(v090Crlf))?.legacyLauncher?.after.local,
+			detectBrainMigration(parseBrainAideFromString(v090Crlf))?.legacyLauncher?.after,
 		);
+	});
+
+	it("refuses the launcher when the brain server is not installed globally, writing nothing", async () => {
+		await writeFixture(v090);
+		const change = await preview("launcher");
+		mockCheck.mockResolvedValue(false);
+
+		const result = await applyRefused("launcher", change.beforeHash);
+
+		expect(mockCheck).toHaveBeenCalledWith(MCPVAULT_PACKAGE);
+		expect(result).toEqual({
+			outcome: "refused",
+			instructions:
+				"@bitbonsai/mcpvault is not installed globally, so the brain launcher was not switched and nothing was written. Run `npm i -g @bitbonsai/mcpvault`, confirm it succeeded, then apply this change again with the same beforeHash.",
+		});
+		expect(await readFixture()).toBe(v090);
+	});
+
+	it("checks the global install once for a launcher apply and never for a section apply", async () => {
+		await writeFixture(v090);
+		const launcher = await preview("launcher");
+		await applyChange({ projectRoot: root, target: "launcher", beforeHash: launcher.beforeHash });
+		expect(mockCheck).toHaveBeenCalledTimes(1);
+
+		mockCheck.mockClear();
+		await writeFixture(v090);
+		const section = await preview("orientation");
+		await applyChange({ projectRoot: root, target: "orientation", beforeHash: section.beforeHash });
+		expect(mockCheck).not.toHaveBeenCalled();
 	});
 
 	it("refuses with R9 when whitespace inside the section changed since the preview, keeping the hand edit", async () => {

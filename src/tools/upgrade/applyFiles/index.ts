@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { UpgradeFileResult } from "@/types/index.js";
 import movePin from "./movePin/index.js";
+import switchToGlobal from "./switchToGlobal/index.js";
 
 /**
  * Apply mode writer for aide_upgrade — turns comparison results into disk state
@@ -18,6 +19,11 @@ import movePin from "./movePin/index.js";
  *   Written by `movePin`, which changes only the aide entry's package-spec token.
  *   Returns status `"updated"`, or the file unchanged with `instructions` when
  *   the move is refused.
+ *
+ * - `"differs"`, mcp category, result carries `globalSwitch` (and no `pinMove`):
+ *   Written by `switchToGlobal`, which rewrites the npx aide entry to the global
+ *   `aidemd-mcp` command once the package is installed globally. Returns status
+ *   `"updated"`, or the file unchanged with `instructions` when the switch is refused.
  *
  * - any other mcp result (`"differs"` or `"missing"`):
  *   Passed through unchanged with `prescription` intact — the agent merges
@@ -63,10 +69,11 @@ async function applyFile(file: UpgradeFileResult): Promise<UpgradeFileResult> {
 		return file;
 	}
 
-	// An mcp pin move is written by the tool; any other mcp result carries a
-	// prescription the agent merges, so it is never written here
+	// An mcp pin move and a switch to the global command are written by the tool;
+	// any other mcp result carries a prescription the agent merges, so it is never written here
 	if (file.category === "mcp") {
 		if (file.pinMove) return movePin({ ...file, pinMove: file.pinMove });
+		if (file.globalSwitch) return switchToGlobal({ ...file, globalSwitch: file.globalSwitch });
 		return file;
 	}
 

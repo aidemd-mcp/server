@@ -35,7 +35,7 @@ describe("readBrainMigrationNotice", () => {
 
 		expect(await readBrainMigrationNotice(projectRoot)).toEqual({
 			staleSections: ["orientation", "config"],
-			legacyLauncher: ["unpinned", "missing-auto-confirm"],
+			legacyLauncher: ["npx-launch", "unpinned", "missing-auto-confirm"],
 		});
 		expect(await readFile(filePath, "utf-8")).toBe(fixture);
 	});
@@ -64,8 +64,8 @@ describe("readBrainMigrationNotice", () => {
 		expect(await readFile(filePath, "utf-8")).toBe(fixture);
 	});
 
-	it("current template (local) returns null, file untouched", async () => {
-		const template = obsidianBrainAideTemplate("local");
+	it("current template returns null, file untouched", async () => {
+		const template = obsidianBrainAideTemplate();
 		await writeBrainAide(template);
 
 		expect(await readBrainMigrationNotice(projectRoot)).toBeNull();

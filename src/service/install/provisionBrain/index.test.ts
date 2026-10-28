@@ -5,9 +5,8 @@
  * buildResearchStep) are gone; restoring any of them under any rename is the structural
  * regression the spec forbids.
  *
- * invariant: No brainPath parameter at any layer. provisionBrain(projectRoot, mcpPath,
- * brainMode?) takes an optional brainMode as its third argument; obsidianBrainAideTemplate(mode?)
- * takes an optional template mode (brief #13).
+ * invariant: No brainPath and no launch-mode parameter at any layer. provisionBrain(projectRoot, mcpPath)
+ * and obsidianBrainAideTemplate() take no mode; the scaffold is always the global launcher.
  *
  * invariant: The unwired-slot signal is YAML null. brain.aide args may carry null at the
  * path slot; that null propagates verbatim through parseBrainAide + interpolateArgs into the
@@ -157,7 +156,7 @@ describe("provisionBrain", () => {
 	// -----------------------------------------------------------------------
 
 	describe("cold install — bundled template emits YAML null at path slot and MCP prescription carries null verbatim", () => {
-		it("POSIX: args[1] is exactly null in both brain config content and MCP prescription", async () => {
+		it("POSIX: args[0] is exactly null in both brain config content and MCP prescription", async () => {
 			mockPlatform.mockReturnValue("linux");
 
 			const projectRoot = makeProjectRoot();
@@ -172,18 +171,18 @@ describe("provisionBrain", () => {
 			expect(parsedContent.kind).toBe("ok");
 			if (parsedContent.kind !== "ok") return;
 
-			// POSIX shape: ["-y", "@bitbonsai/mcpvault@0.16.0", null] — null at index 2.
-			expect(parsedContent.mcpServerConfig.args[2]).toBeNull();
+			// Global shape: ["null"] — the path slot is the only arg.
+			expect(parsedContent.mcpServerConfig.args).toEqual([null]);
 
 			// MCP prescription must carry the same null verbatim.
-			expect(results[1].prescription!.entry.args[2]).toBeNull();
+			expect(results[1].prescription!.entry).toEqual({ command: "mcpvault", args: [null] });
 
 			// The retired literal sentinel must not appear anywhere.
 			expect(results[0].content!).not.toContain("<BRAIN_PATH>");
 			expect(results[1].prescription!.entry.args).not.toContain("<BRAIN_PATH>");
 		});
 
-		it("win32: args[4] is exactly null in both brain config content and MCP prescription", async () => {
+		it("win32: args[0] is exactly null in both brain config content and MCP prescription", async () => {
 			mockPlatform.mockReturnValue("win32");
 
 			const projectRoot = makeProjectRoot();
@@ -198,27 +197,15 @@ describe("provisionBrain", () => {
 			expect(parsedContent.kind).toBe("ok");
 			if (parsedContent.kind !== "ok") return;
 
-			// win32 shape: ["/c", "npx", "-y", "@bitbonsai/mcpvault@0.16.0", null] — null at index 4.
-			expect(parsedContent.mcpServerConfig.args[4]).toBeNull();
+			// Same global shape on win32.
+			expect(parsedContent.mcpServerConfig.args).toEqual([null]);
 
 			// MCP prescription must carry the same null verbatim.
-			expect(results[1].prescription!.entry.args[4]).toBeNull();
+			expect(results[1].prescription!.entry).toEqual({ command: "mcpvault", args: [null] });
 
 			// The retired literal sentinel must not appear anywhere.
 			expect(results[0].content!).not.toContain("<BRAIN_PATH>");
 		});
-	});
-
-	it("brainMode global: cold install MCP prescription follows the global template launcher", async () => {
-		const results = await provisionBrain(makeProjectRoot(), makeMcpPath(), "global");
-
-		const parsed = parseBrainAideFromString(results[0].content!);
-		expect(parsed.kind).toBe("ok");
-		if (parsed.kind !== "ok") return;
-		expect(parsed.mcpServerConfig.command).toBe("mcpvault");
-
-		expect(results[1].prescription!.entry.command).toBe(parsed.mcpServerConfig.command);
-		expect(results[1].prescription!.entry.args.at(-1)).toBeNull();
 	});
 
 	// -----------------------------------------------------------------------
@@ -333,13 +320,8 @@ describe("provisionBrain", () => {
 		expect(mcpStep.name).toBe("MCP config (brain)");
 		expect(mcpStep.prescription?.entry).toEqual(expectedEntry);
 
-		// Windows-specific shape: cmd /c npx -y @bitbonsai/mcpvault@0.16.0 <null at index 4>
-		expect(mcpStep.prescription?.entry.command).toBe("cmd");
-		expect(mcpStep.prescription?.entry.args[0]).toBe("/c");
-		expect(mcpStep.prescription?.entry.args[1]).toBe("npx");
-		expect(mcpStep.prescription?.entry.args[2]).toBe("-y");
-		expect(mcpStep.prescription?.entry.args[3]).toBe("@bitbonsai/mcpvault@0.16.0");
-		expect(mcpStep.prescription?.entry.args[4]).toBeNull();
+		// Global launcher on Windows too: bare mcpvault, one null path slot.
+		expect(mcpStep.prescription?.entry).toEqual({ command: "mcpvault", args: [null] });
 	});
 
 	it("5c (posix): cold install — MCP entry derived from template args on POSIX", async () => {
@@ -364,11 +346,8 @@ describe("provisionBrain", () => {
 		const mcpStep = results[1];
 		expect(mcpStep.prescription?.entry).toEqual(expectedEntry);
 
-		// POSIX shape: npx -y @bitbonsai/mcpvault@0.16.0 <null at index 2>
-		expect(mcpStep.prescription?.entry.command).toBe("npx");
-		expect(mcpStep.prescription?.entry.args[0]).toBe("-y");
-		expect(mcpStep.prescription?.entry.args[1]).toBe("@bitbonsai/mcpvault@0.16.0");
-		expect(mcpStep.prescription?.entry.args[2]).toBeNull();
+		// Global launcher: bare mcpvault, one null path slot.
+		expect(mcpStep.prescription?.entry).toEqual({ command: "mcpvault", args: [null] });
 	});
 
 	// -----------------------------------------------------------------------

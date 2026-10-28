@@ -41,7 +41,7 @@ describe("summarizeBrainConfig", () => {
 		expect(summary.missingSections.length).toBeGreaterThan(0);
 		expect(summary.staleSections).toEqual(migration.staleSections.map((offer) => offer.marker));
 		expect(summary.staleSections).toEqual(["orientation", "config"]);
-		expect(summary.legacyLauncher).toEqual(["unpinned", "missing-auto-confirm"]);
+		expect(summary.legacyLauncher).toEqual(["npx-launch", "unpinned", "missing-auto-confirm"]);
 		expect(summary.templateIntegration).toBe(true);
 		expect(summary.sections).toEqual(listBrainSections());
 	});

@@ -21,13 +21,9 @@ describe("detectBrainMigration", () => {
 		const migration = detect(v090)!;
 		expect(migration.staleSections.map((o) => o.marker)).toEqual(["orientation", "config"]);
 		const launcher = migration.legacyLauncher!;
-		expect(launcher.reasons).toEqual(["unpinned", "missing-auto-confirm"]);
+		expect(launcher.reasons).toEqual(["npx-launch", "unpinned", "missing-auto-confirm"]);
 		expect(launcher.before).toEqual({ command: "cmd", args: ["/c", "npx", "@bitbonsai/mcpvault", "C:\\vault"] });
-		expect(launcher.after.local).toEqual({
-			command: "cmd",
-			args: ["/c", "npx", "-y", `@bitbonsai/mcpvault@${MCPVAULT_VERSION}`, "C:\\vault"],
-		});
-		expect(launcher.after.global).toEqual({ command: "mcpvault", args: ["C:\\vault"] });
+		expect(launcher.after).toEqual({ command: "mcpvault", args: ["C:\\vault"] });
 	});
 
 	it("flags the repo fixture's eleven stale sections and leaves its global launcher alone", () => {
@@ -59,14 +55,23 @@ describe("detectBrainMigration", () => {
 		const posix = `---\nname: obsidian\nmcpServerConfig:\n  command: npx\n  args:\n    - '@bitbonsai/mcpvault'\n    - '/home/u/vault'\n---${v090.slice(frontmatterEnd(v090))}`;
 		const migration = detect(posix)!;
 		expect(migration.staleSections.map((o) => o.marker)).toEqual(["orientation", "config"]);
-		expect(migration.legacyLauncher!.after.local).toEqual({
-			command: "npx",
-			args: ["-y", `@bitbonsai/mcpvault@${MCPVAULT_VERSION}`, "/home/u/vault"],
-		});
+		expect(migration.legacyLauncher!.after).toEqual({ command: "mcpvault", args: ["/home/u/vault"] });
 	});
 
-	it.each(["local", "global"] as const)("returns null for the current template (%s)", (mode) => {
-		expect(detect(obsidianBrainAideTemplate(mode))).toBeNull();
+	it("returns null for the current template", () => {
+		expect(detect(obsidianBrainAideTemplate())).toBeNull();
+	});
+
+	it.each([
+		["POSIX", ["command: npx", "  args:", '    - "-y"', `    - "@bitbonsai/mcpvault@${MCPVAULT_VERSION}"`, "    -"]],
+		["Win32", ["command: cmd", "  args:", "    - /c", "    - npx", '    - "-y"', `    - "@bitbonsai/mcpvault@${MCPVAULT_VERSION}"`, "    -"]],
+	])("flags the template with a pinned %s npx launcher fixture", (_name, lines) => {
+		const template = obsidianBrainAideTemplate();
+		const fixture = template.replace("command: mcpvault\n  args:\n    -", lines.join("\n"));
+		expect(fixture).not.toBe(template);
+		const migration = detect(fixture);
+		expect(migration?.legacyLauncher?.reasons).toEqual(["npx-launch"]);
+		expect(migration?.legacyLauncher?.after).toEqual({ command: "mcpvault", args: [null] });
 	});
 
 	it.each(["missing", "unreadable", "malformed-frontmatter", "malformed-body"])("returns null for %s", (kind) => {

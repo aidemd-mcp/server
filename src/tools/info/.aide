@@ -25,13 +25,13 @@ outcomes:
     - Returning a pre-formatted message instead of structured state. Message composition belongs to the orchestrator, which tailors wording to the user's session.
     - Folding the version notice, artifact staleness and brain state into a single verdict, sentinel or shared list, or gating the pipeline on any soft notice. Their severities differ and the orchestrator branches on each separately.
     - Auto-repairing drift, syncing the host's wiring, upgrading anything, or otherwise mutating a file the user owns. The reporter is read-only; remediation flows through the user's visible command boundary.
-    - Reporting installed files as outdated merely because a newer version is published when they match the version the project runs. Equally wrong is a pinned project behind latest told nothing, or told to install globally when it never chose that.
+    - Reporting installed files as outdated merely because a newer version is published when they match the version the project runs. Equally wrong is a pinned project behind latest told nothing.
     - A version notice that floods the user with the full changelog or every entry of every skipped version. It is a short incentive to upgrade, not a release history.
 ---
 
 ## Context
 
-A project can run the aide server two ways: from a global install, or from a launch pinned to one version in the project's own configuration. The pin arises when the user chooses it, declines the global install, or when setup ran without an interactive terminal and fell back to it. A pinned project is never told a newer version exists, so it silently stays old while the methodology moves on.
+A project can run the aide server two ways: from a global install, AIDE's canonical launch, or from a launch through the package runner pinned to one version in the project's own configuration. A pinned project crosses to global once, and until it does it is never told a newer version exists, so it silently stays old while the methodology moves on.
 
 Two facts make this hard. An old server knows nothing about what came after it: not how many versions shipped, nor what they added or fixed, so anything worth telling the user has to be learned from the published releases at boot. And a new server or new methodology files take effect only in a fresh session, because the agent has already loaded the old server and read the old docs, skills and agents at boot. Showing it new files mid-session leaves it reasoning from the old ones.
 
@@ -41,9 +41,9 @@ The user also skips notices that flood the screen. An upgrade prompt has to earn
 
 **Two findings, two baselines.** The version notice compares the version the project runs against the latest published release; it is the only comparison against latest. Artifact staleness compares the installed files against the running version and never against latest. Files that match a pinned server are current even when releases have moved on, which keeps a project from being told to refresh files it cannot use until its server moves. This serves the soft-notice outcomes and guards against stale-by-latest reports.
 
-**The running version is the baseline, the launch kind picks the remedy.** The version judged is always the server actually running, which for a pinned project is its pin. The launch kind is reported beside the notice so the orchestrator offers the matching remedy: move the pin forward for a pinned project, update the global install for a global one. A pinned project is never steered toward a global install it did not choose.
+**The running version is the baseline, the launch kind picks the remedy.** The version judged is always the server actually running, which for a pinned project is its pin. The launch kind is reported beside the notice so the orchestrator offers the matching remedy: move the pin forward for a pinned project, update the global install for a global one. The pin move is the one-time transit: the pinned server predates the switch to global and cannot perform it, so it moves to a server whose upgrade then offers the switch.
 
-**Server first, then files, one restart each.** The orchestrator acts on the version notice before artifact staleness, and installs before it switches: a pin moves only after the target version is fetched, just as a global update installs before its restart. A failed fetch switches nothing and asks no restart, so the next session still starts on a working server. After a switch, boot halts for a new session; the next boot judges files against the new version and halts again only if their upgrade changed something.
+**Server first, then files, one restart for each change.** The orchestrator acts on the version notice before artifact staleness, and installs before it switches: a pin moves only after the target version is fetched, the entry turns global only after the global install succeeds, and a global update installs before its restart. A failed fetch or install switches nothing and asks no restart, so the next session still starts on a working server. After a switch, boot halts for a new session; the next boot judges files against the new version and halts again only if their upgrade changed something.
 
 **Every boot recomputes from scratch.** The reporter keeps no memory between sessions, so a skipped or repeated step needs no special handling. A server and files that are both current produce no notice. A user who upgraded files but not the server sees only the version notice next time. A declined server upgrade leaves the artifact check running against the current version; not asking again this session is the orchestrator's job.
 
@@ -51,11 +51,11 @@ The user also skips notices that flood the screen. An upgrade prompt has to earn
 
 **The version comparison gates the notice; highlights only enrich it.** No known latest version means no notice. A known latest with highlights that could not be fetched still yields the notice with its count. Every network step is bounded and fails silent, so an offline or slow registry never delays or blocks boot, and the artifact check runs regardless.
 
-**Reporting and moving stay separate.** The reporter mutates nothing. Moving a pin forward goes through an AIDE tool on the user's yes, prescribing the target version, rather than the orchestrator editing the user's configuration by hand. The existing upgrade path pins to the running version, so it cannot move a pin past itself. That is why the target has to be given explicitly.
+**Reporting and moving stay separate.** The reporter mutates nothing. Moving a pin and switching the entry to global both go through an AIDE tool on the user's yes, rather than the orchestrator editing the user's configuration by hand. The pin move names its target version explicitly, because the running server cannot know any release after itself.
 
 ## Good examples
 
-- A project pinned two releases back, files matching its pin, network up. The report carries a version notice for a pinned launch, two versions behind, three one-line highlights ("a new board review", "a fixed brain-config skip"), and no artifact staleness. The orchestrator offers to move the pin, the user agrees, and the boot halts asking for a new session. The next boot reports files outdated against the new version, upgrades them, and halts once more.
+- A project pinned two releases back, files matching its pin, network up. The report carries a version notice for a pinned launch, two versions behind, three one-line highlights ("a new board review", "a fixed brain-config skip"), and no artifact staleness. The orchestrator offers to move the pin, the user agrees, and the boot halts for a new session. There the upgrade offers the switch to global; the package is installed, the entry rewritten, and the session halts again. From then on its remedy when behind is updating the global install.
 - A globally installed server that is current, with files from an older release. The report has no version notice and lists the stale files. One file upgrade and one restart.
 - The same pinned project offline. The report carries no version notice and no error, and the artifact check runs against the pinned version as usual.
 
@@ -63,9 +63,10 @@ The user also skips notices that flood the screen. An upgrade prompt has to earn
 
 - A pinned project whose files match its pin is told its files are outdated because a newer release exists. The user upgrades files their old server cannot use, then has to upgrade them again after the pin moves.
 - A version notice that pastes every changelog entry of five skipped releases, migration steps included. It is technically accurate and gets scrolled past, so the project stays old.
-- A pinned project is offered "install the server globally" as its remedy, or the pin is moved by the orchestrator editing the configuration itself. Either one overrides a launch choice the user made, or writes a user-owned file outside the consent-gated surfaces.
+- A pinned project told to switch to global from its old server, which has no code to do it, or an entry rewritten to the global command before the install succeeds, or the pin moved by the orchestrator editing the configuration itself. The first strands the user, the second leaves no server to launch, the third writes a user-owned file outside the consent-gated surfaces.
 
 ## References
 
 - User-defined boot upgrade flow, relayed by the orchestrator (2026-10-26) -- the two-finding split, server-then-files order, the restart after each changing upgrade, silence when offline, and the short count-plus-highlights notice.
-- Orchestrator boot skill (in-repo, current boot upgrade step) -- today's consumer, which acts on the version notice only for a global install and does not restart after a file upgrade; the gap this flow closes.
+- Global-launch design, settled with the user and relayed by the orchestrator (2026-10-27) -- global as the canonical launch, the pin move as the one-time transit, install before the switch, the global update as the remedy afterwards.
+- Orchestrator boot skill (in-repo boot upgrade step) -- the consumer of the version notice and launch kind, which picks the pin move or the global update from it.
