@@ -390,7 +390,7 @@ session.aide is rewritten, never deleted (decision 18).
 - Cleanup of plan/todo/brief goes through aide_cleanup via aide-maintainer.
 - Release process (user, 2026-10-11), done by the agent every time it publishes: check `git status` (publish.mjs commits everything staged) → publish and confirm the Publish workflow and npm version → `npm i -g @aidemd-mcp/server@<version>` → run a headless `claude -p` session from inside the aidemd.dev checkout that applies the drifted package-owned upgrade categories through aide_upgrade (never mcp or brain), commits `chore(aide): sync methodology to <version>` and pushes to main (the push deploys via GitHub Pages) → confirm the deploy → update session.aide. Never hand-edit the site's files from this repo's session; the headless session in the site folder does the work through aide's own tools. If it reports brainMigration, tell the user (/aide:brain config needs their consent).
 - Keep session.aide up to date as you work (decision 22).
-- From the release after 0.14.0 on, do NOT update the global npm install after publishing — the user tests the boot's behind/upgrade prompt on their own projects (user, 2026-10-26). The aidemd.dev sync currently runs aide from the global install (the site's aide entry is the global launcher), so ask the user how to run the site sync (e.g. switch the site to a pinned npx launch) before that release's sync.
+- After every publish, update the global install (`npm i -g @aidemd-mcp/server@<version>`) and run the aidemd.dev sync headless, unprompted. The one-time skip for 0.15.0, so the user could test the boot's upgrade prompt, ended 2026-10-28.
 
 ## Open questions
 
