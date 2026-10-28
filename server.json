@@ -6,12 +6,12 @@
     "url": "https://github.com/aidemd-mcp/server",
     "source": "github"
   },
-  "version": "0.14.0",
+  "version": "0.15.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@aidemd-mcp/server",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "transport": {
         "type": "stdio"
       }

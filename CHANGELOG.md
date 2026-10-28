@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-28
+
 ### Changed
 - Setup installs the aide server globally and wires it by its global command. `npx … init` runs `npm i -g @aidemd-mcp/server` before writing anything and writes the aide entry as `aidemd-mcp`; if the install fails it says so, writes nothing and exits non-zero. `aide_init` prescribes the same entry and reports the install command for the agent to run first. Launches through npx timed out at session start on Windows, where npx contacts the registry on every start and two servers cold-starting together could miss Claude Code's 30-second connect window.
 - The bundled brain template's launcher runs the brain server's global command (`mcpvault <brain path>`). `/aide:brain config` installs the brain package globally before wiring it; setup installs nothing for the brain.

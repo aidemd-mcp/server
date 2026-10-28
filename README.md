@@ -33,7 +33,7 @@ Learn more at [aidemd.dev](https://aidemd.dev).
 Run the installer from your project's root:
 
 ```bash
-npx -y @aidemd-mcp/server@0.14.0 init
+npx -y @aidemd-mcp/server@0.15.0 init
 ```
 
 This command:
