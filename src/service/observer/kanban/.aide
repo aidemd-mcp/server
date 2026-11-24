@@ -1,0 +1,29 @@
+---
+scope: src/service/observer/kanban
+alignment: unreviewed
+description: Reads the project's kanban board from the brain for the observer, read-only, returning the board by column, one task's full note, or an unavailable result with its reason.
+intent: >
+  Lets the observer show the project's kanban board beside the pipeline and
+  open any task in full. The board lives in the brain as one folder per
+  project, one subfolder per column and one note per task. The kanban tag and
+  brain folder come from what the newest session reported when it started; a
+  brain path the user passes for one project overrides its folder. Tasks the current session
+  names are marked. Reading is one-way and never writes the brain. When the
+  board cannot be found, the result says so with the reason and a hint, and
+  nothing else fails.
+outcomes:
+  desired:
+    - The board shows the project's columns Backlog, Todo, In Progress, In Review and Done, each task with its title, slug, priority and tags. Tasks the current session record names are marked.
+    - Opening a task by slug returns that task's full note for the detail drawer, and only notes on this project's board can be returned.
+    - The board is found from the brain path and kanban tag the newest session reported when it started, and a brain path the user passes for one named project overrides the reported one for that project only. The brain config and the project's instructions are never read or interpreted.
+    - When the board cannot be found, whether because no session has reported a brain path yet, the reported path is missing or the board folder for the tag is missing, the result says unavailable with the reason and a hint to pass the brain path. Nothing else in the observer fails.
+    - A task note that cannot be parsed shows as a task marked unreadable instead of being dropped, and only that task is affected; the rest of the board still shows.
+    - Any brain plugin that stores its board as plain folders is read without knowing which plugin it is, and the brain is never written.
+  undesired:
+    - Reading or guessing the board's location from the brain config or the project's instructions, or choosing how to read the brain by recognizing which backend it is.
+    - A guessed or fallback folder, or a path reported by an older session or another project, that shows another project's board or a stale board as if it were this project's current one.
+    - A task read that returns a note outside this project's board, such as through a slug that reaches out of the board's folders.
+    - One malformed task note blanking or failing the whole board, or silently vanishing from it.
+    - Any write to the brain, including creating, moving or editing a task.
+    - A missing or unreadable board crashing the observer or breaking anything beyond its own part of the view.
+---

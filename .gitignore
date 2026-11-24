@@ -7,3 +7,4 @@ coverage/
 *.stackdump
 .aide/tools.md
 .aide/versions.json
+qa-artifacts/

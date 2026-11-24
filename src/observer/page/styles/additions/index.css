@@ -1,0 +1,25 @@
+/* Rules the design handoff's stylesheet cannot carry. The reference sets body{margin:0} inline in
+   its own shell, which the observer's CSP forbids, and it draws no skip link. Colours come only
+   from the handoff's custom properties, so every selector sits under .av. */
+body{margin:0}
+
+.av .av-skip{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.av .av-skip:focus-visible{position:fixed;top:8px;left:8px;z-index:100;width:auto;height:auto;clip-path:none;background:var(--surface);color:var(--text);border:2px solid var(--focus);border-radius:6px;padding:8px 12px;font-size:14px;font-weight:500}
+
+/* Phone touch targets. The handoff's README asks for 44px on a phone, and its stylesheet only lifts
+   .av-btn and the tabs. These rules lift the rest to a 44px hit area by padding or min-size, so the
+   drawn size stays close to the handoff's. */
+.av.phone .av-node .tw{width:44px;height:44px}
+.av.phone .av-linkbtn{display:inline-flex;align-items:center;min-height:44px}
+.av.phone .av-seg button{min-height:44px}
+.av.phone .av-switch button{min-height:44px}
+.av.phone .av-filters button{min-height:44px;padding:0 14px}
+.av.phone .av-outline a{display:inline-flex;align-items:center;min-height:44px}
+.av.phone .av-field{min-height:44px}
+.av.phone .av-hrow{min-height:44px;align-content:center}
+
+/* A history row's label column is 1fr, whose automatic minimum is the widest unbreakable word, so a
+   long path in a label pushed the row (and the page) wider than its column. minmax(0,1fr) lets the
+   column shrink and overflow-wrap breaks the path inside it. */
+.av .av-hrow{grid-template-columns:64px 24px minmax(0,1fr)}
+.av .av-hrow .h-l{overflow-wrap:anywhere}

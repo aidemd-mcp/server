@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIDE Pipeline Viewer — clickable prototype</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/10fc28ec8175d4a0b612c716dec2e221">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="font-family: 'Inter', system-ui, sans-serif; background: #0D1117; min-height: 100vh">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 16px; background: #1D2430; color: #ECF0F5; font-size: 13px; border-bottom: 1px solid #6E7A8A">
+<b style="font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #BCC5D0">Prototype controls</b>
+<label style="display: flex; gap: 8px; align-items: center">State
+<select value="{{sc}}" onChange="{{pickSc}}" style="font: inherit; font-size: 14px; min-height: 34px; background: #0D1117; color: #ECF0F5; border: 1px solid #6E7A8A; border-radius: 6px; padding: 0 8px">
+<option value="home-several">10 · Home — several projects, one waiting</option><option value="home-empty">11 · Home — nothing recorded</option><option value="home-one">Home — one project</option><option value="home-many">Home — 12 projects</option><option value="home-delete">Home — delete confirmation</option><option value="s-not-installed">1 · AIDE not installed</option><option value="s-no-events">2 · Installed, no events</option><option value="s-building">3 · Live, building step 4 of 9</option><option value="s-waiting">4 · Waiting on you</option><option value="s-idle">5 · Idle</option><option value="s-two-live">6 · Two live sessions</option><option value="s-board-error">7 · Board can’t load</option><option value="s-large">8 · Large project</option><option value="s-qa-fix">9 · QA → Fix round 2</option><option value="s-reconnecting">12 · Reconnecting</option><option value="s-no-folder">13 · Folder never reported</option><option value="link-invalid">14 · Link no longer valid</option>
+</select>
+</label>
+<label style="display: flex; gap: 8px; align-items: center">Theme
+<select value="{{theme}}" onChange="{{pickTheme}}" style="font: inherit; font-size: 14px; min-height: 34px; background: #0D1117; color: #ECF0F5; border: 1px solid #6E7A8A; border-radius: 6px; padding: 0 8px"><option value="dark">Dark</option><option value="light">Light</option></select>
+</label>
+<span style="color: #BCC5D0">These controls are not part of the product.</span>
+</div>
+<dc-import name="Viewer" scenario="{{sc}}" theme="{{theme}}" device="auto" hint-size="100%,900px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { sc: 's-building', theme: 'dark' }; }
+  renderVals() {
+    const L = [
+      ['home-several', '10 · Home — several projects, one waiting'], ['home-empty', '11 · Home — nothing recorded'], ['home-one', 'Home — one project'], ['home-many', 'Home — 12 projects'], ['home-delete', 'Home — delete confirmation'],
+      ['s-not-installed', '1 · AIDE not installed'], ['s-no-events', '2 · Installed, no events'], ['s-building', '3 · Live, building step 4 of 9'], ['s-waiting', '4 · Waiting on you'], ['s-idle', '5 · Idle'],
+      ['s-two-live', '6 · Two live sessions'], ['s-board-error', '7 · Board can’t load'], ['s-large', '8 · Large project'], ['s-qa-fix', '9 · QA → Fix round 2'],
+      ['s-reconnecting', '12 · Reconnecting'], ['s-no-folder', '13 · Folder never reported'], ['link-invalid', '14 · Link no longer valid']
+    ];
+    return {
+      sc: this.state.sc, theme: this.state.theme,
+      opts: L.map((x) => ({ v: x[0], l: x[1], sel: x[0] === this.state.sc })),
+      pickSc: (e) => this.setState({ sc: e.target.value }),
+      pickTheme: (e) => this.setState({ theme: e.target.value })
+    };
+  }
+}
+</script>
+</body>
+</html>

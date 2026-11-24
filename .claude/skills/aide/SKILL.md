@@ -147,7 +147,17 @@ Report the open tasks and any drift to the user in a few lines, and propose the 
 
 If the kanban skill or the brain tools are unreachable, say so and continue — never invent the board's contents.
 
-**Only after Step 5** may you read the user's request, consult the sections below, and decide what to do.
+### Step 6 — Open the observer session
+
+The observer is a local read-only view where the user watches the pipeline. The pipeline never depends on it: every call in this step is best effort, and a failure is mentioned to the user once and never stops boot. Skip the whole step if the `aide_observer_event` tool is not available.
+
+1. **Report the session start.** Call `aide_observer_event` with `kind: "session_started"` and what you know: `projectRoot` (the project's absolute path), `kanbanTag` (the `Kanban project tag:` line), and `brainPath` — the brain's folder on disk, when the brain is stored as plain folders (for example, the vault path its launcher opens). Leave out anything you don't know; never guess a path.
+2. **Report the user's request.** Call `aide_observer_event` with `kind: "prompt"` and the user's message in full.
+3. **Start the observer,** unless the instructions file says `Observer: off`. Call `aide_observer_start` (no arguments; one observer serves every project on this machine) and give the user the link it returns, which opens this session's view. If it says the port is busy, the port setting is invalid, or an older observer was not replaced, tell the user once and carry on.
+
+Restart rule: unless the instructions file says `Observer: off`, when an `aide_observer_event` reply says the observer is not running, call `aide_observer_start` once. Try again only after a later report gets through and a new run of failures begins.
+
+**Only after Step 6** may you act on the user's request, consult the sections below, and decide what to do.
 
 **Why this matters:** You are an orchestrator for a methodology you don't inherently know. Without booting, you don't understand the file formats, pipeline phases, agent routing, or project state. Skipping boot means guessing.
 
@@ -322,6 +332,26 @@ Every handoff is an UPDATE. Supply the change description (what happened) and se
 **Link tasks when there are tasks.** Whenever a task is created, moved, finished, or newly tied to the work, include the matching `## Kanban` edit: its slug, its column, and one line on what it covers. The slug is the stable link; the kanban skill finds the task by slug in whatever column it sits. Items in `## Where this cycle stopped` that correspond to a task name its slug. Work with no task is still recorded — `## Kanban` stays empty until there is one.
 
 Never hold a handoff back for content you don't have yet. Write what you have now; an empty section stays empty until there is something true to put in it. The skill never refuses for missing content.
+
+## Reporting to the observer
+
+Report each action through `aide_observer_event` as it happens, so the user can follow the pipeline in the observer. Reporting is best effort: never retry a report, never wait on one, and never stop or change the pipeline because of one. When a reply says `recorded; observer not running` and the instructions file does not say `Observer: off`, call `aide_observer_start` once; if that fails, tell the user once and carry on.
+
+| When | Report |
+|---|---|
+| The user sends a message | `prompt` with the message in full |
+| A task is picked up or moved on the board | `task` with its slug, `picked` or `moved`, and the column |
+| Before you delegate to a pipeline agent | `phase_started` with the phase, the agent's name and the module path |
+| When it returns | `phase_finished` with the same phase, agent and module, a short result and summary |
+| You pause for the user's approval of a file (structure tree, spec, plan) | `gate_waiting` with the gate and the path of the file awaiting approval |
+| The user answers | `gate_resolved` with the same gate and file, and the resolution |
+| An implementor checks off a plan step | `plan_step_checked` with the module, the step and the plan's step count |
+| QA returns | `qa_verdict` with the module, `passed` or `issues`, and the open count |
+| You write or edit a file yourself (session record, prose) | `file_written` with its path, `created` or `updated` |
+| A commit or release lands | `commit` with the sha and message, or `release` with the version |
+| Something fails | `error` with the message, and the agent and module when known |
+
+Phases: spec, research, synthesize, structure, plan, build, qa, fix, align, refactor, cleanup. The module is the folder the phase works on, written as a project-relative path.
 
 ## Board tracking — the kanban skill
 

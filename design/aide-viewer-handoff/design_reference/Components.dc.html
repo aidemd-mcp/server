@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIDE Pipeline Viewer — component sheet</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/10fc28ec8175d4a0b612c716dec2e221">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1440px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); font-family: 'Inter', system-ui, sans-serif">
+<sc-for list="{{themes}}" as="th" hint-placeholder-count="2">
+<div class="{{th.cls}}" style="min-height: 0; padding: 40px 36px 64px; display: flex; flex-direction: column; gap: 40px">
+<div class="stack" style="gap: 4px"><span class="meta" style="font-weight: 700; letter-spacing: .05em; text-transform: uppercase">{{th.name}} theme</span><h1 style="font-size: 32px; font-weight: 750; letter-spacing: -0.02em">Component sheet</h1><p class="t2">Every state pairs colour with a glyph and a word. Mono only for paths, slugs, hashes, durations and code.</p></div>
+
+<section class="av-sect"><h2 class="av-h2">Phase rail · states</h2>
+<div class="av-rail-scroll"><ol class="av-rail" style="grid-template-columns: repeat(5, minmax(118px, 1fr)); min-width: 0">
+<li class="av-ph todo"><span class="p-top"><span class="ic i-todo" aria-hidden="true"></span>QA</span><span class="p-meta">Not started</span></li>
+<li class="av-ph done"><span class="p-top"><span class="ic i-done" aria-hidden="true"></span>Plan</span><span class="p-meta">Done 3m 41s</span></li>
+<li class="av-ph run"><span class="p-top"><span class="ic i-run" aria-hidden="true"></span>Build</span><span class="p-meta">Step 4 of 9</span></li>
+<li class="av-ph wait"><span class="p-top"><span class="ic i-wait" aria-hidden="true"></span>Approval</span><span class="p-meta">Waiting · 2m</span></li>
+<li class="av-ph fail"><span class="p-top"><span class="ic i-issues" aria-hidden="true"></span>QA</span><span class="p-meta">2 issues</span></li>
+</ol></div>
+<div class="row wrap" style="gap: 12px; align-items: flex-start">
+<ol class="av-rail" style="grid-template-columns: minmax(150px, 1fr); min-width: 0; margin-top: 12px"><li class="av-ph run"><span class="p-loop"><span class="ic i-loop" aria-hidden="true"></span>round 2</span><span class="p-top"><span class="ic i-run" aria-hidden="true"></span>Fix</span><span class="p-meta">Round 2 · 1m 05s</span></li></ol>
+<div class="av-lanes" style="flex: 1; margin-top: 12px"><span class="l-lbl">Side lanes</span><span class="av-lane done"><span class="ic i-done" aria-hidden="true"></span>Structure <span class="s">Done</span></span><span class="av-lane run"><span class="ic i-run" aria-hidden="true"></span>Align <span class="s">Running</span></span><span class="av-lane fail"><span class="ic i-issues" aria-hidden="true"></span>Refactor <span class="s">Issues</span></span><span class="av-lane todo"><span class="ic i-todo" aria-hidden="true"></span>Cleanup <span class="s">Not started</span></span></div>
+</div>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Now card · variants</h2>
+<div class="av-card run"><div class="c-main"><div class="c-state"><span class="ic lg i-run" aria-hidden="true"></span>Running</div><div class="c-title">Plan</div><div class="c-line"><span><span class="lbl">agent</span><span class="mono">aide-architect</span></span><span><span class="lbl">module</span><span class="mono">src/tools/score</span></span></div></div><div class="c-time"><span class="big">3m 41s</span><span class="lbl">elapsed</span></div></div>
+<div class="av-card wait"><div class="c-main"><div class="c-state"><span class="ic lg i-wait" aria-hidden="true"></span>Waiting on you</div><div class="c-title"><span>Approve <span class="mono">plan.aide</span></span></div><div class="c-line"><span><span class="lbl">for</span><span class="mono">src/tools/score</span></span></div></div><div class="c-time"><span class="big">2m</span><span class="lbl">waiting</span></div></div>
+<div class="av-card fix"><div class="c-main"><div class="c-state"><span class="ic lg i-loop" aria-hidden="true"></span>QA → Fix · round 2</div><div class="c-title">Fix <span class="sub">2 of 5 issues open</span></div></div><div class="c-time"><span class="big">1m 05s</span><span class="lbl">elapsed</span></div></div>
+<div class="av-card idle"><div class="c-main"><div class="c-state"><span class="ic lg i-idle" aria-hidden="true"></span>Idle — no events for 12m</div><div class="c-title">Last: QA passed</div><div class="c-line"><span><span class="lbl">module</span><span class="mono">src/tools/score</span></span></div></div></div>
+<div class="av-card empty"><div class="c-main"><div class="c-state"><span class="ic lg i-clock" aria-hidden="true"></span>No activity yet</div><div class="c-title">Waiting for the first phase</div></div></div>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Badges &amp; chips</h2>
+<div class="row wrap"><span class="av-badge done"><span class="ic i-done" aria-hidden="true"></span>Aligned</span><span class="av-badge outline"><span class="ic i-todo" aria-hidden="true"></span>Unreviewed</span><span class="av-badge strong-danger"><span class="ic i-fail" aria-hidden="true"></span>Misaligned</span><span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Working now · Build</span><span class="av-badge wait"><span class="ic i-wait" aria-hidden="true"></span>Waiting on you</span></div>
+<div class="row wrap"><span class="av-chip"><span class="ic i-doc" aria-hidden="true"></span>brief</span><span class="av-chip"><span class="ic i-search" aria-hidden="true"></span>research</span><span class="av-chip warn"><span class="ic i-gate" aria-hidden="true"></span>plan · proposed <b>0/7</b></span><span class="av-chip run"><span class="ic i-run" aria-hidden="true"></span>plan · approved <b>6/9</b></span><span class="av-chip done"><span class="ic i-done" aria-hidden="true"></span>plan · completed <b>9/9</b></span><span class="av-chip muted"><span class="ic i-close" aria-hidden="true"></span>plan · abandoned <b>2/8</b></span><span class="av-chip danger"><span class="ic i-issues" aria-hidden="true"></span>todo <b>3 open of 5</b></span><span class="av-chip done"><span class="ic i-done" aria-hidden="true"></span>todo <b>0 open of 2</b></span></div>
+<div class="row wrap"><span class="av-badge av-prio p0">p0</span><span class="av-badge av-prio p1">p1</span><span class="av-badge av-prio p2">p2</span><span class="av-badge av-prio p3">p3</span><span class="av-badge neutral">bug</span><span class="av-badge neutral">feature</span><span class="av-badge neutral">change</span><span class="av-badge neutral">housekeeping</span><span class="av-badge neutral">test</span></div>
+<div class="row wrap"><span class="av-conn live"><span class="led" aria-hidden="true"></span>Live</span><span class="av-conn idle"><span class="led" aria-hidden="true"></span>Idle</span><span class="av-conn recon"><span class="led" aria-hidden="true"></span>Reconnecting</span><span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Live</span><span class="av-badge outline"><span class="ic i-idle" aria-hidden="true"></span>Idle</span><span class="av-badge neutral"><span class="ic i-power" aria-hidden="true"></span>Ended</span></div>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Intent tree node</h2>
+<div class="av-tree">
+<div class="av-node d0"><button class="tw" aria-label="Collapse src/tools"><span class="ic i-chev-d" aria-hidden="true"></span></button><button class="n-main"><span class="n-top"><span class="n-path">src/tools</span><span class="av-badge done"><span class="ic i-done" aria-hidden="true"></span>Aligned</span></span><span class="n-desc">MCP tool handlers that agents call</span></button></div>
+<div class="av-node d1 cur"><button class="tw leaf" aria-label="No children"><span class="ic i-chev-d" aria-hidden="true"></span></button><button class="n-main"><span class="n-top"><span class="n-path">src/tools/score</span><span class="av-badge done"><span class="ic i-done" aria-hidden="true"></span>Aligned</span><span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Working now · Build</span></span><span class="n-desc">Ranks specs by alignment and open work</span><span class="n-chips"><span class="av-chip"><span class="ic i-doc" aria-hidden="true"></span>brief</span><span class="av-chip run"><span class="ic i-run" aria-hidden="true"></span>plan · approved <b>3/9</b></span></span></button></div>
+<div class="av-node d1 mis"><button class="tw leaf" aria-label="No children"><span class="ic i-chev-d" aria-hidden="true"></span></button><button class="n-main"><span class="n-top"><span class="n-path">src/tools/validate</span><span class="av-badge strong-danger"><span class="ic i-fail" aria-hidden="true"></span>Misaligned</span></span><span class="n-desc">Checks that specs exist and their frontmatter is complete</span><span class="n-chips"><span class="av-chip danger"><span class="ic i-issues" aria-hidden="true"></span>todo <b>3 open of 5</b></span></span></button></div>
+<div class="av-node d0"><button class="tw" aria-label="Expand src/domain"><span class="ic i-chev-r" aria-hidden="true"></span></button><button class="n-main"><span class="n-top"><span class="n-path">src/domain</span><span class="av-badge done"><span class="ic i-done" aria-hidden="true"></span>Aligned</span><span class="n-more">8 modules hidden</span></span><span class="n-desc">Pure parsing and ranking logic, no I/O</span></button></div>
+</div>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">History rows</h2>
+<ol class="av-hist">
+<sc-for list="{{hist}}" as="h" hint-placeholder-count="12"><li><button class="{{h.cls}}"><span class="h-t">{{h.t}}</span><span class="h-g"><span class="{{h.icon}}" aria-hidden="true"></span></span><span class="h-l">{{h.label}}<sc-if value="{{h.mono}}"> <span class="mono">{{h.mono}}</span></sc-if><sc-if value="{{h.meta}}"><span class="h-m">{{h.meta}}</span></sc-if></span></button></li></sc-for>
+</ol>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Board cards</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<button class="av-task"><span class="t-title">aide_validate with a path reports missing specs from the whole project</span><span class="t-slug">aide-validate-path-scope</span><span class="t-tags"><span class="av-badge av-prio p1">p1</span><span class="av-badge neutral">bug</span></span></button>
+<button class="av-task linked"><span class="av-badge run" style="align-self: flex-start"><span class="ic i-eye" aria-hidden="true"></span>This session</span><span class="t-title">aide_score ranks misaligned specs below unreviewed ones</span><span class="t-slug">aide-score-misaligned-rank</span><span class="t-tags"><span class="av-badge av-prio p1">p1</span><span class="av-badge neutral">bug</span></span></button>
+</div>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Project &amp; session rows</h2>
+<div class="av-list">
+<div class="av-proj"><button class="av-proj-h" aria-expanded="true"><span class="ic lg i-chev-d" aria-hidden="true"></span><span class="p-name">aidemd-mcp<span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>1 live</span></span><span class="p-root">~/code/aidemd-mcp</span><span class="p-tag av-chip"><span class="ic i-board" aria-hidden="true"></span>aidemd</span><span class="p-last">now</span></button></div>
+<div class="av-srow live"><div class="s-when"><b>Today 14:02</b><span class="meta"><span class="mono">29m 40s</span> · 42 events</span></div><div class="s-task"><span class="t3">Task </span><b>aide_score ranks misaligned specs</b></div><div class="s-act"><span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Live</span></div></div>
+<div class="av-srow"><div class="s-when"><b>Yesterday 16:40</b><span class="meta"><span class="mono">48m 05s</span> · 97 events</span></div><div class="s-task"><span class="t3">Task </span><b>Install writes .aide/intent.aide</b></div><div class="s-act"><span class="av-badge neutral"><span class="ic i-power" aria-hidden="true"></span>Ended</span><button class="av-btn danger"><span class="ic i-trash" aria-hidden="true"></span>Delete</button></div>
+<div class="av-confirm" role="alertdialog" aria-label="Confirm delete"><span class="ic lg i-trash" aria-hidden="true" style="color: var(--danger)"></span><p>Delete this session's history? This can't be undone.</p><button class="av-btn">Cancel</button><button class="av-btn danger-solid">Delete history</button></div></div>
+</div>
+<button class="av-wait-card"><span class="ic xl i-wait" aria-hidden="true"></span><span class="stack" style="gap: 2px"><span class="wc-k">Waiting on you · aidemd-site</span><span class="wc-what">Approve <span class="mono">plan.aide</span></span><span class="wc-where">for <span class="mono">src/pages/docs/score</span></span></span><span class="wc-since">6m<span>waiting</span></span></button>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Notices &amp; banners</h2>
+<div class="av-wait-banner" style="border-radius: 10px"><span class="w-k"><span class="ic xl i-wait" aria-hidden="true"></span>Waiting on you</span><span class="w-what">approve <span class="mono">plan.aide</span></span><span class="w-since">since 2m</span></div>
+<div class="av-quiet-banner" style="border-radius: 10px"><span class="ic lg i-reconnect" aria-hidden="true"></span><span><b>Reconnecting…</b> Nothing is lost.</span></div>
+<div class="av-notice err"><span class="ic lg i-cloud-off" aria-hidden="true"></span><div><h3>Board can't load right now</h3><p>The brain folder isn't reachable. Everything else is live.</p></div></div>
+<div class="av-notice calm"><span class="ic lg i-folder-off" aria-hidden="true"></span><div><h3>Intent tree unavailable</h3><p>This project never reported its folder.</p><div class="av-cmd">npx @aidemd-mcp/server init</div></div></div>
+<p class="av-empty">No open questions recorded for this cycle.</p>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Drawer · checklists</h2>
+<div style="position: relative; height: 520px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg)">
+<aside class="av-drawer" style="width: 100%; border-left: 0; box-shadow: none" aria-label="Module src/tools/score">
+<div class="av-drawer-h"><div class="grow stack" style="gap: 2px"><span class="d-k">Module · todo</span><span class="d-t mono">src/tools/score</span><span class="meta">QA round 2 · 2 of 5 open</span></div><button class="av-btn icon ghost" aria-label="Close details"><span class="ic lg i-close" aria-hidden="true"></span></button></div>
+<div class="av-drawer-b">
+<section><h4><span class="ic i-issues" aria-hidden="true"></span>Todo<span class="av-badge danger">2 of 5 open</span></h4>
+<ol class="av-check"><li class="issue"><span class="ck" aria-hidden="true"></span><span><span class="loc">src/tools/score/rank.ts:42</span><span class="what">Ties fall back to insertion order, not path</span></span></li><li class="issue on"><span class="ck" aria-hidden="true"><span class="ic i-check"></span></span><span><span class="loc">src/tools/score/weights.ts:9</span><span class="what">Weight table not frozen</span></span></li></ol></section>
+<section><h4><span class="ic i-step" aria-hidden="true"></span>Plan<span class="av-badge run">approved · 3/9</span></h4>
+<ol class="av-check"><li class="on"><span class="ck" aria-hidden="true"><span class="ic i-check"></span></span><span class="no">2</span><span class="tx">Create weights.ts with the ordering table</span></li><li class="on sub"><span class="ck" aria-hidden="true"><span class="ic i-check"></span></span><span class="no">2a</span><span class="tx">Misaligned 3, unreviewed 2, aligned 1</span></li><li class="cur"><span class="ck" aria-hidden="true"></span><span class="no">4</span><span class="tx">Wire weights into the aide_score ranking</span></li></ol></section>
+</div>
+</aside>
+</div>
+</section>
+</div>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":4200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const H = [
+      ['14:02', 'start', 'i-power', 'Session started', '', '~/code/aidemd-mcp'],
+      ['14:02', 'prompt', 'i-prompt', 'Prompt: “Pick up the next p1 from the board…”', '', ''],
+      ['14:03', 'task', 'i-task', 'Picked task', 'aide-score-misaligned-rank', 'Todo → In Progress'],
+      ['14:14', 'phase', 'i-flag', 'Plan started', '', 'aide-architect · src/tools/score'],
+      ['14:18', 'done', 'i-done', 'Plan finished · 3m 41s', '', ''],
+      ['', 'files', 'i-files', 'Wrote 2 files', '', ''],
+      ['', 'sub', 'i-file', 'src/tools/score/plan.aide', '', ''],
+      ['14:18', 'wait', 'i-wait', 'Waiting on you — approve', 'plan.aide', 'src/tools/score'],
+      ['14:22', 'approve', 'i-gate', 'Approved', 'plan.aide', 'waited 4m 12s'],
+      ['14:24', 'step', 'i-step', 'Plan step checked · 3/9', '', 'src/tools/score'],
+      ['14:42', 'issues', 'i-issues', 'QA found 3 issues', '', 'src/tools/score · 3 open'],
+      ['14:43', 'pass', 'i-done', 'QA passed', '', 'src/tools/score · 0 open'],
+      ['14:29', 'commit', 'i-commit', 'Commit', '414776f', 'score: add alignment weights'],
+      ['14:51', 'release', 'i-tag', 'Release', 'v0.9.2', ''],
+      ['14:47', 'error', 'i-error', 'Error: rank.test.ts timed out after 30s', '', 'aide-qa · src/tools/score']
+    ];
+    return {
+      themes: [{ name: 'Dark', cls: 'av t-dark desk' }, { name: 'Light', cls: 'av t-light desk' }],
+      hist: H.map((x) => ({ t: x[0], cls: 'av-hrow k-' + x[1] + (x[1] === 'sub' ? ' sub' : ''), icon: 'ic ' + x[2], label: x[3], mono: x[4], meta: x[5] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

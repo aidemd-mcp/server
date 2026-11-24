@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIDE Pipeline Viewer — prototype</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/10fc28ec8175d4a0b612c716dec2e221">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{rootCls}}" style="font-family: 'Inter', system-ui, sans-serif">
+
+<sc-if value="{{isInvalid}}" hint-placeholder-val="{{ false }}">
+<header class="av-hdr">
+<div class="av-hdr-l"><div class="av-brand"><span class="av-logo" aria-hidden="true">A</span>AIDE Pipeline Viewer</div></div>
+<div class="av-hdr-r"><button class="av-btn icon" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}"><span class="{{themeIcon}}" aria-hidden="true"></span></button></div>
+</header>
+<div class="av-body">
+<div class="av-center">
+<div class="av-notice">
+<span class="ic xl i-unlink" aria-hidden="true"></span>
+<div>
+<h3>This link is no longer valid</h3>
+<p>The access link may have expired, or it was copied incompletely. Nothing is shown here so you don't mistake old data for live data.</p>
+<p>Ask the agent for a fresh viewer link — it prints one when a session starts — or open the most recent link it gave you.</p>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isHome}}" hint-placeholder-val="{{ false }}">
+<header class="av-hdr">
+<div class="av-hdr-l">
+<div class="av-brand"><span class="av-logo" aria-hidden="true">A</span>AIDE Pipeline Viewer</div>
+<div class="av-hdr-meta">{{homeSub}}</div>
+</div>
+<div class="av-hdr-r">
+<span class="{{connCls}}"><span class="led" aria-hidden="true"></span>{{connLabel}}</span>
+<button class="av-btn icon" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}"><span class="{{themeIcon}}" aria-hidden="true"></span></button>
+</div>
+</header>
+<div class="av-body">
+<main class="av-home">
+
+<sc-if value="{{homeEmpty}}" hint-placeholder-val="{{ false }}">
+<div class="av-notice calm" style="margin-top: 24px">
+<span class="ic xl i-eye" aria-hidden="true"></span>
+<div>
+<h3>Nothing recorded yet</h3>
+<p>Projects appear here as soon as an agent starts a session in a project that has AIDE installed. This page updates by itself — no need to refresh.</p>
+<p>New to AIDE in a project? Run this in the project's root, then start a session:</p>
+<div class="av-cmd">npx @aidemd-mcp/server init</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasWaits}}" hint-placeholder-val="{{ false }}">
+<section class="av-sect" aria-labelledby="h-wait">
+<h2 class="av-h2" id="h-wait"><span class="ic i-wait" aria-hidden="true"></span>Waiting on you <span class="n">{{waitsN}}</span></h2>
+<sc-for list="{{waits}}" as="w" hint-placeholder-count="1">
+<button class="av-wait-card" onClick="{{w.open}}">
+<span class="ic xl i-wait" aria-hidden="true"></span>
+<span class="stack" style="gap: 2px">
+<span class="wc-k">Waiting on you · {{w.project}}</span>
+<span class="wc-what">{{w.what}} <span class="mono">{{w.file}}</span></span>
+<span class="wc-where">for <span class="mono">{{w.module}}</span> · answer in the agent's session to continue</span>
+</span>
+<span class="wc-since">{{w.since}}<span>waiting since {{w.at}}</span></span>
+</button>
+</sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{hasLive}}" hint-placeholder-val="{{ true }}">
+<section class="av-sect" aria-labelledby="h-live">
+<h2 class="av-h2" id="h-live"><span class="ic i-run" aria-hidden="true" style="color: var(--run)"></span>Live sessions <span class="n">{{liveN}}</span></h2>
+<div class="av-list">
+<sc-for list="{{live}}" as="l" hint-placeholder-count="2">
+<button class="av-live-row" onClick="{{l.open}}">
+<span class="stack" style="gap: 0"><span class="lr-p">{{l.project}}</span><span class="meta">session {{l.start}}</span></span>
+<span class="lr-now"><span class="{{l.badgeCls}}"><span class="{{l.icon}}" aria-hidden="true"></span>{{l.phase}}</span><span class="mono">{{l.module}}</span><span class="t3">by</span><span class="mono">{{l.agent}}</span></span>
+<span class="lr-t">{{l.elapsed}}</span>
+</button>
+</sc-for>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{hasProjects}}" hint-placeholder-val="{{ true }}">
+<section class="av-sect" aria-labelledby="h-proj">
+<div class="row wrap" style="justify-content: space-between; gap: 12px">
+<h2 class="av-h2" id="h-proj"><span class="ic i-folder" aria-hidden="true"></span>Projects <span class="n">{{projN}}</span></h2>
+<sc-if value="{{manyProjects}}" hint-placeholder-val="{{ false }}">
+<label class="av-field" style="flex: 0 1 300px"><span class="ic i-search" aria-hidden="true"></span><span class="sr">Filter projects</span><input type="search" placeholder="Filter projects" value="{{projQ}}" onChange="{{setProjQ}}"></label>
+</sc-if>
+</div>
+<div class="av-list">
+<sc-for list="{{projects}}" as="p" hint-placeholder-count="3">
+<div class="{{p.cls}}">
+<button class="av-proj-h" aria-expanded="{{p.exp}}" onClick="{{p.toggle}}">
+<span class="{{p.chev}}" aria-hidden="true"></span>
+<span class="p-name">{{p.name}}<sc-if value="{{p.liveN}}"><span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>{{p.liveN}}</span></sc-if><sc-if value="{{p.waiting}}"><span class="av-badge wait"><span class="ic i-wait" aria-hidden="true"></span>Waiting on you</span></sc-if></span>
+<span class="p-root">{{p.root}}</span>
+<span class="p-tag av-chip"><span class="ic i-board" aria-hidden="true"></span>{{p.tag}}</span>
+<span class="p-last">{{p.last}}</span>
+</button>
+<sc-if value="{{p.open}}" hint-placeholder-val="{{ false }}">
+<div class="av-proj-body">
+<div class="av-list">
+<sc-for list="{{p.sessions}}" as="s" hint-placeholder-count="2">
+<div class="{{s.cls}}">
+<div class="s-when"><b>{{s.start}}</b><span class="meta"><span class="mono">{{s.dur}}</span> · {{s.events}} events</span></div>
+<div class="s-task"><span class="t3">Task </span><b>{{s.task}}</b></div>
+<div class="s-act"><span class="{{s.stCls}}"><span class="{{s.stIcon}}" aria-hidden="true"></span>{{s.st}}</span><sc-if value="{{s.ended}}"><button class="av-btn danger" onClick="{{s.del}}" aria-label="{{s.delLabel}}"><span class="ic i-trash" aria-hidden="true"></span>Delete</button></sc-if></div>
+<sc-if value="{{s.confirm}}" hint-placeholder-val="{{ false }}">
+<div class="av-confirm" role="alertdialog" aria-label="Confirm delete">
+<span class="ic lg i-trash" aria-hidden="true" style="color: var(--danger)"></span>
+<p>Delete this session's history? This can't be undone.</p>
+<button class="av-btn" onClick="{{s.cancel}}">Cancel</button>
+<button class="av-btn danger-solid" onClick="{{s.doDel}}">Delete history</button>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+<div style="margin-top: 10px"><button class="av-linkbtn" onClick="{{p.go}}">Open {{p.name}} →</button></div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-if>
+
+</main>
+</div>
+</sc-if>
+
+<sc-if value="{{isSession}}" hint-placeholder-val="{{ true }}">
+<header class="av-hdr">
+<div class="av-hdr-l">
+<nav class="av-crumb" aria-label="Breadcrumb"><button class="av-linkbtn" onClick="{{goHome}}">All projects</button><span class="sep">/</span><span>aidemd-mcp</span><span class="sep">/</span><span class="here">session {{sessStart}}</span></nav>
+<div class="av-hdr-meta"><span class="mono">~/code/aidemd-mcp</span><span class="dot-sep"></span><span>kanban <span class="mono">aidemd</span></span></div>
+</div>
+<div class="av-hdr-r">
+<sc-if value="{{two}}" hint-placeholder-val="{{ false }}">
+<div class="av-switch" role="group" aria-label="Live sessions in this project">
+<sc-for list="{{switcher}}" as="sw" hint-placeholder-count="2">
+<button aria-pressed="{{sw.p}}" onClick="{{sw.pick}}"><span>Session {{sw.start}}</span><span>{{sw.now}}</span></button>
+</sc-for>
+</div>
+</sc-if>
+<span class="{{connCls}}"><span class="led" aria-hidden="true"></span>{{connLabel}}</span>
+<button class="av-btn icon" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}"><span class="{{themeIcon}}" aria-hidden="true"></span></button>
+</div>
+</header>
+<div class="av-body">
+
+<sc-if value="{{waitOn}}" hint-placeholder-val="{{ false }}">
+<div class="av-wait-banner" role="status">
+<span class="w-k"><span class="ic xl i-wait" aria-hidden="true"></span>Waiting on you</span>
+<span class="w-what">approve <span class="mono">plan.aide</span> for <span class="mono">src/tools/score</span></span>
+<span class="w-since">since 2m</span>
+<span class="w-hint">The agent is paused until you answer in its session. This page only shows status — it can't approve.</span>
+</div>
+</sc-if>
+
+<sc-if value="{{reconOn}}" hint-placeholder-val="{{ false }}">
+<div class="av-quiet-banner" role="status">
+<span class="ic lg i-reconnect spin" aria-hidden="true"></span>
+<span><b>Reconnecting…</b> The viewer server restarted. This page reconnects by itself and nothing is lost — events from the gap appear when it's back. Last update 14:31:07.</span>
+</div>
+</sc-if>
+
+<sc-if value="{{notInstalled}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 32px; display: flex; flex-direction: column; gap: 32px; max-width: 1100px">
+<div class="av-notice">
+<span class="ic xl i-folder" aria-hidden="true"></span>
+<div>
+<h3>AIDE isn't installed in this project yet</h3>
+<p>This session reported <span class="mono">~/code/aidemd-mcp</span>, but there's no <span class="mono">.aide/intent.aide</span> there, so there's no pipeline or intent tree to show. Run this in the project root:</p>
+<div class="av-cmd">npx @aidemd-mcp/server init</div>
+<p style="margin-top: 12px">When the next phase starts, this page fills in by itself.</p>
+</div>
+</div>
+<section class="av-sect">
+<h2 class="av-h2"><span class="ic i-sessions" aria-hidden="true"></span>Sessions <span class="n">1</span></h2>
+<div class="av-list"><div class="av-srow live"><div class="s-when"><b>Today 14:02</b><span class="meta"><span class="mono">3m 10s</span> · 2 events</span></div><div class="s-task"><span class="t3">Task </span><b>No task picked yet</b></div><div class="s-act"><span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Live</span></div></div></div>
+</section>
+</div>
+</sc-if>
+
+<sc-if value="{{hasPipeline}}" hint-placeholder-val="{{ true }}">
+<section class="av-now" aria-label="Now running">
+<div class="{{card.cls}}">
+<div class="c-main">
+<div class="c-state"><span class="{{card.icon}}" aria-hidden="true"></span>{{card.state}}</div>
+<h1 class="c-title"><span>{{card.title}}<sc-if value="{{card.titleMono}}"> <span class="mono">{{card.titleMono}}</span></sc-if></span><sc-if value="{{card.sub}}"><span class="sub">{{card.sub}}</span></sc-if></h1>
+<div class="c-line">
+<sc-for list="{{card.parts}}" as="pt" hint-placeholder-count="2"><span><span class="lbl">{{pt.l}}</span><span class="{{pt.cls}}">{{pt.v}}</span></span></sc-for>
+</div>
+</div>
+<sc-if value="{{card.time}}" hint-placeholder-val="{{ true }}"><div class="c-time"><span class="big">{{card.time}}</span><span class="lbl">{{card.timeLbl}}</span></div></sc-if>
+<sc-if value="{{card.steps}}" hint-placeholder-val="{{ false }}">
+<div class="c-steps">
+<div class="row wrap" style="gap: 4px 10px"><b>{{card.stepHead}}</b><span class="t2">{{card.stepText}}</span></div>
+<div class="av-steps" role="img" aria-label="{{card.stepHead}}"><sc-for list="{{card.steps}}" as="st" hint-placeholder-count="9"><i class="{{st.c}}"></i></sc-for></div>
+</div>
+</sc-if>
+<sc-if value="{{card.hint}}" hint-placeholder-val="{{ false }}"><p class="c-hint">{{card.hint}}</p></sc-if>
+</div>
+
+<div class="av-rail-wrap">
+<div class="av-rail-scroll" tabindex="0" aria-label="Pipeline phases; scrolls sideways on small screens">
+<ol class="av-rail">
+<sc-for list="{{rail}}" as="ph" hint-placeholder-count="9">
+<li class="{{ph.cls}}"><sc-if value="{{ph.loop}}"><span class="p-loop"><span class="ic i-loop" aria-hidden="true"></span>{{ph.loop}}</span></sc-if><span class="p-top"><span class="{{ph.icon}}" aria-hidden="true"></span>{{ph.name}}</span><span class="p-meta">{{ph.meta}}</span></li>
+</sc-for>
+</ol>
+</div>
+<div class="av-lanes"><span class="l-lbl">Side lanes</span>
+<sc-for list="{{lanes}}" as="ln" hint-placeholder-count="4"><span class="{{ln.cls}}"><span class="{{ln.icon}}" aria-hidden="true"></span>{{ln.name}} <span class="s">{{ln.meta}}</span></span></sc-for>
+</div>
+</div>
+</section>
+
+<div class="av-main">
+<div class="av-primary">
+<div class="av-tabs" role="tablist" aria-label="Session views">
+<sc-for list="{{tabs}}" as="tb" hint-placeholder-count="6">
+<button role="tab" class="{{tb.cls}}" aria-selected="{{tb.sel}}" onClick="{{tb.pick}}"><span class="{{tb.icon}}" aria-hidden="true"></span>{{tb.label}}<sc-if value="{{tb.n}}"><span class="{{tb.nCls}}">{{tb.n}}</span></sc-if></button>
+</sc-for>
+</div>
+<div class="av-panel" role="tabpanel">
+
+<sc-if value="{{tabTree}}" hint-placeholder-val="{{ true }}">
+<sc-if value="{{noFolder}}" hint-placeholder-val="{{ false }}">
+<div class="av-notice calm"><span class="ic lg i-folder-off" aria-hidden="true"></span><div><h3>Intent tree unavailable</h3><p>This project never reported its folder, so there's no <span class="mono">.aide</span> tree to read. It appears after the agent starts a session that reports the project root. History and sessions below still work.</p></div></div>
+</sc-if>
+<sc-if value="{{treeOk}}" hint-placeholder-val="{{ true }}">
+<div class="av-toolbar">
+<label class="av-field" style="flex: 1 1 200px; max-width: 300px"><span class="ic i-search" aria-hidden="true"></span><span class="sr">Filter modules by path</span><input type="search" placeholder="Filter by path" value="{{treeQ}}" onChange="{{setTreeQ}}"></label>
+<button class="av-btn" aria-pressed="{{fOpenP}}" onClick="{{tOpen}}">Only open work</button>
+<button class="av-btn" aria-pressed="{{fMisP}}" onClick="{{tMis}}">Only misaligned</button>
+<button class="av-btn ghost" onClick="{{expandAll}}">Expand all</button>
+<button class="av-btn ghost" onClick="{{collapseAll}}">Collapse all</button>
+<span class="count">{{treeCount}}</span>
+</div>
+<div class="av-tree" role="tree" aria-label="Intent tree">
+<sc-for list="{{nodes}}" as="n" hint-placeholder-count="8">
+<div class="{{n.cls}}" role="treeitem" aria-expanded="{{n.exp}}">
+<button class="{{n.twCls}}" aria-label="{{n.twLabel}}" onClick="{{n.toggle}}"><span class="{{n.twIcon}}" aria-hidden="true"></span></button>
+<button class="n-main" onClick="{{n.open}}">
+<span class="n-top"><span class="n-path">{{n.path}}</span><span class="{{n.aCls}}"><span class="{{n.aIcon}}" aria-hidden="true"></span>{{n.aLabel}}</span><sc-if value="{{n.cur}}"><span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>{{n.cur}}</span></sc-if><sc-if value="{{n.hiddenN}}"><span class="n-more">{{n.hiddenN}}</span></sc-if></span>
+<span class="n-desc">{{n.desc}}</span>
+<sc-if value="{{n.hasChips}}"><span class="n-chips"><sc-for list="{{n.chips}}" as="c" hint-placeholder-count="2"><span class="{{c.cls}}"><span class="{{c.icon}}" aria-hidden="true"></span>{{c.k}}<sc-if value="{{c.v}}"> <b>{{c.v}}</b></sc-if></span></sc-for></span></sc-if>
+</button>
+</div>
+</sc-for>
+<sc-if value="{{treeEmpty}}" hint-placeholder-val="{{ false }}"><div class="av-tree-foot">No modules match these filters.</div></sc-if>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{tabPlans}}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{noFolder}}" hint-placeholder-val="{{ false }}">
+<div class="av-notice calm"><span class="ic lg i-folder-off" aria-hidden="true"></span><div><h3>Plans and todos unavailable</h3><p>They're read from the project folder, which this project hasn't reported yet.</p></div></div>
+</sc-if>
+<sc-if value="{{treeOk}}" hint-placeholder-val="{{ true }}">
+<div class="av-gt" role="table" aria-label="Plans and todos">
+<div class="tr th" role="row" style="grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.4fr)"><span role="columnheader">Module</span><span role="columnheader">Kind</span><span role="columnheader">Status</span><span role="columnheader">Progress</span></div>
+<sc-for list="{{planRows}}" as="r" hint-placeholder-count="6">
+<div class="{{r.cls}}" role="row" style="grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.4fr)"><span role="cell"><button class="av-linkbtn mono" onClick="{{r.open}}">{{r.module}}</button></span><span role="cell"><span class="{{r.kCls}}"><span class="{{r.kIcon}}" aria-hidden="true"></span>{{r.kind}}</span></span><span role="cell"><span class="{{r.stCls}}"><span class="{{r.stIcon}}" aria-hidden="true"></span>{{r.status}}</span></span><span role="cell" class="prog"><span class="av-prog" style="color: var(--run)"><i style="{{r.w}}"></i></span>{{r.prog}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{tabBoard}}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{boardErr}}" hint-placeholder-val="{{ false }}">
+<div class="av-notice err" role="status"><span class="ic lg i-cloud-off" aria-hidden="true"></span><div><h3>Board can't load right now</h3><p>The brain folder at <span class="mono">~/brain/aidemd</span> isn't reachable (ENOENT: no such file or directory). Everything else on this page is live.</p><p class="meta">Retrying every 30s · last try 14:31:02</p></div></div>
+</sc-if>
+<sc-if value="{{noFolder}}" hint-placeholder-val="{{ false }}">
+<div class="av-notice calm"><span class="ic lg i-folder-off" aria-hidden="true"></span><div><h3>Board unavailable</h3><p>This project hasn't reported its folder or brain folder, so its kanban board can't be found. Tasks the agent picked still show in History.</p></div></div>
+</sc-if>
+<sc-if value="{{boardOk}}" hint-placeholder-val="{{ true }}">
+<div class="av-toolbar"><span class="t2">Tasks linked to this session are outlined.</span><span class="count">{{boardCount}}</span></div>
+<div class="av-board">
+<sc-for list="{{cols}}" as="col" hint-placeholder-count="5">
+<section class="av-col" aria-label="{{col.name}}">
+<div class="av-col-h"><span>{{col.name}}</span><span class="n">{{col.n}}</span></div>
+<sc-for list="{{col.tasks}}" as="t" hint-placeholder-count="2">
+<button class="{{t.cls}}" onClick="{{t.open}}">
+<sc-if value="{{t.linked}}"><span class="av-badge run" style="align-self: flex-start"><span class="ic i-eye" aria-hidden="true"></span>This session</span></sc-if>
+<span class="t-title">{{t.title}}</span>
+<span class="t-slug">{{t.slug}}</span>
+<span class="t-tags"><span class="{{t.pCls}}">{{t.p}}</span><span class="av-badge neutral">{{t.type}}</span></span>
+</button>
+</sc-for>
+<sc-if value="{{col.more}}"><div class="more"><span>{{col.more}}</span><button class="av-btn ghost" onClick="{{col.toggle}}">{{col.moreBtn}}</button></div></sc-if>
+</section>
+</sc-for>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{tabRecord}}" hint-placeholder-val="{{ false }}">
+<div class="av-rec">
+<nav class="av-outline" aria-label="Record outline">
+<span class="o-h">Outline</span>
+<sc-for list="{{outline}}" as="o" hint-placeholder-count="6"><a href="{{o.href}}" class="{{o.cls}}"><sc-if value="{{o.pin}}"><span class="ic i-pin pin" aria-hidden="true"></span></sc-if>{{o.label}}<span class="c">{{o.c}}</span></a></sc-for>
+</nav>
+<article class="av-doc">
+<section class="av-pin" id="rec-stopped">
+<span class="pin-k"><span class="ic i-pin" aria-hidden="true"></span>Pinned</span>
+<h3>Where this cycle stopped</h3>
+<p>{{rec.stopped}}</p>
+<h4>What the next agent must do</h4>
+<ol><sc-for list="{{rec.next}}" as="x" hint-placeholder-count="4"><li>{{x}}</li></sc-for></ol>
+</section>
+<section id="rec-state"><h3>State summary</h3><p>{{rec.state}}</p></section>
+<section id="rec-kanban"><h3>Kanban</h3><ul><li><b>In Progress:</b> <span class="mono">aide-score-misaligned-rank</span> — aide_score ranks misaligned specs below unreviewed ones (p1, bug)</li><li><b>In Review:</b> <span class="mono">viewer-reconnect</span> — Viewer reconnects after a server restart (p1, feature)</li><li><b>Next up:</b> <span class="mono">aide-validate-path-scope</span> (p1, bug)</li></ul></section>
+<section id="rec-intent"><h3>Architectural intent</h3>
+<div class="dec">
+<span class="k">D1</span><p>Pipeline events are append-only, one JSONL file per session; nothing rewrites history except deleting a whole ended session.</p>
+<span class="k">D2</span><p>The viewer is read-only. Approvals happen in the agent session, never in the page.</p>
+<span class="gap">D3 retired</span>
+<span class="k">D4</span><p>The intent tree is read from the filesystem (<span class="mono">.aide</span> files), not reconstructed from events.</p>
+<span class="gap">D5–D6 retired</span>
+<span class="k">D7</span><p><b>aide_score</b> orders misaligned before unreviewed before aligned, then by open todo count.</p>
+</div>
+</section>
+<section id="rec-inv"><h3>Anti-regression invariants</h3><ul><li><span class="mono">aide_validate</span> with a path only reports specs under that path.</li><li>Install never overwrites an existing <span class="mono">.aide/intent.aide</span>.</li><li>Event writer tolerates a brain folder path with spaces.</li><li>Plan step numbering keeps sub-steps (2a, 2b) attached to their parent.</li></ul></section>
+<section id="rec-q"><h3>Open questions</h3>
+<sc-if value="{{rec.hasQ}}" hint-placeholder-val="{{ false }}"><ul><sc-for list="{{rec.q}}" as="q" hint-placeholder-count="2"><li>{{q}}</li></sc-for></ul></sc-if>
+<sc-if value="{{rec.noQ}}" hint-placeholder-val="{{ true }}"><p class="av-empty">No open questions recorded for this cycle.</p></sc-if>
+</section>
+</article>
+</div>
+</sc-if>
+
+<sc-if value="{{tabSessions}}" hint-placeholder-val="{{ false }}">
+<div class="av-list">
+<sc-for list="{{projSessions}}" as="s" hint-placeholder-count="4">
+<div class="{{s.cls}}">
+<div class="s-when"><b>{{s.start}}</b><span class="meta"><span class="mono">{{s.dur}}</span> · {{s.events}} events</span></div>
+<div class="s-task"><span class="t3">Task </span><b>{{s.task}}</b></div>
+<div class="s-act"><span class="{{s.stCls}}"><span class="{{s.stIcon}}" aria-hidden="true"></span>{{s.st}}</span><sc-if value="{{s.ended}}"><button class="av-btn danger" onClick="{{s.del}}" aria-label="{{s.delLabel}}"><span class="ic i-trash" aria-hidden="true"></span>Delete</button></sc-if></div>
+<sc-if value="{{s.confirm}}" hint-placeholder-val="{{ false }}">
+<div class="av-confirm" role="alertdialog" aria-label="Confirm delete">
+<span class="ic lg i-trash" aria-hidden="true" style="color: var(--danger)"></span>
+<p>Delete this session's history? This can't be undone.</p>
+<button class="av-btn" onClick="{{s.cancel}}">Cancel</button>
+<button class="av-btn danger-solid" onClick="{{s.doDel}}">Delete history</button>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+</div>
+</div>
+
+<aside class="av-side" aria-label="History">
+<div class="av-hist-h">
+<h2 class="av-h2"><span class="ic i-history" aria-hidden="true"></span>History <span class="n">{{histN}}</span></h2>
+<div class="av-seg" role="group" aria-label="Order"><button aria-pressed="{{newestP}}" onClick="{{setNewest}}">Newest first</button><button aria-pressed="{{oldestP}}" onClick="{{setOldest}}">Oldest first</button></div>
+</div>
+<sc-if value="{{two}}" hint-placeholder-val="{{ false }}">
+<div class="av-seg" role="group" aria-label="Filter by session" style="margin-bottom: 10px"><sc-for list="{{sessFilters}}" as="sf" hint-placeholder-count="3"><button aria-pressed="{{sf.p}}" onClick="{{sf.pick}}">{{sf.label}}</button></sc-for></div>
+</sc-if>
+<div class="av-filters" role="group" aria-label="Filter by type">
+<sc-for list="{{histFilters}}" as="hf" hint-placeholder-count="7"><button aria-pressed="{{hf.p}}" onClick="{{hf.pick}}">{{hf.label}}</button></sc-for>
+</div>
+<sc-if value="{{histEmpty}}" hint-placeholder-val="{{ false }}"><p class="av-empty">{{histEmptyText}}</p></sc-if>
+<ol class="av-hist">
+<sc-for list="{{hist}}" as="h" hint-placeholder-count="10">
+<sc-if value="{{h.day}}"><li class="av-hday">{{h.day}}</li></sc-if>
+<sc-if value="{{h.row}}"><li><button class="{{h.cls}}" onClick="{{h.open}}"><span class="h-t">{{h.t}}</span><span class="h-g"><span class="{{h.icon}}" aria-hidden="true"></span><span class="sr">{{h.kindWord}}</span></span><span class="h-l">{{h.label}}<sc-if value="{{h.mono}}"> <span class="mono">{{h.mono}}</span></sc-if><sc-if value="{{h.sess}}"><span class="av-hsess">{{h.sess}}</span></sc-if><sc-if value="{{h.meta}}"><span class="h-m">{{h.meta}}</span></sc-if></span></button></li></sc-if>
+</sc-for>
+</ol>
+</aside>
+</div>
+</sc-if>
+
+</div>
+</sc-if>
+
+<sc-if value="{{drawerOn}}" hint-placeholder-val="{{ false }}">
+<aside class="av-drawer" role="dialog" aria-modal="false" aria-label="{{dr.title}}">
+<div class="av-drawer-h">
+<div class="grow stack" style="gap: 2px"><span class="d-k">{{dr.kind}}</span><span class="{{dr.tCls}}">{{dr.title}}</span><sc-if value="{{dr.meta}}"><span class="meta">{{dr.meta}}</span></sc-if></div>
+<button class="av-btn icon ghost" aria-label="Close details" onClick="{{closeDrawer}}"><span class="ic lg i-close" aria-hidden="true"></span></button>
+</div>
+<div class="av-drawer-b">
+<sc-for list="{{dr.blocks}}" as="b" hint-placeholder-count="3">
+<section>
+<sc-if value="{{b.h}}"><h4><span class="{{b.icon}}" aria-hidden="true"></span>{{b.h}}<sc-if value="{{b.badge}}"><span class="{{b.badgeCls}}">{{b.badge}}</span></sc-if></h4></sc-if>
+<sc-if value="{{b.isFm}}"><dl class="av-fm"><sc-for list="{{b.rows}}" as="fr" hint-placeholder-count="3"><dt>{{fr.k}}</dt><dd>{{fr.v}}<sc-if value="{{fr.list}}"><ul class="out" style="margin-top: 2px"><sc-for list="{{fr.list}}" as="fl"><li>{{fl}}</li></sc-for></ul></sc-if></dd></sc-for></dl></sc-if>
+<sc-if value="{{b.isText}}"><sc-for list="{{b.paras}}" as="pa"><p style="margin-bottom: 8px">{{pa}}</p></sc-for></sc-if>
+<sc-if value="{{b.isList}}"><ul class="out"><sc-for list="{{b.items}}" as="it"><li>{{it}}</li></sc-for></ul></sc-if>
+<sc-if value="{{b.isPre}}"><div class="av-pre">{{b.pre}}</div></sc-if>
+<sc-if value="{{b.isKv}}"><dl class="av-kv"><sc-for list="{{b.rows}}" as="kv"><dt>{{kv.k}}</dt><dd class="{{kv.cls}}">{{kv.v}}</dd></sc-for></dl></sc-if>
+<sc-if value="{{b.isCheck}}"><ol class="av-check"><sc-for list="{{b.items}}" as="ck"><li class="{{ck.cls}}"><span class="ck" aria-hidden="true"><sc-if value="{{ck.on}}"><span class="ic i-check"></span></sc-if></span><span class="no">{{ck.no}}</span><span class="tx">{{ck.tx}}<span class="sr">{{ck.sr}}</span></span></li></sc-for></ol></sc-if>
+<sc-if value="{{b.isIssues}}"><ol class="av-check"><sc-for list="{{b.items}}" as="is"><li class="{{is.cls}}"><span class="ck" aria-hidden="true"><sc-if value="{{is.on}}"><span class="ic i-check"></span></sc-if></span><span><span class="loc">{{is.loc}}</span><span class="what">{{is.what}}<span class="sr">{{is.sr}}</span></span></span></li></sc-for></ol></sc-if>
+</section>
+</sc-for>
+</div>
+</aside>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scenario":{"editor":"enum","default":"s-building","options":["home-several","home-one","home-many","home-empty","home-delete","s-not-installed","s-no-events","s-building","s-waiting","s-idle","s-two-live","s-board-error","s-large","s-qa-fix","s-reconnecting","s-no-folder","link-invalid"]},"theme":{"editor":"enum","default":"dark","options":["dark","light"]},"device":{"editor":"enum","default":"auto","options":["auto","desktop","phone"]},"tab":{"editor":"enum","default":"","options":["","tree","plans","board","record","sessions","history"]},"drawer":{"editor":"enum","default":"","options":["","module","todo","task","prompt","commit"]},"framed":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = this.fresh(props);
+    this.onResize = () => this.setState({ narrow: window.innerWidth < 760 });
+  }
+  fresh(p) {
+    const sc = (p && p.scenario) || 's-building';
+    const cfg = this.cfg(sc);
+    return {
+      sc: sc, view: null, theme: null, tab: (p && p.tab) || cfg.tab || 'tree',
+      drawer: (p && p.drawer) || cfg.drawer || '', drawerItem: null,
+      collapsed: cfg.collapsed || {}, fOpen: false, fMis: false, treeQ: '',
+      newest: true, hf: 'all', sf: 'all', sess: 'A',
+      openProj: cfg.openProj || {}, confirm: cfg.confirm || '', deleted: {}, projQ: '', showDone: false,
+      narrow: typeof window !== 'undefined' && window.innerWidth < 760
+    };
+  }
+  componentDidMount() { if (typeof window !== 'undefined') window.addEventListener('resize', this.onResize); }
+  componentWillUnmount() { if (typeof window !== 'undefined') window.removeEventListener('resize', this.onResize); }
+  componentDidUpdate(prev) {
+    if (prev.scenario !== this.props.scenario || prev.tab !== this.props.tab || prev.drawer !== this.props.drawer) {
+      this.setState(this.fresh(this.props));
+    }
+  }
+  cfg(sc) {
+    const C = {
+      'home-several': { screen: 'home', openProj: {} },
+      'home-one': { screen: 'home', openProj: { 'aidemd-mcp': true } },
+      'home-many': { screen: 'home' },
+      'home-empty': { screen: 'home' },
+      'home-delete': { screen: 'home', openProj: { 'aidemd-mcp': true }, confirm: 'm3' },
+      'link-invalid': { screen: 'invalid' },
+      's-not-installed': { conn: 'idle', notInstalled: true },
+      's-no-events': { conn: 'live', rail: 'none', card: 'empty', hist: 'none', tree: 'root' },
+      's-building': { conn: 'live', rail: 'build', card: 'build' },
+      's-waiting': { conn: 'live', rail: 'wait', card: 'wait', waiting: true },
+      's-idle': { conn: 'idle', rail: 'idle', card: 'idle', hist: 'idle' },
+      's-two-live': { conn: 'live', rail: 'plan', card: 'plan', two: true },
+      's-board-error': { conn: 'live', rail: 'build', card: 'build', boardErr: true, tab: 'board' },
+      's-large': { conn: 'live', rail: 'build', card: 'build', large: true, tab: 'tree', collapsed: { 'src/domain': true, 'src/viewer': true, 'test': true } },
+      's-qa-fix': { conn: 'live', rail: 'fix', card: 'fix', hist: 'fix', drawer: 'todo' },
+      's-reconnecting': { conn: 'recon', rail: 'build', card: 'build', recon: true },
+      's-no-folder': { conn: 'live', rail: 'build', card: 'build', noFolder: true }
+    };
+    return C[sc] || C['s-building'];
+  }
+
+  /* ---------- static data ---------- */
+  railData(kind) {
+    const names = ['Spec', 'Research', 'Synthesize', 'Plan', 'Plan approval', 'Build', 'QA', 'Fix', 'Done'];
+    const D = (m) => ({ s: 'done', m: m });
+    const T = { s: 'todo', m: 'Not started' };
+    const R = {
+      none: [T, T, T, T, T, T, T, T, T],
+      plan: [D('Done 2m 10s'), D('Done 6m 02s'), D('Done 3m 18s'), { s: 'run', m: 'Running 3m 41s' }, T, T, T, T, T],
+      wait: [D('Done 2m 10s'), D('Done 6m 02s'), D('Done 3m 18s'), D('Done 3m 41s'), { s: 'wait', m: 'Waiting · 2m' }, T, T, T, T],
+      build: [D('Done 2m 10s'), D('Done 6m 02s'), D('Done 3m 18s'), D('Done 3m 41s'), D('Approved 4m 12s'), { s: 'run', m: 'Step 4 of 9' }, T, T, T],
+      fix: [D('Done 2m 10s'), D('Done 6m 02s'), D('Done 3m 18s'), D('Done 3m 41s'), D('Approved 4m 12s'), D('Done 9 of 9'), { s: 'fail', m: '2 issues · round 2' }, { s: 'run', m: 'Round 2 · 1m 05s', loop: 'round 2' }, T],
+      idle: [D('Done 2m 10s'), D('Done 6m 02s'), D('Done 3m 18s'), D('Done 3m 41s'), D('Approved 4m 12s'), D('Done 9 of 9'), { s: 'done', m: 'Passed 2m 48s' }, T, D('Done 14:51')]
+    }[kind] || [];
+    const icon = { done: 'ic i-done', run: 'ic i-run', wait: 'ic i-wait', fail: 'ic i-issues', todo: 'ic i-todo' };
+    return names.map((n, i) => ({ name: n, cls: 'av-ph ' + R[i].s, icon: icon[R[i].s], meta: R[i].m, loop: R[i].loop || '' }));
+  }
+  lanesData(kind) {
+    const done = (kind !== 'none');
+    const L = [
+      { name: 'Structure', s: done ? 'done' : 'todo', m: done ? 'Done' : 'Not started' },
+      { name: 'Align', s: done ? 'done' : 'todo', m: done ? 'Done' : 'Not started' },
+      { name: 'Refactor', s: 'todo', m: 'Not started' },
+      { name: 'Cleanup', s: kind === 'idle' ? 'done' : 'todo', m: kind === 'idle' ? 'Done' : 'Not started' }
+    ];
+    const icon = { done: 'ic i-done', run: 'ic i-run', todo: 'ic i-todo', fail: 'ic i-issues' };
+    return L.map((l) => ({ name: l.name, cls: 'av-lane ' + l.s, icon: icon[l.s], meta: l.m }));
+  }
+  cardData(kind, sess) {
+    const steps = (d, r, n) => Array.from({ length: n }, (_, i) => ({ c: i < d ? 'd' : (i < d + r ? 'r' : '') }));
+    if (sess === 'B') return {
+      cls: 'av-card run', icon: 'ic lg i-run', state: 'Running', title: 'Research', titleMono: '', sub: '',
+      parts: [{ l: 'agent', v: 'aide-domain-expert', cls: 'mono' }, { l: 'module', v: 'src/tools/validate', cls: 'mono' }],
+      time: '1m 52s', timeLbl: 'elapsed · started 15:30', steps: null, hint: ''
+    };
+    const K = {
+      build: { cls: 'av-card run', icon: 'ic lg i-run', state: 'Running', title: 'Build', sub: 'step 4 of 9',
+        parts: [{ l: 'agent', v: 'aide-implementor', cls: 'mono' }, { l: 'module', v: 'src/tools/score', cls: 'mono' }],
+        time: '7m 55s', timeLbl: 'elapsed · started 14:22', steps: steps(3, 1, 9), stepHead: 'Step 4 of 9', stepText: 'Wire weights into the aide_score ranking', hint: '' },
+      plan: { cls: 'av-card run', icon: 'ic lg i-run', state: 'Running', title: 'Plan', sub: '',
+        parts: [{ l: 'agent', v: 'aide-architect', cls: 'mono' }, { l: 'module', v: 'src/tools/score', cls: 'mono' }],
+        time: '3m 41s', timeLbl: 'elapsed · started 14:14', steps: null, hint: '' },
+      wait: { cls: 'av-card wait', icon: 'ic lg i-wait', state: 'Waiting on you', title: 'Approve', titleMono: 'plan.aide', sub: '',
+        parts: [{ l: 'for', v: 'src/tools/score', cls: 'mono' }, { l: 'written by', v: 'aide-architect', cls: 'mono' }],
+        time: '2m', timeLbl: 'waiting since 14:18', steps: null, hint: 'The agent is paused until you answer in its session. This page is read-only.' },
+      fix: { cls: 'av-card fix', icon: 'ic lg i-loop', state: 'QA → Fix · round 2', title: 'Fix', sub: '2 of 5 issues open',
+        parts: [{ l: 'agent', v: 'aide-implementor', cls: 'mono' }, { l: 'module', v: 'src/tools/score', cls: 'mono' }],
+        time: '1m 05s', timeLbl: 'elapsed · round 2 started 14:49', steps: null, hint: 'Round 1 fixed 3 issues; QA round 2 found 2 still open in todo.aide.' },
+      idle: { cls: 'av-card idle', icon: 'ic lg i-idle', state: 'Idle — no events for 12m', title: 'Last: QA passed', sub: '',
+        parts: [{ l: 'module', v: 'src/tools/score', cls: 'mono' }, { l: 'agent', v: 'aide-qa', cls: 'mono' }, { l: 'then', v: 'Done at 14:51', cls: '' }],
+        time: '12m', timeLbl: 'since last event', steps: null, hint: 'Finished: aide_score ranks misaligned specs below unreviewed ones — committed 414776f.' },
+      empty: { cls: 'av-card empty', icon: 'ic lg i-clock', state: 'No activity yet', title: 'Waiting for the first phase', sub: '',
+        parts: [{ l: 'session started', v: '14:02', cls: 'mono' }],
+        time: '', timeLbl: '', steps: null, hint: 'The agent hasn’t started a phase. The rail and this card light up as soon as one begins.' }
+    };
+    const c = K[kind] || K.build;
+    c.titleMono = c.titleMono || '';
+    return c;
+  }
+  treeData(large, root) {
+    const N = [];
+    const add = (path, desc, align, chips, extra) => N.push(Object.assign({ path: path, desc: desc, align: align, chips: chips || [] }, extra || {}));
+    const P = (st, a, b) => ({ t: 'plan', st: st, a: a, b: b });
+    const TD = (o, n) => ({ t: 'todo', o: o, n: n });
+    const B = { t: 'brief' }, RS = { t: 'research' };
+    add('.aide/intent.aide', 'aidemd-mcp — the AIDE methodology as an MCP server and CLI', 'aligned', [B]);
+    if (root) return N;
+    add('src/tools', 'MCP tool handlers that agents call', 'aligned', []);
+    add('src/tools/score', 'Ranks specs by alignment and open work so the next agent knows where to start', 'aligned', [B, P('approved', 3, 9), RS], { cur: true });
+    add('src/tools/validate', 'Checks that specs exist and their frontmatter is complete', 'misaligned', [B, P('completed', 6, 6), TD(3, 5)]);
+    add('src/tools/scaffold', 'Creates a spec folder with starter intent and brief', 'unreviewed', [B]);
+    if (large) {
+      ['next', 'status', 'retro', 'align', 'tree', 'search', 'diff', 'graph', 'export'].forEach((m, i) =>
+        add('src/tools/' + m, ['Suggests the next module to work on', 'Summarises pipeline state for an agent', 'Collects retro notes from closed todos', 'Compares code against intent and flags drift', 'Returns the intent tree as JSON', 'Full-text search across specs', 'Shows spec changes since a commit', 'Dependency graph between modules', 'Exports specs as a single markdown file'][i],
+          i === 3 ? 'misaligned' : (i % 3 === 0 ? 'unreviewed' : 'aligned'), i === 3 ? [B, TD(2, 4)] : (i === 1 ? [B, P('proposed', 0, 6)] : [B])));
+    }
+    add('src/service', 'Long-lived services behind the tools', 'aligned', []);
+    add('src/service/install', 'Writes AIDE files into a project and wires the MCP config', 'aligned', [B, P('completed', 9, 9)]);
+    add('src/service/events', 'Appends pipeline events that the viewer reads', 'aligned', [B, P('proposed', 0, 7), RS]);
+    add('src/service/brain', 'Reads and writes the kanban brain folder', 'unreviewed', [RS]);
+    if (large) {
+      ['watch', 'cache', 'config', 'log', 'git', 'lock', 'paths'].forEach((m, i) =>
+        add('src/service/' + m, ['Watches .aide files and pushes tree changes', 'Caches parsed specs between calls', 'Loads and merges project config', 'Structured logging for agents and server', 'Reads commits and tags for release events', 'Prevents two writers on one session file', 'Resolves project root and brain paths'][i],
+          i === 4 ? 'misaligned' : 'aligned', i === 0 ? [B, TD(1, 3)] : (i === 6 ? [B, P('approved', 2, 5)] : [B])));
+    }
+    add('src/cli', 'Command-line entry points', 'aligned', []);
+    add('src/cli/init', 'Interactive setup: project root, kanban tag, brain folder', 'aligned', [B, P('abandoned', 2, 8), TD(1, 2)]);
+    if (large) {
+      add('src/cli/doctor', 'Checks an install and prints what to fix', 'unreviewed', [B]);
+      add('src/cli/upgrade', 'Migrates older .aide layouts', 'aligned', [B, P('completed', 4, 4)]);
+      add('src/domain', 'Pure parsing and ranking logic, no I/O', 'aligned', []);
+      ['intent', 'plan', 'todo', 'brief', 'frontmatter', 'alignment', 'progress', 'slug'].forEach((m, i) =>
+        add('src/domain/' + m, 'Parses and models ' + ['intent files', 'plan files and numbered steps', 'todo issues and retros', 'briefs', 'spec frontmatter', 'alignment status', 'plan and todo progress', 'task slugs'][i], i === 1 ? 'aligned' : 'aligned', i === 1 ? [B, P('approved', 1, 3)] : [B]));
+    }
+    add('src/viewer', 'Local pipeline viewer: server and page', 'unreviewed', []);
+    add('src/viewer/server', 'Serves the page on 127.0.0.1 and streams events', 'aligned', [B, P('approved', 6, 9), TD(0, 2)]);
+    add('src/viewer/page', 'The page this design describes', 'unreviewed', [B, RS]);
+    if (large) {
+      add('src/viewer/auth', 'Access links and their expiry', 'aligned', [B]);
+      add('src/viewer/stream', 'Reconnect and replay after a server restart', 'aligned', [B, P('completed', 5, 5)]);
+      add('test', 'Golden fixtures and integration tests', 'aligned', []);
+      ['fixtures', 'e2e', 'golden'].forEach((m, i) => add('test/' + m, ['Sample projects used by tests', 'End-to-end runs of the pipeline', 'Golden outputs for parsers'][i], 'aligned', [B]));
+    }
+    return N;
+  }
+  boardData(large) {
+    const T = (title, slug, p, type, linked) => ({ title: title, slug: slug, p: p, type: type, linked: !!linked });
+    const cols = [
+      { name: 'Backlog', tasks: [T('Search across specs from the CLI', 'cli-spec-search', 'p3', 'feature'), T('Remove legacy pipeline.json reader', 'remove-pipeline-json', 'p3', 'housekeeping'), T('Golden tests for plan step parsing', 'golden-plan-steps', 'p2', 'test'), T('Doctor command explains missing brain folder', 'doctor-brain-hint', 'p2', 'change')] },
+      { name: 'Todo', tasks: [T('aide_validate with a path reports missing specs from the whole project', 'aide-validate-path-scope', 'p1', 'bug'), T('Brain folder path with spaces breaks the event writer', 'brain-path-spaces', 'p0', 'bug'), T('init asks for the kanban tag', 'init-kanban-tag', 'p3', 'feature')] },
+      { name: 'In Progress', tasks: [T('aide_score ranks misaligned specs below unreviewed ones', 'aide-score-misaligned-rank', 'p1', 'bug', true), T('Install writes .aide/intent.aide when missing', 'install-root-intent', 'p2', 'feature')] },
+      { name: 'In Review', tasks: [T('Viewer reconnects after a server restart', 'viewer-reconnect', 'p1', 'feature')] },
+      { name: 'Done', tasks: [T('Plan sub-steps (2a, 2b) keep their parent number', 'plan-substep-numbers', 'p2', 'bug'), T('Events carry the brain folder on session start', 'event-brain-folder', 'p2', 'change'), T('QA verdict event includes open count', 'qa-open-count', 'p2', 'change'), T('Release event on version tag', 'release-event', 'p3', 'feature'), T('Tidy CLI help text', 'cli-help-tidy', 'p3', 'housekeeping')] }
+    ];
+    if (large) {
+      const extra = ['Cache parsed specs between tool calls', 'Graph view of module dependencies', 'Export specs as one markdown file', 'Diff specs since a commit', 'Retro digest across closed todos', 'Lock file for concurrent session writers', 'Configurable phase names', 'Watcher debounce for large trees'];
+      extra.forEach((t, i) => cols[0].tasks.push(T(t, t.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 28), ['p2', 'p3'][i % 2], ['feature', 'change', 'test', 'housekeeping'][i % 4])));
+      cols[1].tasks.push(T('Score ties break by path', 'score-tie-break', 'p3', 'change'), T('Viewer shows release events', 'viewer-release-row', 'p2', 'feature'));
+    }
+    cols[0].total = large ? 41 : cols[0].tasks.length;
+    cols[1].total = large ? 22 : cols[1].tasks.length;
+    cols[2].total = cols[2].tasks.length; cols[3].total = cols[3].tasks.length;
+    cols[4].total = large ? 128 : 14;
+    return cols;
+  }
+  historyData(kind, two) {
+    const H = [];
+    const h = (t, k, label, mono, meta, extra) => H.push(Object.assign({ t: t, k: k, label: label, mono: mono || '', meta: meta || '', sess: '' }, extra || {}));
+    h('14:02', 'start', 'Session started', '', '~/code/aidemd-mcp · kanban aidemd', { open: 'start' });
+    h('14:02', 'prompt', 'Prompt: “Pick up the next p1 from the board and run the pipeline on it”', '', '', { open: 'prompt' });
+    if (kind === 'none') return H;
+    h('14:03', 'task', 'Picked task', 'aide-score-misaligned-rank', 'Todo → In Progress', { open: 'task' });
+    h('14:03', 'phase', 'Spec started', '', 'aide-spec-writer · src/tools/score');
+    h('14:05', 'done', 'Spec finished · 2m 10s', '', '', { open: 'phase', files: [['src/tools/score/.aide', 'updated'], ['src/tools/score/brief.aide', 'created']] });
+    h('14:05', 'phase', 'Research started', '', 'aide-domain-expert · src/tools/score');
+    h('14:11', 'done', 'Research finished · 6m 02s', '', '', { open: 'phase', files: [['src/tools/score/research.aide', 'created']] });
+    h('14:11', 'phase', 'Synthesize started', '', 'aide-strategist');
+    h('14:14', 'done', 'Synthesize finished · 3m 18s', '', '', { open: 'phase' });
+    h('14:14', 'phase', 'Plan started', '', 'aide-architect · src/tools/score');
+    if (kind === 'plan') return H;
+    h('14:18', 'done', 'Plan finished · 3m 41s', '', '', { open: 'phase', files: [['src/tools/score/plan.aide', 'created']] });
+    h('14:18', 'wait', 'Waiting on you — approve', 'plan.aide', 'src/tools/score');
+    if (kind === 'wait') return H;
+    h('14:22', 'approve', 'Approved', 'plan.aide', 'waited 4m 12s');
+    h('14:22', 'phase', 'Build started', '', 'aide-implementor · src/tools/score');
+    h('14:24', 'step', 'Plan step checked · 1/9', '', 'src/tools/score');
+    h('14:26', 'step', 'Plan step checked · 2/9', '', 'src/tools/score', { files: [['src/tools/score/weights.ts', 'created'], ['src/tools/score/rank.ts', 'updated'], ['src/tools/score/rank.test.ts', 'updated']] });
+    h('14:28', 'step', 'Plan step checked · 3/9', '', 'src/tools/score');
+    h('14:29', 'commit', 'Commit', '414776f', 'score: add alignment weights', { open: 'commit' });
+    if (kind === 'build') return H;
+    h('14:36', 'step', 'Plan step checked · 9/9', '', 'src/tools/score');
+    h('14:40', 'done', 'Build finished · 18m 20s', '', '', { open: 'phase' });
+    h('14:40', 'phase', 'QA started', '', 'aide-qa · src/tools/score');
+    if (kind === 'idle') {
+      h('14:43', 'pass', 'QA passed', '', 'src/tools/score · 0 open', { open: 'qa' });
+      h('14:44', 'commit', 'Commit', '9c1e2ab', 'score: rank misaligned below unreviewed', { open: 'commit' });
+      h('14:50', 'task', 'Moved task', 'aide-score-misaligned-rank', 'In Progress → In Review');
+      h('14:51', 'done', 'Done', '', 'src/tools/score');
+      h('14:51', 'release', 'Release', 'v0.9.2', '');
+      return H;
+    }
+    h('14:42', 'issues', 'QA found 5 issues', '', 'src/tools/score · 5 open · round 1', { open: 'qa' });
+    h('14:42', 'phase', 'Fix started · round 1', '', 'aide-implementor');
+    h('14:46', 'done', 'Fix finished · 3m 50s', '', '3 issues closed', { files: [['src/tools/score/rank.ts', 'updated'], ['src/tools/score/todo.aide', 'updated']] });
+    h('14:47', 'error', 'Error: rank.test.ts timed out after 30s', '', 'aide-qa · src/tools/score', { open: 'error' });
+    h('14:48', 'issues', 'QA found 2 issues', '', 'src/tools/score · 2 open · round 2', { open: 'qa' });
+    h('14:49', 'phase', 'Fix started · round 2', '', 'aide-implementor · src/tools/score');
+    return H;
+  }
+
+  /* ---------- drawers ---------- */
+  drawerData(kind, cfg) {
+    const fm = { h: 'Spec frontmatter', icon: 'ic i-doc', isFm: true, rows: [
+      { k: 'intent', v: 'Point the next agent at the module that most needs attention.' },
+      { k: 'desired', v: '', list: ['Misaligned specs rank above unreviewed, unreviewed above aligned', 'Ties break by open todo count, then path', 'Output is stable for the same tree'] },
+      { k: 'undesired', v: '', list: ['Ranking depends on file system order', 'Aligned modules with open todos hidden'] } ] };
+    const body = { h: 'Body', icon: 'ic i-list', isText: true, paras: ['Context — Agents call aide_score at the start of a cycle. Today it sorts by modified time, which buries misaligned specs.', 'Strategy — Compute a weight per node from alignment, then open work; keep the scoring pure so it can be golden-tested.'] };
+    const plan = { h: 'Plan', icon: 'ic i-step', badge: 'approved · 3/9', badgeCls: 'av-badge run', isCheck: true, items: [
+      { no: '1', tx: 'Add AlignmentWeight to src/domain/alignment', on: true }, { no: '2', tx: 'Create weights.ts with the ordering table', on: true },
+      { no: '2a', tx: 'Misaligned 3, unreviewed 2, aligned 1', on: true, sub: true }, { no: '2b', tx: 'Unit tests for each weight', on: true, sub: true },
+      { no: '3', tx: 'Expose weight on tree nodes', on: true }, { no: '4', tx: 'Wire weights into the aide_score ranking', on: false, cur: true },
+      { no: '5', tx: 'Break ties by open todo count, then path', on: false }, { no: '6', tx: 'Golden test with the fixture project', on: false },
+      { no: '7', tx: 'Update tool description', on: false }, { no: '8', tx: 'Changelog entry', on: false }, { no: '9', tx: 'Remove modified-time sort', on: false } ] };
+    plan.items = plan.items.map((x) => Object.assign(x, { cls: (x.on ? 'on' : '') + (x.sub ? ' sub' : '') + (x.cur ? ' cur' : ''), sr: x.on ? ' (done)' : (x.cur ? ' (in progress)' : ' (not done)') }));
+    const todo = { h: 'Todo', icon: 'ic i-issues', badge: '2 of 5 open', badgeCls: 'av-badge danger', isIssues: true, items: [
+      { loc: 'src/tools/score/rank.ts:42', what: 'Ties fall back to insertion order, not path', on: false },
+      { loc: 'src/tools/score/rank.test.ts:118', what: 'No case for a misaligned leaf under an aligned parent', on: false },
+      { loc: 'src/tools/score/weights.ts:9', what: 'Weight table not frozen; callers can mutate it', on: true },
+      { loc: 'src/tools/score/rank.ts:67', what: 'Open todo count read twice per node', on: true },
+      { loc: 'src/tools/score/index.ts:15', what: 'Tool description still says “by modified time”', on: true } ] };
+    todo.items = todo.items.map((x) => Object.assign(x, { cls: 'issue' + (x.on ? ' on' : ''), sr: x.on ? ' (fixed)' : ' (open)' }));
+    const retro = { h: 'Retro', icon: 'ic i-history', isList: true, items: ['Round 1 missed tie-breaking because the plan step said “stable” without saying stable by what.', 'Golden fixture should include a misaligned leaf under an aligned parent.'] };
+    const D = {
+      module: { kind: 'Module', title: 'src/tools/score', tCls: 'd-t mono', meta: 'aligned · plan approved 3/9 · working now', blocks: [fm, body, plan] },
+      todo: { kind: 'Module · todo', title: 'src/tools/score', tCls: 'd-t mono', meta: 'QA round 2 · 2 of 5 open', blocks: [todo, retro, fm, Object.assign({}, plan, { badge: 'completed · 9/9', badgeCls: 'av-badge done', items: plan.items.map((x) => Object.assign({}, x, { on: true, cls: 'on' + (x.sub ? ' sub' : ''), sr: ' (done)' })) })] },
+      task: { kind: 'Kanban task', title: 'aide_score ranks misaligned specs below unreviewed ones', tCls: 'd-t', meta: 'aide-score-misaligned-rank · p1 · bug · In Progress', blocks: [
+        { h: 'Description', icon: 'ic i-doc', isText: true, paras: ['aide_score sorts modules by modification time. A misaligned spec edited last week ranks below an unreviewed one edited today, so the next agent starts in the wrong place.'] },
+        { h: 'Acceptance', icon: 'ic i-step', isList: true, items: ['Misaligned > unreviewed > aligned', 'Ties by open todo count, then path', 'Golden test covers the fixture project'] },
+        { h: 'Linked', icon: 'ic i-eye', isKv: true, rows: [{ k: 'Session', v: 'Today 14:02 (this session)' }, { k: 'Module', v: 'src/tools/score', cls: 'mono' }] } ] },
+      prompt: { kind: 'Prompt · 14:02', title: 'Pick up the next p1 from the board and run the pipeline on it', tCls: 'd-t', meta: 'session 14:02', blocks: [
+        { h: 'Full text', icon: 'ic i-prompt', isPre: true, pre: 'Pick up the next p1 from the board and run the pipeline on it.\n\nIf the spec for the module is misaligned, fix the spec first and stop at plan approval so I can read the plan. Keep commits small and reference the task slug.' } ] },
+      commit: { kind: 'Commit', title: '414776f', tCls: 'd-t mono', meta: '14:29 · during Build, step 3 of 9', blocks: [
+        { h: 'Message', icon: 'ic i-commit', isPre: true, pre: 'score: add alignment weights\n\nAdds weights.ts with the misaligned/unreviewed/aligned ordering and\nexposes weight on tree nodes. Ranking not wired yet (step 4).\n\nTask: aide-score-misaligned-rank' } ] },
+      phase: { kind: 'Phase finished', title: 'Plan · src/tools/score', tCls: 'd-t', meta: 'aide-architect · 14:14 → 14:18 · 3m 41s', blocks: [
+        { h: 'Summary', icon: 'ic i-done', isText: true, paras: ['Wrote plan.aide with 9 steps. Weighting stays in src/domain so aide_score stays thin; tie-break rule made explicit after research.'] },
+        { h: 'Files written', icon: 'ic i-files', isKv: true, rows: [{ k: 'created', v: 'src/tools/score/plan.aide', cls: 'mono' }] } ] },
+      qa: { kind: 'QA verdict', title: '2 issues open · round 2', tCls: 'd-t', meta: 'aide-qa · src/tools/score · 14:48', blocks: [todo] },
+      error: { kind: 'Error', title: 'rank.test.ts timed out after 30s', tCls: 'd-t', meta: 'aide-qa · src/tools/score · 14:47', blocks: [
+        { h: 'Message', icon: 'ic i-error', isPre: true, pre: 'Error: Test timed out in 30000ms.\n  at src/tools/score/rank.test.ts:118' } ] },
+      start: { kind: 'Session started', title: 'Session 14:02', tCls: 'd-t', meta: '', blocks: [
+        { h: 'Reported', icon: 'ic i-power', isKv: true, rows: [{ k: 'Project root', v: '~/code/aidemd-mcp', cls: 'mono' }, { k: 'Kanban tag', v: 'aidemd', cls: 'mono' }, { k: 'Brain folder', v: '~/brain/aidemd', cls: 'mono' }] } ] }
+    };
+    const d = D[kind] || D.module;
+    d.blocks = d.blocks.map((b) => Object.assign({ h: '', icon: '', badge: '', badgeCls: '', isFm: false, isText: false, isList: false, isPre: false, isKv: false, isCheck: false, isIssues: false }, b));
+    return d;
+  }
+
+  /* ---------- render ---------- */
+  renderVals() {
+    const st = this.state;
+    const sc = st.sc;
+    const cfg = this.cfg(sc);
+    const theme = st.theme || this.props.theme || 'dark';
+    const dev = this.props.device || 'auto';
+    const phone = dev === 'phone' || (dev === 'auto' && st.narrow);
+    const framed = !!this.props.framed && this.props.framed !== 'false';
+    const view = st.view || cfg.screen || 'session';
+    const isSession = view === 'session';
+    const tab = st.tab;
+    const set = (o) => () => this.setState(o);
+    const openDrawer = (k) => () => this.setState({ drawer: k });
+
+    const rootCls = ['av', 't-' + theme, phone ? 'phone' : 'desk', framed ? 'framed' : '', 'tab-' + tab].join(' ');
+    const conn = cfg.conn || 'live';
+    const connMap = { live: ['av-conn live', 'Live'], idle: ['av-conn idle', 'Idle'], recon: ['av-conn recon', 'Reconnecting'] };
+
+    const v = {
+      rootCls: rootCls,
+      isInvalid: view === 'invalid', isHome: view === 'home', isSession: isSession,
+      themeLabel: theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
+      themeIcon: theme === 'dark' ? 'ic lg i-sun' : 'ic lg i-moon',
+      toggleTheme: () => this.setState({ theme: theme === 'dark' ? 'light' : 'dark' }),
+      connCls: connMap[conn][0], connLabel: connMap[conn][1],
+      goHome: set({ view: 'home', drawer: '' }),
+      closeDrawer: set({ drawer: '' }),
+      drawerOn: false
+    };
+
+    /* ----- home ----- */
+    if (view === 'home') {
+      const homeSc = cfg.screen === 'home' ? sc : 'home-several';
+      const mk = (id, start, dur, events, task, state) => ({ id: id, start: start, dur: dur, events: events, task: task, state: state });
+      const mcpSessions = [
+        mk('m1', 'Today 14:02', '29m 40s', 42, 'aide_score ranks misaligned specs below unreviewed ones', 'live'),
+        mk('m2', 'Today 09:15', '1h 12m', 186, 'Viewer reconnects after a server restart', 'ended'),
+        mk('m3', 'Yesterday 16:40', '48m 05s', 97, 'Install writes .aide/intent.aide when missing', 'ended'),
+        mk('m4', 'Yesterday 11:05', '22m 31s', 41, 'Plan sub-steps (2a, 2b) keep their parent number', 'ended')
+      ];
+      let projects = [
+        { name: 'aidemd-mcp', root: '~/code/aidemd-mcp', tag: 'aidemd', liveN: 1, last: 'now', sessions: mcpSessions },
+        { name: 'aidemd-site', root: '~/code/aidemd-site', tag: 'aidemd-site', liveN: 1, waiting: true, last: '2m ago', sessions: [mk('w1', 'Today 14:10', '24m 12s', 31, 'Docs page for aide_score', 'live')] },
+        { name: 'lead-crawler', root: '~/code/lead-crawler', tag: 'crawler', liveN: 1, last: '1m ago', sessions: [mk('c1', 'Today 13:48', '45m 50s', 77, 'Respect crawl-delay from robots.txt', 'live'), mk('c2', 'Mon 10:20', '2h 03m', 260, 'Retry budget per domain', 'ended')] },
+        { name: 'ledger-api', root: '~/code/ledger-api', tag: 'ledger', liveN: 0, last: '3h ago', sessions: [mk('l1', 'Today 11:02', '38m 11s', 64, 'Idempotency keys on POST /entries', 'idle')] },
+        { name: 'docs-portal', root: '~/work/docs-portal', tag: 'docs', liveN: 0, last: '4 days ago', sessions: [mk('d1', 'Thu 15:30', '51m 00s', 88, 'Sidebar collapses on phone', 'ended')] }
+      ];
+      if (homeSc === 'home-one') projects = [Object.assign({}, projects[0], { liveN: 1 })];
+      if (homeSc === 'home-many') {
+        const more = ['billing-worker', 'search-indexer', 'mobile-shell', 'auth-gateway', 'metrics-agent', 'infra-scripts', 'design-tokens'];
+        projects = projects.concat(more.map((n, i) => ({ name: n, root: '~/code/' + n, tag: n.split('-')[0], liveN: 0, last: ['6h ago', 'yesterday', '2 days ago', '3 days ago', '5 days ago', '1 week ago', '2 weeks ago'][i], sessions: [mk(n + '1', 'Earlier', '30m 00s', 50, 'Housekeeping', 'ended')] })));
+      }
+      if (homeSc === 'home-empty') projects = [];
+      const q = st.projQ.trim().toLowerCase();
+      const waitsOn = homeSc === 'home-several' || homeSc === 'home-many' || homeSc === 'home-delete';
+      v.homeEmpty = projects.length === 0;
+      v.homeSub = projects.length ? (projects.length + ' projects · ' + projects.reduce((a, p) => a + p.liveN, 0) + ' live sessions · on this machine (127.0.0.1)') : 'On this machine (127.0.0.1)';
+      v.waits = waitsOn ? [{ project: 'aidemd-site', what: 'Approve', file: 'plan.aide', module: 'src/pages/docs/score', since: '6m', at: '14:28', open: set({ view: 'session' }) }] : [];
+      v.hasWaits = v.waits.length > 0; v.waitsN = String(v.waits.length);
+      const live = [];
+      projects.forEach((p) => p.sessions.forEach((s) => { if (s.state === 'live') live.push({ p: p, s: s }); }));
+      const liveNow = {
+        m1: { phase: 'Build · step 4 of 9', badgeCls: 'av-badge run', icon: 'ic i-run', module: 'src/tools/score', agent: 'aide-implementor', elapsed: '7m 55s' },
+        w1: { phase: 'Waiting on you', badgeCls: 'av-badge wait', icon: 'ic i-wait', module: 'src/pages/docs/score', agent: 'aide-architect', elapsed: '6m' },
+        c1: { phase: 'QA', badgeCls: 'av-badge run', icon: 'ic i-run', module: 'src/crawl/robots', agent: 'aide-qa', elapsed: '2m 03s' }
+      };
+      v.live = live.map((x) => Object.assign({ project: x.p.name, start: x.s.start.replace('Today ', ''), open: set({ view: 'session' }) }, liveNow[x.s.id] || liveNow.m1));
+      v.hasLive = v.live.length > 0; v.liveN = String(v.live.length);
+      const shown = projects.filter((p) => !q || p.name.indexOf(q) >= 0 || p.root.indexOf(q) >= 0);
+      v.projects = shown.map((p) => {
+        const open = !!st.openProj[p.name];
+        return {
+          name: p.name, root: p.root, tag: p.tag, last: p.last, liveN: p.liveN ? (p.liveN + ' live') : '', waiting: !!p.waiting && waitsOn,
+          cls: 'av-proj' + (p.waiting && waitsOn ? ' waiting' : ''), exp: open ? 'true' : 'false', open: open,
+          chev: open ? 'ic lg i-chev-d' : 'ic lg i-chev-r',
+          toggle: () => this.setState({ openProj: Object.assign({}, st.openProj, { [p.name]: !open }) }),
+          go: set({ view: 'session' }),
+          sessions: this.sessionRows(p.sessions)
+        };
+      });
+      v.hasProjects = projects.length > 0; v.projN = String(projects.length);
+      v.manyProjects = projects.length > 6; v.projQ = st.projQ;
+      v.setProjQ = (e) => this.setState({ projQ: e.target.value });
+      return v;
+    }
+    if (view === 'invalid') return v;
+
+    /* ----- session ----- */
+    const sess = cfg.two ? st.sess : 'A';
+    const railKind = sess === 'B' ? 'research' : (cfg.rail || 'build');
+    v.sessStart = sess === 'B' ? '15:30' : '14:02';
+    v.two = !!cfg.two;
+    v.switcher = [{ start: '14:02', now: 'Plan · src/tools/score', p: sess === 'A' ? 'true' : 'false', pick: set({ sess: 'A' }) }, { start: '15:30', now: 'Research · src/tools/validate', p: sess === 'B' ? 'true' : 'false', pick: set({ sess: 'B' }) }];
+    v.waitOn = !!cfg.waiting; v.reconOn = !!cfg.recon; v.notInstalled = !!cfg.notInstalled; v.hasPipeline = !cfg.notInstalled;
+    v.noFolder = !!cfg.noFolder; v.treeOk = !cfg.noFolder; v.boardErr = !!cfg.boardErr; v.boardOk = !cfg.boardErr && !cfg.noFolder;
+    if (railKind === 'research') {
+      v.rail = this.railData('none').map((p, i) => i === 0 ? Object.assign(p, { cls: 'av-ph done', icon: 'ic i-done', meta: 'Done 1m 40s' }) : (i === 1 ? Object.assign(p, { cls: 'av-ph run', icon: 'ic i-run', meta: 'Running 1m 52s' }) : p));
+    } else v.rail = this.railData(railKind);
+    v.lanes = this.lanesData(cfg.rail || 'build');
+    v.card = this.cardData(cfg.card || 'build', sess);
+    v.card.steps = v.card.steps || null; v.card.hint = v.card.hint || ''; v.card.sub = v.card.sub || '';
+    v.card.stepHead = v.card.stepHead || ''; v.card.stepText = v.card.stepText || '';
+
+    /* tree */
+    const raw = this.treeData(!!cfg.large, cfg.tree === 'root');
+    const ROOTP = '.aide/intent.aide';
+    const parentOf = (p) => { if (p === ROOTP) return null; const i = p.lastIndexOf('/'); return i > 0 ? p.slice(0, i) : ROOTP; };
+    const depth = (p) => p === '.aide/intent.aide' ? 0 : p.split('/').length - 1;
+    const kids = {};
+    raw.forEach((n) => { const pa = parentOf(n.path); if (pa) kids[pa] = (kids[pa] || 0) + 1; });
+    const hiddenBy = (p) => { let pa = parentOf(p); let guard = 0; while (pa && guard++ < 12) { if (st.collapsed[pa]) return true; pa = parentOf(pa); } return false; };
+    const isOpenWork = (n) => n.chips.some((c) => (c.t === 'todo' && c.o > 0) || (c.t === 'plan' && (c.st === 'approved' || c.st === 'proposed')));
+    const q = st.treeQ.trim().toLowerCase();
+    const filtering = st.fOpen || st.fMis || q;
+    const chipOf = (c) => {
+      if (c.t === 'brief') return { cls: 'av-chip', icon: 'ic i-doc', k: 'brief', v: '' };
+      if (c.t === 'research') return { cls: 'av-chip', icon: 'ic i-search', k: 'research', v: '' };
+      if (c.t === 'todo') return c.o > 0 ? { cls: 'av-chip danger', icon: 'ic i-issues', k: 'todo', v: c.o + ' open of ' + c.n } : { cls: 'av-chip done', icon: 'ic i-done', k: 'todo', v: '0 open of ' + c.n };
+      const m = { proposed: ['av-chip warn', 'ic i-gate'], approved: ['av-chip run', 'ic i-run'], completed: ['av-chip done', 'ic i-done'], abandoned: ['av-chip muted', 'ic i-close'] }[c.st];
+      return { cls: m[0], icon: m[1], k: 'plan · ' + c.st, v: c.a + '/' + c.b };
+    };
+    const alignOf = { aligned: ['av-badge done', 'ic i-done', 'Aligned'], unreviewed: ['av-badge outline', 'ic i-todo', 'Unreviewed'], misaligned: ['av-badge strong-danger', 'ic i-fail', 'Misaligned'] };
+    const curLabel = { build: 'Working now · Build', plan: 'Working now · Plan', wait: 'Waiting on you', fix: 'Working now · Fix', idle: 'Last worked on', none: '' }[cfg.rail || 'build'];
+    const countHidden = (p) => raw.filter((n) => n.path.indexOf(p + '/') === 0).length;
+    const nodes = raw.filter((n) => {
+      if (filtering) {
+        if (st.fOpen && !isOpenWork(n)) return false;
+        if (st.fMis && n.align !== 'misaligned') return false;
+        if (q && n.path.toLowerCase().indexOf(q) < 0) return false;
+        return true;
+      }
+      return !hiddenBy(n.path);
+    }).map((n) => {
+      const hasKids = !!kids[n.path] && n.path !== '.aide/intent.aide' && !filtering;
+      const coll = !!st.collapsed[n.path];
+      const a = alignOf[n.align];
+      const cur = n.cur && curLabel ? (sess === 'B' ? '' : curLabel) : '';
+      return {
+        path: n.path, desc: n.desc, cur: cur,
+        cls: 'av-node d' + (filtering ? 0 : depth(n.path)) + (cur ? ' cur' : '') + (n.align === 'misaligned' ? ' mis' : ''),
+        exp: hasKids ? (coll ? 'false' : 'true') : 'false',
+        twCls: 'tw' + (hasKids ? '' : ' leaf'), twIcon: coll ? 'ic i-chev-r' : 'ic i-chev-d',
+        twLabel: (coll ? 'Expand ' : 'Collapse ') + n.path,
+        toggle: () => this.setState({ collapsed: Object.assign({}, st.collapsed, { [n.path]: !coll }) }),
+        open: openDrawer('module'),
+        aCls: a[0], aIcon: a[1], aLabel: a[2],
+        hiddenN: hasKids && coll ? (countHidden(n.path) + ' modules hidden') : '',
+        chips: n.chips.map(chipOf), hasChips: n.chips.length > 0
+      };
+    });
+    v.nodes = nodes; v.treeEmpty = nodes.length === 0;
+    const mis = raw.filter((n) => n.align === 'misaligned').length;
+    const ow = raw.filter(isOpenWork).length;
+    v.treeCount = raw.length + ' modules · ' + mis + ' misaligned · ' + ow + ' with open work' + (filtering ? ' · showing ' + nodes.length : '');
+    v.treeQ = st.treeQ; v.setTreeQ = (e) => this.setState({ treeQ: e.target.value });
+    v.fOpenP = st.fOpen ? 'true' : 'false'; v.fMisP = st.fMis ? 'true' : 'false';
+    v.tOpen = set({ fOpen: !st.fOpen }); v.tMis = set({ fMis: !st.fMis });
+    v.expandAll = set({ collapsed: {} });
+    v.collapseAll = () => { const c = {}; Object.keys(kids).forEach((k) => { if (k !== '.aide/intent.aide') c[k] = true; }); this.setState({ collapsed: c }); };
+
+    /* plans & todos */
+    const rows = [];
+    raw.forEach((n) => n.chips.forEach((c) => {
+      if (c.t === 'plan') {
+        const m = { proposed: ['av-badge warn', 'ic i-gate'], approved: ['av-badge run', 'ic i-run'], completed: ['av-badge done', 'ic i-done'], abandoned: ['av-badge outline', 'ic i-close'] }[c.st];
+        rows.push({ module: n.path, kind: 'plan', kCls: 'av-chip', kIcon: 'ic i-step', status: c.st[0].toUpperCase() + c.st.slice(1), stCls: m[0], stIcon: m[1], prog: c.a + '/' + c.b + ' steps', w: { width: Math.round(100 * c.a / c.b) + '%' }, cls: n.cur ? 'tr hl' : 'tr', open: openDrawer('module') });
+      }
+      if (c.t === 'todo') {
+        rows.push({ module: n.path, kind: 'todo', kCls: 'av-chip', kIcon: 'ic i-issues', status: c.o ? c.o + ' open' : 'All closed', stCls: c.o ? 'av-badge danger' : 'av-badge done', stIcon: c.o ? 'ic i-issues' : 'ic i-done', prog: (c.n - c.o) + '/' + c.n + ' closed', w: { width: Math.round(100 * (c.n - c.o) / c.n) + '%' }, cls: n.cur ? 'tr hl' : 'tr', open: openDrawer('todo') });
+      }
+    }));
+    if (cfg.rail === 'fix') rows.unshift({ module: 'src/tools/score', kind: 'todo', kCls: 'av-chip', kIcon: 'ic i-issues', status: '2 open', stCls: 'av-badge danger', stIcon: 'ic i-issues', prog: '3/5 closed', w: { width: '60%' }, cls: 'tr hl', open: openDrawer('todo') });
+    v.planRows = rows;
+
+    /* board */
+    const cols = this.boardData(!!cfg.large);
+    let linked = 0, total = 0;
+    v.cols = cols.map((c, ci) => {
+      const isDone = ci === 4;
+      const cap = isDone ? (st.showDone ? c.tasks.length : 5) : (cfg.large ? 8 : 99);
+      const shownT = c.tasks.slice(0, cap);
+      total += c.total;
+      const moreN = c.total - shownT.length;
+      return {
+        name: c.name, n: String(c.total),
+        tasks: shownT.map((t) => { if (t.linked) linked++; return { title: t.title, slug: t.slug, p: t.p, type: t.type, linked: t.linked, pCls: 'av-badge av-prio ' + t.p, cls: 'av-task' + (t.linked ? ' linked' : ''), open: openDrawer('task') }; }),
+        more: isDone ? (st.showDone ? 'Showing loaded ' + shownT.length + ' of ' + c.total : 'Showing the 5 most recent of ' + c.total) : (moreN > 0 ? moreN + ' more in ' + c.name : ''),
+        moreBtn: isDone ? (st.showDone ? 'Show recent only' : 'Show all ' + c.total) : 'Show all ' + c.total,
+        toggle: set({ showDone: !st.showDone })
+      };
+    });
+    v.boardCount = total + ' tasks · ' + linked + ' linked to this session';
+
+    /* record */
+    const R = {
+      build: { stopped: 'Build is on step 4 of 9 for src/tools/score: weights.ts exists and nodes carry a weight, but aide_score doesn’t use it yet.', next: ['Finish step 4: sort by weight inside aide_score.', 'Do step 5: break ties by open todo count, then by path.', 'Run the golden test against test/fixtures before QA.', 'Move aide-score-misaligned-rank to In Review once QA passes.'], q: [] },
+      fix: { stopped: 'QA round 2 left 2 of 5 issues open in src/tools/score/todo.aide; Fix round 2 is running.', next: ['Close rank.ts:42 — tie-break by path.', 'Add the misaligned-leaf case at rank.test.ts:118.', 'Re-run QA (round 3).', 'If QA passes, move the task to In Review and write the retro.'], q: ['Should unreviewed modules with open todos outrank aligned ones with more open todos?'] },
+      idle: { stopped: 'The cycle finished: QA passed for src/tools/score, commit 9c1e2ab, task moved to In Review, release v0.9.2 tagged.', next: ['Pick aide-validate-path-scope (p1 bug) from Todo.', 'Re-review src/tools/validate — it’s marked misaligned.'], q: ['Is v0.9.2 the right version, or should ranking changes be a minor bump?', 'Keep the modified-time sort behind a flag for one release?'] },
+      none: { stopped: 'This cycle hasn’t started a phase yet.', next: ['Pick a task from the board.'], q: [] }
+    };
+    const rk = cfg.rail === 'fix' ? 'fix' : (cfg.rail === 'idle' ? 'idle' : (cfg.rail === 'none' ? 'none' : 'build'));
+    v.rec = { stopped: R[rk].stopped, next: R[rk].next, q: R[rk].q, hasQ: R[rk].q.length > 0, noQ: R[rk].q.length === 0,
+      state: 'aidemd-mcp v0.9.1. Pipeline events, install and the viewer server are in place; aide_score ordering is being reworked. 14 modules, 1 misaligned (src/tools/validate).' };
+    v.outline = [
+      { href: '#rec-stopped', label: 'Where this cycle stopped', pin: true, c: '', cls: 'on' },
+      { href: '#rec-state', label: 'State summary', c: '' }, { href: '#rec-kanban', label: 'Kanban', c: '3' },
+      { href: '#rec-intent', label: 'Architectural intent', c: '4' }, { href: '#rec-inv', label: 'Invariants', c: '4' },
+      { href: '#rec-q', label: 'Open questions', c: String(R[rk].q.length) }
+    ].map((o) => Object.assign({ pin: false, cls: '' }, o));
+
+    /* sessions */
+    const projS = [
+      { id: 'm1', start: 'Today 14:02', dur: '29m 40s', events: 42, task: 'aide_score ranks misaligned specs below unreviewed ones', state: cfg.conn === 'idle' ? 'idle' : 'live' },
+      { id: 'm2', start: 'Today 09:15', dur: '1h 12m', events: 186, task: 'Viewer reconnects after a server restart', state: 'ended' },
+      { id: 'm3', start: 'Yesterday 16:40', dur: '48m 05s', events: 97, task: 'Install writes .aide/intent.aide when missing', state: 'ended' },
+      { id: 'm4', start: 'Yesterday 11:05', dur: '22m 31s', events: 41, task: 'Plan sub-steps (2a, 2b) keep their parent number', state: 'ended' }
+    ];
+    if (cfg.two) projS.splice(0, 0, { id: 'm0', start: 'Today 15:30', dur: '1m 52s', events: 6, task: 'aide_validate with a path reports missing specs from the whole project', state: 'live' });
+    v.projSessions = this.sessionRows(projS);
+
+    /* tabs */
+    const T = [
+      { id: 'tree', label: 'Intent tree', icon: 'ic i-tree', n: cfg.noFolder ? '' : (mis ? mis + ' misaligned' : ''), nCls: 'n danger' },
+      { id: 'plans', label: 'Plans & todos', icon: 'ic i-step', n: cfg.noFolder ? '' : String(rows.length), nCls: 'n' },
+      { id: 'board', label: 'Board', icon: 'ic i-board', n: cfg.boardErr ? 'offline' : (cfg.noFolder ? '' : String(total)), nCls: cfg.boardErr ? 'n danger' : 'n' },
+      { id: 'record', label: 'Session record', icon: 'ic i-doc', n: '', nCls: 'n' },
+      { id: 'sessions', label: 'Sessions', icon: 'ic i-sessions', n: String(projS.length), nCls: 'n' },
+      { id: 'history', label: 'History', icon: 'ic i-history', n: '', nCls: 'n', phoneOnly: true }
+    ];
+    v.tabs = T.map((t) => ({ label: t.label, icon: t.icon, n: t.n, nCls: t.nCls, cls: t.phoneOnly ? 'only-phone' : '', sel: tab === t.id ? 'true' : 'false', pick: set({ tab: t.id }) }));
+    v.tabTree = tab === 'tree' || (tab === 'history' && !phone); v.tabPlans = tab === 'plans'; v.tabBoard = tab === 'board'; v.tabRecord = tab === 'record'; v.tabSessions = tab === 'sessions';
+
+    /* history */
+    let H = this.historyData(cfg.hist || (cfg.rail === 'wait' ? 'wait' : (cfg.rail === 'plan' ? 'plan' : 'build')), cfg.two);
+    if (cfg.hist === 'fix') H = this.historyData('fix');
+    if (cfg.hist === 'idle') H = this.historyData('idle');
+    if (cfg.hist === 'none') H = this.historyData('none');
+    if (cfg.two) {
+      H = H.map((x) => Object.assign(x, { sess: '14:02' }));
+      H.push({ t: '15:30', k: 'start', label: 'Session started', mono: '', meta: '~/code/aidemd-mcp', sess: '15:30', open: 'start' });
+      H.push({ t: '15:30', k: 'task', label: 'Picked task', mono: 'aide-validate-path-scope', meta: 'Todo → In Progress', sess: '15:30', open: 'task' });
+      H.push({ t: '15:30', k: 'phase', label: 'Spec started', mono: '', meta: 'aide-spec-writer · src/tools/validate', sess: '15:30' });
+      H.push({ t: '15:31', k: 'done', label: 'Spec finished · 1m 40s', mono: '', meta: '', sess: '15:30' });
+      H.push({ t: '15:31', k: 'phase', label: 'Research started', mono: '', meta: 'aide-domain-expert · src/tools/validate', sess: '15:30' });
+      H.sort((a, b) => a.t < b.t ? -1 : (a.t > b.t ? 1 : 0));
+    }
+    if (cfg.recon) H.push({ t: '14:31', k: 'error', label: 'Connection to the viewer server lost', mono: '', meta: 'reconnecting by itself — nothing is lost' });
+    const cat = { start: 'sessions', prompt: 'prompts', task: 'tasks', phase: 'phases', done: 'phases', wait: 'gates', approve: 'gates', step: 'phases', issues: 'qa', pass: 'qa', commit: 'commits', release: 'commits', error: 'errors' };
+    const iconOf = { start: 'i-power', prompt: 'i-prompt', task: 'i-task', phase: 'i-flag', done: 'i-done', wait: 'i-wait', approve: 'i-gate', step: 'i-step', issues: 'i-issues', pass: 'i-done', commit: 'i-commit', release: 'i-tag', error: 'i-error', files: 'i-files', sub: 'i-file' };
+    const wordOf = { start: 'session started', prompt: 'prompt', task: 'task', phase: 'phase started', done: 'phase finished', wait: 'waiting on you', approve: 'approved', step: 'plan step', issues: 'QA issues', pass: 'QA passed', commit: 'commit', release: 'release', error: 'error', files: 'files written', sub: 'file' };
+    const cnt = {};
+    H.forEach((x) => { const c = cat[x.k]; cnt[c] = (cnt[c] || 0) + 1; if (x.files) cnt.files = (cnt.files || 0) + 1; });
+    const filtered = H.filter((x) => (st.hf === 'all' || cat[x.k] === st.hf || (st.hf === 'files' && x.files)) && (st.sf === 'all' || x.sess === st.sf));
+    const out = [];
+    const ordered = st.newest ? filtered.slice().reverse() : filtered;
+    ordered.forEach((x) => {
+      const showMain = !(st.hf === 'files');
+      if (showMain) out.push({ row: true, day: '', t: x.t, cls: 'av-hrow k-' + x.k, icon: 'ic ' + iconOf[x.k], kindWord: wordOf[x.k] + ': ', label: x.label, mono: x.mono, meta: x.meta, sess: cfg.two ? x.sess : '', open: openDrawer(x.open || (x.k === 'step' || x.k === 'phase' ? 'module' : 'phase')) });
+      if (x.files) {
+        out.push({ row: true, day: '', t: '', cls: 'av-hrow k-files', icon: 'ic i-files', kindWord: 'files written: ', label: 'Wrote ' + x.files.length + (x.files.length === 1 ? ' file' : ' files'), mono: '', meta: '', sess: '', open: openDrawer('phase') });
+        x.files.forEach((f) => out.push({ row: true, day: '', t: '', cls: 'av-hrow sub', icon: 'ic i-file', kindWord: f[1] + ': ', label: f[0], mono: '', meta: '', sess: '', open: openDrawer('phase'), }));
+      }
+    });
+    if (!st.newest && out.length) out.unshift({ row: false, day: 'Today' });
+    if (st.newest && out.length) out.unshift({ row: false, day: 'Today · newest first' });
+    v.hist = out.map((x) => Object.assign({ row: false, day: '', t: '', cls: '', icon: '', kindWord: '', label: '', mono: '', meta: '', sess: '' }, x));
+    v.histN = H.length + ' events';
+    v.histEmpty = out.length === 0; v.histEmptyText = H.length ? 'Nothing matches this filter.' : 'No events yet.';
+    v.newestP = st.newest ? 'true' : 'false'; v.oldestP = st.newest ? 'false' : 'true';
+    v.setNewest = set({ newest: true }); v.setOldest = set({ newest: false });
+    const HF = [['all', 'All'], ['phases', 'Phases'], ['gates', 'Gates'], ['qa', 'QA'], ['tasks', 'Tasks'], ['files', 'Files'], ['commits', 'Commits'], ['prompts', 'Prompts'], ['errors', 'Errors']];
+    v.histFilters = HF.filter((f) => f[0] === 'all' || cnt[f[0]]).map((f) => ({ label: f[1] + (f[0] === 'all' ? '' : ' ' + cnt[f[0]]), p: st.hf === f[0] ? 'true' : 'false', pick: set({ hf: f[0] }) }));
+    v.sessFilters = [['all', 'Both sessions'], ['14:02', '14:02'], ['15:30', '15:30']].map((f) => ({ label: f[1], p: st.sf === f[0] ? 'true' : 'false', pick: set({ sf: f[0] }) }));
+
+    /* drawer */
+    if (st.drawer) { v.drawerOn = true; v.dr = this.drawerData(st.drawer, cfg); }
+    else v.dr = { kind: '', title: '', tCls: '', meta: '', blocks: [] };
+    return v;
+  }
+  sessionRows(list) {
+    const st = this.state;
+    const S = { live: ['av-badge run', 'ic i-run', 'Live'], idle: ['av-badge outline', 'ic i-idle', 'Idle'], ended: ['av-badge neutral', 'ic i-power', 'Ended'] };
+    return list.filter((s) => !st.deleted[s.id]).map((s) => ({
+      start: s.start, dur: s.dur, events: String(s.events), task: s.task,
+      cls: 'av-srow' + (s.state === 'live' ? ' live' : ''), stCls: S[s.state][0], stIcon: S[s.state][1], st: S[s.state][2],
+      ended: s.state === 'ended', confirm: st.confirm === s.id, delLabel: 'Delete history of session ' + s.start,
+      del: () => this.setState({ confirm: s.id }), cancel: () => this.setState({ confirm: '' }),
+      doDel: () => this.setState({ confirm: '', deleted: Object.assign({}, st.deleted, { [s.id]: true }) })
+    }));
+  }
+}
+</script>
+</body>
+</html>

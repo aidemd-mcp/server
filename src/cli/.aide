@@ -1,24 +1,27 @@
 ---
-scope: cli
-alignment: aligned
-description: Terminal-native intent-tree explorer that lets a human browse and inspect any project's `.aide` hierarchy as agents see it.
+scope: src/cli
+alignment: unreviewed
+description: The package's terminal commands, typed by a human in a plain terminal outside any agent session, each routed to the one command that does that job.
 intent: >
-  This module is the human-facing window onto the intent tree. It exists so a
-  developer can verify, at a glance, exactly what an agent perceives when it
-  walks the hierarchy — the same nodes, the same descriptions, the same
-  alignment status, the same ancestor chains. It is a debugging surface for
-  humans, not a separate viewer with its own opinions about what matters.
-  Whatever the agent-facing discovery returns, the explorer renders; whatever
-  the agent does not see, the explorer does not invent.
+  This module is the package's front door for a human at a plain terminal,
+  outside any agent session. It routes the subcommand a person types to the
+  one command that handles it, such as installing, syncing, viewing pipeline
+  state or browsing the intent tree, and loads only that command, so asking
+  for one never pays for the server or the others. Each command does one job
+  and tells the human plainly what it did, or why it could not, leaving the
+  project untouched when it fails. Adding a command never changes how the
+  existing ones behave.
 outcomes:
   desired:
-    - The explorer renders the intent tree as a human-navigable hierarchy and stays interactive — a developer can move through nodes and inspect any spec without re-running the command or losing their place in the tree.
-    - Every node, summary, status flag, and ancestor relationship the explorer shows matches what an agent receives from the discovery surface for the same project. If the two diverge for the same project, the explorer is wrong.
-    - Frontmatter renders as a structured, visually-parsed view that distinguishes intent, desired outcomes, and undesired outcomes as separate regions a human can scan — never as raw nested YAML.
-    - The explorer reads the project's filesystem directly and runs without the MCP server, host agent runtime, or any network dependency being available.
+    - A person can run any command from a plain terminal with no agent session, agent harness or prior agent setup in place.
+    - Running one command loads only that command. It never starts the MCP server or pays the startup cost of any other command.
+    - Each command does one job and ends by telling the human, in a few clear lines, what it did.
+    - A command that cannot do its job says why in plain language and exits with a failure status, leaving every file it would have written untouched.
+    - Adding a new command leaves every existing command's behavior, output and exit status unchanged.
   undesired:
-    - The explorer shows summaries, statuses, or hierarchy that the agent-facing discovery surface does not — inventing nodes, omitting status, or restructuring relationships turns the debugging tool into a second source of truth.
-    - Frontmatter shown as raw indented YAML, or desired and undesired outcomes rendered as one undifferentiated list — the human came here precisely to avoid mentally parsing YAML.
-    - The explorer requires the MCP server to be running, an agent harness to be active, or network access to function. It is a local filesystem reader.
-    - A static one-shot dump that prints the tree and exits, or a flag-driven query interface where the user must specify what to see before launching — both defeat the browse-and-explore purpose.
+    - A command that only works inside an agent session, or prints agent-shaped output such as tool-result payloads or instructions meant for a model instead of short human-readable lines.
+    - Running one command starts the MCP server or loads other commands' work, so a quick command becomes slow or fails because of an unrelated one.
+    - A failed command that leaves partial writes behind, or reports success and exits zero when it did not finish its job.
+    - A command that finishes silently, or buries what it did under verbose logs, so the human cannot tell what changed.
+    - A command whose behavior, output or exit status shifts because another command was added or changed.
 ---

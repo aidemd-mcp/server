@@ -4,6 +4,11 @@ import type { AlignmentValue, WorkStatus } from "@/tools/frontmatter/types/index
 
 export type { BrainSectionContractEntry, BrainSectionField, BrainSectionMarker } from "@/service/brainContract/index.js";
 export type { GovernedKind, GovernedField, AlignmentValue, WorkStatus } from "@/tools/frontmatter/types/index.js";
+export type { ObserverEventInput, ObserverEvent, SessionStartedEvent } from "@/service/observer/event/shared/schema/index.js";
+export type { ObserverRecord } from "@/service/observer/event/shared/observerRecord/index.js";
+export type { RecordOutcome, SessionLog, DeleteOutcome, ProjectLog } from "@/service/observer/event/types/index.js";
+export type { BoardColumnId, ReportedLocation, BoardUnavailable, BoardTask, BoardColumn, Board, BoardResult, TaskReadResult } from "@/service/observer/kanban/types/index.js";
+export type { Phase, StatusInput, FileProgress, TreeFileEntry, TreeFileKind, ModuleNode, WorkFileEntry, SessionRecord, Liveness, SessionSummary, RunningWork, WaitingFile, RailPhaseState, RailPhase, PhaseRail, HistoryRow, StatusPart, StatusProblem, Status } from "@/service/observer/status/types/index.js";
 
 /** The four .aide spec types: intent, research, plan, todo. */
 export type AideFileType = "intent" | "research" | "todo" | "plan";
@@ -1134,17 +1139,6 @@ export type SectionExtraction =
 			/** Verbatim bytes between the markers of every section that is present; absent sections are left out. */
 			present: Partial<Record<BrainSectionField, string>>;
 	  };
-
-/** Directories to skip during filesystem walks. */
-export const SKIP_DIRS = [
-	"node_modules",
-	".git",
-	"dist",
-	"build",
-	".next",
-	"coverage",
-	"__pycache__",
-] as const;
 
 /** One `args` item of a brain.aide `mcpServerConfig` located in the frontmatter region: its whole source line and its parsed value. */
 export type ArgLine = { start: number; end: number; value: string | null };

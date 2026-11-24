@@ -1,0 +1,30 @@
+---
+scope: src/service/observer/event
+alignment: unreviewed
+description: "Session event log for the observer: records each session's start and reported actions outside the project, lists projects with sessions, reads sessions back in order, deletes one on request."
+intent: >
+  Gives the observer a best-effort history of what the pipeline did. Each
+  action the orchestrator reports is stamped with its time, session and
+  order, written first to the session's own log in per-user storage outside
+  the project, then handed to a running observer if any. Each session opens
+  with the metadata the agent reports once at session start, which lets the
+  observer find its board. Recording can never fail, stall, start anything
+  or change the pipeline. Sessions and their projects read back in true
+  order for replay and listing, and the user can delete one finished
+  session alone.
+outcomes:
+  desired:
+    - Every reported action lands in its session's log before any attempt to reach the observer, so it survives the observer being off, slow or failing. The reply says whether the observer received it, so the agent knows when it is not running.
+    - Recording returns promptly and never errors or changes the pipeline, whether writing the log, reaching the observer, or both fail.
+    - Each session's log has a single writer, and event records live in per-user storage outside the host project.
+    - Reading lists every project that has recorded sessions, each with the project root its newest session reported, and returns every recorded session of a project with its valid events in the order they happened, including each full prompt. A malformed line is skipped, never fatal.
+    - Deleting removes only the chosen past session's record, and a session still being written cannot be deleted.
+    - A session's first event is the session-started report the agent makes at session start, carrying the project root, kanban tag and brain folder when there is one. It holds exactly what the agent reported, never inferred or filled in, and reading returns it with the session.
+  undesired:
+    - An event missing from history because the observer was off or unreachable when it happened.
+    - A pipeline step that waits on, fails from, or behaves differently because of recording, or recording an ordinary action that starts the observer or anything else.
+    - Two writers interleaving lines in one session's log, a session's events read back out of order, or an event record written anywhere inside the host repo.
+    - Session metadata the agent never reported appearing in the log, or a second session start recorded when a stopped observer is brought back mid-session.
+    - One malformed line making a whole session unreadable or hiding the sessions after it.
+    - A delete that removes more than the chosen session, touches any project file, or removes a live session.
+---

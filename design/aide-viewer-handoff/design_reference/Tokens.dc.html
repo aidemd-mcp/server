@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIDE Pipeline Viewer — tokens and measured contrast</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/10fc28ec8175d4a0b612c716dec2e221">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1440px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); font-family: 'Inter', system-ui, sans-serif">
+<sc-for list="{{themes}}" as="th" hint-placeholder-count="2">
+<div class="{{th.cls}}" style="padding: 40px 36px 64px; display: flex; flex-direction: column; gap: 32px">
+<div class="stack" style="gap: 4px"><span class="meta" style="font-weight: 700; letter-spacing: .05em; text-transform: uppercase">{{th.name}} theme</span><h1 style="font-size: 32px; font-weight: 750; letter-spacing: -0.02em">Tokens &amp; measured contrast</h1><p class="t2">WCAG 2.1 relative-luminance ratios, computed from the hex values below. Text needs ≥ 4.5:1; non-text UI ≥ 3:1. Lowest text pair in this theme: <b class="mono">{{th.min}}:1</b>.</p></div>
+
+<section class="av-sect"><h2 class="av-h2">Surfaces</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+<sc-for list="{{th.surf}}" as="s" hint-placeholder-count="8"><div style="border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden"><div style="{{s.sw}}"></div><div style="padding: 8px 10px; background: var(--surface)"><div style="font-weight: 600; font-size: 13px">{{s.name}}</div><div class="mono t2" style="font-size: 12px">{{s.hex}}</div></div></div></sc-for>
+</div>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Text colour × surface (ratio : 1)</h2>
+<div class="av-gt" role="table" aria-label="Text contrast" style="font-size: 13px">
+<div class="tr th" role="row" style="grid-template-columns: 120px repeat(7, minmax(0, 1fr))"><span role="columnheader">Text token</span><sc-for list="{{th.cols}}" as="c" hint-placeholder-count="7"><span role="columnheader">{{c}}</span></sc-for></div>
+<sc-for list="{{th.rows}}" as="r" hint-placeholder-count="7"><div class="tr" role="row" style="grid-template-columns: 120px repeat(7, minmax(0, 1fr)); padding: 0 0 0 14px; gap: 0"><span role="rowheader" style="padding: 8px 0"><span class="row" style="gap: 6px"><span style="{{r.dot}}"></span><b>{{r.t}}</b></span><span class="mono t2" style="font-size: 12px">{{r.hex}}</span></span><sc-for list="{{r.cells}}" as="c" hint-placeholder-count="7"><span role="cell" style="{{c.bg}}"><span style="{{c.fg}}">Aa {{c.v}}</span></span></sc-for></div></sc-for>
+</div>
+<p class="meta">Each cell is painted with the real pair. Status colours (run, done, danger, warn-text) are always paired with a glyph and a word.</p>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">On the amber "waiting" fill</h2>
+<div class="av-gt" role="table" aria-label="Text on the waiting fill" style="font-size: 13px">
+<div class="tr th" role="row" style="grid-template-columns: repeat(3, minmax(0, 1fr))"><span role="columnheader">Text</span><span role="columnheader">Surface</span><span role="columnheader">Ratio</span></div>
+<sc-for list="{{th.onwait}}" as="r" hint-placeholder-count="2"><div class="tr" role="row" style="grid-template-columns: repeat(3, minmax(0, 1fr))"><span role="cell"><b>{{r.t}}</b> <span class="mono t2" style="font-size: 12px">{{r.hex}}</span></span><span role="cell" style="{{r.bg}}"><span style="{{r.fg}}">Waiting on you</span></span><span role="cell" class="mono">{{r.v}}:1</span></div></sc-for>
+</div>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Non-text UI (needs ≥ 3:1 where it marks a control)</h2>
+<div class="av-gt" role="table" aria-label="Non-text contrast" style="font-size: 13px">
+<div class="tr th" role="row" style="grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr))"><span role="columnheader">Token</span><span role="columnheader">bg</span><span role="columnheader">surface</span><span role="columnheader">raised</span></div>
+<sc-for list="{{th.ui}}" as="r" hint-placeholder-count="3"><div class="tr" role="row" style="grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr))"><span role="cell"><b>{{r.t}}</b> <span class="mono t2" style="font-size: 12px">{{r.hex}}</span><span class="meta" style="display: block">{{r.note}}</span></span><sc-for list="{{r.cells}}" as="c"><span role="cell" class="mono">{{c}}</span></sc-for></div></sc-for>
+</div>
+</section>
+
+<section class="av-sect"><h2 class="av-h2">Type</h2>
+<div class="stack" style="gap: 10px">
+<div class="row" style="gap: 16px; align-items: baseline"><span class="mono t2" style="width: 120px; font-size: 12px">40 / 750</span><span style="font-size: 40px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.15">Build</span><span class="meta">Now card phase</span></div>
+<div class="row" style="gap: 16px; align-items: baseline"><span class="mono t2" style="width: 120px; font-size: 12px">40 mono / 600</span><span class="mono" style="font-size: 40px; font-weight: 600">7m 55s</span><span class="meta">Elapsed</span></div>
+<div class="row" style="gap: 16px; align-items: baseline"><span class="mono t2" style="width: 120px; font-size: 12px">20 / 800</span><span style="font-size: 20px; font-weight: 800">Waiting on you</span><span class="meta">Banner</span></div>
+<div class="row" style="gap: 16px; align-items: baseline"><span class="mono t2" style="width: 120px; font-size: 12px">16 / 700</span><span style="font-size: 16px; font-weight: 700">Section title</span></div>
+<div class="row" style="gap: 16px; align-items: baseline"><span class="mono t2" style="width: 120px; font-size: 12px">14 / 400 · 1.5</span><span style="font-size: 14px">Body and list text — never smaller.</span></div>
+<div class="row" style="gap: 16px; align-items: baseline"><span class="mono t2" style="width: 120px; font-size: 12px">14 mono</span><span class="mono" style="font-size: 14px">src/tools/score · 414776f</span></div>
+<div class="row" style="gap: 16px; align-items: baseline"><span class="mono t2" style="width: 120px; font-size: 12px">13 / 400</span><span style="font-size: 13px" class="t2">Meta lines</span></div>
+<div class="row" style="gap: 16px; align-items: baseline"><span class="mono t2" style="width: 120px; font-size: 12px">12 / 600</span><span style="font-size: 12px; font-weight: 600" class="t2">Smallest label (badges, chips)</span></div>
+<p class="meta">UI: Inter (fallback system-ui). Code: JetBrains Mono (fallback ui-monospace). Spacing 4 · 8 · 12 · 16 · 24 · 32 · 48. Radius 6 · 10 · 14.</p>
+</div>
+</section>
+</div>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const D = {"dark": {"surf": {"bg": "#0D1117", "surface": "#151A22", "raised": "#1D2430", "run-soft": "#12263F", "done-soft": "#0F2A1D", "danger-soft": "#341618", "wait-soft": "#33250B"}, "wait": "#FFB547", "text": [{"t": "text", "hex": "#ECF0F5", "r": {"bg": 16.54, "surface": 15.26, "raised": 13.62, "run-soft": 13.35, "done-soft": 13.4, "danger-soft": 14.4, "wait-soft": 13.01}}, {"t": "text-2", "hex": "#BCC5D0", "r": {"bg": 10.85, "surface": 10.01, "raised": 8.93, "run-soft": 8.75, "done-soft": 8.79, "danger-soft": 9.45, "wait-soft": 8.53}}, {"t": "text-3", "hex": "#9DA8B5", "r": {"bg": 7.84, "surface": 7.24, "raised": 6.46, "run-soft": 6.33, "done-soft": 6.36, "danger-soft": 6.83, "wait-soft": 6.17}}, {"t": "run", "hex": "#7DB8FF", "r": {"bg": 9.17, "surface": 8.46, "raised": 7.55, "run-soft": 7.4, "done-soft": 7.43, "danger-soft": 7.98, "wait-soft": 7.21}}, {"t": "done", "hex": "#5FD394", "r": {"bg": 10.12, "surface": 9.34, "raised": 8.34, "run-soft": 8.17, "done-soft": 8.2, "danger-soft": 8.82, "wait-soft": 7.96}}, {"t": "danger", "hex": "#FF8B82", "r": {"bg": 8.35, "surface": 7.71, "raised": 6.88, "run-soft": 6.74, "done-soft": 6.77, "danger-soft": 7.27, "wait-soft": 6.57}}, {"t": "warn-text", "hex": "#FFC266", "r": {"bg": 11.86, "surface": 10.94, "raised": 9.77, "run-soft": 9.57, "done-soft": 9.61, "danger-soft": 10.33, "wait-soft": 9.33}}, {"t": "on-wait", "hex": "#1A1206", "r": {"wait": 10.55}}, {"t": "on-wait-2", "hex": "#3D2A05", "r": {"wait": 7.8}}], "ui": [{"t": "border", "hex": "#2A323D", "r": {"bg": 1.46, "surface": 1.35, "raised": 1.2}}, {"t": "border-strong", "hex": "#6E7A8A", "r": {"bg": 4.34, "surface": 4.0, "raised": 3.57}}, {"t": "focus", "hex": "#7DB8FF", "r": {"bg": 9.17, "surface": 8.46, "raised": 7.55}}]}, "light": {"surf": {"bg": "#F4F6F9", "surface": "#FFFFFF", "raised": "#EBEFF4", "run-soft": "#E3EEFD", "done-soft": "#E2F4E9", "danger-soft": "#FDE7E5", "wait-soft": "#FFF1D6"}, "wait": "#FFB020", "text": [{"t": "text", "hex": "#111821", "r": {"bg": 16.49, "surface": 17.85, "raised": 15.46, "run-soft": 15.23, "done-soft": 15.6, "danger-soft": 15.08, "wait-soft": 15.98}}, {"t": "text-2", "hex": "#3A4553", "r": {"bg": 9.0, "surface": 9.74, "raised": 8.43, "run-soft": 8.31, "done-soft": 8.51, "danger-soft": 8.23, "wait-soft": 8.72}}, {"t": "text-3", "hex": "#525E6D", "r": {"bg": 6.1, "surface": 6.6, "raised": 5.72, "run-soft": 5.63, "done-soft": 5.77, "danger-soft": 5.58, "wait-soft": 5.91}}, {"t": "run", "hex": "#0A5BC4", "r": {"bg": 5.87, "surface": 6.35, "raised": 5.5, "run-soft": 5.42, "done-soft": 5.55, "danger-soft": 5.36, "wait-soft": 5.69}}, {"t": "done", "hex": "#11713A", "r": {"bg": 5.63, "surface": 6.09, "raised": 5.28, "run-soft": 5.2, "done-soft": 5.32, "danger-soft": 5.15, "wait-soft": 5.46}}, {"t": "danger", "hex": "#B42318", "r": {"bg": 6.07, "surface": 6.57, "raised": 5.69, "run-soft": 5.61, "done-soft": 5.74, "danger-soft": 5.55, "wait-soft": 5.89}}, {"t": "warn-text", "hex": "#8A4A00", "r": {"bg": 6.34, "surface": 6.86, "raised": 5.94, "run-soft": 5.85, "done-soft": 6.0, "danger-soft": 5.8, "wait-soft": 6.15}}, {"t": "on-wait", "hex": "#1A1206", "r": {"wait": 10.13}}, {"t": "on-wait-2", "hex": "#3D2A05", "r": {"wait": 7.5}}], "ui": [{"t": "border", "hex": "#D6DCE3", "r": {"bg": 1.28, "surface": 1.38, "raised": 1.2}}, {"t": "border-strong", "hex": "#76838F", "r": {"bg": 3.58, "surface": 3.88, "raised": 3.36}}, {"t": "focus", "hex": "#0A5BC4", "r": {"bg": 5.87, "surface": 6.35, "raised": 5.5}}]}};
+    const notes = { border: 'Decorative dividers only — never the only boundary of a control', 'border-strong': 'Inputs, buttons, dashed "not started" outlines', focus: 'Focus ring (2px)' };
+    const mk = (key, name) => {
+      const t = D[key];
+      const cols = Object.keys(t.surf);
+      const surf = cols.map((k) => ({ name: k, hex: t.surf[k], sw: { height: '44px', background: t.surf[k] } })).concat([{ name: 'wait (fill)', hex: t.wait, sw: { height: '44px', background: t.wait } }]);
+      const textRows = t.text.filter((r) => r.t !== 'on-wait' && r.t !== 'on-wait-2');
+      let min = 99;
+      textRows.forEach((r) => cols.forEach((c) => { if (r.r[c] < min) min = r.r[c]; }));
+      return {
+        name: name, cls: 'av t-' + key + ' desk', min: min.toFixed(2), cols: cols, surf: surf,
+        rows: textRows.map((r) => ({ t: r.t, hex: r.hex, dot: { width: '12px', height: '12px', borderRadius: '3px', background: r.hex, display: 'inline-block' },
+          cells: cols.map((c) => ({ v: r.r[c].toFixed(2), bg: { background: t.surf[c], padding: '10px 8px', alignSelf: 'stretch', display: 'flex', alignItems: 'center' }, fg: { color: r.hex, fontWeight: 600 } })) })),
+        onwait: t.text.filter((r) => r.t === 'on-wait' || r.t === 'on-wait-2').map((r) => ({ t: r.t, hex: r.hex, v: r.r.wait.toFixed(2), bg: { background: t.wait }, fg: { color: r.hex, fontWeight: 700 } })),
+        ui: t.ui.map((u) => ({ t: u.t, hex: u.hex, note: notes[u.t] || '', cells: ['bg', 'surface', 'raised'].map((s) => u.r[s].toFixed(2)) }))
+      };
+    };
+    return { themes: [mk('dark', 'Dark'), mk('light', 'Light')] };
+  }
+}
+</script>
+</body>
+</html>

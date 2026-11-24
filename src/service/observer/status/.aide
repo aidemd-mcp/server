@@ -1,0 +1,28 @@
+---
+scope: src/service/observer/status
+alignment: unreviewed
+description: "Builds everything the observer page shows from the project's files, recorded events and board: every AIDE file in the tree, running work, the file awaiting the user, sessions and history."
+intent: >
+  Turns the project's files, the recorded events and the board, exactly as
+  given, into the full picture the observer page shows: every AIDE file in
+  the intent tree with its alignment or status and progress, the sessions and
+  their liveness, what is running now, the file awaiting the user's
+  confirmation, and the history. The files decide current state; events only
+  add who, when and history. When a waiting event names a file, that file is
+  surfaced as if the user had opened it; when the file is gone, there is
+  nothing to surface.
+outcomes:
+  desired:
+    - The tree always shows every AIDE file in the project, including specs, briefs, plans, todos and the session record, each with its alignment or status and checkbox progress, so any file can be opened.
+    - The running work names its phase, module, agent and elapsed time, with the build step reached out of the plan's steps and the QA-to-Fix round. Phase and module come from what the orchestrator recorded, with the agent only a fallback.
+    - When a waiting event names a file that still awaits the user's confirmation, that file is surfaced as if the user had opened it from the tree. A waiting item clears when its resolved event arrives or the file no longer awaits approval.
+    - Each session shows whether it is live, idle or ended. History lists only recorded events in the order they happened, each row showing its prompt's first line with the full prompt as detail.
+    - A malformed spec, plan or todo, an absent board or a missing event empties only its own node or part, and everything else still shows in full.
+  undesired:
+    - A status that contradicts the files, such as showing Build while the plan is still proposed or a file still waiting after it was approved.
+    - Current state taken from the event log, so a missed event leaves a stale phase or a wrong waiting file on screen.
+    - An AIDE file left out of the tree, or a waiting event for a file that no longer exists surfacing anything at all.
+    - Progress counts that differ from cleanup's count of open items in the same file.
+    - History rows invented, guessed or reordered to fill a missed event.
+    - One malformed file or missing input breaking the whole status instead of only its own node.
+---

@@ -2,7 +2,7 @@ import { open, readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { AideFile, AideFrontmatter, AlignmentValue, ScanResult, WorkStatus } from "@/types/index.js";
 import { classifyFile } from "@/util/classify/index.js";
-import { SKIP_DIRS } from "@/types/index.js";
+import SKIP_DIRS from "@/util/skipDirs/index.js";
 import parseFrontmatter from "@/util/parseFrontmatter/index.js";
 import classifyAideFile from "@/tools/frontmatter/classifyAideFile/index.js";
 import readGovernedValue from "@/tools/frontmatter/readGovernedValue/index.js";

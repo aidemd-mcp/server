@@ -4,7 +4,7 @@ import readAideLaunchMode from "./readAideLaunchMode/index.js";
 import fetchPublishedVersions from "./fetchPublishedVersions/index.js";
 import listSkippedVersions from "./listSkippedVersions/index.js";
 import resolveHighlights from "./resolveHighlights/index.js";
-import isVersionBehind from "./shared/isVersionBehind/index.js";
+import isVersionBehind from "@/util/isVersionBehind/index.js";
 
 /**
  * Soft notice for any launch kind the project's aide entry uses. `installed`

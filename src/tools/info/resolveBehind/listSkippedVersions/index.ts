@@ -1,4 +1,4 @@
-import isVersionBehind from "../shared/isVersionBehind/index.js";
+import isVersionBehind from "@/util/isVersionBehind/index.js";
 
 const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
 

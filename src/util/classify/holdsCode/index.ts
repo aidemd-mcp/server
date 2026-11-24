@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { SKIP_DIRS } from "@/types/index.js";
+import SKIP_DIRS from "@/util/skipDirs/index.js";
 import isCodeFile from "./isCodeFile/index.js";
 
 const SKIPPED: readonly string[] = SKIP_DIRS;

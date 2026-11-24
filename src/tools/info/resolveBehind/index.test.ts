@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./readAideLaunchMode/index.js", () => ({ default: vi.fn() }));
 vi.mock("./fetchPublishedVersions/index.js", () => ({ default: vi.fn() }));
-vi.mock("./shared/isVersionBehind/index.js", () => ({ default: vi.fn() }));
+vi.mock("@/util/isVersionBehind/index.js", () => ({ default: vi.fn() }));
 vi.mock("./listSkippedVersions/index.js", () => ({ default: vi.fn() }));
 vi.mock("./resolveHighlights/index.js", () => ({ default: vi.fn() }));
 
 import readAideLaunchMode from "./readAideLaunchMode/index.js";
 import fetchPublishedVersions from "./fetchPublishedVersions/index.js";
-import isVersionBehind from "./shared/isVersionBehind/index.js";
+import isVersionBehind from "@/util/isVersionBehind/index.js";
 import listSkippedVersions from "./listSkippedVersions/index.js";
 import resolveHighlights from "./resolveHighlights/index.js";
 import resolveBehind from "./index.js";

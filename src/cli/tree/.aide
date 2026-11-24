@@ -1,0 +1,24 @@
+---
+scope: src/cli/tree
+alignment: unreviewed
+description: Terminal-native intent-tree explorer that lets a human browse and inspect any project's `.aide` hierarchy as agents see it.
+intent: >
+  This module is the human-facing window onto the intent tree. It exists so a
+  developer can verify, at a glance, exactly what an agent perceives when it
+  walks the hierarchy — the same nodes, the same descriptions, the same
+  alignment status, the same ancestor chains. It is a debugging surface for
+  humans, not a separate viewer with its own opinions about what matters.
+  Whatever the agent-facing discovery returns, the explorer renders; whatever
+  the agent does not see, the explorer does not invent.
+outcomes:
+  desired:
+    - The explorer renders the intent tree as a human-navigable hierarchy and stays interactive — a developer can move through nodes and inspect any spec without re-running the command or losing their place in the tree.
+    - Every node, summary, status flag, and ancestor relationship the explorer shows matches what an agent receives from the discovery surface for the same project. If the two diverge for the same project, the explorer is wrong.
+    - Frontmatter renders as a structured, visually-parsed view that distinguishes intent, desired outcomes, and undesired outcomes as separate regions a human can scan — never as raw nested YAML.
+    - The explorer reads the project's filesystem directly and runs without the MCP server, host agent runtime, or any network dependency being available.
+  undesired:
+    - The explorer shows summaries, statuses, or hierarchy that the agent-facing discovery surface does not — inventing nodes, omitting status, or restructuring relationships turns the debugging tool into a second source of truth.
+    - Frontmatter shown as raw indented YAML, or desired and undesired outcomes rendered as one undifferentiated list — the human came here precisely to avoid mentally parsing YAML.
+    - The explorer requires the MCP server to be running, an agent harness to be active, or network access to function. It is a local filesystem reader.
+    - A static one-shot dump that prints the tree and exits, or a flag-driven query interface where the user must specify what to see before launching — both defeat the browse-and-explore purpose.
+---

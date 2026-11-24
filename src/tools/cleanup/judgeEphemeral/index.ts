@@ -1,6 +1,6 @@
 import readGovernedValue from "@/tools/frontmatter/readGovernedValue/index.js";
 import type { CleanupEphemeral, OpenCheckbox } from "@/types/index.js";
-import findOpenItems from "../findOpenItems/index.js";
+import countCheckboxes from "@/util/countCheckboxes/index.js";
 
 /** What one ephemeral's own recorded status says about its cycle, with the open items the refusal needs to name. */
 export type EphemeralVerdict =
@@ -13,7 +13,7 @@ export type EphemeralVerdict =
 
 /** Scans a plan, todo or brief for unchecked items, each tagged with its file. */
 function scanItems(file: CleanupEphemeral, content: string): { total: number; items: OpenCheckbox[] } {
-	const { total, open } = findOpenItems(content);
+	const { total, open } = countCheckboxes(content);
 	return { total, items: open.map(({ line, text }) => ({ file, line, text })) };
 }
 

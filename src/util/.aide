@@ -1,0 +1,29 @@
+---
+scope: src/util
+alignment: unreviewed
+description: Shared helpers many modules rely on to read project files, parse AIDE files, build the intent tree, count checkboxes and locate per-user runtime files.
+intent: >
+  Give every part of the server one shared answer to each common question:
+  what files a project holds, what an AIDE file says, what the intent tree
+  looks like, how many checkboxes are ticked, and where per-user runtime files
+  live. Tools, services, terminal commands and the observer then never compute
+  the same thing differently. Helpers own no domain decisions, do only what
+  their names say, and depend on nothing above them. Runtime files live in
+  per-user storage outside every project: event logs per project, the
+  running observer's record once per user.
+outcomes:
+  desired:
+    - Each shared concern has one helper that every module needing it uses, so two modules never give different answers for the same input, such as different checkbox counts for the same file in cleanup and in status.
+    - Helpers answer only the question they are named for and leave what the answer means, such as whether a file may be removed or a stage is done, to the modules that call them.
+    - Readers and parsers never write anything; only the runtime-folder helpers create anything on disk, and only that folder.
+    - A helper moved into this layer gives its existing callers exactly the same answers it gave before the move.
+    - Event logs always resolve to a per-user folder for their project, and the running observer's record to one per-user location shared by every project, both outside every project and created when missing.
+    - Nothing in the layer depends on the tools, services, terminal commands or observer that use it.
+  undesired:
+    - Two modules count, parse or build the same thing with their own logic and drift apart, so the status view and cleanup disagree about whether a list is finished.
+    - A helper embeds one caller's domain rule, so its answer silently changes meaning for every other caller.
+    - A reader or resolver writes, moves or creates files as a side effect of answering.
+    - A moved helper answers slightly differently for an old caller, such as ordering the tree map differently or counting a malformed checkbox differently.
+    - An event log or the observer's record lands inside a project, where it shows up in version control or in the intent tree, or the record resolves per project, so a start from one project misses the observer already running for another.
+    - A helper reaches up into a tool, service, command or the observer, so the layer can no longer be shared by its other callers.
+---

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import findOpenItems from "@/tools/cleanup/findOpenItems/index.js";
+import countCheckboxes from "@/util/countCheckboxes/index.js";
 import readGovernedValue from "../readGovernedValue/index.js";
 import type { FrontmatterRefusal, GovernedKind } from "../types/index.js";
 
@@ -27,8 +27,8 @@ async function readSiblingPlan(absPath: string): Promise<string | null> {
 /**
  * Guards the move to `completed`; the orchestrator calls it only when the
  * requested value is `completed`. Refuses with the open items when the file
- * still has unchecked checkboxes, judged by cleanup's own scanner so the tool
- * and cleanup never disagree. A brief is also refused unless the `plan.aide`
+ * still has unchecked checkboxes, judged by the shared checkbox counter
+ * cleanup also uses, so the tool and cleanup never disagree. A brief is also refused unless the `plan.aide`
  * beside it is already completed. Returns null when completion may proceed.
  */
 export default async function checkCompletion({
@@ -41,7 +41,7 @@ export default async function checkCompletion({
 	kind: GovernedKind;
 }): Promise<FrontmatterRefusal | null> {
 	// Every unchecked checkbox blocks completion, for all kinds.
-	const { open } = findOpenItems(content);
+	const { open } = countCheckboxes(content);
 	if (open.length > 0) return { kind: "open-items", items: open };
 
 	if (kind !== "brief") return null;
