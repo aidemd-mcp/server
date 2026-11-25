@@ -4,9 +4,11 @@ import type { StartReply } from "@/tools/observer/start/types/index.js";
 
 // Registered request handlers keyed by their (mocked) schema object. A map, not
 // mock.calls, so afterEach(vi.clearAllMocks) cannot erase the capture.
-const { handlers, mockCleanup, mockScaffold, mockFrontmatter, mockBrainCategory, mockUpgrade, mockBrain, mockReadTemplateSection, mockListContract, mockValidateDraft, mockObserverStart, mockObserverEvent } =
+const { handlers, serverInfo, mockCleanup, mockScaffold, mockFrontmatter, mockBrainCategory, mockUpgrade, mockBrain, mockReadTemplateSection, mockListContract, mockValidateDraft, mockObserverStart, mockObserverEvent } =
 	vi.hoisted(() => ({
 		handlers: new Map<unknown, (request?: unknown) => Promise<any>>(),
+		// The Server constructor's first argument, captured for the same reason as `handlers`.
+		serverInfo: { current: undefined as { name: string; version: string } | undefined },
 		mockCleanup: vi.fn(),
 		mockScaffold: vi.fn(),
 		mockFrontmatter: vi.fn(),
@@ -27,12 +29,15 @@ vi.mock("@/service/install/shared/checkGlobalPackage/index.js", () => ({
 
 // Mock MCP SDK modules to prevent real server instantiation.
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
-	Server: vi.fn().mockImplementation(() => ({
-		setRequestHandler: vi.fn((schema: unknown, handler: (request?: unknown) => Promise<any>) => {
-			handlers.set(schema, handler);
-		}),
-		connect: vi.fn().mockResolvedValue(undefined),
-	})),
+	Server: vi.fn().mockImplementation((info: { name: string; version: string }) => {
+		serverInfo.current = info;
+		return {
+			setRequestHandler: vi.fn((schema: unknown, handler: (request?: unknown) => Promise<any>) => {
+				handlers.set(schema, handler);
+			}),
+			connect: vi.fn().mockResolvedValue(undefined),
+		};
+	}),
 }));
 vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
 	StdioServerTransport: vi.fn().mockImplementation(() => ({})),
@@ -100,11 +105,28 @@ import resolveSessionLog from "@/util/runtimePaths/resolveSessionLog/index.js";
 import getSession from "@/service/observer/event/record/session/index.js";
 import brainContract from "@/service/brainContract/index.js";
 import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
+import aidePackage from "@/service/install/shared/aidePackage/index.js";
 
 await startServer();
 
 afterEach(() => {
 	vi.clearAllMocks();
+});
+
+describe("MCP handshake serverInfo", () => {
+	const packageJson = JSON.parse(
+		readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json"), "utf-8"),
+	) as { name: string; version: string };
+
+	it("reports the package.json version", () => {
+		expect(serverInfo.current?.version).toBe(packageJson.version);
+		expect(serverInfo.current?.version).not.toBe("unknown");
+	});
+
+	it("reports the package name from the single package-name source", () => {
+		expect(serverInfo.current?.name).toBe(aidePackage.name);
+		expect(serverInfo.current?.name).toBe(packageJson.name);
+	});
 });
 
 describe("aide_cleanup registration", () => {

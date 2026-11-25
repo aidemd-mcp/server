@@ -40,6 +40,7 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
   - Confirm: per file.
 
 ### Fixed
+- The MCP handshake reports the package's real name and version. It had said `0.2.0` since early releases, so MCP clients showed the wrong version; `aide_info` was always right.
 - `/aide` reports the task a session takes up to the observer as `picked`, even when it is already In Progress and nothing moves. Before, a resumed In Progress task was never reported, so the observer never showed which task the session was working on. The `aide-observer` skill's reporting table and the `aide_observer_event` description say so.
 - The observer's Details pane renders `.aide` markdown properly. Pipe tables show as tables, keeping each column's alignment. Inline code shows as code. Section headings no longer keep their `## ` prefix. Long lines (a wide folder tree, a long path) wrap, so the pane never scrolls sideways behind a scrollbar you could only reach at the bottom. A table too wide for the pane scrolls on its own.
 

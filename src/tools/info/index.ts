@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import readPackageVersion from "@/util/readPackageVersion/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import buildBrainState from "@/service/buildBrainState/index.js";
 import { readBrainMigrationNotice } from "@/service/install/provisionBrain/index.js";
@@ -9,24 +9,6 @@ import resolveBehind from "./resolveBehind/index.js";
 import type { InfoResult } from "@/types/index.js";
 
 export const InfoInput = z.object({});
-
-/**
- * In dist this module lives at dist/tools/info/index.js.
- * Walking up 3 directories reaches the package root where package.json resides.
- */
-const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
-const PACKAGE_JSON_PATH = join(MODULE_DIR, "..", "..", "..", "package.json");
-
-/** Read the server's own npm package version from the bundled package.json. */
-function readServerVersion(): string {
-	try {
-		const raw = readFileSync(PACKAGE_JSON_PATH, "utf-8");
-		const pkg = JSON.parse(raw) as { version?: string };
-		return pkg.version ?? "unknown";
-	} catch {
-		return "unknown";
-	}
-}
 
 /**
  * Passive boot-time reporter called by the orchestrator at startup.
@@ -63,7 +45,7 @@ function readServerVersion(): string {
  */
 export default async function info(root: string): Promise<InfoResult> {
 	// Step 1 — read the server's own package version (sync, always fast).
-	const serverVersion = readServerVersion();
+	const serverVersion = readPackageVersion();
 
 	// Steps 2, 3, 4 and 5 — staleness check, behind-npm check, brain-state
 	// resolution and brain-migration notice are independent; run them in

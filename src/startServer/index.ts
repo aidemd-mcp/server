@@ -31,6 +31,7 @@ import observerEndSession from "@/tools/observer/endSession/index.js";
 import { inputSchema as observerEventSchema } from "@/service/observer/event/shared/schema/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
 import describeAideCommand from "@/service/install/shared/describeAideCommand/index.js";
+import readPackageVersion from "@/util/readPackageVersion/index.js";
 
 /** Parse --root flag from CLI args, default to cwd. */
 function parseRoot(): string {
@@ -58,7 +59,7 @@ export default async function startServer(): Promise<void> {
 
 	// Step 2 — build the server and register the tool list and tool calls.
 	const server = new Server(
-		{ name: "@aidemd-mcp/server", version: "0.2.0" },
+		{ name: aidePackage.name, version: readPackageVersion() },
 		{ capabilities: { tools: {} } },
 	);
 

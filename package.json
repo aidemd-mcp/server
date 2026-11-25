@@ -46,7 +46,8 @@
 		".claude/agents/aide",
 		".claude/agents/kanban",
 		".claude/skills",
-		"!.aide/versions.json"
+		"!.aide/versions.json",
+    "!.claude/skills/release-check"
 	],
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.12.1",

@@ -43,7 +43,9 @@ node scripts/publish.mjs <patch|minor|major> [message]
 
 This bumps `package.json`, syncs `server.json`, commits (e.g. `0.3.16: fix scoring tool`), tags `v0.3.16`, and pushes — the CI does the rest (npm publish + MCP Registry publish).
 
-**Before publishing,** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship. Then move the changelog's `## [Unreleased]` entries under the new version heading (see "Changelog" below) and stage that with the release. After `npm run build`, run the hook's speed test, `AIDE_MEASURE_HOOK=1 npx vitest run src/cli/hook/index.speed.test.ts`; a release whose hook misses its budget does not ship.
+**Before publishing, run the release check.** The `release-check` skill (`.claude/skills/release-check/`) packs the build exactly as it would publish, installs it into a throwaway project under a temp npm prefix, and runs `aidemd-mcp init`, the hook and headless `/aide` sessions against it, isolated from the real global install, observer and app data. It lives in this repo only: it is not in the install registry and `package.json` excludes it from the package. Invoke it as `/release-check`; a release with a failing check does not ship.
+
+**Then** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship. Then move the changelog's `## [Unreleased]` entries under the new version heading (see "Changelog" below) and stage that with the release. After `npm run build`, run the hook's speed test, `AIDE_MEASURE_HOOK=1 npx vitest run src/cli/hook/index.speed.test.ts`; a release whose hook misses its budget does not ship.
 
 ## Changelog
 
