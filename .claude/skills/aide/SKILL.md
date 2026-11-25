@@ -340,7 +340,8 @@ Report each action through `aide_observer_event` as it happens, so the user can 
 | When | Report |
 |---|---|
 | The user sends a message | `prompt` with the message in full |
-| A task is picked up or moved on the board | `task` with its slug, `picked` or `moved`, and the column |
+| The session takes up a task — at boot or later, including one already In Progress that nothing moves | `task` with its slug, `picked`, and the column it is in |
+| A task is moved on the board | `task` with its slug, `moved`, and the column it moved to |
 | Before you delegate to a pipeline agent | `phase_started` with the phase, the agent's name and the module path |
 | When it returns | `phase_finished` with the same phase, agent and module, a short result and summary |
 | You pause for the user's approval of a file (structure tree, spec, plan) | `gate_waiting` with the gate and the path of the file awaiting approval |
@@ -357,7 +358,7 @@ Phases: spec, research, synthesize, structure, plan, build, qa, fix, align, refa
 
 Every piece of pipeline work is tracked on a task. Board tracking never gates `session.aide`: work that has no task yet — or that the user doesn't track on the board — is still recorded there. Board bookkeeping is a job the orchestrator runs itself (like interviewing and relaying) — through the `kanban` skill's operations, never by editing the board another way. You hold each operation's approval gates with the user; the `kanban-maintainer` agent does the file work and returns what changed.
 
-- **Start.** When a feature pipeline starts or resumes, tie it to an open task from the Step 5 list, or create one with the kanban skill's create operation. Move it to In Progress with the move operation.
+- **Start.** When a feature pipeline starts or resumes, tie it to an open task from the Step 5 list, or create one with the kanban skill's create operation. Report it to the observer as `task` with action `picked` and its column as soon as the session takes it up — even when it is already In Progress and nothing moves. Then move it to In Progress with the move operation if it is not there yet, and report that move as `moved`.
 - **Transitions.** At every transition that triggers `aide-handoff`, stash progress into the task with the stash operation, and hand the task link to the handoff (see "What you owe the skill").
 - **New work.** Follow-up work that surfaces mid-pipeline goes into `session.aide`'s follow-ups; anything large enough to schedule also becomes a task (ask the user first), and its slug goes next to it.
 - **Close.** At Completion, after the maintainer cleans up, move the task to In Review with the complete operation, or to Done once the user confirms the feature is closed.

@@ -14,6 +14,7 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 - The observer page's bottom drawer uses the class `av-drawer-bottom` (was `av-histdrawer`), matching its name on the page.
 
 ### Fixed
+- `/aide` reports the task a session takes up to the observer as `picked`, even when it is already In Progress and nothing moves. Before, a resumed In Progress task was never reported, so the observer never showed which task the session was working on. The skill's reporting table, its Board tracking "Start" step and the `aide_observer_event` description say so.
 - The observer's Details pane renders `.aide` markdown properly. Pipe tables show as tables, keeping each column's alignment. Inline code shows as code. Section headings no longer keep their `## ` prefix. Long lines (a wide folder tree, a long path) wrap, so the pane never scrolls sideways behind a scrollbar you could only reach at the bottom. A table too wide for the pane scrolls on its own.
 
 ## [0.16.1] - 2026-11-24
