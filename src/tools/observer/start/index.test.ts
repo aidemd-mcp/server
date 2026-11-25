@@ -8,7 +8,9 @@ vi.mock("node:os", async (importOriginal) => {
 	return { ...actual, homedir: vi.fn(() => actual.homedir()) };
 });
 
-const { mockTakeOver, mockTryBind, mockLaunch, mockAwait, mockVersion } = vi.hoisted(() => ({
+const { mockTakeOver, mockTryBind, mockLaunch, mockAwait, mockVersion, mockMoveHistory, mockMoveRoot } = vi.hoisted(() => ({
+	mockMoveHistory: vi.fn(),
+	mockMoveRoot: vi.fn(),
 	mockTakeOver: vi.fn(),
 	mockTryBind: vi.fn(),
 	mockLaunch: vi.fn(),
@@ -19,6 +21,8 @@ const { mockTakeOver, mockTryBind, mockLaunch, mockAwait, mockVersion } = vi.hoi
 vi.mock("@/observer/takeOver/index.js", () => ({ default: mockTakeOver }));
 vi.mock("@/tools/observer/shared/tryBind/index.js", () => ({ default: mockTryBind }));
 vi.mock("@/util/readPackageVersion/index.js", () => ({ default: mockVersion }));
+vi.mock("./moveLegacyHistory/index.js", () => ({ default: mockMoveHistory }));
+vi.mock("@/util/runtimePaths/moveLegacyRoot/index.js", () => ({ default: mockMoveRoot }));
 vi.mock("./launchObserver/index.js", () => ({ default: mockLaunch }));
 vi.mock("./awaitObserver/index.js", () => ({ default: mockAwait }));
 
@@ -81,10 +85,10 @@ beforeEach(async () => {
 	home = await mkdtemp(path.join(tmpdir(), "aide-start-home-"));
 	appData = await mkdtemp(path.join(tmpdir(), "aide-start-appdata-"));
 	vi.mocked(homedir).mockReturnValue(home);
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 	vi.stubEnv("AIDE_OBSERVER_PORT", "");
 	mockVersion.mockReturnValue("0.15.0");
+	mockMoveHistory.mockResolvedValue(undefined);
 	mockTryBind.mockResolvedValue({ ok: true });
 	mockLaunch.mockReturnValue({ pid: 1 });
 	mockAwait.mockResolvedValue({ outcome: "answered", observer });
@@ -231,6 +235,31 @@ describe("start", () => {
 		const reply = await start(input);
 
 		expect(reply).toEqual({ outcome: "blocked", reason: "spawn failed" });
+	});
+
+	describe("the move of old-folder history", () => {
+		it("runs once per start, before the observer check", async () => {
+			mockTakeOver.mockResolvedValue({ outcome: "none" });
+
+			await start(input);
+
+			expect(mockMoveHistory).toHaveBeenCalledTimes(1);
+			expect(mockMoveHistory.mock.invocationCallOrder[0]).toBeLessThan(mockTakeOver.mock.invocationCallOrder[0]);
+		});
+
+		it("still answers the usual reply when the move itself rejects", async () => {
+			const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+			const actual = await vi.importActual<typeof import("./moveLegacyHistory/index.js")>("./moveLegacyHistory/index.js");
+			mockMoveHistory.mockImplementation(actual.default);
+			mockMoveRoot.mockRejectedValue(new Error("cannot list"));
+			mockTakeOver.mockResolvedValue({ outcome: "none" });
+
+			const reply = await start(input);
+
+			expect(reply).toEqual({ outcome: "started", link: viewLink() });
+			expect(stderr).toHaveBeenCalledWith(expect.stringMatching(/^aide: could not move .*cannot list\n$/));
+			stderr.mockRestore();
+		});
 	});
 
 	describe("the HALT check", () => {

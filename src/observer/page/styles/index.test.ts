@@ -95,7 +95,8 @@ describe("observer page styles", () => {
 			.split("}")
 			.filter((rule) => rule.includes("44px") && !rule.includes(".av.phone "))
 			.map((rule) => rule.split("{")[0]!.trim());
-		expect(elsewhere).toEqual([".av .av-histbar", ".av .av-histbar-row", ".av .av-launch"]);
+		// The two .av-resize::before rules are the resize grip pill's length, not a touch target.
+		expect(elsewhere).toEqual([".av .av-resize.x::before", ".av .av-resize.y::before", ".av .av-histbar", ".av .av-histbar-row", ".av .av-launch"]);
 	});
 
 	it("shows a skipped cell's meta and a skipped lane in the rail bar", () => {

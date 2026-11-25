@@ -19,8 +19,7 @@ function makeMark(overrides: Partial<EndedMark> = {}): EndedMark {
 
 beforeEach(async () => {
 	appData = await mkdtemp(path.join(tmpdir(), "aide-write-ended-"));
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 	await mkdir(path.dirname(resolveEndedMark({ projectKey: KEY, id: SESSION })), { recursive: true });
 });
 

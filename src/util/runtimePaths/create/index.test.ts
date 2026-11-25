@@ -20,8 +20,7 @@ let appData: string;
 let project: string;
 
 function stubAppData(folder: string) {
-	vi.stubEnv("LOCALAPPDATA", folder);
-	vi.stubEnv("XDG_STATE_HOME", folder);
+	vi.stubEnv("AIDEMD_HOME", path.join(folder, "aidemd"));
 }
 
 beforeEach(async () => {

@@ -66,8 +66,7 @@ function end(id: string) {
 beforeEach(async () => {
 	appData = await mkdtemp(path.join(tmpdir(), "aide-end-session-"));
 	projectRoot = await mkdtemp(path.join(tmpdir(), "aide-end-project-"));
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 	projectKey = resolve({ projectRoot }).projectKey;
 });
 

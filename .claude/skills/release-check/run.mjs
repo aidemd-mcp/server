@@ -25,8 +25,8 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, isAbsolute, join, parse as parsePath, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
@@ -43,8 +43,7 @@ const STAMP = new Date().toISOString().replace(/[:.]/g, "-");
 const ROOT = join(tmpdir(), `aide-release-check-${STAMP}`);
 const PREFIX = join(ROOT, "prefix");
 const PACK_DIR = join(ROOT, "pack");
-const APPDATA = join(ROOT, "appdata"); // stands in for %LOCALAPPDATA% / $XDG_STATE_HOME
-const AIDE_ROOT = join(APPDATA, "aidemd");
+const AIDE_ROOT = join(ROOT, "aidemd-home"); // AIDEMD_HOME for every AIDE process the test starts
 const VAULT = join(ROOT, "vault");
 const PROJECT = join(ROOT, "rc-project");
 const LOGS = join(ROOT, "logs");
@@ -56,13 +55,29 @@ const PREFIX_BIN = IS_WIN ? PREFIX : join(PREFIX, "bin");
 const ENTRY = join(PKG_DIR, "dist", "index.js");
 const HEADLESS_TIMEOUT_MS = 10 * 60 * 1000;
 
-for (const dir of [ROOT, PREFIX, PACK_DIR, APPDATA, VAULT, PROJECT, LOGS]) mkdirSync(dir, { recursive: true });
+for (const dir of [ROOT, PREFIX, PACK_DIR, AIDE_ROOT, VAULT, PROJECT, LOGS]) mkdirSync(dir, { recursive: true });
 
-// The real per-user app-data root, captured before anything is overridden.
+// The real per-user AIDE root, resolved the way the product does, from this shell's env:
+// AIDEMD_HOME when set, non-empty and absolute (every OS); else Windows <home>\.aidemd;
+// macOS ~/Library/Application Support/aidemd; elsewhere $XDG_STATE_HOME (absolute) or
+// ~/.local/state, plus /aidemd. Captured before anything is overridden.
+const REAL_HOME = IS_WIN ? process.env.USERPROFILE || homedir() : homedir();
+const SHELL_AIDEMD_HOME = process.env.AIDEMD_HOME ?? "";
+const REAL_AIDE_ROOT =
+	SHELL_AIDEMD_HOME.trim() !== "" && isAbsolute(SHELL_AIDEMD_HOME)
+		? SHELL_AIDEMD_HOME
+		: IS_WIN
+			? join(REAL_HOME, ".aidemd")
+			: process.platform === "darwin"
+				? join(REAL_HOME, "Library", "Application Support", "aidemd")
+				: join(process.env.XDG_STATE_HOME && isAbsolute(process.env.XDG_STATE_HOME) ? process.env.XDG_STATE_HOME : join(REAL_HOME, ".local", "state"), "aidemd");
+// Windows only: the root versions before AIDEMD_HOME used (%LOCALAPPDATA%\aidemd), as this shell sees it.
 const REAL_LOCALAPPDATA = process.env.LOCALAPPDATA ?? "";
-const REAL_AIDE_ROOT = IS_WIN
-	? join(REAL_LOCALAPPDATA || join(process.env.USERPROFILE ?? "", "AppData", "Local"), "aidemd")
-	: join(process.env.XDG_STATE_HOME || join(process.env.HOME ?? "", ".local", "state"), "aidemd");
+const REAL_LEGACY_ROOT = IS_WIN ? join(REAL_LOCALAPPDATA || join(REAL_HOME, "AppData", "Local"), "aidemd") : null;
+const REAL_ROOTS = [
+	["new", REAL_AIDE_ROOT],
+	...(REAL_LEGACY_ROOT ? [["legacy", REAL_LEGACY_ROOT]] : []),
+];
 
 /** Env with the PATH key normalized (Windows env keys are case-insensitive, Node's copy is not). */
 function withPath(base, pathValue) {
@@ -79,28 +94,28 @@ function getPath(env) {
 // The base env: the caller's env minus anything that would tie a child to the
 // session that launched this script (a parent Claude Code session sets these).
 const BASE_ENV = { ...process.env };
-for (const key of ["CLAUDE_PROJECT_DIR", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "AIDE_OBSERVER_PORT"]) {
+for (const key of ["CLAUDE_PROJECT_DIR", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "AIDE_OBSERVER_PORT", "AIDEMD_HOME"]) {
 	delete BASE_ENV[key];
 }
 
-// Every AIDE / Claude process the test starts gets this env: per-user runtime
-// files under the temp app-data root, npm's global prefix at the temp prefix
+// Every AIDE / Claude process the test starts gets this env: AIDEMD_HOME at the
+// temp AIDE root (the product uses it as the root itself on every OS, and never
+// runs the legacy-root move while it is set), npm's global prefix at the temp prefix
 // (so `npm root -g`, and any `npm i -g`, never reach the real global install),
 // and the temp prefix's bin dir first on PATH.
 const ISO_ENV = withPath(
 	{
 		...BASE_ENV,
-		LOCALAPPDATA: APPDATA,
-		XDG_STATE_HOME: APPDATA,
+		AIDEMD_HOME: AIDE_ROOT,
 		npm_config_prefix: PREFIX,
 		NPM_CONFIG_PREFIX: PREFIX,
 	},
 	[PREFIX_BIN, getPath(BASE_ENV)].join(IS_WIN ? ";" : ":"),
 );
 
-// Guard: the isolated app-data root must be inside the temp root and never the real one.
-if (!APPDATA.startsWith(ROOT) || resolve(AIDE_ROOT).toLowerCase() === resolve(REAL_AIDE_ROOT).toLowerCase()) {
-	console.error(`Refusing to run: isolated app-data root ${AIDE_ROOT} is not isolated from ${REAL_AIDE_ROOT}`);
+// Guard: the isolated AIDE root must be inside the temp root and never a real one.
+if (!AIDE_ROOT.startsWith(ROOT) || REAL_ROOTS.some(([, r]) => resolve(AIDE_ROOT).toLowerCase() === resolve(r).toLowerCase())) {
+	console.error(`Refusing to run: isolated AIDE root ${AIDE_ROOT} is not isolated from ${REAL_ROOTS.map(([, r]) => r).join(", ")}`);
 	process.exit(2);
 }
 
@@ -183,9 +198,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const mcpChildren = new Set();
 
 class McpClient {
-	constructor(label, cwd = PROJECT) {
+	constructor(label, cwd = PROJECT, env = ISO_ENV) {
 		this.label = label;
 		this.cwd = cwd;
+		this.env = env;
 		this.nextId = 1;
 		this.pending = new Map();
 		this.buffer = "";
@@ -198,7 +214,7 @@ class McpClient {
 		// .cmd shim around `node <prefix>/node_modules/@aidemd-mcp/server/dist/index.js`.
 		// The shim itself is checked in step 2; here the same entry script is run with
 		// node directly so the process can be stopped cleanly.
-		this.child = spawn(process.execPath, [ENTRY], { cwd: this.cwd, env: ISO_ENV, windowsHide: true });
+		this.child = spawn(process.execPath, [ENTRY], { cwd: this.cwd, env: this.env, windowsHide: true });
 		mcpChildren.add(this.child.pid);
 		this.child.stdout.on("data", (d) => this.onData(d));
 		this.child.stderr.on("data", (d) => (this.stderr += d));
@@ -383,18 +399,34 @@ function skip(message) {
 
 function realBaseline() {
 	const npmLs = spawnSync(`npm ls -g ${PKG} --depth=0`, { shell: true, env: withPath(BASE_ENV, getPath(BASE_ENV)), encoding: "utf8", windowsHide: true });
-	const realObserver = join(REAL_AIDE_ROOT, "observer.json");
-	let observer = null;
-	if (existsSync(realObserver)) {
-		const text = readFileSync(realObserver, "utf8");
-		let pid = null;
+	// Each real root (new, and on Windows the legacy one): its observer.json and any test-project folders.
+	const roots = {};
+	for (const [name, dir] of REAL_ROOTS) {
+		const file = join(dir, "observer.json");
+		let observer = null;
 		try {
-			pid = JSON.parse(text).pid;
+			const text = readFileSync(file, "utf8");
+			let pid = null;
+			try {
+				pid = JSON.parse(text).pid;
+			} catch {
+				/* not JSON */
+			}
+			observer = { file, mtime: statSync(file).mtime.toISOString(), sha: sha(text).slice(0, 16), pid };
 		} catch {
-			/* unreadable */
+			/* missing or unreadable */
 		}
-		observer = { mtime: statSync(realObserver).mtime.toISOString(), sha: sha(text).slice(0, 16), pid };
+		let entries = [];
+		try {
+			entries = readdirSync(dir).sort();
+		} catch {
+			/* no root */
+		}
+		roots[name] = { dir, observer, testFolders: entries.filter((n) => n.startsWith("rc-project")), entryCount: entries.length };
 	}
+	// The record the real observer is judged by: the new root's, else the legacy root's.
+	const source = roots.new.observer ? "new" : roots.legacy?.observer ? "legacy" : null;
+	const observer = source ? roots[source].observer : null;
 	let listenPid = null;
 	const net = IS_WIN
 		? spawnSync("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8", windowsHide: true }).stdout ?? ""
@@ -402,13 +434,12 @@ function realBaseline() {
 	for (const line of net.split(/\r?\n/)) {
 		if (line.includes(`127.0.0.1:${REAL_PORT} `) && line.includes("LISTENING")) listenPid = Number(line.trim().split(/\s+/).pop());
 	}
-	const topLevel = existsSync(REAL_AIDE_ROOT) ? readdirSync(REAL_AIDE_ROOT).sort() : [];
 	return {
 		npmLs: (npmLs.stdout ?? "").trim(),
 		observer,
+		observerSource: source,
 		listenPid,
-		testFoldersInRealAppData: topLevel.filter((n) => n.startsWith("rc-project")),
-		realTopLevelCount: topLevel.length,
+		roots,
 	};
 }
 
@@ -524,7 +555,12 @@ const short = (name) => String(name).split("__").pop();
 const t0 = Date.now();
 const realBefore = realBaseline();
 writeFileSync(join(ROOT, "real-baseline-before.json"), JSON.stringify(realBefore, null, 2));
-console.log(`real baseline: observer pid ${realBefore.observer?.pid ?? "none"}, port ${REAL_PORT} listener pid ${realBefore.listenPid ?? "none"}`);
+console.log(
+	`real baseline: observer pid ${realBefore.observer?.pid ?? "none"} (record ${realBefore.observer?.file ?? `none in ${REAL_ROOTS.map(([, r]) => r).join(" or ")}`}, ${realBefore.observerSource ?? "no"} root), port ${REAL_PORT} listener pid ${realBefore.listenPid ?? "none"}`,
+);
+if (realBefore.listenPid && !realBefore.observer) {
+	console.log(`  WARNING: port ${REAL_PORT} is listening but the real observer record was not readable; check 9.real will FAIL.`);
+}
 
 let packedVersion = null;
 let tgz = null;
@@ -701,7 +737,7 @@ await check("4.malformed", "malformed settings.json -> [skipped-malformed]", ["2
 
 // 5. Hook in situ ------------------------------------------------------------
 console.log("\n[5] hook in situ");
-await check("5.hook", "aidemd-mcp hook: silent, exit 0, presence only in temp app data", ["3.assert"], async () => {
+await check("5.hook", "aidemd-mcp hook: silent, exit 0, presence only in the temp AIDE root", ["3.assert"], async () => {
 	const before = snapshot(PROJECT);
 	const id = `rc-hook-${randomUUID()}`;
 	const fakeObserverSession = `rc-observer-${randomUUID().slice(0, 8)}`;
@@ -732,8 +768,9 @@ await check("5.hook", "aidemd-mcp hook: silent, exit 0, presence only in temp ap
 	}
 	const changes = diffSnapshots(before, snapshot(PROJECT));
 	assert(changes.length === 0, `hook wrote into the project:\n${changes.join("\n")}`);
-	const realHit = existsSync(join(REAL_AIDE_ROOT, PROJECT_KEY));
-	assert(!realHit, `project folder appeared in the REAL app data: ${join(REAL_AIDE_ROOT, PROJECT_KEY)}`);
+	for (const [name, dir] of REAL_ROOTS) {
+		assert(!existsSync(join(dir, PROJECT_KEY)), `project folder appeared in the REAL ${name} root: ${join(dir, PROJECT_KEY)}`);
+	}
 	return `${notes.join(", ")}; presence ${presenceFile(id)}`;
 });
 
@@ -871,7 +908,7 @@ await check("7s.end", "end_session writes the ended mark; start then passes", ["
 
 // 6-7 (headless Claude) -------------------------------------------------------
 console.log("\n[6h/7h] headless claude -p");
-await check("6h.preflight", "claude -p works with LOCALAPPDATA/XDG_STATE_HOME overridden", ["3.wire"], async () => {
+await check("6h.preflight", "claude -p works with AIDEMD_HOME set", ["3.wire"], async () => {
 	if (NO_CLAUDE) throw skip("--no-claude");
 	const r = await run("claude", [...claudeArgs("json"), "--max-turns", "1"], {
 		cwd: PROJECT,
@@ -890,24 +927,7 @@ await check("6h.preflight", "claude -p works with LOCALAPPDATA/XDG_STATE_HOME ov
 		throw skip(`Claude Code is not signed in for headless use: ${String(j.result).slice(0, 200)}`);
 	}
 	if (!j || j.is_error) {
-		// Distinguish "the override breaks Claude Code" from any other failure.
-		const plain = await run("claude", ["-p", "--output-format", "json", "--max-turns", "1"], {
-			cwd: PROJECT,
-			env: BASE_ENV,
-			input: "Reply with exactly: pong",
-			timeout: 180_000,
-			label: "claude-preflight-plain",
-		});
-		let pj = null;
-		try {
-			pj = JSON.parse(plain.stdout);
-		} catch {
-			/* ignore */
-		}
-		const plainOk = pj && !pj.is_error;
-		throw new Error(
-			`claude -p failed under ISO env (${j ? String(j.result).slice(0, 160) : r.stderr.slice(0, 160)}); without the override it ${plainOk ? "WORKS -> the LOCALAPPDATA override breaks Claude Code; use the .mcp.json env-block fallback" : "also fails"}`,
-		);
+		throw new Error(`claude -p failed with AIDEMD_HOME set: ${j ? String(j.result).slice(0, 200) : r.stderr.slice(0, 200)}; see ${r.log}`);
 	}
 	return `pong in ${r.ms} ms (session ${j.session_id})`;
 });
@@ -929,7 +949,7 @@ await check("6h.run1", "claude -p /aide: observer first, link on non-24680, no H
 	const firstStartIdx = aideCalls.indexOf(startCall);
 	const before = aideCalls.slice(0, firstStartIdx).map((t) => short(t.name));
 	assert(before.every((n) => n === "aide_observer_event"), `calls before observer start: ${before.join(", ")}`);
-	assert(existsSync(observerFile), "observer record missing from temp app data");
+	assert(existsSync(observerFile), "observer record missing from the temp AIDE root");
 	const presence = readPresence(r.sessionId);
 	assert(presence?.sessionId === tagOf(first.result ?? ""), `presence for ${r.sessionId}: ${JSON.stringify(presence)}`);
 	const bootCalls = aideCalls.filter((t) => short(t.name) === "aide_info").length;
@@ -974,13 +994,103 @@ await check("7h.approve", "claude -p with approval: end_session writes the mark,
 	return `${ends.map((e) => e.result).join("; ")}; ${starts.length} start call(s), last passed; transcript ${r.transcriptPath}`;
 });
 
+// 10. Legacy-root move (Windows) -------------------------------------------------
+// One packed server with AIDEMD_HOME unset and a fake home + fake LOCALAPPDATA,
+// both under the temp root: aide_observer_start must move the old
+// %LOCALAPPDATA%\aidemd runtime files into <home>\.aidemd, byte for byte, and
+// delete the old observer.json and observer-token.
+console.log("\n[10] legacy-root move");
+await check("10.move", "Windows: start moves %LOCALAPPDATA%\\aidemd into <home>\\.aidemd once", ["2.resolve", "3.init"], async () => {
+	if (!IS_WIN) throw skip(`not Windows (${process.platform}): the legacy %LOCALAPPDATA%\\aidemd root and its move exist only on Windows`);
+	const fakeHome = join(ROOT, "home");
+	const fakeLa = join(ROOT, "la");
+	const oldRoot = join(fakeLa, "aidemd");
+	const newRoot = join(fakeHome, ".aidemd");
+	mkdirSync(fakeHome, { recursive: true });
+	const { root: drive } = parsePath(fakeHome);
+	const env = {
+		...ISO_ENV,
+		USERPROFILE: fakeHome,
+		HOMEDRIVE: drive.replace(/\\$/, ""),
+		HOMEPATH: fakeHome.slice(drive.length - 1),
+		LOCALAPPDATA: fakeLa,
+	};
+	delete env.AIDEMD_HOME;
+	// Never let this check see the real home or app data.
+	assert(!REAL_ROOTS.some(([, r]) => [oldRoot, newRoot].some((p) => resolve(p).toLowerCase() === resolve(r).toLowerCase())), "fake roots collide with a real root");
+	const probe = spawnSync(process.execPath, ["-e", "process.stdout.write(require('os').homedir())"], { env, encoding: "utf8", windowsHide: true });
+	assert(resolve(probe.stdout).toLowerCase() === resolve(fakeHome).toLowerCase(), `os.homedir() in the child env is ${probe.stdout}, not ${fakeHome}`);
+
+	// Seed the old root: one session log, its ended mark, an ended presence, the old record and token.
+	const sid = "20260101T000000000Z-rcmove";
+	const claudeId = `rc-move-${randomUUID().slice(0, 8)}`;
+	const seeded = {
+		[join(PROJECT_KEY, "events", `${sid}.jsonl`)]:
+			JSON.stringify({ v: 1, seq: 1, sessionId: sid, kind: "session_started", at: "2026-01-01T00:00:00.000Z", projectRoot: PROJECT }) + "\n",
+		[join(PROJECT_KEY, "ended", `${sid}.json`)]:
+			JSON.stringify({ v: 1, sessionId: sid, endedAt: "2026-01-01T00:05:00.000Z", endedBy: "user", bySessionId: "20260101T000000000Z-other0" }) + "\n",
+		[join(PROJECT_KEY, "presence", `${claudeId}.json`)]: JSON.stringify({
+			v: 1,
+			claudeSessionId: claudeId,
+			sessionId: sid,
+			state: "ended",
+			at: "2026-01-01T00:05:00.000Z",
+			hookEvent: "SessionEnd",
+		}),
+	};
+	for (const [rel, text] of Object.entries(seeded)) {
+		mkdirSync(dirname(join(oldRoot, rel)), { recursive: true });
+		writeFileSync(join(oldRoot, rel), text);
+	}
+	writeFileSync(join(oldRoot, "observer.json"), JSON.stringify({ address: "http://127.0.0.1:1", token: "0".repeat(64), pid: 999999, version: "0.0.1" }));
+	writeFileSync(join(oldRoot, "observer-token"), "0".repeat(64));
+
+	const client = new McpClient("move", PROJECT, env);
+	let replies = [];
+	try {
+		await client.start();
+		const started = await client.call("aide_observer_event", { kind: "session_started", projectRoot: PROJECT, kanbanTag: "release-check" });
+		const first = await client.call("aide_observer_start", {}, 60_000);
+		replies.push(first.text.split("\n")[0].replace(/token=[0-9a-f]+/, "token=…"));
+		writeFileSync(join(LOGS, "move-start-1.txt"), `${started.text}\n---\n${first.text}`);
+		const problems = [];
+		for (const [rel, text] of Object.entries(seeded)) {
+			const moved = join(newRoot, rel);
+			if (!existsSync(moved)) problems.push(`missing ${moved}`);
+			else if (sha(readFileSync(moved)) !== sha(text)) problems.push(`bytes differ ${moved}`);
+			if (existsSync(join(oldRoot, rel))) problems.push(`old copy left ${join(oldRoot, rel)}`);
+		}
+		for (const name of ["observer.json", "observer-token"]) if (existsSync(join(oldRoot, name))) problems.push(`old ${name} left`);
+		assert(problems.length === 0, `after the first start:\n${problems.join("\n")}`);
+		const before = snapshot(newRoot);
+		const second = await client.call("aide_observer_start", {}, 60_000);
+		replies.push(second.text.split("\n")[0].replace(/token=[0-9a-f]+/, "token=…"));
+		writeFileSync(join(LOGS, "move-start-2.txt"), second.text);
+		const changes = diffSnapshots(before, snapshot(newRoot));
+		assert(changes.length === 0, `second start changed the new root:\n${changes.join("\n")}`);
+		return `${Object.keys(seeded).length} files moved byte-identical into ${newRoot}; old observer.json + observer-token gone; second start changed nothing. Replies: ${replies.join(" | ")}`;
+	} finally {
+		await client.stop();
+		const rec = join(newRoot, "observer.json");
+		if (existsSync(rec)) {
+			try {
+				const { pid, address } = readJson(rec);
+				const port = Number(new URL(address).port);
+				if (pid !== realBefore.observer?.pid && pid !== realBefore.listenPid && port !== REAL_PORT) killTree(pid);
+			} catch {
+				/* unreadable record: nothing to stop */
+			}
+		}
+	}
+});
+
 // ---------------------------------------------------------------------------
 // Teardown, real-setup comparison, report
 // ---------------------------------------------------------------------------
 
 console.log("\n[teardown]");
 for (const pid of mcpChildren) killTree(pid);
-let stoppedObserver = "no observer record in temp app data";
+let stoppedObserver = "no observer record in the temp AIDE root";
 if (existsSync(observerFile)) {
 	const rec = readJson(observerFile);
 	const port = Number(new URL(rec.address).port);
@@ -997,11 +1107,31 @@ console.log(`  ${stoppedObserver}`);
 const realAfter = realBaseline();
 writeFileSync(join(ROOT, "real-baseline-after.json"), JSON.stringify(realAfter, null, 2));
 await check("9.real", "real global install, real observer and real app data untouched", [], async () => {
+	// A real observer listening on the default port must have a readable record; without it this
+	// check would compare nothing for the observer and pass vacuously (seen 2026-11-25 in the
+	// desktop app's terminal panel, where the record at the expected path could not be read).
+	const looked = REAL_ROOTS.map(([name, dir]) => `${join(dir, "observer.json")} (${name})`).join(" and ");
+	for (const [when, snap] of [["before", realBefore], ["after", realAfter]]) {
+		assert(
+			!(snap.listenPid && !snap.observer),
+			`cannot verify the real observer (${when}): port ${REAL_PORT} is listening (pid ${snap.listenPid}) but no record was readable at ${looked}. ` +
+				`Likely cause: an observer started inside the Claude desktop app by an AIDE version from before AIDEMD_HOME keeps its record in the app's private AppData ` +
+				`(the MSIX package redirects %LOCALAPPDATA% writes into Packages\\Claude_<id>\\LocalCache\\Local), which a standalone terminal cannot see. ` +
+				`Run the check from inside the app, or restart that observer after upgrading.`,
+		);
+	}
 	assert(realAfter.npmLs === realBefore.npmLs, `npm ls -g changed:\n${realBefore.npmLs}\n->\n${realAfter.npmLs}`);
-	assert(JSON.stringify(realAfter.observer) === JSON.stringify(realBefore.observer), `real observer.json changed: ${JSON.stringify(realBefore.observer)} -> ${JSON.stringify(realAfter.observer)}`);
 	assert(realAfter.listenPid === realBefore.listenPid, `port ${REAL_PORT} listener pid ${realBefore.listenPid} -> ${realAfter.listenPid}`);
-	assert(realAfter.testFoldersInRealAppData.length === 0, `test project folders in the real app data: ${realAfter.testFoldersInRealAppData.join(", ")}`);
-	return `npm ls -g: ${realAfter.npmLs.split(/\r?\n/).pop().trim()}; observer.json mtime ${realAfter.observer?.mtime} sha ${realAfter.observer?.sha}; ${REAL_PORT} pid ${realAfter.listenPid}`;
+	const notes = [];
+	for (const [name] of REAL_ROOTS) {
+		const b = realBefore.roots[name];
+		const a = realAfter.roots[name];
+		assert(JSON.stringify(a.observer) === JSON.stringify(b.observer), `real ${name} observer.json changed: ${JSON.stringify(b.observer)} -> ${JSON.stringify(a.observer)}`);
+		assert(a.testFolders.length === 0, `test project folders in the real ${name} root ${a.dir}: ${a.testFolders.join(", ")}`);
+		assert(!existsSync(join(a.dir, PROJECT_KEY)), `test key folder ${PROJECT_KEY} in the real ${name} root ${a.dir}`);
+		notes.push(`${name} ${a.dir}: observer.json ${a.observer ? `mtime ${a.observer.mtime} sha ${a.observer.sha} pid ${a.observer.pid}` : "absent"}, no test folders`);
+	}
+	return `npm ls -g: ${realAfter.npmLs.split(/\r?\n/).pop().trim()}; record judged from the ${realAfter.observerSource ?? "(none)"} root; ${REAL_PORT} pid ${realAfter.listenPid}\n${notes.join("\n")}`;
 });
 
 const totalMs = Date.now() - t0;

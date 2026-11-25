@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { platform, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, relative, isAbsolute } from "node:path";
 import startObserver from "@/observer/index.js";
 import buildViewLink from "@/observer/buildViewLink/index.js";
@@ -29,9 +29,8 @@ export default async function seedObserver(): Promise<void> {
 	let exitCode = 0;
 
 	try {
-		process.env.LOCALAPPDATA = appDataFolder;
-		process.env.XDG_STATE_HOME = appDataFolder;
-		if (platform() === "darwin") process.env.HOME = appDataFolder;
+		// AIDEMD_HOME is the per-user root override on every OS; while it is set nothing reads or moves the real folder.
+		process.env.AIDEMD_HOME = join(appDataFolder, "aidemd");
 
 		const { root: appDataRoot } = resolveRoot();
 		const inside = relative(appDataFolder, appDataRoot);

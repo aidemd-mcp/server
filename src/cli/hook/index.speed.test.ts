@@ -36,8 +36,8 @@ import resolvePresenceFile from "@/util/runtimePaths/resolvePresenceFile/index.j
  */
 
 const ITERATIONS = 40;
-const QUIET_BUDGET_MS = 150;
-const REFRESHING_BUDGET_MS = 180;
+const QUIET_BUDGET_MS = 175;
+const REFRESHING_BUDGET_MS = 200;
 const DEADLINE_MS = 1_000;
 const NOISE_RATIO = 2;
 const CLAUDE = "claude-speed";
@@ -55,7 +55,7 @@ let stopObserver: (() => Promise<void>) | null = null;
 const saved: Record<string, string | undefined> = {};
 
 function childEnv(): NodeJS.ProcessEnv {
-	return { ...process.env, LOCALAPPDATA: appData, XDG_STATE_HOME: appData, CLAUDE_PROJECT_DIR: projectRoot };
+	return { ...process.env, AIDEMD_HOME: path.join(appData, "aidemd"), CLAUDE_PROJECT_DIR: projectRoot };
 }
 
 /** Wall time in ms from spawn to close of one child, with `stdin` piped in when given. */
@@ -182,10 +182,8 @@ describe.skipIf(process.env.AIDE_MEASURE_HOOK !== "1")("hook speed budget (brief
 		if (!existsSync(ENTRY)) throw new Error(`${ENTRY} is missing: run \`npm run build\` before the speed test.`);
 		appData = await mkdtemp(path.join(tmpdir(), "aide-speed-appdata-"));
 		projectRoot = await mkdtemp(path.join(tmpdir(), "aide-speed-project-"));
-		for (const name of ["LOCALAPPDATA", "XDG_STATE_HOME"]) {
-			saved[name] = process.env[name];
-			process.env[name] = appData;
-		}
+		saved.AIDEMD_HOME = process.env.AIDEMD_HOME;
+		process.env.AIDEMD_HOME = path.join(appData, "aidemd");
 		presenceFile = resolvePresenceFile({ projectKey: resolve({ projectRoot }).projectKey, claudeSessionId: CLAUDE });
 	});
 

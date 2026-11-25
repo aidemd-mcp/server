@@ -19,8 +19,7 @@ async function put(id: string, content: string): Promise<void> {
 
 beforeEach(async () => {
 	appData = await mkdtemp(path.join(tmpdir(), "aide-read-ended-"));
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 });
 
 afterEach(async () => {

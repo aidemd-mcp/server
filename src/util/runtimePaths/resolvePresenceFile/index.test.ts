@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("node:os", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:os")>();
@@ -20,6 +20,10 @@ function useLinux(): void {
 	mockHomedir.mockReturnValue("/home/me");
 	vi.stubEnv("XDG_STATE_HOME", "");
 }
+
+beforeEach(() => {
+	vi.stubEnv("AIDEMD_HOME", "");
+});
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -43,9 +47,8 @@ describe("resolvePresenceFile", () => {
 	it("returns a backslash path on win32", () => {
 		mockPlatform.mockReturnValue("win32");
 		mockHomedir.mockReturnValue("C:\\Users\\me");
-		vi.stubEnv("LOCALAPPDATA", "C:\\Users\\me\\AppData\\Local");
 		expect(resolvePresenceFile({ projectKey: "app-3f9a2c", claudeSessionId: CLAUDE_ID })).toBe(
-			`C:\\Users\\me\\AppData\\Local\\aidemd\\app-3f9a2c\\presence\\${CLAUDE_ID}.json`,
+			`C:\\Users\\me\\.aidemd\\app-3f9a2c\\presence\\${CLAUDE_ID}.json`,
 		);
 	});
 

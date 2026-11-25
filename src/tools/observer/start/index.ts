@@ -12,6 +12,7 @@ import walkPorts from "./walkPorts/index.js";
 import awaitOwnLink from "./awaitOwnLink/index.js";
 import findOpenSessions from "./findOpenSessions/index.js";
 import launchObserver from "./launchObserver/index.js";
+import moveLegacyHistory from "./moveLegacyHistory/index.js";
 import awaitObserver from "./awaitObserver/index.js";
 
 /** The tool takes no input; an extra key such as an old `port` is ignored, not rejected. */
@@ -29,7 +30,9 @@ export const ObserverStartInput = z.object({});
  * running or stuck) the HALT check runs: the caller's own presence gets a moment to link, then any
  * other open session of the project, judged from disk, turns the reply into a halt that still
  * carries the link (brief commitments #69, #82, #91). Never throws: any failure, a failed HALT
- * check included, becomes a blocked reply, because nothing may proceed unobserved.
+ * check included, becomes a blocked reply, because nothing may proceed unobserved. The start first
+ * carries the caller's old-folder history into the per-user root (brief commitment #107), best
+ * effort: it never blocks and never changes the reply.
  */
 export default async function start({
 	root,
@@ -39,6 +42,7 @@ export default async function start({
 	entryScript: string;
 }): Promise<StartReply> {
 	try {
+		await moveLegacyHistory();
 		const choice = resolvePort({});
 		if (!choice.ok) return { outcome: "blocked", reason: choice.reason };
 

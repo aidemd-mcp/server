@@ -20,6 +20,11 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 - The observer's Details column and bottom drawer can be resized. Drag the grip on the column's left edge or on the open drawer's top edge, or focus it and use the arrow keys (Shift for bigger steps). Double-click or press Enter to go back to the default. Each size is remembered in your browser. The column always leaves room for the tree; the drawer always leaves the top of both columns in view.
 
 ### Changed
+- On Windows, AIDE's per-user files (observer record and token, session logs, presence, ended marks) live in `%USERPROFILE%\.aidemd` instead of `%LOCALAPPDATA%\aidemd`. `AIDEMD_HOME`, when set to an absolute path, overrides the per-user folder on every OS. macOS and Linux keep their folders.
+- [migration] AIDE's per-user files move out of `%LOCALAPPDATA%\aidemd` on Windows.
+  - Detect: on Windows, an `aidemd` folder under the session's `%LOCALAPPDATA%` that still holds project folders (`<name>-<6 hex>`); inside the Claude desktop app that is its redirected `Packages\Claude_*\LocalCache\Local\aidemd` copy.
+  - Migrate: nothing to run by hand; the first `aide_observer_start` of the new version moves the logs, archive, presence and ended marks into `%USERPROFILE%\.aidemd`, deletes the old observer record and token, and retries anything it had to leave on later starts. Never copy the files by hand.
+  - Confirm: once, as a batch.
 - The observer is mandatory. `aide_observer_start` falls back through a port list (`AIDE_OBSERVER_PORT` first if set, then 24680 to 24689) and records the port it took; a replacing observer reuses the old port when it is free. If it can start on no port it answers `BLOCKED`, naming every port tried, and nothing proceeds; an observer that goes down mid-session and cannot be restarted blocks the same way. A report that only misses a running observer still never blocks.
 - Session liveness is judged from hook presence, ended marks and last activity (the newest of the hook time, the Claude transcript's last write and the newest report). The 30-minute "no recent event" rule is gone. Sessions from hosts without hooks, and sessions recorded before this change, stay open until you end them.
 - `aidemd-mcp view` uses the same port list. When the port it asked for is taken it starts on the next free one and says so (`Port <requested> was not used; the observer is on port <actual>.`); it exits 1 only when no port on the list can be bound. `--help` describes the list.
@@ -40,6 +45,7 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
   - Confirm: per file.
 
 ### Fixed
+- Sessions started from the Claude desktop app and from a terminal now share one observer, one history and one open-session check. The desktop app is a packaged Windows app, so AIDE's writes to `%LOCALAPPDATA%` from inside it were silently redirected to a private copy the terminal never saw.
 - The MCP handshake reports the package's real name and version. It had said `0.2.0` since early releases, so MCP clients showed the wrong version; `aide_info` was always right.
 - `/aide` reports the task a session takes up to the observer as `picked`, even when it is already In Progress and nothing moves. Before, a resumed In Progress task was never reported, so the observer never showed which task the session was working on. The `aide-observer` skill's reporting table and the `aide_observer_event` description say so.
 - The observer's Details pane renders `.aide` markdown properly. Pipe tables show as tables, keeping each column's alignment. Inline code shows as code. Section headings no longer keep their `## ` prefix. Long lines (a wide folder tree, a long path) wrap, so the pane never scrolls sideways behind a scrollbar you could only reach at the bottom. A table too wide for the pane scrolls on its own.

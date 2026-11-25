@@ -55,8 +55,7 @@ beforeEach(async () => {
 	markWrite.failWith = null;
 	appData = await mkdtemp(path.join(tmpdir(), "aide-touch-presence-"));
 	projectRoot = await mkdtemp(path.join(tmpdir(), "aide-touch-project-"));
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 	projectKey = resolve({ projectRoot }).projectKey;
 	presenceFile = resolvePresenceFile({ projectKey, claudeSessionId: CLAUDE });
 });

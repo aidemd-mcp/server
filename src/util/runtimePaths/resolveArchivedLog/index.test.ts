@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("node:os", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:os")>();
@@ -12,6 +12,10 @@ const mockPlatform = vi.mocked(platform);
 const mockHomedir = vi.mocked(homedir);
 
 const ID = "20261122T090000000Z-aaaaaa";
+
+beforeEach(() => {
+	vi.stubEnv("AIDEMD_HOME", "");
+});
 
 afterEach(() => {
 	vi.unstubAllEnvs();

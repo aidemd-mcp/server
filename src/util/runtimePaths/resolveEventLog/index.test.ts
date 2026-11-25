@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("node:os", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:os")>();
@@ -13,6 +13,10 @@ const mockPlatform = vi.mocked(platform);
 const mockHomedir = vi.mocked(homedir);
 
 const UUID = "3f2b8c1e-4d5a-4e6f-9a7b-1c2d3e4f5a6b";
+
+beforeEach(() => {
+	vi.stubEnv("AIDEMD_HOME", "");
+});
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -31,7 +35,6 @@ describe("resolveEventLog", () => {
 	it("returns <eventsFolder>\\<uuid>.jsonl on win32", () => {
 		mockPlatform.mockReturnValue("win32");
 		mockHomedir.mockReturnValue("C:\\Users\\me");
-		vi.stubEnv("LOCALAPPDATA", "C:\\Users\\me\\AppData\\Local");
 		const projectRoot = "D:\\Code\\app";
 		const { eventsFolder } = resolve({ projectRoot });
 		const result = resolveEventLog({ projectRoot, sessionId: UUID });

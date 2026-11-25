@@ -81,8 +81,7 @@ describe("loadToken", () => {
 	});
 
 	it("keeps the file at the app-data root, never inside a project", async () => {
-		vi.stubEnv("LOCALAPPDATA", root);
-		vi.stubEnv("XDG_STATE_HOME", root);
+		vi.stubEnv("AIDEMD_HOME", join(root, "aidemd"));
 		const { root: appRoot } = resolveRoot();
 		await mkdir(appRoot, { recursive: true });
 		await loadToken({ root: appRoot });

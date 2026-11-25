@@ -48,18 +48,15 @@ describe("view on a port list the test controls", () => {
 	let stderr: string;
 	let originalOut: typeof process.stdout.write;
 	let originalErr: typeof process.stderr.write;
-	let originalLocalAppData: string | undefined;
-	let originalXdgStateHome: string | undefined;
+	let originalAidemdHome: string | undefined;
 	let originalEnvPort: string | undefined;
 
 	beforeEach(() => {
 		held = [];
-		originalLocalAppData = process.env.LOCALAPPDATA;
-		originalXdgStateHome = process.env.XDG_STATE_HOME;
+		originalAidemdHome = process.env.AIDEMD_HOME;
 		originalEnvPort = process.env.AIDE_OBSERVER_PORT;
 		appData = mkdtempSync(join(tmpdir(), "aide-view-appdata-"));
-		process.env.LOCALAPPDATA = appData;
-		process.env.XDG_STATE_HOME = appData;
+		process.env.AIDEMD_HOME = join(appData, "aidemd");
 		delete process.env.AIDE_OBSERVER_PORT;
 		tempRoot = mkdtempSync(join(tmpdir(), "aide-view-"));
 
@@ -84,10 +81,8 @@ describe("view on a port list the test controls", () => {
 		portList.ports = [];
 		if (tempRoot) rmSync(tempRoot, { recursive: true, force: true });
 		if (appData) rmSync(appData, { recursive: true, force: true });
-		if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA;
-		else process.env.LOCALAPPDATA = originalLocalAppData;
-		if (originalXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
-		else process.env.XDG_STATE_HOME = originalXdgStateHome;
+		if (originalAidemdHome === undefined) delete process.env.AIDEMD_HOME;
+		else process.env.AIDEMD_HOME = originalAidemdHome;
 		if (originalEnvPort === undefined) delete process.env.AIDE_OBSERVER_PORT;
 		else process.env.AIDE_OBSERVER_PORT = originalEnvPort;
 		held = [];

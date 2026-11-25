@@ -18,8 +18,7 @@ let server: Server | null = null;
 
 beforeEach(async () => {
 	appData = await mkdtemp(join(tmpdir(), "aide-find-appdata-"));
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", join(appData, "aidemd"));
 	vi.clearAllMocks();
 });
 

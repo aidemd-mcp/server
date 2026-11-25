@@ -22,8 +22,7 @@ beforeEach(async () => {
 	home = await mkdtemp(path.join(tmpdir(), "aide-listfolders-home-"));
 	appData = await mkdtemp(path.join(tmpdir(), "aide-listfolders-appdata-"));
 	mockHomedir.mockReturnValue(home);
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 });
 
 afterEach(async () => {
@@ -58,6 +57,21 @@ describe("listProjectFolders", () => {
 	it("answers [] for a missing root and creates nothing", async () => {
 		expect(await listProjectFolders()).toEqual([]);
 		expect(existsSync(resolveRoot().root)).toBe(false);
+	});
+
+	it("lists an explicit root instead of the app-data root", async () => {
+		const explicit = path.join(appData, "elsewhere");
+		await mkdir(path.join(explicit, "alpha-3f9a2c"), { recursive: true });
+		await mkdir(path.join(resolveRoot().root, "zeta-aaaaaa"), { recursive: true });
+
+		expect(await listProjectFolders({ root: explicit })).toEqual([
+			{
+				projectKey: "alpha-3f9a2c",
+				eventsFolder: path.join(explicit, "alpha-3f9a2c", "events"),
+				presenceFolder: path.join(explicit, "alpha-3f9a2c", "presence"),
+				endedFolder: path.join(explicit, "alpha-3f9a2c", "ended"),
+			},
+		]);
 	});
 
 	it("propagates a read error other than a missing root", async () => {

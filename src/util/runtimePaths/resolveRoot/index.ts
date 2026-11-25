@@ -1,8 +1,7 @@
 import type { RootPaths } from "../types/index.js";
 import pickPathModule from "../shared/pickPathModule/index.js";
 import resolveAppDataRoot from "../shared/resolveAppDataRoot/index.js";
-
-const OBSERVER_FILE = "observer.json";
+import { OBSERVER_RECORD_FILE } from "../shared/runtimeNames/index.js";
 
 /**
  * Resolve the per-user locations shared by every project: the app-data root and
@@ -13,5 +12,5 @@ const OBSERVER_FILE = "observer.json";
 export default function resolveRoot(): RootPaths {
 	const root = resolveAppDataRoot();
 
-	return { root, observerFile: pickPathModule().join(root, OBSERVER_FILE) };
+	return { root, observerFile: pickPathModule().join(root, OBSERVER_RECORD_FILE) };
 }

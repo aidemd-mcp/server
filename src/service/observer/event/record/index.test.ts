@@ -58,8 +58,7 @@ beforeEach(async () => {
 	project = await mkdtemp(path.join(tmpdir(), "aide-record-project-"));
 	vi.mocked((await import("node:os")).homedir).mockReturnValue(home);
 	mockHomedir.mockReturnValue(home);
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 
 	received = [];
 	atRequest = async () => {};

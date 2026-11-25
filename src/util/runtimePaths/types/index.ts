@@ -31,3 +31,20 @@ export type ProjectFolder = {
 	/** `<root>/<projectKey>/ended`, holding that project's ended marks. */
 	endedFolder: string;
 };
+
+/** What happened to one legacy file. `superseded`: the new root already held this file or a newer form of it, so the old copy was dropped. */
+export type FileMove =
+	| { outcome: "moved" }
+	| { outcome: "superseded" }
+	| { outcome: "left"; reason: "diverged" | "changed" | "error"; detail?: string };
+
+/** What `moveLegacyRoot` did: nothing to move, or the counts and every file it had to leave in place (its path is the source path). */
+export type LegacyMove =
+	| { outcome: "none" }
+	| {
+			outcome: "moved";
+			legacyRoot: string;
+			moved: number;
+			superseded: number;
+			left: { path: string; reason: "diverged" | "changed" | "error"; detail?: string }[];
+	  };

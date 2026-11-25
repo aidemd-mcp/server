@@ -60,8 +60,7 @@ beforeEach(async () => {
 	appData = await mkdtemp(path.join(tmpdir(), "aide-post-appdata-"));
 	project = await mkdtemp(path.join(tmpdir(), "aide-post-project-"));
 	mockHomedir.mockReturnValue(home);
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 
 	received = [];
 	respond = (response) => response.writeHead(200).end("ok");

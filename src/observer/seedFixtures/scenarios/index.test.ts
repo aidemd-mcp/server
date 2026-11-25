@@ -146,8 +146,7 @@ describe("scenarios as the observer reads them", () => {
 	// Seeding spawns a child per ended session, so the catalog is seeded once and every test only reads it.
 	beforeAll(async () => {
 		base = await mkdtemp(join(tmpdir(), "aide-scenarios-"));
-		vi.stubEnv("LOCALAPPDATA", join(base, "appdata"));
-		vi.stubEnv("XDG_STATE_HOME", join(base, "appdata"));
+		vi.stubEnv("AIDEMD_HOME", join(base, "appdata", "aidemd"));
 
 		seeded = await seedFixtures({ appDataRoot: resolveRoot().root, workDir: join(base, "work"), now: Date.now(), set: "sessions" });
 
@@ -322,8 +321,7 @@ describe("home sets as the observer reads them", () => {
 
 	beforeAll(async () => {
 		base = await mkdtemp(join(tmpdir(), "aide-home-scenarios-"));
-		vi.stubEnv("LOCALAPPDATA", join(base, "appdata"));
-		vi.stubEnv("XDG_STATE_HOME", join(base, "appdata"));
+		vi.stubEnv("AIDEMD_HOME", join(base, "appdata", "aidemd"));
 
 		seeded = await seedFixtures({ appDataRoot: resolveRoot().root, workDir: join(base, "work"), now: Date.now(), set: "home" });
 

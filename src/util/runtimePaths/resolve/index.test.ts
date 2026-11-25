@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +15,10 @@ import nameProjectFolder from "./nameProjectFolder/index.js";
 const mockPlatform = vi.mocked(platform);
 const mockHomedir = vi.mocked(homedir);
 
+beforeEach(() => {
+	vi.stubEnv("AIDEMD_HOME", "");
+});
+
 afterEach(() => {
 	vi.unstubAllEnvs();
 });
@@ -23,9 +27,8 @@ describe("resolve", () => {
 	it("resolves win32 paths", () => {
 		mockPlatform.mockReturnValue("win32");
 		mockHomedir.mockReturnValue("C:\\Users\\me");
-		vi.stubEnv("LOCALAPPDATA", "C:\\Users\\me\\AppData\\Local");
 		const projectRoot = "D:\\Code\\app";
-		const folder = `C:\\Users\\me\\AppData\\Local\\aidemd\\${nameProjectFolder({ projectRoot })}`;
+		const folder = `C:\\Users\\me\\.aidemd\\${nameProjectFolder({ projectRoot })}`;
 		expect(resolve({ projectRoot })).toEqual({
 			projectKey: nameProjectFolder({ projectRoot }),
 			folder,

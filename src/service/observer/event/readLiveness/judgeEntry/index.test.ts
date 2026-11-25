@@ -25,8 +25,7 @@ function makePresence(overrides: Partial<Presence> = {}): Presence {
 
 beforeEach(async () => {
 	appData = await mkdtemp(path.join(tmpdir(), "aide-judge-entry-"));
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 });
 
 afterEach(async () => {

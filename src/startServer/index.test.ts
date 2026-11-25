@@ -821,8 +821,7 @@ describe("aide_observer_end_session registration", () => {
 
 	beforeEach(() => {
 		appData = mkdtempSync(join(tmpdir(), "aide-end-session-registration-"));
-		vi.stubEnv("LOCALAPPDATA", appData);
-		vi.stubEnv("XDG_STATE_HOME", appData);
+		vi.stubEnv("AIDEMD_HOME", join(appData, "aidemd"));
 	});
 
 	afterEach(() => {

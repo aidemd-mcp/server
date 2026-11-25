@@ -75,8 +75,7 @@ beforeEach(async () => {
 	appData = await mkdtemp(path.join(tmpdir(), "aide-delete-appdata-"));
 	project = await mkdtemp(path.join(tmpdir(), "aide-delete-project-"));
 	mockHomedir.mockReturnValue(home);
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 });
 
 afterEach(async () => {

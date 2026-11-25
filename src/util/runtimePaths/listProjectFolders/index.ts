@@ -7,14 +7,13 @@ import isProjectKey from "../isProjectKey/index.js";
 import { ENDED_FOLDER, EVENTS_FOLDER, PRESENCE_FOLDER } from "../shared/runtimeNames/index.js";
 
 /**
- * List every project folder under the app-data root, sorted by key. Reads only:
+ * List every project folder under `root` (default: the app-data root), sorted by key. Reads only:
  * never creates the root or anything in it. A missing root answers `[]`; any
  * other read error propagates. Files at the root (such as `observer.json`) and
  * folders whose name is not a project key are skipped.
  */
-export default async function listProjectFolders(): Promise<ProjectFolder[]> {
+export default async function listProjectFolders({ root = resolveAppDataRoot() }: { root?: string } = {}): Promise<ProjectFolder[]> {
 	const pathModule = pickPathModule();
-	const root = resolveAppDataRoot();
 
 	const entries: Dirent[] = await readdir(root, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
 		if (error.code === "ENOENT") return [];

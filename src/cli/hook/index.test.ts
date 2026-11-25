@@ -51,8 +51,7 @@ async function run(input: unknown, at = "2026-11-25T10:00:10.000Z"): Promise<voi
 beforeEach(async () => {
 	appData = await mkdtemp(path.join(tmpdir(), "aide-hook-appdata-"));
 	projectRoot = await mkdtemp(path.join(tmpdir(), "aide-hook-project-"));
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", path.join(appData, "aidemd"));
 	projectKey = resolve({ projectRoot }).projectKey;
 	stdoutWrite = vi.spyOn(process.stdout, "write").mockReturnValue(true);
 	stderrWrite = vi.spyOn(process.stderr, "write").mockReturnValue(true);

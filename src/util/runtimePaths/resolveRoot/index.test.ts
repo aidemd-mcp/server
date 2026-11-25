@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("node:os", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:os")>();
@@ -11,6 +11,10 @@ import resolveRoot from "./index.js";
 const mockPlatform = vi.mocked(platform);
 const mockHomedir = vi.mocked(homedir);
 
+beforeEach(() => {
+	vi.stubEnv("AIDEMD_HOME", "");
+});
+
 afterEach(() => {
 	vi.unstubAllEnvs();
 });
@@ -19,10 +23,9 @@ describe("resolveRoot", () => {
 	it("resolves the win32 root and record", () => {
 		mockPlatform.mockReturnValue("win32");
 		mockHomedir.mockReturnValue("C:\\Users\\me");
-		vi.stubEnv("LOCALAPPDATA", "C:\\Users\\me\\AppData\\Local");
 		expect(resolveRoot()).toEqual({
-			root: "C:\\Users\\me\\AppData\\Local\\aidemd",
-			observerFile: "C:\\Users\\me\\AppData\\Local\\aidemd\\observer.json",
+			root: "C:\\Users\\me\\.aidemd",
+			observerFile: "C:\\Users\\me\\.aidemd\\observer.json",
 		});
 	});
 

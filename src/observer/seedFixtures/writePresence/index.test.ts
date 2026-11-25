@@ -20,8 +20,7 @@ let projectRoot: string;
 beforeEach(async () => {
 	base = await mkdtemp(join(tmpdir(), "aide-write-presence-"));
 	projectRoot = join(base, "project");
-	vi.stubEnv("LOCALAPPDATA", join(base, "appdata"));
-	vi.stubEnv("XDG_STATE_HOME", join(base, "appdata"));
+	vi.stubEnv("AIDEMD_HOME", join(base, "appdata", "aidemd"));
 });
 
 afterEach(async () => {

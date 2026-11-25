@@ -104,8 +104,7 @@ async function deadPid(): Promise<number> {
 beforeEach(async () => {
 	projectRoot = await mkdtemp(join(tmpdir(), "aide-observer-project-"));
 	appData = await mkdtemp(join(tmpdir(), "aide-observer-appdata-"));
-	vi.stubEnv("LOCALAPPDATA", appData);
-	vi.stubEnv("XDG_STATE_HOME", appData);
+	vi.stubEnv("AIDEMD_HOME", join(appData, "aidemd"));
 });
 
 afterEach(async () => {
