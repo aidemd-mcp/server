@@ -1,6 +1,6 @@
 ---
 intent: >
-  Session record for the aidemd-mcp server. Current: the pipeline viewer — `aidemd-mcp view`, a per-session event log written only by the `aide_observer_event` MCP tool (backend and page built, verified and committed on main as 2165b40 (decisions #75–#81); not pushed, not released).
+  Session record for the aidemd-mcp server. Current: the pipeline viewer — `aidemd-mcp view`, a per-session event log written only by the `aide_observer_event` MCP tool (backend and page committed as 2165b40, page rework 7da327b (decisions #75–#83); released in 0.16.1).
 ---
 
 # AIDE SESSION
@@ -10,9 +10,11 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-11-24, observer page rework built and tests updated — committing now; In Review, then the user's manual check and release)
+## State summary (set 2026-11-24, observer released in 0.16.1 and aidemd.dev synced; next: designer handoff package of the reworked page)
 
-2026-11-24 (latest): The observer page rework done hand-in-hand with the user (decision #83, supersedes #82) is all built, page tests updated (587 files / 6044 tests pass, tsc clean, build ok), page spec and CHANGELOG updated; committing now. Task `pipeline-viewer-with-event-log-hooks-and-aide-event-tool` stays In Review. New backlog tasks: `observer-home-shows-a-kanban-board-that-fits-the-page` (p3) and `aide-warns-when-another-live-session-is-in-project` (p2).
+2026-11-24 (latest): Released. Tag v0.16.0 (commit 5bc09a7) failed its Publish CI on Linux: the `resolveConfinedPath` test "refuses ..\x" returned `missing`, because a backslash is not a separator on Linux. Fixed by also checking the path with backslashes read as separators (src/observer/routes/getFile/resolveConfinedPath/index.ts). Shipped as 0.16.1 (commit 29e4421, tag v0.16.1); Publish CI green; npm shows 0.16.1. 0.16.0 never reached npm; the CHANGELOG has a 0.16.1 Fixed entry saying so. Global install updated to @aidemd-mcp/server@0.16.1. aidemd.dev synced headless (methodology-docs (changelog), version-metadata, skills/aide applied; site commit fb1c3aa pushed; deploy.yml run succeeded; brainMigration null). Open gap found: aide_info reports `bin/aide-tree` outdated on the site, but aide_upgrade has no category that writes the `.aide/bin/aide-tree.mjs` launcher (only init/sync install it, via src/service/install/installAideTree); old launchers still work; not fixed yet.
+
+2026-11-24 (earlier): The observer page rework done hand-in-hand with the user (decision #83, supersedes #82) is all built, page tests updated (587 files / 6044 tests pass, tsc clean, build ok), page spec and CHANGELOG updated; committing now. Task `pipeline-viewer-with-event-log-hooks-and-aide-event-tool` stays In Review. New backlog tasks: `observer-home-shows-a-kanban-board-that-fits-the-page` (p3) and `aide-warns-when-another-live-session-is-in-project` (p2).
 
 2026-11-24 (earlier): The slim waiting bar on the session page (decision #82) is built, QA'd in a real browser (PASSED) and its plan cleaned up; uncommitted. Everything else on the task is unchanged: task `pipeline-viewer-with-event-log-hooks-and-aide-event-tool` stays In Review and the rest of the observer is committed in 2165b40.
 
@@ -138,7 +140,7 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
-- `pipeline-viewer-with-event-log-hooks-and-aide-event-tool` (In Review, p2, feature) — backend and page built, verified and committed (2165b40, not pushed, not released); moved to In Review with the user's approval, 2026-11-24; read-only local pipeline viewer (`aidemd-mcp view`), per-session event log written by the `aide_observer_event` MCP tool (no hooks, decision #59); backend first this round.
+- `pipeline-viewer-with-event-log-hooks-and-aide-event-tool` (In Review, p2, feature) — backend and page built, verified and committed (2165b40; page rework 7da327b); released in 0.16.1 (29e4421, 2026-11-24); moved to In Review with the user's approval, 2026-11-24; read-only local pipeline viewer (`aidemd-mcp view`), per-session event log written by the `aide_observer_event` MCP tool (no hooks, decision #59); backend first this round.
 - `observer-home-shows-a-kanban-board-that-fits-the-page` (Backlog, p3) — the home kanban board was removed in the page rework (#83) pending this task.
 - `aide-warns-when-another-live-session-is-in-project` (Backlog, p2) — warn when another live session is in the project.
 - `util-scan-duplicates-checkbox-counter-and-imports-tools` (Backlog, p2, bug) — util/scan's private checkbox counter and its import from tools/frontmatter break src/util/.aide; found while planning the observer; out of scope (#71).
@@ -361,16 +363,17 @@ The tasks on the board this work touches, in work order; the full record of the 
 - The desktop project page never scrolls as a whole; only its regions scroll.
 - Home's project order never reshuffles on load; it starts from the remembered order and re-sorts at most every 2s.
 - Every .aide file and every frontmatter field/section is reachable from the tree.
+- Path-confinement checks must treat a backslash as a separator on every platform; tests run on Linux CI, so a Windows-only pass is not a pass.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-The observer (backend + page) was committed on main as 2165b40 (decisions #75–#81); not pushed, not released. Task `pipeline-viewer-with-event-log-hooks-and-aide-event-tool` is In Review (user-approved, 2026-11-24). Since then the observer page was reworked hand-in-hand with the user, without the pipeline (decision #83, which supersedes the slim waiting bar of #82): all of it is built, the page tests are updated (587 files / 6044 tests pass, tsc clean, build ok), and the page spec and CHANGELOG are updated. The cycle stopped while committing it. `.claude/settings.local.json` and `.playwright-mcp/` stay uncommitted on purpose. All pipeline ephemerals cleaned except src/service/observer/brief.aide, kept on purpose (approved; it holds the event format, paths, tool names and boot order); closing it needs backlog task `aide-cleanup-cannot-close-a-brief-in-a-spec-only-folder`. New backlog tasks: `observer-home-shows-a-kanban-board-that-fits-the-page` (p3) and `aide-warns-when-another-live-session-is-in-project` (p2).
+The observer (backend + page) was committed on main as 2165b40 (decisions #75–#81), and the observer page UI rework done hand-in-hand with the user (decision #83, supersedes #82) was committed as 7da327b. Both are released in 0.16.1 (commit 29e4421, tag v0.16.1; 0.16.0 failed Publish CI on Linux and never reached npm). Global install is 0.16.1; aidemd.dev is synced (site fb1c3aa) and deployed. Task `pipeline-viewer-with-event-log-hooks-and-aide-event-tool` is In Review (user-approved, 2026-11-24). The cycle stopped while preparing a designer handoff package of the reworked page (in progress in this session). `.claude/settings.local.json` and `.playwright-mcp/` stay uncommitted on purpose. All pipeline ephemerals cleaned except src/service/observer/brief.aide, kept on purpose (approved; it holds the event format, paths, tool names and boot order); closing it needs backlog task `aide-cleanup-cannot-close-a-brief-in-a-spec-only-folder`. New backlog tasks: `observer-home-shows-a-kanban-board-that-fits-the-page` (p3) and `aide-warns-when-another-live-session-is-in-project` (p2).
 
 ### What the next agent must do
 
-1. Finish the commit of the page rework (#83).
-2. The user checks the page by hand.
-3. On the user's word: push and release with `node scripts/publish.mjs` (move the CHANGELOG [Unreleased] entries under the new version heading first), then sync the aidemd.dev site as CLAUDE.md describes.
+1. Finish the designer handoff package of the reworked page (in progress in this session).
+2. Then the backlog tasks `observer-home-shows-a-kanban-board-that-fits-the-page` (p3) and `aide-warns-when-another-live-session-is-in-project` (p2).
+3. Open gap, not fixed yet: aide_info reports `bin/aide-tree` outdated on the aidemd.dev site, but aide_upgrade has no category that writes the `.aide/bin/aide-tree.mjs` launcher (only init/sync install it, via src/service/install/installAideTree). Old launchers still work.
 4. Open user decisions:
    - Delete the leftover aide-view-* and tmp.* folders in the real app-data folder and the aide-observer-qa-* folders in %TEMP%?
    - Add the "search for an existing shared helper before declaring a constant" lesson to the aide-architect agent?
@@ -424,6 +427,9 @@ The observer (backend + page) was committed on main as 2165b40 (decisions #75–
 - SKIP_DIRS moved out of src/types into src/util/skipDirs (2026-11-23; QA todo item, user: 'Move it now'); importers scan, classify, holdsCode, inspect/walk switched; full suite 266 files / 3962 tests green; ephemerals cleaned in src/types, src/util, src/util/classify, src/tools/inspect. Retro appended to the brain note.
 - One observer per machine (2026-11-23; #75–#77): built, QA'd, 25 fixes, re-QA passed. Committed in 2165b40 (2026-11-24).
 - Page redesign from the new handoff (2026-11-24; #80–#81): built, QA'd incl. Playwright, 28 fixes, re-QA + Playwright re-pass passed, 5791 tests. Committed in 2165b40 (2026-11-24); task moved to In Review.
+- Observer page UI rework (#83) committed as 7da327b (2026-11-24).
+- v0.16.0 (tag on 5bc09a7) failed Publish CI on Linux (`resolveConfinedPath` test "refuses ..\x" returned `missing`; a backslash is not a separator on Linux) and never reached npm. Fixed by also checking the path with backslashes read as separators (src/observer/routes/getFile/resolveConfinedPath/index.ts); CHANGELOG 0.16.1 Fixed entry says 0.16.0 never reached npm.
+- v0.16.1 released 2026-11-24 (commit 29e4421, tag v0.16.1; Publish CI green; npm 0.16.1); global install 0.16.1; aidemd.dev synced headless (methodology-docs (changelog), version-metadata, skills/aide; site commit fb1c3aa), deploy.yml run green, brainMigration null.
 
 ### What's left after the current cycle
 
@@ -447,6 +453,7 @@ The observer (backend + page) was committed on main as 2165b40 (decisions #75–
 - Maintainers still sometimes call aide_cleanup without `path` first (seen again 2026-10-26).
 - aidemd.dev has no .aide/session.aide (aide_init reports would-create); offer `aide_scaffold type=session` there next time the site is touched.
 - Follow-ups found in e2e (pre-existing or out of scope): the aide_init brain step hands a prescription with a null vault slot and agents fill it with a guessed path (seen: the user's real brain path from global CLAUDE.md) — should say 'do not merge; run /aide:brain config'; with both `aide` and `aidemd-mcp` npx entries only `aide` is switched and the duplicate is never reported; `init --mode local` is silently ignored; /aide:upgrade on a fresh init project always creates .zed/settings.json (init and upgrade disagree about Zed); a malformed .mcp.json leaves brain.aide written by init; the published package installs a stray `server` bin.
+- aide_upgrade has no category that writes the `.aide/bin/aide-tree.mjs` launcher, though aide_info reports `bin/aide-tree` outdated (seen on aidemd.dev, 2026-11-24); only init/sync install it (src/service/install/installAideTree). Not fixed yet.
 - src/service/install/scaffoldCommands/.aide has a rule that only a new phase adds an installed command (commands like /aide:handoff, /aide:brain, /aide:upgrade aren't phases) — spec-only fix, deferred by the user as out of scope for the viewer feature.
 
 session.aide is rewritten, never deleted (decision 18).
