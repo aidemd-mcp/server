@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-25
+
 ### Added
 - The observer is the single source of truth for which agent session is working in a project, and a project has at most one open session at a time. `aide_observer_start` checks for another open session of the project and answers `HALT`, naming it: its id (or `claude:<id>` for a Claude session that never reported), whether it is working or waiting on you, how long it has been quiet ("maybe stuck" past 15 minutes), its last activity, pipeline and phase. Nothing proceeds until you approve ending that session or close the new one.
 - `aide_observer_end_session` ends another open session of the project on your approval. It only marks the session ended: it deletes no log, presence or project file, the ended session's further reports are refused, and it never ends the caller's own session.

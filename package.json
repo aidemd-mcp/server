@@ -1,6 +1,6 @@
 {
 	"name": "@aidemd-mcp/server",
-	"version": "0.16.1",
+	"version": "0.17.0",
 	"mcpName": "io.github.aidemd-mcp/server",
 	"description": "MCP server that teaches any agent the AIDE methodology through tool descriptions and progressive disclosure tooling",
 	"type": "module",
@@ -47,7 +47,7 @@
 		".claude/agents/kanban",
 		".claude/skills",
 		"!.aide/versions.json",
-    "!.claude/skills/release-check"
+		"!.claude/skills/release-check"
 	],
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.12.1",
