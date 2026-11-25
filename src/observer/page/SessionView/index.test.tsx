@@ -122,18 +122,20 @@ describe("SessionView", () => {
 		expect(html).toContain("Step 2 of 4");
 		expect(html).toContain('role="tablist" aria-label="Session views"');
 		expect(html).toContain('role="tabpanel"');
-		expect(html).toContain('<div class="av-histdrawer">');
+		expect(html).toContain('<div class="av-drawer-bottom">');
 		expect(html).toContain('<div class="av-sidepanel">');
 		expect(html).toContain('<main id="main" class="av-primary">');
 		expect(html).toContain("Skip to main content");
 		expect(html).toContain('<div class="av-top"');
 		expect(html).not.toContain("av-wait-banner");
 		expect(html).not.toContain("av-quiet-banner");
-		expect(html).not.toContain("av-drawer");
+		expect(html).not.toMatch(/class="av-drawer[ "]/);
 		expect(html).not.toContain('<aside class="av-side"');
 		expect(html.indexOf("av-runbar")).toBeLessThan(html.indexOf("av-main"));
-		expect(html.indexOf("av-now")).toBeLessThan(html.indexOf("av-histdrawer"));
-		expect(html.indexOf("av-histdrawer")).toBeLessThan(html.indexOf("av-sidepanel"));
+		expect(html.indexOf("av-now")).toBeLessThan(html.indexOf("av-drawer-bottom"));
+		// The bottom drawer sits after both columns, so it spans the page under the tree and Details.
+		expect(html.indexOf("av-sidepanel")).toBeLessThan(html.indexOf("av-drawer-bottom"));
+		expect(html.indexOf('<div class="av-drawer-bottom">')).toBeGreaterThan(html.lastIndexOf("</main>"));
 	});
 
 	it("keeps the header to a Projects button and the project's name, with no breadcrumb or path", () => {
@@ -162,7 +164,7 @@ describe("SessionView", () => {
 		stream();
 		const html = render(routeOf());
 		expect(html).toContain('<aside class="av-side" aria-label="History">');
-		expect(html).not.toContain("av-histdrawer");
+		expect(html).not.toContain("av-drawer-bottom");
 		expect(html).not.toContain("av-sidepanel");
 		expect(html).not.toContain("av-runbar");
 	});
@@ -202,7 +204,7 @@ describe("SessionView", () => {
 		expect(html).toContain('class="av-conn recon"');
 		expect(stripMarkup(html)).toContain("Last update");
 		expect(html).toContain('class="av-card run"');
-		expect(html).toContain('<div class="av-histdrawer">');
+		expect(html).toContain('<div class="av-drawer-bottom">');
 		expect(html).not.toContain('role="alert"');
 	});
 

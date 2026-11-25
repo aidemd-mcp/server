@@ -44,12 +44,29 @@ body{margin:0}
    event, sliding up to a scrollable list on click. On a phone History stays a tab and details open
    as the full-screen drawer. */
 .av.desk{--detail-w:min(560px,40vw)}
-.av .av-sidepanel{position:relative;flex:0 0 var(--detail-w);max-width:var(--detail-w);min-width:0;min-height:0;display:flex;flex-direction:column;border-left:1px solid var(--border);background:var(--surface)}
+.av .av-sidepanel{position:relative;flex:0 0 var(--detail-w);max-width:max(360px,calc(100vw - 320px));min-width:0;min-height:0;display:flex;flex-direction:column;border-left:1px solid var(--border);background:var(--surface)}
 .av .av-drawer.docked .av-drawer-h .av-btn.icon{display:none}
 .av .av-side-empty{margin:auto;max-width:280px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;color:var(--text-2)}
 .av .av-drawer.docked{position:static;z-index:auto;flex:1 1 auto;min-height:0;width:auto;max-width:none;box-shadow:none;border-left:0}
-.av .av-histdrawer{flex:none;position:relative;z-index:2;display:flex;flex-direction:column;background:var(--surface);border-top:1px solid var(--border-strong);box-shadow:var(--shadow)}
-.av .av-histdrawer.open{height:min(55vh,560px)}
+.av .av-drawer-bottom{flex:none;position:relative;z-index:2;display:flex;flex-direction:column;background:var(--surface);border-top:1px solid var(--border-strong);box-shadow:var(--shadow)}
+.av .av-drawer-bottom.open{height:min(55vh,560px)}
+/* Resize handles: an 8px grab strip over an edge of their area, showing a 2px accent line on hover, drag or focus. */
+.av .av-resize{position:absolute;z-index:6;touch-action:none;outline:none}
+.av .av-resize.x{top:0;bottom:0;width:8px;cursor:col-resize}
+.av .av-resize.y{left:0;right:0;height:8px;cursor:row-resize}
+.av .av-resize.grow-left{left:-4px}
+.av .av-resize.grow-right{right:-4px}
+.av .av-resize.grow-up{top:-4px}
+.av .av-resize.grow-down{bottom:-4px}
+.av .av-resize::after{content:"";position:absolute;background:var(--focus);opacity:0;transition:opacity .12s}
+.av .av-resize.x::after{top:0;bottom:0;left:3px;width:2px}
+.av .av-resize.y::after{left:0;right:0;top:3px;height:2px}
+.av .av-resize:hover::after,.av .av-resize:active::after,.av .av-resize:focus-visible::after{opacity:1}
+/* The grip: a small pill always visible in the middle of the edge, so the handle can be found before hovering it. */
+.av .av-resize::before{content:"";position:absolute;z-index:1;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:5px;box-shadow:var(--shadow);transition:border-color .12s}
+.av .av-resize.x::before{top:50%;left:-2px;width:12px;height:44px;transform:translateY(-50%);background:repeating-linear-gradient(to bottom,var(--raised) 0 4px,var(--text-3) 4px 5px) content-box,var(--raised);padding:12px 3px}
+.av .av-resize.y::before{left:50%;top:-2px;width:44px;height:12px;transform:translateX(-50%);background:repeating-linear-gradient(to right,var(--raised) 0 4px,var(--text-3) 4px 5px) content-box,var(--raised);padding:3px 12px}
+.av .av-resize:hover::before,.av .av-resize:active::before,.av .av-resize:focus-visible::before{border-color:var(--focus)}
 .av .av-histbar-row{flex:none;display:flex;align-items:center;padding-right:16px;background:var(--surface)}
 .av .av-histbar-row .hb-sort{flex:none;width:auto;padding:0 10px;gap:2px}
 .av .av-histbar{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:10px;height:44px;padding:0 24px;border:0;background:var(--surface);text-align:left;cursor:pointer;white-space:nowrap;font-size:var(--fs-14)}
@@ -58,9 +75,9 @@ body{margin:0}
 .av .av-histbar .hb-n{color:var(--text-2)}
 .av .av-histbar .hb-latest{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text);padding-left:12px;border-left:1px solid var(--border)}
 .av .av-histbar .hb-hint{flex:none;color:var(--run);font-weight:600}
-.av .av-histdrawer-b{flex:1 1 auto;min-height:0;overflow:auto;border-top:1px solid var(--border)}
-.av .av-histdrawer-b .av-side{max-width:none;border-left:0;padding:12px 24px 24px}
-.av .av-histdrawer-b .av-hist-h .av-h2{display:none}
+.av .av-drawer-bottom-b{flex:1 1 auto;min-height:0;overflow:auto;border-top:1px solid var(--border)}
+.av .av-drawer-bottom-b .av-side{max-width:none;border-left:0;padding:12px 24px 24px}
+.av .av-drawer-bottom-b .av-hist-h .av-h2{display:none}
 
 /* The phase rail lives in a slim bar fixed to the bottom of the session page: compact pills, the
    running, waiting or failed phase keeps its meta line inline, and side lanes show only once one has
@@ -157,7 +174,15 @@ body{margin:0}
 .av .md-body .md-h{margin-top:6px;font-weight:700;color:var(--text)}
 .av .md-body .md-h.l3{font-size:var(--fs-14)}
 .av .md-body .md-h.l4{font-size:var(--fs-13);color:var(--text-2)}
-.av .md-code{margin:0;white-space:pre;overflow-x:auto;font-family:var(--mono);font-size:var(--fs-13);line-height:1.5}
+/* Nothing in Details scrolls sideways: a tall code block's own sideways scrollbar would sit out of sight at its bottom edge. Long lines wrap instead; short lines keep their alignment. */
+.av .md-code{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);font-size:var(--fs-13);line-height:1.5}
+.av .md-body p,.av .md-body li,.av .av-drawer-b .av-pre{overflow-wrap:anywhere}
+.av .md-body code{font-size:.92em;padding:1px 5px;border-radius:4px;background:var(--bg);border:1px solid var(--border);overflow-wrap:break-word}
+/* A table keeps whole words in its cells; one too wide for the pane scrolls on its own (tables are short, so its scrollbar stays in view). */
+.av .md-table{max-width:100%;overflow-x:auto}
+.av .md-table table{width:100%;border-collapse:collapse;font-size:var(--fs-13);line-height:1.45}
+.av .md-table th,.av .md-table td{padding:6px 10px;border:1px solid var(--border);text-align:left;vertical-align:top;overflow-wrap:break-word}
+.av .md-table th{font-weight:700;color:var(--text-2);background:var(--bg)}
 .av .md-check{display:inline-flex;align-items:baseline;gap:8px}
 .av .md-check .box{flex:none;width:14px;height:14px;border:1.5px solid var(--border-strong);border-radius:3px;transform:translateY(2px)}
 .av .md-check.on .box{background:var(--done);border-color:var(--done)}
@@ -189,8 +214,8 @@ body{margin:0}
 .av .av-sidetab .ic.flip{transform:scaleX(-1)}
 /* The board keeps readable columns and scrolls sideways instead of squeezing. */
 .av.desk .av-board{grid-template-columns:repeat(5,minmax(220px,1fr));min-width:1148px}
-.av .av-histdrawer-b{overflow:auto}
-.av .av-histdrawer-b .av-drawer-pad:has(.av-board){width:max(100%,1196px)}
+.av .av-drawer-bottom-b{overflow:auto}
+.av .av-drawer-bottom-b .av-drawer-pad:has(.av-board){width:max(100%,1196px)}
 /* Desktop page content is the intent tree alone: no tab strip; its search and filter row sticks. */
 .av.desk .av-primary .av-tabs{display:none}
 .av.desk .av-primary .av-toolbar{position:sticky;top:0;z-index:3;margin:0 -32px 12px;padding:14px 32px 12px;background:var(--bg);border-bottom:1px solid var(--border)}
@@ -211,8 +236,8 @@ body{margin:0}
 .av .av-histtools .av-picker-btn{min-height:28px;padding:0 8px 0 10px;font-size:var(--fs-13);gap:6px}
 .av .av-histtools .av-picker-btn .p-live{font-size:var(--fs-12)}
 .av .av-histtools .hb-sort{min-height:28px;height:28px;padding:0 8px;font-size:var(--fs-13)}
-.av .av-histdrawer-b .av-histtools + .av-side{padding-top:4px}
-.av .av-histdrawer-b .av-side .av-hday:first-child{margin-top:4px}
+.av .av-drawer-bottom-b .av-histtools + .av-side{padding-top:4px}
+.av .av-drawer-bottom-b .av-side .av-hday:first-child{margin-top:4px}
 /* History's pinned heading: session picker and order switch as small-caps text links, no extra row. */
 .av .av-histhead{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-12px -24px 4px;padding:8px 24px 6px;background:var(--surface);border-bottom:1px solid var(--border)}
 .av .av-histhead .av-picker-btn,.av .av-histhead .hh-order{min-height:24px;padding:2px 6px;margin:0 -6px;border:0;border-radius:var(--r-1);background:transparent;box-shadow:none;font-size:var(--fs-12);font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-2);display:inline-flex;align-items:center;gap:6px;cursor:pointer}

@@ -1,8 +1,11 @@
 import { type ReactNode, useState } from "react";
 import Icon from "@/observer/page/shared/Icon/index.js";
+import ResizeHandle from "@/observer/page/shared/ResizeHandle/index.js";
 import type { DrawerItem, HistoryModel, IconName, SessionRowModel } from "@/observer/page/types/index.js";
 import HistoryPanel from "../HistoryPanel/index.js";
 import SessionPicker from "../SessionPicker/index.js";
+import useElementHeight from "../useElementHeight/index.js";
+import useDrawerHeight from "./useDrawerHeight/index.js";
 
 /** The drawer's panels, in bar order. */
 type PanelId = "history" | "sessions" | "board";
@@ -11,11 +14,14 @@ type PanelId = "history" | "sessions" | "board";
 type Launcher = { id: PanelId; label: string; icon: IconName; count: string | null };
 
 /**
- * The desktop session page's bottom drawer, above the phase rail (like a console's bottom panel).
+ * The desktop session page's bottom drawer, above the phase rail and across the full width under
+ * the tree and the Details column (like a console's bottom panel). Opening it pushes both columns up.
  * Closed, it is one bar of launchers (History, Sessions, Board, each with its count) and the newest
  * event. Clicking a launcher slides the drawer up showing that panel, and the launchers become its
  * tabs; Hide folds it back. The History list's pinned heading holds its session picker (which
- * session's events it shows) and order switch, as small text links.
+ * session's events it shows) and order switch, as small text links. While open, a handle on its top
+ * edge resizes it (drag or arrow keys; double-click resets), from the bar plus a few rows up to
+ * leaving 120px of the columns above in view; the height is remembered for this viewer.
  * Rows in History, Sessions and Board still open their detail in the right-hand Details column.
  */
 export default function BottomDrawer({
@@ -38,6 +44,18 @@ export default function BottomDrawer({
 }) {
 	const [open, setOpen] = useState<PanelId | null>(null);
 	const [newest, setNewest] = useState(true);
+	const [drawer, setDrawer] = useState<HTMLDivElement | null>(null);
+	const [bar, setBar] = useState<HTMLDivElement | null>(null);
+	// The room the drawer shares with the columns above it: their height plus its own, which stays the
+	// same as the drawer grows and pushes them up.
+	const aboveHeight = useElementHeight((drawer?.previousElementSibling as HTMLElement | null | undefined) ?? null);
+	const ownHeight = useElementHeight(drawer);
+	const barHeight = useElementHeight(bar);
+	// Bounds: the bar plus room for a few rows, up to the shared room less 120px for the columns' tops.
+	const min = barHeight + 160;
+	const max = aboveHeight + ownHeight - 120;
+	const size = useDrawerHeight({ min, max });
+	const style = open !== null && size.height !== null ? { height: `${size.height}px` } : undefined;
 	const latest = [...history.rows].reverse().find((row) => row.kind !== "sub") ?? null;
 	const launchers: Launcher[] = [
 		{ id: "history", label: "History", icon: "history", count: String(history.total) },
@@ -46,8 +64,11 @@ export default function BottomDrawer({
 	];
 
 	return (
-		<div className={open !== null ? "av-histdrawer open" : "av-histdrawer"}>
-			<div className="av-histbar-row" role="tablist" aria-label="Bottom drawer">
+		<div ref={setDrawer} className={open !== null ? "av-drawer-bottom open" : "av-drawer-bottom"} style={style}>
+			{open !== null && (
+				<ResizeHandle label="Resize bottom drawer" grow="up" value={size.height} min={min} max={Math.max(min, max)} onResize={size.setHeight} onReset={size.reset} />
+			)}
+			<div ref={setBar} className="av-histbar-row" role="tablist" aria-label="Bottom drawer">
 				{launchers.map((launcher) => (
 					<button
 						key={launcher.id}
@@ -78,7 +99,7 @@ export default function BottomDrawer({
 				)}
 			</div>
 			{open !== null && (
-				<div className="av-histdrawer-b" role="tabpanel">
+				<div className="av-drawer-bottom-b" role="tabpanel">
 					{open === "history" && (
 						<HistoryPanel
 							history={history}

@@ -26,6 +26,11 @@ describe("buildSectionBlock", () => {
 		expect(buildSectionBlock({ heading: "Notes", content: "Intro.\n\n- a\n- b" })).toMatchObject({ type: "text", paras: ["Intro.", "a", "b"] });
 	});
 
+	it("renders a section holding a table as markdown, so the table draws as one", () => {
+		const content = "Plans:\n\n| # | Plan |\n|---|---|\n| 1 | types |";
+		expect(buildSectionBlock({ heading: "Plans", content })).toEqual({ heading: "Plans", icon: "doc", badge: null, type: "md", markdown: content });
+	});
+
 	it("is null for a section with no text", () => {
 		expect(buildSectionBlock({ heading: "Empty", content: " \n" })).toBeNull();
 	});

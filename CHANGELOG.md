@@ -6,6 +6,16 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Added
+- The observer's Details column and bottom drawer can be resized. Drag the grip on the column's left edge or on the open drawer's top edge, or focus it and use the arrow keys (Shift for bigger steps). Double-click or press Enter to go back to the default. Each size is remembered in your browser. The column always leaves room for the tree; the drawer always leaves the top of both columns in view.
+
+### Changed
+- The observer's bottom drawer (History, Sessions, Board) spans the full page width, under both the tree and the Details column. Opening it pushes both columns up, so a wide Details column no longer crowds its tabs.
+- The observer page's bottom drawer uses the class `av-drawer-bottom` (was `av-histdrawer`), matching its name on the page.
+
+### Fixed
+- The observer's Details pane renders `.aide` markdown properly. Pipe tables show as tables, keeping each column's alignment. Inline code shows as code. Section headings no longer keep their `## ` prefix. Long lines (a wide folder tree, a long path) wrap, so the pane never scrolls sideways behind a scrollbar you could only reach at the bottom. A table too wide for the pane scrolls on its own.
+
 ## [0.16.1] - 2026-11-24
 
 ### Fixed

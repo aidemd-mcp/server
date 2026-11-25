@@ -39,10 +39,22 @@ export default function renderPlan({ module, plan }: { module: FixtureModule; pl
 		"├── index.ts              orchestrator: run(input) => Result (existing)",
 		"├── types/index.ts        shared types for this module (new)",
 		"├── weigh/index.ts        weigh(node) => number (new)",
-		"└── rank/index.ts         rank(nodes) => Node[] (new)",
+		"└── rank/index.ts         rank(nodes) => Node[] (new)   ← ranks every node by weight, then by open todo count, then by path, so the output order is stable across runs",
 		"```",
+		"",
+		"| # | Helper | Steps | Notes |",
+		"|---|--------|------:|-------|",
+		"| 1 | `types` | 1 | Shared shapes, derived from `Node` |",
+		"| 2 | `weigh` | 2 | Reads `weights.json`; **no** network calls |",
+		"| 3 | `rank` | 1 | Stable sort |",
 	].join("\n");
-	const decisions = ["## Decisions", "", "- Weights live in one table so QA can golden-test them.", "- Ties break by open todo count, then path, so output is stable."].join("\n");
+	const decisions = [
+		"## Decisions",
+		"",
+		"- Weights live in one table so QA can golden-test them.",
+		"- Ties break by open todo count, then path, so output is stable.",
+		"- `rank` takes `Node[]` and never mutates it; see `src/tools/score/rank/index.ts`.",
+	].join("\n");
 	return [
 		"---",
 		`status: ${plan.status}`,

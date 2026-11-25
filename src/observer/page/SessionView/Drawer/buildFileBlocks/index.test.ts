@@ -55,7 +55,7 @@ describe("buildFileBlocks", () => {
 
 	it("draws text before the first `##` as a Body block, then each `##` section as its own markdown block under its heading", () => {
 		const blocks = buildFileBlocks({ text: SPEC });
-		expect(blocks.map((block) => block.heading)).toEqual(["Frontmatter", "Body", "## Context", "## Strategy", "## Empty"]);
+		expect(blocks.map((block) => block.heading)).toEqual(["Frontmatter", "Body", "Context", "Strategy", "Empty"]);
 		expect(blocks[1]).toMatchObject({ icon: "list", badge: null, type: "md" });
 		expect((blocks[1] as { markdown: string }).markdown).toContain("Preamble text.");
 		expect((blocks[2] as { markdown: string }).markdown.trim()).toBe("Agents call aide_score.");
@@ -67,27 +67,27 @@ describe("buildFileBlocks", () => {
 	});
 
 	it("says (empty) for a section with no body", () => {
-		expect(buildFileBlocks({ text: SPEC }).at(-1)).toEqual({ heading: "## Empty", icon: "list", badge: null, type: "md", markdown: "(empty)" });
+		expect(buildFileBlocks({ text: SPEC }).at(-1)).toEqual({ heading: "Empty", icon: "list", badge: null, type: "md", markdown: "(empty)" });
 	});
 
 	it("draws a file with no frontmatter as its body only, with no Body block when it starts at a `##`", () => {
-		expect(buildFileBlocks({ text: "## Retro\n\n- lesson\n" }).map((block) => block.heading)).toEqual(["## Retro"]);
+		expect(buildFileBlocks({ text: "## Retro\n\n- lesson\n" }).map((block) => block.heading)).toEqual(["Retro"]);
 		expect(buildFileBlocks({ text: "- [ ] a — b\n" })).toEqual([{ heading: "Body", icon: "list", badge: null, type: "md", markdown: "- [ ] a — b\n" }]);
 	});
 
 	it("reads CRLF files like LF ones", () => {
 		const blocks = buildFileBlocks({ text: "---\r\nscope: a\r\n---\r\n\r\n## Context\r\n\r\nWhy.\r\n" });
-		expect(blocks.map((block) => block.heading)).toEqual(["Frontmatter", "## Context"]);
+		expect(blocks.map((block) => block.heading)).toEqual(["Frontmatter", "Context"]);
 		expect(blocks[0]).toMatchObject({ rows: [{ key: "scope", value: "a", list: null }] });
 	});
 
 	it("draws no Frontmatter block for an empty frontmatter", () => {
-		expect(buildFileBlocks({ text: "---\n\n---\n\n## A\n\nb\n" }).map((block) => block.heading)).toEqual(["## A"]);
+		expect(buildFileBlocks({ text: "---\n\n---\n\n## A\n\nb\n" }).map((block) => block.heading)).toEqual(["A"]);
 	});
 
 	it("shows frontmatter it cannot parse as text with the parser's message, and still draws the body", () => {
 		const blocks = buildFileBlocks({ text: "---\nkey: [unclosed\n---\n\n## A\n\nb\n" });
-		expect(blocks.map((block) => block.heading)).toEqual(["Frontmatter (could not be read)", "## A"]);
+		expect(blocks.map((block) => block.heading)).toEqual(["Frontmatter (could not be read)", "A"]);
 		expect(blocks[0]).toMatchObject({ icon: "error", type: "pre" });
 		expect((blocks[0] as { text: string }).text).toContain("key: [unclosed");
 	});

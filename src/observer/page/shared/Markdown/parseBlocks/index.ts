@@ -1,4 +1,6 @@
 import type { MarkdownBlock } from "@/observer/page/types/index.js";
+import readTableAlign from "./readTableAlign/index.js";
+import splitTableRow from "./splitTableRow/index.js";
 
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
@@ -6,10 +8,12 @@ const HEADING = /^(#{1,6})\s+(.*)$/;
 const FENCE = /^\s*```/;
 
 /**
- * Splits markdown into paragraphs, bulleted or numbered lists, headings and fenced code blocks. A
- * blank line ends a block; an indented line under a list item continues that item; consecutive prose
- * lines join into one paragraph; a fenced block keeps its lines exactly. Tables and HTML stay plain
- * paragraph text, never interpreted.
+ * Splits markdown into paragraphs, bulleted or numbered lists, headings, fenced code blocks and GFM
+ * pipe tables. A blank line ends a block; an indented line under a list item continues that item;
+ * consecutive prose lines join into one paragraph; a fenced block keeps its lines exactly. A table is
+ * a header row followed by a delimiter row with the same number of cells; its body runs until a blank
+ * line or a line with no pipe, each row padded or cut to the header's width. HTML stays plain text,
+ * never interpreted.
  */
 export default function parseBlocks(markdown: string): MarkdownBlock[] {
 	const blocks: MarkdownBlock[] = [];
@@ -20,7 +24,9 @@ export default function parseBlocks(markdown: string): MarkdownBlock[] {
 		open = null;
 	};
 
-	for (const line of markdown.replace(/\r\n?/g, "\n").split("\n")) {
+	const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
 		if (code !== null) {
 			if (FENCE.test(line)) {
 				blocks.push({ type: "code", text: code.join("\n") });
@@ -35,6 +41,21 @@ export default function parseBlocks(markdown: string): MarkdownBlock[] {
 		}
 		if (line.trim() === "") {
 			close();
+			continue;
+		}
+		const head = splitTableRow(line);
+		const align = head === null ? null : readTableAlign(splitTableRow(lines[index + 1] ?? "") ?? []);
+		if (head !== null && align !== null && align.length === head.length) {
+			close();
+			const rows: string[][] = [];
+			index += 2;
+			for (; index < lines.length; index += 1) {
+				const row = (lines[index] ?? "").trim() === "" ? null : splitTableRow(lines[index] ?? "");
+				if (row === null) break;
+				rows.push(head.map((_, column) => row[column] ?? ""));
+			}
+			index -= 1;
+			blocks.push({ type: "table", head, align, rows });
 			continue;
 		}
 		const heading = HEADING.exec(line);

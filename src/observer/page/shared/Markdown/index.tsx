@@ -19,7 +19,8 @@ function Item({ text }: { text: string }) {
 
 /**
  * The markdown the session record and drawer carry: paragraphs, bulleted and numbered lists (with
- * `[ ]` / `[x]` checkboxes), headings, fenced code blocks, `**bold**` and `` `code` ``. Built as React
+ * `[ ]` / `[x]` checkboxes), headings, fenced code blocks, pipe tables (in a wrapper that scrolls
+ * sideways on its own), `**bold**` and `` `code` ``. Built as React
  * elements from text, so raw HTML in the source prints as text and nothing in it can run. The parent
  * supplies the wrapping section.
  */
@@ -39,6 +40,35 @@ export default function Markdown({ markdown }: { markdown: string }) {
 						<pre key={index} className="av-pre md-code">
 							{block.text}
 						</pre>
+					);
+				}
+				if (block.type === "table") {
+					const alignOf = (column: number) => block.align[column] ?? undefined;
+					return (
+						<div key={index} className="md-table">
+							<table>
+								<thead>
+									<tr>
+										{block.head.map((cell, column) => (
+											<th key={column} style={{ textAlign: alignOf(column) }}>
+												<Inline text={cell} />
+											</th>
+										))}
+									</tr>
+								</thead>
+								<tbody>
+									{block.rows.map((row, rowIndex) => (
+										<tr key={rowIndex}>
+											{row.map((cell, column) => (
+												<td key={column} style={{ textAlign: alignOf(column) }}>
+													<Inline text={cell} />
+												</td>
+											))}
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
 					);
 				}
 				if (block.type === "h") {

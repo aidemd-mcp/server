@@ -56,7 +56,7 @@ afterEach(() => {
 describe("BottomDrawer closed", () => {
 	it("is one bar of three launcher tabs, each with its count, none selected", () => {
 		const markup = html();
-		expect(markup).toContain('<div class="av-histdrawer"><div class="av-histbar-row" role="tablist" aria-label="Bottom drawer">');
+		expect(markup).toContain('<div class="av-drawer-bottom"><div class="av-histbar-row" role="tablist" aria-label="Bottom drawer">');
 		expect(markup).toMatch(/<button type="button" role="tab" class="av-launch" aria-selected="false"><span class="ic i-history" aria-hidden="true"><\/span>History<span class="n">3<\/span><\/button>/);
 		expect(markup).toMatch(/>Sessions<span class="n">2<\/span>/);
 		expect(markup).toMatch(/>Board<span class="n">4<\/span>/);
@@ -76,7 +76,7 @@ describe("BottomDrawer closed", () => {
 
 	it("draws no panel and no Hide button", () => {
 		const markup = html();
-		expect(markup).not.toContain("av-histdrawer-b");
+		expect(markup).not.toContain("av-drawer-bottom-b");
 		expect(markup).not.toContain("hb-hide");
 	});
 });
@@ -85,9 +85,9 @@ describe("BottomDrawer open", () => {
 	it("slides up on the History panel, marks its tab, and offers Hide", () => {
 		openOn("history");
 		const markup = html();
-		expect(markup).toContain('<div class="av-histdrawer open">');
+		expect(markup).toContain('<div class="av-drawer-bottom open">');
 		expect(markup).toMatch(/role="tab" class="av-launch" aria-selected="true"><span class="ic i-history"/);
-		expect(markup).toContain('<div class="av-histdrawer-b" role="tabpanel">');
+		expect(markup).toContain('<div class="av-drawer-bottom-b" role="tabpanel">');
 		expect(markup).toContain("hb-hide");
 		expect(markup).toContain("Hide");
 	});

@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import Icon from "@/observer/page/shared/Icon/index.js";
+import ResizeHandle from "@/observer/page/shared/ResizeHandle/index.js";
 import type { DrawerContext, DrawerItem } from "@/observer/page/types/index.js";
 import Drawer from "../Drawer/index.js";
+import useDetailWidth from "./useDetailWidth/index.js";
 
 /** Docked details have no close: the column always stays. */
 const KEEP_OPEN = (): void => {};
@@ -31,11 +34,13 @@ function writeCollapsed(value: boolean): void {
  * The desktop Details column: beside the main area, filling the page's middle row and scrolling
  * inside itself. It shows the selected item's detail, or a calm prompt to pick one. A button in its
  * corner collapses it to a slim vertical `Details` tab on the page's edge, which gives the main area
- * the room on a small screen; clicking the tab, or opening any item, brings it back. The choice is
- * remembered for this viewer.
+ * the room on a small screen; clicking the tab, or opening any item, brings it back. A handle on its
+ * left edge resizes it (drag or arrow keys; double-click resets). Both choices are remembered for
+ * this viewer.
  */
 export default function SidePanel({ item, context }: { item: DrawerItem | null; context: DrawerContext }) {
 	const [collapsed, setCollapsed] = useState(readCollapsed);
+	const width = useDetailWidth();
 	const itemKey = item === null ? null : JSON.stringify(item);
 	const change = (value: boolean): void => {
 		setCollapsed(value);
@@ -53,8 +58,10 @@ export default function SidePanel({ item, context }: { item: DrawerItem | null; 
 			</button>
 		);
 	}
+	const style = width.width === null ? undefined : ({ "--detail-w": `${width.width}px` } as CSSProperties);
 	return (
-		<div className="av-sidepanel">
+		<div className="av-sidepanel" style={style}>
+			<ResizeHandle label="Resize details" grow="left" value={width.width} min={width.min} max={width.max} onResize={width.setWidth} onReset={width.reset} />
 			<button type="button" className="av-btn ghost av-side-collapse" aria-expanded={true} aria-label="Hide details" onClick={() => change(true)}>
 				Hide
 				<Icon name="chev-r" />

@@ -74,4 +74,28 @@ describe("parseBlocks", () => {
 	it("leaves HTML as paragraph text", () => {
 		expect(parseBlocks("<script>x</script>")).toEqual([{ type: "p", text: "<script>x</script>" }]);
 	});
+
+	it("reads a pipe table: header, delimiter alignments and body rows until a blank line", () => {
+		expect(parseBlocks("intro\n| # | Name | Steps |\n|---|:--|--:|\n| 1 | `types` | 2 |\n| 2 | rank\n\nafter")).toEqual([
+			{ type: "p", text: "intro" },
+			{ type: "table", head: ["#", "Name", "Steps"], align: [null, "left", "right"], rows: [["1", "`types`", "2"], ["2", "rank", ""]] },
+			{ type: "p", text: "after" },
+		]);
+	});
+
+	it("ends a table at a line with no pipe and accepts rows without outer pipes", () => {
+		expect(parseBlocks("a | b\n:-: | ---\n1 | 2\nplain")).toEqual([
+			{ type: "table", head: ["a", "b"], align: ["center", null], rows: [["1", "2"]] },
+			{ type: "p", text: "plain" },
+		]);
+	});
+
+	it("keeps a pipe line as text when no matching delimiter row follows", () => {
+		expect(parseBlocks("| a | b |\n| just text |")).toEqual([{ type: "p", text: "| a | b | | just text |" }]);
+		expect(parseBlocks("| a | b |\n|---|")).toEqual([{ type: "p", text: "| a | b | |---|" }]);
+	});
+
+	it("does not read a table inside a fenced code block", () => {
+		expect(parseBlocks("```\n| a |\n|---|\n```")).toEqual([{ type: "code", text: "| a |\n|---|" }]);
+	});
 });

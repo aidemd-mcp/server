@@ -6,7 +6,7 @@ describe("Markdown", () => {
 	it("renders paragraphs, lists, bold and code spans", () => {
 		const html = renderToStaticMarkup(<Markdown markdown={"Use **care** with `aide_init`.\n\n- one\n- two\n\n1. first"} />);
 		expect(html).toBe(
-			'<p>Use <b>care</b> with <span class="mono">aide_init</span>.</p><ul><li>one</li><li>two</li></ul><ol><li>first</li></ol>',
+			'<p>Use <b>care</b> with <code class="mono">aide_init</code>.</p><ul><li>one</li><li>two</li></ul><ol><li>first</li></ol>',
 		);
 	});
 
@@ -55,5 +55,13 @@ describe("Markdown", () => {
 	it("does not draw a checkbox for brackets that are not at the start of the item", () => {
 		const html = renderToStaticMarkup(<Markdown markdown={"- see [x] later\n- [] empty"} />);
 		expect(html).not.toContain("md-check");
+	});
+
+	it("draws a pipe table in its own wrapper, with column alignment and inline markdown in cells", () => {
+		const html = renderToStaticMarkup(<Markdown markdown={"| Name | Steps |\n|---|--:|\n| `rank` | **2** |"} />);
+		expect(html).toBe(
+			'<div class="md-table"><table><thead><tr><th>Name</th><th style="text-align:right">Steps</th></tr></thead>' +
+				'<tbody><tr><td><code class="mono">rank</code></td><td style="text-align:right"><b>2</b></td></tr></tbody></table></div>',
+		);
 	});
 });

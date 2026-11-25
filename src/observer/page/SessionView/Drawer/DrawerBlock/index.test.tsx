@@ -26,7 +26,7 @@ describe("DrawerBlock", () => {
 
 	it("draws paragraphs with the handoff's spacing and their inline markdown", () => {
 		expect(html({ ...BASE, type: "text", paras: ["Run `aide_score` **now**"] })).toContain(
-			'<p style="margin-bottom:8px">Run <span class="mono">aide_score</span> <b>now</b></p>',
+			'<p style="margin-bottom:8px">Run <code class="mono">aide_score</code> <b>now</b></p>',
 		);
 	});
 

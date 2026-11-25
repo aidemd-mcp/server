@@ -131,7 +131,12 @@ export default function SessionView({
 										<Tabs tabs={model.tabs} selected={tab} onPick={setTab} />
 										<TabPanel tab={tab} model={model} now={now} token={token} projectKey={projectKey} routeSessionId={sessionId} onOpen={openItem} />
 									</main>
-									{narrow ? <HistoryPanel history={model.history} onOpen={openItem} /> : <BottomDrawer
+									{narrow && <HistoryPanel history={model.history} onOpen={openItem} />}
+								</div>
+								{!narrow && <SidePanel item={route.item} context={drawerContext} />}
+							</div>
+							{!narrow && (
+								<BottomDrawer
 											history={model.history}
 											counts={{ sessions: String(model.sessions.length), board: countOf("board") }}
 											sessions={
@@ -150,10 +155,8 @@ export default function SessionView({
 											}
 											onOpen={openItem}
 											picker={{ sessions: model.sessions, current: model.focus, now, onPick: setPicked }}
-										/>}
-								</div>
-								{!narrow && <SidePanel item={route.item} context={drawerContext} />}
-							</div>
+										/>
+							)}
 						</>
 					)}
 				</div>

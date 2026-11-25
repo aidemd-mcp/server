@@ -9,6 +9,11 @@ vi.mock("react", async (importOriginal) => {
 	return { ...actual, useState: vi.fn(actual.useState), useEffect: vi.fn(actual.useEffect) };
 });
 
+const width = vi.hoisted(() => ({ value: null as number | null }));
+vi.mock("./useDetailWidth/index.js", () => ({
+	default: () => ({ width: width.value, min: 360, max: 960, setWidth: vi.fn(), reset: vi.fn() }),
+}));
+
 import { useEffect, useState } from "react";
 import SidePanel from "./index.js";
 
@@ -25,6 +30,22 @@ function renderWith({ collapsed }: { collapsed: boolean }) {
 describe("SidePanel", () => {
 	beforeEach(() => {
 		vi.mocked(useState).mockClear();
+		width.value = null;
+	});
+
+	it("has a resize handle on its left edge, and keeps the page's default width until one is chosen", () => {
+		const html = renderToStaticMarkup(<SidePanel item={null} context={context} />);
+		expect(html).toContain('role="separator"');
+		expect(html).toContain('aria-label="Resize details"');
+		expect(html).toContain("av-resize x grow-left");
+		expect(html).toContain('<div class="av-sidepanel">');
+	});
+
+	it("sets a chosen width as the column's width", () => {
+		width.value = 720;
+		const html = renderToStaticMarkup(<SidePanel item={null} context={context} />);
+		expect(html).toContain('<div class="av-sidepanel" style="--detail-w:720px">');
+		expect(html).toContain('aria-valuenow="720"');
 	});
 
 	it("shows a calm prompt to pick something when no item is open", () => {

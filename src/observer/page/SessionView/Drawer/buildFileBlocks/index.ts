@@ -43,7 +43,7 @@ export default function buildFileBlocks({ text }: { text: string }): DrawerBlock
 		const markdown = heading === null ? part : part.slice(heading.index + heading[0].length);
 		if (heading === null && markdown.trim() === "") continue;
 		blocks.push({
-			heading: heading === null ? "Body" : `## ${(heading[1] ?? "").trim()}`,
+			heading: heading === null ? "Body" : (heading[1] ?? "").trim(),
 			icon: "list",
 			badge: null,
 			type: "md",

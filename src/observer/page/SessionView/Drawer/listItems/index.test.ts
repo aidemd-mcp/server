@@ -13,4 +13,8 @@ describe("listItems", () => {
 	it("is empty for blank text", () => {
 		expect(listItems("  \n")).toEqual([]);
 	});
+
+	it("reads each table body row as one item, its cells joined", () => {
+		expect(listItems("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |")).toEqual(["1 · 2", "3 · 4"]);
+	});
 });

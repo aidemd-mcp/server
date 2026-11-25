@@ -68,7 +68,14 @@ export type MarkdownBlock =
 	| { type: "p"; text: string }
 	| { type: "ul" | "ol"; items: string[] }
 	| { type: "code"; text: string }
-	| { type: "h"; level: number; text: string };
+	| { type: "h"; level: number; text: string }
+	| { type: "table"; head: string[]; align: TableAlign[]; rows: string[][] };
+
+/** Which way a resize handle's drag or arrow key makes its area bigger: a handle on an area's left edge grows it to the left. */
+export type ResizeGrow = "left" | "right" | "up" | "down";
+
+/** A table column's alignment from its delimiter row (`:--`, `--:`, `:-:`), or null when it sets none. */
+export type TableAlign = "left" | "right" | "center" | null;
 
 /** One run of inline markdown: plain text, `**bold**`, or `` `code` ``. */
 export type InlineNode = { type: "text" | "bold" | "code"; text: string };

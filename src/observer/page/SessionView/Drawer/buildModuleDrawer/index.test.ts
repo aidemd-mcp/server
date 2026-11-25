@@ -35,9 +35,9 @@ describe("buildModuleDrawer", () => {
 	it("builds each section from every part of its file (frontmatter fields and `##` sections)", () => {
 		const drawer = buildModuleDrawer({ folder: "src/tools/score", firstKind: null, files: FILES, context: CONTEXT });
 		const spec = drawer.sections?.list.find((section) => section.kind === "spec");
-		expect(spec?.blocks.map((block) => block.heading)).toEqual(["Frontmatter", "## Context"]);
+		expect(spec?.blocks.map((block) => block.heading)).toEqual(["Frontmatter", "Context"]);
 		const todo = drawer.sections?.list.find((section) => section.kind === "todo");
-		expect(todo?.blocks.map((block) => block.heading)).toEqual(["Body", "## Retro"]);
+		expect(todo?.blocks.map((block) => block.heading)).toEqual(["Body", "Retro"]);
 	});
 
 	it("flattens every section's blocks into the drawer's blocks", () => {
