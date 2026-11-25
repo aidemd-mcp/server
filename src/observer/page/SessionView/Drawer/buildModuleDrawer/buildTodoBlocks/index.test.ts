@@ -19,7 +19,7 @@ describe("buildTodoBlocks", () => {
 	it("draws the issues with a badge of how many are open", () => {
 		const [issues] = buildTodoBlocks({ text: TODO });
 		expect(issues).toEqual({
-			heading: "Todo",
+			heading: "Issues",
 			icon: "issues",
 			badge: { text: "2 of 3 open", tone: "danger" },
 			type: "issues",
@@ -33,7 +33,7 @@ describe("buildTodoBlocks", () => {
 
 	it("draws the retro as a list", () => {
 		expect(buildTodoBlocks({ text: TODO })[1]).toEqual({
-			heading: "Retro",
+			heading: "Retro (the ## Retro section: lessons for the playbook)",
 			icon: "history",
 			badge: null,
 			type: "list",

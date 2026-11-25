@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import Icon from "@/observer/page/shared/Icon/index.js";
 import joinClasses from "@/observer/page/shared/joinClasses/index.js";
 import Inline from "@/observer/page/shared/Markdown/Inline/index.js";
+import Markdown from "@/observer/page/shared/Markdown/index.js";
 import type { DrawerBlockModel } from "@/observer/page/types/index.js";
 
 /**
@@ -54,6 +55,11 @@ export default function DrawerBlock({ block }: { block: DrawerBlockModel }) {
 				</ul>
 			)}
 			{block.type === "pre" && <div className="av-pre">{block.text}</div>}
+			{block.type === "md" && (
+				<div className="md-body">
+					<Markdown markdown={block.markdown} />
+				</div>
+			)}
 			{block.type === "kv" && (
 				<dl className="av-kv">
 					{block.rows.map((row, index) => (

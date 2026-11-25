@@ -12,13 +12,13 @@ export default function buildTodoBlocks({ text }: { text: string }): DrawerBlock
 	if (items.length > 0) {
 		const open = items.filter((item) => !item.done).length;
 		blocks.push({
-			heading: "Todo",
+			heading: "Issues",
 			icon: "issues",
 			badge: { text: `${open} of ${items.length} open`, tone: open > 0 ? "danger" : "done" },
 			type: "issues",
 			items: items.map((item) => ({ loc: item.loc ?? "", text: item.text, done: item.done })),
 		});
 	}
-	if (retro !== null) blocks.push({ heading: "Retro", icon: "history", badge: null, type: "list", items: listItems(retro) });
+	if (retro !== null) blocks.push({ heading: "Retro (the ## Retro section: lessons for the playbook)", icon: "history", badge: null, type: "list", items: listItems(retro) });
 	return blocks;
 }

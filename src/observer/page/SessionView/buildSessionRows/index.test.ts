@@ -62,6 +62,7 @@ describe("buildSessionRows", () => {
 			],
 		});
 		expect(rows.map((row) => row.task)).toEqual(["Second", "only-slug", null]);
+		expect(rows.map((row) => row.taskSlug)).toEqual(["second", "only-slug", null]);
 	});
 
 	it("labels live and idle rows S1, S2 in start order only when there are two or more", () => {

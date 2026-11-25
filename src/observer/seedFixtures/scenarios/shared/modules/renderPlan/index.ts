@@ -30,5 +30,35 @@ export default function renderPlan({ module, plan }: { module: FixtureModule; pl
 		return [`### ${number}. ${text}`, "", ...boxes].join("\n");
 	});
 
-	return ["---", `status: ${plan.status}`, "---", "", "## Plan", "", steps.join("\n\n"), ""].join("\n");
+	const structure = [
+		"## Project Structure",
+		"",
+		"```",
+		`${module.path}/`,
+		"├── .aide                 intent spec",
+		"├── index.ts              orchestrator: run(input) => Result (existing)",
+		"├── types/index.ts        shared types for this module (new)",
+		"├── weigh/index.ts        weigh(node) => number (new)",
+		"└── rank/index.ts         rank(nodes) => Node[] (new)",
+		"```",
+	].join("\n");
+	const decisions = ["## Decisions", "", "- Weights live in one table so QA can golden-test them.", "- Ties break by open todo count, then path, so output is stable."].join("\n");
+	return [
+		"---",
+		`status: ${plan.status}`,
+		"---",
+		"",
+		structure,
+		"",
+		"## Prerequisites",
+		"",
+		"- None beyond the existing module.",
+		"",
+		"## Plan",
+		"",
+		steps.join("\n\n"),
+		"",
+		decisions,
+		"",
+	].join("\n");
 }

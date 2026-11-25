@@ -12,7 +12,7 @@ const PLAN_RUNNING_FOR_MIN = 221 / 60;
  * board are the same in every scenario.
  */
 export default function twoSessions(): FixtureScenario {
-	const project = buildingProject({ large: false, brain: "present" });
+	const project = buildingProject({ large: false, brain: "present", folderName: "lead-crawler" });
 	const [, ...past] = project.sessions;
 
 	return {

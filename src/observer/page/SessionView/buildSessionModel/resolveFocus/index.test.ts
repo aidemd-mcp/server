@@ -12,10 +12,14 @@ describe("resolveFocus", () => {
 	});
 
 	it.each([
-		["the switcher is gone (one active)", [row("a", "live"), row("b", "ended")]],
+		["one active", [row("a", "live"), row("b", "idle")]],
 		["the pick has ended", [row("a", "live"), row("b", "ended"), row("c", "live")]],
-		["the pick is unknown", [row("a", "live"), row("c", "live")]],
-	])("falls back to the link's session when %s", (_, sessions) => {
-		expect(resolveFocus({ requested: "b", routeSessionId: "a", sessions })).toBe("a");
+		["the pick is the only one listed", [row("b", "ended")]],
+	])("follows any listed session, however it stands (%s)", (_, sessions) => {
+		expect(resolveFocus({ requested: "b", routeSessionId: "a", sessions })).toBe("b");
+	});
+
+	it("falls back to the link's session when the pick is not listed", () => {
+		expect(resolveFocus({ requested: "b", routeSessionId: "a", sessions: [row("a", "live"), row("c", "live")] })).toBe("a");
 	});
 });

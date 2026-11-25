@@ -17,7 +17,7 @@ export default function describeItem({ item, context }: { item: DrawerItem; cont
 			return { kind: "Module", title: findModuleRow({ folder: classified.folder, context })?.label ?? classified.folder, titleMono: true };
 		}
 		case "task":
-			return { kind: "Kanban task", title: item.slug, titleMono: false };
+			return { kind: "Task", title: item.slug, titleMono: false };
 		case "event":
 			return { kind: "Event", title: `${item.sessionId}:${item.seq}`, titleMono: true };
 	}

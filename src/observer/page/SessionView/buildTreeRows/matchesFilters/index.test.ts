@@ -20,7 +20,9 @@ function entry(overrides: Partial<TreeEntry> = {}): TreeEntry {
 	};
 }
 
-const OFF = { query: "", onlyOpen: false, onlyMisaligned: false };
+const OFF = { query: "", onlyOpen: false, onlyMisaligned: false, onlyPlans: false, onlyTodos: false };
+const planChip = { kind: "plan", tone: "run", icon: "run", key: "plan.aide · approved", value: "1/3", file: "p" } as const;
+const todoChip = { kind: "todo", tone: "danger", icon: "issues", key: "todo.aide", value: "1 open of 2", file: "t" } as const;
 
 describe("matchesFilters", () => {
 	it("passes every node when no filter is on", () => {
@@ -43,8 +45,26 @@ describe("matchesFilters", () => {
 		expect(matchesFilters({ entry: entry({ misaligned: false }), ...OFF, onlyMisaligned: true })).toBe(false);
 	});
 
+	it("keeps only nodes with a plan chip when `Has a plan` is on, whatever its status", () => {
+		expect(matchesFilters({ entry: entry({ chips: [planChip] }), ...OFF, onlyPlans: true })).toBe(true);
+		expect(matchesFilters({ entry: entry({ chips: [todoChip] }), ...OFF, onlyPlans: true })).toBe(false);
+		expect(matchesFilters({ entry: entry(), ...OFF, onlyPlans: true })).toBe(false);
+	});
+
+	it("keeps only nodes with a todo chip when `Has a todo` is on", () => {
+		expect(matchesFilters({ entry: entry({ chips: [todoChip] }), ...OFF, onlyTodos: true })).toBe(true);
+		expect(matchesFilters({ entry: entry({ chips: [planChip] }), ...OFF, onlyTodos: true })).toBe(false);
+		expect(matchesFilters({ entry: entry(), ...OFF, onlyTodos: true })).toBe(false);
+	});
+
+	it("needs both a plan and a todo when both toggles are on", () => {
+		const both = { ...OFF, onlyPlans: true, onlyTodos: true };
+		expect(matchesFilters({ entry: entry({ chips: [planChip, todoChip] }), ...both })).toBe(true);
+		expect(matchesFilters({ entry: entry({ chips: [planChip] }), ...both })).toBe(false);
+	});
+
 	it("needs every filter that is on to hold", () => {
-		const both = { query: "score", onlyOpen: true, onlyMisaligned: true };
+		const both = { ...OFF, query: "score", onlyOpen: true, onlyMisaligned: true };
 		expect(matchesFilters({ entry: entry({ openWork: true, misaligned: true }), ...both })).toBe(true);
 		expect(matchesFilters({ entry: entry({ openWork: true, misaligned: false }), ...both })).toBe(false);
 		expect(matchesFilters({ entry: entry({ openWork: false, misaligned: true }), ...both })).toBe(false);

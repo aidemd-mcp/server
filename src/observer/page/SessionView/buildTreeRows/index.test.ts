@@ -6,7 +6,7 @@ import buildTreeRows from "./index.js";
 function makeModule({ folder, overrides = {} }: { folder: string; overrides?: Partial<ModuleRow> }): ModuleRow {
 	return {
 		folder,
-		label: folder === "." ? ".aide/intent.aide" : folder,
+		label: folder === "." ? "root" : folder,
 		description: `About ${folder}`,
 		alignment: "aligned",
 		intentFile: folder === "." ? ".aide/intent.aide" : `${folder}/.aide`,
@@ -43,7 +43,7 @@ function makeTree(): TreeData {
 	return buildTreeModel({ modules, current: "src/tools/t5", currentLabel: "Working now · Build" });
 }
 
-const OFF = { query: "", onlyOpen: false, onlyMisaligned: false };
+const OFF = { query: "", onlyOpen: false, onlyMisaligned: false, onlyPlans: false, onlyTodos: false };
 
 describe("buildTreeRows", () => {
 	const tree = makeTree();
@@ -107,8 +107,23 @@ describe("buildTreeRows", () => {
 		expect(byDescription.nodes).toEqual([]);
 	});
 
+	it("only plans lists the modules holding a plan chip, whatever its status, flattened", () => {
+		const { nodes } = buildTreeRows({ tree, ...OFF, onlyPlans: true, collapsed: new Set(["src"]) });
+		expect(nodes.map((node) => node.path)).toEqual(["src/tools/t1", "src/tools/t2"]);
+		expect(nodes.every((node) => node.depth === 0 && !node.hasChildren)).toBe(true);
+	});
+
+	it("only todos lists the modules holding a todo chip, flattened", () => {
+		const { nodes } = buildTreeRows({ tree, ...OFF, onlyTodos: true, collapsed: new Set(["src"]) });
+		expect(nodes.map((node) => node.path)).toEqual(["src/tools/t3"]);
+	});
+
+	it("plans and todos together keep only the modules with both", () => {
+		expect(buildTreeRows({ tree, ...OFF, onlyPlans: true, onlyTodos: true, collapsed: new Set() }).nodes).toEqual([]);
+	});
+
 	it("filters on the root's printed path", () => {
-		const { nodes } = buildTreeRows({ tree, ...OFF, query: "intent.aide", collapsed: new Set() });
+		const { nodes } = buildTreeRows({ tree, ...OFF, query: "root", collapsed: new Set() });
 		expect(nodes.map((node) => node.folder)).toEqual(["."]);
 	});
 
@@ -121,6 +136,6 @@ describe("buildTreeRows", () => {
 	it("carries each node's badge, chips, label and the current marker through", () => {
 		const { nodes } = buildTreeRows({ tree, ...OFF, collapsed: new Set() });
 		expect(nodes.find((node) => node.folder === "src/tools/t5")).toMatchObject({ current: "Working now · Build", alignment: "aligned" });
-		expect(nodes.find((node) => node.folder === "src/tools/t1")?.chips.map((chip) => chip.key)).toEqual(["plan · approved"]);
+		expect(nodes.find((node) => node.folder === "src/tools/t1")?.chips.map((chip) => chip.key)).toEqual([".aide", "plan.aide · approved"]);
 	});
 });

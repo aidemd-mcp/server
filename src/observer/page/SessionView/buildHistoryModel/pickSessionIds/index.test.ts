@@ -12,9 +12,14 @@ function prompt(sessionId: string): ObserverEvent {
 }
 
 describe("pickSessionIds", () => {
-	it("is every running session while the focused one runs", () => {
+	it("is the focused session alone when the project lists it, even while others run", () => {
 		const sessions = [session({ sessionId: "a", liveness: "live" }), session({ sessionId: "b", liveness: "idle" }), session({ sessionId: "old", liveness: "ended" })];
-		expect(pickSessionIds({ sessions, focus: "a", events: [] })).toEqual(["a", "b"]);
+		expect(pickSessionIds({ sessions, focus: "a", events: [] })).toEqual(["a"]);
+	});
+
+	it("is every running session when the focused one is not listed", () => {
+		const sessions = [session({ sessionId: "a", liveness: "live" }), session({ sessionId: "b", liveness: "idle" }), session({ sessionId: "old", liveness: "ended" })];
+		expect(pickSessionIds({ sessions, focus: "x", events: [] })).toEqual(["a", "b"]);
 	});
 
 	it("is the focused session alone when it has ended, whatever else runs", () => {

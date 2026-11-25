@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import stripMarkup from "@/observer/page/__fixtures__/stripMarkup/index.js";
-import type { DeleteConfirm, SessionRowModel } from "@/observer/page/types/index.js";
+import type { SessionRowModel } from "@/observer/page/types/index.js";
 import SessionsPanel from "./index.js";
 
 const NOW = new Date(2026, 10, 23, 15, 0, 0);
@@ -19,8 +19,8 @@ function makeRow(sessionId: string, overrides: Partial<SessionRowModel> = {}): S
 	};
 }
 
-function render(rows: SessionRowModel[], confirm: DeleteConfirm = { sessionId: null, error: null }): string {
-	return renderToStaticMarkup(<SessionsPanel rows={rows} now={NOW} token="t" projectKey="p" routeSessionId="live" confirm={confirm} onConfirmChange={() => undefined} />);
+function render(rows: SessionRowModel[]): string {
+	return renderToStaticMarkup(<SessionsPanel rows={rows} now={NOW} token="t" projectKey="p" routeSessionId="live" />);
 }
 
 describe("SessionsPanel", () => {
@@ -32,22 +32,22 @@ describe("SessionsPanel", () => {
 		expect(text.indexOf("Today 14:02")).toBeLessThan(text.indexOf("Yesterday 16:40"));
 	});
 
-	it("offers Delete on the ended row only and draws no confirmation until asked", () => {
+	it("offers Archive on the ended row only, never Delete, and draws no confirmation", () => {
 		const html = render([makeRow("live"), makeRow("idle", { liveness: "idle" }), makeRow("old", { liveness: "ended" })]);
-		expect(html.match(/class="av-btn danger"/g)).toHaveLength(1);
-		expect(html).not.toContain("Confirm delete");
-		expect(html).not.toContain("Cancel");
+		expect(html.match(/>Archive<\/button>/g)).toHaveLength(1);
+		expect(html).not.toContain("Delete");
+		expect(html).not.toContain("av-confirm");
 	});
 
-	it("draws the confirmation on the one row the caller says is confirming, with its failure message", () => {
-		const rows = [makeRow("old", { liveness: "ended" }), makeRow("older", { liveness: "ended" })];
-		const html = render(rows, { sessionId: "old", error: "Could not delete" });
-		expect(html.match(/Confirm delete|Delete history/g)?.length).toBeGreaterThan(0);
-		expect(html).toContain("Could not delete");
-		expect(html.match(/Cancel/g)).toHaveLength(1);
+	it("shows a collapsed Show archived toggle and draws no archived list until it is opened", () => {
+		const html = render([makeRow("old", { liveness: "ended" })]);
+		expect(html).toContain('aria-expanded="false"');
+		expect(html).toContain("Show archived");
+		expect(html).not.toContain("Restore");
+		expect(html).not.toContain("Loading archived sessions");
 	});
 
 	it("draws an empty list for a project with no sessions", () => {
-		expect(render([])).toBe('<div class="av-list"></div>');
+		expect(render([]).startsWith('<div class="av-list"></div>')).toBe(true);
 	});
 });

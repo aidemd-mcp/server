@@ -25,22 +25,25 @@ function makeLarge({ leaves }: { leaves: number }): ModuleRow[] {
 }
 
 describe("pickInitialCollapsed", () => {
-	it("collapses nothing at 40 modules or fewer", () => {
-		const modules = makeLarge({ leaves: 35 });
-		expect(modules).toHaveLength(40);
-		expect(pickInitialCollapsed({ modules, current: null }).size).toBe(0);
+	it("collapses every folder with children, the root included, however small the tree", () => {
+		const modules = makeLarge({ leaves: 3 });
+		const collapsed = pickInitialCollapsed({ modules, current: null });
+		expect([...collapsed].sort()).toEqual([".", "lib", "src", "src/m0"]);
 	});
 
-	it("above 40, collapses every folder with children except the root", () => {
+	it("collapses the same folders in a 44-module tree", () => {
 		const modules = makeLarge({ leaves: 39 });
 		expect(modules).toHaveLength(44);
-		const collapsed = pickInitialCollapsed({ modules, current: null });
-		expect([...collapsed].sort()).toEqual(["lib", "src", "src/m0"]);
+		expect([...pickInitialCollapsed({ modules, current: null })].sort()).toEqual([".", "lib", "src", "src/m0"]);
 	});
 
-	it("keeps the ancestors of the current module expanded", () => {
-		const modules = makeLarge({ leaves: 39 });
+	it("leaves a leaf-only tree with nothing collapsed", () => {
+		expect(pickInitialCollapsed({ modules: [makeModule("src")], current: null }).size).toBe(0);
+	});
+
+	it("starts fully collapsed even around the current module", () => {
+		const modules = makeLarge({ leaves: 3 });
 		const collapsed = pickInitialCollapsed({ modules, current: "src/m0/inner" });
-		expect([...collapsed].sort()).toEqual(["lib"]);
+		expect([...collapsed].sort()).toEqual([".", "lib", "src", "src/m0"]);
 	});
 });

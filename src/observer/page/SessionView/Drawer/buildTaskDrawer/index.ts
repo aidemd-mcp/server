@@ -1,11 +1,10 @@
 import BOARD_COLUMNS from "@/service/observer/kanban/shared/columns/index.js";
-import joinMeta from "@/observer/page/shared/joinMeta/index.js";
 import type { DrawerBlockModel, DrawerModel, TaskNote } from "@/observer/page/types/index.js";
 import buildTaskBlocks from "./buildTaskBlocks/index.js";
 
 /**
- * A kanban task's drawer: kind `Kanban task`, its title, a meta line of slug, priority, type and
- * column, the note's sections as blocks, and a `Linked` block naming the session when this session
+ * A kanban task's drawer: kind `Task`, its title, its slug as the meta line and its column, priority
+ * and type as chips, the note's sections as blocks, and a `Linked` block naming the session when this session
  * picked or moved it (`sessionStart` is that session's `Today 14:02`; `This session` when unknown).
  * An unreadable note shows the observer's reason as its one block.
  */
@@ -25,10 +24,15 @@ export default function buildTaskDrawer({ task, linked, sessionStart }: { task: 
 		});
 	}
 	return {
-		kind: "Kanban task",
+		kind: "Task",
 		title: task.task.state === "readable" ? task.task.title : task.slug,
 		titleMono: false,
-		meta: joinMeta([task.slug, task.task.state === "readable" ? task.task.priority : null, task.task.state === "readable" ? task.task.type : null, column]),
+		meta: task.slug,
+		taskChips: {
+			column,
+			priority: task.task.state === "readable" ? task.task.priority : null,
+			type: task.task.state === "readable" ? (task.task.type ?? null) : null,
+		},
 		blocks,
 	};
 }

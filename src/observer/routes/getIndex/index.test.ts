@@ -31,13 +31,13 @@ describe("getIndex", () => {
 		expect(body.data.version).toBe("1.2.3");
 	});
 
-	it("lists the thirteen routes with a purpose each, the per-project ones under /api/projects", async () => {
+	it("lists the sixteen routes with a purpose each, the per-project ones under /api/projects", async () => {
 		const { input, sent } = makeInput({ ready: true });
 
 		await getIndex(input);
 
 		const { routes } = JSON.parse(sent.body).data as { routes: { method: string; path: string; purpose: string }[] };
-		expect(routes).toHaveLength(13);
+		expect(routes).toHaveLength(16);
 		expect(routes.every((route) => route.purpose.length > 0)).toBe(true);
 		const listed = routes.map((route) => `${route.method} ${route.path}`);
 		expect(listed).toContain("POST /api/events");
@@ -47,7 +47,7 @@ describe("getIndex", () => {
 		expect(listed).toContain("GET /api/projects");
 		expect(listed).toContain("GET /p/<project>/s/<session>");
 		expect(listed).toContain("GET /api/projects/<project>/status");
-		expect(listed.filter((route) => route.includes("/api/projects/"))).toHaveLength(6);
+		expect(listed.filter((route) => route.includes("/api/projects/"))).toHaveLength(9);
 	});
 
 	it.each([[undefined], ["*/*"], ["application/json"]])("answers the JSON with Vary: Accept when Accept is %s", async (accept) => {

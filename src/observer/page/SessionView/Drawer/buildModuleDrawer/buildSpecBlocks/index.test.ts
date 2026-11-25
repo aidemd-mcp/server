@@ -27,7 +27,7 @@ describe("buildSpecBlocks", () => {
 	it("draws intent and both outcome lists as frontmatter rows", () => {
 		const [fm] = buildSpecBlocks({ text: SPEC });
 		expect(fm).toEqual({
-			heading: "Spec frontmatter",
+			heading: "Frontmatter",
 			icon: "doc",
 			badge: null,
 			type: "fm",
@@ -42,7 +42,7 @@ describe("buildSpecBlocks", () => {
 	it("draws each body section as one paragraph led by its heading", () => {
 		const body = buildSpecBlocks({ text: SPEC })[1];
 		expect(body).toEqual({
-			heading: "Body",
+			heading: "Body sections",
 			icon: "list",
 			badge: null,
 			type: "text",
@@ -52,7 +52,7 @@ describe("buildSpecBlocks", () => {
 
 	it("leaves out what the spec does not have", () => {
 		expect(buildSpecBlocks({ text: "---\nscope: a\nintent: Only intent.\n---\n" })).toEqual([
-			{ heading: "Spec frontmatter", icon: "doc", badge: null, type: "fm", rows: [{ key: "intent", value: "Only intent.", list: null }] },
+			{ heading: "Frontmatter", icon: "doc", badge: null, type: "fm", rows: [{ key: "intent", value: "Only intent.", list: null }] },
 		]);
 	});
 

@@ -26,7 +26,7 @@ export default async function requestJson<T>({
 }: {
 	path: string;
 	token: string;
-	method?: "GET" | "DELETE";
+	method?: "GET" | "POST" | "DELETE";
 }): Promise<ApiResult<T>> {
 	let res: Response;
 	try {

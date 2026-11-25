@@ -109,35 +109,89 @@ describe("SessionView", () => {
 		expect(useObserverStream).toHaveBeenCalledWith({ token: "tok", projectKey: KEY });
 	});
 
-	it("lays out header, now section, tabs and history for a running Build", () => {
+	it("lays out header, run bar, now section, tabs, bottom drawer and details column for a running Build on desktop", () => {
 		stream();
 		const html = render(routeOf());
 
-		expect(html).toContain('<nav class="av-crumb" aria-label="Breadcrumb">');
-		expect(html).toContain('aria-current="page"');
+		expect(html).toContain('<nav class="av-hnav" aria-label="Navigation">');
+		expect(html).toContain('<span class="av-hnav-title">app</span>');
+		expect(html).not.toContain("av-crumb");
+		expect(html).toContain('<div class="av-runbar run" role="status">');
 		expect(html).toContain('<section class="av-now" aria-label="Now running">');
 		expect(html).toContain('class="av-card run"');
 		expect(html).toContain("Step 2 of 4");
-		expect(html).toContain('role="tablist"');
+		expect(html).toContain('role="tablist" aria-label="Session views"');
 		expect(html).toContain('role="tabpanel"');
-		expect(html).toContain('<aside class="av-side" aria-label="History">');
+		expect(html).toContain('<div class="av-histdrawer">');
+		expect(html).toContain('<div class="av-sidepanel">');
 		expect(html).toContain('<main id="main" class="av-primary">');
 		expect(html).toContain("Skip to main content");
+		expect(html).toContain('<div class="av-top"');
 		expect(html).not.toContain("av-wait-banner");
 		expect(html).not.toContain("av-quiet-banner");
 		expect(html).not.toContain("av-drawer");
-		expect(html.indexOf("av-now")).toBeLessThan(html.indexOf("av-main"));
-		expect(html.indexOf('class="av-primary"')).toBeLessThan(html.indexOf('class="av-side"'));
+		expect(html).not.toContain('<aside class="av-side"');
+		expect(html.indexOf("av-runbar")).toBeLessThan(html.indexOf("av-main"));
+		expect(html.indexOf("av-now")).toBeLessThan(html.indexOf("av-histdrawer"));
+		expect(html.indexOf("av-histdrawer")).toBeLessThan(html.indexOf("av-sidepanel"));
 	});
 
-	it("puts the amber banner above the now section while a gate is open", () => {
-		stream({ views: { [KEY]: { state: "ready", projectKey: KEY, status: statusOf({ waiting: [gate], surfaced: gate }) } } });
+	it("keeps the header to a Projects button and the project's name, with no breadcrumb or path", () => {
+		stream();
 		const html = render(routeOf());
+		const header = html.slice(html.indexOf('<header class="av-hdr">'), html.indexOf("</header>"));
+		const text = stripMarkup(header);
+		expect(text).toContain("Projects");
+		expect(text).toContain("app");
+		expect(text).not.toContain("/work/app");
+		expect(text).not.toContain("kanban");
+		expect(header).not.toContain("av-switch");
+	});
 
-		expect(html).toContain('<div class="av-wait-banner" role="status">');
-		expect(stripMarkup(html)).toContain("approve plan.aide for src/a");
-		expect(html).toContain('class="av-card wait"');
-		expect(html.indexOf("av-wait-banner")).toBeLessThan(html.indexOf("av-now"));
+	it("draws the bottom drawer's launchers with their counts, closed, and the details prompt", () => {
+		stream();
+		const html = render(routeOf());
+		expect(html).toContain('role="tablist" aria-label="Bottom drawer"');
+		for (const label of ["History", "Sessions", "Board"]) expect(stripMarkup(html)).toContain(label);
+		expect(html).toContain('<div class="av-side-empty">');
+		expect(stripMarkup(html)).toContain("Click a module, plan, task or history event to read it here.");
+	});
+
+	it("draws History as its own phone column in place of the bottom drawer, without a run bar", () => {
+		stubBrowser({ narrow: true });
+		stream();
+		const html = render(routeOf());
+		expect(html).toContain('<aside class="av-side" aria-label="History">');
+		expect(html).not.toContain("av-histdrawer");
+		expect(html).not.toContain("av-sidepanel");
+		expect(html).not.toContain("av-runbar");
+	});
+
+	describe("the waiting banner", () => {
+		it("is absent when no gate is open", () => {
+			stream();
+			expect(render(routeOf())).not.toContain("av-wait-banner");
+		});
+
+		it("replaces the run bar and the now card while a gate is open, since the banner says it", () => {
+			stream({ views: { [KEY]: { state: "ready", projectKey: KEY, status: statusOf({ waiting: [gate], surfaced: gate }) } } });
+			const html = render(routeOf());
+			expect(html).not.toContain("av-runbar");
+			expect(html).not.toContain('class="av-card');
+			expect(html).toContain('<div class="av-wait-hint">');
+		});
+
+		it("opens the body when a gate is open, with its open button", () => {
+			stream({ views: { [KEY]: { state: "ready", projectKey: KEY, status: statusOf({ waiting: [gate], surfaced: gate }) } } });
+			const html = render(routeOf());
+			const banner = html.indexOf('class="av-wait-banner"');
+
+			expect(banner).toBeGreaterThan(html.indexOf('class="av-body"'));
+			expect(banner).toBeLessThan(html.indexOf("av-now"));
+			const text = stripMarkup(html);
+			expect(text).toContain("approve plan.aide for src/a");
+			expect(text).toContain("Open plan.aide");
+		});
 	});
 
 	it("keeps everything on screen while reconnecting, with the quiet banner and the pill", () => {
@@ -148,7 +202,7 @@ describe("SessionView", () => {
 		expect(html).toContain('class="av-conn recon"');
 		expect(stripMarkup(html)).toContain("Last update");
 		expect(html).toContain('class="av-card run"');
-		expect(html).toContain('<aside class="av-side"');
+		expect(html).toContain('<div class="av-histdrawer">');
 		expect(html).not.toContain('role="alert"');
 	});
 
@@ -178,6 +232,7 @@ describe("SessionView", () => {
 			["board", "Board unavailable"],
 		] as const)("shows a calm unavailable notice on the %s tab", (tab, heading) => {
 			noRoot();
+			stubBrowser({ narrow: tab !== "tree" });
 			const html = render(routeOf({ tab }));
 			expect(stripMarkup(html)).toContain(heading);
 			expect(html).toContain("av-notice calm");
@@ -186,6 +241,7 @@ describe("SessionView", () => {
 
 		it("keeps the card, rail, history and sessions working from events", () => {
 			noRoot();
+			stubBrowser({ narrow: true });
 			const html = render(routeOf({ tab: "sessions" }));
 			expect(html).toContain('class="av-card run"');
 			expect(html).toContain("Pipeline phases");
@@ -220,7 +276,20 @@ describe("SessionView", () => {
 		expect(html).not.toContain("av-side");
 	});
 
-	it("opens the drawer, non-modal, over the page when the link carries a detail", () => {
+	it("docks the detail in the Details column on desktop when the link carries one, as a docked drawer, not an overlay", () => {
+		stream();
+		const html = render(routeOf({ item: { kind: "task", slug: "fix-it" } }));
+
+		expect(html).toContain('<div class="av-sidepanel">');
+		expect(html).toContain("fix-it");
+		expect(html).not.toContain("av-side-empty");
+		expect(html).toContain('class="av-drawer docked"');
+		expect(html).not.toContain('class="av-drawer"');
+		expect(html).toContain('class="av-card run"');
+	});
+
+	it("opens the drawer, non-modal, over the page on a phone when the link carries a detail", () => {
+		stubBrowser({ narrow: true });
 		stream();
 		const html = render(routeOf({ tab: "plans", item: { kind: "task", slug: "fix-it" } }));
 
@@ -230,17 +299,54 @@ describe("SessionView", () => {
 	});
 
 	describe("the tab named in the link", () => {
+		it("selects the intent tree and draws its panel on desktop", () => {
+			stream();
+			const html = render(routeOf({ tab: "tree" }));
+			expect(html).toContain('role="tree"');
+			expect(html).toContain('id="tab-tree" aria-selected="true"');
+		});
+
+		it.each(["plans", "board", "record", "sessions"] as const)("shows the tree for the %s tab on desktop, where it is no tab but a panel of the page", (tab) => {
+			stream();
+			const html = render(routeOf({ tab }));
+			expect(html).toContain('role="tree"');
+			expect(html).toContain('id="tab-tree" aria-selected="true"');
+			expect(html).toContain('class="only-phone"');
+		});
+
 		it.each([
-			["tree", 'role="tree"'],
 			["plans", 'role="table"'],
 			["board", "Board unavailable"],
-			["record", "No session record"],
 			["sessions", "av-srow"],
-		] as const)("selects %s and draws its panel", (tab, marker) => {
+		] as const)("selects %s and draws its panel on a phone", (tab, marker) => {
+			stubBrowser({ narrow: true });
 			stream();
 			const html = render(routeOf({ tab }));
 			expect(html).toContain(marker);
 			expect(html).toContain(`id="tab-${tab}" aria-selected="true"`);
+		});
+
+		it("shows the tree for the record link even on a phone, since the record is no tab", () => {
+			stubBrowser({ narrow: true });
+			stream();
+			const html = render(routeOf({ tab: "record" }));
+			expect(html).toContain('id="tab-tree" aria-selected="true"');
+			expect(html).not.toContain("No session record");
+		});
+
+		it("draws the sessions tab's project info above the list on a phone", () => {
+			stubBrowser({ narrow: true });
+			stream();
+			const html = render(routeOf({ tab: "sessions" }));
+			expect(html).toContain('<div class="av-projinfo">');
+			expect(stripMarkup(html)).toContain("/work/app");
+		});
+
+		it("lists only the intent tree as a desktop tab, the rest being phone-only", () => {
+			stream();
+			const html = render(routeOf());
+			expect(html.match(/class="only-phone"/g)).toHaveLength(4);
+			expect(html).toContain('id="tab-tree" aria-selected="true" aria-controls="session-panel">');
 		});
 
 		it("shows the tree for the History tab on desktop, where History is its own column", () => {

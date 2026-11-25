@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import getAsset from "../../routes/getAsset/index.js";
+import archiveSession from "../../routes/archiveSession/index.js";
+import listArchived from "../../routes/listArchived/index.js";
+import restoreSession from "../../routes/restoreSession/index.js";
 import deleteSession from "../../routes/deleteSession/index.js";
 import getEvents from "../../routes/getEvents/index.js";
 import getFile from "../../routes/getFile/index.js";
@@ -24,7 +27,10 @@ describe("matchRoute — resolves every route", () => {
 		{ method: "GET", pathname: "/api/projects/proj-abcdef/file", handler: getFile, params: { project: "proj-abcdef" }, readRoute: true, tokenAccess: "required" },
 		{ method: "GET", pathname: "/api/projects/proj-abcdef/task/my-task", handler: getTask, params: { project: "proj-abcdef", slug: "my-task" }, readRoute: true, tokenAccess: "required" },
 		{ method: "GET", pathname: "/api/projects/proj-abcdef/sessions", handler: listSessions, params: { project: "proj-abcdef" }, readRoute: true, tokenAccess: "required" },
-		{ method: "DELETE", pathname: "/api/projects/proj-abcdef/sessions/abc-123", handler: deleteSession, params: { project: "proj-abcdef", id: "abc-123" }, readRoute: true, tokenAccess: "required" },
+		{ method: "POST", pathname: "/api/projects/proj-abcdef/sessions/abc-123/archive", handler: archiveSession, params: { project: "proj-abcdef", id: "abc-123" }, readRoute: true, tokenAccess: "required" },
+	{ method: "GET", pathname: "/api/projects/proj-abcdef/archive", handler: listArchived, params: { project: "proj-abcdef" }, readRoute: true, tokenAccess: "required" },
+	{ method: "POST", pathname: "/api/projects/proj-abcdef/archive/abc-123/restore", handler: restoreSession, params: { project: "proj-abcdef", id: "abc-123" }, readRoute: true, tokenAccess: "required" },
+	{ method: "DELETE", pathname: "/api/projects/proj-abcdef/archive/abc-123", handler: deleteSession, params: { project: "proj-abcdef", id: "abc-123" }, readRoute: true, tokenAccess: "required" },
 		{ method: "POST", pathname: "/api/events", handler: postEvent, params: {}, readRoute: false, tokenAccess: "required" },
 		{ method: "GET", pathname: "/api/stream", handler: streamUpdates, params: {}, readRoute: true, tokenAccess: "required" },
 	])("$method $pathname", ({ method, pathname, handler, params, readRoute, tokenAccess }) => {
@@ -47,7 +53,7 @@ describe("matchRoute — refusals", () => {
 	});
 
 	it("lists every method a path accepts", () => {
-		expect(matchRoute({ method: "GET", pathname: "/api/projects/proj-abcdef/sessions/abc" })).toEqual({
+		expect(matchRoute({ method: "GET", pathname: "/api/projects/proj-abcdef/archive/abc" })).toEqual({
 			kind: "method-not-allowed",
 			allow: ["DELETE"],
 		});

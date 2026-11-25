@@ -64,7 +64,11 @@ export type Theme = "dark" | "light";
 export type ThemeContextValue = { theme: Theme; toggle(): void };
 
 /** One block of the page's small markdown: a paragraph, or a bulleted or numbered list of item texts. */
-export type MarkdownBlock = { type: "p"; text: string } | { type: "ul" | "ol"; items: string[] };
+export type MarkdownBlock =
+	| { type: "p"; text: string }
+	| { type: "ul" | "ol"; items: string[] }
+	| { type: "code"; text: string }
+	| { type: "h"; level: number; text: string };
 
 /** One run of inline markdown: plain text, `**bold**`, or `` `code` ``. */
 export type InlineNode = { type: "text" | "bold" | "code"; text: string };
@@ -188,7 +192,7 @@ export type ChipTone = "" | "warn" | "run" | "done" | "muted" | "danger";
 
 /** One file chip under a tree node (`brief`, `plan · approved 3/9`, `todo 2 open of 4`), its key and value already worded. */
 export type FileChipModel = {
-	kind: "brief" | "research" | "plan" | "todo";
+	kind: "spec" | "brief" | "research" | "plan" | "todo" | "session";
 	tone: ChipTone;
 	icon: IconName;
 	key: string;
@@ -245,10 +249,12 @@ export type TreeView = {
 	query: string;
 	onlyOpen: boolean;
 	onlyMisaligned: boolean;
+	onlyPlans: boolean;
+	onlyTodos: boolean;
 	collapsed: ReadonlySet<string>;
 };
 
-/** What the Sessions tab's delete flow is doing: the one row asking for confirmation (null when none is) and the reason its last delete failed. It lives above the tab panel so it survives a tab switch. */
+/** What the archived list's permanent-delete flow is doing: the one row asking for confirmation (null when none is) and the reason its last delete failed. */
 export type DeleteConfirm = { sessionId: string | null; error: string | null };
 
 /** One row of the plans and todos table; `tone` and `icon` paint its status badge and `percent` its bar. */
@@ -357,10 +363,26 @@ export type DrawerBlockModel = {
 	| { type: "kv"; rows: { key: string; value: string; mono: boolean }[] }
 	| { type: "check"; items: { no: string; text: string; done: boolean; sub: boolean; current: boolean }[] }
 	| { type: "issues"; items: { loc: string; text: string; done: boolean }[] }
+	| { type: "md"; markdown: string }
 );
 
 /** The drawer as drawn: its kind word, title (mono for a path, slug or version), meta line and blocks. */
-export type DrawerModel = { kind: string; title: string; titleMono: boolean; meta: string | null; blocks: DrawerBlockModel[] };
+export type DrawerModel = {
+	kind: string;
+	title: string;
+	titleMono: boolean;
+	meta: string | null;
+	blocks: DrawerBlockModel[];
+	/** A task's column, priority and type, drawn as chips under its title (the same chips Home uses); absent for every other item. */
+	taskChips?: { column: string; priority: string | null; type: string | null };
+	/** A module's alignment, drawn as a status icon in the compact header; absent for every other item. */
+	alignment?: TreeAlignment | null;
+	/** A module's files, one accordion row each, and the one open first; absent for every other item. */
+	sections?: { open: ModuleFileKind; list: DrawerSection[] };
+};
+
+/** One file of a module's drawer: its kind, its file name as the row label, its status line and its blocks. */
+export type DrawerSection = { kind: ModuleFileKind; label: string; path: string; status: string | null; blocks: DrawerBlockModel[] };
 
 /** What the drawer reads besides its item: how to reach the observer, the project's status and held events, and the session the view follows. */
 export type DrawerContext = {
@@ -374,7 +396,7 @@ export type DrawerContext = {
 };
 
 /** The AIDE files of one module that the module drawer reads; null where the module lists none. `brief` is read only when a brief was opened. */
-export type ModuleFiles = { spec: string | null; plan: string | null; todo: string | null; brief: string | null };
+export type ModuleFiles = { spec: string | null; plan: string | null; todo: string | null; brief: string | null; research: string | null; session: string | null };
 
 /** The file a drawer block is built from; `file` is any file the module drawer does not draw. */
 export type DrawerFileRole = keyof ModuleFiles | "file";
@@ -395,7 +417,7 @@ export type DrawerSource =
 	| { type: "task"; note: TaskNote };
 
 /** Which of a module's files an opened file stands for; it decides which block leads the module drawer. */
-export type ModuleFileKind = "spec" | "plan" | "todo" | "brief";
+export type ModuleFileKind = "spec" | "plan" | "todo" | "brief" | "research" | "session";
 
 /** One session as the sessions list draws it. */
 export type SessionRowModel = {
@@ -405,6 +427,8 @@ export type SessionRowModel = {
 	eventCount: number;
 	liveness: Liveness;
 	task: string | null;
+	/** The slug of the session's newest task, for linking to the task note; null with none. */
+	taskSlug?: string | null;
 	label: string | null;
 };
 
@@ -485,6 +509,15 @@ export type ProjectRowModel = {
 	lastActivity: string | null;
 	rows: SessionRowModel[];
 	openHref: string | null;
+	/** What the project's live session is doing now (waiting first, else the newest live or idle one); null when none is running. */
+	status?: LiveRowModel | null;
+	/** The task the status session is working on (its title), from its `task` events; null when none was reported. */
+	task?: string | null;
+	/** That task's slug and the link that opens it in the project page's Details; null with no task. */
+	taskSlug?: string | null;
+	taskHref?: string | null;
+	/** The status session's phase rail cells, for the expanded row; null with no running session. */
+	rail?: RailCell[] | null;
 };
 
 /** What Home shows: the header line and pill, the waiting cards, the live sessions, and every project. */
@@ -497,6 +530,8 @@ export type HomeModel = {
 	live: LiveRowModel[];
 	projects: ProjectRowModel[];
 };
+
+
 
 /** The kind of a history row; it picks the glyph, the screen-reader word and the colour (`k-<kind>`). `files` is a group of file writes, `sub` one path inside it. */
 export type HistoryKind =
@@ -569,8 +604,8 @@ export type SessionHeaderModel = {
 	switcher: SwitcherOption[];
 };
 
-/** The amber banner's words: the file and module that wait, and for how long. */
-export type WaitBannerModel = { file: string; module: string; since: string };
+/** The amber banner's words: the file and module that wait, for how long, and the waiting file's path the banner's button opens. */
+export type WaitBannerModel = { file: string; module: string; since: string; path: string };
 
 /** One tab of the session view; `count` is the figure after its label (null for none), `tone` paints it, `phoneOnly` hides the tab on desktop. */
 export type TabModel = {

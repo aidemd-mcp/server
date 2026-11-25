@@ -5,8 +5,8 @@ import type { SessionRowModel } from "@/observer/page/types/index.js";
 
 type HeldEvents = { sessionId: string; events: ObserverEvent[] }[];
 
-/** The title (else the slug) of the newest `task` event the session holds, or null. */
-function findTask({ held, sessionId }: { held: HeldEvents; sessionId: string }): string | null {
+/** The newest `task` event the session holds, or null. */
+function findTask({ held, sessionId }: { held: HeldEvents; sessionId: string }): Extract<ObserverEvent, { kind: "task" }> | null {
 	let newest: Extract<ObserverEvent, { kind: "task" }> | null = null;
 	for (const session of held) {
 		if (session.sessionId !== sessionId) continue;
@@ -14,7 +14,12 @@ function findTask({ held, sessionId }: { held: HeldEvents; sessionId: string }):
 			if (event.kind === "task" && (newest === null || event.seq > newest.seq)) newest = event;
 		}
 	}
-	return newest === null ? null : (newest.title ?? newest.slug);
+	return newest;
+}
+
+/** A session row's task fields from its newest `task` event: the title (else the slug) and the slug. */
+function taskOf(event: Extract<ObserverEvent, { kind: "task" }> | null): { task: string | null; taskSlug: string | null } {
+	return { task: event === null ? null : (event.title ?? event.slug), taskSlug: event?.slug ?? null };
 }
 
 /** One model per session from the status's summaries, which carry the observer's three-state liveness. */
@@ -68,6 +73,6 @@ export default function buildSessionRows({
 	if (active.length >= 2) active.forEach((row, index) => labels.set(row.sessionId, `S${index + 1}`));
 
 	return base
-		.map((row) => ({ ...row, task: findTask({ held, sessionId: row.sessionId }), label: labels.get(row.sessionId) ?? null }))
+		.map((row) => ({ ...row, ...taskOf(findTask({ held, sessionId: row.sessionId })), label: labels.get(row.sessionId) ?? null }))
 		.sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : a.sessionId < b.sessionId ? 1 : -1));
 }

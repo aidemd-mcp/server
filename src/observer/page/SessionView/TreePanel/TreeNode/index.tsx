@@ -6,11 +6,20 @@ import FileChip from "@/observer/page/SessionView/TreePanel/FileChip/index.js";
 
 /**
  * One module of the intent tree: a chevron button that folds its branch (hidden on a leaf) and a
- * button that opens the module's detail, holding the path, alignment badge, `Working now` label,
- * `n modules hidden` when folded, the spec's description and the file chips. The working module
+ * button that folds or unfolds the branch too, holding the path, alignment badge, `Working now` label,
+ * `n modules hidden` when folded and the spec's description; under it the file chips, each a
+ * button that opens the module's detail with that file expanded (only the chips change Details). The working module
  * is tinted and a misaligned one is red-tinted; both also carry a word, so colour is never alone.
  */
-export default function TreeNode({ node, onToggle, onOpen }: { node: TreeNodeModel; onToggle(): void; onOpen(): void }) {
+export default function TreeNode({
+	node,
+	onToggle,
+	onOpenFile,
+}: {
+	node: TreeNodeModel;
+	onToggle(): void;
+	onOpenFile(path: string): void;
+}) {
 	return (
 		<div
 			className={joinClasses("av-node", `d${node.depth}`, node.current !== null && "cur", node.misaligned && "mis")}
@@ -25,7 +34,8 @@ export default function TreeNode({ node, onToggle, onOpen }: { node: TreeNodeMod
 			>
 				<Icon name={node.collapsed ? "chev-r" : "chev-d"} />
 			</button>
-			<button type="button" className="n-main" onClick={onOpen}>
+			<div className="n-body">
+			<button type="button" className={joinClasses("n-main", !node.hasChildren && "leaf")} aria-expanded={node.hasChildren ? !node.collapsed : undefined} onClick={onToggle}>
 				<span className="n-top">
 					<span className="n-path">{node.path}</span>
 					{node.alignment !== null && <AlignmentBadge alignment={node.alignment} />}
@@ -40,14 +50,15 @@ export default function TreeNode({ node, onToggle, onOpen }: { node: TreeNodeMod
 					)}
 				</span>
 				{node.description !== null && <span className="n-desc">{node.description}</span>}
-				{node.chips.length > 0 && (
-					<span className="n-chips">
-						{node.chips.map((chip) => (
-							<FileChip key={chip.file} chip={chip} />
-						))}
-					</span>
-				)}
 			</button>
+			{node.chips.length > 0 && (
+				<span className="n-chips">
+					{node.chips.map((chip) => (
+						<FileChip key={chip.file} chip={chip} onOpen={() => onOpenFile(chip.file)} />
+					))}
+				</span>
+			)}
+			</div>
 		</div>
 	);
 }

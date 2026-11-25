@@ -14,11 +14,17 @@ export default function BoardPanel({
 	expanded,
 	onToggle,
 	onOpen,
+	note,
+	linkedLabel,
 }: {
 	board: BoardModel;
 	expanded: ReadonlySet<BoardColumnId>;
 	onToggle(column: BoardColumnId): void;
 	onOpen(item: DrawerItem): void;
+	/** The toolbar's explanation of the outline; the session view's wording when absent. */
+	note?: string;
+	/** The outlined cards' badge word; `This session` when absent. */
+	linkedLabel?: string;
 }) {
 	if (board.kind === "unavailable") {
 		const err = board.tone === "err";
@@ -33,7 +39,7 @@ export default function BoardPanel({
 	return (
 		<>
 			<div className="av-toolbar">
-				<span className="t2">Tasks linked to this session are outlined.</span>
+				<span className="t2">{note ?? "Tasks linked to this session are outlined."}</span>
 				<span className="count">{board.countLine}</span>
 			</div>
 			<div className="av-board">
@@ -43,6 +49,7 @@ export default function BoardPanel({
 						column={column}
 						expanded={expanded.has(column.id)}
 						onToggle={() => onToggle(column.id)}
+						linkedLabel={linkedLabel}
 						onOpen={(slug) => onOpen({ kind: "task", slug })}
 					/>
 				))}

@@ -20,7 +20,7 @@ export default function buildSpecBlocks({ text }: { text: string }): DrawerBlock
 		.map((section) => `${section.heading} — ${section.markdown.replace(/\s+/g, " ").trim()}`);
 
 	const blocks: DrawerBlockModel[] = [];
-	if (rows.length > 0) blocks.push({ heading: "Spec frontmatter", icon: "doc", badge: null, type: "fm", rows });
-	if (paras.length > 0) blocks.push({ heading: "Body", icon: "list", badge: null, type: "text", paras });
+	if (rows.length > 0) blocks.push({ heading: "Frontmatter", icon: "doc", badge: null, type: "fm", rows });
+	if (paras.length > 0) blocks.push({ heading: "Body sections", icon: "list", badge: null, type: "text", paras });
 	return blocks;
 }

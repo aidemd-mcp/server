@@ -38,10 +38,40 @@ describe("parseBlocks", () => {
 		expect(parseBlocks("  \n\n")).toEqual([]);
 	});
 
-	it("leaves headings and HTML as paragraph text", () => {
-		expect(parseBlocks("# Title\n\n<script>x</script>")).toEqual([
-			{ type: "p", text: "# Title" },
-			{ type: "p", text: "<script>x</script>" },
+	it("reads # lines as headings with their level, ending any open paragraph or list", () => {
+		expect(parseBlocks("intro\n## Section\n- a\n### Deeper ###x\ntext")).toEqual([
+			{ type: "p", text: "intro" },
+			{ type: "h", level: 2, text: "Section" },
+			{ type: "ul", items: ["a"] },
+			{ type: "h", level: 3, text: "Deeper ###x" },
+			{ type: "p", text: "text" },
 		]);
+	});
+
+	it("does not read a # with no space after it as a heading", () => {
+		expect(parseBlocks("#hashtag")).toEqual([{ type: "p", text: "#hashtag" }]);
+	});
+
+	it("keeps a fenced code block's lines exactly, blank lines and markdown included", () => {
+		expect(parseBlocks("before\n```ts\nconst a = 1;\n\n- not a list\n# not a heading\n```\nafter")).toEqual([
+			{ type: "p", text: "before" },
+			{ type: "code", text: "const a = 1;\n\n- not a list\n# not a heading" },
+			{ type: "p", text: "after" },
+		]);
+	});
+
+	it("ends an open list at a fence, and closes a fence the text never closes at the end", () => {
+		expect(parseBlocks("- a\n```\nunclosed")).toEqual([
+			{ type: "ul", items: ["a"] },
+			{ type: "code", text: "unclosed" },
+		]);
+	});
+
+	it("keeps checkbox markers in the item text for the renderer to draw", () => {
+		expect(parseBlocks("- [ ] open\n- [x] done")).toEqual([{ type: "ul", items: ["[ ] open", "[x] done"] }]);
+	});
+
+	it("leaves HTML as paragraph text", () => {
+		expect(parseBlocks("<script>x</script>")).toEqual([{ type: "p", text: "<script>x</script>" }]);
 	});
 });

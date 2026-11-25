@@ -65,7 +65,7 @@ describe("observer page styles", () => {
 		expect(text).not.toMatch(/https?:/);
 	});
 
-	it("scopes every additions rule other than body under .av or .av.phone", () => {
+	it("scopes every additions rule other than body to the viewer root: .av, .av.phone or .av.desk descendants, or .av and its descendants together", () => {
 		const text = readFileSync(path.join(stylesDir, "additions/index.css"), "utf8");
 		const rules = text
 			.replace(/\/\*[\s\S]*?\*\//g, "")
@@ -74,8 +74,11 @@ describe("observer page styles", () => {
 			.filter((rule) => rule.length > 0)
 			.map((rule) => rule.split("{")[0]!.trim());
 		expect(rules).toContain("body");
+		const scoped = /^(\.av |\.av\.phone |\.av\.desk[ :]|\.av\.desk$)/;
 		for (const selector of rules.filter((rule) => rule !== "body")) {
-			expect(selector.startsWith(".av ") || selector.startsWith(".av.phone ")).toBe(true);
+			for (const part of selector.split(/,(?![^(]*\))/).map((candidate) => candidate.trim())) {
+				expect(scoped.test(part) || part === ".av" || part === ".av *", part).toBe(true);
+			}
 		}
 	});
 
@@ -88,6 +91,31 @@ describe("observer page styles", () => {
 			expect(rule, target).toBeDefined();
 			expect(rule).toMatch(/(min-)?height:44px/);
 		}
-		expect(text.split("}").filter((rule) => rule.includes("44px") && !rule.includes(".av.phone "))).toEqual([]);
+		const elsewhere = text
+			.split("}")
+			.filter((rule) => rule.includes("44px") && !rule.includes(".av.phone "))
+			.map((rule) => rule.split("{")[0]!.trim());
+		expect(elsewhere).toEqual([".av .av-histbar", ".av .av-histbar-row", ".av .av-launch"]);
+	});
+
+	it("keeps the waiting banner sticky, one line and no taller than 64px, with no motion", () => {
+		const text = readFileSync(path.join(stylesDir, "additions/index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+		const rules = text
+			.split("}")
+			.map((rule) => rule.split("{") as [string, string?])
+			.filter(([, body]) => body !== undefined)
+			.map(([selector, body]) => ({ selector: selector.trim(), body: body! }));
+		const banner = rules.find((rule) => rule.selector === ".av .av-wait-banner");
+		expect(banner?.body).toContain("position:sticky");
+		expect(banner?.body).toContain("white-space:nowrap");
+		expect(banner?.body).toContain("flex-wrap:nowrap");
+		expect(Number(/(?:^|;)height:(\d+)px/.exec(banner!.body)?.[1])).toBeLessThanOrEqual(64);
+		const what = rules.find((rule) => rule.selector === ".av .av-wait-banner .w-what");
+		expect(what?.body).toContain("text-overflow:ellipsis");
+		const phone = rules.find((rule) => rule.selector.startsWith(".av.phone .av-wait-banner .w-what"));
+		expect(phone?.body).toContain("display:none");
+		for (const rule of rules.filter((candidate) => /av-wait-banner|av-top/.test(candidate.selector))) {
+			expect(rule.body, rule.selector).not.toMatch(/animation|transition/);
+		}
 	});
 });

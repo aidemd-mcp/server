@@ -9,6 +9,8 @@ const KIND_BY_NAME = new Map<string, ModuleFileKind>([
 	["plan.aide", "plan"],
 	["todo.aide", "todo"],
 	["brief.aide", "brief"],
+	["research.aide", "research"],
+	["session.aide", "session"],
 ]);
 
 /**

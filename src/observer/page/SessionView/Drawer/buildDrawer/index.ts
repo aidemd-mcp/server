@@ -12,7 +12,7 @@ import findSessionStart from "@/observer/page/SessionView/Drawer/findSessionStar
 /** The module files a source holds; a role it does not hold is null. */
 function pickModuleFiles({ source }: { source: DrawerSource }): ModuleFiles {
 	const texts = source.type === "files" ? source.texts : {};
-	return { spec: texts.spec ?? null, plan: texts.plan ?? null, todo: texts.todo ?? null, brief: texts.brief ?? null };
+	return { spec: texts.spec ?? null, plan: texts.plan ?? null, todo: texts.todo ?? null, brief: texts.brief ?? null, research: texts.research ?? null, session: texts.session ?? null };
 }
 
 /**

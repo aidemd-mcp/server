@@ -2,6 +2,7 @@ import Icon from "@/observer/page/shared/Icon/index.js";
 import Notice from "@/observer/page/shared/Notice/index.js";
 import type { DrawerItem, TreePanelModel, TreeView } from "@/observer/page/types/index.js";
 import buildTreeRows from "@/observer/page/SessionView/buildTreeRows/index.js";
+import FilterMenu from "./FilterMenu/index.js";
 import pickParents from "./pickParents/index.js";
 import toggleFolder from "./toggleFolder/index.js";
 import TreeNode from "./TreeNode/index.js";
@@ -10,8 +11,8 @@ import TreeNode from "./TreeNode/index.js";
 const FIELD_STYLE = { flex: "1 1 200px", maxWidth: "300px" };
 
 /**
- * The intent tree tab: a toolbar (path filter, `Only open work`, `Only misaligned`, `Expand all`,
- * `Collapse all`, the count line) over the tree. The query, the two toggles and the folded folders
+ * The intent tree tab: a toolbar (path filter, `Only open work`, `Only misaligned`, one `Expand all` /
+ * `Collapse all` toggle, the count line) over the tree. The query, the two toggles and the folded folders
  * are the `view` it is given and every change goes out through `onChange`, since they belong to the
  * viewer and outlive this panel's mount. A project that never reported its folder gets the calm
  * unavailable notice instead.
@@ -27,7 +28,7 @@ export default function TreePanel({
 	onChange(view: TreeView): void;
 	onOpen(item: DrawerItem): void;
 }) {
-	const { query, onlyOpen, onlyMisaligned, collapsed } = view;
+	const { query, onlyOpen, onlyMisaligned, onlyPlans, onlyTodos, collapsed } = view;
 
 	if (tree.kind === "unavailable") {
 		return (
@@ -40,7 +41,7 @@ export default function TreePanel({
 		);
 	}
 
-	const { nodes, countLine } = buildTreeRows({ tree, query, onlyOpen, onlyMisaligned, collapsed });
+	const { nodes, countLine } = buildTreeRows({ tree, query, onlyOpen, onlyMisaligned, onlyPlans, onlyTodos, collapsed });
 	return (
 		<>
 			<div className="av-toolbar">
@@ -49,17 +50,14 @@ export default function TreePanel({
 					<span className="sr">Filter modules by path</span>
 					<input type="search" placeholder="Filter by path" value={query} onChange={(event) => onChange({ ...view, query: event.target.value })} />
 				</label>
-				<button type="button" className="av-btn" aria-pressed={onlyOpen} onClick={() => onChange({ ...view, onlyOpen: !onlyOpen })}>
-					Only open work
-				</button>
-				<button type="button" className="av-btn" aria-pressed={onlyMisaligned} onClick={() => onChange({ ...view, onlyMisaligned: !onlyMisaligned })}>
-					Only misaligned
-				</button>
-				<button type="button" className="av-btn ghost" onClick={() => onChange({ ...view, collapsed: new Set() })}>
-					Expand all
-				</button>
-				<button type="button" className="av-btn ghost" onClick={() => onChange({ ...view, collapsed: new Set(pickParents({ tree })) })}>
-					Collapse all
+				<FilterMenu view={view} onChange={onChange} />
+				<button
+					type="button"
+					className="av-btn ghost"
+					onClick={() => onChange({ ...view, collapsed: collapsed.size > 0 ? new Set() : new Set(pickParents({ tree })) })}
+				>
+					<Icon name={collapsed.size > 0 ? "chev-d" : "chev-r"} />
+					{collapsed.size > 0 ? "Expand all" : "Collapse all"}
 				</button>
 				<span className="count">{countLine}</span>
 			</div>
@@ -69,7 +67,7 @@ export default function TreePanel({
 						key={node.folder}
 						node={node}
 						onToggle={() => onChange({ ...view, collapsed: toggleFolder({ collapsed, folder: node.folder }) })}
-						onOpen={() => onOpen({ kind: "module", folder: node.folder })}
+						onOpenFile={(path) => onOpen({ kind: "file", path })}
 					/>
 				))}
 				{nodes.length === 0 && <div className="av-tree-foot">No modules match these filters.</div>}

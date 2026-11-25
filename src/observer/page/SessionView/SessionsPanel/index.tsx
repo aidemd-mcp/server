@@ -1,14 +1,16 @@
+import { useState } from "react";
 import SessionRow from "@/observer/page/shared/SessionRow/index.js";
-import type { DeleteConfirm, SessionRowModel } from "@/observer/page/types/index.js";
-import removeSession from "@/observer/page/SessionView/removeSession/index.js";
+import type { SessionRowModel } from "@/observer/page/types/index.js";
+import sendToArchive from "@/observer/page/SessionView/sendToArchive/index.js";
+import ArchivedList from "./ArchivedList/index.js";
 
 /**
- * The Sessions tab: every session of the project, newest first, each a `SessionRow`. Delete exists
- * only on an ended row and asks first; confirming goes through `removeSession`, a failure's message
- * shows inside that row's confirmation, and a success leaves the row's removal to the stream's
- * frames. Which one row is confirming, and its failure message, are the caller's (`confirm`,
- * `onConfirmChange`), so an open confirmation survives a trip to another tab. `routeSessionId` is
- * the session the page is on, so deleting it leaves for Home.
+ * The Sessions tab: every session of the project, newest first, each a `SessionRow`. An ended row
+ * offers `Archive`, which acts at once through `sendToArchive` (a failure's message shows under that
+ * row, and a success leaves the row's removal to the stream's frames). Under the list, `Show
+ * archived` opens the project's archived sessions, each with `Restore` and `Delete permanently`
+ * (`ArchivedList`). The archived list owns its own delete confirmation. `routeSessionId` is the session the page is on, so archiving it
+ * leaves for Home.
  */
 export default function SessionsPanel({
 	rows,
@@ -16,34 +18,50 @@ export default function SessionsPanel({
 	token,
 	projectKey,
 	routeSessionId,
-	confirm,
-	onConfirmChange,
 }: {
 	rows: SessionRowModel[];
 	now: Date;
 	token: string;
 	projectKey: string;
 	routeSessionId: string;
-	confirm: DeleteConfirm;
-	onConfirmChange(confirm: DeleteConfirm): void;
 }) {
+	const [showArchived, setShowArchived] = useState(false);
+	const [version, setVersion] = useState(0);
+	const [failed, setFailed] = useState<{ sessionId: string; message: string } | null>(null);
+
 	return (
-		<div className="av-list">
-			{rows.map((row) => (
-				<SessionRow
-					key={row.sessionId}
-					row={row}
-					now={now}
-					confirming={confirm.sessionId === row.sessionId}
-					error={confirm.sessionId === row.sessionId ? confirm.error : null}
-					onAskDelete={() => onConfirmChange({ sessionId: row.sessionId, error: null })}
-					onCancel={() => onConfirmChange({ sessionId: null, error: null })}
-					onDelete={async () => {
-						const message = await removeSession({ token, projectKey, sessionId: row.sessionId, routeSessionId });
-						onConfirmChange(message === null ? { sessionId: null, error: null } : { sessionId: row.sessionId, error: message });
-					}}
-				/>
-			))}
-		</div>
+		<>
+			<div className="av-list">
+				{rows.map((row) => (
+					<SessionRow
+						key={row.sessionId}
+						row={row}
+						now={now}
+						actionError={failed?.sessionId === row.sessionId ? failed.message : null}
+						onArchive={async () => {
+							const message = await sendToArchive({ token, projectKey, sessionId: row.sessionId, routeSessionId });
+							setFailed(message === null ? null : { sessionId: row.sessionId, message });
+							if (message === null) setVersion((previous) => previous + 1);
+						}}
+					/>
+				))}
+			</div>
+			<div className="av-archived">
+				<div className="av-archived-bar">
+					<button type="button" className="av-btn" aria-expanded={showArchived} onClick={() => setShowArchived(!showArchived)}>
+						{showArchived ? "Hide archived" : "Show archived"}
+					</button>
+				</div>
+				{showArchived && (
+					<ArchivedList
+						now={now}
+						token={token}
+						projectKey={projectKey}
+						version={version}
+						onChanged={() => setVersion((previous) => previous + 1)}
+					/>
+				)}
+			</div>
+		</>
 	);
 }

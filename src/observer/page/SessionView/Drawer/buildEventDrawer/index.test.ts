@@ -96,7 +96,7 @@ describe("buildEventDrawer", () => {
 		const drawer = drawerOf({ events, seq: 2, todoText: "- [ ] **a.ts:1** — broken\n- [x] **b.ts:2** — fixed\n\n## Retro\n\n- lesson\n" })!;
 		expect(drawer).toMatchObject({ kind: "QA verdict", title: "2 issues open · round 2", meta: `src/a · ${clock(T("48"))}` });
 		expect(drawer.blocks).toHaveLength(1);
-		expect(drawer.blocks[0]).toMatchObject({ heading: "Todo", badge: { text: "1 of 2 open", tone: "danger" } });
+		expect(drawer.blocks[0]).toMatchObject({ heading: "Issues", badge: { text: "1 of 2 open", tone: "danger" } });
 	});
 
 	it("words a single issue, an unreported count and a pass", () => {

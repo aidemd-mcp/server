@@ -71,3 +71,42 @@ describe("HistoryPanel", () => {
 		expect(one).toContain('<span class="n">1 event</span>');
 	});
 });
+
+describe("HistoryPanel inside the bottom drawer", () => {
+	const headed = (props: Partial<React.ComponentProps<typeof HistoryPanel>>) =>
+		renderToStaticMarkup(<HistoryPanel history={SINGLE} onOpen={() => undefined} {...props} />);
+
+	it("draws the pinned head above the list when given one", () => {
+		const html = headed({ head: <span className="probe">PICKER</span> });
+		expect(html).toContain('<div class="av-histhead"><span class="probe">PICKER</span></div>');
+		expect(html.indexOf("av-histhead")).toBeLessThan(html.indexOf("av-hist\""));
+	});
+
+	it("draws no head block without one", () => {
+		expect(headed({})).not.toContain("av-histhead");
+	});
+
+	it("draws neither its own header nor its type filters when the drawer owns the order", () => {
+		const html = headed({ order: { newest: true }, head: <span /> });
+		expect(html).not.toContain("av-hist-h");
+		expect(html).not.toContain("av-h2");
+		expect(html).not.toContain('aria-label="Order"');
+		expect(html).not.toContain("Filter by type");
+	});
+
+	it("takes its order from the drawer, newest or oldest first", () => {
+		const newest = headed({ order: { newest: true } });
+		expect(newest.indexOf("Spec started")).toBeLessThan(newest.indexOf("Session started"));
+		const oldest = headed({ order: { newest: false } });
+		expect(oldest.indexOf("Session started")).toBeLessThan(oldest.indexOf("Spec started"));
+	});
+
+	it("leaves the order word off the day label when a head carries the order switch", () => {
+		expect(headed({ order: { newest: true }, head: <span /> })).toContain('<li class="av-hday">Today</li>');
+		expect(headed({ order: { newest: false }, head: <span /> })).toContain('<li class="av-hday">Today</li>');
+	});
+
+	it("keeps the order word on the day label with no head", () => {
+		expect(headed({ order: { newest: false } })).toContain('<li class="av-hday">Today · oldest first</li>');
+	});
+});

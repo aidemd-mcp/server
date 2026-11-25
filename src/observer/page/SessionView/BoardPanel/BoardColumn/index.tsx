@@ -12,11 +12,14 @@ export default function BoardColumn({
 	expanded,
 	onToggle,
 	onOpen,
+	linkedLabel,
 }: {
 	column: BoardColumnModel;
 	expanded: boolean;
 	onToggle(): void;
 	onOpen(slug: string): void;
+	/** The outlined card's badge word; `This session` when absent. */
+	linkedLabel?: string;
 }) {
 	const shown = expanded ? column.tasks : column.tasks.slice(0, column.cap);
 	const hidden = column.total - shown.length;
@@ -29,7 +32,7 @@ export default function BoardColumn({
 				<span className="n">{column.total}</span>
 			</div>
 			{shown.map((task) => (
-				<TaskCard key={task.slug} task={task} onOpen={() => onOpen(task.slug)} />
+				<TaskCard key={task.slug} task={task} linkedLabel={linkedLabel} onOpen={() => onOpen(task.slug)} />
 			))}
 			{done && column.total > column.cap && (
 				<div className="more">

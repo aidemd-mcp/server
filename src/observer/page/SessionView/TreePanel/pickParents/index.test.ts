@@ -20,13 +20,13 @@ function makeEntry(folder: string, hasChildren: boolean): TreeEntry {
 }
 
 describe("pickParents", () => {
-	it("lists every folder with children but the root", () => {
+	it("lists every folder with children, the root included", () => {
 		const tree: TreeData = {
 			kind: "tree",
 			entries: [makeEntry(".", true), makeEntry("src", true), makeEntry("src/a", false), makeEntry("lib", true)],
 			counts: { modules: 4, misaligned: 0, openWork: 0 },
 			initialCollapsed: [],
 		};
-		expect(pickParents({ tree })).toEqual(["src", "lib"]);
+		expect(pickParents({ tree })).toEqual([".", "src", "lib"]);
 	});
 });

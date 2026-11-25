@@ -15,7 +15,7 @@ export default function qaFixRound(): FixtureScenario {
 		id: "qaFixRound",
 		label: "s-qa-fix",
 		project: {
-			folderName: "aidemd-mcp",
+			folderName: "docs-portal",
 			installed: true,
 			files: {
 				...moduleFiles({

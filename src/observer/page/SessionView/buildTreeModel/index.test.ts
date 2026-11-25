@@ -5,7 +5,7 @@ import buildTreeModel from "./index.js";
 function makeModule({ folder, overrides = {} }: { folder: string; overrides?: Partial<ModuleRow> }): ModuleRow {
 	return {
 		folder,
-		label: folder === "." ? ".aide/intent.aide" : folder,
+		label: folder === "." ? "root" : folder,
 		description: `About ${folder}`,
 		alignment: "aligned",
 		intentFile: folder === "." ? ".aide/intent.aide" : `${folder}/.aide`,
@@ -53,9 +53,9 @@ describe("buildTreeModel", () => {
 		expect(tree.counts).toEqual({ modules: 44, misaligned: 3, openWork: 3 });
 	});
 
-	it("prints the root as .aide/intent.aide at depth 0 and others one step per folder segment", () => {
+	it("prints the root as `root` at depth 0 and others one step per folder segment", () => {
 		const byFolder = Object.fromEntries(tree.entries.map((entry) => [entry.folder, entry]));
-		expect(byFolder["."]).toMatchObject({ path: ".aide/intent.aide", depth: 0 });
+		expect(byFolder["."]).toMatchObject({ path: "root", depth: 0 });
 		expect(byFolder["src"]?.depth).toBe(1);
 		expect(byFolder["src/tools"]?.depth).toBe(2);
 		expect(byFolder["src/tools/t5"]?.depth).toBe(3);
@@ -75,8 +75,8 @@ describe("buildTreeModel", () => {
 		expect(tree.entries.filter((entry) => entry.misaligned).map((entry) => entry.folder)).toEqual(["src/tools/t3", "src/tools/t7", "src/service/s1"]);
 	});
 
-	it("starts above 40 modules with every parent but the root and the current module's ancestors collapsed", () => {
-		expect([...tree.initialCollapsed].sort()).toEqual(["src/cli", "src/service"]);
+	it("starts with every parent collapsed, the root and the current module's ancestors included", () => {
+		expect([...tree.initialCollapsed].sort()).toEqual([".", "src", "src/cli", "src/service", "src/tools"]);
 	});
 
 	it("labels nothing when no module is the working one", () => {
@@ -93,7 +93,7 @@ describe("buildTreeModel", () => {
 			current: null,
 			currentLabel: null,
 		});
-		expect(built.entries[0]?.chips.map((chip) => chip.key)).toEqual(["brief"]);
+		expect(built.entries[0]?.chips.map((chip) => chip.key)).toEqual(["intent.aide", "session.aide", "brief.aide"]);
 		expect(built.entries[1]?.alignment).toBeNull();
 	});
 });

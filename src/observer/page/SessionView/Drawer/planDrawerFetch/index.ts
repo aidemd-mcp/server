@@ -1,16 +1,22 @@
 import type { DrawerContext, DrawerFetchPlan, DrawerFileRole, DrawerItem, ModuleFileKind } from "@/observer/page/types/index.js";
 import normalizeModule from "@/observer/page/SessionView/normalizeModule/index.js";
+import ROOT_FOLDER from "@/observer/page/shared/rootFolder/index.js";
+
+/** The project's session record, which the root module's Details shows beside its intent spec. */
+const SESSION_RECORD = ".aide/session.aide";
 import classifyFile from "@/observer/page/SessionView/Drawer/classifyFile/index.js";
 import findModuleRow from "@/observer/page/SessionView/Drawer/findModuleRow/index.js";
 
-/** What a module's drawer reads: the spec, plan and todo its row lists, and the opened file under its own role (it wins over the row's). */
+/** What a module's drawer reads: every AIDE file its row lists (spec, brief, plan, todo, research), and the opened file under its own role (it wins over the row's). */
 function planModule({ folder, opened, context }: { folder: string; opened: { kind: ModuleFileKind; path: string } | null; context: DrawerContext }): DrawerFetchPlan {
 	const row = findModuleRow({ folder, context });
 	const listed: [DrawerFileRole, string | null | undefined][] = [
 		["spec", row?.intentFile],
 		["plan", row?.plan?.file],
 		["todo", row?.todo?.file],
-		["brief", opened?.kind === "brief" ? row?.brief : null],
+		["brief", row?.brief],
+		["research", row?.research],
+		["session", folder === ROOT_FOLDER ? SESSION_RECORD : null],
 	];
 	const files = new Map<DrawerFileRole, string>();
 	for (const [role, path] of listed) if (path) files.set(role, path);

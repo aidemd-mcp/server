@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe("deleteSession", () => {
-	it("sends DELETE to the encoded session path with the token", async () => {
+	it("sends DELETE to the encoded archived session path with the token", async () => {
 		const fetchMock = vi.fn(() =>
 			Promise.resolve(new Response(JSON.stringify({ data: { deleted: "s 1" } }), { status: 200 })),
 		);
@@ -15,7 +15,7 @@ describe("deleteSession", () => {
 
 		const result = await deleteSession({ token: "tok", projectKey: "my app-1a2b3c", sessionId: "s 1" });
 
-		expect(fetchMock).toHaveBeenCalledWith("/api/projects/my%20app-1a2b3c/sessions/s%201", {
+		expect(fetchMock).toHaveBeenCalledWith("/api/projects/my%20app-1a2b3c/archive/s%201", {
 			method: "DELETE",
 			headers: { [protocol.tokenHeader]: "tok" },
 		});

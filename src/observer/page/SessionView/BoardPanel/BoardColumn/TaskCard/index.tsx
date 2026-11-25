@@ -11,13 +11,13 @@ const LINKED_BADGE_STYLE = { alignSelf: "flex-start" };
  * unreadable note shows an `Unreadable` badge instead, and the observer's reason is the slug line's
  * title attribute.
  */
-export default function TaskCard({ task, onOpen }: { task: TaskCardModel; onOpen(): void }) {
+export default function TaskCard({ task, linkedLabel, onOpen }: { task: TaskCardModel; linkedLabel?: string; onOpen(): void }) {
 	return (
 		<button type="button" className={joinClasses("av-task", task.linked && "linked")} onClick={onOpen}>
 			{task.linked && (
 				<span className="av-badge run" style={LINKED_BADGE_STYLE}>
 					<Icon name="eye" />
-					This session
+					{linkedLabel ?? "This session"}
 				</span>
 			)}
 			<span className="t-title">{task.title}</span>

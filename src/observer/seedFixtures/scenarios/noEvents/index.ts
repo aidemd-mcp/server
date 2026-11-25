@@ -19,7 +19,7 @@ export default function noEvents(): FixtureScenario {
 		id: "noEvents",
 		label: "s-no-events",
 		project: {
-			folderName: "aidemd-mcp",
+			folderName: "new-project",
 			installed: true,
 			files: { ...rootFiles, ".aide/session.aide": sessionRecord({ variant: "noEvents" }) },
 			board: { kanbanTag: KANBAN_TAG, tasks: boardTasks({ large: false }) },

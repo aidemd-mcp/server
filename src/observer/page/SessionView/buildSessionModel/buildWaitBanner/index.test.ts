@@ -11,11 +11,12 @@ function gate(overrides: Partial<WaitingFile>): WaitingFile {
 const statusOf = (waiting: WaitingFile[]) => ({ waiting }) as Status;
 
 describe("buildWaitBanner", () => {
-	it("words the followed session's gate: base name, module and the span waited", () => {
+	it("words the followed session's gate: base name, module, the span waited and the file's path", () => {
 		expect(buildWaitBanner({ status: statusOf([gate({})]), focus: "s1", name: "app", now: NOW })).toEqual({
 			file: "plan.aide",
 			module: "src/a",
 			since: "2m",
+			path: "src/a/plan.aide",
 		});
 	});
 

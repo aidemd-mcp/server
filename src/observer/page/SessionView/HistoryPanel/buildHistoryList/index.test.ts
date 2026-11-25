@@ -47,9 +47,9 @@ describe("buildHistoryList", () => {
 		]);
 	});
 
-	it("runs oldest first with a plain header", () => {
+	it("runs oldest first, with a header that says so", () => {
 		expect(describeList(buildHistoryList({ rows: ROWS, type: "all", session: "all", newest: false }))).toEqual([
-			"# Today",
+			"# Today · oldest first",
 			"start",
 			"phase",
 			"step",
@@ -61,23 +61,23 @@ describe("buildHistoryList", () => {
 	});
 
 	it("keeps the rows of one category, with the file group under a kept row", () => {
-		expect(describeList(buildHistoryList({ rows: ROWS, type: "phases", session: "all", newest: false }))).toEqual(["# Today", "phase", "step", "group", "sub-1"]);
-		expect(describeList(buildHistoryList({ rows: ROWS, type: "gates", session: "all", newest: false }))).toEqual(["# Today", "wait"]);
+		expect(describeList(buildHistoryList({ rows: ROWS, type: "phases", session: "all", newest: false }))).toEqual(["# Today · oldest first", "phase", "step", "group", "sub-1"]);
+		expect(describeList(buildHistoryList({ rows: ROWS, type: "gates", session: "all", newest: false }))).toEqual(["# Today · oldest first", "wait"]);
 	});
 
 	it("lists only the file groups under the Files filter, without the rows they hang under", () => {
-		expect(describeList(buildHistoryList({ rows: ROWS, type: "files", session: "all", newest: false }))).toEqual(["# Today", "group", "sub-1"]);
+		expect(describeList(buildHistoryList({ rows: ROWS, type: "files", session: "all", newest: false }))).toEqual(["# Today · oldest first", "group", "sub-1"]);
 	});
 
 	it("keeps one session's rows", () => {
 		const rows = [row({ id: "a", kind: "phase", sessionId: "a" }), row({ id: "b", kind: "phase", sessionId: "b" })];
-		expect(describeList(buildHistoryList({ rows, type: "all", session: "b", newest: false }))).toEqual(["# Today", "b"]);
+		expect(describeList(buildHistoryList({ rows, type: "all", session: "b", newest: false }))).toEqual(["# Today · oldest first", "b"]);
 	});
 
-	it("opens a new day header whenever the day changes, only the first carrying `newest first`", () => {
+	it("opens a new day header whenever the day changes, only the first carrying the order", () => {
 		const rows = [row({ id: "old", kind: "phase", day: "Yesterday" }), row({ id: "new", kind: "phase", day: "Today" })];
 		expect(describeList(buildHistoryList({ rows, type: "all", session: "all", newest: true }))).toEqual(["# Today · newest first", "new", "# Yesterday", "old"]);
-		expect(describeList(buildHistoryList({ rows, type: "all", session: "all", newest: false }))).toEqual(["# Yesterday", "old", "# Today", "new"]);
+		expect(describeList(buildHistoryList({ rows, type: "all", session: "all", newest: false }))).toEqual(["# Yesterday · oldest first", "old", "# Today", "new"]);
 	});
 
 	it("is empty when nothing matches, and leaves the input as it was", () => {

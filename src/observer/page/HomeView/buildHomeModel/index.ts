@@ -1,6 +1,8 @@
+import buildRailView from "@/observer/page/SessionView/buildRailView/index.js";
+import buildHref from "@/observer/page/route/buildHref/index.js";
 import type { WaitingFile } from "@/types/index.js";
 import isActiveSession from "@/observer/page/shared/isActiveSession/index.js";
-import type { HomeModel, ProjectRowModel, SessionRowModel, StreamState } from "@/observer/page/types/index.js";
+import type { HomeModel, ProjectRowModel, SessionRowModel, StreamState, LiveRowModel } from "@/observer/page/types/index.js";
 import buildLiveRow from "./buildLiveRow/index.js";
 import buildProjectRow from "./buildProjectRow/index.js";
 import buildWaitCard from "./buildWaitCard/index.js";
@@ -42,6 +44,27 @@ export default function buildHomeModel({ state, now, token }: { state: StreamSta
 			now,
 		});
 	});
+
+	const statusOf = new Map<string, { row: LiveRowModel; session: SessionRowModel }>();
+	live.forEach(({ project, session }, index) => {
+		const row = liveRows[index]!;
+		const kept = statusOf.get(project.projectKey);
+		if (kept === undefined || (row.badge.className === "wait" && kept.row.badge.className !== "wait")) statusOf.set(project.projectKey, { row, session });
+	});
+	for (const project of projects) {
+		const picked = statusOf.get(project.projectKey) ?? null;
+		project.status = picked?.row ?? null;
+		project.task = picked?.session.task ?? null;
+		project.taskSlug = picked?.session.taskSlug ?? null;
+		project.taskHref =
+			picked?.session.taskSlug != null
+				? buildHref({ kind: "session", token, projectKey: project.projectKey, sessionId: picked.session.sessionId, item: { kind: "task", slug: picked.session.taskSlug } })
+				: null;
+		const view = state.views[project.projectKey];
+		const events = state.held.filter((session) => session.projectKey === project.projectKey).flatMap((session) => session.events);
+		project.rail =
+			picked === null ? null : buildRailView({ status: view?.state === "ready" ? view.status : null, events, focus: picked.session.sessionId, now }).phases;
+	}
 
 	return {
 		subtitle:

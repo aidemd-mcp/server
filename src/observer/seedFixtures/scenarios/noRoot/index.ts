@@ -11,7 +11,7 @@ export default function noRoot(): FixtureScenario {
 		id: "noRoot",
 		label: "s-no-folder",
 		project: {
-			folderName: "aidemd-mcp",
+			folderName: "unreported-project",
 			installed: false,
 			files: {},
 			board: null,

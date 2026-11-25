@@ -31,6 +31,6 @@ describe("routeTable — token access", () => {
 
 		expect(required).toHaveLength(routeTable.length - 3);
 		expect(required.every((route) => route.path.startsWith("/api/"))).toBe(true);
-		expect(required.map((route) => route.name)).toEqual(expect.arrayContaining(["deleteSession", "postEvent", "postShutdown", "streamUpdates", "getFile", "getTask"]));
+		expect(required.map((route) => route.name)).toEqual(expect.arrayContaining(["archiveSession", "listArchived", "restoreSession", "deleteSession", "postEvent", "postShutdown", "streamUpdates", "getFile", "getTask"]));
 	});
 });

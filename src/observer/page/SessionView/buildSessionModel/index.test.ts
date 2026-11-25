@@ -90,7 +90,7 @@ describe("buildSessionModel", () => {
 		const model = modelOf(stateOf({ held: [{ projectKey: KEY, sessionId: "s1", events }], views: readyView(statusOf({ history: buildHistory({ events }) })) }));
 
 		expect(model.card.kind).toBe("wait");
-		expect(model.waiting).toEqual({ file: "plan.aide", module: "src/a", since: "5m" });
+		expect(model.waiting).toEqual({ file: "plan.aide", module: "src/a", since: "5m", path: "src/a/plan.aide" });
 		expect(model.surfaced).toEqual(waitingPlan);
 		expect(model.title).toBe("Waiting on you — app — AIDE Pipeline Viewer");
 		expect(model.header).toMatchObject({ homeHref: "/?token=tok", project: "app", rootPath: "/work/app", kanbanTag: "app", switcher: [] });
@@ -101,7 +101,7 @@ describe("buildSessionModel", () => {
 		expect(model.board).toMatchObject({ kind: "unavailable", tone: "calm" });
 		expect(model.plans).toHaveLength(1);
 		expect(model.tree).toMatchObject({ kind: "tree", counts: { modules: 1 } });
-		expect(model.tabs.map((tab) => tab.count)).toEqual([null, "1", null, null, "1", null]);
+		expect(model.tabs.map((tab) => tab.count)).toEqual([null, "1", null, "1", null]);
 		expect(model.history.total).toBe(3);
 		expect(model.history.rows.map((row) => row.kind)).toEqual(["start", "wait"]);
 		expect(model.history.rows[0]?.files[0]?.label).toBe("Wrote 1 file");
@@ -152,7 +152,7 @@ describe("buildSessionModel", () => {
 		expect(model.tree).toEqual({ kind: "unavailable" });
 		expect(model.plans).toBeNull();
 		expect(model.board).toMatchObject({ kind: "unavailable", tone: "calm", heading: "Board unavailable" });
-		expect(model.tabs.map((tab) => tab.count)).toEqual([null, null, null, null, "1", null]);
+		expect(model.tabs.map((tab) => tab.count)).toEqual([null, null, null, "1", null]);
 		expect(model.header).toMatchObject({ project: "app", rootPath: null, kanbanTag: "app" });
 		expect(model.waiting).toBeNull();
 		expect(model.notInstalled).toBeNull();
@@ -223,10 +223,26 @@ describe("buildSessionModel", () => {
 				["s1", "No phase running", true],
 				["s2", "Research · src/b", false],
 			]);
-			expect(model.history.sessions).toHaveLength(2);
+			expect(model.history.sessions).toEqual([]);
+			expect(model.history.rows.every((row) => row.sessionId === "s1")).toBe(true);
 		});
 
-		it("follows the session the switcher picked, for the card and the pill, without changing the route", () => {
+		it("follows any listed session picked, even one that has ended, for the card and the history", () => {
+		const endedStatus = statusOf({
+			waiting: [],
+			surfaced: null,
+			sessions: [
+				summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: "live" }),
+				summary({ sessionId: "s2", startedAt: "2026-01-01T08:00:00.000Z", liveness: "ended" }),
+			],
+		});
+		const model = modelOf(stateOf({ held, views: readyView(endedStatus) }), { focus: "s2" });
+		expect(model.focus).toBe("s2");
+		expect(model.header.switcher).toEqual([]);
+		expect(model.history.rows.every((row) => row.sessionId === "s2")).toBe(true);
+	});
+
+	it("follows the session the switcher picked, for the card and the pill, without changing the route", () => {
 			const model = modelOf(stateOf({ held, views: readyView(status) }), { focus: "s2" });
 			expect(model.focus).toBe("s2");
 			expect(model.card).toMatchObject({ kind: "run", title: "Research" });

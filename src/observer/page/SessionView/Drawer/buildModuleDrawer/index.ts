@@ -1,20 +1,19 @@
-import type { DrawerBlockModel, DrawerContext, DrawerModel, ModuleFileKind, ModuleFiles } from "@/observer/page/types/index.js";
+import type { DrawerBlockModel, DrawerContext, DrawerModel, DrawerSection, ModuleFileKind, ModuleFiles, TreeAlignment } from "@/observer/page/types/index.js";
 import findModuleRow from "@/observer/page/SessionView/Drawer/findModuleRow/index.js";
-import buildBriefBlock from "./buildBriefBlock/index.js";
-import buildPlanBlock from "./buildPlanBlock/index.js";
-import buildSpecBlocks from "./buildSpecBlocks/index.js";
-import buildTodoBlocks from "./buildTodoBlocks/index.js";
+import baseName from "@/util/baseName/index.js";
 import describeModule from "./describeModule/index.js";
+import buildFileBlocks from "../buildFileBlocks/index.js";
 
-/** The module files in the order their blocks follow one another when none was opened first. */
-const FILE_ORDER: ModuleFileKind[] = ["spec", "plan", "todo", "brief"];
+/** The module files in the order their accordion rows follow one another. */
+const FILE_ORDER: ModuleFileKind[] = ["spec", "session", "brief", "plan", "todo", "research"];
 
 /**
- * A module's drawer: its spec frontmatter and body, its plan checklist, its todo issues and retro,
- * from the file texts the page fetched (a file the module lists none of, or that was not fetched, adds
- * no block). `firstKind` is the file the user opened: its blocks lead, and a todo makes the kind
- * word `Module · todo`. The title is the module (the tree's label for the root); the meta line says
- * what the observer reported about it.
+ * A module's drawer: one accordion row per AIDE file the module has, labelled by its file name
+ * (`.aide`, `brief.aide`, `plan.aide`, `todo.aide`, `research.aide`) with its status, holding the
+ * whole file: every frontmatter field and every `##` section (see `buildFileBlocks`), so nothing in
+ * a spec is hidden. `firstKind` is the file the user opened (a
+ * chip, a waiting file); it is the row open first, else the spec. The title is the module; the meta
+ * line says what the observer reported about it.
  */
 export default function buildModuleDrawer({
 	folder,
@@ -28,19 +27,42 @@ export default function buildModuleDrawer({
 	context: DrawerContext;
 }): DrawerModel {
 	const row = findModuleRow({ folder, context });
-	const plan = files.plan === null ? null : buildPlanBlock({ text: files.plan, plan: row?.plan ?? null });
 	const blocksOf: Record<ModuleFileKind, DrawerBlockModel[]> = {
-		spec: files.spec === null ? [] : buildSpecBlocks({ text: files.spec }),
-		plan: plan === null ? [] : [plan],
-		todo: files.todo === null ? [] : buildTodoBlocks({ text: files.todo }),
-		brief: files.brief === null ? [] : [buildBriefBlock({ text: files.brief })],
+		spec: files.spec === null ? [] : buildFileBlocks({ text: files.spec }),
+		brief: files.brief === null ? [] : buildFileBlocks({ text: files.brief }),
+		plan: files.plan === null ? [] : buildFileBlocks({ text: files.plan }),
+		todo: files.todo === null ? [] : buildFileBlocks({ text: files.todo }),
+		research: files.research === null ? [] : buildFileBlocks({ text: files.research }),
+		session: files.session === null ? [] : buildFileBlocks({ text: files.session }),
 	};
-	const order = firstKind === null ? FILE_ORDER : [firstKind, ...FILE_ORDER.filter((kind) => kind !== firstKind)];
+	const pathOf: Record<ModuleFileKind, string | null> = {
+		spec: row?.intentFile ?? null,
+		brief: row?.brief ?? null,
+		plan: row?.plan?.file ?? null,
+		todo: row?.todo?.file ?? null,
+		research: row?.research ?? null,
+		session: folder === "." ? ".aide/session.aide" : null,
+	};
+	const statusOf: Record<ModuleFileKind, string | null> = {
+		spec: row?.alignment ?? null,
+		brief: null,
+		plan: row?.plan ? `${row.plan.status === "unset" ? "no status" : row.plan.status} · ${row.plan.done}/${row.plan.total}` : null,
+		todo: row?.todo ? `${row.todo.open} open of ${row.todo.total}` : null,
+		research: null,
+		session: null,
+	};
+	const list: DrawerSection[] = FILE_ORDER.filter((kind) => blocksOf[kind].length > 0).map((kind) => {
+		const path = pathOf[kind] ?? "";
+		return { kind, path, label: path === "" ? kind : baseName(path), status: statusOf[kind], blocks: blocksOf[kind] };
+	});
+	const open = firstKind !== null && list.some((section) => section.kind === firstKind) ? firstKind : (list[0]?.kind ?? "spec");
 	return {
-		kind: firstKind === "todo" ? "Module · todo" : "Module",
+		kind: "Module",
 		title: row?.label ?? folder,
 		titleMono: true,
 		meta: describeModule({ folder, row, context }),
-		blocks: order.flatMap((kind) => blocksOf[kind]),
+		blocks: list.flatMap((section) => section.blocks),
+		alignment: (row?.alignment as TreeAlignment | null | undefined) ?? null,
+		sections: { open, list },
 	};
 }

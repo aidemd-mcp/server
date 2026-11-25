@@ -9,7 +9,8 @@ function boardCount({ board }: { board: BoardModel }): Pick<TabModel, "count" | 
 /**
  * The six tabs in the handoff's order with their counts: misaligned modules (danger) on the tree,
  * plan and todo rows, every board task or `offline`, the project's sessions. A project that never
- * reported its folder shows no count on the three tabs that read it. History is the phone-only tab.
+ * reported its folder shows no count on the three tabs that read it. Board, Sessions and History are
+ * phone-only tabs: on desktop they live in the bottom drawer.
  */
 export default function buildTabs({
 	tree,
@@ -32,10 +33,9 @@ export default function buildTabs({
 			tone: "danger",
 			phoneOnly: false,
 		},
-		{ id: "plans", label: "Plans & todos", icon: "step", count: plans === null ? null : String(plans.length), tone: "default", phoneOnly: false },
-		{ id: "board", label: "Board", icon: "board", ...boardCount({ board }), phoneOnly: false },
-		{ id: "record", label: "Session record", icon: "doc", count: null, tone: "default", phoneOnly: false },
-		{ id: "sessions", label: "Sessions", icon: "sessions", count: String(sessions.length), tone: "default", phoneOnly: false },
+		{ id: "plans", label: "Plans & todos", icon: "step", count: plans === null ? null : String(plans.length), tone: "default", phoneOnly: true },
+		{ id: "board", label: "Board", icon: "board", ...boardCount({ board }), phoneOnly: true },
+		{ id: "sessions", label: "Sessions", icon: "sessions", count: String(sessions.length), tone: "default", phoneOnly: true },
 		{ id: "history", label: "History", icon: "history", count: null, tone: "default", phoneOnly: true },
 	];
 }

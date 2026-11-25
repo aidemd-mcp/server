@@ -19,13 +19,28 @@ function makeRow(overrides: Partial<SessionRowModel> = {}): SessionRowModel {
 	};
 }
 
-function render({
-	row = makeRow(),
+function render({ row = makeRow(), actionError = null }: { row?: SessionRowModel; actionError?: string | null } = {}) {
+	return renderToStaticMarkup(<SessionRow row={row} now={NOW} actionError={actionError} onArchive={() => undefined} />);
+}
+
+function renderArchived({
 	confirming = false,
 	error = null,
-}: { row?: SessionRowModel; confirming?: boolean; error?: string | null } = {}) {
+	actionError = null,
+}: { confirming?: boolean; error?: string | null; actionError?: string | null } = {}) {
 	return renderToStaticMarkup(
-		<SessionRow row={row} now={NOW} confirming={confirming} error={error} onAskDelete={() => undefined} onCancel={() => undefined} onDelete={() => undefined} />,
+		<SessionRow
+			row={makeRow()}
+			now={NOW}
+			archived
+			actionError={actionError}
+			confirming={confirming}
+			error={error}
+			onRestore={() => undefined}
+			onAskDelete={() => undefined}
+			onCancel={() => undefined}
+			onDelete={() => undefined}
+		/>,
 	);
 }
 
@@ -44,30 +59,45 @@ describe("SessionRow", () => {
 		expect(text).not.toContain("1 events");
 	});
 
-	it("draws a live row with the live class, the Live badge and no Delete", () => {
+	it("draws a live row with the live class, the Live badge and no Archive", () => {
 		const html = render({ row: makeRow({ liveness: "live" }) });
 		expect(html).toContain('class="av-srow live"');
 		expect(html).toContain('<span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Live</span>');
-		expect(html).not.toContain("Delete");
+		expect(html).not.toContain("Archive");
 	});
 
-	it("draws an idle row with the outline Idle badge and no Delete", () => {
+	it("draws an idle row with the outline Idle badge and no Archive", () => {
 		const html = render({ row: makeRow({ liveness: "idle" }) });
 		expect(html).toContain('class="av-srow"');
 		expect(html).toContain('<span class="av-badge outline"><span class="ic i-idle" aria-hidden="true"></span>Idle</span>');
-		expect(html).not.toContain("Delete");
+		expect(html).not.toContain("Archive");
 	});
 
-	it("draws an ended row with the Ended badge and a labelled Delete button", () => {
+	it("draws an ended row with the Ended badge and a labelled Archive button, and no Delete", () => {
 		const html = render();
 		expect(html).toContain('<span class="av-badge neutral"><span class="ic i-power" aria-hidden="true"></span>Ended</span>');
-		expect(html).toContain('aria-label="Delete history of session Yesterday 16:40"');
-		expect(html).toContain('<button type="button" class="av-btn danger"');
+		expect(html).toContain('<button type="button" class="av-btn" aria-label="Archive session Yesterday 16:40">Archive</button>');
+		expect(html).not.toContain("Delete");
+		expect(html).not.toContain("av-confirm");
+	});
+
+	it("shows a failed archive's message under the buttons, and nothing when there is none", () => {
+		expect(render({ actionError: "Could not archive" })).toContain('<span class="meta s-err">Could not archive</span>');
+		expect(render()).not.toContain("s-err");
+	});
+
+	it("draws an archived row with Restore and Delete permanently and no Archive or task line", () => {
+		const html = renderArchived();
+		expect(html).toContain('aria-label="Restore session Yesterday 16:40">Restore</button>');
+		expect(html).toContain('aria-label="Delete history of session Yesterday 16:40 permanently"');
+		expect(stripMarkup(html)).toContain("Delete permanently");
+		expect(html).not.toContain(">Archive<");
+		expect(stripMarkup(html)).not.toContain("Task");
 		expect(html).not.toContain("av-confirm");
 	});
 
 	it("asks first with the exact copy, Cancel and Delete history", () => {
-		const html = render({ confirming: true });
+		const html = renderArchived({ confirming: true });
 		expect(html).toContain('<div class="av-confirm" role="alertdialog" aria-label="Confirm delete">');
 		expect(html).toContain('<span class="ic lg i-trash" aria-hidden="true" style="color:var(--danger)"></span>');
 		expect(stripMarkup(html)).toContain("Delete this session's history? This can't be undone.");
@@ -75,14 +105,9 @@ describe("SessionRow", () => {
 		expect(html).toContain('<button type="button" class="av-btn danger-solid">Delete history</button>');
 	});
 
-	it("never opens the confirmation on a session that is not ended", () => {
-		expect(render({ row: makeRow({ liveness: "live" }), confirming: true })).not.toContain("av-confirm");
-		expect(render({ row: makeRow({ liveness: "idle" }), confirming: true })).not.toContain("av-confirm");
-	});
-
 	it("shows a failed delete's message as meta inside the confirmation, and nothing when there is none", () => {
-		expect(render({ confirming: true, error: "Could not delete" })).toContain('<span class="meta">Could not delete</span>');
-		expect(render({ confirming: true })).not.toContain("Could not delete");
-		expect(render({ error: "Could not delete" })).not.toContain("Could not delete");
+		expect(renderArchived({ confirming: true, error: "Could not delete" })).toContain('<span class="meta">Could not delete</span>');
+		expect(renderArchived({ confirming: true })).not.toContain("Could not delete");
+		expect(renderArchived({ error: "Could not delete" })).not.toContain("Could not delete");
 	});
 });

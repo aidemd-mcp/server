@@ -1,3 +1,4 @@
+import archiveSession from "../../routes/archiveSession/index.js";
 import getAsset from "../../routes/getAsset/index.js";
 import deleteSession from "../../routes/deleteSession/index.js";
 import getEvents from "../../routes/getEvents/index.js";
@@ -8,8 +9,10 @@ import getSessionPage from "../../routes/getSessionPage/index.js";
 import getTask from "../../routes/getTask/index.js";
 import listProjects from "../../routes/listProjects/index.js";
 import listSessions from "../../routes/listSessions/index.js";
+import listArchived from "../../routes/listArchived/index.js";
 import postEvent from "../../routes/postEvent/index.js";
 import postShutdown from "../../routes/postShutdown/index.js";
+import restoreSession from "../../routes/restoreSession/index.js";
 import streamUpdates from "../../routes/streamUpdates/index.js";
 import routeTable from "../../shared/routeTable/index.js";
 import type { RouteHandler } from "../../types/index.js";
@@ -41,6 +44,9 @@ const HANDLERS: Record<(typeof routeTable)[number]["name"], RouteHandler> = {
 	getFile,
 	getTask,
 	listSessions,
+	archiveSession,
+	listArchived,
+	restoreSession,
 	deleteSession,
 	postEvent,
 	postShutdown,

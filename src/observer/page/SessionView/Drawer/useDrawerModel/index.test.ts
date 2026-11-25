@@ -40,7 +40,7 @@ const WITH_TREE = makeContext({ status: makeStatus({ tree: [SCORE_NODE] }) });
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	file.mockImplementation(({ path }: { path: string }) => Promise.resolve({ ok: true, data: { path, text: path.endsWith("plan.aide") ? "### 1. First\n\n- [ ] First\n" : "" } }));
+	file.mockImplementation(({ path }: { path: string }) => Promise.resolve({ ok: true, data: { path, text: path.endsWith("plan.aide") ? "### 1. First\n\n- [ ] First\n" : path.endsWith("todo.aide") ? "- [ ] a.ts:1 — broken\n" : "" } }));
 });
 
 describe("useDrawerModel", () => {
@@ -58,10 +58,10 @@ describe("useDrawerModel", () => {
 		probe.view.unmount();
 	});
 
-	it("opens an AIDE file as its module", async () => {
+	it("opens an AIDE file as its module, with that file open first", async () => {
 		const probe = mount({ item: { kind: "file", path: "src/tools/score/todo.aide" }, context: WITH_TREE });
 		await probe.settle();
-		expect(probe.model).toMatchObject({ state: "ready", data: { kind: "Module · todo" } });
+		expect(probe.model).toMatchObject({ state: "ready", data: { kind: "Module", sections: { open: "todo" } } });
 		probe.view.unmount();
 	});
 
@@ -73,7 +73,7 @@ describe("useDrawerModel", () => {
 		const probe = mount({ item: { kind: "task", slug: "fix-it" }, context: WITH_TREE });
 		await probe.settle();
 		expect(task).toHaveBeenCalledWith({ token: "tok", projectKey: "proj", slug: "fix-it" });
-		expect(probe.model).toMatchObject({ state: "ready", data: { kind: "Kanban task", title: "Fix it" } });
+		expect(probe.model).toMatchObject({ state: "ready", data: { kind: "Task", title: "Fix it", meta: "fix-it", taskChips: { column: "Todo", priority: "p2", type: null } } });
 		probe.view.unmount();
 	});
 
@@ -83,7 +83,7 @@ describe("useDrawerModel", () => {
 		await probe.settle();
 		expect(probe.model).toEqual({
 			state: "ready",
-			data: { kind: "Kanban task", title: "gone", titleMono: false, meta: null, blocks: [{ heading: "Message", icon: "error", badge: null, type: "pre", text: "Task not found" }] },
+			data: { kind: "Task", title: "gone", titleMono: false, meta: null, blocks: [{ heading: "Message", icon: "error", badge: null, type: "pre", text: "Task not found" }] },
 		});
 		probe.view.unmount();
 	});
@@ -104,7 +104,7 @@ describe("useDrawerModel", () => {
 		expect(probe.model).toMatchObject({ state: "ready", data: { kind: "QA verdict", blocks: [] } });
 		await probe.settle();
 		expect(file).toHaveBeenCalledWith({ token: "tok", projectKey: "proj", path: "src/tools/score/todo.aide" });
-		expect(probe.model).toMatchObject({ state: "ready", data: { blocks: [{ heading: "Todo" }] } });
+		expect(probe.model).toMatchObject({ state: "ready", data: { blocks: [{ heading: "Issues" }] } });
 		probe.view.unmount();
 	});
 

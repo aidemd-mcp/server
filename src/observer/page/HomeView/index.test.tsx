@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectListing, ProjectView } from "@/observer/types/index.js";
 import type { RunningWork, SessionSummary, Status, WaitingFile } from "@/types/index.js";
 import stripMarkup from "@/observer/page/__fixtures__/stripMarkup/index.js";
@@ -56,6 +56,10 @@ beforeEach(() => {
 	vi.mocked(useObserverStream).mockReset();
 });
 
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
+
 describe("HomeView", () => {
 	it("asks the all-projects stream with the link's token", () => {
 		stream({});
@@ -89,33 +93,70 @@ describe("HomeView", () => {
 		expect(html).not.toContain("av-sect");
 	});
 
-	it("draws the amber waiting section before the live sessions and the projects, each with its count", () => {
+	it("has no waiting section and no live-sessions list: a gate shows as the floating button, a live session as the project's own count", () => {
 		const waiting: WaitingFile = { file: "src/a/plan.aide", folder: "src/a", kind: "plan", gate: "approve plan", sessionId: "s1", seq: 2, since: stamp(6) };
 		stream({
 			projects: [project("alpha-111111")],
 			views: { "alpha-111111": ready("alpha", { sessions: [summary("s1", { liveness: "live" })], waiting: [waiting] }) },
 		});
 		const html = render();
-		const wait = html.indexOf('id="h-wait"');
-		const live = html.indexOf('id="h-live"');
-		const projects = html.indexOf('id="h-proj"');
-		expect(wait).toBeGreaterThan(-1);
-		expect(wait).toBeLessThan(live);
-		expect(live).toBeLessThan(projects);
-		expect(stripMarkup(html)).toContain("Waiting on you 1");
-		expect(stripMarkup(html)).toContain("Live sessions 1");
+		expect(html).not.toContain("h-wait");
+		expect(html).not.toContain("h-live");
+		expect(stripMarkup(html)).not.toContain("Waiting on you 1");
+		expect(stripMarkup(html)).not.toContain("Live sessions");
+		expect(html).toContain('<div class="av-fab">');
+		expect(stripMarkup(html)).toContain("1 waiting");
 		expect(stripMarkup(html)).toContain("Projects 1");
-		expect(html).toContain('<span class="ic i-run" aria-hidden="true" style="color:var(--run)"></span>Live sessions');
 		expect(html).toContain('<span class="av-conn live">');
 	});
 
-	it("leaves out the waiting and live sections when there is none, and offers no project filter for few projects", () => {
+	it("draws no floating waiting button while no gate is open, and offers no project filter for few projects", () => {
 		stream({ projects: [project("alpha-111111")], views: { "alpha-111111": ready("alpha", { sessions: [summary("s1")] }) } });
 		const html = render();
-		expect(html).not.toContain("h-wait");
-		expect(html).not.toContain("h-live");
+		expect(html).not.toContain("av-fab");
 		expect(html).not.toContain("Filter projects");
 		expect(html).toContain('aria-expanded="false"');
+	});
+
+	it("orders projects by Activity by default, with the Custom order one button away", () => {
+		stream({ projects: [project("alpha-111111")] });
+		const html = render();
+		expect(html).toContain('<div class="av-seg av-order" role="group" aria-label="Order projects by">');
+		expect(html).toContain('<button type="button" aria-pressed="true">Activity</button>');
+		expect(html).toContain('<button type="button" aria-pressed="false" title="Drag projects to reorder">Custom</button>');
+	});
+
+	it("lists every project under one list, with no Starred section, until the viewer stars one", () => {
+		stream({ projects: [project("alpha-111111"), project("beta-222222")] });
+		const html = render();
+		expect(html).not.toContain("Starred");
+		expect(html).not.toContain("All projects");
+		expect(html.match(/class="av-list"/g)).toHaveLength(1);
+		expect(html.match(/class="p-star"/g)).toHaveLength(2);
+	});
+
+	it("puts the projects the viewer starred in a Starred section above All projects", () => {
+		vi.stubGlobal("window", { localStorage: { getItem: (key: string) => (key === "aide-viewer:starred-projects" ? JSON.stringify(["beta-222222"]) : null), setItem: () => undefined } });
+		stream({ projects: [project("alpha-111111"), project("beta-222222")] });
+		const html = render();
+		const starred = html.indexOf("★ Starred");
+		const rest = html.indexOf("All projects");
+		expect(starred).toBeGreaterThan(-1);
+		expect(starred).toBeLessThan(rest);
+		expect(stripMarkup(html)).toContain("★ Starred 1");
+		expect(stripMarkup(html)).toContain("All projects 1");
+		expect(html.indexOf("beta")).toBeLessThan(rest);
+		expect(html.lastIndexOf("alpha")).toBeGreaterThan(rest);
+		expect(html).toContain('aria-label="Unstar beta"');
+		expect(html).toContain('aria-label="Star alpha"');
+	});
+
+	it("starts every row closed, each with its Open project button", () => {
+		stream({ projects: [project("alpha-111111")] });
+		const html = render();
+		expect(html).toContain('class="av-proj-h flat" aria-expanded="false"');
+		expect(html).toContain("Open project");
+		expect(html).not.toContain("av-proj-more");
 	});
 
 	it("offers the project filter field with an accessible name only past 6 projects", () => {

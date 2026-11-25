@@ -3,5 +3,5 @@ import pickCollapsed from "@/observer/page/SessionView/TabPanel/useTreeView/pick
 
 /** A tree tab nobody has touched: no filter, both toggles off, the folders folded as the tree starts them. */
 export default function initTreeView({ tree }: { tree: TreePanelModel }): TreeView {
-	return { query: "", onlyOpen: false, onlyMisaligned: false, collapsed: pickCollapsed({ tree }) };
+	return { query: "", onlyOpen: false, onlyMisaligned: false, onlyPlans: false, onlyTodos: false, collapsed: pickCollapsed({ tree }) };
 }

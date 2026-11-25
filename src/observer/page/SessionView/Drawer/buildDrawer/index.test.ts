@@ -17,14 +17,40 @@ describe("buildDrawer", () => {
 		const source: DrawerSource = { type: "files", texts: { plan: PLAN } };
 		const drawer = buildDrawer({ item: { kind: "module", folder: "src/tools/score" }, source, context: WITH_TREE });
 		expect(drawer).toMatchObject({ kind: "Module", title: "src/tools/score" });
-		expect(drawer.blocks.map((block) => block.heading)).toEqual(["Plan"]);
+		expect(drawer.sections).toMatchObject({ open: "plan", list: [{ kind: "plan", label: "plan.aide" }] });
+		expect(drawer.sections?.list[0]?.blocks.map((block) => block.heading)).toEqual(["Body"]);
 	});
 
-	it("builds an opened todo file as its module with the todo first", () => {
+	it("builds an opened todo file as its module with the todo section open", () => {
 		const source: DrawerSource = { type: "files", texts: { plan: PLAN, todo: "- [ ] a — b\n" } };
 		const drawer = buildDrawer({ item: { kind: "file", path: "src/tools/score/todo.aide" }, source, context: WITH_TREE });
-		expect(drawer.kind).toBe("Module · todo");
-		expect(drawer.blocks.map((block) => block.heading)).toEqual(["Todo", "Plan"]);
+		expect(drawer.kind).toBe("Module");
+		expect(drawer.sections?.open).toBe("todo");
+		expect(drawer.sections?.list.map((section) => section.kind)).toEqual(["plan", "todo"]);
+	});
+
+	it("builds the root session file as the root module with its session section open", () => {
+		const root = { folder: ".", parent: null, files: [{ ...SCORE_NODE.files[0]!, folder: ".", file: ".aide/intent.aide" }] };
+		const context = makeContext({ status: makeStatus({ tree: [root] }) });
+		const source: DrawerSource = { type: "files", texts: { session: "---\nstatus: active\n---\n\n## Intent\n\nShip it.\n" } };
+		const drawer = buildDrawer({ item: { kind: "file", path: ".aide/session.aide" }, source, context });
+		expect(drawer.kind).toBe("Module");
+		expect(drawer.sections).toMatchObject({ open: "session", list: [{ kind: "session", path: ".aide/session.aide" }] });
+	});
+
+	it("builds a task as a Task with its slug as meta and its chips", () => {
+		const note: TaskNote = {
+			slug: "fix-it",
+			column: "todo",
+			markdown: "# Fix it\n\nWords.\n",
+			task: { state: "readable", slug: "fix-it", column: "todo", title: "Fix it", priority: "p2", type: "bug", tags: [], inSession: false },
+		};
+		expect(buildDrawer({ item: { kind: "task", slug: "fix-it" }, source: { type: "task", note }, context: WITH_TREE })).toMatchObject({
+			kind: "Task",
+			title: "Fix it",
+			meta: "fix-it",
+			taskChips: { column: "Todo", priority: "p2", type: "bug" },
+		});
 	});
 
 	it("builds any other file as plain text", () => {

@@ -2,7 +2,7 @@ import type { ApiResult } from "@/observer/page/types/index.js";
 import projectPath from "@/observer/page/api/projectPath/index.js";
 import requestJson from "@/observer/page/api/requestJson/index.js";
 
-/** DELETE /api/projects/<key>/sessions/<id> — removes one past session's recording; the observer refuses a live one. */
+/** DELETE /api/projects/<key>/archive/<id> — permanently removes one archived session's recording; the observer refuses a session that is not archived. */
 export default function deleteSession({
 	token,
 	projectKey,
@@ -13,7 +13,7 @@ export default function deleteSession({
 	sessionId: string;
 }): Promise<ApiResult<{ deleted: string }>> {
 	return requestJson({
-		path: projectPath({ projectKey, rest: `sessions/${encodeURIComponent(sessionId)}` }),
+		path: projectPath({ projectKey, rest: `archive/${encodeURIComponent(sessionId)}` }),
 		token,
 		method: "DELETE",
 	});

@@ -17,12 +17,15 @@ import timeline from "@/observer/seedFixtures/scenarios/shared/timeline/index.js
 export default function buildingProject({
 	large,
 	brain,
+	folderName = "aidemd-mcp",
 }: {
 	large: boolean;
 	brain: "present" | "missing";
+	/** The project's folder name, which the page shows as its name; each scenario gets its own. */
+	folderName?: string;
 }): FixtureProject {
 	return {
-		folderName: "aidemd-mcp",
+		folderName,
 		installed: true,
 		files: {
 			...moduleFiles({ large, score: { plan: { status: "approved", done: 3, total: 9 }, todo: null } }),

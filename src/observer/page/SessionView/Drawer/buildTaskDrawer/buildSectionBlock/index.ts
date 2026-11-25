@@ -9,7 +9,7 @@ import type { DrawerBlockModel } from "@/observer/page/types/index.js";
 export default function buildSectionBlock({ heading, content }: { heading: string; content: string }): DrawerBlockModel | null {
 	const blocks = parseBlocks(content);
 	if (blocks.length === 0) return null;
-	const texts = blocks.flatMap((block) => (block.type === "p" ? [block.text] : block.items));
+	const texts = blocks.flatMap((block) => ("items" in block ? block.items : [block.text]));
 	if (blocks.some((block) => block.type === "p")) return { heading, icon: "doc", badge: null, type: "text", paras: texts };
 	return { heading, icon: "list", badge: null, type: "list", items: texts };
 }

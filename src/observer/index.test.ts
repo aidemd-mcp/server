@@ -966,22 +966,56 @@ describe("startObserver project views", () => {
 		}
 	});
 
-	it("deletes a past session of its own project and leaves another project's same-named file", async () => {
+	it("archives a past session of its own project, lists it as archived, restores it, and deletes it only once archived", async () => {
 		const past = "20250101T000000Z-dddddd";
 		const pid = await deadPid();
 		const events = [makeStartedEvent({ sessionId: past, root: rootA, pid }), makeEvent({ sessionId: past, seq: 2, pid })];
 		await seedSession({ sessionId: past, root: rootA, events });
 		await seedSession({ sessionId: past, root: rootB, events: events.map((event) => ({ ...event, projectRoot: rootB })) });
 		const { port, token } = await startRunning();
+		const heldIds = async () => {
+			const listed = await send({ port, path: `/api/projects/${keyA}/sessions`, token });
+			return (json(listed).data as { sessions: { sessionId: string }[] }).sessions.map((s) => s.sessionId);
+		};
+		const archivedIds = async () => {
+			const listed = await send({ port, path: `/api/projects/${keyA}/archive`, token });
+			expect(listed.status).toBe(200);
+			return (json(listed).data as { sessions: { sessionId: string }[] }).sessions.map((s) => s.sessionId);
+		};
 
-		const reply = await send({ port, method: "DELETE", path: `/api/projects/${keyA}/sessions/${past}`, token });
-		expect(reply.status).toBe(200);
+		// Permanent delete refuses a session that has not been archived.
+		expect((await send({ port, method: "DELETE", path: `/api/projects/${keyA}/archive/${past}`, token })).status).toBe(404);
+		expect(await exists(resolveEventLog({ projectRoot: rootA, sessionId: past }))).toBe(true);
+
+		const archived = await send({ port, method: "POST", path: `/api/projects/${keyA}/sessions/${past}/archive`, token });
+		expect(archived.status).toBe(200);
 		expect(await exists(resolveEventLog({ projectRoot: rootA, sessionId: past }))).toBe(false);
 		expect(await exists(resolveEventLog({ projectRoot: rootB, sessionId: past }))).toBe(true);
 		expect(await exists(resolveEventLog({ projectRoot: rootA, sessionId: sessionA }))).toBe(true);
+		expect(await heldIds()).toEqual([sessionA]);
+		expect(await archivedIds()).toEqual([past]);
 
-		const listed = await send({ port, path: `/api/projects/${keyA}/sessions`, token });
-		expect((json(listed).data as { sessions: { sessionId: string }[] }).sessions.map((s) => s.sessionId)).toEqual([sessionA]);
+		const restored = await send({ port, method: "POST", path: `/api/projects/${keyA}/archive/${past}/restore`, token });
+		expect(restored.status).toBe(200);
+		expect(await exists(resolveEventLog({ projectRoot: rootA, sessionId: past }))).toBe(true);
+		expect((await heldIds()).sort()).toEqual([past, sessionA].sort());
+		expect(await archivedIds()).toEqual([]);
+
+		expect((await send({ port, method: "POST", path: `/api/projects/${keyA}/sessions/${past}/archive`, token })).status).toBe(200);
+		const deleted = await send({ port, method: "DELETE", path: `/api/projects/${keyA}/archive/${past}`, token });
+		expect(deleted.status).toBe(200);
+		expect(await archivedIds()).toEqual([]);
+		expect(await heldIds()).toEqual([sessionA]);
+		expect(await exists(resolveEventLog({ projectRoot: rootB, sessionId: past }))).toBe(true);
+	});
+
+	it("refuses to archive a live session and leaves its log", async () => {
+		const { port, token } = await startRunning();
+
+		const reply = await send({ port, method: "POST", path: `/api/projects/${keyA}/sessions/${sessionA}/archive`, token });
+
+		expect(reply.status).toBe(409);
+		expect(await exists(resolveEventLog({ projectRoot: rootA, sessionId: sessionA }))).toBe(true);
 	});
 
 	type Listing = { projectKey: string; projectRoot: string | null; lastEventAt: string | null; sessions: { sessionId: string; live: boolean }[] };

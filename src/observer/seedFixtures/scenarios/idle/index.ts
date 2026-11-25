@@ -18,7 +18,7 @@ export default function idle(): FixtureScenario {
 		id: "idle",
 		label: "s-idle",
 		project: {
-			folderName: "aidemd-mcp",
+			folderName: "billing-service",
 			installed: true,
 			files: {
 				...moduleFiles({

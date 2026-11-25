@@ -34,13 +34,24 @@ export type SessionLog = {
 	unreadable: boolean;
 };
 
-/** What `deleteSession` reports back. */
-export type DeleteOutcome =
-	| { outcome: "deleted" }
+/** What `deleteSession` reports back: it removes an archived session's log for good. */
+export type DeleteOutcome = { outcome: "deleted" } | { outcome: "not-found" } | { outcome: "invalid-id"; detail: string };
+
+/** What `archiveSession` reports back. */
+export type ArchiveOutcome =
+	| { outcome: "archived" }
 	| { outcome: "not-found" }
 	| { outcome: "live" }
-	/** The session's file exists but could not be read, so its liveness cannot be judged and it was not deleted. */
+	/** The session's file exists but could not be read, so its liveness cannot be judged and it was not archived. */
 	| { outcome: "unreadable" }
+	| { outcome: "invalid-id"; detail: string };
+
+/** What `restoreSession` reports back; `restored` carries the session as `read` sees it. */
+export type RestoreOutcome =
+	| { outcome: "restored"; session: SessionLog }
+	| { outcome: "not-found" }
+	/** A log with that id already sits in the events folder, so nothing was moved. */
+	| { outcome: "exists" }
 	| { outcome: "invalid-id"; detail: string };
 
 /** One project's recorded sessions as the listing returns them. */

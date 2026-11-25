@@ -1,28 +1,23 @@
 import deleteSessionLog from "@/service/observer/event/delete/index.js";
-import broadcastProjects from "../../shared/broadcastProjects/index.js";
-import findProject from "../../shared/findProject/index.js";
+import isProjectKey from "@/util/runtimePaths/isProjectKey/index.js";
 import sendJson from "../../shared/sendJson/index.js";
-import summarizeSessions from "../../shared/summarizeSessions/index.js";
 import type { RouteInput } from "../../types/index.js";
 
 /**
- * DELETE /api/projects/:project/sessions/<id> — removes one past session's log of that project
- * and drops it from memory. An unknown project is 404. A live session is refused, and so is an unreadable one (it
- * cannot be judged past): both answer 409 and nothing is dropped, broadcast
- * or pushed. An outcome the route does not know throws. On success the project's session rows are
- * broadcast (to that project's stream clients and the unfiltered ones), the home list is broadcast to
- * the unfiltered clients and its status is pushed. A throw from the delete (a broken
- * runtime location) propagates to handleRequest's 500.
+ * DELETE /api/projects/:project/archive/<id> — permanently removes one archived session's log of
+ * that project. Only an archived session can be deleted, so the session must be archived first; a
+ * session still in the project's history (live or past) is 404 here. The project is addressed by
+ * key alone, since archived sessions are not held in memory: a key that is not a project key is
+ * 404. Nothing held changes, so nothing is broadcast. An outcome the route does not know throws, and
+ * a throw from the delete (a broken runtime location) propagates to handleRequest's 500.
  */
-export default async function deleteSession({ res, params, ctx }: RouteInput): Promise<void> {
-	const project = findProject({ ctx, projectKey: params.project });
-	if (project.kind === "missing") {
+export default async function deleteSession({ res, params }: RouteInput): Promise<void> {
+	const { project: projectKey, id } = params;
+	if (!isProjectKey(projectKey)) {
 		sendJson({ res, status: 404, body: { error: { message: "No such project." } } });
 		return;
 	}
 
-	const id = params.id;
-	const { projectKey } = project;
 	const result = await deleteSessionLog({ projectKey, sessionId: id });
 
 	if (result.outcome === "invalid-id") {
@@ -30,25 +25,7 @@ export default async function deleteSession({ res, params, ctx }: RouteInput): P
 		return;
 	}
 	if (result.outcome === "not-found") {
-		sendJson({ res, status: 404, body: { error: { message: `Session ${id} was not found.` } } });
-		return;
-	}
-	if (result.outcome === "live") {
-		sendJson({
-			res,
-			status: 409,
-			body: { error: { message: `Session ${id} is still live; only a past session can be deleted.` } },
-		});
-		return;
-	}
-	if (result.outcome === "unreadable") {
-		sendJson({
-			res,
-			status: 409,
-			body: {
-				error: { message: `Session ${id} could not be read, so it cannot be judged past; it was not deleted.` },
-			},
-		});
+		sendJson({ res, status: 404, body: { error: { message: `Archived session ${id} was not found.` } } });
 		return;
 	}
 	if (result.outcome !== "deleted") {
@@ -57,13 +34,5 @@ export default async function deleteSession({ res, params, ctx }: RouteInput): P
 		throw new Error(`Unhandled delete outcome: ${JSON.stringify(unhandled)}`);
 	}
 
-	ctx.store.drop({ projectKey, sessionId: id });
-	ctx.hub.broadcast({
-		name: "sessions",
-		data: { projectKey, sessions: summarizeSessions({ sessions: ctx.store.sessions({ projectKey }), now: ctx.now() }) },
-		projectKey,
-	});
-	broadcastProjects({ ctx });
 	sendJson({ res, status: 200, body: { data: { deleted: id } } });
-	ctx.statusPusher.push(projectKey);
 }

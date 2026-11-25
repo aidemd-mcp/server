@@ -1,30 +1,29 @@
 ---
 scope: src/observer/page
 alignment: unreviewed
-description: The observer's browser page, a Home of every project's sessions and a live, deep-linkable session view, built to the design handoff and read-only except for deleting an ended session.
+description: The observer's browser page, a Home of every project's live status and a project page built around its intent tree, read-only except archiving, restoring and deleting ended sessions.
 intent: >
-  The page is how the user watches their pipelines. From across a desk one
-  glance must say which phase is running, on which module, by which agent,
-  for how long, and whether anything is waiting on the user, always the
-  loudest state. Home lists every project's waiting, live and past
-  sessions; a session view shows its rail,
-  tree, plans, board, session record and history, with tab and detail in
-  the link. It shows only what the observer serves, works fully offline,
-  offers no control but deleting an ended session, and matches the design
-  handoff in look, copy and interaction.
+  The page is how the user watches their pipelines. Home answers which
+  projects need the user and what each one is doing. A project page shows
+  one project's intent tree with every .aide file readable in full beside
+  it, under a single status row that always says whether a gate is waiting
+  and what phase, step and agent are running, for how long. Waiting on the
+  user is always the loudest thing on screen. The page shows only what the
+  observer serves, works offline, never changes the pipeline, and its only
+  writes archive, restore or delete ended sessions.
 outcomes:
   desired:
-    - Home at / shows waiting-on-you cards, then live sessions, then every project expandable to its sessions, and the link a session hands out (/p/:project/s/:session) opens its view, with the tab (?tab=tree|plans|board|record|sessions) and an open detail (&item=module:…, task:…, file:… or event:…) carried in the link so each can be deep-linked. From 2 m away on a 1440×900 screen the current phase, module, agent and elapsed time are readable without leaning in, phase and elapsed at 40px, and whenever a gate is open the amber waiting treatment is the most prominent element on Home and on the session page and the tab title says so.
-    - Everything shown comes from the observer's data and live stream, read with the token from the page's link, with files at the status and progress the observer reports, the rail and now card only from reported events, and a waiting file opening in the drawer only when the surfaced file changes, so the user's clicks win. Each accepted event appears live once and in order without a reload, reconnecting keeps every item on screen, replays missed events and never shows an error page, and an invalid link shows no live pill, no rail and no data.
-    - No text is below 12px, body and list text is at least 14px and running text has a line-height of at least 1.5, and every text colour is at least 4.5:1 on every surface it sits on, with control outlines at least 3:1, in both themes. Every state shows a glyph or a word as well as colour, Inter sets UI text and JetBrains Mono appears only on paths, slugs, hashes, durations, versions and code, both fonts self-hosted so the page works fully offline, and with reduced motion requested all pulsing, breathing and spinning stops.
-    - The rail shows 'Build — step 4 of 9' and 'QA → Fix, round 2' without extra rows or overlapping labels, a tree of 44+ modules stays usable through collapse, filter, 'only open work' and 'only misaligned' with a count of what's hidden, and a board Done column of 100+ tasks shows the 5 most recent and 'Show all'. At 1440×900 and 375×812, both themes complete, every view and state matches the design handoff's tokens, layout, copy and interactions, and at 375px nothing scrolls sideways except the phase rail, the tab strip and the record outline strip, each inside itself.
-    - Partial states read calmly and keep the rest working, including AIDE not installed, no events yet, an empty record section, no sessions anywhere, and a project with no reported root whose tree, plans and board each show a calm unavailable notice saying why while rail, card, history and sessions work from events. A board failure shows only in the board area, with the reason.
-    - Delete is the only write and exists only on ended sessions, always asking first with the exact copy 'Delete this session's history? This can't be undone.' and Cancel / Delete history, then removing that session from the list and the history. Each component in the handoff's component table exists as its own self-contained component with the listed props.
+    - Home lists every project, starred ones in their own section above all projects, each row showing its live session's status (phase and step with elapsed, waiting on you, or no phase running) and current task, and expanding to that task in full and the phase rail. Projects order by activity (waiting, running, newest event) or a dragged custom order, with the order and stars remembered in the browser, and open gates gather in a floating waiting button that never pushes the layout.
+    - On desktop the project page is a fixed frame that never scrolls as a whole, with a header, one sticky status row, the intent tree as the only main content, an always-present collapsible Details column, a bottom drawer for history, sessions and board, and a phase-rail footer. The status row is the amber waiting banner, the loudest element on the page, with a button that opens the waiting file whenever a gate is open, and otherwise a quieter bar with phase, step, agent, module, elapsed and step progress.
+    - The intent tree starts fully collapsed with sticky search and filters for open work, misaligned, has plan and has todo, and every .aide file on a module is named on its row and opens from there. Details shows a module's every .aide file, the session record on root, with every frontmatter field and every section rendered, and a task's column, priority, type and full note.
+    - Picking a session in History changes only History, the phase rail and the waiting and running state, never the page, and the link carries the project and session so a view can be shared. Ended sessions are archived first, and archived ones can be restored or deleted for good.
+    - On a phone the page keeps its tabs for tree, plans, board, sessions and history and opens details full-screen. Everything shown comes from the observer's token-protected data and live stream, fonts are self-hosted so it works offline, text meets AA contrast, reduced motion is respected and no state is shown by colour alone.
+    - Live events appear without a reload, reconnecting is a quiet banner that keeps everything on screen, and partial states read calmly, such as AIDE not installed showing the init command, no events yet, an invalid link showing a notice and no live data, a project with no reported root showing an unavailable notice in tree, plans and board while history and sessions keep working, and a board failure shown only in the board with its reason. Project order re-sorts only after data has arrived and at most every two seconds, sliding gently for live changes and never on load.
   undesired:
-    - Any control that changes the pipeline or a project, such as Approve, Reject, Move task, Start/Stop phase, Retry or Edit file, where the waiting state should tell the developer to answer in the agent's session, or any login, accounts, team or remote access. A delete offered on a live or idle session, or one that skips the confirmation.
-    - Showing data the observer doesn't serve or working out pipeline state on its own, such as a client name like claude-code, a skipped phase state, file line counts, a next step, a phase no event reported or a file status the observer did not report. A waiting file reopening the drawer over a file the user chose.
-    - The waiting treatment outshouted, or any other element using the amber fill. A state signalled by colour alone or by red/green hue alone, prose or labels set in monospace, or grey text lighter than the text-3 meta grey.
-    - An error loud outside its own area, such as a board failure spreading beyond the board, reconnecting shown as anything but a quiet banner, or an unreachable brain blanking the page. A partial state that looks broken, such as a project with no reported root shown as an empty tree or an empty record section shown as an error.
-    - A new event that needs a reload, shows twice or out of order, or a restarted observer leaving the page stale or blank instead of reconnecting quietly. The page fetching anything from the internet, such as a font or script from a CDN, breaking offline, or shipping the design tool's tweak controls or sample data as product.
-    - Blinking or pulsing with reduced motion on, emoji used as icons, or anything but the rail, tab strip and record outline strip scrolling sideways on a phone. Any token, spacing, copy or interaction drifting from the design handoff at either size or in either theme.
+    - Two waiting blocks on screen at once, or the waiting state outshouted by any other element.
+    - The desktop page scrolling as a whole, or content hiding under the header, status row, sticky search or footer.
+    - Layout jumping when data arrives, such as the waiting button pushing content down or projects reordering on load or on every event. An error loud outside its own area, such as a board failure spreading past the board or reconnecting shown as anything but a quiet banner, or a partial state that looks broken, such as an empty tree for a project with no reported root.
+    - Any .aide content the user cannot reach, such as a frontmatter field, a section or a whole file left unrendered or with nothing that opens it.
+    - Any control that changes the pipeline or a project, such as approve, reject, move task, start or stop a phase, retry or edit a file.
+    - A live session offered for archive or deletion, or a session deleted without being archived first.
 ---

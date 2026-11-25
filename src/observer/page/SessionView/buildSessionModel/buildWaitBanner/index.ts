@@ -7,7 +7,7 @@ import type { WaitBannerModel } from "@/observer/page/types/index.js";
 /**
  * The amber banner's words from the open gate the now card shows (the followed session's, else the
  * project's newest): the file's base name, its module (the root reads as the project's name) and how
- * long it has waited. Null while nothing awaits approval, or with no status to read gates from.
+ * long it has waited, plus the file's path for the banner's open button. Null while nothing awaits approval, or with no status to read gates from.
  */
 export default function buildWaitBanner({
 	status,
@@ -26,5 +26,6 @@ export default function buildWaitBanner({
 		file: baseName(waiting.file),
 		module: moduleLabel({ folder: waiting.folder, projectName: name }),
 		since: formatAgo({ iso: waiting.since, now }),
+		path: waiting.file,
 	};
 }

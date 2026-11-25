@@ -7,7 +7,7 @@ export default function notInstalled(): FixtureScenario {
 		id: "notInstalled",
 		label: "s-not-installed",
 		project: {
-			folderName: "aidemd-mcp",
+			folderName: "legacy-app",
 			installed: false,
 			files: {},
 			board: null,

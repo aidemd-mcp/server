@@ -7,7 +7,7 @@ const CONTEXT: DrawerContext = { token: "t", projectKey: "k", status: null, even
 describe("buildFailureDrawer", () => {
 	it("keeps the item's header and shows the observer's message as the only block", () => {
 		expect(buildFailureDrawer({ item: { kind: "task", slug: "gone" }, message: "Task not found", context: CONTEXT })).toEqual({
-			kind: "Kanban task",
+			kind: "Task",
 			title: "gone",
 			titleMono: false,
 			meta: null,

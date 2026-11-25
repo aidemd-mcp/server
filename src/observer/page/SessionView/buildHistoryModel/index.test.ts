@@ -58,7 +58,7 @@ describe("buildHistoryModel", () => {
 		expect(rows.every((row) => row.sessionTag === null)).toBe(true);
 	});
 
-	it("shows only the focused session while it has ended, and the running sessions otherwise", () => {
+	it("shows only the focused session when the project lists it, running or ended", () => {
 		const events = [
 			event({ kind: "prompt", seq: 1, text: "old", sessionId: "old", ts: local({ hour: 9, minute: 0 }) }),
 			event({ kind: "prompt", seq: 1, text: "now", sessionId: "s1", ts: local({ hour: 14, minute: 0 }) }),
@@ -69,9 +69,10 @@ describe("buildHistoryModel", () => {
 		];
 		expect(modelOf({ events, sessions, focus: "old" }).rows.map((row) => row.label)).toEqual(["Prompt: “old”"]);
 		expect(modelOf({ events, sessions, focus: "s1" }).rows.map((row) => row.label)).toEqual(["Prompt: “now”"]);
+		expect(modelOf({ events, sessions, focus: "s1" }).sessions).toEqual([]);
 	});
 
-	it("merges two running sessions by time, tags each row with its session's start and lists the sessions oldest first", () => {
+	it("merges two running sessions by time when the focused one is not listed, tagging each row with its session's start and listing the sessions oldest first", () => {
 		const events = [
 			event({ kind: "prompt", seq: 1, text: "second", sessionId: "b", ts: local({ hour: 15, minute: 31 }) }),
 			event({ kind: "prompt", seq: 1, text: "first", sessionId: "a", ts: local({ hour: 14, minute: 3 }) }),
@@ -80,7 +81,7 @@ describe("buildHistoryModel", () => {
 			session({ sessionId: "b", startedAt: local({ hour: 15, minute: 30 }), liveness: "live" }),
 			session({ sessionId: "a", startedAt: local({ hour: 14, minute: 2 }), liveness: "idle" }),
 		];
-		const model = modelOf({ events, sessions, focus: "a" });
+		const model = modelOf({ events, sessions, focus: "unlisted" });
 
 		expect(model.rows.map((row) => [row.label, row.sessionTag])).toEqual([
 			["Prompt: “first”", "14:02"],

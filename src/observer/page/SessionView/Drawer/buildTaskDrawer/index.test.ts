@@ -19,20 +19,23 @@ const NOTE: TaskNote = {
 };
 
 describe("buildTaskDrawer", () => {
-	it("is a Kanban task with the title and a meta line of slug, priority, type and column name", () => {
+	it("is a Task with the title, the slug as meta and the column, priority and type as chips", () => {
 		const drawer = buildTaskDrawer({ task: NOTE, linked: false, sessionStart: null });
 		expect(drawer).toMatchObject({
-			kind: "Kanban task",
+			kind: "Task",
 			title: "aide_score ranks misaligned specs below unreviewed ones",
 			titleMono: false,
-			meta: "aide-score-misaligned-rank · p1 · bug · In Progress",
+			meta: "aide-score-misaligned-rank",
+			taskChips: { column: "In Progress", priority: "p1", type: "bug" },
 		});
 		expect(drawer.blocks.map((block) => block.heading)).toEqual(["Description", "Acceptance"]);
 	});
 
-	it("leaves out a type the note has none of", () => {
+	it("has no type chip for a note with no type", () => {
 		const note: TaskNote = { ...NOTE, column: "todo", task: { state: "readable", slug: NOTE.slug, column: "todo", title: "T", priority: "p2", tags: [], inSession: false } };
-		expect(buildTaskDrawer({ task: note, linked: false, sessionStart: null }).meta).toBe("aide-score-misaligned-rank · p2 · Todo");
+		const drawer = buildTaskDrawer({ task: note, linked: false, sessionStart: null });
+		expect(drawer.meta).toBe("aide-score-misaligned-rank");
+		expect(drawer.taskChips).toEqual({ column: "Todo", priority: "p2", type: null });
 	});
 
 	it("adds a Linked block naming the session start when this session linked the task", () => {
@@ -51,13 +54,14 @@ describe("buildTaskDrawer", () => {
 		expect(drawer.blocks.at(-1)).toMatchObject({ rows: [{ value: "This session" }] });
 	});
 
-	it("shows an unreadable note's reason as its one block under the slug", () => {
+	it("shows an unreadable note's reason as its one block under the slug, with a column chip only", () => {
 		const note: TaskNote = { slug: "broken", column: "done", markdown: "", task: { state: "unreadable", slug: "broken", column: "done", reason: "Invalid YAML", inSession: false } };
 		expect(buildTaskDrawer({ task: note, linked: false, sessionStart: null })).toEqual({
-			kind: "Kanban task",
+			kind: "Task",
 			title: "broken",
 			titleMono: false,
-			meta: "broken · Done",
+			meta: "broken",
+			taskChips: { column: "Done", priority: null, type: null },
 			blocks: [{ heading: "Message", icon: "error", badge: null, type: "pre", text: "Invalid YAML" }],
 		});
 	});

@@ -36,7 +36,7 @@ function node({ folder, files }: { folder: string; files: TreeFileEntry[] }): Mo
 }
 
 describe("buildModules", () => {
-	it("lists the root first with the intent spec's own values", () => {
+	it("lists the root first, labelled `root`, with the intent spec's own values", () => {
 		const rows = buildModules({
 			tree: [
 				node({ folder: "src/a", files: [intent({ folder: "src/a", file: "src/a/.aide", alignment: "aligned" })] }),
@@ -45,7 +45,7 @@ describe("buildModules", () => {
 		});
 		expect(rows.map((row) => row.folder)).toEqual([".", "src/a"]);
 		expect(rows[0]).toMatchObject({
-			label: ".aide/intent.aide",
+			label: "root",
 			intentFile: ".aide/intent.aide",
 			alignment: "aligned",
 			description: "about .",

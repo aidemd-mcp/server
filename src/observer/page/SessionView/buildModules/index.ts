@@ -3,7 +3,7 @@ import type { ModuleNode } from "@/types/index.js";
 import type { ModuleRow } from "@/observer/page/types/index.js";
 
 /** What the tree shows for the root module. */
-const ROOT_LABEL = ".aide/intent.aide";
+const ROOT_LABEL = "root";
 
 /** One row for a node holding an intent spec or a brief, plan, todo or research file. */
 function buildRow({ node }: { node: ModuleNode }): ModuleRow | null {

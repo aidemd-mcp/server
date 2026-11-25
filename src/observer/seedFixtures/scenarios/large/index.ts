@@ -6,6 +6,6 @@ export default function large(): FixtureScenario {
 	return {
 		id: "large",
 		label: "s-large",
-		project: buildingProject({ large: true, brain: "present" }),
+		project: buildingProject({ large: true, brain: "present", folderName: "platform-monorepo" }),
 	};
 }

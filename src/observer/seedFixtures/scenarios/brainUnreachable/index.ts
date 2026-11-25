@@ -6,6 +6,6 @@ export default function brainUnreachable(): FixtureScenario {
 	return {
 		id: "brainUnreachable",
 		label: "s-board-error",
-		project: buildingProject({ large: false, brain: "missing" }),
+		project: buildingProject({ large: false, brain: "missing", folderName: "ledger-api" }),
 	};
 }

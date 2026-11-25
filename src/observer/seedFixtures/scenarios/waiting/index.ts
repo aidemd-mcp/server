@@ -15,7 +15,7 @@ export default function waiting(): FixtureScenario {
 		id: "waiting",
 		label: "s-waiting",
 		project: {
-			folderName: "aidemd-mcp",
+			folderName: "aidemd-site",
 			installed: true,
 			files: {
 				...moduleFiles({ large: false, score: { plan: { status: "proposed", done: 0, total: 9 }, todo: null } }),

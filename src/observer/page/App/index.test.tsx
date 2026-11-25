@@ -41,17 +41,26 @@ describe("App", () => {
 		expect(useObserverStream).toHaveBeenCalledWith({ token: "tok" });
 	});
 
-	it("shows the session view at /p/:project/s/:session on the tab in the link, with the tab on the root", () => {
+	it("shows the session view at /p/:project/s/:session with the link's tab on the root, folding a phone-only tab to the tree on a wide screen", () => {
 		const html = render({ pathname: "/p/app-abc123/s/s1", search: "?token=tok&tab=board" });
 		expect(html).toContain('<div class="av t-dark desk tab-board">');
 		expect(html).toContain('<section class="av-now" aria-label="Now running">');
-		expect(html).toContain('id="tab-board" aria-selected="true"');
+		expect(html).toContain('id="tab-tree" aria-selected="true"');
+		expect(html).toContain('id="tab-board" aria-selected="false"');
 		expect(useObserverStream).toHaveBeenCalledWith({ token: "tok", projectKey: "app-abc123" });
 	});
 
-	it("opens the detail the link names", () => {
+	it("selects the tab in the link on a narrow screen", () => {
+		stubBrowser({ narrow: true });
+		const html = render({ pathname: "/p/app-abc123/s/s1", search: "?token=tok&tab=board" });
+		expect(html).toContain('<div class="av t-dark phone tab-board">');
+		expect(html).toContain('id="tab-board" aria-selected="true"');
+	});
+
+	it("opens the detail the link names, docked in the side panel on a wide screen", () => {
 		const html = render({ pathname: "/p/app-abc123/s/s1", search: "?token=tok&item=task%3Afix-it" });
-		expect(html).toContain('<aside class="av-drawer"');
+		expect(html).toContain('<aside class="av-drawer docked"');
+		expect(html).toContain("Task title");
 	});
 
 	it("carries the phone class and the History tab for a narrow screen", () => {
