@@ -56,7 +56,7 @@ export default function buildSessionModel({
 	const followed = resolveFocus({ requested: focus, routeSessionId: route.sessionId, sessions });
 
 	const card = status ? buildNowCard({ status, events, focus: followed, now, stepText: ui.stepText }) : buildHeldNowCard({ events, focus: followed, now });
-	const { phases, lanes, module: current } = buildRailView({ status, events, focus: followed, now });
+	const { phases, lanes, module: current, ...rail } = buildRailView({ status, events, focus: followed, now });
 	const modules = status ? buildModules({ tree: status.tree }) : [];
 	const noRoot = view?.state === "no-project-root";
 
@@ -92,6 +92,7 @@ export default function buildSessionModel({
 		card,
 		phases,
 		lanes,
+		rail,
 		tree,
 		plans,
 		board,

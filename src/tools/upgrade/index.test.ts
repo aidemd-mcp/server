@@ -26,6 +26,7 @@ vi.mock("./spliceStub/index.js");
 vi.mock("./buildVersionsMeta/index.js");
 vi.mock("./checkMcpConfig/index.js");
 vi.mock("./checkIdeConfig/index.js");
+vi.mock("./checkHooksConfig/index.js");
 vi.mock("@/service/install/scaffoldReadme/index.js");
 // Only the default export (file IO) is mocked; parseBrainAideFromString stays real because
 // readBrainMigrationNotice parses the bundled template with it.
@@ -41,6 +42,7 @@ import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
+import checkHooksConfig from "./checkHooksConfig/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import parseBrainAide from "@/service/parseBrainAide/index.js";
 import upgrade, { UpgradeInput } from "./index.js";
@@ -137,6 +139,14 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 		category: "readme",
 	});
 	vi.mocked(parseBrainAide).mockResolvedValue(makeOkBrain());
+	vi.mocked(checkHooksConfig).mockResolvedValue([
+		{
+			name: "Claude Code hooks",
+			filePath: join(tempDir, ".claude", "settings.json"),
+			status: "matches",
+			category: "hooks",
+		},
+	]);
 }
 
 // Helper: find a category result by name
@@ -154,7 +164,7 @@ describe("upgrade", () => {
 		const result = await upgrade(tempDir);
 
 		expect(result.framework).toBe("claude");
-		expect(result.categories).toHaveLength(10);
+		expect(result.categories).toHaveLength(11);
 
 		for (const cat of result.categories) {
 			expect(cat.summary.differs).toBe(0);
@@ -752,5 +762,40 @@ describe("upgrade — targetVersion forwarding", () => {
 		await upgrade(tempDir);
 
 		expect(vi.mocked(checkMcpConfig)).toHaveBeenCalledWith(join(tempDir, ".mcp.json"), undefined);
+	});
+});
+
+describe("upgrade — hooks category", () => {
+	it("assembles the hooks category after brain from checkHooksConfig", async () => {
+		wireDefaultMocks();
+		vi.mocked(checkHooksConfig).mockResolvedValue([
+			{
+				name: "Claude Code hooks",
+				filePath: join(tempDir, ".claude", "settings.json"),
+				status: "differs",
+				category: "hooks",
+				canonicalContent: "merged",
+			},
+		]);
+
+		const result = await upgrade(tempDir);
+
+		expect(result.categories.map((c) => c.category).slice(-2)).toEqual(["brain", "hooks"]);
+		expect(findCategory(result, "hooks")!.summary.differs).toBe(1);
+		expect(vi.mocked(checkHooksConfig)).toHaveBeenCalledWith({ projectRoot: tempDir, framework: "claude" });
+	});
+
+	it("reports an empty hooks category for a framework without hooks", async () => {
+		wireDefaultMocks(CURSOR_CONFIG);
+		vi.mocked(checkHooksConfig).mockResolvedValue([]);
+
+		const result = await upgrade(tempDir);
+
+		expect(findCategory(result, "hooks")!.summary.total).toBe(0);
+		expect(vi.mocked(checkHooksConfig)).toHaveBeenCalledWith({ projectRoot: tempDir, framework: "cursor" });
+	});
+
+	it("accepts hooks as an input category", () => {
+		expect(UpgradeInput.safeParse({ category: "hooks" }).success).toBe(true);
 	});
 });

@@ -6,13 +6,13 @@ import SCORE_NODE from "@/observer/page/__fixtures__/SCORE_NODE/index.js";
 import describeFinished from "./index.js";
 
 const events = [
-	makeEvent({ seq: 1, ts: "2026-11-23T14:00:00.000Z", kind: "phase_started", phase: "spec", agent: "a", module: "src/tools/score" }),
-	makeEvent({ seq: 2, ts: "2026-11-23T14:06:02.000Z", kind: "phase_finished", phase: "spec", agent: "a", module: "src/tools/score" }),
+	makeEvent({ seq: 1, ts: "2026-11-23T14:00:00.000Z", kind: "phase_started", pipeline: "p1", phase: "spec", agent: "a", module: "src/tools/score" }),
+	makeEvent({ seq: 2, ts: "2026-11-23T14:06:02.000Z", kind: "phase_finished", pipeline: "p1", phase: "spec", agent: "a", module: "src/tools/score" }),
 ];
 
 describe("describeFinished", () => {
 	it("reads `Done <duration>` from the phase's start and finish events", () => {
-		expect(describeFinished({ phase: "spec", ctx: makeRailContext({ moduleEvents: events }) })).toEqual({ state: "done", meta: "Done 6m 02s", loop: null });
+		expect(describeFinished({ phase: "spec", ctx: makeRailContext({ pipelineEvents: events }) })).toEqual({ state: "done", meta: "Done 6m 02s", loop: null });
 	});
 
 	it("reads plain `Done` when the duration was never reported", () => {
@@ -20,16 +20,16 @@ describe("describeFinished", () => {
 	});
 
 	it("reads Build as `Done <done> of <total>` from the plan's own steps", () => {
-		const ctx = makeRailContext({ status: makeStatus({ tree: [SCORE_NODE] }), moduleEvents: events });
+		const ctx = makeRailContext({ status: makeStatus({ tree: [SCORE_NODE] }), pipelineEvents: events });
 		expect(describeFinished({ phase: "build", ctx })).toEqual({ state: "done", meta: "Done 3 of 9", loop: null });
 	});
 
 	it("falls back to Build's duration when the plan file is gone", () => {
 		const build = [
-			makeEvent({ seq: 1, ts: "2026-11-23T14:00:00.000Z", kind: "phase_started", phase: "build", agent: "a", module: "src/tools/score" }),
-			makeEvent({ seq: 2, ts: "2026-11-23T14:03:00.000Z", kind: "phase_finished", phase: "build", agent: "a", module: "src/tools/score" }),
+			makeEvent({ seq: 1, ts: "2026-11-23T14:00:00.000Z", kind: "phase_started", pipeline: "p1", phase: "build", agent: "a", module: "src/tools/score" }),
+			makeEvent({ seq: 2, ts: "2026-11-23T14:03:00.000Z", kind: "phase_finished", pipeline: "p1", phase: "build", agent: "a", module: "src/tools/score" }),
 		];
-		const ctx = makeRailContext({ status: makeStatus(), moduleEvents: build });
+		const ctx = makeRailContext({ status: makeStatus(), pipelineEvents: build });
 		expect(describeFinished({ phase: "build", ctx })).toEqual({ state: "done", meta: "Done 3m 00s", loop: null });
 	});
 });

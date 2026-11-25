@@ -10,6 +10,8 @@ const KIND_FACTS = {
 	prompt: { icon: "prompt", kindWord: "prompt: ", category: "prompts" },
 	task: { icon: "task", kindWord: "task: ", category: "tasks" },
 	phase: { icon: "flag", kindWord: "phase started: ", category: "phases" },
+	pipeline: { icon: "loop", kindWord: "pipeline: ", category: "phases" },
+	skip: { icon: "todo", kindWord: "skipped: ", category: "phases" },
 	done: { icon: "done", kindWord: "phase finished: ", category: "phases" },
 	wait: { icon: "wait", kindWord: "waiting on you: ", category: "gates" },
 	approve: { icon: "gate", kindWord: "approved: ", category: "gates" },

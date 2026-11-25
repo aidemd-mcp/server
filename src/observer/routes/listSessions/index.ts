@@ -1,5 +1,6 @@
 import findProject from "../../shared/findProject/index.js";
 import sendJson from "../../shared/sendJson/index.js";
+import readHeldLiveness from "../../shared/readHeldLiveness/index.js";
 import summarizeSessions from "../../shared/summarizeSessions/index.js";
 import type { RouteInput } from "../../types/index.js";
 
@@ -11,6 +12,10 @@ export default async function listSessions({ res, params, ctx }: RouteInput): Pr
 		return;
 	}
 
-	const sessions = summarizeSessions({ sessions: project.sessions, now: ctx.now() });
+	const liveness = await readHeldLiveness({ ctx, projectKey: project.projectKey });
+	const sessions = summarizeSessions({
+		sessions: project.sessions,
+		liveness: liveness.get(project.projectKey)?.sessions ?? {},
+	});
 	sendJson({ res, status: 200, body: { data: { sessions } } });
 }

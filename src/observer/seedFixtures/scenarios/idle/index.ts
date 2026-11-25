@@ -12,7 +12,10 @@ import timeline from "@/observer/seedFixtures/scenarios/shared/timeline/index.js
  */
 const LAST_EVENT_AGO_MIN = 40;
 
-/** `s-idle`: the whole pipeline ran and shipped; plan completed 9/9, todo 5/5 closed, QA passed, release v0.9.2. */
+/**
+ * `s-idle`: the whole pipeline ran and shipped; plan completed 9/9, todo 5/5 closed, QA passed, release v0.9.2.
+ * Its hook presence is still `working` but as old as its last event, so the session reads quiet and maybe stuck.
+ */
 export default function idle(): FixtureScenario {
 	return {
 		id: "idle",
@@ -33,7 +36,11 @@ export default function idle(): FixtureScenario {
 			board: { kanbanTag: KANBAN_TAG, tasks: boardTasks({ large: false }) },
 			reportRoot: true,
 			sessions: [
-				{ pid: "live", events: timeline({ through: "idle", lastAgoMin: LAST_EVENT_AGO_MIN }) },
+				{
+					pid: "live",
+					presence: { state: "working", minutesAgo: LAST_EVENT_AGO_MIN },
+					events: timeline({ through: "idle", lastAgoMin: LAST_EVENT_AGO_MIN }),
+				},
 				...pastSessions(),
 			],
 		},

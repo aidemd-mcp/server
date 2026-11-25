@@ -4,13 +4,14 @@ import resolveRoot from "@/util/runtimePaths/resolveRoot/index.js";
 import scenarios from "./scenarios/index.js";
 import writeBoard from "./writeBoard/index.js";
 import writeProjectFiles from "./writeProjectFiles/index.js";
+import writePresence from "./writePresence/index.js";
 import writeSessionLog from "./writeSessionLog/index.js";
 import type { FixtureSet, SeededFixtures } from "./types/index.js";
 
 /**
  * Seeds every fixture scenario of the given set for the QA observer: per scenario a project folder under
  * `<workDir>/<id>/`, its files when installed, its board under `<workDir>/<id>/brain` (or a brain
- * folder that is never created), and one event log per session in the app-data root. Writes only
+ * folder that is never created), and one event log per session in the app-data root, plus the presence file and ended mark of each session that has them. Writes only
  * under `workDir` and the app-data root the caller put in the environment, and throws before writing
  * anything when that root is not `appDataRoot`, so a mis-set environment can never seed the user's own
  * folder. Never starts an observer.
@@ -52,7 +53,11 @@ export default async function seedFixtures({
 		};
 
 		const written = await Promise.all(
-			project.sessions.map((session) => writeSessionLog({ projectRoot, session, now, reported })),
+			project.sessions.map(async (session) => {
+				const log = await writeSessionLog({ projectRoot, session, now, reported });
+				await writePresence({ projectRoot, session, sessionId: log.sessionId, now });
+				return log;
+			}),
 		);
 		// Every session of one project root shares its key; a project with no sessions has none to report.
 		const projectKey = written[0]?.projectKey ?? "";

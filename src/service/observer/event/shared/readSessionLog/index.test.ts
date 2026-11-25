@@ -3,19 +3,11 @@ import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-vi.mock("@/util/isProcessRunning/index.js", () => ({
-	default: vi.fn(),
-}));
-
-import isProcessRunning from "@/util/isProcessRunning/index.js";
 import readSessionLog from "@/service/observer/event/shared/readSessionLog/index.js";
 import type { ObserverEvent } from "@/service/observer/event/shared/schema/index.js";
 
-const mockIsProcessRunning = isProcessRunning as ReturnType<typeof vi.fn>;
-
 const SESSION_ID = "20261122T090000000Z-aaaaaa";
 const NOW = Date.parse("2026-11-22T12:00:00.000Z");
-const HOUR = 60 * 60 * 1000;
 
 function makeEvent(overrides: Record<string, unknown> = {}): ObserverEvent {
 	return {
@@ -40,7 +32,6 @@ describe("readSessionLog", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
-		mockIsProcessRunning.mockReturnValue(false);
 		vi.useFakeTimers({ toFake: ["Date"] });
 		vi.setSystemTime(NOW);
 		folder = await mkdtemp(join(tmpdir(), "read-session-log-"));
@@ -88,31 +79,14 @@ describe("readSessionLog", () => {
 		expect(log?.skippedLines).toBe(1);
 	});
 
-	it("is live when the last event is recent", async () => {
+	it("judges no liveness: the raw log carries events and no liveness field", async () => {
 		await writeFile(path, toLines([makeEvent({ seq: 1 })]), "utf-8");
 
 		const log = await readSessionLog({ path, sessionId: SESSION_ID });
 
-		expect(log?.live).toBe(true);
-	});
-
-	it("is not live when the last event is old and its pid is dead", async () => {
-		const old = new Date(NOW - 2 * HOUR).toISOString();
-		await writeFile(path, toLines([makeEvent({ seq: 1, ts: old })]), "utf-8");
-
-		const log = await readSessionLog({ path, sessionId: SESSION_ID });
-
-		expect(log?.live).toBe(false);
-	});
-
-	it("is live when the last event is old but its pid still runs", async () => {
-		mockIsProcessRunning.mockReturnValue(true);
-		const old = new Date(NOW - 2 * HOUR).toISOString();
-		await writeFile(path, toLines([makeEvent({ seq: 1, ts: old })]), "utf-8");
-
-		const log = await readSessionLog({ path, sessionId: SESSION_ID });
-
-		expect(log?.live).toBe(true);
+		expect(log).not.toHaveProperty("liveness");
+		expect(log).not.toHaveProperty("live");
+		expect(log?.events).toHaveLength(1);
 	});
 
 	it("marks a path that cannot be read as unreadable", async () => {
@@ -125,7 +99,6 @@ describe("readSessionLog", () => {
 			started: null,
 			events: [],
 			skippedLines: 0,
-			live: false,
 			unreadable: true,
 		});
 	});

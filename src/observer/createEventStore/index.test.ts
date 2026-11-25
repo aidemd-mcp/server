@@ -18,11 +18,11 @@ function makeEvent({
 }
 
 function makeSessionLog({ sessionId, events }: { sessionId: string; events: ObserverEvent[] }): SessionLog {
-	return { sessionId, started: null, events, skippedLines: 0, live: false, unreadable: false };
+	return { sessionId, started: null, events, skippedLines: 0, liveness: { state: "ended", lastActivityAt: null, quietMinutes: 0, maybeStuck: false }, unreadable: false };
 }
 
 function makeProject({ projectKey, sessions }: { projectKey: string; sessions: SessionLog[] }): ProjectLog {
-	return { projectKey, projectRoot: null, sessions };
+	return { projectKey, projectRoot: null, sessions, unlinked: [] };
 }
 
 const seqsOf = (events: ObserverEvent[]): number[] => events.map((event) => event.seq);

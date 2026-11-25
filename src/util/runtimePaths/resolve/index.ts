@@ -2,7 +2,7 @@ import { platform } from "node:os";
 import type { RuntimePaths } from "../types/index.js";
 import pickPathModule from "../shared/pickPathModule/index.js";
 import resolveAppDataRoot from "../shared/resolveAppDataRoot/index.js";
-import { EVENTS_FOLDER } from "../shared/runtimeNames/index.js";
+import { ENDED_FOLDER, EVENTS_FOLDER, PRESENCE_FOLDER } from "../shared/runtimeNames/index.js";
 import nameProjectFolder from "./nameProjectFolder/index.js";
 
 /**
@@ -22,6 +22,8 @@ export default function resolve({ projectRoot }: { projectRoot: string }): Runti
 	// Build the project paths.
 	const folder = pathModule.join(appDataRoot, name);
 	const eventsFolder = pathModule.join(folder, EVENTS_FOLDER);
+	const presenceFolder = pathModule.join(folder, PRESENCE_FOLDER);
+	const endedFolder = pathModule.join(folder, ENDED_FOLDER);
 
 	// Guard: the runtime folder must not be the project root or inside it.
 	const root = pathModule.resolve(projectRoot);
@@ -32,5 +34,5 @@ export default function resolve({ projectRoot }: { projectRoot: string }): Runti
 		throw new Error(`Runtime folder "${folder}" lies inside the project root "${root}"`);
 	}
 
-	return { projectKey: name, folder, eventsFolder };
+	return { projectKey: name, folder, eventsFolder, presenceFolder, endedFolder };
 }

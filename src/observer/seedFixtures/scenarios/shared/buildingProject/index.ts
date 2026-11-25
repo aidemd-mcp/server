@@ -36,6 +36,9 @@ export default function buildingProject({
 				? { kanbanTag: KANBAN_TAG, missingBrain: true }
 				: { kanbanTag: KANBAN_TAG, tasks: boardTasks({ large }) },
 		reportRoot: true,
-		sessions: [{ pid: "live", events: timeline({ through: "build", lastAgoMin: lastEventAgoMin }) }, ...pastSessions()],
+		sessions: [
+			{ pid: "live", presence: { state: "working", minutesAgo: lastEventAgoMin }, events: timeline({ through: "build", lastAgoMin: lastEventAgoMin }) },
+			...pastSessions(),
+		],
 	};
 }

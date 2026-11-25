@@ -28,24 +28,30 @@ afterEach(async () => {
 });
 
 describe("tryBind", () => {
-	it("returns true for a free port", async () => {
+	it("answers ok for a free port", async () => {
 		const { server, port } = await listenOnFreePort();
 		await closeServer(server);
 
-		expect(await tryBind(port)).toBe(true);
+		expect(await tryBind(port)).toEqual({ ok: true });
 	});
 
-	it("returns false for a port held by another server", async () => {
+	it("answers in use for a port held by another server", async () => {
 		const { port } = await listenOnFreePort();
 
-		expect(await tryBind(port)).toBe(false);
+		expect(await tryBind(port)).toEqual({ ok: false, reason: "in use" });
 	});
 
-	it("leaves the port free again right after a true result", async () => {
+	it("leaves the port free again right after an ok result", async () => {
 		const { server, port } = await listenOnFreePort();
 		await closeServer(server);
 
-		expect(await tryBind(port)).toBe(true);
-		expect(await tryBind(port)).toBe(true);
+		expect(await tryBind(port)).toEqual({ ok: true });
+		expect(await tryBind(port)).toEqual({ ok: true });
+	});
+
+	it("answers the error code for a port that cannot exist, never throwing", async () => {
+		const result = await tryBind(70000);
+
+		expect(result.ok).toBe(false);
 	});
 });

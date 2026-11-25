@@ -10,6 +10,7 @@ import installMethodologyDocs from "./installMethodologyDocs/index.js";
 import scaffoldCommands from "./scaffoldCommands/index.js";
 import installAgents from "./installAgents/index.js";
 import installSkills from "./installSkills/index.js";
+import installHooks from "./installHooks/index.js";
 import installAideTree from "./installAideTree/index.js";
 import wireMcp from "./wireMcp/index.js";
 import provisionBrain from "./provisionBrain/index.js";
@@ -57,7 +58,7 @@ export async function planBrainCategory(
 export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
 	path: z.string().optional().describe("Custom project root path (defaults to server working directory)"),
-	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
+	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme", "hooks"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
 });
 
 /**
@@ -89,7 +90,7 @@ export default async function init(
 
 	// Collect planning steps from each helper. Order follows the spec's category
 	// list: methodology (pointer, docs, versions.json, session record), commands,
-	// agents, skills, mcp, brain, ide. The session record step is content-free: it
+	// agents, skills, mcp, brain, ide, hooks (Claude Code only), then the readme. The session record step is content-free: it
 	// carries an instruction for the agent to call aide_scaffold, never file bytes.
 	const docSteps = await installMethodologyDocs(join(projectRoot, config.docHubDir), config.docHubDir);
 	const methodologyStep = await writeMethodology(join(projectRoot, config.configPath), config.docHubDir);
@@ -125,6 +126,7 @@ export default async function init(
 	const sessionStep = await planSessionRecord(projectRoot);
 
 	const zedStep = await configureZed(projectRoot);
+	const hookSteps = await installHooks({ projectRoot, framework: config.framework });
 	const readmeStep = await scaffoldReadme(projectRoot);
 
 	const steps = [
@@ -139,6 +141,7 @@ export default async function init(
 		mcpStep,
 		...brainSteps,
 		zedStep,
+		...hookSteps,
 		readmeStep,
 	];
 

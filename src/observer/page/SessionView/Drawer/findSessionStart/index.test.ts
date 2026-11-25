@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { ObserverEvent } from "@/types/index.js";
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 import findSessionStart from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
-const ROW: SessionRowModel = { sessionId: "s1", startedAt: "2026-11-23T14:02:00.000Z", lastEventAt: null, eventCount: 2, liveness: "live", task: null, label: null };
+const ROW: SessionRowModel = { sessionId: "s1", startedAt: "2026-11-23T14:02:00.000Z", lastEventAt: null, eventCount: 2, liveness: makeLiveness(), task: null, label: null };
 
 function prompt({ seq, ts, sessionId = "s2" }: { seq: number; ts: string; sessionId?: string }): ObserverEvent {
 	return { v: 1, ts, sessionId, seq, pid: 1, kind: "prompt", text: "hi" };

@@ -40,7 +40,7 @@ describe("requestShutdown", () => {
 	it("posts the caller's version with the token as JSON to the shutdown route", async () => {
 		const address = await listen(202);
 
-		await requestShutdown({ observer: { address, token: TOKEN, pid: 1, version: "1.0.0" }, version: "2.0.0" });
+		await requestShutdown({ observer: { address, port: Number(new URL(address).port), token: TOKEN, pid: 1, version: "1.0.0" }, version: "2.0.0" });
 
 		expect(seen).toEqual({
 			method: "POST",
@@ -60,7 +60,7 @@ describe("requestShutdown", () => {
 	])("answers status %i as %s", async (status, expected) => {
 		const address = await listen(status);
 
-		const answer = await requestShutdown({ observer: { address, token: TOKEN, pid: 1, version: "1.0.0" }, version: "2.0.0" });
+		const answer = await requestShutdown({ observer: { address, port: Number(new URL(address).port), token: TOKEN, pid: 1, version: "1.0.0" }, version: "2.0.0" });
 
 		expect(answer).toBe(expected);
 	});
@@ -71,7 +71,7 @@ describe("requestShutdown", () => {
 		await new Promise((done) => server!.close(done));
 		server = null;
 
-		const answer = await requestShutdown({ observer: { address, token: TOKEN, pid: 1, version: "1.0.0" }, version: "2.0.0" });
+		const answer = await requestShutdown({ observer: { address, port: Number(new URL(address).port), token: TOKEN, pid: 1, version: "1.0.0" }, version: "2.0.0" });
 
 		expect(answer).toBe("failed");
 	});

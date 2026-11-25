@@ -28,6 +28,11 @@ describe("findElapsed", () => {
 		expect(findElapsed({ phase: "build", ctx })).toBe("1m 30s");
 	});
 
+	it("counts any module's running work when the pipeline's events name no module", () => {
+		const ctx = makeRailContext({ module: null, status: statusWith([makeWork({ phase: "build", module: "src/other", elapsedMs: 10_000 })]) });
+		expect(findElapsed({ phase: "build", ctx })).toBe("10s");
+	});
+
 	it("matches the module whatever form the event recorded it in", () => {
 		const ctx = makeRailContext({ status: statusWith([makeWork({ phase: "build", module: "/work/app/src/tools/score", elapsedMs: 10_000 })]) });
 		expect(findElapsed({ phase: "build", ctx })).toBe("10s");

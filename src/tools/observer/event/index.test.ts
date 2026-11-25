@@ -23,10 +23,10 @@ describe("event", () => {
 	});
 
 	it("replies with formatReply's line for the outcome", async () => {
-		mockRecord.mockResolvedValue({ logged: "written", delivered: false });
+		mockRecord.mockResolvedValue({ logged: "written", delivered: false, sessionId: "2026-11-25T10-00-00Z-ab12" });
 
 		const reply = await event({ root: "/project", input: {} });
 
-		expect(reply).toBe("recorded; observer not running");
+		expect(reply).toBe("recorded; observer not running [observer-session 2026-11-25T10-00-00Z-ab12]");
 	});
 });

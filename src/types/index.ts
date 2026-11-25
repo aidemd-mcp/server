@@ -6,9 +6,11 @@ export type { BrainSectionContractEntry, BrainSectionField, BrainSectionMarker }
 export type { GovernedKind, GovernedField, AlignmentValue, WorkStatus } from "@/tools/frontmatter/types/index.js";
 export type { ObserverEventInput, ObserverEvent, SessionStartedEvent } from "@/service/observer/event/shared/schema/index.js";
 export type { ObserverRecord } from "@/service/observer/event/shared/observerRecord/index.js";
-export type { RecordOutcome, SessionLog, DeleteOutcome, ProjectLog } from "@/service/observer/event/types/index.js";
+export type { EndedMark } from "@/service/observer/event/shared/endedMark/index.js";
+export type { Presence } from "@/service/observer/event/shared/presenceRecord/index.js";
+export type { RecordOutcome, SessionLog, DeleteOutcome, ProjectLog, SessionLiveness, UnlinkedPresence, LivenessReport, RawSessionLog, HookEventName, TouchPresenceInput, TouchOutcome, EndSessionOutcome } from "@/service/observer/event/types/index.js";
 export type { BoardColumnId, ReportedLocation, BoardUnavailable, BoardTask, BoardColumn, Board, BoardResult, TaskReadResult } from "@/service/observer/kanban/types/index.js";
-export type { Phase, StatusInput, FileProgress, TreeFileEntry, TreeFileKind, ModuleNode, WorkFileEntry, SessionRecord, Liveness, SessionSummary, RunningWork, WaitingFile, RailPhaseState, RailPhase, PhaseRail, HistoryRow, StatusPart, StatusProblem, Status } from "@/service/observer/status/types/index.js";
+export type { Phase, StatusInput, FileProgress, TreeFileEntry, TreeFileKind, ModuleNode, WorkFileEntry, SessionRecord, SessionSummary, RunningWork, WaitingFile, RailPhaseState, RailPhase, PipelineRail, HistoryRow, StatusPart, StatusProblem, Status } from "@/service/observer/status/types/index.js";
 
 /** The four .aide spec types: intent, research, plan, todo. */
 export type AideFileType = "intent" | "research" | "todo" | "plan";
@@ -218,7 +220,8 @@ export type McpPinMove = { from: string | null; to: string };
 
 /**
  * The category of a single init step. The calling agent uses this
- * discriminant to walk through categories with the user.
+ * discriminant to walk through categories with the user. `hooks` merges AIDE's
+ * own Claude Code hook entries into `.claude/settings.json`.
  */
 export type InitCategory =
 	| "framework"
@@ -229,7 +232,8 @@ export type InitCategory =
 	| "mcp"
 	| "brain"
 	| "ide"
-	| "readme";
+	| "readme"
+	| "hooks";
 
 /**
  * Status of a single init step.
@@ -498,7 +502,8 @@ export interface InitResult {
 /**
  * Per-category group names for upgrade results.
  * The agent presents results grouped by category and lets the user confirm
- * or decline each category independently.
+ * or decline each category independently. `hooks` merges AIDE's own Claude Code
+ * hook entries into `.claude/settings.json`.
  */
 export type UpgradeCategory =
 	| "pointer-stub"
@@ -510,7 +515,8 @@ export type UpgradeCategory =
 	| "mcp"
 	| "ide"
 	| "readme"
-	| "brain";
+	| "brain"
+	| "hooks";
 
 /**
  * Comparison status for a single file in an upgrade run.

@@ -1,0 +1,24 @@
+---
+scope: src/cli/hook
+alignment: unreviewed
+description: "Terminal entry called by Claude Code hooks that turns each hook call into session presence and pings a running observer, fast, silent and never failing the agent."
+intent: >
+  Claude Code runs hooks itself, apart from the aide server, when a session
+  starts, on each prompt and tool call, when the agent stops and when the
+  session ends. This entry turns each call into that session's presence
+  (working, waiting on the user, or ended) with the time, records it, then
+  pings a running observer so open pages update live. It exists only to
+  report presence: it returns fast, prints nothing meant for a person, and
+  never fails, blocks or slows the agent's work, whatever goes wrong.
+outcomes:
+  desired:
+    - A session start, a prompt or a tool call records the session as working, the agent stopping records it as waiting on the user, and the session's end records it ended, each with the hook's time.
+    - Presence is recorded before any attempt to reach the observer, so it survives the observer being off, and a running observer is pinged so open pages show the change without a reload.
+    - Every call exits successfully and fast, whether recording, pinging or reading the hook's input fails, so the agent's work never waits on it or breaks because of it.
+    - Presence lands in per-user storage outside the project, under the hook's own session and project, apart from that session's report log.
+  undesired:
+    - A hook call that fails, errors, prompts or takes long enough to slow the agent, including when the observer is down or the hook's input is malformed.
+    - Presence written into the project, or into a session's report log so that log gains a second writer.
+    - A hook call that starts the observer, ends any session but its own, or deletes any record.
+    - Presence recorded under the wrong session or project, or the agent stopping recorded as ended, so a session waiting on the user reads as closed.
+---

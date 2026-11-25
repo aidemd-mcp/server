@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HistoryKind, HistoryModel, HistoryRowModel, SessionRowModel } from "@/observer/page/types/index.js";
 import KIND_FACTS from "@/observer/page/SessionView/buildHistoryModel/kindFacts/index.js";
 import NOW from "@/observer/page/__fixtures__/NOW/index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 vi.mock("react", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("react")>();
@@ -27,7 +28,7 @@ const HISTORY: HistoryModel = {
 	counts: { sessions: 1, phases: 1, commits: 1 },
 };
 
-const SESSIONS: SessionRowModel[] = [{ sessionId: "s1", startedAt: "2026-11-23T14:00:00.000Z", lastEventAt: null, eventCount: 3, liveness: "live", task: null, label: null }];
+const SESSIONS: SessionRowModel[] = [{ sessionId: "s1", startedAt: "2026-11-23T14:00:00.000Z", lastEventAt: null, eventCount: 3, liveness: makeLiveness(), task: null, label: null }];
 
 function html({ history = HISTORY, sessions = SESSIONS, boardCount = "4" as string | null } = {}): string {
 	return renderToStaticMarkup(

@@ -25,6 +25,7 @@ export default async function buildProjectView({
 	if (project.projectRoot === null) return { state: "no-project-root", projectKey, detail: NO_ROOT_DETAIL };
 
 	const status = await rebuildStatus({
+		projectKey,
 		projectRoot: project.projectRoot,
 		sessions: project.sessions,
 		brainOverride: pickBrainOverride({ ctx, projectKey }),

@@ -11,7 +11,9 @@ import listProjectFolders from "@/util/runtimePaths/listProjectFolders/index.js"
 import resolve from "@/util/runtimePaths/resolve/index.js";
 import resolveRoot from "@/util/runtimePaths/resolveRoot/index.js";
 import resolveEventLog from "@/util/runtimePaths/resolveEventLog/index.js";
+import touchPresence from "@/service/observer/event/touchPresence/index.js";
 import protocol from "@/service/observer/event/shared/protocol/index.js";
+import writeEndedMark from "@/service/observer/event/shared/writeEndedMark/index.js";
 import findRunningObserver from "./findRunningObserver/index.js";
 import startObserver from "./index.js";
 import buildViewLink from "./buildViewLink/index.js";
@@ -29,6 +31,17 @@ vi.mock("@/util/isProcessRunning/index.js", async (importOriginal) => {
 	};
 });
 const pageAssets = vi.hoisted(() => ({ folder: "" }));
+const bindGate = vi.hoisted(() => ({ busy: new Set<number>() }));
+vi.mock("./bindServer/index.js", async (importOriginal) => {
+	const original = await importOriginal<typeof import("./bindServer/index.js")>();
+	return {
+		// A port in the gate reads as busy without a real holder, so the walk is exercised on any machine.
+		default: (input: Parameters<typeof original.default>[0]) =>
+			bindGate.busy.has(input.port)
+				? Promise.resolve({ kind: "failed" as const, reason: `Port ${input.port} is busy; stubbed.` })
+				: original.default(input),
+	};
+});
 vi.mock("./locatePageAssets/index.js", () => ({ default: () => pageAssets.folder }));
 vi.mock("@/util/readPackageVersion/index.js", () => ({ default: () => observerVersion.value }));
 
@@ -101,6 +114,7 @@ afterEach(async () => {
 	observerVersion.value = "1.0.0";
 	pidGate.fake = false;
 	pidGate.gone = false;
+	bindGate.busy.clear();
 	await Promise.all(stops.splice(0).map((stop) => stop()));
 	vi.unstubAllEnvs();
 	await rm(projectRoot, { recursive: true, force: true });
@@ -127,7 +141,13 @@ describe("startObserver lifecycle", () => {
 		const result = await start({ port });
 		if (result.outcome !== "started") throw new Error("expected a start");
 		const token = new URL(urlOf(result)).searchParams.get("token");
-		expect(await readRecord()).toEqual({ address: `http://127.0.0.1:${port}`, token, pid: process.pid, version: "1.0.0" });
+		expect(await readRecord()).toEqual({
+			address: `http://127.0.0.1:${port}`,
+			port,
+			token,
+			pid: process.pid,
+			version: "1.0.0",
+		});
 	});
 
 	it("answers a second start with kept: the same address and token, nothing bound, the first still serving", async () => {
@@ -152,6 +172,7 @@ describe("startObserver lifecycle", () => {
 		const token = new URL(urlOf(result)).searchParams.get("token");
 		expect(await findRunningObserver()).toEqual({
 			address: `http://127.0.0.1:${port}`,
+			port,
 			token,
 			pid: process.pid,
 			version: "1.0.0",
@@ -213,15 +234,41 @@ describe("startObserver lifecycle", () => {
 		expect(await readRecord()).not.toMatchObject({ token: "old" });
 	});
 
-	it("returns not-started naming a busy port, writes no record and binds nothing else", async () => {
+	it("binds the next list port when the preferred port is held, and the record names it", async () => {
+		const holder = createServer();
+		await new Promise<void>((done) => holder.listen(0, "127.0.0.1", done));
+		const { port: held } = holder.address() as AddressInfo;
+		// Only the last list port can bind (a real observer may hold the head), so the result does not depend on the machine.
+		const target = protocol.ports[protocol.ports.length - 1]!;
+		bindGate.busy = new Set(protocol.ports.filter((port) => port !== target));
+		try {
+			const result = await start({ port: held });
+			expect(result).toMatchObject({ outcome: "started", observer: { port: target, address: `http://127.0.0.1:${target}` } });
+			expect(await readRecord()).toMatchObject({ port: target, address: `http://127.0.0.1:${target}` });
+		} finally {
+			await new Promise<void>((done) => holder.close(() => done()));
+		}
+	});
+
+	it("binds a free preferred port outside the list and never touches the list", async () => {
+		bindGate.busy = new Set(protocol.ports);
+		const port = await freePort();
+		const result = await start({ port });
+		expect(result).toMatchObject({ outcome: "started", observer: { port } });
+		expect(await readRecord()).toMatchObject({ port });
+	});
+
+	it("returns not-started naming every port tried, writes no record and binds nothing", async () => {
 		const holder = createServer();
 		await new Promise<void>((done) => holder.listen(0, "127.0.0.1", done));
 		const { port } = holder.address() as AddressInfo;
+		bindGate.busy = new Set(protocol.ports);
 		try {
 			const result = await start({ port });
 			expect(result).toMatchObject({ outcome: "not-started" });
 			if (result.outcome !== "not-started") throw new Error("expected a reason");
-			expect(result.reason).toContain(String(port));
+			expect(result.reason).toMatch(/^No port could be bound: /);
+			for (const tried of [port, ...protocol.ports]) expect(result.reason).toContain(String(tried));
 			const { observerFile } = resolveRoot();
 			expect(await exists(observerFile)).toBe(false);
 		} finally {
@@ -243,7 +290,7 @@ describe("startObserver lifecycle", () => {
 		const result = await start({ port });
 		if (result.outcome !== "started") throw new Error("expected a start");
 		const { observerFile } = resolveRoot();
-		const replacement = { address: `http://127.0.0.1:${port}`, token: "someone-else", pid: process.pid, version: "1.0.0" };
+		const replacement = { address: `http://127.0.0.1:${port}`, port, token: "someone-else", pid: process.pid, version: "1.0.0" };
 		await writeFile(observerFile, JSON.stringify(replacement));
 
 		await result.stop();
@@ -351,6 +398,26 @@ async function seedSession({
 	await create({ projectRoot: root });
 	const body = events.map((event) => JSON.stringify(event)).join("\n");
 	await writeFile(resolveEventLog({ projectRoot: root, sessionId }), `${body}\n`);
+}
+
+/** Writes the ended mark of a session the way the end-session tool does, so the recording side judges it ended. */
+async function markEnded({ sessionId, root = projectRoot }: { sessionId: string; root?: string }): Promise<void> {
+	const { projectKey } = await create({ projectRoot: root });
+	await writeEndedMark({ projectKey, mark: { v: 1, sessionId, endedAt: new Date().toISOString(), endedBy: "user" } });
+}
+
+/** Records a Stop hook linked to a session, so the recording side judges it waiting. The ping fails silently when no observer runs. */
+async function markWaiting({ sessionId, root = projectRoot }: { sessionId: string; root?: string }): Promise<void> {
+	const outcome = await touchPresence({
+		projectRoot: root,
+		claudeSessionId: `claude-${sessionId}`,
+		hookEvent: "Stop",
+		state: "waiting",
+		at: new Date().toISOString(),
+		linkSessionId: sessionId,
+		endsObserverSession: false,
+	});
+	if (!outcome.written) throw new Error(`presence was not written: ${outcome.detail ?? "unchanged"}`);
 }
 
 function tokenOf(url: string): string {
@@ -971,6 +1038,7 @@ describe("startObserver project views", () => {
 		const pid = await deadPid();
 		const events = [makeStartedEvent({ sessionId: past, root: rootA, pid }), makeEvent({ sessionId: past, seq: 2, pid })];
 		await seedSession({ sessionId: past, root: rootA, events });
+		await markEnded({ sessionId: past, root: rootA });
 		await seedSession({ sessionId: past, root: rootB, events: events.map((event) => ({ ...event, projectRoot: rootB })) });
 		const { port, token } = await startRunning();
 		const heldIds = async () => {
@@ -1018,7 +1086,53 @@ describe("startObserver project views", () => {
 		expect(await exists(resolveEventLog({ projectRoot: rootA, sessionId: sessionA }))).toBe(true);
 	});
 
-	type Listing = { projectKey: string; projectRoot: string | null; lastEventAt: string | null; sessions: { sessionId: string; live: boolean }[] };
+	it("lists working, waiting and ended sessions from the files on disk, on the sessions and archive routes alike", async () => {
+		const waiting = "20260101T000000Z-wwwwww";
+		const ended = "20260101T000000Z-eeeeee";
+		await seedSession({ sessionId: waiting, root: rootA, events: [makeStartedEvent({ sessionId: waiting, root: rootA })] });
+		await seedSession({ sessionId: ended, root: rootA, events: [makeStartedEvent({ sessionId: ended, root: rootA })] });
+		await markWaiting({ sessionId: waiting, root: rootA });
+		await markEnded({ sessionId: ended, root: rootA });
+		const { port, token } = await startRunning();
+
+		const listed = await send({ port, path: `/api/projects/${keyA}/sessions`, token });
+		const states = Object.fromEntries(
+			(json(listed).data as { sessions: { sessionId: string; liveness: { state: string; endedBy?: string } }[] }).sessions.map((s) => [
+				s.sessionId,
+				s.liveness,
+			]),
+		);
+
+		expect(states[sessionA]).toMatchObject({ state: "working" });
+		expect(states[waiting]).toMatchObject({ state: "waiting" });
+		expect(states[ended]).toMatchObject({ state: "ended", endedBy: "user" });
+
+		expect((await send({ port, method: "POST", path: `/api/projects/${keyA}/sessions/${ended}/archive`, token })).status).toBe(200);
+		const archive = await send({ port, path: `/api/projects/${keyA}/archive`, token });
+		const archived = (json(archive).data as { sessions: { sessionId: string; liveness: { state: string } }[] }).sessions;
+		expect(archived.map((s) => [s.sessionId, s.liveness.state])).toEqual([[ended, "ended"]]);
+
+		const refused = await send({ port, method: "POST", path: `/api/projects/${keyA}/sessions/${waiting}/archive`, token });
+		expect(refused.status).toBe(409);
+		expect(json(refused)).toEqual({ error: { message: `Session ${waiting} has not ended; only an ended session can be archived.` } });
+	});
+
+	it("hands status an archived session's events for resuming and never lists that session as a session of the project", async () => {
+		const past = "20250101T000000Z-aaaaaa";
+		await seedSession({ sessionId: past, root: rootA, events: [makeStartedEvent({ sessionId: past, root: rootA })] });
+		await markEnded({ sessionId: past, root: rootA });
+		const { port, token } = await startRunning();
+		expect((await send({ port, method: "POST", path: `/api/projects/${keyA}/sessions/${past}/archive`, token })).status).toBe(200);
+
+		const status = await send({ port, path: `/api/projects/${keyA}/status`, token });
+
+		expect(status.status).toBe(200);
+		const sessions = (json(status).data as { status: { sessions: { sessionId: string }[] } }).status.sessions.map((s) => s.sessionId);
+		expect(sessions).not.toContain(past);
+		expect(sessions).toContain(sessionA);
+	});
+
+	type Listing = { projectKey: string; projectRoot: string | null; lastEventAt: string | null; sessions: { sessionId: string; liveness: { state: "working" | "waiting" | "ended"; endedBy?: string } }[] };
 
 	async function readProjects({ port, token }: { port: number; token: string }): Promise<Listing[]> {
 		const reply = await send({ port, path: "/api/projects", token });
@@ -1033,6 +1147,7 @@ describe("startObserver project views", () => {
 			root: rootA,
 			events: [makeStartedEvent({ sessionId: ended, root: rootA, pid: await deadPid() })],
 		});
+		await markEnded({ sessionId: ended, root: rootA });
 		const { port, token } = await startRunning();
 
 		const projects = await readProjects({ port, token });
@@ -1044,7 +1159,7 @@ describe("startObserver project views", () => {
 		expect(byKey[keyC].projectRoot).toBeNull();
 		expect(byKey[keyC].sessions.map((s) => s.sessionId)).toEqual([sessionC]);
 		expect(byKey[keyC].lastEventAt).not.toBeNull();
-		expect(Object.fromEntries(byKey[keyA].sessions.map((s) => [s.sessionId, s.live]))).toEqual({ [ended]: false, [sessionA]: true });
+		expect(Object.fromEntries(byKey[keyA].sessions.map((s) => [s.sessionId, s.liveness.state]))).toEqual({ [ended]: "ended", [sessionA]: "working" });
 	});
 
 	it("adds a project first posted after start to the list and to a projects frame; filtered clients get no projects frame", async () => {
@@ -1063,7 +1178,7 @@ describe("startObserver project views", () => {
 
 		const frame = await home.waitFor({ name: "projects", ms: 2000 });
 		const listed = (frame.data.projects as Listing[]).find((p) => p.projectKey === keyD);
-		expect(listed).toMatchObject({ projectRoot: rootD, sessions: [{ sessionId: sessionD, live: true }] });
+		expect(listed).toMatchObject({ projectRoot: rootD, sessions: [{ sessionId: sessionD, liveness: { state: "working" } }] });
 		expect((await readProjects({ port, token })).map((p) => p.projectKey)).toContain(keyD);
 		const seen = await filtered.quiet({ ms: 300 });
 		expect(seen.filter((f) => f.name === "projects")).toEqual([]);
@@ -1343,6 +1458,41 @@ describe("startObserver single instance and version replace", () => {
 		}
 	});
 
+	it("binds the replaced observer's port, not the given one, when the old port is free again", async () => {
+		const oldPort = await freePort();
+		const older = await start({ port: oldPort });
+		if (older.outcome !== "started") throw new Error("expected a start");
+		pidGate.fake = true;
+		void older.stopped.then(() => {
+			pidGate.gone = true;
+		});
+
+		observerVersion.value = "1.0.1";
+		const newer = await start({ port: await freePort() });
+		pidGate.gone = false;
+		expect(newer).toMatchObject({ outcome: "started", observer: { port: oldPort, address: older.observer.address } });
+		expect(await readRecord()).toMatchObject({ port: oldPort, version: "1.0.1" });
+	});
+
+	it("walks the list when the replaced observer's port is taken after it exits", async () => {
+		const oldPort = await freePort();
+		const older = await start({ port: oldPort });
+		if (older.outcome !== "started") throw new Error("expected a start");
+		const target = protocol.ports[protocol.ports.length - 2]!;
+		pidGate.fake = true;
+		void older.stopped.then(() => {
+			// Another program takes the old port, and only one list port is free.
+			bindGate.busy = new Set([oldPort, ...protocol.ports.filter((port) => port !== target)]);
+			pidGate.gone = true;
+		});
+
+		observerVersion.value = "1.0.1";
+		const newer = await start({ port: await freePort() });
+		pidGate.gone = false;
+		expect(newer).toMatchObject({ outcome: "started", observer: { port: target } });
+		expect(await readRecord()).toMatchObject({ port: target });
+	});
+
 	it("keeps a newer running observer when an older one starts, and it keeps serving", async () => {
 		observerVersion.value = "2.0.0";
 		const first = await start({ port: await freePort() });
@@ -1382,5 +1532,132 @@ describe("startObserver single instance and version replace", () => {
 		pidGate.gone = false;
 		expect(newer.outcome).toBe("started");
 		expect(await readdir(projectRoot)).toEqual([]);
+	});
+});
+
+describe("startObserver presence ping", () => {
+	function ping({
+		port,
+		token,
+		claudeSessionId = "claude-ping-1",
+		projectKey = projectKeyOf(projectRoot),
+	}: {
+		port: number;
+		token?: string;
+		claudeSessionId?: string;
+		projectKey?: string;
+	}): Promise<Reply> {
+		return send({
+			port,
+			method: "POST",
+			path: protocol.presenceRoute,
+			token,
+			headers: { "Content-Type": "application/json", [protocol.projectHeader]: projectKey },
+			body: JSON.stringify({ claudeSessionId }),
+		});
+	}
+
+	it("refuses a ping without the token or with a wrong one", async () => {
+		const { port } = await startRunning();
+		expect((await ping({ port })).status).toBe(401);
+		expect((await ping({ port, token: "0".repeat(64) })).status).toBe(401);
+	});
+
+	it("answers 400 without or with a bad project header, 415 for another media type and 400 for an unknown body key", async () => {
+		const { port, token } = await startRunning();
+		const withHeaders = (headers: Record<string, string>, body: string) =>
+			send({ port, method: "POST", path: protocol.presenceRoute, token, headers, body });
+		const project = { [protocol.projectHeader]: projectKeyOf(projectRoot) };
+
+		expect((await withHeaders({ "Content-Type": "application/json" }, JSON.stringify({ claudeSessionId: "c1" }))).status).toBe(400);
+		expect((await ping({ port, token, projectKey: "../x" })).status).toBe(400);
+		expect((await withHeaders({ "Content-Type": "text/plain", ...project }, "{}")).status).toBe(415);
+		expect((await withHeaders({ "Content-Type": "application/json", ...project }, JSON.stringify({ claudeSessionId: "c1", state: "waiting" }))).status).toBe(400);
+	});
+
+	it("answers 202, writes no file and pushes a sessions frame and a status to a filtered stream client", async () => {
+		const sessionId = "20260101T000000Z-presence";
+		await seedSession({ sessionId, events: [makeStartedEvent({ sessionId, root: projectRoot })] });
+		const { port, token } = await startRunning();
+		const key = projectKeyOf(projectRoot);
+		const stream = await openStream({ port, token, project: key });
+		await stream.waitFor({ name: "snapshot", ms: 2000 });
+		await stream.waitFor({ name: "status", ms: 5000 });
+		await stream.quiet({ ms: 100 });
+
+		const folder = resolve({ projectRoot }).folder;
+		const before = await readdir(folder, { recursive: true });
+		const reply = await ping({ port, token });
+		expect(reply.status).toBe(202);
+		expect(json(reply).data).toEqual({ outcome: "accepted" });
+
+		const frame = await stream.waitFor({ name: "sessions", ms: 2000 });
+		expect(frame.data.projectKey).toBe(key);
+		expect((frame.data.sessions as { sessionId: string }[]).map((s) => s.sessionId)).toEqual([sessionId]);
+		await stream.waitFor({ name: "status", ms: 5000 });
+		expect(await readdir(folder, { recursive: true })).toEqual(before);
+	});
+
+	it("shows the session as waiting in the pushed frame once a Stop presence is on disk", async () => {
+		const sessionId = "20260101T000000Z-waits";
+		await seedSession({ sessionId, events: [makeStartedEvent({ sessionId, root: projectRoot })] });
+		const { port, token } = await startRunning();
+		const stream = await openStream({ port, token, project: projectKeyOf(projectRoot) });
+		await stream.waitFor({ name: "snapshot", ms: 2000 });
+		await stream.waitFor({ name: "status", ms: 5000 });
+
+		await markWaiting({ sessionId });
+		expect((await ping({ port, token, claudeSessionId: `claude-${sessionId}` })).status).toBe(202);
+
+		let state = "";
+		for (let tries = 0; tries < 20 && state !== "waiting"; tries++) {
+			const frame = await stream.waitFor({ name: "sessions", ms: 2000 });
+			state = (frame.data.sessions as { liveness: { state: string } }[])[0].liveness.state;
+		}
+		expect(state).toBe("waiting");
+	});
+
+	it("answers 202 for a project the store does not hold and pushes the project list to an unfiltered client", async () => {
+		const { port, token } = await startRunning();
+		const stream = await openStream({ port, token });
+		await stream.waitFor({ name: "snapshot", ms: 2000 });
+		await stream.quiet({ ms: 100 });
+
+		expect((await ping({ port, token, projectKey: "project-ffffff" })).status).toBe(202);
+		await stream.waitFor({ name: "projects", ms: 2000 });
+	});
+
+	it("answers 202 during replay and pushes nothing until the store is ready", async () => {
+		let openGate: () => void = () => undefined;
+		replayGate.wait = () => new Promise<void>((done) => (openGate = done));
+		const port = await freePort();
+		const starting = startObserver({ port });
+		try {
+			const { observerFile } = resolveRoot();
+			let token = "";
+			for (let tries = 0; tries < 200 && !token; tries++) {
+				token = await readFile(observerFile, "utf8").then(
+					(text) => (JSON.parse(text) as { token: string }).token,
+					() => "",
+				);
+				if (!token) await sleep(25);
+			}
+			expect(token).not.toBe("");
+			let ready: boolean | undefined;
+			for (let tries = 0; tries < 200 && ready !== false; tries++) {
+				const index = await send({ port, path: "/", token }).catch(() => null);
+				ready = index?.status === 200 ? (json(index).data?.ready as boolean) : undefined;
+				if (ready === undefined) await sleep(25);
+			}
+			expect(ready).toBe(false);
+
+			const reply = await ping({ port, token });
+			expect(reply.status).toBe(202);
+			expect(json(reply).data).toEqual({ outcome: "accepted" });
+		} finally {
+			openGate();
+			const result = await starting.catch(() => null);
+			if (result && "stop" in result && !stops.includes(result.stop)) stops.push(result.stop);
+		}
 	});
 });

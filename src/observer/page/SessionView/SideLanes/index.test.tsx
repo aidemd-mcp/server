@@ -26,4 +26,13 @@ describe("SideLanes", () => {
 		const html = renderToStaticMarkup(<SideLanes lanes={LANES} />);
 		expect(html).toContain(`<span class="av-lane ${state}"><span class="ic ${glyph}" aria-hidden="true"></span>${name} <span class="s">${meta}</span></span>`);
 	});
+
+	it("draws a skipped lane in the not-started look with its reason", () => {
+		const html = renderToStaticMarkup(<SideLanes lanes={[{ name: "Align", state: "todo", meta: "Skipped · no spec change", skipped: true }]} />);
+		expect(html).toContain('<span class="av-lane todo skip"><span class="ic i-todo" aria-hidden="true"></span>Align <span class="s">Skipped · no spec change</span></span>');
+	});
+
+	it("draws nothing when the rail is hidden", () => {
+		expect(renderToStaticMarkup(<SideLanes lanes={LANES} hidden />)).toBe("");
+	});
 });

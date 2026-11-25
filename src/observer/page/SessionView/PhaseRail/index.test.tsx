@@ -18,6 +18,17 @@ const FIX_ROW: RailCell[] = [
 ];
 
 describe("PhaseRail", () => {
+	it("gives a skipped cell the classes todo and skip with its `Skipped · <reason>` meta, and a pending cell todo without skip", () => {
+		const cells: RailCell[] = [
+			{ name: "Research", state: "todo", meta: "Skipped · domain known", loop: null, skipped: true },
+			{ name: "QA", state: "todo", meta: "Not started", loop: null },
+		];
+		const html = renderToStaticMarkup(<PhaseRail phases={cells} />);
+		expect(html).toContain('<li class="av-ph todo skip">');
+		expect(html).toContain('<span class="p-meta">Skipped · domain known</span>');
+		expect(html).toContain('<li class="av-ph todo"><span class="p-top"><span class="ic i-todo" aria-hidden="true"></span>QA</span>');
+	});
+
 	it("is a focusable, labelled region scroller named for what it holds, around one ordered list", () => {
 		const html = renderToStaticMarkup(<PhaseRail phases={BUILD_ROW} />);
 		expect(html.startsWith('<div class="av-rail-scroll" role="region" tabindex="0" aria-label="Pipeline phases; scrolls sideways on small screens"><ol class="av-rail">')).toBe(true);
@@ -55,6 +66,30 @@ describe("PhaseRail", () => {
 		expect(html).toContain(`<li class="av-ph ${state}">`);
 		expect(html).toContain(`<span class="ic ${glyph}" aria-hidden="true"></span>Plan`);
 		expect(html).toContain(`<span class="p-meta">${meta}</span>`);
+	});
+
+	it("names the pipeline in a footer after the row", () => {
+		const html = renderToStaticMarkup(<PhaseRail phases={BUILD_ROW} pipeline="feature-x" />);
+		expect(html).toContain('<p class="av-rail-foot"><span class="rf-pipe">Pipeline feature-x</span></p>');
+		expect(html.indexOf("av-rail-foot")).toBeGreaterThan(html.indexOf("</ol>"));
+		expect(html).not.toContain("Working outside the pipeline");
+	});
+
+	it("draws no footer for a session that reported no pipeline", () => {
+		expect(renderToStaticMarkup(<PhaseRail phases={BUILD_ROW} pipeline={null} />)).not.toContain("av-rail-foot");
+		expect(renderToStaticMarkup(<PhaseRail phases={BUILD_ROW} />)).not.toContain("av-rail-foot");
+	});
+
+	it("says `Working outside the pipeline` in the footer when the session works outside it", () => {
+		const html = renderToStaticMarkup(<PhaseRail phases={BUILD_ROW} pipeline="feature-x" outside />);
+		expect(html).toContain('<span class="rf-out">Working outside the pipeline</span>');
+		expect(html).toContain("Pipeline feature-x");
+		const alone = renderToStaticMarkup(<PhaseRail phases={BUILD_ROW} pipeline={null} outside />);
+		expect(alone).toContain('<p class="av-rail-foot"><span class="rf-out">Working outside the pipeline</span></p>');
+	});
+
+	it("draws nothing when the rail is hidden", () => {
+		expect(renderToStaticMarkup(<PhaseRail phases={BUILD_ROW} pipeline="feature-x" outside hidden />)).toBe("");
 	});
 
 	it("offers no control", () => {

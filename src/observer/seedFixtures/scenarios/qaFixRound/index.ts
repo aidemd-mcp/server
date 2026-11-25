@@ -9,7 +9,10 @@ import timeline from "@/observer/seedFixtures/scenarios/shared/timeline/index.js
 /** How long the handoff says the second Fix round has run: `Round 2 · 1m 05s`; 65 s, in minutes. */
 const FIX_RUNNING_FOR_MIN = 65 / 60;
 
-/** `s-qa-fix`: QA found issues twice; Fix round 2 is running, plan completed 9/9, todo 2 of 5 open. */
+/**
+ * `s-qa-fix`: QA found issues twice; Fix round 2 is running, plan completed 9/9, todo 2 of 5 open. Routing
+ * skipped Research here, so the rail shows its skipped cell.
+ */
 export default function qaFixRound(): FixtureScenario {
 	return {
 		id: "qaFixRound",
@@ -30,7 +33,11 @@ export default function qaFixRound(): FixtureScenario {
 			board: { kanbanTag: KANBAN_TAG, tasks: boardTasks({ large: false }) },
 			reportRoot: true,
 			sessions: [
-				{ pid: "live", events: timeline({ through: "fix", lastAgoMin: FIX_RUNNING_FOR_MIN }) },
+				{
+					pid: "live",
+					presence: { state: "working", minutesAgo: FIX_RUNNING_FOR_MIN },
+					events: timeline({ through: "fix", lastAgoMin: FIX_RUNNING_FOR_MIN, skipResearch: true }),
+				},
 				...pastSessions(),
 			],
 		},

@@ -47,6 +47,9 @@ vi.mock("@/service/install/installSkills/index.js", () => ({
 vi.mock("@/service/install/installAideTree/index.js", () => ({
 	default: vi.fn(),
 }));
+vi.mock("@/service/install/installHooks/index.js", () => ({
+	default: vi.fn(),
+}));
 vi.mock("@/service/install/scaffoldReadme/index.js", () => ({
 	default: vi.fn(),
 }));
@@ -83,6 +86,7 @@ import scaffoldCommands from "@/service/install/scaffoldCommands/index.js";
 import installAgents from "@/service/install/installAgents/index.js";
 import installSkills from "@/service/install/installSkills/index.js";
 import installAideTree from "@/service/install/installAideTree/index.js";
+import installHooks from "@/service/install/installHooks/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import applySteps from "@/service/install/applySteps/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
@@ -102,6 +106,7 @@ const mockScaffoldCommands = vi.mocked(scaffoldCommands);
 const mockInstallAgents = vi.mocked(installAgents);
 const mockInstallSkills = vi.mocked(installSkills);
 const mockInstallAideTree = vi.mocked(installAideTree);
+const mockInstallHooks = vi.mocked(installHooks);
 const mockScaffoldReadme = vi.mocked(scaffoldReadme);
 const mockApplySteps = vi.mocked(applySteps);
 const mockReadVersionsManifest = vi.mocked(readVersionsManifest);
@@ -206,6 +211,7 @@ beforeEach(() => {
 	mockInstallAgents.mockResolvedValue([]);
 	mockInstallSkills.mockResolvedValue([]);
 	mockInstallAideTree.mockResolvedValue([]);
+	mockInstallHooks.mockResolvedValue([]);
 	mockScaffoldReadme.mockResolvedValue(
 		makeStep({ filePath: `${CWD}/README.md`, name: "README.md", category: "readme" }),
 	);
@@ -1347,5 +1353,110 @@ describe("6d-xi — regression guard: cli/init does not import obsidianBrainAide
 		// The assertion below is trivially true by construction: if the import were
 		// present, the test file would fail at compile time (undefined symbol).
 		expect(true).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Hooks step — planned with the project root and framework, written only when
+// would-create, deferred to /aide:upgrade when the settings file needs a merge
+// ---------------------------------------------------------------------------
+describe("hooks step", () => {
+	const SETTINGS_PATH = `${CWD}/.claude/settings.json`;
+	const HOOKS_DEFERRED =
+		"Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category to add AIDE's entries to .claude/settings.json.";
+
+	const HOOKS_MALFORMED_DEFERRED =
+		"Claude Code hooks — .claude/settings.json is not valid JSON, so AIDE's hook entries were not added. Fix the file, then open Claude Code and run /aide:upgrade and confirm the hooks category.";
+
+	function makeHooksStep(status: InitStep["status"], overrides: Partial<InitStep> = {}): InitStep {
+		return {
+			name: "Claude Code hooks (.claude/settings.json)",
+			status,
+			category: "hooks",
+			filePath: SETTINGS_PATH,
+			...(status === "would-create" || status === "would-overwrite" ? { content: "{}" } : {}),
+			...overrides,
+		};
+	}
+
+	it("plans the hooks with the project root and the detected framework", async () => {
+		await runInit(CWD, () => {});
+
+		expect(mockInstallHooks).toHaveBeenCalledWith({ projectRoot: CWD, framework: "claude" });
+	});
+
+	it("would-create: the step reaches applySteps and logs [created]; no deferred hooks line", async () => {
+		mockInstallHooks.mockResolvedValue([makeHooksStep("would-create")]);
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		const applied: InitStep[] = mockApplySteps.mock.calls.flatMap(([steps]) => steps);
+		expect(applied.map((s) => s.filePath)).toContain(SETTINGS_PATH);
+		expect(lines).toContain("[created] .claude/settings.json — Claude Code hooks (.claude/settings.json)");
+		expect(mockRenderWarning).toHaveBeenCalledWith({ skipped: [], failed: [], deferredCategories: DEFERRED_CATEGORIES });
+	});
+
+	it("would-overwrite: never applied, logged skipped-drift, and the deferred list gains the hooks line", async () => {
+		mockInstallHooks.mockResolvedValue([makeHooksStep("would-overwrite")]);
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		const applied: InitStep[] = mockApplySteps.mock.calls.flatMap(([steps]) => steps);
+		expect(applied.map((s) => s.filePath)).not.toContain(SETTINGS_PATH);
+		expect(lines).toContain("[skipped-drift] .claude/settings.json — drifted from canonical — not overwritten");
+		const call = mockRenderWarning.mock.calls[0][0];
+		expect(call.deferredCategories).toEqual([...DEFERRED_CATEGORIES, HOOKS_DEFERRED]);
+		expect(call.skipped.map((r) => r.displayPath)).toEqual([".claude/settings.json"]);
+	});
+
+	it("exists: reports present and adds no deferred line", async () => {
+		mockInstallHooks.mockResolvedValue([makeHooksStep("exists")]);
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(lines).toContain("[exists] .claude/settings.json — already present");
+		expect(mockRenderWarning).toHaveBeenCalledWith({ skipped: [], failed: [], deferredCategories: DEFERRED_CATEGORIES });
+	});
+
+	it("would-skip (malformed settings): never applied, logged skipped-malformed, warning names the file and the follow-up", async () => {
+		mockInstallHooks.mockResolvedValue([makeHooksStep("would-skip", { configMalformed: true })]);
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		const applied: InitStep[] = mockApplySteps.mock.calls.flatMap(([steps]) => steps);
+		expect(applied.map((s) => s.filePath)).not.toContain(SETTINGS_PATH);
+		expect(lines).toContain("[skipped-malformed] .claude/settings.json — not valid JSON — left unchanged");
+		const call = mockRenderWarning.mock.calls[0][0];
+		expect(call.skipped).toEqual([
+			{ status: "skipped-malformed", displayPath: ".claude/settings.json", message: "not valid JSON — left unchanged" },
+		]);
+		expect(call.deferredCategories).toEqual([...DEFERRED_CATEGORIES, HOOKS_MALFORMED_DEFERRED]);
+	});
+
+	it("would-skip without configMalformed: still skipped-missing-canonical and adds no hooks deferred line", async () => {
+		mockInstallHooks.mockResolvedValue([makeHooksStep("would-skip")]);
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(lines).toContain("[skipped-missing-canonical] .claude/settings.json — canonical content unavailable");
+		const call = mockRenderWarning.mock.calls[0][0];
+		expect(call.skipped.map((r) => r.status)).toEqual(["skipped-missing-canonical"]);
+		expect(call.deferredCategories).toEqual(DEFERRED_CATEGORIES);
+	});
+
+	it("a non-Claude framework plans no hooks step and prints no hooks line", async () => {
+		mockDetectFramework.mockResolvedValue({ ...CLAUDE_CONFIG, framework: "cursor" });
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(mockInstallHooks).toHaveBeenCalledWith({ projectRoot: CWD, framework: "cursor" });
+		expect(lines.some((l) => l.includes(".claude/settings.json"))).toBe(false);
+		expect(mockRenderWarning).toHaveBeenCalledWith({ skipped: [], failed: [], deferredCategories: DEFERRED_CATEGORIES });
 	});
 });

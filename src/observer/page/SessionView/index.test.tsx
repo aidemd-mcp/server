@@ -6,6 +6,7 @@ import ThemeContext from "@/observer/page/shared/ThemeContext/index.js";
 import type { SessionRoute, SessionTab, StreamState } from "@/observer/page/types/index.js";
 import useObserverStream from "@/observer/page/useObserverStream/index.js";
 import SessionView from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 vi.mock("@/observer/page/useObserverStream/index.js", () => ({ default: vi.fn() }));
 
@@ -40,7 +41,7 @@ const build: RunningWork = {
 	buildStep: { reached: 2, total: 4 },
 };
 
-function summary(sessionId: string, liveness: SessionSummary["liveness"] = "live"): SessionSummary {
+function summary(sessionId: string, liveness: SessionSummary["liveness"] = makeLiveness()): SessionSummary {
 	return { sessionId, startedAt: stamp(30), lastEventAt: stamp(1), eventCount: 4, pid: 1, liveness, reported: null };
 }
 
@@ -55,7 +56,7 @@ function statusOf(overrides: Partial<Status> = {}): Status {
 		running: [],
 		waiting: [],
 		surfaced: null,
-		rail: null,
+		rails: [],
 		history: [],
 		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
 		problems: [],
@@ -225,7 +226,7 @@ describe("SessionView", () => {
 		const noRoot = (): void =>
 			stream({
 				views: { [KEY]: { state: "no-project-root", projectKey: KEY, detail: "nobody reported a root" } },
-				listings: { [KEY]: [{ sessionId: "s1", startedAt: stamp(30), metadata: null, eventCount: 2, lastEventAt: stamp(1), live: true }] },
+				listings: { [KEY]: [{ sessionId: "s1", startedAt: stamp(30), metadata: null, eventCount: 2, lastEventAt: stamp(1), liveness: makeLiveness() }] },
 			});
 
 		it.each([
@@ -241,12 +242,12 @@ describe("SessionView", () => {
 			expect(html).not.toContain("av-notice err");
 		});
 
-		it("keeps the card, rail, history and sessions working from events", () => {
+		it("keeps the card, history and sessions working from events, with no rail (status holds none)", () => {
 			noRoot();
 			stubBrowser({ narrow: true });
 			const html = render(routeOf({ tab: "sessions" }));
 			expect(html).toContain('class="av-card run"');
-			expect(html).toContain("Pipeline phases");
+			expect(html).not.toContain("Pipeline phases");
 			expect(html).toContain('<aside class="av-side"');
 			expect(html).toContain('class="av-srow live"');
 		});

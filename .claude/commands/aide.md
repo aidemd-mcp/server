@@ -1,16 +1,13 @@
 # /aide — Orchestrator
 
-**Invoke the `aide` skill via the Skill tool — that is your only valid response to `/aide`.**
+`/aide` is a router. Your only valid response is these two skill calls, in this order:
 
 ```
+Skill(skill="aide-observer")
 Skill(skill="aide", args="<the user's full request, verbatim>")
 ```
 
-The `aide` skill is the source of truth for the orchestrator. It carries:
-- The MANDATORY BOOT SEQUENCE that must run before any user-facing response
-- The hard constraints (Delegation Only, Learn the Methodology First, Discover First)
-- The pipeline stages (spec → research → synthesize → plan → build → QA → fix)
-- The refactor and align flows
-- The routing rules
+1. **`aide-observer` first.** It opens the observer session: it reports the session start and the request, starts the observer, and stops on a HALT (another session of this project is open) or a BLOCKED (the observer cannot start). Its reporting rules apply for the rest of the session. If it stops, stop: do not invoke `aide`.
+2. **Then `aide`.** It carries the MANDATORY BOOT SEQUENCE, the hard constraints, the pipeline stages, the refactor and align flows, and the routing rules.
 
-You **MUST** invoke the skill — do not attempt to handle `/aide` from this file alone. Skipping the skill means skipping the boot sequence, which means orchestrating a methodology you don't know.
+You **MUST** invoke both skills — do not attempt to handle `/aide` from this file alone.

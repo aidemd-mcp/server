@@ -43,6 +43,10 @@ async function listenAsObserver(data: Record<string, unknown> = { version: "2.3.
 	return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
+function portOf(address: string): number {
+	return Number(new URL(address).port);
+}
+
 describe("findRunningObserver", () => {
 	it("is null when there is no record", async () => {
 		mockRead.mockResolvedValue(null);
@@ -53,9 +57,23 @@ describe("findRunningObserver", () => {
 		const address = await listenAsObserver({ version: "2.3.4" });
 		mockRead.mockResolvedValue({ address, token: TOKEN, pid: process.pid, version: "0.0.1" });
 
-		expect(await findRunningObserver()).toEqual({ address, token: TOKEN, pid: process.pid, version: "2.3.4" });
+		expect(await findRunningObserver()).toEqual({ address, port: portOf(address), token: TOKEN, pid: process.pid, version: "2.3.4" });
 		expect(mockRead).toHaveBeenCalledTimes(1);
 		expect(mockRead).toHaveBeenCalledWith({ observerFile: resolveRoot().observerFile });
+	});
+
+	it("takes the port from the record's port field", async () => {
+		const address = await listenAsObserver();
+		mockRead.mockResolvedValue({ address, port: 24683, token: TOKEN, pid: process.pid, version: "2.3.4" });
+
+		expect(await findRunningObserver()).toMatchObject({ address, port: 24683 });
+	});
+
+	it("parses the port from the address when the record has no port field", async () => {
+		const address = await listenAsObserver();
+		mockRead.mockResolvedValue({ address, token: TOKEN, pid: process.pid, version: "2.3.4" });
+
+		expect(await findRunningObserver()).toMatchObject({ port: portOf(address) });
 	});
 
 	it.each([{}, { version: "" }, { version: 7 }])("reports version unknown when the probe answers %j", async (data) => {

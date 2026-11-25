@@ -14,7 +14,7 @@ const LAST_AT = {
 	plan: "14:15:36",
 	/** `s-waiting`: the plan.aide approval gate is open. */
 	wait: "14:19:20",
-	/** `s-building`: the commit of Build step 3. */
+	/** `s-building`: the commit of Build step 3, then the Build of step 4 that opens at once. */
 	build: "14:31:32",
 	/** `s-idle`: the release that follows QA passing. */
 	idle: "14:51:20",
@@ -32,6 +32,9 @@ const FIRST_PROMPT =
 	"Pick up the next p1 from the board and run the pipeline on it\n\nIf the spec for the module is misaligned, fix the spec first and stop at plan approval so I can read the plan. Keep commits small and reference the task slug.";
 
 const TASK = handoffTasks.rank;
+
+/** The pipeline every event of the handoff's session belongs to: the task it picked, as the orchestrator names it. */
+const PIPELINE = TASK.slug;
 
 /** The handoff's drawer text for commit 414776f. */
 const WEIGHTS_COMMIT =
@@ -52,34 +55,37 @@ const COMMON: Entry[] = [
 	{ at: "14:02:00", event: { kind: "session_started" } },
 	{ at: "14:02:10", event: { kind: "prompt", text: FIRST_PROMPT } },
 	{ at: "14:03:11", event: { kind: "task", slug: TASK.slug, title: TASK.title, action: "picked", column: "In Progress" } },
-	{ at: "14:03:26", event: { kind: "phase_started", phase: "spec", agent: "aide-spec-writer", module: MODULE } },
-	{ at: "14:05:36", event: { kind: "phase_finished", phase: "spec", agent: "aide-spec-writer", module: MODULE } },
+	{ at: "14:03:12", event: { kind: "pipeline_started", pipeline: PIPELINE, phase: "spec" } },
+	{ at: "14:03:26", event: { kind: "phase_started", pipeline: PIPELINE, phase: "spec", agent: "aide-spec-writer", module: MODULE } },
+	{ at: "14:05:36", event: { kind: "phase_finished", pipeline: PIPELINE, phase: "spec", agent: "aide-spec-writer", module: MODULE } },
 	{ at: "14:05:37", event: { kind: "file_written", path: `${MODULE}/.aide`, action: "updated" } },
 	{ at: "14:05:38", event: { kind: "file_written", path: `${MODULE}/brief.aide`, action: "created" } },
-	{ at: "14:05:51", event: { kind: "phase_started", phase: "research", agent: "aide-domain-expert", module: MODULE } },
-	{ at: "14:11:53", event: { kind: "phase_finished", phase: "research", agent: "aide-domain-expert", module: MODULE } },
+	{ at: "14:05:51", event: { kind: "phase_started", pipeline: PIPELINE, phase: "research", agent: "aide-domain-expert", module: MODULE } },
+	{ at: "14:11:53", event: { kind: "phase_finished", pipeline: PIPELINE, phase: "research", agent: "aide-domain-expert", module: MODULE } },
 	{ at: "14:11:54", event: { kind: "file_written", path: `${MODULE}/research.aide`, action: "created" } },
-	{ at: "14:12:06", event: { kind: "phase_started", phase: "synthesize", agent: "aide-strategist", module: MODULE } },
-	{ at: "14:15:24", event: { kind: "phase_finished", phase: "synthesize", agent: "aide-strategist", module: MODULE } },
-	{ at: "14:15:36", event: { kind: "phase_started", phase: "plan", agent: "aide-architect", module: MODULE } },
-	{ at: "14:19:17", event: { kind: "phase_finished", phase: "plan", agent: "aide-architect", module: MODULE } },
+	{ at: "14:12:06", event: { kind: "phase_started", pipeline: PIPELINE, phase: "synthesize", agent: "aide-strategist", module: MODULE } },
+	{ at: "14:15:24", event: { kind: "phase_finished", pipeline: PIPELINE, phase: "synthesize", agent: "aide-strategist", module: MODULE } },
+	{ at: "14:15:36", event: { kind: "phase_started", pipeline: PIPELINE, phase: "plan", agent: "aide-architect", module: MODULE } },
+	{ at: "14:19:17", event: { kind: "phase_finished", pipeline: PIPELINE, phase: "plan", agent: "aide-architect", module: MODULE } },
 	{ at: "14:19:18", event: { kind: "file_written", path: `${MODULE}/plan.aide`, action: "created" } },
-	{ at: "14:19:20", event: { kind: "gate_waiting", gate: GATE_APPROVE, file: `${MODULE}/plan.aide` } },
+	{ at: "14:19:20", event: { kind: "gate_waiting", pipeline: PIPELINE, gate: GATE_APPROVE, file: `${MODULE}/plan.aide` } },
 	{
 		at: "14:23:32",
-		event: { kind: "gate_resolved", gate: GATE_APPROVE, file: `${MODULE}/plan.aide`, resolution: "approved" },
+		event: { kind: "gate_resolved", pipeline: PIPELINE, gate: GATE_APPROVE, file: `${MODULE}/plan.aide`, resolution: "approved" },
 	},
-	{ at: "14:23:41", event: { kind: "phase_started", phase: "build", agent: "aide-implementor", module: MODULE } },
-	{ at: "14:25:41", event: { kind: "plan_step_checked", module: MODULE, step: "1", total: 9 } },
-	{ at: "14:27:16", event: { kind: "plan_step_checked", module: MODULE, step: "2", total: 9 } },
+	{ at: "14:23:41", event: { kind: "phase_started", pipeline: PIPELINE, phase: "build", agent: "aide-implementor", module: MODULE } },
+	{ at: "14:25:41", event: { kind: "plan_step_checked", pipeline: PIPELINE, module: MODULE, step: "1", total: 9 } },
+	{ at: "14:27:16", event: { kind: "plan_step_checked", pipeline: PIPELINE, module: MODULE, step: "2", total: 9 } },
 	{ at: "14:27:17", event: { kind: "file_written", path: `${MODULE}/weights.ts`, action: "created" } },
 	{ at: "14:27:18", event: { kind: "file_written", path: `${MODULE}/rank.ts`, action: "updated" } },
 	{ at: "14:27:19", event: { kind: "file_written", path: `${MODULE}/rank.test.ts`, action: "updated" } },
-	{ at: "14:29:21", event: { kind: "plan_step_checked", module: MODULE, step: "3", total: 9 } },
+	{ at: "14:29:21", event: { kind: "plan_step_checked", pipeline: PIPELINE, module: MODULE, step: "3", total: 9 } },
 	{ at: "14:31:32", event: { kind: "commit", sha: "414776f", message: WEIGHTS_COMMIT } },
-	{ at: "14:40:50", event: { kind: "plan_step_checked", module: MODULE, step: "9", total: 9 } },
-	{ at: "14:42:01", event: { kind: "phase_finished", phase: "build", agent: "aide-implementor", module: MODULE } },
-	{ at: "14:42:05", event: { kind: "phase_started", phase: "qa", agent: "aide-qa", module: MODULE } },
+	// A commit closes the open phase (brief #100), so the next plan step opens a fresh Build; the cut ends here.
+	{ at: "14:31:32", event: { kind: "phase_started", pipeline: PIPELINE, phase: "build", agent: "aide-implementor", module: MODULE } },
+	{ at: "14:40:50", event: { kind: "plan_step_checked", pipeline: PIPELINE, module: MODULE, step: "9", total: 9 } },
+	{ at: "14:42:01", event: { kind: "phase_finished", pipeline: PIPELINE, phase: "build", agent: "aide-implementor", module: MODULE } },
+	{ at: "14:42:05", event: { kind: "phase_started", pipeline: PIPELINE, phase: "qa", agent: "aide-qa", module: MODULE } },
 ];
 
 /**
@@ -89,8 +95,8 @@ const COMMON: Entry[] = [
  * does not list.
  */
 const IDLE_TAIL: Entry[] = [
-	{ at: "14:44:53", event: { kind: "qa_verdict", module: MODULE, verdict: "passed", open: 0 } },
-	{ at: "14:44:54", event: { kind: "phase_finished", phase: "qa", agent: "aide-qa", module: MODULE } },
+	{ at: "14:44:53", event: { kind: "qa_verdict", pipeline: PIPELINE, module: MODULE, verdict: "passed", open: 0 } },
+	{ at: "14:44:54", event: { kind: "phase_finished", pipeline: PIPELINE, phase: "qa", agent: "aide-qa", module: MODULE } },
 	{ at: "14:45:20", event: { kind: "commit", sha: "9c1e2ab", message: "score: rank misaligned below unreviewed" } },
 	{ at: "14:50:20", event: { kind: "task", slug: TASK.slug, title: TASK.title, action: "moved", column: "In Review" } },
 	{ at: "14:51:20", event: { kind: "release", version: "v0.9.2" } },
@@ -98,17 +104,17 @@ const IDLE_TAIL: Entry[] = [
 
 /** The handoff's `fix` history after QA started: 5 issues, Fix round 1 (3m 50s), the timeout, 2 issues, Fix round 2. */
 const FIX_TAIL: Entry[] = [
-	{ at: "14:44:10", event: { kind: "qa_verdict", module: MODULE, verdict: "issues", open: 5 } },
-	{ at: "14:44:11", event: { kind: "phase_started", phase: "fix", agent: "aide-implementor", module: MODULE } },
+	{ at: "14:44:10", event: { kind: "qa_verdict", pipeline: PIPELINE, module: MODULE, verdict: "issues", open: 5 } },
+	{ at: "14:44:11", event: { kind: "phase_started", pipeline: PIPELINE, phase: "fix", agent: "aide-implementor", module: MODULE } },
 	{
 		at: "14:48:01",
-		event: { kind: "phase_finished", phase: "fix", agent: "aide-implementor", module: MODULE, result: "3 issues closed" },
+		event: { kind: "phase_finished", pipeline: PIPELINE, phase: "fix", agent: "aide-implementor", module: MODULE, result: "3 issues closed" },
 	},
 	{ at: "14:48:02", event: { kind: "file_written", path: `${MODULE}/rank.ts`, action: "updated" } },
 	{ at: "14:48:03", event: { kind: "file_written", path: `${MODULE}/todo.aide`, action: "updated" } },
 	{ at: "14:48:50", event: { kind: "error", message: TIMEOUT_ERROR, agent: "aide-qa", module: MODULE } },
-	{ at: "14:49:40", event: { kind: "qa_verdict", module: MODULE, verdict: "issues", open: 2 } },
-	{ at: "14:50:20", event: { kind: "phase_started", phase: "fix", agent: "aide-implementor", module: MODULE } },
+	{ at: "14:49:40", event: { kind: "qa_verdict", pipeline: PIPELINE, module: MODULE, verdict: "issues", open: 2 } },
+	{ at: "14:50:20", event: { kind: "phase_started", pipeline: PIPELINE, phase: "fix", agent: "aide-implementor", module: MODULE } },
 ];
 
 /** The entries each cut draws from: the common history, plus the tail of the branch QA took. */
@@ -121,15 +127,40 @@ const BRANCH: Record<TimelineCut, Entry[]> = {
 	fix: [...COMMON, ...FIX_TAIL],
 };
 
+/** Where the skipped Research cell goes: where the Research phase would have started. */
+const RESEARCH_SKIPPED: Entry = {
+	at: "14:05:51",
+	event: { kind: "phase_skipped", pipeline: PIPELINE, phase: "research", reason: "routing skipped research" },
+};
+
+/** True for the three entries Research writes: its start, its finish and the `research.aide` it files. */
+function isResearch({ event }: Entry): boolean {
+	if (event.kind === "phase_started" || event.kind === "phase_finished") return event.phase === "research";
+	return event.kind === "file_written" && event.path.endsWith("/research.aide");
+}
+
 /**
  * The handoff's main session as fixture events, cut at the named point and aged so the cut's last event
  * happened `lastAgoMin` minutes ago, with every earlier event spaced as the handoff's clock spaces it. The
  * first event is `session_started`; the writer fills its root, tag and brain folder. The handoff's `Done`
- * row is not an event and is left out.
+ * row is not an event and is left out. With `skipResearch` the Research phase is replaced by one
+ * `phase_skipped` at the time it would have started, so the rail shows a skipped cell.
  */
-export default function timeline({ through, lastAgoMin }: { through: TimelineCut; lastAgoMin: number }): FixtureEvent[] {
+export default function timeline({
+	through,
+	lastAgoMin,
+	skipResearch = false,
+}: {
+	through: TimelineCut;
+	lastAgoMin: number;
+	skipResearch?: boolean;
+}): FixtureEvent[] {
 	const anchor = LAST_AT[through];
-	return BRANCH[through]
+	const entries = skipResearch
+		? BRANCH[through].flatMap((entry) => (isResearch(entry) ? [] : [entry])).concat(RESEARCH_SKIPPED).sort((a, b) => a.at.localeCompare(b.at))
+		: BRANCH[through];
+
+	return entries
 		.filter((entry) => entry.at <= anchor)
 		.map(({ at, event }) => ({
 			offsetMin: clockOffset({ at, anchor, anchorAgoMin: lastAgoMin }),

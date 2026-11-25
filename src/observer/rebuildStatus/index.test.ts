@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/service/observer/kanban/board/read/index.js", () => ({ default: vi.fn() }));
 vi.mock("@/service/observer/status/index.js", () => ({ default: vi.fn() }));
+vi.mock("@/service/observer/event/readLiveness/index.js", () => ({ default: vi.fn() }));
+vi.mock("@/service/observer/event/readArchive/index.js", () => ({ default: vi.fn() }));
 
+import readArchive from "@/service/observer/event/readArchive/index.js";
+import readLiveness from "@/service/observer/event/readLiveness/index.js";
 import readBoard from "@/service/observer/kanban/board/read/index.js";
 import { BOARD_HINT } from "@/service/observer/kanban/shared/locateBoard/index.js";
 import buildStatus from "@/service/observer/status/index.js";
@@ -12,6 +16,9 @@ import rebuildStatus from "./index.js";
 
 const mockReadBoard = readBoard as ReturnType<typeof vi.fn>;
 const mockBuildStatus = buildStatus as ReturnType<typeof vi.fn>;
+const mockReadLiveness = readLiveness as ReturnType<typeof vi.fn>;
+const mockReadArchive = readArchive as ReturnType<typeof vi.fn>;
+const KEY = "p-aaaaaa";
 
 function makeStarted({ sessionId, ts, brainPath, kanbanTag }: { sessionId: string; ts: string; brainPath: string; kanbanTag: string }): ObserverEvent {
 	return { v: 1, ts, sessionId, seq: 1, pid: 1, kind: "session_started", brainPath, kanbanTag };
@@ -28,6 +35,8 @@ describe("rebuildStatus", () => {
 		vi.clearAllMocks();
 		mockReadBoard.mockResolvedValue(unavailableBoard);
 		mockBuildStatus.mockResolvedValue({ marker: "status" });
+		mockReadLiveness.mockResolvedValue({ sessions: {}, unlinked: [] });
+		mockReadArchive.mockResolvedValue([]);
 	});
 
 	it("reads the board from the newest session's location with the brain override", async () => {
@@ -36,7 +45,7 @@ describe("rebuildStatus", () => {
 			{ projectKey: "p-aaaaaa", sessionId: "new", events: [makeStarted({ sessionId: "new", ts: "2026-02-01T00:00:00.000Z", brainPath: "/new", kanbanTag: "new" })] },
 		];
 
-		await rebuildStatus({ projectRoot: "/project", sessions, brainOverride: "/override" });
+		await rebuildStatus({ projectKey: KEY, projectRoot: "/project", sessions, brainOverride: "/override" });
 
 		expect(mockReadBoard).toHaveBeenCalledWith({
 			reported: { brainPath: "/new", kanbanTag: "new" },
@@ -50,6 +59,7 @@ describe("rebuildStatus", () => {
 		const second = makePrompt({ sessionId: "b", seq: 2 });
 
 		const result = await rebuildStatus({
+			projectKey: KEY,
 			projectRoot: "/project",
 			sessions: [
 				{ projectKey: "p-aaaaaa", sessionId: "a", events: [first] },
@@ -57,19 +67,64 @@ describe("rebuildStatus", () => {
 			],
 		});
 
-		expect(mockBuildStatus).toHaveBeenCalledWith({ projectRoot: "/project", events: [first, second], board: unavailableBoard });
+		expect(mockBuildStatus).toHaveBeenCalledWith({
+			projectRoot: "/project",
+			events: [first, second],
+			archivedEvents: [],
+			liveness: {},
+			board: unavailableBoard,
+		});
 		expect(result).toEqual({ marker: "status" });
 	});
 
 	it("still builds a status with an unavailable board when the board read throws", async () => {
 		mockReadBoard.mockRejectedValue(new Error("disk gone"));
 
-		await rebuildStatus({ projectRoot: "/project", sessions: [] });
+		await rebuildStatus({ projectKey: KEY, projectRoot: "/project", sessions: [] });
 
 		expect(mockBuildStatus).toHaveBeenCalledWith({
 			projectRoot: "/project",
 			events: [],
+			archivedEvents: [],
+			liveness: {},
 			board: { state: "unavailable", reason: "board-read-failed", detail: "board read failed: disk gone", hint: BOARD_HINT },
+		});
+	});
+
+	it("hands the builder each session's liveness read for this project and the archived sessions' events", async () => {
+		const live = { state: "waiting", lastActivityAt: null, quietMinutes: 0, maybeStuck: false };
+		const archivedEvent = makePrompt({ sessionId: "old", seq: 3 });
+		const held = makePrompt({ sessionId: "a", seq: 1 });
+		mockReadLiveness.mockResolvedValue({ sessions: { a: live }, unlinked: [] });
+		mockReadArchive.mockResolvedValue([{ sessionId: "old", events: [archivedEvent] }]);
+		const sessions: HeldSession[] = [{ projectKey: KEY, sessionId: "a", events: [held] }];
+
+		await rebuildStatus({ projectKey: KEY, projectRoot: "/project", sessions });
+
+		expect(mockReadLiveness).toHaveBeenCalledWith({ projectKey: KEY, sessions, now: expect.any(Number) });
+		expect(mockReadArchive).toHaveBeenCalledWith({ projectKey: KEY });
+		expect(mockBuildStatus).toHaveBeenCalledWith({
+			projectRoot: "/project",
+			events: [held],
+			archivedEvents: [archivedEvent],
+			liveness: { a: live },
+			board: unavailableBoard,
+		});
+	});
+
+	it("degrades a throwing liveness read to no liveness and a throwing archive read to no archived events", async () => {
+		const held = makePrompt({ sessionId: "a", seq: 1 });
+		mockReadLiveness.mockRejectedValue(new Error("presence gone"));
+		mockReadArchive.mockRejectedValue(new Error("archive gone"));
+
+		await rebuildStatus({ projectKey: KEY, projectRoot: "/project", sessions: [{ projectKey: KEY, sessionId: "a", events: [held] }] });
+
+		expect(mockBuildStatus).toHaveBeenCalledWith({
+			projectRoot: "/project",
+			events: [held],
+			archivedEvents: [],
+			liveness: {},
+			board: unavailableBoard,
 		});
 	});
 });

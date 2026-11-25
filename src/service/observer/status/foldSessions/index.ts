@@ -1,16 +1,19 @@
-import isProcessRunning from "@/util/isProcessRunning/index.js";
-import SESSION_IDLE_LIMIT_MS from "@/util/sessionIdleLimit/index.js";
-import type { ObserverEvent } from "@/types/index.js";
-import type { Liveness, SessionSummary } from "../types/index.js";
+import type { ObserverEvent, SessionLiveness } from "@/types/index.js";
+import type { SessionSummary } from "../types/index.js";
 
 /**
  * Folds every recorded event into one summary per session, newest first.
- * Liveness is `live` (last event under the shared `SESSION_IDLE_LIMIT_MS` old), `idle` (older but
- * the session's pid is still running) or `ended` (neither) — exactly the event
- * module's "not live" (brief commitments #18, #23), so a session shown live or
- * idle is one the delete control refuses. Pure apart from the pid probe.
+ * Each summary's liveness is the one the caller judged for that session
+ * (`liveness[sessionId]`), passed through unchanged: status never re-judges it
+ * from event age or a pid (brief commitment #76). Pure.
  */
-export default function foldSessions({ events, now }: { events: ObserverEvent[]; now: number }): SessionSummary[] {
+export default function foldSessions({
+	events,
+	liveness,
+}: {
+	events: ObserverEvent[];
+	liveness: Record<string, SessionLiveness>;
+}): SessionSummary[] {
 	// Step 1: group the events by session.
 	const groups = new Map<string, ObserverEvent[]>();
 	for (const event of events) {
@@ -31,7 +34,7 @@ export default function foldSessions({ events, now }: { events: ObserverEvent[];
 			lastEventAt: last.ts,
 			eventCount: ordered.length,
 			pid: last.pid,
-			liveness: judge({ lastEventAt: last.ts, pid: last.pid, now }),
+			liveness: liveness[sessionId],
 			reported: readReported(ordered),
 		};
 	});
@@ -54,11 +57,4 @@ function readReported(ordered: ObserverEvent[]): SessionSummary["reported"] {
 	if (started.kanbanTag !== undefined) reported.kanbanTag = started.kanbanTag;
 	if (started.brainPath !== undefined) reported.brainPath = started.brainPath;
 	return reported;
-}
-
-/** live: recent event; idle: older but the pid runs; ended: neither. */
-function judge({ lastEventAt, pid, now }: { lastEventAt: string; pid: number; now: number }): Liveness {
-	if (now - Date.parse(lastEventAt) < SESSION_IDLE_LIMIT_MS) return "live";
-	if (isProcessRunning(pid)) return "idle";
-	return "ended";
 }

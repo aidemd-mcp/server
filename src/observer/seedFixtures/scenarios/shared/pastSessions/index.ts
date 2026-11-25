@@ -37,7 +37,7 @@ const SESSIONS: Past[] = [
 /**
  * The three ended sessions the handoff lists after the live one (`m2` … `m4`): each starts when the handoff
  * says (measured back from its 14:32 "now"), runs as long as it says and holds as many events as it says. Their
- * pid is dead, so they read as ended.
+ * pid is dead and each carries an ended mark, so they read as ended.
  */
 export default function pastSessions(): FixtureSession[] {
 	return SESSIONS.map((past) => paddedSession({ pid: "dead", ...past }));

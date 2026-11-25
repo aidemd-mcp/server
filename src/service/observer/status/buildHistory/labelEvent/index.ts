@@ -36,6 +36,12 @@ export default function labelEvent({
 			const column = event.column ? ` → ${event.column}` : "";
 			return { label: `Task: ${name}${column}`, detail: { slug: event.slug } };
 		}
+		case "pipeline_started":
+			return { label: `Pipeline ${event.pipeline} started at ${PHASE_LABELS[event.phase]}` };
+		case "pipeline_finished":
+			return { label: `Pipeline ${event.pipeline} ${event.result}` };
+		case "phase_skipped":
+			return { label: `${PHASE_LABELS[event.phase]} skipped`, detail: { text: event.reason } };
 		case "phase_started":
 			return { label: `${PHASE_LABELS[event.phase]} · ${event.agent} · ${event.module}` };
 		case "phase_finished": {

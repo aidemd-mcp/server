@@ -6,6 +6,10 @@ export type RuntimePaths = {
 	folder: string;
 	/** `<folder>/events`, holding one JSONL event log per session. */
 	eventsFolder: string;
+	/** `<folder>/presence`, holding one hook presence record per Claude session. */
+	presenceFolder: string;
+	/** `<folder>/ended`, holding one ended mark per observer session. */
+	endedFolder: string;
 };
 
 /** The per-user locations shared by every project, at the app-data root. */
@@ -22,4 +26,8 @@ export type ProjectFolder = {
 	projectKey: string;
 	/** `<root>/<projectKey>/events`, holding that project's session logs. */
 	eventsFolder: string;
+	/** `<root>/<projectKey>/presence`, holding that project's hook presence records. */
+	presenceFolder: string;
+	/** `<root>/<projectKey>/ended`, holding that project's ended marks. */
+	endedFolder: string;
 };

@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Status } from "@/types/index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 import buildSwitcher from "./index.js";
 
 const NOW = new Date("2026-01-01T10:00:00.000Z");
 
-function row(sessionId: string, startedAt: string, liveness: SessionRowModel["liveness"] = "live"): SessionRowModel {
-	return { sessionId, startedAt, lastEventAt: startedAt, eventCount: 1, liveness, task: null, label: null };
+function row(sessionId: string, startedAt: string, state: SessionRowModel["liveness"]["state"] = "working"): SessionRowModel {
+	return { sessionId, startedAt, lastEventAt: startedAt, eventCount: 1, liveness: makeLiveness({ state }), task: null, label: null };
 }
 
 const clockOf = (iso: string) => {
@@ -40,7 +41,7 @@ describe("buildSwitcher", () => {
 			waiting: [{ sessionId: "a", file: ".aide/intent.aide", folder: ".", kind: "intent", gate: "g", seq: 1, since: A }],
 			running: [{ sessionId: "b", phase: "build", agent: "x", module: ".", startedAt: B, elapsedMs: 1 }],
 		} as unknown as Status;
-		const options = buildSwitcher({ sessions: [row("a", A), row("b", B, "idle")], status, focus: "a", name: "app", now: NOW });
+		const options = buildSwitcher({ sessions: [row("a", A), row("b", B, "waiting")], status, focus: "a", name: "app", now: NOW });
 		expect(options.map((option) => option.now)).toEqual(["Waiting on you", "Build · app"]);
 	});
 });

@@ -3,12 +3,13 @@ import type { SessionSummary } from "@/types/index.js";
 import makeStatus from "@/observer/page/__fixtures__/makeStatus/index.js";
 import type { ProjectListing, ProjectView, SessionListing } from "@/observer/types/index.js";
 import buildProjectRow from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 const NOW = new Date(2026, 10, 23, 14, 34, 0);
 const at = (hours: number, minutes: number): string => new Date(2026, 10, 23, hours, minutes).toISOString();
 
 function listing(overrides: Partial<SessionListing> & { sessionId: string }): SessionListing {
-	return { startedAt: at(9, 0), metadata: null, eventCount: 3, lastEventAt: at(9, 10), live: false, ...overrides };
+	return { startedAt: at(9, 0), metadata: null, eventCount: 3, lastEventAt: at(9, 10), liveness: makeLiveness({ state: "ended" }), ...overrides };
 }
 
 function project(overrides: Partial<ProjectListing> = {}): ProjectListing {
@@ -16,7 +17,7 @@ function project(overrides: Partial<ProjectListing> = {}): ProjectListing {
 }
 
 function summary(overrides: Partial<SessionSummary> & { sessionId: string }): SessionSummary {
-	return { startedAt: at(9, 0), lastEventAt: at(9, 10), eventCount: 3, pid: 1, liveness: "ended", reported: null, ...overrides };
+	return { startedAt: at(9, 0), lastEventAt: at(9, 10), eventCount: 3, pid: 1, liveness: makeLiveness({ state: "ended" }), reported: null, ...overrides };
 }
 
 function build({ view, listings, listed = project() }: { view?: ProjectView; listings?: SessionListing[]; listed?: ProjectListing } = {}) {
@@ -25,7 +26,7 @@ function build({ view, listings, listed = project() }: { view?: ProjectView; lis
 
 describe("buildProjectRow", () => {
 	it("takes its sessions from the ready status when there is one", () => {
-		const view: ProjectView = { state: "ready", projectKey: "app-abc123", status: makeStatus({ sessions: [summary({ sessionId: "s1", liveness: "live" })] }) };
+		const view: ProjectView = { state: "ready", projectKey: "app-abc123", status: makeStatus({ sessions: [summary({ sessionId: "s1", liveness: makeLiveness() })] }) };
 		const row = build({ view, listed: project({ sessions: [listing({ sessionId: "listed" })] }) });
 		expect(row.rows.map((entry) => entry.sessionId)).toEqual(["s1"]);
 		expect(row.liveCount).toBe(1);
@@ -58,7 +59,7 @@ describe("buildProjectRow", () => {
 		const view: ProjectView = {
 			state: "ready",
 			projectKey: "app-abc123",
-			status: makeStatus({ sessions: [summary({ sessionId: "a", liveness: "live" }), summary({ sessionId: "b", liveness: "idle" }), summary({ sessionId: "c", liveness: "ended" })] }),
+			status: makeStatus({ sessions: [summary({ sessionId: "a", liveness: makeLiveness() }), summary({ sessionId: "b", liveness: makeLiveness({ minutesQuiet: 20 }) }), summary({ sessionId: "c", liveness: makeLiveness({ state: "ended" }) })] }),
 		};
 		expect(build({ view }).liveCount).toBe(2);
 	});

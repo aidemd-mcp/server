@@ -1,30 +1,30 @@
 ---
 scope: src/observer
 alignment: unreviewed
-description: Local web page, one per user per machine, that shows every project's AIDE sessions live, taking events from the user's own tools through a same-user endpoint, never a pipeline dependency.
+description: "Local web page, one per user per machine, showing every project's AIDE sessions live from the user's own tools' events and hook presence pings, through a same-user endpoint."
 intent: >
-  The observer is where the user watches their AIDE pipelines. One runs
-  per user per machine on a fixed port the user can override, so its
-  address is stable. Started at session start unless the project turned
-  that off, or from the terminal, it opens on the caller's session; its
-  home lists every project's sessions. It replays recorded sessions once,
-  then pushes new events live. Its one control deletes a past session. It
-  writes nothing into any project, and its absence, crash or restart never
-  touches the pipeline. Only the same user on the same machine can reach it.
+  The observer is where the user watches their AIDE pipelines. One runs per
+  user per machine, on the first free port of a short list, and records the
+  address it took. Started at every session start or from the terminal, it
+  opens on the caller's session; its home lists every project's sessions.
+  It replays recorded sessions once, then pushes new events and presence
+  pings live. Its one control deletes a past session. It writes nothing
+  into any project, and a crash it recovers from never stalls the pipeline.
+  Only the same user on the same machine can reach it.
 outcomes:
   desired:
-    - At most one observer runs per user per machine, always on the built-in port or the user's override, and a busy port is named, never moved. Starting it while one runs never starts a second and returns the link to the calling session's view.
+    - At most one observer runs per user per machine; a start tries the user's port first if one is set, then a fixed list in order, takes the first free one and records it so tools and links find it. Starting it while one runs never starts a second and returns the link to the calling session's view.
     - A running observer older than the caller is replaced, never silently, by the caller's on the same port with no event lost, while a same or newer one is kept. A stopped observer can be brought back during a session without affecting the pipeline.
-    - The home view lists every project with its live and past sessions, and opening one shows that session's tree, board, status and history. The view is rebuilt from that project's files, at the root its newest session reported, on each event and each page load.
-    - The browser shows every event exactly once and in order, whether the observer ran throughout or started late and replayed every session, including an event posted while the replay is still running. A malformed log line or a bad post is rejected without crashing the observer or losing the valid events around it.
+    - The home view lists every project with its live and past sessions, and opening one shows that session's tree, board, status and history. The view is rebuilt from that project's files at the root its newest session reported, its sessions' liveness and every kept log, archived ones included, on each event, presence ping and page load.
+    - The browser shows every event exactly once and in order and every presence change live, whether the observer ran throughout or started late and replayed every session, including an event posted while the replay is still running. A malformed log line or a bad post is rejected without crashing the observer or losing the valid events around it.
     - The page's one control deletes a past session and removes only that session's record. No other request changes any file, in any project or anywhere else, and the shutdown request is never a user control.
-    - Only the same user's tools on the same machine can post events or ask the observer to shut down, and only that user's browser can read what it serves. A session's view reads files only from inside the project it belongs to.
+    - Only the same user's tools on the same machine can post events or presence pings or ask the observer to shut down, and only that user's browser can read what it serves. A session's view reads files only from inside the project it belongs to.
   undesired:
-    - A web page on another site, or another user on the same machine, forging events, shutting the observer down or reading what it serves, including through a domain name pointed at the local address.
+    - A web page on another site, or another user on the same machine, forging events or presence, shutting the observer down or reading what it serves, including through a domain name pointed at the local address.
     - One project's view showing another project's files or board, or the observer serving any file from outside the project a view belongs to, however the requested path is written.
-    - Two observers running for one user on one machine, a running observer replaced silently or a newer one replaced by an older caller, or an observer moving to a different port, so the user loses track of which address is live.
+    - Two observers running for one user on one machine, a running observer replaced silently or a newer one replaced by an older caller, or a running observer moving to another port or tools and links pointing anywhere but the address it recorded, so the user loses track of which address is live.
     - An event shown twice or out of order because its post overlapped the startup replay, or missed after a restart.
-    - The observer writing anything into any project or deleting more than the one session the user chose, or the pipeline waiting on, failing because of, or being blocked by a failed start of it.
+    - The observer writing anything into any project or deleting more than the one session the user chose, or a start that gives up while a port on its list is still free.
     - A malformed log line or bad post crashing the observer or stalling the live stream for everything after it.
 ---
 
@@ -32,23 +32,23 @@ outcomes:
 
 The observer is a small local web server the user keeps open beside their agent sessions: one per user per machine, showing every project. Four facts shape it. First, it runs alongside the pipeline but is never part of it: the recording side keeps each session's log, and the observer only reads those logs, receives copies of new events and shows them. Second, a server bound to the local machine is still reachable from any web page the user visits, and a domain name can be pointed at the local address to look same-origin, so "localhost only" is no boundary by itself. Third, it can start at any moment (late, after a crash, or because a newer AIDE took over) while events keep arriving from several sessions in several projects; the order in which it learns past and new events decides whether each shows exactly once. Fourth, sessions from different projects, possibly on different AIDE versions, share the one server, and each project's files must stay visible only inside that project's own view.
 
-The address must stay put. The user bookmarks it and every session hands it out, so a server that drifts to another port, or a second one beside the first, leaves the user watching a page that is no longer live.
+The address must be findable. Every session hands it out and open tabs hold it, yet the usual port may be taken by another program, so where the observer lands can vary between starts; a second server beside the first, or a link built from a guessed port, leaves the user watching a page that is not live. Claude Code's hooks, meanwhile, report presence apart from any session's server, and the page must show those changes as they happen.
 
 ## Strategy
 
-**One fixed address, never moved.** The port is built in and only an environment override changes it, so every session and the terminal agree on the address with no per-project setting and no port-picking step. A port held by another program ends the start with the port named, never a fallback: a moved server is one the user's bookmark and the sessions' reports no longer reach.
+**A short port list, the port taken recorded.** A start tries the user's port if set, then a short fixed list in order, and binds the first free one; the per-user record names the port taken, and every tool, link and hook ping reads it from there rather than assuming the first. A running observer never moves, and a replacement reuses its predecessor's port when free so open tabs keep working. An exhausted list fails the start, naming each port.
 
 **Check the one per-user record before binding.** A start first reads the per-user record of the running observer and probes it with its token; if it answers, nothing new starts and the caller gets the link to its own session's view. The record is written only after the bind succeeds and removed on shutdown only if it still names this server, so a failed start neither strands a stale address nor erases a live one.
 
-**Newer replaces older; older never replaces newer.** The record carries the running version. A newer caller sends a token-protected shutdown request, waits for that process to exit, then starts on the same port; a same or newer server is kept. It runs one way so two versions cannot swap the server back and forth; an old server that will not exit is named, never killed. Every event is on disk, so the replay loses nothing. The shutdown is a tool handshake, never a page control.
+**Newer replaces older; older never replaces newer.** The record carries the running version. A newer caller sends a token-protected shutdown request, waits for that process to exit, then starts on its port when free; a same or newer server is kept. One way only, so two versions never swap the server back and forth; an old server that will not exit is named, never killed. Every event is on disk, so the replay loses nothing. The shutdown is a tool handshake, never a page control.
 
 **Open the door before reading history, then merge.** The observer accepts posts and publishes its record before replaying every project's session logs, holding posts until the replay ends, then merges both keyed on session and order. An event recorded mid-replay sits in a log the replay reads, arrives as a post, or both; the merge keeps one copy, in order. Publishing after the replay leaves a gap: an event lands in a log already read and is never posted.
 
-**Every request proves it came from this user's machine.** The observer listens on the loopback address only and refuses any request whose host is not that address and port, defeating a domain pointed at the local address. A post or a shutdown request must also carry the token kept in the user's own app data, and a post must be JSON; a cross-site page can do neither without a preflight the observer never grants.
+**Every request proves it came from this user's machine.** The observer listens on the loopback address only and refuses any request whose host is not that address and port, defeating a domain pointed at the local address. A post, presence ping or shutdown request must also carry the token kept in the user's own app data, and a post must be JSON; a cross-site page can do neither without a preflight the observer never grants.
 
 **Home lists projects; a session view stays inside its project.** The home view lists every project with recorded sessions, live and past. A session's view is built from the root its project's newest session reported, since the shared server has no project of its own; its board comes from that session too, and a terminal brain override applies only to the project it was run from. Every file read resolves inside that root and is refused outside it, however written.
 
-**Reads rebuild; one request changes anything.** Each view is recomputed from its project's files, held events and board on every event and page load, never by watching files, so a missed event shortens history but never stales status. A post is validated against the shared event schema and held in memory; the recording side stays the logs' only writer. The one write deletes a past session's log, refused while it is live. A bad line or post is rejected alone.
+**Reads rebuild; one request changes anything.** Each view is recomputed on every event, presence ping and page load from its project's files, every kept session's events, archived included, each session's liveness as the recording side judges it, and the board, never by watching files. A ping carries no state; the observer rereads presence from disk. Posts are validated and held in memory; the recording side stays the only writer. The one write deletes an ended session, refused otherwise.
 
 ## Good examples
 
@@ -58,12 +58,13 @@ The address must stay put. The user bookmarks it and every session hands it out,
 
 ## Bad examples
 
-- The fixed port is held by another dev server, so the observer quietly binds the next free port and prints it. The next session's start reports the fixed address, and the user's bookmark shows someone else's app.
+- The first port is held by another dev server, so the observer takes the next on the list, but the start tool builds its link from the first port instead of the record, and the user's link opens someone else's app.
 - Any version difference triggers a replacement, so an older session booting after a newer one shuts the newer server down. The two sessions swap the server on every start, and each swap drops every open tab's live stream.
 - A session view resolves requested files against the folder of the session that started the server instead of its own project's reported root. The second project's view shows the first project's plan as its own.
 
 ## References
 
-- User decision on one observer per machine, relayed by the orchestrator (2026-11-23) -- the fixed port with an environment override, the single instance found through one per-user record, newer-replaces-older over a token-protected shutdown with no event lost, the home view of every project, each session view confined to its project's reported root, and the brain override scoped to the project it was run from.
-- User-settled observer design, relayed by the orchestrator (2026-11-22) -- no silent port move, replay-then-live with dedupe on session and order, Host check, token on every request, file confinement, delete of past sessions only, and no file watching.
+- User decisions on the port list with the taken port recorded, a replacement reusing the old port, hook presence pings, and rebuilding from liveness and every kept log, relayed by the orchestrator (2026-11-25) -- the port-list and rebuild decisions, and the presence-ping fact in Context
+- User decision on one observer per machine, relayed by the orchestrator (2026-11-23) -- the single instance found through one per-user record, newer-replaces-older over a token-protected shutdown with no event lost, the home view of every project, each session view confined to its project's reported root, and the brain override scoped to the project it was run from.
+- User-settled observer design, relayed by the orchestrator (2026-11-22) -- replay-then-live with dedupe on session and order, Host check, token on every request, file confinement, delete of past sessions only, and no file watching.
 - Observer feature parent spec and its event-log child spec (frontmatter) -- the recording side as the logs' only writer, file-first recording, and the rule that a live session cannot be deleted.

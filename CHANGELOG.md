@@ -7,14 +7,40 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 ## [Unreleased]
 
 ### Added
+- The observer is the single source of truth for which agent session is working in a project, and a project has at most one open session at a time. `aide_observer_start` checks for another open session of the project and answers `HALT`, naming it: its id (or `claude:<id>` for a Claude session that never reported), whether it is working or waiting on you, how long it has been quiet ("maybe stuck" past 15 minutes), its last activity, pipeline and phase. Nothing proceeds until you approve ending that session or close the new one.
+- `aide_observer_end_session` ends another open session of the project on your approval. It only marks the session ended: it deletes no log, presence or project file, the ended session's further reports are refused, and it never ends the caller's own session.
+- Session liveness from Claude Code hooks. `aidemd-mcp hook`, called by Claude Code on session start, each prompt and tool call, the agent stopping and session end, records each session as working, waiting on you or ended, in per-user storage outside the project, and pings the observer so the page updates live. It prints nothing and never fails or blocks the agent. A session that has been quiet for 15 minutes shows as "quiet, maybe stuck" and is never ended on its own.
+- A `hooks` category for `aide_init`, `aidemd-mcp init` and `aide_upgrade`: for a Claude Code project it adds AIDE's own hook entries to `.claude/settings.json`, leaving every other byte as it was (comments, your own hooks, other settings), and never adds them twice. `aidemd-mcp init` writes them only into a settings file it creates; an existing one is merged by `/aide:upgrade` with your consent.
+- Pipelines in the observer. A pipeline is one feature flow run by `/aide`, from the stage it starts at to completion or abandonment, named by its kanban task. New reports `pipeline_started`, `pipeline_finished` and `phase_skipped` (every skipped stage, with its reason), and every phase, gate, plan-step and QA report names its pipeline. The live session's rail shows its current pipeline, each stage done, skipped, running or pending; a later session that resumes the pipeline shows the stages earlier sessions finished as done. Work by hand outside a pipeline shows as "Working outside the pipeline". Older logs still read.
+- The `aide-observer` skill, the seventh shipped skill: it opens the observer session (session start, the user's request, start, HALT and BLOCKED handling, the link) and holds every observer reporting rule. `/aide` runs it before the `aide` skill.
+- [migration] Claude Code projects get AIDE's hook entries.
+  - Detect: a Claude Code project whose `.claude/settings.json` is missing, or lacks an AIDE hook entry (command `aidemd-mcp hook`) for any of SessionStart, UserPromptSubmit, PostToolUse, Stop or SessionEnd.
+  - Migrate: `aide_upgrade` with `category: "hooks"` merges the missing entries, every other byte unchanged; a malformed settings file is reported and never written.
+  - Confirm: once, as a batch.
 - The observer's Details column and bottom drawer can be resized. Drag the grip on the column's left edge or on the open drawer's top edge, or focus it and use the arrow keys (Shift for bigger steps). Double-click or press Enter to go back to the default. Each size is remembered in your browser. The column always leaves room for the tree; the drawer always leaves the top of both columns in view.
 
 ### Changed
+- The observer is mandatory. `aide_observer_start` falls back through a port list (`AIDE_OBSERVER_PORT` first if set, then 24680 to 24689) and records the port it took; a replacing observer reuses the old port when it is free. If it can start on no port it answers `BLOCKED`, naming every port tried, and nothing proceeds; an observer that goes down mid-session and cannot be restarted blocks the same way. A report that only misses a running observer still never blocks.
+- Session liveness is judged from hook presence, ended marks and last activity (the newest of the hook time, the Claude transcript's last write and the newest report). The 30-minute "no recent event" rule is gone. Sessions from hosts without hooks, and sessions recorded before this change, stay open until you end them.
+- `aidemd-mcp view` uses the same port list. When the port it asked for is taken it starts on the next free one and says so (`Port <requested> was not used; the observer is on port <actual>.`); it exits 1 only when no port on the list can be bound. `--help` describes the list.
+- `aide_observer_end_session` replies `not ended (<reason>)` when the ended mark cannot be written; the HALT stands until it is ended.
+- The hook rewrites a session's presence, and pings the observer, only when the session's state, link or transcript changes or the record is 30 seconds old, so a run of tool calls costs one write and one ping per 30 seconds.
+- Every `aide_observer_event` reply ends with `[observer-session <id>]`, and a report for an ended session is refused with `refused: session ended`.
+- The `aide-architect` agent lists every caller and test of a shared function whose contract a plan changes, and plans their change in the same feature, instead of calling a caller unchanged without reading it.
+- The `/aide` command is a router: it invokes the `aide-observer` skill, then the `aide` skill. The `aide` skill no longer carries any observer text.
+- The observer page shows each session as Working, Waiting on you, Quiet N min · maybe stuck or Ended, names the pipeline on the status row and on Home, and shows history rows for pipeline starts, finishes and skipped stages. An ended session shows no rail.
 - The observer's bottom drawer (History, Sessions, Board) spans the full page width, under both the tree and the Details column. Opening it pushes both columns up, so a wide Details column no longer crowds its tabs.
 - The observer page's bottom drawer uses the class `av-drawer-bottom` (was `av-histdrawer`), matching its name on the page.
 
+### Removed
+- The `Observer: off` line in the instructions file. The observer can no longer be switched off for a project; a user can still ask a single session not to report.
+- [migration] The `Observer: off` instructions-file line is retired.
+  - Detect: the project's instructions file (`CLAUDE.md`, `AGENTS.md` or its framework's equivalent) has a line reading `Observer: off`.
+  - Migrate: the `aide-upgrader` deletes that one line and changes no other byte (its one named hand edit); tell the user the observer is now always on and the single source of truth for sessions.
+  - Confirm: per file.
+
 ### Fixed
-- `/aide` reports the task a session takes up to the observer as `picked`, even when it is already In Progress and nothing moves. Before, a resumed In Progress task was never reported, so the observer never showed which task the session was working on. The skill's reporting table, its Board tracking "Start" step and the `aide_observer_event` description say so.
+- `/aide` reports the task a session takes up to the observer as `picked`, even when it is already In Progress and nothing moves. Before, a resumed In Progress task was never reported, so the observer never showed which task the session was working on. The `aide-observer` skill's reporting table and the `aide_observer_event` description say so.
 - The observer's Details pane renders `.aide` markdown properly. Pipe tables show as tables, keeping each column's alignment. Inline code shows as code. Section headings no longer keep their `## ` prefix. Long lines (a wide folder tree, a long path) wrap, so the pane never scrolls sideways behind a scrollbar you could only reach at the bottom. A table too wide for the pane scrolls on its own.
 
 ## [0.16.1] - 2026-11-24

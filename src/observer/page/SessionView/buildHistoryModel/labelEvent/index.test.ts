@@ -216,6 +216,42 @@ describe("labelEvent against the handoff's historyData", () => {
 	});
 });
 
+/** The pipeline events' wording, which the handoff's prototype does not draw: the copy the user approved. */
+const PIPELINE: typeof HISTORY = [
+	{
+		name: "pipeline started",
+		events: [event({ kind: "pipeline_started", seq: 20, pipeline: "p1", phase: "spec" })],
+		at: 0,
+		expected: { label: "Pipeline p1 started at Spec", mono: null, meta: null },
+	},
+	{
+		name: "pipeline completed",
+		events: [event({ kind: "pipeline_finished", seq: 21, pipeline: "p1", result: "completed" })],
+		at: 0,
+		expected: { label: "Pipeline p1 completed", mono: null, meta: null },
+	},
+	{
+		name: "pipeline abandoned",
+		events: [event({ kind: "pipeline_finished", seq: 22, pipeline: "p1", result: "abandoned" })],
+		at: 0,
+		expected: { label: "Pipeline p1 abandoned", mono: null, meta: null },
+	},
+	{
+		name: "phase skipped, with its reason as meta",
+		events: [event({ kind: "phase_skipped", seq: 23, pipeline: "p1", phase: "research", reason: "brain already covers it" })],
+		at: 0,
+		expected: { label: "Research skipped", mono: null, meta: "brain already covers it" },
+	},
+];
+
+describe("labelEvent for pipeline events", () => {
+	it.each(PIPELINE)("words $name", ({ events, at: index, expected }) => {
+		const target = events[index]!;
+		const { label, mono, meta } = labelEvent({ event: target, events, projectRoot: ROOT });
+		expect({ label, mono, meta }).toEqual(expected);
+	});
+});
+
 describe("labelEvent: kind and drawer item", () => {
 	it.each([
 		["session_started", { kind: "session_started", seq: 1 }, "start", { kind: "event", sessionId: "s1", seq: 1 }],
@@ -231,6 +267,9 @@ describe("labelEvent: kind and drawer item", () => {
 		["file_written", { kind: "file_written", seq: 11, path: "src/a.ts", action: "created" }, "sub", { kind: "file", path: "src/a.ts" }],
 		["commit", { kind: "commit", seq: 12, sha: "abcdef1" }, "commit", { kind: "event", sessionId: "s1", seq: 12 }],
 		["release", { kind: "release", seq: 13, version: "1.0.0" }, "release", { kind: "event", sessionId: "s1", seq: 13 }],
+		["pipeline_started", { kind: "pipeline_started", seq: 15, pipeline: "p1", phase: "spec" }, "pipeline", { kind: "event", sessionId: "s1", seq: 15 }],
+		["pipeline_finished", { kind: "pipeline_finished", seq: 16, pipeline: "p1", result: "completed" }, "pipeline", { kind: "event", sessionId: "s1", seq: 16 }],
+		["phase_skipped", { kind: "phase_skipped", seq: 17, pipeline: "p1", phase: "research", reason: "r" }, "skip", { kind: "event", sessionId: "s1", seq: 17 }],
 		["error", { kind: "error", seq: 14, message: "boom" }, "error", { kind: "event", sessionId: "s1", seq: 14 }],
 	] as const)("gives %s its kind and what a click opens", (_name, fields, kind, target) => {
 		const subject = event({ ...fields });

@@ -6,9 +6,11 @@ import type { RunningObserver } from "@/observer/types/index.js";
 import getSession from "@/service/observer/event/record/session/index.js";
 import readPackageVersion from "@/util/readPackageVersion/index.js";
 import resolve from "@/util/runtimePaths/resolve/index.js";
-import tryBind from "@/tools/observer/shared/tryBind/index.js";
 import describeError from "@/util/describeError/index.js";
 import type { StartReply } from "./types/index.js";
+import walkPorts from "./walkPorts/index.js";
+import awaitOwnLink from "./awaitOwnLink/index.js";
+import findOpenSessions from "./findOpenSessions/index.js";
 import launchObserver from "./launchObserver/index.js";
 import awaitObserver from "./awaitObserver/index.js";
 
@@ -17,12 +19,17 @@ export const ObserverStartInput = z.object({});
 
 /**
  * Starts the one per-user observer, or reports the one already running, and always answers with
- * the link to the calling session's view (brief commitments #1, #26, #34, #37, #39). The port
- * comes from the shared precedence (`AIDE_OBSERVER_PORT`, else the default), an invalid value is
- * refused by name. A same-or-newer running observer is kept, an older one is replaced before
- * anything is spawned, and one that will not exit is reported stuck with both versions. A busy
- * port is named and nothing is spawned (never another port). Never throws: any failure becomes a
- * not-started reply.
+ * the link to the calling session's view (brief commitments #1, #26, #34, #37, #39, #73, #83).
+ * The preferred port comes from the shared precedence (`AIDE_OBSERVER_PORT`, else the head of the
+ * port list), an invalid value is blocked by name; after a replace the old observer's port is
+ * preferred instead. A same-or-newer running observer is kept and an older one that will not exit
+ * is reported stuck with both versions, both without any port walk. Otherwise the port list is
+ * pre-walked with `tryBind` and the observer is spawned on the first bindable port; when none
+ * binds the reply is blocked, naming every port and why. Once the observer answers (started,
+ * running or stuck) the HALT check runs: the caller's own presence gets a moment to link, then any
+ * other open session of the project, judged from disk, turns the reply into a halt that still
+ * carries the link (brief commitments #69, #82, #91). Never throws: any failure, a failed HALT
+ * check included, becomes a blocked reply, because nothing may proceed unobserved.
  */
 export default async function start({
 	root,
@@ -33,44 +40,60 @@ export default async function start({
 }): Promise<StartReply> {
 	try {
 		const choice = resolvePort({});
-		if (!choice.ok) return { outcome: "not-started", reason: choice.reason };
-		const { port } = choice;
+		if (!choice.ok) return { outcome: "blocked", reason: choice.reason };
 
 		// The calling session's view: this project's key and this process's session id.
 		const linkTo = (observer: RunningObserver) =>
 			buildViewLink({
 				observer,
-				view: { projectKey: resolve({ projectRoot: root }).projectKey, sessionId: getSession().sessionId },
+				view: { projectKey, sessionId },
 			});
+
+		// The HALT check: wait for the caller's own link, then list the project's other open sessions.
+		const projectKey = resolve({ projectRoot: root }).projectKey;
+		const sessionId = getSession().sessionId;
+		const checkHalt = async (reply: Exclude<StartReply, { outcome: "halt" | "blocked" }>): Promise<StartReply> => {
+			await awaitOwnLink({ projectKey, sessionId });
+			const open = await findOpenSessions({ projectRoot: root, callerSessionId: sessionId });
+			return open.length > 0 ? { outcome: "halt", link: reply.link, open } : reply;
+		};
 
 		// Single instance: a running observer of any project is kept, an older one is replaced.
 		const ownVersion = readPackageVersion();
 		const taken = await takeOver({ version: ownVersion });
-		if (taken.outcome === "kept") return { outcome: "running", link: linkTo(taken.observer) };
+		if (taken.outcome === "kept") return await checkHalt({ outcome: "running", link: linkTo(taken.observer) });
 		if (taken.outcome === "stuck") {
-			return {
+			return await checkHalt({
 				outcome: "stuck",
 				runningVersion: taken.observer.version,
 				ownVersion,
 				link: linkTo(taken.observer),
-			};
+			});
 		}
 
-		// The port must be bindable; never fall back to another one.
-		if (!(await tryBind(port))) return { outcome: "not-started", reason: `port ${port} is busy` };
+		// Walk the port list: a replaced observer's port first, else the resolved one.
+		const preferred = taken.outcome === "replaced" ? taken.previous.port : choice.port;
+		const walked = await walkPorts({ preferred });
+		if (walked.kind === "exhausted") {
+			const named = walked.tried.map(({ port, reason }) => `${port} (${reason})`).join(", ");
+			return { outcome: "blocked", reason: `No port could be bound: ${named}` };
+		}
+		const { port } = walked;
 
 		// Spawn the package's own entry detached, then wait until it answers.
 		const child = launchObserver({ root, port, entryScript });
 		const awaited = await awaitObserver({ port, child });
-		if (awaited.outcome === "not-started") return awaited;
+		if (awaited.outcome === "not-started") return { outcome: "blocked", reason: awaited.reason };
 
 		const link = linkTo(awaited.observer);
-		return taken.outcome === "replaced"
-			? { outcome: "started", link, replaced: taken.previous.version }
-			: { outcome: "started", link };
+		return await checkHalt(
+			taken.outcome === "replaced"
+				? { outcome: "started", link, replaced: taken.previous.version }
+				: { outcome: "started", link },
+		);
 	} catch (error) {
 		return {
-			outcome: "not-started",
+			outcome: "blocked",
 			reason: describeError({ error }),
 		};
 	}

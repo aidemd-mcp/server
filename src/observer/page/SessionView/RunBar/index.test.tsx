@@ -29,6 +29,16 @@ function render(card: NowCardModel): string {
 }
 
 describe("RunBar", () => {
+	it("prints the pipeline before the phase, and nothing extra without one", () => {
+		expect(render(makeCard({ pipeline: "feature-x" }))).toContain('<span class="rb-title">feature-x · Build<span class="rb-sub"> step 4 of 9</span></span>');
+		expect(render(makeCard({ pipeline: null }))).toContain('<span class="rb-title">Build<span');
+	});
+
+	it("reads Working outside the pipeline and No phase running as the state word", () => {
+		expect(stripMarkup(render(makeCard({ kind: "idle", state: "Working outside the pipeline" })))).toContain("Working outside the pipeline");
+		expect(stripMarkup(render(makeCard({ kind: "idle", state: "No phase running" })))).toContain("No phase running");
+	});
+
 	it("is one status row in the card's state colour", () => {
 		expect(render(makeCard())).toContain('<div class="av-runbar run" role="status">');
 		expect(render(makeCard({ kind: "idle" }))).toContain('<div class="av-runbar idle" role="status">');

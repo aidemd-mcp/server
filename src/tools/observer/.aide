@@ -1,0 +1,69 @@
+---
+scope: src/tools/observer
+alignment: unreviewed
+description: "Agent-facing observer tools: start the observer and halt on another live session of the project, end a session with the user's approval, and record the agent's reports."
+intent: >
+  Gives the agent its only ways into the observer. Starting, done at every
+  session start, launches or reuses the observer and returns the link to
+  this session's view, but halts when another session of the project looks
+  live, naming it, so nothing proceeds until the user approves ending that
+  session or closes this one. Ending marks a session ended on the user's
+  approval and never deletes anything. An observer that can start on no
+  port fails the start and nothing proceeds. Reporting records one event
+  for the calling session, best effort, and is refused once that session
+  was ended.
+outcomes:
+  desired:
+    - A session start while another session of the project looks live, judged from stored presence and ended marks rather than a running observer, answers HALT, naming that session, its state as working, waiting or quiet N min and maybe stuck, its last activity, and its pipeline and phase. Otherwise it returns the link to the calling session's view, starting the observer only when none runs.
+    - After a halt nothing proceeds until the user approves ending the other session or closes this one. The pipeline waits on the observer only at the session start, for the start and the one-live-session check, and when it is found down and cannot be restarted.
+    - "When the observer can start on no port, at session start or on the one restart after it is found down, the start fails as a blocker: the agent tells the user and nothing proceeds."
+    - Ending a session happens only on the user's approval, marks that session ended and deletes nothing, and it refuses to end the caller's own session.
+    - Recording an event names the calling session, returns promptly whatever fails, and tells the agent whether the observer received it. A report that misses the observer never blocks by itself; it prompts one restart.
+    - A report for a session that was already ended is refused, so an ended session cannot go on writing as if it were live.
+  undesired:
+    - A session start that lets the agent proceed while another session of the project looks live, or that halts on the caller's own session or an ended one.
+    - A halt that hides who holds the project, such as one missing the other session's state, last activity, pipeline or phase.
+    - A session ended without the user's approval or because it went quiet, the caller ending its own session, or an end that deletes any record or project file.
+    - A report that itself waits on, fails or changes the pipeline because recording failed or the observer was unreachable, or an unreachable observer met with anything but one restart.
+    - A report accepted for a session already ended, or recorded under a session other than the caller's.
+    - A start that lets the agent carry on when no observer could start, or a halt decided from a running observer's state instead of stored presence and ended marks.
+---
+
+## Context
+
+These tools are the agent's only way into the observer, and the agent is the party least able to keep a rule: it forgets, retries, and reads a warning as a suggestion. So every rule the session start depends on is enforced in a tool reply the agent cannot misread, and the decisions that need the user (ending another session) are left to the user through the agent, with the tool refusing what no approval can make safe.
+
+Each tool runs inside the calling session's own server, which knows its observer session but sees other sessions only through what is stored on disk. A start can come at boot or as the one restart after a missed report; either way the user has to be able to see what is going on, including the other session that blocks this one.
+
+## Strategy
+
+**Start runs three steps in a fixed order: find or launch, check, answer.** The observer is brought up first so even a halt reply carries a link the user can open to look at the blocking session. The check reads stored presence and ended marks, then the reply is exactly one of three: the link, a halt, or a blocker naming every port tried.
+
+**A halt names enough to decide on.** It gives the other session's state, last activity, quiet time with maybe stuck, and its pipeline and phase, or its host id when it never reported, and says plainly that nothing proceeds. The user cannot see that session otherwise, and a vague "another session may be active" invites the agent to carry on.
+
+**The caller's own session never blocks it.** The caller's observer session, and its presence once joined through the session-start reply, are excluded from the check, so a session never halts on itself after a restart or a second start.
+
+**Ending is a mark the user approves, never self-applied.** The tool writes an ended mark for another session of the caller's project and deletes nothing; ending one already ended changes nothing. It refuses the caller's own session, which ends through its own end hook, so an agent cannot quietly release itself and leave the project unheld. The tool cannot check approval; the observer skill asks the user first.
+
+**Reporting answers fast and says what happened.** A report names the calling session, never blocks, and tells the agent whether the observer received it; a report for an ended session is refused. The tools track no restart attempts: a miss reply prompts the skill's one restart through start, and a start that then finds no port gives the same blocker as at boot.
+
+## Good examples
+
+**Halt, end, go.** A new session's start halts naming a session quiet for 40 minutes, maybe stuck, in the Build phase of a task. The user approves ending it; the agent ends it and calls start again, which now returns the link.
+
+**A miss and one restart.** A report replies that the observer did not receive it. The agent calls start once; the observer comes back on the next free port, and the reply's link points there.
+
+**Ending itself refused.** Confused by a halt, the agent tries to end its own session; the tool refuses and names the session it would have ended, and the agent asks the user instead.
+
+## Bad examples
+
+**A soft halt.** Start answers with a warning that another session may be active and no state; the agent reads it as advisory and starts planning in a project another session is building in.
+
+**Halt from the observer's memory.** Start asks the freshly restarted observer, which has replayed nothing, and lets the session proceed beside a working one.
+
+**Ending as cleanup.** The end tool removes the other session's log to make the project look clean, and the pipeline it was running can no longer resume its finished stages.
+
+## References
+
+- User decisions on the halt and its contents, ending a session with the user's approval and never the caller's own, refusing reports once ended, the port list and no port as a blocker at start and on restart, relayed by the orchestrator (2026-11-25) -- every decision
+- User answers that any open Claude session in the project halts, reported or not, and that simultaneous starts may both pass with no lock, relayed by the orchestrator (2026-11-25) -- the halt names a host id for an unreported session; no start lock

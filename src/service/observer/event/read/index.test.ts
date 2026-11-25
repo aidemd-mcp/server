@@ -8,18 +8,13 @@ vi.mock("node:os", async (importOriginal) => {
 	return { ...actual, homedir: vi.fn(() => actual.homedir()) };
 });
 
-vi.mock("@/util/isProcessRunning/index.js", () => ({
-	default: vi.fn(),
-}));
-
 import { homedir } from "node:os";
-import isProcessRunning from "@/util/isProcessRunning/index.js";
 import read from "./index.js";
 import resolve from "@/util/runtimePaths/resolve/index.js";
 import resolveEventLog from "@/util/runtimePaths/resolveEventLog/index.js";
+import resolvePresenceFile from "@/util/runtimePaths/resolvePresenceFile/index.js";
 
 const mockHomedir = vi.mocked(homedir);
-const mockIsProcessRunning = isProcessRunning as ReturnType<typeof vi.fn>;
 
 const FIRST = "20261122T090000000Z-aaaaaa";
 const SECOND = "20261122T100000000Z-bbbbbb";
@@ -61,7 +56,6 @@ async function readSessions() {
 
 beforeEach(async () => {
 	vi.clearAllMocks();
-	mockIsProcessRunning.mockReturnValue(false);
 	vi.useFakeTimers({ toFake: ["Date"] });
 	vi.setSystemTime(NOW);
 	home = await mkdtemp(path.join(tmpdir(), "aide-read-home-"));
@@ -147,15 +141,31 @@ describe("read", () => {
 		expect(result.map((log) => log.sessionId)).toEqual([FIRST]);
 	});
 
-	it("judges live per session by the liveness rule", async () => {
+	it("judges liveness per session by the one rule: no presence works however old, a Stop presence waits", async () => {
 		const old = new Date(NOW - 2 * HOUR).toISOString();
-		await writeSession(FIRST, toLines([makeEvent(FIRST, { seq: 1, ts: old, pid: 111 })]));
-		await writeSession(SECOND, toLines([makeEvent(SECOND, { seq: 1, ts: old, pid: 222 })]));
-		mockIsProcessRunning.mockImplementation((pid: number) => pid === 222);
+		await writeSession(FIRST, toLines([makeEvent(FIRST, { seq: 1, ts: old })]));
+		await writeSession(SECOND, toLines([makeEvent(SECOND, { seq: 1, ts: old })]));
+		const projectKey = resolve({ projectRoot: project }).projectKey;
+		const presence = resolvePresenceFile({ projectKey, claudeSessionId: "c3333333" });
+		await mkdir(path.dirname(presence), { recursive: true });
+		await writeFile(
+			presence,
+			JSON.stringify({
+				v: 1,
+				claudeSessionId: "c3333333",
+				sessionId: SECOND,
+				state: "waiting",
+				at: new Date(NOW - 60 * 1000).toISOString(),
+				hookEvent: "Stop",
+			}),
+			"utf-8",
+		);
 
 		const result = await readSessions();
 
-		expect(result.map((log) => log.live)).toEqual([false, true]);
+		expect(result.map((log) => log.liveness.state)).toEqual(["working", "waiting"]);
+		expect(result[0]!.liveness.maybeStuck).toBe(true);
+		expect(result[1]!.liveness.maybeStuck).toBe(false);
 	});
 
 	it("leaves the project folder empty", async () => {

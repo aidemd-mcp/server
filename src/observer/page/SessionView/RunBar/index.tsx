@@ -5,7 +5,7 @@ import StepBar from "../NowCard/StepBar/index.js";
 /**
  * The desktop session page's slim status bar: the now card as one full-width 64px row under the
  * header, the same shape as the waiting banner but in the state's quieter colour. It reads the
- * state word and glyph, the phase and its sub line (`step 4 of 9`), each labelled part (agent,
+ * state word and glyph, the pipeline and phase and its sub line (`step 4 of 9`), each labelled part (agent,
  * module), the current step's text with a compact step bar, and the elapsed time on the right. It
  * never scrolls away, since the page's frame keeps it above the main area. The ticking time is hidden
  * from assistive technology; its static label stands in for it.
@@ -18,6 +18,7 @@ export default function RunBar({ card }: { card: NowCardModel }) {
 				{card.state}
 			</span>
 			<span className="rb-title">
+				{card.pipeline != null && `${card.pipeline} · `}
 				{card.title}
 				{card.titleMono !== null && <span className="mono"> {card.titleMono}</span>}
 				{card.sub !== null && <span className="rb-sub"> {card.sub}</span>}

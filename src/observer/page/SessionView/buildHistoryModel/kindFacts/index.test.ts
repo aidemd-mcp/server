@@ -7,6 +7,8 @@ const HANDOFF = {
 	prompt: ["prompts", "prompt", "prompt: "],
 	task: ["tasks", "task", "task: "],
 	phase: ["phases", "flag", "phase started: "],
+	pipeline: ["phases", "loop", "pipeline: "],
+	skip: ["phases", "todo", "skipped: "],
 	done: ["phases", "done", "phase finished: "],
 	wait: ["gates", "wait", "waiting on you: "],
 	approve: ["gates", "gate", "approved: "],

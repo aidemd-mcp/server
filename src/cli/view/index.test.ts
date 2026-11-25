@@ -13,7 +13,11 @@ const startObserverMock = startObserver as ReturnType<typeof vi.fn>;
 const buildLinkMock = buildLink as ReturnType<typeof vi.fn>;
 const LINK = "http://127.0.0.1:24680/p/p-ab12/s/s1?token=abc123";
 const projectRoot = resolve("/project/root");
-const observer = { address: "http://127.0.0.1:24680", token: "abc123", pid: 4242, version: "0.16.0" };
+const observer = { address: "http://127.0.0.1:24680", port: 24680, token: "abc123", pid: 4242, version: "0.16.0" };
+const otherPortObserver = { ...observer, address: "http://127.0.0.1:24683", port: 24683 };
+const BRAIN_NOTE =
+	"Note: --brain applies only when this command starts the observer; the running observer keeps its own setting.\n";
+const PORT_NOTE = "Port 24680 was not used; the observer is on port 24683.\n";
 
 describe("view", () => {
 	let stdout: string;
@@ -130,6 +134,51 @@ describe("view", () => {
 		});
 	});
 
+	describe("port note", () => {
+		it("kept on another port: prints the note after the link line and before the --brain note", async () => {
+			startObserverMock.mockResolvedValue({ outcome: "kept", observer: otherPortObserver });
+			await expect(view({ args: ["--brain", "../brain"], projectRoot })).resolves.toBe(0);
+			expect(stdout).toBe(`Observer already running at ${LINK}\n${PORT_NOTE}${BRAIN_NOTE}`);
+		});
+
+		it("kept on the port asked for: prints no note", async () => {
+			startObserverMock.mockResolvedValue({ outcome: "kept", observer });
+			await view({ args: [], projectRoot });
+			expect(stdout).not.toContain("was not used");
+		});
+
+		it("kept on another port than --port: names the flag's port as the one asked for", async () => {
+			startObserverMock.mockResolvedValue({ outcome: "kept", observer: otherPortObserver });
+			await view({ args: ["--port", "31000"], projectRoot });
+			expect(stdout).toContain("Port 31000 was not used; the observer is on port 24683.\n");
+		});
+
+		it("started on another port: prints the link line, then the note, and returns 0 once stopped", async () => {
+			const stop = vi.fn().mockResolvedValue(undefined);
+			startObserverMock.mockResolvedValue({
+				outcome: "started",
+				observer: otherPortObserver,
+				stop,
+				stopped: new Promise(() => undefined),
+			});
+
+			const running = view({ args: [], projectRoot });
+			await vi.waitFor(() => expect(stdout).toContain(PORT_NOTE));
+			expect(stdout).toBe(`Observer running at ${LINK} (Ctrl+C to stop)\n${PORT_NOTE}`);
+
+			process.emit("SIGINT");
+			await expect(running).resolves.toBe(0);
+			expect(stdout).toBe(`Observer running at ${LINK} (Ctrl+C to stop)\n${PORT_NOTE}Observer stopped\n`);
+		});
+
+		it("started on the port asked for: prints no note", async () => {
+			const stop = vi.fn().mockResolvedValue(undefined);
+			startObserverMock.mockResolvedValue({ outcome: "started", observer, stop, stopped: Promise.resolve() });
+			await expect(view({ args: [], projectRoot })).resolves.toBe(0);
+			expect(stdout).not.toContain("was not used");
+		});
+	});
+
 	it("exits 1 naming both versions and the link when the old observer is stuck", async () => {
 		startObserverMock.mockResolvedValue({ outcome: "stuck", observer: { ...observer, version: "0.14.0" } });
 		await expect(view({ args: [], projectRoot })).resolves.toBe(1);
@@ -138,11 +187,12 @@ describe("view", () => {
 		);
 	});
 
-	it("exits 1 with the reason on stderr when not started", async () => {
-		const reason = "Port 24680 is busy; the observer did not start. Another program is using it.";
+	it("exits 1 with the exhausted-list reason on stderr and nothing on stdout when not started", async () => {
+		const reason = "No port could be bound: 24680 (in use), 24681 (in use)";
 		startObserverMock.mockResolvedValue({ outcome: "not-started", reason });
 		await expect(view({ args: [], projectRoot })).resolves.toBe(1);
 		expect(stderr).toBe(`Observer not started: ${reason}\n`);
+		expect(stdout).toBe("");
 		expect(buildLinkMock).not.toHaveBeenCalled();
 	});
 

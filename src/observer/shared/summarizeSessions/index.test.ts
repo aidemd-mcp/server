@@ -1,16 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ObserverEvent } from "@/types/index.js";
-
-vi.mock("@/service/observer/event/shared/judgeLiveness/index.js", () => ({ default: vi.fn() }));
-
-import judgeLiveness from "@/service/observer/event/shared/judgeLiveness/index.js";
+import { describe, expect, it } from "vitest";
+import type { ObserverEvent, SessionLiveness } from "@/types/index.js";
 import summarizeSessions from "./index.js";
 
-const mockLiveness = judgeLiveness as ReturnType<typeof vi.fn>;
+function makeLiveness(overrides: Partial<SessionLiveness> = {}): SessionLiveness {
+	return { state: "working", lastActivityAt: "2026-01-01T00:00:02.000Z", quietMinutes: 0, maybeStuck: false, ...overrides };
+}
 
 function makeStarted(seq: number, extra: Record<string, string> = {}): ObserverEvent {
 	return {
-		v: 1,
+		v: 2,
 		ts: `2026-01-01T00:00:0${seq}.000Z`,
 		sessionId: "a",
 		seq,
@@ -21,53 +19,70 @@ function makeStarted(seq: number, extra: Record<string, string> = {}): ObserverE
 }
 
 function makePrompt(seq: number): ObserverEvent {
-	return { v: 1, ts: `2026-01-01T00:00:0${seq}.000Z`, sessionId: "a", seq, pid: 1, kind: "prompt", text: "x" };
+	return { v: 2, ts: `2026-01-01T00:00:0${seq}.000Z`, sessionId: "a", seq, pid: 1, kind: "prompt", text: "x" };
 }
 
 describe("summarizeSessions", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
-
-	it("summarizes a session with its session_started metadata and the liveness rule's answer", () => {
-		mockLiveness.mockReturnValue(true);
+	it("summarizes a session with its session_started metadata and the liveness handed in, unchanged", () => {
 		const events = [makeStarted(1, { projectRoot: "/p", kanbanTag: "t" }), makePrompt(2)];
+		const liveness = makeLiveness({ state: "waiting", quietMinutes: 3 });
 
-		expect(summarizeSessions({ sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events }], now: 99 })).toEqual([
+		expect(
+			summarizeSessions({ sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events }], liveness: { a: liveness } }),
+		).toEqual([
 			{
 				sessionId: "a",
 				startedAt: events[0]!.ts,
 				metadata: { projectRoot: "/p", kanbanTag: "t" },
 				eventCount: 2,
 				lastEventAt: events[1]!.ts,
-				live: true,
+				liveness,
 			},
 		]);
-		expect(mockLiveness).toHaveBeenCalledWith({ events, now: 99 });
+	});
+
+	it("copies an ended liveness with its endedBy", () => {
+		const liveness = makeLiveness({ state: "ended", endedBy: "user" });
+
+		const [listing] = summarizeSessions({
+			sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events: [makeStarted(1)] }],
+			liveness: { a: liveness },
+		});
+
+		expect(listing!.liveness).toEqual({ ...liveness, endedBy: "user" });
 	});
 
 	it("falls back to the first event's ts and no metadata without a session_started", () => {
-		mockLiveness.mockReturnValue(false);
 		const events = [makePrompt(3), makePrompt(4)];
 
-		const [listing] = summarizeSessions({ sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events }], now: 0 });
+		const [listing] = summarizeSessions({
+			sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events }],
+			liveness: { a: makeLiveness() },
+		});
 
-		expect(listing).toMatchObject({ startedAt: events[0]!.ts, metadata: null, live: false });
+		expect(listing).toMatchObject({ startedAt: events[0]!.ts, metadata: null });
 	});
 
 	it("gives null times for a session with no events", () => {
-		mockLiveness.mockReturnValue(false);
+		const liveness = makeLiveness({ lastActivityAt: null });
 
-		expect(summarizeSessions({ sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events: [] }], now: 0 })).toEqual([
-			{ sessionId: "a", startedAt: null, metadata: null, eventCount: 0, lastEventAt: null, live: false },
-		]);
+		expect(
+			summarizeSessions({ sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events: [] }], liveness: { a: liveness } }),
+		).toEqual([{ sessionId: "a", startedAt: null, metadata: null, eventCount: 0, lastEventAt: null, liveness }]);
 	});
 
 	it("gives empty metadata when session_started carries no fields", () => {
-		mockLiveness.mockReturnValue(false);
-
-		const [listing] = summarizeSessions({ sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events: [makeStarted(1)] }], now: 0 });
+		const [listing] = summarizeSessions({
+			sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events: [makeStarted(1)] }],
+			liveness: { a: makeLiveness() },
+		});
 
 		expect(listing!.metadata).toEqual({});
+	});
+
+	it("throws for a session whose liveness was not read, never judging it itself", () => {
+		expect(() =>
+			summarizeSessions({ sessions: [{ projectKey: "p-aaaaaa", sessionId: "a", events: [makeStarted(1)] }], liveness: {} }),
+		).toThrow("No liveness was read for session a.");
 	});
 });

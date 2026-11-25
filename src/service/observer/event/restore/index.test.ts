@@ -9,20 +9,16 @@ vi.mock("node:os", async (importOriginal) => {
 	return { ...actual, homedir: vi.fn(() => actual.homedir()) };
 });
 
-vi.mock("@/util/isProcessRunning/index.js", () => ({
-	default: vi.fn(),
-}));
-
 import { homedir } from "node:os";
-import isProcessRunning from "@/util/isProcessRunning/index.js";
 import resolve from "@/util/runtimePaths/resolve/index.js";
 import resolveEventLog from "@/util/runtimePaths/resolveEventLog/index.js";
 import resolveArchivedLog from "@/util/runtimePaths/resolveArchivedLog/index.js";
+import create from "@/util/runtimePaths/create/index.js";
 import archiveSession from "@/service/observer/event/archive/index.js";
+import writeEndedMark from "@/service/observer/event/shared/writeEndedMark/index.js";
 import restoreSession from "./index.js";
 
 const mockHomedir = vi.mocked(homedir);
-const mockIsProcessRunning = isProcessRunning as ReturnType<typeof vi.fn>;
 
 const NOW = Date.parse("2026-11-22T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -56,7 +52,6 @@ async function writeSession(sessionId: string): Promise<string> {
 
 beforeEach(async () => {
 	vi.clearAllMocks();
-	mockIsProcessRunning.mockReturnValue(false);
 	vi.useFakeTimers({ toFake: ["Date"] });
 	vi.setSystemTime(NOW);
 	home = await mkdtemp(path.join(tmpdir(), "aide-restore-home-"));
@@ -77,7 +72,11 @@ describe("restoreSession", () => {
 	it("moves an archived log back, byte for byte, and returns the session", async () => {
 		const file = await writeSession(SESSION_A);
 		const before = await readFile(file, "utf-8");
-		const { projectKey } = resolve({ projectRoot: project });
+		const { projectKey } = await create({ projectRoot: project });
+		await writeEndedMark({
+			projectKey,
+			mark: { v: 1, sessionId: SESSION_A, endedAt: new Date(NOW).toISOString(), endedBy: "user" },
+		});
 		await archiveSession({ projectKey, sessionId: SESSION_A });
 
 		const result = await restoreSession({ projectKey, sessionId: SESSION_A });
@@ -85,6 +84,7 @@ describe("restoreSession", () => {
 		expect(result.outcome).toBe("restored");
 		if (result.outcome !== "restored") return;
 		expect(result.session.sessionId).toBe(SESSION_A);
+		expect(result.session.liveness).toMatchObject({ state: "ended", endedBy: "user" });
 		expect(result.session.events).toHaveLength(1);
 		expect(await readFile(file, "utf-8")).toBe(before);
 		expect(existsSync(resolveArchivedLog({ projectKey, sessionId: SESSION_A }))).toBe(false);

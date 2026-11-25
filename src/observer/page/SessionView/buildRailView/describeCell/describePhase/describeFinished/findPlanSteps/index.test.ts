@@ -14,6 +14,10 @@ describe("findPlanSteps", () => {
 		expect(findPlanSteps({ status: null, module: "src/tools/score" })).toBeNull();
 	});
 
+	it("is null when no module is named", () => {
+		expect(findPlanSteps({ status: makeStatus({ tree: [SCORE_NODE] }), module: null })).toBeNull();
+	});
+
 	it("is null for a module the tree does not hold", () => {
 		expect(findPlanSteps({ status: makeStatus({ tree: [SCORE_NODE] }), module: "src/other" })).toBeNull();
 	});

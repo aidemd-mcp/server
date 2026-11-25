@@ -1,14 +1,23 @@
-import type { AlignmentValue, WorkStatus, ObserverEvent, BoardResult } from "@/types/index.js";
+import type { AlignmentValue, WorkStatus, ObserverEvent, BoardResult, SessionLiveness } from "@/types/index.js";
 
 /** The closed list of pipeline phases, derived from the event schema's `phase_started` event. */
 export type Phase = Extract<ObserverEvent, { kind: "phase_started" }>["phase"];
 
-/** What the status builder needs: the project, every recorded event and the board result. */
+/**
+ * What the status builder needs: the project, every recorded event, the
+ * archived sessions' events, each session's judged liveness and the board
+ * result. Liveness and archived events arrive judged and read: status never
+ * reads presence, logs or the board itself (brief commitments #11, #14).
+ */
 export type StatusInput = {
 	/** Absolute path of the project root. */
 	projectRoot: string;
 	/** All recorded events of all sessions, deduplicated by the caller, in any order. */
 	events: ObserverEvent[];
+	/** The project's archived sessions' events; used only to resume pipelines, never shown in history or sessions. */
+	archivedEvents: ObserverEvent[];
+	/** One judged liveness per session in `events`, keyed by session id. */
+	liveness: Record<string, SessionLiveness>;
 	/** The kanban board result, passed through to the status untouched. */
 	board: BoardResult;
 };
@@ -104,9 +113,6 @@ export type SessionRecord =
 			}[];
 	  };
 
-/** Whether a session is still active: `live` (recent event), `idle` (older, pid running) or `ended`. */
-export type Liveness = "live" | "idle" | "ended";
-
 /** One session folded from its events. */
 export type SessionSummary = {
 	sessionId: string;
@@ -117,12 +123,13 @@ export type SessionSummary = {
 	eventCount: number;
 	/** The pid of the highest-seq event. */
 	pid: number;
-	liveness: Liveness;
+	/** The session's liveness exactly as the caller judged it; status never re-judges it. */
+	liveness: SessionLiveness;
 	/** What the first `session_started` event reported (only the keys it carried), or null. */
 	reported: { projectRoot?: string; kanbanTag?: string; brainPath?: string } | null;
 };
 
-/** One phase running now in a live or idle session. */
+/** One phase running now in a session that has not ended. */
 export type RunningWork = {
 	sessionId: string;
 	phase: Phase;
@@ -149,32 +156,36 @@ export type WaitingFile = {
 	since: string;
 };
 
-/** Where a phase stands on the rail. */
-export type RailPhaseState = "running" | "done" | "not-run";
+/** Where a stage stands on a rail. */
+export type RailPhaseState = "done" | "skipped" | "running" | "pending";
 
-/** One phase of the closed list on the rail. */
+/** One stage of the closed phase list on a rail. */
 export type RailPhase = {
 	phase: Phase;
 	label: string;
 	state: RailPhaseState;
-	/** Only on the `running` entry, copied from the running work. */
+	/** Only on a `skipped` stage: the reason the skip report gave. */
+	reason?: string;
+	/** Only on the `running` stage, copied from the running work. */
 	buildStep?: RunningWork["buildStep"];
-	/** Only on the `running` entry, copied from the running work. */
+	/** Only on the `running` stage, copied from the running work. */
 	qaFixRound?: RunningWork["qaFixRound"];
 };
 
 /**
- * The phase rail for one module. Built only from reported events (the phase
- * running now and the phases finished in that session for that module); never
- * from files, never a next step.
+ * The rail of one session that has not ended: its current pipeline (or the
+ * last one it finished, until another starts), every stage of the closed list
+ * once in list order. Built only from reported events; a stage is `skipped`
+ * only from a skip report. `pipeline: null` covers a session that reported no
+ * pipeline (a v1 log or hand work).
  */
-export type PhaseRail = {
-	module: string;
+export type PipelineRail = {
 	sessionId: string;
-	/** Whether the module came from the running work or from the surfaced file. */
-	source: "running" | "surfaced";
-	/** Every phase of the closed list exactly once, in list order. */
-	phases: RailPhase[];
+	pipeline: string | null;
+	pipelineState: "running" | "finished" | "none";
+	/** True when no stage is running and the session's latest events are file writes or commits. */
+	outside: boolean;
+	stages: RailPhase[];
 };
 
 /** One history row: exactly one per recorded event. */
@@ -212,7 +223,8 @@ export type Status = {
 	 * page's decision.
 	 */
 	surfaced: WaitingFile | null;
-	rail: PhaseRail | null;
+	/** One rail per session that has not ended, newest-started first. */
+	rails: PipelineRail[];
 	history: HistoryRow[];
 	board: BoardResult;
 	problems: StatusProblem[];

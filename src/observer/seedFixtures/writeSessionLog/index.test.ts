@@ -28,7 +28,7 @@ function makeSession(overrides: Partial<FixtureSession> = {}): FixtureSession {
 	const events: FixtureEvent[] = [
 		{ offsetMin: 30, kind: "session_started" },
 		{ offsetMin: 20, kind: "prompt", text: "Start the plan" },
-		{ offsetMin: 5, kind: "phase_started", phase: "build", agent: "aide-implementor", module: "src/tools/score" },
+		{ offsetMin: 5, kind: "phase_started", pipeline: "rank-misaligned", phase: "build", agent: "aide-implementor", module: "src/tools/score" },
 	];
 	return { pid: "live", events, ...overrides };
 }
@@ -52,7 +52,7 @@ describe("writeSessionLog", () => {
 			"2026-11-23T11:55:00.000Z",
 		]);
 		expect(new Set(events.map((event) => event.sessionId))).toEqual(new Set([written.sessionId]));
-		expect(events.map((event) => event.v)).toEqual([1, 1, 1]);
+		expect(events.map((event) => event.v)).toEqual([2, 2, 2]);
 	});
 
 	it("stamps process.pid for a live session", async () => {

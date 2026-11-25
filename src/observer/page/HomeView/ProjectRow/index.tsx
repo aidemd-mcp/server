@@ -5,8 +5,8 @@ import PhaseRail from "@/observer/page/SessionView/PhaseRail/index.js";
 import TaskSummary from "./TaskSummary/index.js";
 
 /**
- * One project on Home, with a star that moves it to the Starred section. Closed: the name and live count with the current task's title under it, a short status (the phase badge and its
- * elapsed time, or waiting on you, or no phase running), the last activity and an
+ * One project on Home, with a star that moves it to the Starred section. Closed: the name and live count with the current task's title under it, a short status (the liveness badge, the pipeline and the phase with its
+ * elapsed time, or waiting on you, or working outside the pipeline, or no phase running), the last activity and an
  * `Open project` button that goes to the project page. Clicking anywhere else expands the row: the
  * task the live session is working on (title, chips, the note's first paragraph and a link to the
  * whole note) and its phase rail. The row
@@ -88,6 +88,8 @@ export default function ProjectRow({
 									<Icon name={status.badge.icon} />
 									{status.badge.word}
 								</span>
+								{status.pipeline !== null && <span className="p-el mono">{status.pipeline}</span>}
+								{status.phase !== null && <span className="p-el">{status.phase}</span>}
 								{status.elapsed !== null && <span className="p-el mono">{status.elapsed}</span>}
 							</>
 						)}
@@ -108,7 +110,7 @@ export default function ProjectRow({
 					)}
 					{project.rail != null && project.rail.length > 0 ? (
 						<div className="pm-rail">
-							<PhaseRail phases={project.rail} />
+							<PhaseRail phases={project.rail} pipeline={status?.pipeline ?? null} outside={status?.outside ?? false} />
 						</div>
 					) : (
 						<p className="t3">No session is running in this project.</p>

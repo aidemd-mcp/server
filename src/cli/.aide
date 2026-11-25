@@ -1,27 +1,29 @@
 ---
 scope: src/cli
 alignment: unreviewed
-description: The package's terminal commands, typed by a human in a plain terminal outside any agent session, each routed to the one command that does that job.
+description: "The package's terminal commands, each routed to the one command that does that job: typed by a human outside any agent session, except one called by Claude Code hooks."
 intent: >
-  This module is the package's front door for a human at a plain terminal,
-  outside any agent session. It routes the subcommand a person types to the
-  one command that handles it, such as installing, syncing, viewing pipeline
-  state or browsing the intent tree, and loads only that command, so asking
-  for one never pays for the server or the others. Each command does one job
-  and tells the human plainly what it did, or why it could not, leaving the
-  project untouched when it fails. Adding a command never changes how the
-  existing ones behave.
+  This module is the package's terminal front door, mostly for a human at a
+  plain terminal outside any agent session. It routes the subcommand to the
+  one command that handles it, such as installing, syncing or viewing
+  pipeline state, and loads only that command, so asking for one never pays
+  for the server or the others. Each command a human types does one job and
+  tells them what it did, or why it could not, leaving the project
+  untouched when it fails. One command is called by Claude Code hooks
+  instead. Adding a command never changes the others.
 outcomes:
   desired:
-    - A person can run any command from a plain terminal with no agent session, agent harness or prior agent setup in place.
+    - A person can run any human-typed command from a plain terminal with no agent session, agent harness or prior agent setup in place.
     - Running one command loads only that command. It never starts the MCP server or pays the startup cost of any other command.
-    - Each command does one job and ends by telling the human, in a few clear lines, what it did.
-    - A command that cannot do its job says why in plain language and exits with a failure status, leaving every file it would have written untouched.
+    - Each command a human types does one job and ends by telling the human, in a few clear lines, what it did.
+    - A human-typed command that cannot do its job says why in plain language and exits with a failure status, leaving every file it would have written untouched.
     - Adding a new command leaves every existing command's behavior, output and exit status unchanged.
+    - The one command called by Claude Code hooks instead of a person answers the hook, not a human, and never fails, prompts or slows the agent's work.
   undesired:
-    - A command that only works inside an agent session, or prints agent-shaped output such as tool-result payloads or instructions meant for a model instead of short human-readable lines.
+    - A human-typed command that only works inside an agent session, or prints agent-shaped output such as tool-result payloads or instructions meant for a model instead of short human-readable lines.
     - Running one command starts the MCP server or loads other commands' work, so a quick command becomes slow or fails because of an unrelated one.
     - A failed command that leaves partial writes behind, or reports success and exits zero when it did not finish its job.
-    - A command that finishes silently, or buries what it did under verbose logs, so the human cannot tell what changed.
+    - A human-typed command that finishes silently, or buries what it did under verbose logs, so the human cannot tell what changed.
     - A command whose behavior, output or exit status shifts because another command was added or changed.
+    - The hook-called command prompting, printing for a person, failing or taking long enough to slow the agent session that called it.
 ---

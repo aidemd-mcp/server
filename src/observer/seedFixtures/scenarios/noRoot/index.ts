@@ -16,7 +16,13 @@ export default function noRoot(): FixtureScenario {
 			files: {},
 			board: null,
 			reportRoot: false,
-			sessions: [{ pid: "live", events: timeline({ through: "build", lastAgoMin: lastEventAgoMin }) }],
+			sessions: [
+				{
+					pid: "live",
+					presence: { state: "working", minutesAgo: lastEventAgoMin },
+					events: timeline({ through: "build", lastAgoMin: lastEventAgoMin }),
+				},
+			],
 		},
 	};
 }

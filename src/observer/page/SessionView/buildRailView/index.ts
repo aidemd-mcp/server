@@ -1,11 +1,11 @@
 import PHASE_LABELS from "@/service/observer/status/shared/phaseLabels/index.js";
 import type { ObserverEvent, Status } from "@/types/index.js";
 import type { LaneCell, RailCell, RailContext, RailSlot, RailView } from "@/observer/page/types/index.js";
-import normalizeModule from "@/observer/page/SessionView/normalizeModule/index.js";
-import buildIdleRail from "./buildIdleRail/index.js";
 import describeCell from "./describeCell/index.js";
 import describeLane from "./describeLane/index.js";
+import findRailModule from "./findRailModule/index.js";
 import NOT_STARTED from "./notStarted/index.js";
+import selectPipelineEvents from "./selectPipelineEvents/index.js";
 
 /** The nine cells in rail order; Plan approval and Done are the two no phase names. */
 const SLOTS: { slot: RailSlot; name: string }[] = [
@@ -24,11 +24,12 @@ const SLOTS: { slot: RailSlot; name: string }[] = [
 const LANES = ["structure", "align", "refactor", "cleanup"] as const;
 
 /**
- * The phase rail as the handoff draws it: nine cells (Spec, Research, Synthesize, Plan, Plan
- * approval, Build, QA, Fix, Done) and four side lanes, for the module and session of the observer's
- * rail. Every word comes from a reported event (see `describeCell`); with no running or waiting
- * work the rail keeps the last module's finished phases (`buildIdleRail`), and with no module named
- * at all every cell and lane is not started. `focus` limits the idle rail to one session.
+ * The pipeline rail as the handoff draws it: nine cells (Spec, Research, Synthesize, Plan, Plan
+ * approval, Build, QA, Fix, Done) and four side lanes for one session's pipeline. Status decides
+ * which pipeline a session shows (brief #80); the page only picks the session: the `status.rails`
+ * entry of `focus`, or the first rail when no session is focused. A session with no entry (an ended
+ * one, or no status yet) has no rail, brief #86: the view is `hidden` and every cell is not started.
+ * Every word comes from the rail's stages and the pipeline's reported events (see `describeCell`).
  */
 export default function buildRailView({
 	status,
@@ -41,26 +42,29 @@ export default function buildRailView({
 	focus: string | null;
 	now: Date;
 }): RailView {
-	const projectRoot = status?.projectRoot ?? "";
-	const rail = status?.rail ?? buildIdleRail({ events, projectRoot, ...(focus === null ? {} : { sessionId: focus }) });
-	if (rail === null) {
+	const rail = (focus === null ? status?.rails[0] : status?.rails.find((candidate) => candidate.sessionId === focus)) ?? null;
+	if (rail === null || status === null) {
 		return {
 			phases: SLOTS.map(({ name }): RailCell => ({ name, state: "todo", meta: NOT_STARTED, loop: null })),
 			lanes: LANES.map((phase): LaneCell => ({ name: PHASE_LABELS[phase], state: "todo", meta: NOT_STARTED })),
 			module: null,
+			pipeline: null,
+			outside: false,
+			hidden: true,
 		};
 	}
 
-	const module = normalizeModule({ projectRoot, module: rail.module });
-	const sessionEvents = events.filter((event) => event.sessionId === rail.sessionId).sort((a, b) => a.seq - b.seq);
-	const moduleEvents = sessionEvents.filter(
-		(event) => "module" in event && typeof event.module === "string" && normalizeModule({ projectRoot, module: event.module }) === module,
-	);
-	const ctx: RailContext = { phases: rail.phases, module, sessionId: rail.sessionId, projectRoot, status, sessionEvents, moduleEvents, now };
+	const projectRoot = status.projectRoot;
+	const pipelineEvents = selectPipelineEvents({ events, pipeline: rail.pipeline, sessionId: rail.sessionId });
+	const module = findRailModule({ pipelineEvents, projectRoot });
+	const ctx: RailContext = { stages: rail.stages, module, sessionId: rail.sessionId, projectRoot, status, pipelineEvents, now };
 
 	return {
 		phases: SLOTS.map(({ slot, name }): RailCell => ({ name, ...describeCell({ slot, ctx }) })),
 		lanes: LANES.map((phase): LaneCell => ({ name: PHASE_LABELS[phase], ...describeLane({ phase, ctx }) })),
 		module,
+		pipeline: rail.pipeline,
+		outside: rail.outside,
+		hidden: false,
 	};
 }

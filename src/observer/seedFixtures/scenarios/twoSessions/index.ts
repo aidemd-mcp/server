@@ -20,7 +20,15 @@ export default function twoSessions(): FixtureScenario {
 		label: "s-two-live",
 		project: {
 			...project,
-			sessions: [{ pid: "live", events: timeline({ through: "plan", lastAgoMin: PLAN_RUNNING_FOR_MIN }) }, secondSession(), ...past],
+			sessions: [
+				{
+					pid: "live",
+					presence: { state: "working", minutesAgo: PLAN_RUNNING_FOR_MIN },
+					events: timeline({ through: "plan", lastAgoMin: PLAN_RUNNING_FOR_MIN }),
+				},
+				secondSession(),
+				...past,
+			],
 		},
 	};
 }

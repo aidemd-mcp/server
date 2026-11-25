@@ -11,6 +11,7 @@ import scaffoldCommands from "@/service/install/scaffoldCommands/index.js";
 import installAgents from "@/service/install/installAgents/index.js";
 import installSkills from "@/service/install/installSkills/index.js";
 import installAideTree from "@/service/install/installAideTree/index.js";
+import installHooks from "@/service/install/installHooks/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import applySteps from "@/service/install/applySteps/index.js";
 import { planBrainCategory } from "@/service/install/index.js";
@@ -64,11 +65,31 @@ const FORBIDDEN_BRAIN_FLAGS = [
  *
  * IDE configuration always defers — cli/init never guesses, defaults, or scans
  * the filesystem for IDE choice. Re-run with `--ide <choice>` to resolve.
+ *
+ * Claude Code hooks defer in two cases, each naming `/aide:upgrade`: the
+ * `"merge"` case, when `.claude/settings.json` already exists without AIDE's
+ * entries (cli/init writes the hooks only into a settings file it creates, so
+ * merging waits for the consent-gated upgrade); and the `"malformed"` case,
+ * when the file cannot be parsed (the user fixes it first, then upgrade plans
+ * the merge).
+ *
+ * @param hooksFollowUp - `"merge"` when the hooks step is `would-overwrite`,
+ *   `"malformed"` when it is a `would-skip` with `configMalformed`, else `null`.
  */
-function deferredCategories(): readonly string[] {
+function deferredCategories(hooksFollowUp: "merge" | "malformed" | null): readonly string[] {
 	return [
 		"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the brain's entry-point artifacts into your brain.",
 		`IDE configuration — re-run: ${aidePackage.command} init --ide <choice>`,
+		...(hooksFollowUp === "merge"
+			? [
+					"Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category to add AIDE's entries to .claude/settings.json.",
+				]
+			: []),
+		...(hooksFollowUp === "malformed"
+			? [
+					"Claude Code hooks — .claude/settings.json is not valid JSON, so AIDE's hook entries were not added. Fix the file, then open Claude Code and run /aide:upgrade and confirm the hooks category.",
+				]
+			: []),
 	];
 }
 
@@ -93,7 +114,11 @@ function deferredCategories(): readonly string[] {
  *    Claude-only; passing `"claude"` skips the detection walk.
  *
  * 4. **Planning helpers** collect `InitStep[]`. These planners never write
- *    to disk.
+ *    to disk. `installHooks` plans AIDE's Claude Code hook entries in
+ *    `.claude/settings.json`: written only when that file does not exist
+ *    (`would-create`); an existing file without the entries is
+ *    `would-overwrite`, left untouched and named in the deferred list as a
+ *    `/aide:upgrade` follow-up.
  *
  * 5. **Partition** by status: `toApply` (`would-create` only — enforces
  *    skip-on-exists), `skipped` (`would-overwrite` | `would-skip`).
@@ -111,8 +136,10 @@ function deferredCategories(): readonly string[] {
  *    session record result last.
  *
  * 9. **Warning block** — `renderWarning` receives every `skipped-drift` and
- *    `skipped-missing-canonical` result, an empty `failed` array, and the
- *    two-item `deferredCategories()` array.
+ *    `skipped-missing-canonical` and `skipped-malformed` result, an empty
+ *    `failed` array, and the `deferredCategories()` array (brain wiring and IDE,
+ *    plus the hooks line when the settings file exists without AIDE's entries
+ *    or cannot be parsed).
  *
  * **Exit-code contract:** returns `0` unconditionally. The only non-zero exit
  * path is the top-level IIFE's `catch` block.
@@ -185,6 +212,7 @@ export async function runInit(
 	const agentSteps = await installAgents(join(cwd, config.agentDir));
 	const skillSteps = await installSkills(join(cwd, config.skillDir));
 	const aideTreeSteps = await installAideTree(cwd);
+	const hooksSteps = await installHooks({ projectRoot: cwd, framework: config.framework });
 	const readmeStep = await scaffoldReadme(cwd);
 	const sessionStep = await planSessionRecord(cwd);
 
@@ -205,7 +233,7 @@ export async function runInit(
 
 	// Flatten all planning steps into a single ordered list. Order mirrors the
 	// MCP tool's orchestrator: methodology pointer, docs, versions, commands,
-	// agents, skills, aide-tree, readme.
+	// agents, skills, aide-tree, hooks, readme.
 	const plannedSteps: InitStep[] = [
 		methodologyStep,
 		...docSteps,
@@ -214,6 +242,7 @@ export async function runInit(
 		...agentSteps,
 		...skillSteps,
 		...aideTreeSteps,
+		...hooksSteps,
 		readmeStep,
 	];
 
@@ -266,6 +295,15 @@ export async function runInit(
 			continue;
 		}
 
+		if (step.status === "would-skip" && step.configMalformed === true) {
+			results.push({
+				status: "skipped-malformed",
+				displayPath,
+				message: "not valid JSON — left unchanged",
+			});
+			continue;
+		}
+
 		if (step.status === "would-skip") {
 			results.push({
 				status: "skipped-missing-canonical",
@@ -289,20 +327,31 @@ export async function runInit(
 	// Step 8 — Print the per-file log: one line per artifact in collected order.
 	for (const r of results) write(`[${r.status}] ${r.displayPath} — ${r.message}`);
 
-	// Step 9 — Aggregate the warning input. Only skipped-drift and
-	// skipped-missing-canonical entries surface in the warning — `exists` means
-	// bytes already match canonical, so no action is needed.
+	// Step 9 — Aggregate the warning input. Only skipped-drift,
+	// skipped-missing-canonical and skipped-malformed entries surface in the
+	// warning — `exists` means bytes already match canonical, so no action is needed.
 	const warningSkipped = results.filter(
-		(r) => r.status === "skipped-drift" || r.status === "skipped-missing-canonical",
+		(r) =>
+			r.status === "skipped-drift" ||
+			r.status === "skipped-missing-canonical" ||
+			r.status === "skipped-malformed",
 	);
 	const warningFailed: InstallResult[] = [];
 
 	// Step 10 — Render and write the warning block. Brain wiring and IDE
-	// configuration are always deferred via the two-item deferredCategories() array.
+	// configuration are always deferred; the hooks line joins them when the
+	// settings file exists without AIDE's entries (a would-overwrite step: merge
+	// follow-up) or cannot be parsed (a would-skip step with configMalformed:
+	// fix-the-file follow-up).
+	const hooksFollowUp: "merge" | "malformed" | null = hooksSteps.some((s) => s.status === "would-overwrite")
+		? "merge"
+		: hooksSteps.some((s) => s.status === "would-skip" && s.configMalformed === true)
+			? "malformed"
+			: null;
 	const warning = renderWarning({
 		skipped: warningSkipped,
 		failed: warningFailed,
-		deferredCategories: deferredCategories(),
+		deferredCategories: deferredCategories(hooksFollowUp),
 	});
 
 	if (warning) {
@@ -415,6 +464,9 @@ export async function runInitCli(): Promise<void> {
 				"  brain.aide template selected by --brain at .aide/config/brain.aide (with\n" +
 				"  YAML null at the unwired slot), and the empty session record at\n" +
 				"  .aide/session.aide (from the same scaffold the aide_scaffold tool uses).\n" +
+				"  For a Claude Code project it also writes AIDE's hook entries into a new\n" +
+				"  .claude/settings.json; an existing settings file is left as it is, and\n" +
+				"  /aide:upgrade merges the hooks into it with your consent.\n" +
 				"  Never overwrites existing files.\n\n" +
 				"What it does NOT do:\n" +
 				"  Never writes a .mcp.json brain entry (sync owns that, after the null slot\n" +

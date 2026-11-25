@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectListing, ProjectView, SessionListing } from "@/observer/types/index.js";
-import type { ObserverEvent, RunningWork, SessionSummary, Status, WaitingFile } from "@/types/index.js";
+import type { ObserverEvent, PipelineRail, RunningWork, SessionSummary, Status, WaitingFile } from "@/types/index.js";
 import type { StreamState } from "@/observer/page/types/index.js";
 import buildHomeModel from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 const NOW = new Date(2026, 10, 23, 14, 34, 0);
 const at = (hours: number, minutes: number, seconds = 0): string => new Date(2026, 10, 23, hours, minutes, seconds).toISOString();
 
 function listing(overrides: Partial<SessionListing> & { sessionId: string }): SessionListing {
-	return { startedAt: at(9, 0), metadata: null, eventCount: 3, lastEventAt: at(9, 10), live: false, ...overrides };
+	return { startedAt: at(9, 0), metadata: null, eventCount: 3, lastEventAt: at(9, 10), liveness: makeLiveness({ state: "ended" }), ...overrides };
 }
 
 function project(overrides: Partial<ProjectListing> & { projectKey: string }): ProjectListing {
@@ -16,7 +17,7 @@ function project(overrides: Partial<ProjectListing> & { projectKey: string }): P
 }
 
 function summary(overrides: Partial<SessionSummary> & { sessionId: string }): SessionSummary {
-	return { startedAt: at(9, 0), lastEventAt: at(9, 10), eventCount: 3, pid: 1, liveness: "ended", reported: null, ...overrides };
+	return { startedAt: at(9, 0), lastEventAt: at(9, 10), eventCount: 3, pid: 1, liveness: makeLiveness({ state: "ended" }), reported: null, ...overrides };
 }
 
 function waitingFile(overrides: Partial<WaitingFile> = {}): WaitingFile {
@@ -33,12 +34,14 @@ function ready({
 	sessions = [],
 	waiting = [],
 	working = [],
+	rails = [],
 }: {
 	projectKey: string;
 	root: string;
 	sessions?: SessionSummary[];
 	waiting?: WaitingFile[];
 	working?: RunningWork[];
+	rails?: PipelineRail[];
 }): ProjectView {
 	const status: Status = {
 		projectRoot: root,
@@ -50,7 +53,7 @@ function ready({
 		running: working,
 		waiting,
 		surfaced: waiting[0] ?? null,
-		rail: null,
+		rails,
 		history: [],
 		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
 		problems: [],
@@ -80,7 +83,7 @@ describe("buildHomeModel", () => {
 		const model = build({
 			projects: [project({ projectKey: "alpha-111111" }), project({ projectKey: "beta-222222" })],
 			views: {
-				"alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "a1", liveness: "live" }), summary({ sessionId: "a2", liveness: "idle" })] }),
+				"alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "a1", liveness: makeLiveness() }), summary({ sessionId: "a2", liveness: makeLiveness({ minutesQuiet: 20 }) })] }),
 				"beta-222222": ready({ projectKey: "beta-222222", root: "/work/beta", sessions: [summary({ sessionId: "b1" })] }),
 			},
 		});
@@ -90,7 +93,7 @@ describe("buildHomeModel", () => {
 	it("uses singular count words for one project and one live session", () => {
 		const model = build({
 			projects: [project({ projectKey: "alpha-111111" })],
-			views: { "alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "a1", liveness: "live" })] }) },
+			views: { "alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "a1", liveness: makeLiveness() })] }) },
 		});
 		expect(model.subtitle).toBe("1 project · 1 live session · on this machine (127.0.0.1)");
 	});
@@ -133,11 +136,11 @@ describe("buildHomeModel", () => {
 					projectKey: "alpha-111111",
 					root: "/work/alpha",
 					sessions: [
-						summary({ sessionId: "a-live", startedAt: at(9, 0), liveness: "live" }),
-						summary({ sessionId: "a-ended", startedAt: at(7, 0), liveness: "ended" }),
+						summary({ sessionId: "a-live", startedAt: at(9, 0), liveness: makeLiveness() }),
+						summary({ sessionId: "a-ended", startedAt: at(7, 0), liveness: makeLiveness({ state: "ended" }) }),
 					],
 				}),
-				"beta-222222": ready({ projectKey: "beta-222222", root: "/work/beta", sessions: [summary({ sessionId: "b-idle", startedAt: at(9, 30), liveness: "idle" })] }),
+				"beta-222222": ready({ projectKey: "beta-222222", root: "/work/beta", sessions: [summary({ sessionId: "b-idle", startedAt: at(9, 30), liveness: makeLiveness({ minutesQuiet: 20 }) })] }),
 			},
 		});
 
@@ -147,12 +150,12 @@ describe("buildHomeModel", () => {
 		]);
 	});
 
-	it("badges a live row waiting on you, with the module and the span it has waited, and no agent", () => {
+	it("badges a waiting live row waiting on you, with the module and the span it has waited, and no agent", () => {
 		const model = build({
 			projects: [project({ projectKey: "alpha-111111" })],
-			views: { "alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "s1", liveness: "live" })], waiting: [waitingFile({ sessionId: "s1" })] }) },
+			views: { "alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "s1", liveness: makeLiveness({ state: "waiting" }) })], waiting: [waitingFile({ sessionId: "s1" })] }) },
 		});
-		expect(model.live[0]).toMatchObject({ badge: { word: "Waiting on you", className: "wait", icon: "wait" }, module: "src/a", agent: null, elapsed: "6m" });
+		expect(model.live[0]).toMatchObject({ badge: { word: "Waiting on you", className: "wait", icon: "wait" }, phase: null, module: "src/a", agent: null, elapsed: "6m" });
 	});
 
 	it("badges a live row with the phase it runs, the Build step, its module, agent and elapsed time", () => {
@@ -162,7 +165,7 @@ describe("buildHomeModel", () => {
 				"alpha-111111": ready({
 					projectKey: "alpha-111111",
 					root: "/work/alpha",
-					sessions: [summary({ sessionId: "s1", liveness: "live" }), summary({ sessionId: "s2", liveness: "live", startedAt: at(9, 5) })],
+					sessions: [summary({ sessionId: "s1", liveness: makeLiveness() }), summary({ sessionId: "s2", liveness: makeLiveness(), startedAt: at(9, 5) })],
 					working: [
 						running({ sessionId: "s1", phase: "build", agent: "aide-implementor", module: "src/tools/score", startedAt: at(14, 26, 5), buildStep: { reached: 4, total: 9 } }),
 						running({ sessionId: "s2", phase: "qa", agent: "aide-qa", module: "src/crawl/robots", startedAt: at(14, 31, 57) }),
@@ -170,7 +173,7 @@ describe("buildHomeModel", () => {
 				}),
 			},
 		});
-		expect(model.live.map((row) => [row.badge.word, row.badge.className, row.module, row.agent, row.elapsed])).toEqual([
+		expect(model.live.map((row) => [row.phase, row.badge.className, row.module, row.agent, row.elapsed])).toEqual([
 			["QA", "run", "src/crawl/robots", "aide-qa", "2m 03s"],
 			["Build · step 4 of 9", "run", "src/tools/score", "aide-implementor", "7m 55s"],
 		]);
@@ -178,27 +181,56 @@ describe("buildHomeModel", () => {
 
 	it("badges a live row with no running work as No phase running, and one whose status is not ready the same", () => {
 		const model = build({
-			projects: [project({ projectKey: "alpha-111111" }), project({ projectKey: "orphan-abc123", sessions: [listing({ sessionId: "o1", live: true })] })],
+			projects: [project({ projectKey: "alpha-111111" }), project({ projectKey: "orphan-abc123", sessions: [listing({ sessionId: "o1", liveness: makeLiveness() })] })],
 			views: {
-				"alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "s1", liveness: "live" })] }),
+				"alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "s1", liveness: makeLiveness() })] }),
 				"orphan-abc123": { state: "no-project-root", projectKey: "orphan-abc123", detail: "No session reported a root." },
 			},
 		});
 		expect(model.live).toHaveLength(2);
 		for (const row of model.live) {
-			expect(row).toMatchObject({ badge: { word: "No phase running", className: "neutral" }, module: null, agent: null, elapsed: null });
+			expect(row).toMatchObject({ badge: { word: "Working", className: "run" }, phase: "No phase running", module: null, agent: null, elapsed: null });
 		}
 	});
 
-	it("reads the pill as recon while reconnecting, live with a live session, else idle", () => {
+	it("names the pipeline on the row and gives the project the rail of its status session, with the pipeline and outside state", () => {
+		const rail = (outside: boolean): PipelineRail => ({
+			sessionId: "s1",
+			pipeline: "feature-x",
+			pipelineState: "running",
+			outside,
+			stages: [{ phase: "spec", label: "Spec", state: "done" }, { phase: "build", label: "Build", state: "running" }],
+		});
+		const view = (outside: boolean) => ({
+			"alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "s1", liveness: makeLiveness() })], rails: [rail(outside)] }),
+		});
+		const projects = [project({ projectKey: "alpha-111111" })];
+
+		const inside = build({ projects, views: view(false) }).projects[0]!;
+		expect(inside.status).toMatchObject({ pipeline: "feature-x", outside: false, phase: "No phase running" });
+		expect(inside.rail?.find((cell) => cell.name === "Spec")?.state).toBe("done");
+
+		const outside = build({ projects, views: view(true) }).projects[0]!;
+		expect(outside.status).toMatchObject({ pipeline: "feature-x", outside: true, phase: "Working outside the pipeline" });
+	});
+
+	it("gives a live project with no rail for its session no rail to draw", () => {
+		const model = build({
+			projects: [project({ projectKey: "alpha-111111" })],
+			views: { "alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "s1", liveness: makeLiveness() })] }) },
+		});
+		expect(model.projects[0]!.rail).toBeNull();
+	});
+
+	it("reads the pill as recon while reconnecting, live with a working session, else idle (maybe stuck or ended)", () => {
 		const projects = [project({ projectKey: "alpha-111111" })];
 		const withSession = (liveness: SessionSummary["liveness"]) => ({
 			"alpha-111111": ready({ projectKey: "alpha-111111", root: "/work/alpha", sessions: [summary({ sessionId: "s1", liveness })] }),
 		});
-		expect(build({ projects, views: withSession("live") }).conn).toBe("live");
-		expect(build({ projects, views: withSession("idle") }).conn).toBe("idle");
-		expect(build({ projects, views: withSession("ended") }).conn).toBe("idle");
-		expect(build({ projects, views: withSession("live"), connection: "reconnecting" }).conn).toBe("recon");
+		expect(build({ projects, views: withSession(makeLiveness()) }).conn).toBe("live");
+		expect(build({ projects, views: withSession(makeLiveness({ minutesQuiet: 20 })) }).conn).toBe("idle");
+		expect(build({ projects, views: withSession(makeLiveness({ state: "ended" })) }).conn).toBe("idle");
+		expect(build({ projects, views: withSession(makeLiveness()), connection: "reconnecting" }).conn).toBe("recon");
 	});
 
 	it.each([
@@ -231,7 +263,7 @@ describe("buildHomeModel", () => {
 				"alpha-111111": ready({
 					projectKey: "alpha-111111",
 					root: "/work/alpha",
-					sessions: [summary({ sessionId: "old", startedAt: at(8, 0) }), summary({ sessionId: "new", startedAt: at(9, 0), liveness: "live" })],
+					sessions: [summary({ sessionId: "old", startedAt: at(8, 0) }), summary({ sessionId: "new", startedAt: at(9, 0), liveness: makeLiveness() })],
 					waiting: [waitingFile({ sessionId: "new" })],
 				}),
 			},
@@ -244,7 +276,7 @@ describe("buildHomeModel", () => {
 	it("lists a project with no reported root under its key, with the reported kanban tag and no open link when it has no session", () => {
 		const model = build({
 			projects: [
-				project({ projectKey: "orphan-abc123", sessions: [listing({ sessionId: "s1", live: true, metadata: { kanbanTag: "orphan" } })], lastEventAt: at(9, 10) }),
+				project({ projectKey: "orphan-abc123", sessions: [listing({ sessionId: "s1", liveness: makeLiveness(), metadata: { kanbanTag: "orphan" } })], lastEventAt: at(9, 10) }),
 				project({ projectKey: "bare-def456" }),
 			],
 			views: { "orphan-abc123": { state: "no-project-root", projectKey: "orphan-abc123", detail: "No session reported a root." } },
@@ -252,7 +284,7 @@ describe("buildHomeModel", () => {
 
 		const orphan = model.projects.find((entry) => entry.name === "orphan");
 		expect(orphan).toMatchObject({ root: null, kanbanTag: "orphan", liveCount: 1, waiting: false });
-		expect(orphan?.rows.map((row) => [row.sessionId, row.liveness])).toEqual([["s1", "live"]]);
+		expect(orphan?.rows.map((row) => [row.sessionId, row.liveness.state])).toEqual([["s1", "working"]]);
 		expect(model.projects.find((entry) => entry.name === "bare")?.openHref).toBeNull();
 	});
 

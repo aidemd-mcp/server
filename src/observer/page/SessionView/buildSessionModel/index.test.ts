@@ -4,6 +4,7 @@ import type { ModuleNode, ObserverEvent, RunningWork, SessionSummary, Status, Wa
 import type { SessionRoute, StreamState } from "@/observer/page/types/index.js";
 import reduceStream from "@/observer/page/reduceStream/index.js";
 import buildSessionModel from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 const NOW = new Date("2026-01-01T10:00:00.000Z");
 const KEY = "app-abc123";
@@ -57,11 +58,11 @@ function statusOf(overrides: Partial<Status> = {}): Status {
 		tree: [planNode],
 		workFiles: [],
 		sessionRecord: { state: "missing" },
-		sessions: [summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: "live" })],
+		sessions: [summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness() })],
 		running: [],
 		waiting: [waitingPlan],
 		surfaced: waitingPlan,
-		rail: null,
+		rails: [],
 		history: [],
 		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
 		problems: [],
@@ -143,7 +144,7 @@ describe("buildSessionModel", () => {
 				held: [{ projectKey: KEY, sessionId: "s1", events }],
 				views: { [KEY]: { state: "no-project-root", projectKey: KEY, detail: "nobody reported a root" } },
 				listings: {
-					[KEY]: [{ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", metadata: null, eventCount: 3, lastEventAt: "2026-01-01T09:55:00.000Z", live: false }],
+					[KEY]: [{ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", metadata: null, eventCount: 3, lastEventAt: "2026-01-01T09:55:00.000Z", liveness: makeLiveness({ state: "ended" }) }],
 				},
 			}),
 		);
@@ -158,7 +159,7 @@ describe("buildSessionModel", () => {
 		expect(model.notInstalled).toBeNull();
 		expect(model.phases.every((cell) => cell.state === "todo")).toBe(true);
 		expect(model.card.kind).toBe("idle");
-		expect(model.sessions.map((session) => session.liveness)).toEqual(["ended"]);
+		expect(model.sessions.map((session) => session.liveness.state)).toEqual(["ended"]);
 		expect(model.conn).toBe("idle");
 		expect(model.history.total).toBe(3);
 		expect(model.record).toMatchObject({ kind: "missing" });
@@ -207,8 +208,8 @@ describe("buildSessionModel", () => {
 			surfaced: null,
 			running: [{ ...buildRun, sessionId: "s2", phase: "research", module: "src/b", buildStep: undefined }],
 			sessions: [
-				summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: "live" }),
-				summary({ sessionId: "s2", startedAt: "2026-01-01T09:30:00.000Z", liveness: "idle" }),
+				summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness() }),
+				summary({ sessionId: "s2", startedAt: "2026-01-01T09:30:00.000Z", liveness: makeLiveness({ minutesQuiet: 20 }) }),
 			],
 		});
 		const held = [
@@ -232,8 +233,8 @@ describe("buildSessionModel", () => {
 			waiting: [],
 			surfaced: null,
 			sessions: [
-				summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: "live" }),
-				summary({ sessionId: "s2", startedAt: "2026-01-01T08:00:00.000Z", liveness: "ended" }),
+				summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness() }),
+				summary({ sessionId: "s2", startedAt: "2026-01-01T08:00:00.000Z", liveness: makeLiveness({ state: "ended" }) }),
 			],
 		});
 		const model = modelOf(stateOf({ held, views: readyView(endedStatus) }), { focus: "s2" });
@@ -252,8 +253,8 @@ describe("buildSessionModel", () => {
 	});
 
 	describe("deleting an ended session", () => {
-		const ended = summary({ sessionId: "s2", startedAt: "2026-01-01T08:00:00.000Z", liveness: "ended" });
-		const live = summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: "live" });
+		const ended = summary({ sessionId: "s2", startedAt: "2026-01-01T08:00:00.000Z", liveness: makeLiveness({ state: "ended" }) });
+		const live = summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness() });
 		const held = [
 			{ projectKey: KEY, sessionId: "s1", events },
 			{ projectKey: KEY, sessionId: "s2", events: [event({ kind: "session_started", seq: 1, sessionId: "s2", ts: "2026-01-01T08:00:00.000Z" })] },
@@ -275,7 +276,7 @@ describe("buildSessionModel", () => {
 		});
 
 		it("leaves the list of a project with no root through the sessions frame", () => {
-			const listing = (sessionId: string) => ({ sessionId, startedAt: "2026-01-01T08:00:00.000Z", metadata: null, eventCount: 1, lastEventAt: null, live: false });
+			const listing = (sessionId: string) => ({ sessionId, startedAt: "2026-01-01T08:00:00.000Z", metadata: null, eventCount: 1, lastEventAt: null, liveness: makeLiveness({ state: "ended" }) });
 			const before = stateOf({ views: { [KEY]: { state: "no-project-root", projectKey: KEY, detail: "d" } }, listings: { [KEY]: [listing("s1"), listing("s2")] } });
 			const after = reduceStream(before, { name: "sessions", data: { projectKey: KEY, sessions: [listing("s1")] } });
 

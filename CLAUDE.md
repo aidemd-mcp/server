@@ -43,7 +43,7 @@ node scripts/publish.mjs <patch|minor|major> [message]
 
 This bumps `package.json`, syncs `server.json`, commits (e.g. `0.3.16: fix scoring tool`), tags `v0.3.16`, and pushes — the CI does the rest (npm publish + MCP Registry publish).
 
-**Before publishing,** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship. Then move the changelog's `## [Unreleased]` entries under the new version heading (see "Changelog" below) and stage that with the release.
+**Before publishing,** check `git status`: the script's commit includes everything already staged, so stage nothing but what the release should ship. Then move the changelog's `## [Unreleased]` entries under the new version heading (see "Changelog" below) and stage that with the release. After `npm run build`, run the hook's speed test, `AIDE_MEASURE_HOOK=1 npx vitest run src/cli/hook/index.speed.test.ts`; a release whose hook misses its budget does not ship.
 
 ## Changelog
 

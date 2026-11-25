@@ -91,19 +91,24 @@ body{margin:0}
 .av .av-rail-wrap .av-ph::after{right:-15px;width:14px}
 .av .av-rail-wrap .av-ph .p-top{font-size:var(--fs-13)}
 .av .av-rail-wrap .av-ph .p-meta{display:none}
-.av .av-rail-wrap .av-ph.run .p-meta,.av .av-rail-wrap .av-ph.wait .p-meta,.av .av-rail-wrap .av-ph.fail .p-meta{display:inline}
+.av .av-rail-wrap .av-ph.run .p-meta,.av .av-rail-wrap .av-ph.wait .p-meta,.av .av-rail-wrap .av-ph.fail .p-meta,.av .av-rail-wrap .av-ph.skip .p-meta{display:inline}
+.av .av-rail-wrap .av-ph.skip .p-meta{display:inline-block;max-width:24ch;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
 .av .av-rail-wrap .av-ph .p-loop{position:static;height:20px}
 .av .av-rail-wrap .av-lanes{flex:none;flex-wrap:nowrap}
-.av .av-rail-wrap .av-lanes .l-lbl,.av .av-rail-wrap .av-lane.todo{display:none}
-.av .av-rail-wrap .av-lanes:not(:has(.av-lane:not(.todo))){display:none}
+.av .av-rail-foot{flex:none;display:flex;align-items:center;gap:10px;margin:0;font-size:var(--fs-13);color:var(--text-2);white-space:nowrap}
+.av .av-rail-foot .rf-pipe{font-weight:600}
+.av .av-rail-wrap .av-lanes .l-lbl,.av .av-rail-wrap .av-lane.todo:not(.skip){display:none}
+.av .av-rail-wrap .av-lanes:not(:has(.av-lane:not(.todo),.av-lane.skip)){display:none}
 .av .av-body{padding-bottom:52px}
 .av.phone .av-rail-wrap{padding:0 12px}
+.av.phone .av-rail-foot{display:none}
 /* Desktop session page as a fixed frame: the page itself never scrolls. Header and waiting banner
    sit on top, the phase rail (fixed) at the bottom; the middle row holds the main area, which
    scrolls on its own (now card scrolls away, tabs stick at its top, room left for the history bar),
    and the Details column, which fills the row and scrolls on its own. */
 .av.desk:has(.av-main){height:100vh;overflow:hidden;display:flex;flex-direction:column}
-.av.desk:has(.av-main) .av-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding-bottom:52px}
+.av.desk:has(.av-main) .av-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.av .av-body:has(.av-main):not(:has(.av-rail-wrap)){padding-bottom:0}
 .av.desk .av-main{flex:1 1 auto;min-height:0;flex-wrap:nowrap;align-items:stretch}
 .av.desk .av-left{flex:1 1 auto;min-width:0;min-height:0;display:flex;flex-direction:column}
 .av.desk .av-primary{flex:1 1 auto;min-height:0;overflow:auto;padding-top:0;padding-bottom:24px}
@@ -127,7 +132,8 @@ body{margin:0}
 .av .av-picker-btn{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 10px 0 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:var(--fs-14);font-weight:600;cursor:pointer}
 .av .av-picker-btn:hover{background:var(--raised)}
 .av .p-live{font-size:var(--fs-12);font-weight:600;color:var(--text-2)}
-.av .p-live.live{color:var(--run)}
+.av .p-live.run{color:var(--run)}
+.av .p-live.wait{color:var(--warn)}
 .av .av-picker-list{position:absolute;top:calc(100% + 6px);left:0;z-index:30;min-width:240px;max-height:360px;overflow:auto;margin:0;padding:6px;list-style:none;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-2);box-shadow:var(--shadow)}
 .av .av-picker-list button{width:100%;display:flex;justify-content:space-between;gap:16px;padding:8px 10px;border:0;border-radius:var(--r-1);background:transparent;font-size:var(--fs-14);text-align:left;cursor:pointer}
 .av .av-picker-list button:hover,.av .av-picker-list [aria-selected="true"] button{background:var(--raised)}

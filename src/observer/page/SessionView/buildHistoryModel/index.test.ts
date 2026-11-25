@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ObserverEvent } from "@/types/index.js";
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 import buildHistoryModel from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 const NOW = new Date(2026, 0, 1, 16, 0, 0);
 
@@ -64,8 +65,8 @@ describe("buildHistoryModel", () => {
 			event({ kind: "prompt", seq: 1, text: "now", sessionId: "s1", ts: local({ hour: 14, minute: 0 }) }),
 		];
 		const sessions = [
-			session({ sessionId: "old", startedAt: local({ hour: 9, minute: 0 }), liveness: "ended" }),
-			session({ sessionId: "s1", startedAt: local({ hour: 14, minute: 0 }), liveness: "live" }),
+			session({ sessionId: "old", startedAt: local({ hour: 9, minute: 0 }), liveness: makeLiveness({ state: "ended" }) }),
+			session({ sessionId: "s1", startedAt: local({ hour: 14, minute: 0 }), liveness: makeLiveness() }),
 		];
 		expect(modelOf({ events, sessions, focus: "old" }).rows.map((row) => row.label)).toEqual(["Prompt: “old”"]);
 		expect(modelOf({ events, sessions, focus: "s1" }).rows.map((row) => row.label)).toEqual(["Prompt: “now”"]);
@@ -78,8 +79,8 @@ describe("buildHistoryModel", () => {
 			event({ kind: "prompt", seq: 1, text: "first", sessionId: "a", ts: local({ hour: 14, minute: 3 }) }),
 		];
 		const sessions = [
-			session({ sessionId: "b", startedAt: local({ hour: 15, minute: 30 }), liveness: "live" }),
-			session({ sessionId: "a", startedAt: local({ hour: 14, minute: 2 }), liveness: "idle" }),
+			session({ sessionId: "b", startedAt: local({ hour: 15, minute: 30 }), liveness: makeLiveness() }),
+			session({ sessionId: "a", startedAt: local({ hour: 14, minute: 2 }), liveness: makeLiveness({ minutesQuiet: 20 }) }),
 		];
 		const model = modelOf({ events, sessions, focus: "unlisted" });
 
@@ -98,8 +99,26 @@ describe("buildHistoryModel", () => {
 			event({ kind: "task", seq: 1, slug: "t", action: "picked", column: "Todo", sessionId: "old", ts: local({ hour: 9, minute: 0 }) }),
 			event({ kind: "task", seq: 1, slug: "t", action: "moved", column: "Done", ts: local({ hour: 14, minute: 0 }) }),
 		];
-		const sessions = [session({ sessionId: "s1", startedAt: local({ hour: 14, minute: 0 }), liveness: "live" })];
+		const sessions = [session({ sessionId: "s1", startedAt: local({ hour: 14, minute: 0 }), liveness: makeLiveness() })];
 		expect(modelOf({ events, sessions }).rows[0]?.meta).toBe("Todo → Done");
+	});
+
+	it("words the pipeline events as pipeline and skip rows, counted under phases, beside v1 rows unchanged", () => {
+		const events = [
+			event({ kind: "pipeline_started", seq: 1, pipeline: "p1", phase: "build", ts: local({ hour: 14, minute: 0 }) }),
+			event({ kind: "phase_skipped", seq: 2, pipeline: "p1", phase: "research", reason: "nothing new", ts: local({ hour: 14, minute: 1 }) }),
+			event({ kind: "phase_started", seq: 3, pipeline: "p1", phase: "build", agent: "a", module: "src/a", ts: local({ hour: 14, minute: 2 }) }),
+			event({ kind: "pipeline_finished", seq: 4, pipeline: "p1", result: "abandoned", ts: local({ hour: 14, minute: 3 }) }),
+		];
+		const { rows, counts } = modelOf({ events });
+
+		expect(rows.map((row) => [row.kind, row.category, row.icon, row.kindWord, row.label, row.meta])).toEqual([
+			["pipeline", "phases", "loop", "pipeline: ", "Pipeline p1 started at Build", null],
+			["skip", "phases", "todo", "skipped: ", "Research skipped", "nothing new"],
+			["phase", "phases", "flag", "phase started: ", "Build started", "a · src/a"],
+			["pipeline", "phases", "loop", "pipeline: ", "Pipeline p1 abandoned", null],
+		]);
+		expect(counts).toEqual({ phases: 4 });
 	});
 
 	it("is empty with no event", () => {

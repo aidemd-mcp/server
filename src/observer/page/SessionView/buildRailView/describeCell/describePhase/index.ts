@@ -3,11 +3,13 @@ import type { RailCellDescription, RailContext } from "@/observer/page/types/ind
 import NOT_STARTED from "@/observer/page/SessionView/buildRailView/notStarted/index.js";
 import describeFinished from "./describeFinished/index.js";
 import describeRunning from "./describeRunning/index.js";
+import describeSkipped from "./describeSkipped/index.js";
 
-/** One phase of the rail as the observer's rail reports it: running, finished, or not run (`todo`, `Not started`). */
+/** One phase of the rail as its stage reports: running, done, skipped (`todo`, `Skipped · <reason>`), or pending (`todo`, `Not started`). */
 export default function describePhase({ phase, ctx }: { phase: Phase; ctx: RailContext }): RailCellDescription {
-	const entry = ctx.phases.find((candidate) => candidate.phase === phase);
-	if (entry?.state === "running") return describeRunning({ phase, entry, ctx });
-	if (entry?.state === "done") return describeFinished({ phase, ctx });
+	const stage = ctx.stages.find((candidate) => candidate.phase === phase);
+	if (stage?.state === "running") return describeRunning({ phase, entry: stage, ctx });
+	if (stage?.state === "done") return describeFinished({ phase, ctx });
+	if (stage?.state === "skipped") return describeSkipped({ stage });
 	return { state: "todo", meta: NOT_STARTED, loop: null };
 }

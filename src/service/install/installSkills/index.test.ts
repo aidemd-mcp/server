@@ -50,7 +50,7 @@ describe("installSkills", () => {
 
 		const results = await installSkills(skillDir);
 
-		expect(results).toHaveLength(6);
+		expect(results).toHaveLength(7);
 		expect(results.every((r) => r.status === "would-create")).toBe(true);
 		expect(results.map((r) => r.name)).toEqual([
 			"skills/study-playbook/SKILL.md",
@@ -59,6 +59,7 @@ describe("installSkills", () => {
 			"skills/aide-handoff/SKILL.md",
 			"skills/kanban/SKILL.md",
 			"skills/aide-brain-author/SKILL.md",
+			"skills/aide-observer/SKILL.md",
 		]);
 	});
 
@@ -187,7 +188,7 @@ describe("installSkills", () => {
 		const { default: installSkillsFresh } = await import("./index.js");
 		const results = await installSkillsFresh(skillDir);
 
-		expect(results).toHaveLength(6);
+		expect(results).toHaveLength(7);
 		const byName = new Map(results.map((r) => [r.name, r.status]));
 		expect(byName.get("skills/study-playbook/SKILL.md")).toBe("would-skip");
 		expect(byName.get("skills/brain/SKILL.md")).toBe("would-create");

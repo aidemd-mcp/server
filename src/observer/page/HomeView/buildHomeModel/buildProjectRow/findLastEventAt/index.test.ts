@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 import findLastEventAt from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 function row(startedAt: string, lastEventAt: string | null): SessionRowModel {
-	return { sessionId: startedAt, startedAt, lastEventAt, eventCount: 1, liveness: "ended", task: null, label: null };
+	return { sessionId: startedAt, startedAt, lastEventAt, eventCount: 1, liveness: makeLiveness({ state: "ended" }), task: null, label: null };
 }
 
 describe("findLastEventAt", () => {

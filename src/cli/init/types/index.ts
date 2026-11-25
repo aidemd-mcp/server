@@ -10,6 +10,9 @@
  *   not sent to `applySteps`. Surfaces in the warning's skipped list.
  * - `"skipped-missing-canonical"` — planner returned `would-skip` (canonical
  *   read failed). Surfaces in the warning's skipped list with the reason string.
+ * - `"skipped-malformed"` — planner returned `would-skip` with `configMalformed`
+ *   (an existing config file cannot be parsed). The file is left byte-identical
+ *   and never sent to `applySteps`. Surfaces in the warning's skipped list.
  * - `"failed"` — reserved; not produced on the planner path. Kept because
  *   `renderWarning` and the orchestrator already branch on it — removing it
  *   widens the diff unnecessarily.
@@ -19,6 +22,7 @@ export type InstallStatus =
     | "exists"
     | "skipped-drift"
     | "skipped-missing-canonical"
+    | "skipped-malformed"
     | "failed";
 
 /**
@@ -34,6 +38,7 @@ export type InstallStatus =
  * - For `exists`: a reason like `"already present"`.
  * - For `skipped-drift`: a reason like `"drifted from canonical — not overwritten"`.
  * - For `skipped-missing-canonical`: the reason string from the failed canonical read.
+ * - For `skipped-malformed`: `"not valid JSON — left unchanged"`.
  * - For `failed`: the error message from the caught exception.
  */
 export type InstallResult = {

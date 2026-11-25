@@ -107,9 +107,24 @@ describe("ProjectRow", () => {
 	});
 
 	it("shows the phase badge with its elapsed time while a session runs, and nothing in that place when none does", () => {
-		const running = render({ project: makeProject({ status: { key: "k", project: "p", start: "s", badge: BADGE, module: null, agent: null, elapsed: "4m", href: "/x" } }) });
+		const running = render({ project: makeProject({ status: { key: "k", project: "p", start: "s", badge: BADGE, phase: null, pipeline: null, outside: false, module: null, agent: null, elapsed: "4m", href: "/x" } }) });
 		expect(running).toContain('<span class="p-now"><span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Build</span><span class="p-el mono">4m</span></span>');
 		expect(render()).toContain('<span class="p-now"></span>');
+	});
+
+	it("shows the pipeline and the phase in the status line, and the pipeline in the open row's rail footer", () => {
+		const status = { key: "k", project: "p", start: "s", badge: BADGE, phase: "Build · step 4 of 9", pipeline: "feature-x", outside: false, module: null, agent: null, elapsed: "4m", href: "/x" };
+		const closed = stripMarkup(render({ project: makeProject({ status }) }));
+		expect(closed).toContain("feature-x");
+		expect(closed).toContain("Build · step 4 of 9");
+		const open = stripMarkup(render({ open: true, project: makeProject({ status, rail: RAIL }) }));
+		expect(open).toContain("Pipeline feature-x");
+	});
+
+	it("says Working outside the pipeline in the status line and the rail footer for a session outside it", () => {
+		const status = { key: "k", project: "p", start: "s", badge: BADGE, phase: "Working outside the pipeline", pipeline: null, outside: true, module: null, agent: null, elapsed: null, href: "/x" };
+		expect(stripMarkup(render({ project: makeProject({ status }) }))).toContain("Working outside the pipeline");
+		expect(stripMarkup(render({ open: true, project: makeProject({ status, rail: RAIL }) }))).toContain("Working outside the pipeline");
 	});
 
 	it("shows the live count badge and, while a gate is open, the waiting class", () => {

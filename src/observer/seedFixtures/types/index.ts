@@ -5,11 +5,18 @@ import type { BoardColumnId, BoardTask } from "@/service/observer/kanban/types/i
 /** One event of a fixture session: the agent-supplied fields only (the writer stamps the envelope) and its age. */
 export type FixtureEvent = { offsetMin: number } & ObserverEventInput;
 
+/** The hook presence a fixture session carries: the state its last hook call mapped to, and how long ago that call was. */
+export type FixturePresence = { state: "working" | "waiting" | "ended"; minutesAgo: number };
+
 /** One recorded session; `offsetMin` of each event is minutes before `now`, larger meaning older. */
 export type FixtureSession = {
 	/** `live` stamps the seeding process's own pid on every event; `dead` stamps a pid that has already exited. */
 	pid: "live" | "dead";
 	events: FixtureEvent[];
+	/** The presence file the session's hooks left; none leaves the session without one. */
+	presence?: FixturePresence;
+	/** True writes an ended mark (`endedBy: "user"`) for the session. */
+	ended?: boolean;
 };
 
 /** Which cut of the handoff's history the timeline returns; each names the last event the cut keeps. */

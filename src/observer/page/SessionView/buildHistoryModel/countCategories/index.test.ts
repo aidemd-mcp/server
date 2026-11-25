@@ -13,6 +13,11 @@ describe("countCategories", () => {
 		expect(countCategories({ rows })).toEqual({ sessions: 1, phases: 3, gates: 1, qa: 2 });
 	});
 
+	it("counts pipeline and skip rows under phases", () => {
+		const rows = [row({ kind: "pipeline" }), row({ kind: "skip" }), row({ kind: "phase" })];
+		expect(countCategories({ rows })).toEqual({ phases: 3 });
+	});
+
 	it("counts a row that holds a file group once more under files, and a standalone group once", () => {
 		const group = row({ kind: "files", files: [row({ kind: "sub" })] });
 		const rows = [row({ kind: "step", files: [group] }), group, row({ kind: "step" })];

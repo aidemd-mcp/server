@@ -2,8 +2,8 @@ import Icon from "@/observer/page/shared/Icon/index.js";
 import type { LiveRowModel } from "@/observer/page/types/index.js";
 
 /**
- * One live or idle session on Home: project and start, the badge for what it is doing (waiting on
- * you, a running phase, or no phase running), its module and agent when reported, and the time on
+ * One live or idle session on Home: project and start, the liveness badge (working, waiting on you, or quiet and maybe stuck) with its
+ * pipeline and the running phase, `Working outside the pipeline` or `No phase running` beside it, its module and agent when reported, and the time on
  * the right. A real button that opens the session.
  */
 export default function LiveRow({ row, onOpen }: { row: LiveRowModel; onOpen(): void }) {
@@ -18,6 +18,8 @@ export default function LiveRow({ row, onOpen }: { row: LiveRowModel; onOpen(): 
 					<Icon name={row.badge.icon} />
 					{row.badge.word}
 				</span>
+				{row.pipeline !== null && <span className="mono">{row.pipeline}</span>}
+				{row.phase !== null && <span>{row.phase}</span>}
 				{row.module !== null && <span className="mono">{row.module}</span>}
 				{row.agent !== null && (
 					<>

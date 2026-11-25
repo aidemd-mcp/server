@@ -30,6 +30,8 @@ describe("resolve", () => {
 			projectKey: nameProjectFolder({ projectRoot }),
 			folder,
 			eventsFolder: `${folder}\\events`,
+			presenceFolder: `${folder}\\presence`,
+			endedFolder: `${folder}\\ended`,
 		});
 	});
 
@@ -42,6 +44,8 @@ describe("resolve", () => {
 			projectKey: nameProjectFolder({ projectRoot }),
 			folder,
 			eventsFolder: `${folder}/events`,
+			presenceFolder: `${folder}/presence`,
+			endedFolder: `${folder}/ended`,
 		});
 	});
 
@@ -55,6 +59,8 @@ describe("resolve", () => {
 			projectKey: nameProjectFolder({ projectRoot }),
 			folder,
 			eventsFolder: `${folder}/events`,
+			presenceFolder: `${folder}/presence`,
+			endedFolder: `${folder}/ended`,
 		});
 	});
 
@@ -66,6 +72,17 @@ describe("resolve", () => {
 		const paths = resolve({ projectRoot });
 		expect(paths.projectKey).toBe(nameProjectFolder({ projectRoot }));
 		expect(paths.folder.endsWith(`/${paths.projectKey}`)).toBe(true);
+	});
+
+	it("places the presence and ended folders beside events, under the project folder", () => {
+		mockPlatform.mockReturnValue("linux");
+		mockHomedir.mockReturnValue("/home/me");
+		vi.stubEnv("XDG_STATE_HOME", "");
+		const paths = resolve({ projectRoot: "/home/me/code/app" });
+		expect(path.posix.dirname(paths.presenceFolder)).toBe(paths.folder);
+		expect(path.posix.dirname(paths.endedFolder)).toBe(paths.folder);
+		expect(path.posix.basename(paths.presenceFolder)).toBe("presence");
+		expect(path.posix.basename(paths.endedFolder)).toBe("ended");
 	});
 
 	it("never creates anything on disk", () => {
@@ -83,6 +100,13 @@ describe("resolve", () => {
 		mockHomedir.mockReturnValue("/home/me");
 		vi.stubEnv("XDG_STATE_HOME", "");
 		expect(() => resolve({ projectRoot: "/home/me" })).toThrow("/home/me");
+	});
+
+	it("throws when the app-data root sits inside the project root, so presence and ended folders never land in a project", () => {
+		mockPlatform.mockReturnValue("linux");
+		mockHomedir.mockReturnValue("/home/me");
+		vi.stubEnv("XDG_STATE_HOME", "/home/me/app/state");
+		expect(() => resolve({ projectRoot: "/home/me/app" })).toThrow(/inside the project root/);
 	});
 
 	it("throws when XDG_STATE_HOME points inside the project root", () => {

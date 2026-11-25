@@ -10,6 +10,9 @@ function makeRow(overrides: Partial<LiveRowModel> = {}): LiveRowModel {
 		project: "aidemd-mcp",
 		start: "14:02",
 		badge: { word: "Build · step 4 of 9", className: "run", icon: "run" },
+		phase: null,
+		pipeline: null,
+		outside: false,
 		module: "src/tools/score",
 		agent: "aide-implementor",
 		elapsed: "7m 55s",
@@ -21,6 +24,16 @@ function makeRow(overrides: Partial<LiveRowModel> = {}): LiveRowModel {
 const render = (row: LiveRowModel) => renderToStaticMarkup(<LiveRow row={row} onOpen={() => undefined} />);
 
 describe("LiveRow", () => {
+	it("names the pipeline before the phase", () => {
+		const text = stripMarkup(render(makeRow({ pipeline: "feature-x", phase: "Plan" })));
+		expect(text.indexOf("feature-x")).toBeGreaterThan(-1);
+		expect(text.indexOf("Plan")).toBeGreaterThan(text.indexOf("feature-x"));
+	});
+
+	it("reads Working outside the pipeline as the phase for a session outside it", () => {
+		expect(stripMarkup(render(makeRow({ phase: "Working outside the pipeline", outside: true })))).toContain("Working outside the pipeline");
+	});
+
 	it("is a real button with project, session start, badge, module, agent and elapsed time", () => {
 		const html = render(makeRow());
 		expect(html).toContain('<button type="button" class="av-live-row">');

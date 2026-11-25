@@ -7,8 +7,8 @@ import type { RouteInput } from "../../types/index.js";
 /**
  * POST /api/projects/:project/sessions/<id>/archive — moves one past session's log of that project
  * into the project's archive and drops it from memory, so it leaves every session list until it is
- * restored. An unknown project is 404. A live session is refused, and so is an unreadable one (it
- * cannot be judged past): both answer 409 and nothing is dropped, broadcast or pushed. An outcome
+ * restored. An unknown project is 404. A session that has not ended is refused, and so is an
+ * unreadable one (it cannot be judged ended): both answer 409 and nothing is dropped, broadcast or pushed. An outcome
  * the route does not know throws. On success the project's session rows and the home list are
  * broadcast and its status is pushed. A throw from the move (a broken runtime location) propagates
  * to handleRequest's 500.
@@ -36,7 +36,7 @@ export default async function archiveSession({ res, params, ctx }: RouteInput): 
 		sendJson({
 			res,
 			status: 409,
-			body: { error: { message: `Session ${id} is still live; only a past session can be archived.` } },
+			body: { error: { message: `Session ${id} has not ended; only an ended session can be archived.` } },
 		});
 		return;
 	}
@@ -45,7 +45,7 @@ export default async function archiveSession({ res, params, ctx }: RouteInput): 
 			res,
 			status: 409,
 			body: {
-				error: { message: `Session ${id} could not be read, so it cannot be judged past; it was not archived.` },
+				error: { message: `Session ${id} could not be read, so it cannot be judged ended; it was not archived.` },
 			},
 		});
 		return;
@@ -58,5 +58,5 @@ export default async function archiveSession({ res, params, ctx }: RouteInput): 
 
 	ctx.store.drop({ projectKey, sessionId: id });
 	sendJson({ res, status: 200, body: { data: { archived: id } } });
-	announceSessions({ ctx, projectKey });
+	await announceSessions({ ctx, projectKey });
 }

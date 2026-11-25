@@ -24,7 +24,11 @@ export default function waiting(): FixtureScenario {
 			board: { kanbanTag: KANBAN_TAG, tasks: boardTasks({ large: false }) },
 			reportRoot: true,
 			sessions: [
-				{ pid: "live", events: timeline({ through: "wait", lastAgoMin: WAITING_FOR_MIN }) },
+				{
+					pid: "live",
+					presence: { state: "waiting", minutesAgo: WAITING_FOR_MIN },
+					events: timeline({ through: "wait", lastAgoMin: WAITING_FOR_MIN }),
+				},
 				...pastSessions(),
 			],
 		},

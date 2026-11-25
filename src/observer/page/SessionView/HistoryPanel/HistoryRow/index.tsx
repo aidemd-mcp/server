@@ -8,7 +8,8 @@ import type { HistoryRowModel } from "@/observer/page/types/index.js";
  * the session tag while two sessions share the history.
  */
 export default function HistoryRow({ row, showSession, onOpen }: { row: HistoryRowModel; showSession: boolean; onOpen(): void }) {
-	const className = row.kind === "sub" ? "av-hrow sub" : `av-hrow k-${row.kind}`;
+	const look = row.kind === "pipeline" || row.kind === "skip" ? "phase" : row.kind;
+	const className = row.kind === "sub" ? "av-hrow sub" : `av-hrow k-${look}`;
 	const content = (
 		<>
 			<span className="h-t">{row.time}</span>

@@ -13,6 +13,8 @@ vi.mock("@/util/isProcessRunning/index.js", () => ({ default: vi.fn(() => true) 
 
 import { homedir } from "node:os";
 import resolve from "@/util/runtimePaths/resolve/index.js";
+import create from "@/util/runtimePaths/create/index.js";
+import writeEndedMark from "@/service/observer/event/shared/writeEndedMark/index.js";
 import resolveRoot from "@/util/runtimePaths/resolveRoot/index.js";
 import resolveEventLog from "@/util/runtimePaths/resolveEventLog/index.js";
 import { schema } from "@/service/observer/event/shared/schema/index.js";
@@ -87,7 +89,7 @@ describe("record", () => {
 	it("writes the event and reports delivered false when no observer runs", async () => {
 		const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
-		expect(outcome).toEqual({ logged: "written", delivered: false });
+		expect(outcome).toEqual({ logged: "written", delivered: false, sessionId: getSession().sessionId });
 		expect(await readLines()).toHaveLength(1);
 		expect(received).toEqual([]);
 	});
@@ -101,7 +103,7 @@ describe("record", () => {
 
 		const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
-		expect(outcome).toEqual({ logged: "written", delivered: true });
+		expect(outcome).toEqual({ logged: "written", delivered: true, sessionId: getSession().sessionId });
 		expect(linesAtRequest).toHaveLength(1);
 		expect(received).toEqual(linesAtRequest);
 	});
@@ -115,7 +117,7 @@ describe("record", () => {
 		const started = Date.now();
 		const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
-		expect(outcome).toEqual({ logged: "written", delivered: false });
+		expect(outcome).toEqual({ logged: "written", delivered: false, sessionId: getSession().sessionId });
 		expect(Date.now() - started).toBeLessThan(1000);
 	});
 
@@ -151,7 +153,7 @@ describe("record", () => {
 		await expect(readdir(paths.eventsFolder)).rejects.toThrow();
 	});
 
-	it("stamps every event with one session id, rising seq, the process pid, v 1 and an ISO ts", async () => {
+	it("stamps every event with one session id, rising seq, the process pid, v 2 and an ISO ts", async () => {
 		await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 		await record({ projectRoot: project, input: { kind: "release", version: "1.0.1" } });
 		await record({ projectRoot: project, input: { kind: "release", version: "1.0.2" } });
@@ -162,7 +164,7 @@ describe("record", () => {
 		expect(events.map((event) => event.seq)).toEqual([1, 2, 3]);
 		for (const event of events) {
 			expect(event.pid).toBe(process.pid);
-			expect(event.v).toBe(1);
+			expect(event.v).toBe(2);
 			expect(new Date(event.ts).toISOString()).toBe(event.ts);
 		}
 	});
@@ -173,7 +175,11 @@ describe("record", () => {
 		const next = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
 		expect(first.logged).toBe("written");
-		expect(second).toEqual({ logged: "repeat-session-start", delivered: false });
+		expect(second).toEqual({
+			logged: "repeat-session-start",
+			delivered: false,
+			sessionId: getSession().sessionId,
+		});
 		expect(next.logged).toBe("written");
 		const events = (await readLines()).map((line) => JSON.parse(line) as ObserverEvent);
 		expect(events.filter((event) => event.kind === "session_started")).toHaveLength(1);
@@ -200,6 +206,58 @@ describe("record", () => {
 		expect(lines).toHaveLength(20);
 		const events = lines.map((line) => JSON.parse(line) as ObserverEvent);
 		expect(events.map((event) => event.seq)).toEqual(Array.from({ length: 20 }, (_, index) => index + 1));
+	});
+
+	describe("after the session is ended", () => {
+		async function endThisSession(): Promise<void> {
+			const paths = await create({ projectRoot: project });
+			await writeEndedMark({
+				projectKey: paths.projectKey,
+				mark: { v: 1, sessionId: getSession().sessionId, endedAt: new Date().toISOString(), endedBy: "user" },
+			});
+		}
+
+		it("refuses with session-ended, appends nothing and posts nothing", async () => {
+			await writeObserverRecord();
+			await endThisSession();
+
+			const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
+
+			expect(outcome).toEqual({ logged: "session-ended", delivered: false, sessionId: getSession().sessionId });
+			expect(received).toEqual([]);
+			const paths = resolve({ projectRoot: project });
+			await expect(readdir(paths.eventsFolder)).resolves.toEqual([]);
+		});
+
+		it("does not claim the session start when a session_started is refused", async () => {
+			await endThisSession();
+
+			const refused = await record({ projectRoot: project, input: { kind: "session_started" } });
+
+			expect(refused.logged).toBe("session-ended");
+			expect(getSession().startedRecorded).toBe(false);
+		});
+
+		it("still reports invalid for a bad input, naming the session", async () => {
+			await endThisSession();
+
+			const outcome = await record({ projectRoot: project, input: { kind: "nope" } });
+
+			expect(outcome.logged).toBe("invalid");
+			expect(outcome.sessionId).toBe(getSession().sessionId);
+		});
+	});
+
+	it("names the session id on every outcome", async () => {
+		const written = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
+		const invalid = await record({ projectRoot: project, input: { kind: "nope" } });
+		const repeat1 = await record({ projectRoot: project, input: { kind: "session_started" } });
+		const repeat2 = await record({ projectRoot: project, input: { kind: "session_started" } });
+		const failed = await record({ projectRoot: "relative/path", input: { kind: "release", version: "1.0.0" } });
+
+		for (const outcome of [written, invalid, repeat1, repeat2, failed]) {
+			expect(outcome.sessionId).toBe(getSession().sessionId);
+		}
 	});
 
 	it("resolves write-failed, never rejects, for a relative projectRoot", async () => {

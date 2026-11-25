@@ -437,12 +437,11 @@ describe("aide-brain-author skill", () => {
 		expect(readCanonicalDoc("skills/aide-brain-author")).toBe(onDisk);
 	});
 
-	it("is registered last in listSkills with hostPath aide-brain-author/SKILL.md", () => {
+	it("is registered in listSkills with hostPath aide-brain-author/SKILL.md", () => {
 		const skills = listSkills();
 		const entry = skills.find((s) => s.canonical === "skills/aide-brain-author");
 		expect(entry).toBeDefined();
 		expect(entry!.hostPath).toBe("aide-brain-author/SKILL.md");
-		expect(skills[skills.length - 1]).toBe(entry);
 	});
 
 	it("declares frontmatter name 'aide-brain-author'", () => {
@@ -462,6 +461,27 @@ describe("aide-brain-author skill", () => {
 			expect(readCanonicalDoc("skills/aide-brain-author")).not.toMatch(pattern);
 		},
 	);
+});
+
+describe("aide-observer skill", () => {
+	it("is readable through readCanonicalDoc and matches the file on disk", () => {
+		const onDisk = readFileSync(join(REPO_ROOT, ".claude", "skills", "aide-observer", "SKILL.md"), "utf-8");
+		expect(readCanonicalDoc("skills/aide-observer")).toBe(onDisk);
+	});
+
+	it("is registered last in listSkills with hostPath aide-observer/SKILL.md, after aide-brain-author", () => {
+		const skills = listSkills();
+		const entry = skills.find((s) => s.canonical === "skills/aide-observer");
+		expect(entry).toBeDefined();
+		expect(entry!.hostPath).toBe("aide-observer/SKILL.md");
+		expect(skills[skills.length - 1]).toBe(entry);
+		expect(skills[skills.length - 2]?.canonical).toBe("skills/aide-brain-author");
+		expect(skills).toHaveLength(7);
+	});
+
+	it("declares frontmatter name aide-observer", () => {
+		expect(readCanonicalDoc("skills/aide-observer")).toMatch(/^---\r?\nname: aide-observer\r?\n/);
+	});
 });
 
 describe("published package file set", () => {

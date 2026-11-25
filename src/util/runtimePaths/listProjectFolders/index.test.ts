@@ -40,8 +40,18 @@ describe("listProjectFolders", () => {
 		await writeFile(observerFile, "{}");
 
 		expect(await listProjectFolders()).toEqual([
-			{ projectKey: "alpha-3f9a2c", eventsFolder: path.join(root, "alpha-3f9a2c", "events") },
-			{ projectKey: "zeta-aaaaaa", eventsFolder: path.join(root, "zeta-aaaaaa", "events") },
+			{
+				projectKey: "alpha-3f9a2c",
+				eventsFolder: path.join(root, "alpha-3f9a2c", "events"),
+				presenceFolder: path.join(root, "alpha-3f9a2c", "presence"),
+				endedFolder: path.join(root, "alpha-3f9a2c", "ended"),
+			},
+			{
+				projectKey: "zeta-aaaaaa",
+				eventsFolder: path.join(root, "zeta-aaaaaa", "events"),
+				presenceFolder: path.join(root, "zeta-aaaaaa", "presence"),
+				endedFolder: path.join(root, "zeta-aaaaaa", "ended"),
+			},
 		]);
 	});
 

@@ -1,7 +1,7 @@
 import describeError from "@/util/describeError/index.js";
 import buildHistory from "./buildHistory/index.js";
 import buildModuleNodes from "./buildModuleNodes/index.js";
-import buildRail from "./buildRail/index.js";
+import buildRails from "./buildRails/index.js";
 import findRunningWork from "./findRunningWork/index.js";
 import findWaitingFiles from "./findWaitingFiles/index.js";
 import foldSessions from "./foldSessions/index.js";
@@ -11,14 +11,23 @@ import type { SessionRecord, Status, StatusInput, StatusPart, StatusProblem } fr
 
 /**
  * Builds the full Status the observer page shows: the tree of every AIDE file,
- * the plans/todos list, the session record, sessions with liveness, running
- * work, the files awaiting the user and the one to surface, the phase rail and
- * the history. Files decide current state; events add only who, when, history
- * and which file to surface. Each part runs on its own: a part that throws is
- * left empty and reported in `problems`, and never fails another part. Reads
- * only the project's `.aide` files and writes nothing.
+ * the plans/todos list, the session record, sessions with the liveness the
+ * caller judged (passed through, never re-judged), running work, the files
+ * awaiting the user and the one to surface, one pipeline rail per session that
+ * has not ended (resumed from the archived sessions' events) and the history.
+ * Files decide current state; events add only who, when, history and which
+ * file to surface. Each part runs on its own: a part that throws is left empty
+ * and reported in `problems`, and never fails another part. Reads only the
+ * project's `.aide` files and writes nothing; never reads presence, logs or
+ * the board.
  */
-export default async function buildStatus({ projectRoot, events, board }: StatusInput): Promise<Status> {
+export default async function buildStatus({
+	projectRoot,
+	events,
+	archivedEvents,
+	liveness,
+	board,
+}: StatusInput): Promise<Status> {
 	const now = Date.now();
 	const problems: StatusProblem[] = [];
 
@@ -45,8 +54,8 @@ export default async function buildStatus({ projectRoot, events, board }: Status
 		run: () => readSessionRecord({ projectRoot }),
 	});
 
-	// Step 4: sessions folded from events, with liveness.
-	const sessions = await runPart({ part: "sessions", empty: [], run: () => foldSessions({ events, now }) });
+	// Step 4: sessions folded from events, with the liveness the caller judged.
+	const sessions = await runPart({ part: "sessions", empty: [], run: () => foldSessions({ events, liveness }) });
 
 	// Step 5: running work, where files veto what events claim.
 	const running = await runPart({
@@ -63,11 +72,11 @@ export default async function buildStatus({ projectRoot, events, board }: Status
 	});
 	const surfaced = waiting[0] ?? null;
 
-	// Step 7: the phase rail, from the running work and surfaced file as already built.
-	const rail = await runPart({
+	// Step 7: one rail per live session, resumed from the archived sessions' events.
+	const rails = await runPart({
 		part: "rail",
-		empty: null,
-		run: () => buildRail({ projectRoot, events, running, surfaced }),
+		empty: [],
+		run: () => buildRails({ events, archivedEvents, sessions, running }),
 	});
 
 	// Step 8: one history row per event.
@@ -84,7 +93,7 @@ export default async function buildStatus({ projectRoot, events, board }: Status
 		running,
 		waiting,
 		surfaced,
-		rail,
+		rails,
 		history,
 		board,
 		problems,

@@ -44,7 +44,7 @@ describe("buildProjectView", () => {
 		const view = await buildProjectView({ ctx: makeContext(), projectKey: A });
 
 		expect(view).toEqual({ state: "ready", projectKey: A, status: { marker: "status" } });
-		expect(mockRebuild).toHaveBeenCalledWith({ projectRoot: "/a", sessions: [HELD[0]], brainOverride: undefined });
+		expect(mockRebuild).toHaveBeenCalledWith({ projectKey: A, projectRoot: "/a", sessions: [HELD[0]], brainOverride: undefined });
 	});
 
 	it("answers no-project-root without building a status for a project that reported no root", async () => {

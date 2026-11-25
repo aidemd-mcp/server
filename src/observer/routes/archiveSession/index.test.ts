@@ -3,7 +3,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ObserverContext } from "../../types/index.js";
 
 vi.mock("@/service/observer/event/archive/index.js", () => ({ default: vi.fn() }));
-vi.mock("@/service/observer/event/shared/judgeLiveness/index.js", () => ({ default: vi.fn(() => false) }));
+vi.mock("@/service/observer/event/readLiveness/index.js", () => ({
+	default: vi.fn(async () => ({
+		sessions: { s2: { state: "working", lastActivityAt: null, quietMinutes: 0, maybeStuck: false } },
+		unlinked: [],
+	})),
+}));
 
 import archiveSessionLog from "@/service/observer/event/archive/index.js";
 import archiveSession from "./index.js";
@@ -76,11 +81,11 @@ describe("archiveSession route", () => {
 		expectUntouched(ctx);
 	});
 
-	it("explains a live refusal", async () => {
+	it("explains the refusal of a session that has not ended", async () => {
 		mockArchive.mockResolvedValue({ outcome: "live" });
 		const result = await call(makeContext());
 		expect((result.body.error as { message: string }).message).toBe(
-			"Session s1 is still live; only a past session can be archived.",
+			"Session s1 has not ended; only an ended session can be archived.",
 		);
 	});
 

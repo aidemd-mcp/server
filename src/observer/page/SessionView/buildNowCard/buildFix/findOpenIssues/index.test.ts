@@ -13,7 +13,7 @@ function statusOf(workFiles: WorkFileEntry[]): Status {
 		running: [],
 		waiting: [],
 		surfaced: null,
-		rail: null,
+		rails: [],
 		history: [],
 		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
 		problems: [],

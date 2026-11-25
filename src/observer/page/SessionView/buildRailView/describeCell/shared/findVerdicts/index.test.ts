@@ -7,12 +7,12 @@ const commit = makeEvent({ seq: 2, ts: "2026-11-23T14:00:00.000Z", kind: "commit
 
 describe("findVerdicts", () => {
 	it("is empty when the module has no verdict", () => {
-		expect(findVerdicts({ moduleEvents: [] })).toEqual([]);
-		expect(findVerdicts({ moduleEvents: [commit] })).toEqual([]);
+		expect(findVerdicts({ pipelineEvents: [] })).toEqual([]);
+		expect(findVerdicts({ pipelineEvents: [commit] })).toEqual([]);
 	});
 
 	it("keeps only the qa_verdict events, in the order given (oldest first)", () => {
 		const events = [verdict(1, "issues"), commit, verdict(3, "passed")];
-		expect(findVerdicts({ moduleEvents: events }).map((event) => event.seq)).toEqual([1, 3]);
+		expect(findVerdicts({ pipelineEvents: events }).map((event) => event.seq)).toEqual([1, 3]);
 	});
 });

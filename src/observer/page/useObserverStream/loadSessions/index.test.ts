@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import fetchSessions from "@/observer/page/api/fetchSessions/index.js";
 import loadSessions from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 vi.mock("@/observer/page/api/fetchSessions/index.js", () => ({ default: vi.fn() }));
 
-const session = { sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", metadata: null, eventCount: 2, lastEventAt: null, live: false };
+const session = { sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", metadata: null, eventCount: 2, lastEventAt: null, liveness: makeLiveness({ state: "ended" }) };
 
 afterEach(() => {
 	vi.restoreAllMocks();

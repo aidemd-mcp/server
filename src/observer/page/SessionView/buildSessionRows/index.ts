@@ -22,7 +22,7 @@ function taskOf(event: Extract<ObserverEvent, { kind: "task" }> | null): { task:
 	return { task: event === null ? null : (event.title ?? event.slug), taskSlug: event?.slug ?? null };
 }
 
-/** One model per session from the status's summaries, which carry the observer's three-state liveness. */
+/** One model per session from the status's summaries, which carry the observer's liveness. */
 function fromSummaries({ summaries }: { summaries: SessionSummary[] }): Omit<SessionRowModel, "task" | "label">[] {
 	return summaries.map((summary) => ({
 		sessionId: summary.sessionId,
@@ -43,7 +43,7 @@ function fromListings({ listings }: { listings: SessionListing[] }): Omit<Sessio
 			startedAt: listing.startedAt,
 			lastEventAt: listing.lastEventAt,
 			eventCount: listing.eventCount,
-			liveness: listing.live ? "live" : "ended",
+			liveness: listing.liveness,
 		});
 	}
 	return rows;

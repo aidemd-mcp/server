@@ -1,7 +1,7 @@
 ---
 scope: src
 alignment: unreviewed
-description: "MCP server serving AIDE to host projects: a handshake teaching it via tool descriptions, an install action scaffolding it onto disk, and a read-only channel for observing the pipeline."
+description: "MCP server serving AIDE to host projects: a handshake teaching it via tool descriptions, an install action scaffolding it onto disk, and a mandatory observer of each project's sessions."
 intent: >
   src/ implements the channels through which aidemd-mcp carries AIDE
   doctrine from canonical docs into host projects. The handshake channel
@@ -10,21 +10,22 @@ intent: >
   project's disk, exposing both an in-session entry point for adopters
   already running an agent and a cold-start entry point for adopters at a
   fresh terminal — converging on the same on-disk result through one shared
-  install service. A read-only observation channel lets the user watch the
-  pipeline, which never depends on it.
+  install service. A mandatory observation channel is the single source of
+  truth for each project's agent sessions; reporting to it stays best
+  effort.
 outcomes:
   desired:
-    - No two tools in the handshake surface overlap in responsibility, so an agent never has to guess which tool to call.
-    - Each tool description teaches the slice of AIDE it invokes well enough that an agent reading only the handshake learns the convention. Descriptions never defer to external docs for load-bearing rules.
+    - No two tools in the handshake surface overlap in responsibility, and each tool description teaches the slice of AIDE it invokes well enough that an agent reading only the handshake learns the convention. Descriptions never defer to external docs for load-bearing rules.
     - Tool descriptions and every artifact the install action lands on the host's disk are composed from the canonical doc set at build or install time. AIDE doctrine never appears as a string literal in this submodule's source.
     - The install action makes a cold host project AIDE-ready in one invocation, is safely re-runnable, and produces an identical on-disk result regardless of which entry point the adopter chose. Idempotency lives at the shared install service so both entry points inherit it.
     - The install action delivers the methodology through progressive disclosure — a shallow pointer surface in the host's session-start context plus a deeper doc set the agent crawls only when its current task touches AIDE. Eager-loading the full methodology at session start is forbidden at this layer.
     - Behavior across supported MCP clients is identical for every tool except install. Client-specific scaffolding is confined to the install action; every other surface is client-agnostic.
+    - At most one agent session per project is live, so only one pipeline is active. A session start that finds another live session of the project halts, naming it, until the user approves ending that session or closes the new one.
   undesired:
-    - A spec, test, description, or contract that pins a specific count of tools or enumerates the tool roster. The roster is a snapshot, not an invariant — encoding it guarantees drift the moment a tool is added.
-    - Two tools whose responsibilities overlap, regardless of how the overlap was introduced. Overlap forces agents to guess which tool to call and dilutes the handshake's teaching value.
+    - Two tools whose responsibilities overlap, or a spec, test, description or contract that pins the tool count or enumerates the roster. Overlap forces agents to guess which tool to call, and a pinned roster drifts the moment a tool is added.
     - A tool description that defers a load-bearing rule to an external document, or that was hand-typed as a string duplicating doctrine that lives in the canonical doc set. Either form breaks the single-source-of-truth contract this submodule inherits.
     - An install run that is not idempotent through either entry point — stacked pointer surfaces, duplicated scaffolded files, or divergent on-disk results between the two entry points. The install service is the contract; the entry points are wire shapes that must not be allowed to diverge.
     - The install action eagerly inlining the methodology into the host's always-loaded session-start surface instead of writing a shallow pointer plus an on-demand doc set. This silently reverses progressive disclosure at the delivery layer.
     - A second mutation surface for any host file the install action wrote, added inside the server runtime to save the user a command. Only the install, sync and consent-gated upgrade surfaces write host files; every other runtime tool is read-only against them.
+    - A pipeline that waits on, fails from or behaves differently because of the observer except at the session start (starting the observer and the one-live-session check) or when it is down and cannot be restarted, or a session that proceeds while another session of its project is live or no observer runs.
 ---

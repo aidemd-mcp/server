@@ -12,7 +12,7 @@ type Reported = { projectRoot?: string; kanbanTag?: string; brainPath?: string }
 
 /**
  * Writes one fixture session as a JSONL event log in the project's runtime events folder and returns
- * the project key and the new session id. Each line is stamped like the recorder stamps it (`v: 1`,
+ * the project key and the new session id. Each line is stamped like the recorder stamps it (`v: 2`,
  * `ts` = `now` minus the event's offset, `sessionId`, `seq` 1..n in array order, `pid`) and checked
  * against the stored-event schema; a line that fails, an offset order that runs forwards in time, or a
  * first event that is not `session_started` throws before anything is written. The session id is the

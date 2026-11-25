@@ -38,13 +38,30 @@ afterEach(async () => {
 });
 
 describe("create", () => {
-	it("creates the runtime folder and its events folder and returns the resolved paths", async () => {
+	it("creates the runtime folder with its events, presence and ended folders and returns the resolved paths", async () => {
 		const paths = await create({ projectRoot: project });
 
 		expect(paths).toEqual(resolve({ projectRoot: project }));
 		expect(path.dirname(paths.folder)).toBe(path.join(appData, "aidemd"));
 		expect(paths.eventsFolder).toBe(path.join(paths.folder, "events"));
+		expect(paths.presenceFolder).toBe(path.join(paths.folder, "presence"));
+		expect(paths.endedFolder).toBe(path.join(paths.folder, "ended"));
 		expect(existsSync(paths.eventsFolder)).toBe(true);
+		expect(existsSync(paths.presenceFolder)).toBe(true);
+		expect(existsSync(paths.endedFolder)).toBe(true);
+	});
+
+	it("is a no-op for presence and ended folders that exist and keeps files inside them", async () => {
+		const first = await create({ projectRoot: project });
+		const presence = path.join(first.presenceFolder, "claude.json");
+		const ended = path.join(first.endedFolder, "session.json");
+		await writeFile(presence, "{}");
+		await writeFile(ended, "{}");
+
+		await create({ projectRoot: project });
+
+		expect(existsSync(presence)).toBe(true);
+		expect(existsSync(ended)).toBe(true);
 	});
 
 	it("succeeds on a second call and keeps a file already inside events", async () => {
@@ -64,7 +81,7 @@ describe("create", () => {
 
 		expect(await readdir(project)).toEqual([]);
 		expect(existsSync(path.join(paths.folder, "observer.json"))).toBe(false);
-		expect(await readdir(paths.folder)).toEqual(["events"]);
+		expect(await readdir(paths.folder)).toEqual(["ended", "events", "presence"]);
 	});
 
 	it("throws and creates nothing when the runtime folder would land inside the project", async () => {

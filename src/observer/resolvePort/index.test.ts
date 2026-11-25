@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import resolvePort from "./index.js";
 
 describe("resolvePort", () => {
-	it("defaults to 24680 with no flag and no env", () => {
+	it("defaults to the head of the port list with no flag and no env", () => {
 		expect(resolvePort({ env: {} })).toEqual({ ok: true, port: 24680, source: "default" });
 	});
 

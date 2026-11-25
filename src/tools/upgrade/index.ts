@@ -19,6 +19,7 @@ import spliceStub from "./spliceStub/index.js";
 import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkBrainConfig from "./checkBrainConfig/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
+import checkHooksConfig from "./checkHooksConfig/index.js";
 import { checkZedConfig } from "./checkIdeConfig/index.js";
 
 const brainChangeTargets: BrainChangeTarget[] = [...brainContract.map(({ marker }) => marker), "launcher"];
@@ -34,7 +35,7 @@ export const UpgradeInput = z.object({
 		.optional()
 		.describe("Custom project root path (defaults to server working directory)"),
 	category: z
-		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "readme", "brain"])
+		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "readme", "brain", "hooks"])
 		.optional()
 		.describe("When provided, applies that category. For package-owned categories the call writes all differs/missing files to disk and returns a manifest (no canonicalContent). For `brain` it inserts missing sections (no `brainChange`), previews one change (`brainChange` alone), or applies it (`brainChange` + `beforeHash`); it never rewrites an existing section outside an applied change. When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
 	brainChange: z
@@ -225,6 +226,9 @@ export default async function upgrade(
 	// ── j. Brain config ─────────────────────────────────────────────────────
 	const brainResult = await checkBrainConfig(projectRoot);
 
+	// ── k. Claude Code hooks ────────────────────────────────────────────────
+	const hooksResults = await checkHooksConfig({ projectRoot, framework: config.framework });
+
 	// ── Assemble categories ──────────────────────────────────────────────────
 	const categories: UpgradeCategoryResult[] = [
 		buildCategoryResult("pointer-stub", [stubResult]),
@@ -237,6 +241,7 @@ export default async function upgrade(
 		buildCategoryResult("ide", [zedResult]),
 		buildCategoryResult("readme", [readmeFileResult]),
 		buildCategoryResult("brain", [brainResult]),
+		buildCategoryResult("hooks", hooksResults),
 	];
 
 	return { framework: config.framework, categories };

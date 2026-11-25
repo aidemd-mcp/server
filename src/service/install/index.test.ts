@@ -142,7 +142,7 @@ describe("init — structured JSON result", () => {
 	it("fresh project: every step has a category", async () => {
 		const result = await init(tempDir);
 
-		const validCategories = new Set(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme"]);
+		const validCategories = new Set(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme", "hooks"]);
 		for (const step of result.steps) {
 			expect(validCategories.has(step.category)).toBe(true);
 		}

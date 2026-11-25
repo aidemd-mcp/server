@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { ObserverEvent, RunningWork, SessionSummary, Status, WaitingFile, WorkFileEntry } from "@/types/index.js";
+import type { ObserverEvent, PipelineRail, RunningWork, SessionSummary, Status, WaitingFile, WorkFileEntry } from "@/types/index.js";
 import formatClock from "@/observer/page/shared/formatClock/index.js";
 import buildNowCard from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 const NOW = new Date("2026-01-01T10:00:00.000Z");
 const MODULE = "src/tools/score";
@@ -19,7 +20,7 @@ function statusOf(overrides: Partial<Status> = {}): Status {
 		running: [],
 		waiting: [],
 		surfaced: null,
-		rail: null,
+		rails: [],
 		history: [],
 		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
 		problems: [],
@@ -58,7 +59,7 @@ function event(fields: Record<string, unknown> & { kind: ObserverEvent["kind"]; 
 }
 
 function summary({ sessionId, startedAt }: { sessionId: string; startedAt: string }): SessionSummary {
-	return { sessionId, startedAt, lastEventAt: startedAt, eventCount: 2, pid: 1, liveness: "live", reported: null };
+	return { sessionId, startedAt, lastEventAt: startedAt, eventCount: 2, pid: 1, liveness: makeLiveness(), reported: null };
 }
 
 describe("buildNowCard: wait", () => {
@@ -129,6 +130,7 @@ describe("buildNowCard: run", () => {
 			timeLabel: `elapsed · started ${clock("2026-01-01T09:55:48.000Z")}`,
 			steps: { total: 9, done: 3, running: 1, head: "Step 4 of 9", text: "Wire weights into the ranking" },
 			hint: null,
+			pipeline: null,
 		});
 	});
 
@@ -167,6 +169,44 @@ describe("buildNowCard: run", () => {
 	});
 });
 
+describe("buildNowCard: pipeline", () => {
+	const railOf = (fields: Partial<PipelineRail> = {}): PipelineRail => ({ sessionId: "s1", pipeline: "feature-x", pipelineState: "running", outside: false, stages: [], ...fields });
+	const opening = event({ kind: "session_started", seq: 1 });
+	const commit = event({ kind: "commit", seq: 2, sha: "414776fabc", ts: "2026-01-01T09:48:00.000Z" });
+
+	it("names the pipeline of the running session's rail on a run card, and keeps the phase as the title", () => {
+		const status = statusOf({ running: [work({ sessionId: "s1", phase: "build" })], rails: [railOf(), railOf({ sessionId: "s2", pipeline: "other" })] });
+		expect(buildNowCard({ status, events: [], focus: "s1", now: NOW })).toMatchObject({ kind: "run", title: "Build", pipeline: "feature-x" });
+		expect(buildNowCard({ status, events: [], focus: null, now: NOW })).toMatchObject({ pipeline: "feature-x" });
+	});
+
+	it("names the pipeline on a fix card", () => {
+		const status = statusOf({ running: [work({ sessionId: "s1", phase: "fix", qaFixRound: 2 })], rails: [railOf()] });
+		expect(buildNowCard({ status, events: [], focus: "s1", now: NOW })).toMatchObject({ kind: "fix", pipeline: "feature-x" });
+	});
+
+	it("names no pipeline when the rail names none or the session has no rail", () => {
+		const running = [work({ sessionId: "s1", phase: "build" })];
+		expect(buildNowCard({ status: statusOf({ running, rails: [railOf({ pipeline: null })] }), events: [], focus: "s1", now: NOW }).pipeline).toBeNull();
+		expect(buildNowCard({ status: statusOf({ running }), events: [], focus: "s1", now: NOW }).pipeline).toBeNull();
+	});
+
+	it("reads No phase running for a session with a rail and no running phase", () => {
+		const card = buildNowCard({ status: statusOf({ rails: [railOf()] }), events: [opening, commit], focus: "s1", now: NOW });
+		expect(card).toMatchObject({ kind: "idle", state: "No phase running", pipeline: "feature-x" });
+	});
+
+	it("reads Working outside the pipeline when the rail says the session works outside it", () => {
+		const card = buildNowCard({ status: statusOf({ rails: [railOf({ outside: true })] }), events: [opening, commit], focus: "s1", now: NOW });
+		expect(card).toMatchObject({ kind: "idle", state: "Working outside the pipeline" });
+	});
+
+	it("keeps the amber waiting card when a gate is open, whatever the rail says", () => {
+		const status = statusOf({ waiting: [waitingOf()], rails: [railOf({ outside: true })] });
+		expect(buildNowCard({ status, events: [opening, commit], focus: "s1", now: NOW })).toMatchObject({ kind: "wait", state: "Waiting on you" });
+	});
+});
+
 describe("buildNowCard: fix", () => {
 	const verdict = (open: number): ObserverEvent => event({ kind: "qa_verdict", seq: 7, module: MODULE, verdict: "issues", open, ts: "2026-01-01T09:50:00.000Z" });
 
@@ -191,6 +231,7 @@ describe("buildNowCard: fix", () => {
 			timeLabel: `elapsed · round 2 started ${clock("2026-01-01T09:58:55.000Z")}`,
 			steps: null,
 			hint: "QA round 2 found 2 still open in todo.aide.",
+			pipeline: null,
 		});
 	});
 
@@ -237,6 +278,7 @@ describe("buildNowCard: idle", () => {
 			timeLabel: "since last event",
 			steps: null,
 			hint: null,
+			pipeline: null,
 		});
 	});
 

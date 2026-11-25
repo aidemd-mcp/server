@@ -5,10 +5,10 @@ import findStartedAt from "./index.js";
 type Finished = Extract<ObserverEvent, { kind: "phase_finished" }>;
 
 function started({ seq, ts, phase = "qa", module = "m", sessionId = "s1" }: { seq: number; ts: string; phase?: "qa" | "fix"; module?: string; sessionId?: string }): ObserverEvent {
-	return { v: 1, ts, sessionId, pid: 1, seq, kind: "phase_started", phase, agent: "a", module };
+	return { v: 1, ts, sessionId, pid: 1, seq, kind: "phase_started", pipeline: "p1", phase, agent: "a", module };
 }
 
-const FINISHED: Finished = { v: 1, ts: "2026-01-01T10:00:00.000Z", sessionId: "s1", pid: 1, seq: 9, kind: "phase_finished", phase: "qa", agent: "a", module: "m" };
+const FINISHED: Finished = { v: 1, ts: "2026-01-01T10:00:00.000Z", sessionId: "s1", pid: 1, seq: 9, kind: "phase_finished", pipeline: "p1", phase: "qa", agent: "a", module: "m" };
 
 describe("findStartedAt", () => {
 	it("is the latest earlier start of the same session, phase and module", () => {

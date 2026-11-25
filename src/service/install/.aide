@@ -3,29 +3,29 @@ scope: src/service/install
 alignment: unreviewed
 description: "Plans and executes the cold-start scaffold that turns a fresh host project into an AIDE-ready project, organized as a fixed set of categories the consumer applies."
 intent: >
-  The install layer turns a cold host project into an AIDE-ready
-  project through a fixed set of categories — methodology pointer,
-  doc set, session record, pipeline pieces, MCP registrations, brain
-  provisioning, IDE wiring. Each returns a structured plan of would-create,
-  would-overwrite, would-skip, and exists steps for the consumer to
-  act on. The service stays silent on cold-start creation, pauses
-  only on overwrites or decisions the filesystem cannot resolve, and treats
-  user-owned configuration as untouchable after the first run. The aide
-  server installs globally as a setup step; each MCP server
-  reaches the host as a prescription, never a direct write.
+  The install layer makes a cold host project AIDE-ready through a fixed
+  set of categories — methodology pointer, doc set, session record,
+  pipeline pieces, MCP registrations, brain provisioning, IDE wiring,
+  Claude Code hooks. Each returns a structured plan of would-create,
+  would-overwrite, would-skip, and exists steps for the consumer. The
+  service stays silent on cold-start creation, pauses only on overwrites or
+  decisions the filesystem cannot resolve, and treats user-owned
+  configuration as untouchable after the first run. The aide server
+  installs globally as a setup step; each MCP server reaches the host as a
+  prescription, never a direct write.
 outcomes:
   desired:
     - Each category returns a structured plan whose steps are tagged would-create, would-overwrite, would-skip, or exists. The plan is data the consumer interprets — this layer does not decide when to interrupt the user.
-    - A category whose plan contains only would-create steps applies silently. A category whose plan contains any would-overwrite step pauses for confirmation; categories pause independently so the user decides one at a time.
-    - Decisions the filesystem cannot resolve — framework detection, brain root location, MCP merge into an existing config, IDE choice — always pause for user input, regardless of whether anything would be overwritten.
+    - A category whose plan holds only would-create steps applies silently, while any would-overwrite step or a decision the filesystem cannot resolve — framework detection, brain root location, MCP merge into an existing config, IDE choice — pauses for user input. Categories pause independently so the user decides one at a time.
     - MCP server registrations are returned as prescriptions naming the entry the host's config must contain, the aide entry by its bare global command and never a path specific to one machine; the consumer merges and writes. The aide server's global install is reported as a setup step the consumer runs before writing that entry.
     - A fresh project ends its first install with an empty session record, which the install directs the agent to create through the same scaffolding every working file uses rather than writing its own copy. Later install runs leave both the session record and user-owned configuration alone — never returning them as would-overwrite, patching or migrating them.
     - The brain MCP entry's wire shape is derived from the user-owned brain.aide rather than supplied by this package. The package ships a default template the user can edit; the install never owns launcher bytes.
+    - For a Claude Code project, the hooks category adds only AIDE's own hook entries to the project's Claude settings, every other entry and byte unchanged, and a run that finds them all present changes nothing.
   undesired:
-    - A category that conflates cold-create and overwrite into the same path, so the consumer cannot tell whether the user has anything to lose. The plan must distinguish would-create from would-overwrite explicitly, every step.
-    - A would-overwrite step applied silently or a would-create step that interrupts the user, inverting the silent-on-create / pause-on-overwrite contract that defines this layer's user experience. Equally wrong is an aide entry written after its global install failed, pointing at a package that is not installed.
+    - A category that conflates cold-create and overwrite, applies a would-overwrite step silently or interrupts the user on a would-create step, inverting the silent-on-create / pause-on-overwrite contract. Equally wrong is an aide entry written after its global install failed, pointing at a package that is not installed.
     - The install layer reaching into the host's MCP config and editing it instead of returning a prescription. Direct writes here put unrelated server entries at risk on malformed configs and break the consumer's visibility into the merge.
     - A later install run that overwrites, patches, or migrates anything under the user-owned config directory or the session record, or resets a filled session record to the placeholder. After first scaffold, the install leaves that directory and the session record to the user and their agents.
     - The package supplying the brain's launcher command, args, or backend identity instead of deriving them from brain.aide. This re-introduces the connector-enum coupling the methodology has explicitly retired.
     - A new install category added by extending the consumers' wire shapes instead of by adding to the category set this layer owns. The category model is the contract; the consumers must remain thin.
+    - A hooks step that changes, reorders or removes any settings entry AIDE did not add, or adds AIDE's hook entries a second time.
 ---

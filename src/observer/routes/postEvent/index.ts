@@ -78,7 +78,7 @@ export default async function postEvent({ req, res, ctx }: RouteInput): Promise<
 
 	// Push to the stream first, so the page updates before the recorder's response and the status rebuild.
 	ctx.hub.broadcast({ name: "aide-event", data: { projectKey, event }, projectKey });
-	broadcastProjects({ ctx });
 	sendJson({ res, status: 200, body: { data: { outcome: "accepted" } } });
+	await broadcastProjects({ ctx });
 	ctx.statusPusher.push(projectKey);
 }

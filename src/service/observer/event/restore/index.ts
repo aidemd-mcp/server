@@ -2,12 +2,13 @@ import { access, mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import resolveArchivedLog from "@/util/runtimePaths/resolveArchivedLog/index.js";
 import resolveSessionLog from "@/util/runtimePaths/resolveSessionLog/index.js";
+import attachLiveness from "@/service/observer/event/shared/attachLiveness/index.js";
 import readSessionLog from "@/service/observer/event/shared/readSessionLog/index.js";
 import type { RestoreOutcome } from "@/service/observer/event/types/index.js";
 
 /**
  * Restores one archived session: moves its event log from the project's `archive` folder back into
- * its `events` folder and returns the session as `read` sees it, so the caller can hold it again.
+ * its `events` folder and returns the session as `read` sees it (with its liveness), so the caller can hold it again.
  * Refuses when a log with that id already sits in the events folder (nothing is overwritten). An
  * unsafe key or id, a missing archived session and a name clash are returned as values; a failed
  * move other than a vanished file throws.
@@ -42,6 +43,10 @@ export default async function restoreSession(input: { projectKey: string; sessio
 	}
 
 	// 4. Read it back the way `read` sees it; a file that vanished again is not-found.
-	const session = await readSessionLog({ path: to, sessionId: input.sessionId });
-	return session ? { outcome: "restored", session } : { outcome: "not-found" };
+	const log = await readSessionLog({ path: to, sessionId: input.sessionId });
+	if (!log) return { outcome: "not-found" };
+
+	// 5. Judge it by the one liveness reader.
+	const { sessions } = await attachLiveness({ projectKey: input.projectKey, logs: [log] });
+	return { outcome: "restored", session: sessions[0]! };
 }

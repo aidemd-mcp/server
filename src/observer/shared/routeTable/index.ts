@@ -25,6 +25,7 @@ const routeTable = [
 	{ name: "restoreSession", method: "POST", path: "/api/projects/:project/archive/:id/restore", purpose: "Restore one archived session to the project's history.", readRoute: true, tokenAccess: "required" },
 	{ name: "deleteSession", method: "DELETE", path: "/api/projects/:project/archive/:id", purpose: "Permanently delete one archived session's recording.", readRoute: true, tokenAccess: "required" },
 	{ name: "postEvent", method: "POST", path: protocol.eventsRoute, purpose: "Accept one event from a recorder.", readRoute: false, tokenAccess: "required" },
+	{ name: "postPresence", method: "POST", path: protocol.presenceRoute, purpose: "Accept a presence ping from a hook; the observer re-reads liveness and pushes.", readRoute: false, tokenAccess: "required" },
 	{ name: "postShutdown", method: "POST", path: protocol.shutdownRoute, purpose: "Ask this observer to stop for a newer one; local tools only.", readRoute: false, tokenAccess: "required" },
 	{ name: "streamUpdates", method: "GET", path: "/api/stream", purpose: "Server-sent events: snapshot, then each event and status as it lands (?project=<project> for one project).", readRoute: true, tokenAccess: "required" },
 ] as const;

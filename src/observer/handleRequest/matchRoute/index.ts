@@ -11,6 +11,7 @@ import listProjects from "../../routes/listProjects/index.js";
 import listSessions from "../../routes/listSessions/index.js";
 import listArchived from "../../routes/listArchived/index.js";
 import postEvent from "../../routes/postEvent/index.js";
+import postPresence from "../../routes/postPresence/index.js";
 import postShutdown from "../../routes/postShutdown/index.js";
 import restoreSession from "../../routes/restoreSession/index.js";
 import streamUpdates from "../../routes/streamUpdates/index.js";
@@ -49,6 +50,7 @@ const HANDLERS: Record<(typeof routeTable)[number]["name"], RouteHandler> = {
 	restoreSession,
 	deleteSession,
 	postEvent,
+	postPresence,
 	postShutdown,
 	streamUpdates,
 };

@@ -1,22 +1,22 @@
 ---
 scope: src/observer/page
 alignment: unreviewed
-description: The observer's browser page, a Home of every project's live status and a project page built around its intent tree, read-only except archiving, restoring and deleting ended sessions.
+description: "The observer's browser page, a Home of every project's live status and a project page built around its intent tree, read-only except archiving, restoring and deleting ended sessions."
 intent: >
   The page is how the user watches their pipelines. Home answers which
   projects need the user and what each one is doing. A project page shows
   one project's intent tree with every .aide file readable in full beside
   it, under a single status row that always says whether a gate is waiting
-  and what phase, step and agent are running, for how long. Waiting on the
-  user is always the loudest thing on screen. The page shows only what the
-  observer serves, works offline, never changes the pipeline, and its only
-  writes archive, restore or delete ended sessions.
+  and what pipeline, phase, step and agent are running, for how long.
+  Waiting on the user is always the loudest thing on screen. The page shows
+  only what the observer serves, works offline, never changes the pipeline,
+  and its only writes archive, restore or delete ended sessions.
 outcomes:
   desired:
-    - Home lists every project, starred ones in their own section above all projects, each row showing its live session's status (phase and step with elapsed, waiting on you, or no phase running) and current task, and expanding to that task in full and the phase rail. Projects order by activity (waiting, running, newest event) or a dragged custom order, with the order and stars remembered in the browser, and open gates gather in a floating waiting button that never pushes the layout.
-    - On desktop the project page is a fixed frame that never scrolls as a whole, with a header, one sticky status row, the intent tree as the only main content, an always-present collapsible Details column, a bottom drawer for history, sessions and board, and a phase-rail footer. The status row is the amber waiting banner, the loudest element on the page, with a button that opens the waiting file whenever a gate is open, and otherwise a quieter bar with phase, step, agent, module, elapsed and step progress.
+    - Home lists every project, starred ones in their own section above all projects, each row showing its live session's pipeline and status (phase and step with elapsed, waiting on you, working outside the pipeline, or no phase running) and current task, and expanding to that task in full and the pipeline's rail. Projects order by activity (waiting, running, newest event) or a dragged custom order, with the order and stars remembered in the browser, and open gates gather in a floating waiting button that never pushes the layout.
+    - On desktop the project page is a fixed frame that never scrolls as a whole, with a header, one sticky status row, the intent tree as the only main content, an always-present collapsible Details column, a bottom drawer for history, sessions and board, and a rail footer naming the pipeline with each stage done, skipped, running or pending, or saying the session is working outside the pipeline. The status row is the amber waiting banner, the loudest element on the page, with a button that opens the waiting file whenever a gate is open, and otherwise a quieter bar with phase, step, agent, module, elapsed and step progress.
     - The intent tree starts fully collapsed with sticky search and filters for open work, misaligned, has plan and has todo, and every .aide file on a module is named on its row and opens from there. Details shows a module's every .aide file, the session record on root, with every frontmatter field and every section rendered, and a task's column, priority, type and full note.
-    - Picking a session in History changes only History, the phase rail and the waiting and running state, never the page, and the link carries the project and session so a view can be shared. Ended sessions are archived first, and archived ones can be restored or deleted for good.
+    - Each session shows as working, waiting on you, quiet N min and maybe stuck, or ended, and picking one in History changes only History, the rail and the waiting and running state, never the page, while the link carries the project and session so a view can be shared. Ended sessions are archived first, and archived ones can be restored or deleted for good.
     - On a phone the page keeps its tabs for tree, plans, board, sessions and history and opens details full-screen. Everything shown comes from the observer's token-protected data and live stream, fonts are self-hosted so it works offline, text meets AA contrast, reduced motion is respected and no state is shown by colour alone.
     - Live events appear without a reload, reconnecting is a quiet banner that keeps everything on screen, and partial states read calmly, such as AIDE not installed showing the init command, no events yet, an invalid link showing a notice and no live data, a project with no reported root showing an unavailable notice in tree, plans and board while history and sessions keep working, and a board failure shown only in the board with its reason. Project order re-sorts only after data has arrived and at most every two seconds, sliding gently for live changes and never on load.
   undesired:
@@ -25,5 +25,5 @@ outcomes:
     - Layout jumping when data arrives, such as the waiting button pushing content down or projects reordering on load or on every event. An error loud outside its own area, such as a board failure spreading past the board or reconnecting shown as anything but a quiet banner, or a partial state that looks broken, such as an empty tree for a project with no reported root.
     - Any .aide content the user cannot reach, such as a frontmatter field, a section or a whole file left unrendered or with nothing that opens it.
     - Any control that changes the pipeline or a project, such as approve, reject, move task, start or stop a phase, retry or edit a file.
-    - A live session offered for archive or deletion, or a session deleted without being archived first.
+    - A live session, including one only quiet and maybe stuck, offered for archive or deletion, or a session deleted without being archived first.
 ---

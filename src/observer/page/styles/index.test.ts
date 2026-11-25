@@ -98,6 +98,61 @@ describe("observer page styles", () => {
 		expect(elsewhere).toEqual([".av .av-histbar", ".av .av-histbar-row", ".av .av-launch"]);
 	});
 
+	it("shows a skipped cell's meta and a skipped lane in the rail bar", () => {
+		const text = readFileSync(path.join(stylesDir, "additions/index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+		const rules = text
+			.split("}")
+			.map((rule) => rule.split("{") as [string, string?])
+			.filter(([, body]) => body !== undefined)
+			.map(([selector, body]) => ({ selectors: selector.split(/,(?![^(]*\))/).map((part) => part.trim()), body: body! }));
+		const metaRules = rules.filter((rule) => rule.selectors.includes(".av .av-rail-wrap .av-ph.skip .p-meta"));
+		expect(metaRules.length).toBeGreaterThan(0);
+		for (const rule of metaRules) expect(rule.body).not.toContain("display:none");
+		expect(metaRules.some((rule) => /display:(inline|inline-block)/.test(rule.body))).toBe(true);
+		for (const rule of rules.filter((candidate) => /display:none/.test(candidate.body))) {
+			for (const selector of rule.selectors.filter((part) => part.includes(".av-lane.todo"))) {
+				expect(selector, selector).toContain(":not(.skip)");
+			}
+		}
+		const empty = rules.find((rule) => rule.selectors.some((part) => part.startsWith(".av .av-rail-wrap .av-lanes:not(:has(")));
+		expect(empty?.selectors.join(",")).toContain(".av-lane.skip");
+	});
+
+	it("reserves the rail bar's 52px only when the rail is drawn", () => {
+		const text = readFileSync(path.join(stylesDir, "additions/index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+		const rules = text
+			.split("}")
+			.map((rule) => rule.split("{") as [string, string?])
+			.filter(([, body]) => body !== undefined)
+			.map(([selector, body]) => ({ selector: selector.trim(), body: body! }));
+		const noRail = rules.find((rule) => rule.selector === ".av .av-body:has(.av-main):not(:has(.av-rail-wrap))");
+		expect(noRail?.body).toContain("padding-bottom:0");
+		const frame = rules.find((rule) => rule.selector === ".av.desk:has(.av-main) .av-body");
+		expect(frame).toBeDefined();
+		expect(frame?.body).not.toContain("padding-bottom");
+		expect(rules.find((rule) => rule.selector === ".av .av-rail-wrap")?.body).toContain("height:52px");
+		expect(rules.find((rule) => rule.selector === ".av .av-body")?.body).toContain("padding-bottom:52px");
+	});
+
+	it("hides the rail footer on a phone only", () => {
+		const text = readFileSync(path.join(stylesDir, "additions/index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+		const rules = text
+			.split("}")
+			.map((rule) => rule.split("{") as [string, string?])
+			.filter(([, body]) => body !== undefined)
+			.map(([selector, body]) => ({ selectors: selector.split(/,(?![^(]*\))/).map((part) => part.trim()), body: body! }));
+		const phone = rules.find((rule) => rule.selectors.includes(".av.phone .av-rail-foot"));
+		expect(phone?.body).toContain("display:none");
+		const hiding = rules.filter(
+			(rule) => rule.selectors.some((part) => part.includes(".av-rail-foot")) && /display:none/.test(rule.body),
+		);
+		for (const rule of hiding) {
+			for (const selector of rule.selectors.filter((part) => part.includes(".av-rail-foot"))) {
+				expect(selector, selector).toContain(".av.phone");
+			}
+		}
+	});
+
 	it("keeps the waiting banner sticky, one line and no taller than 64px, with no motion", () => {
 		const text = readFileSync(path.join(stylesDir, "additions/index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 		const rules = text

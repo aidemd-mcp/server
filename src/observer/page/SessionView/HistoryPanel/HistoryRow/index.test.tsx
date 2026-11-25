@@ -44,6 +44,8 @@ describe("HistoryRow", () => {
 		["prompt", "k-prompt"],
 		["task", "k-task"],
 		["phase", "k-phase"],
+		["pipeline", "k-phase"],
+		["skip", "k-phase"],
 		["done", "k-done"],
 		["approve", "k-approve"],
 		["step", "k-step"],

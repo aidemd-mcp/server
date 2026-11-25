@@ -5,7 +5,7 @@ import findPlanSteps from "./findPlanSteps/index.js";
 
 /**
  * A phase the rail reports finished: `Done <duration>` from its start and finish events of the
- * module, or just `Done` when either was never reported. Build reads `Done <done> of <total>`
+ * pipeline, or just `Done` when either was never reported. Build reads `Done <done> of <total>`
  * instead, from the plan's own numbered steps, falling back to its duration when the plan file is
  * gone.
  */
@@ -14,6 +14,6 @@ export default function describeFinished({ phase, ctx }: { phase: Phase; ctx: Ra
 		const steps = findPlanSteps({ status: ctx.status, module: ctx.module });
 		if (steps !== null) return { state: "done", meta: `Done ${steps.done} of ${steps.total}`, loop: null };
 	}
-	const duration = findPhaseDuration({ moduleEvents: ctx.moduleEvents, phase });
+	const duration = findPhaseDuration({ pipelineEvents: ctx.pipelineEvents, phase });
 	return { state: "done", meta: duration === null ? "Done" : `Done ${duration}`, loop: null };
 }

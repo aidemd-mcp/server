@@ -10,7 +10,7 @@ function event(kind: "session_started" | "prompt" | "phase_started" | "task" | "
 		case "prompt":
 			return { ...base, kind, text: "go" };
 		case "phase_started":
-			return { ...base, kind, phase: "spec", agent: "a", module: "m" };
+			return { ...base, kind, pipeline: "p", phase: "spec", agent: "a", module: "m" };
 		case "task":
 			return { ...base, kind, slug: "t", action: "picked" };
 		case "file_written":

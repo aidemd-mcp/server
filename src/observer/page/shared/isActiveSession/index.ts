@@ -1,6 +1,6 @@
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 
-/** The one "is this session still going" rule: live or idle, anything but ended. */
+/** The one "is this session still going" rule: anything but ended, quiet or not. */
 export default function isActiveSession({ liveness }: Pick<SessionRowModel, "liveness">): boolean {
-	return liveness !== "ended";
+	return liveness.state !== "ended";
 }

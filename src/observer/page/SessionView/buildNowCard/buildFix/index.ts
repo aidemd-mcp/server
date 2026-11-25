@@ -16,11 +16,14 @@ export default function buildFix({
 	events,
 	work,
 	now,
+	pipeline = null,
 }: {
 	status: Status;
 	events: ObserverEvent[];
 	work: RunningWork;
 	now: Date;
+	/** The pipeline of the running session's rail, when it names one. */
+	pipeline?: string | null;
 }): NowCardModel {
 	const round = work.qaFixRound;
 	const issues = findOpenIssues({ status, module: work.module });
@@ -41,5 +44,6 @@ export default function buildFix({
 		timeLabel: round === undefined ? `elapsed · started ${started}` : `elapsed · round ${round} started ${started}`,
 		steps: null,
 		hint: round === undefined || open === null ? null : `QA round ${round} found ${open} still open in todo.aide.`,
+		pipeline,
 	};
 }

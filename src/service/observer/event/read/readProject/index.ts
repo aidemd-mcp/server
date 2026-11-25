@@ -2,14 +2,16 @@ import { readdir } from "node:fs/promises";
 import resolveSessionLog from "@/util/runtimePaths/resolveSessionLog/index.js";
 import { LOG_EXTENSION } from "@/util/runtimePaths/shared/runtimeNames/index.js";
 import findNewestStart from "@/service/observer/event/shared/findNewestStart/index.js";
+import attachLiveness from "@/service/observer/event/shared/attachLiveness/index.js";
 import readSessionLog from "@/service/observer/event/shared/readSessionLog/index.js";
-import type { ProjectLog, SessionLog } from "@/service/observer/event/types/index.js";
+import type { ProjectLog, RawSessionLog } from "@/service/observer/event/types/index.js";
 
 /**
  * Reads one project folder's recorded sessions, oldest first, and the root its
- * newest session reported. Resolves null when the folder has no events folder
- * or session left in it, so the project listing never
- * shows an empty project. `projectRoot` is exactly what the newest
+ * newest session reported, each session with its liveness and the
+ * project's unlinked presence (one `readLiveness` call per project). Resolves
+ * null when the folder has no events folder or session left in it, so the
+ * project listing never shows an empty project. `projectRoot` is exactly what the newest
  * `session_started` carried, never inferred (brief commitment #38). It never
  * writes.
  */
@@ -49,9 +51,12 @@ export default async function readProject({
 
 	// 5. Read every session in parallel (order preserved) and drop any that vanished.
 	const logs = await Promise.all(files.map(({ sessionId, path }) => readSessionLog({ path, sessionId })));
-	const sessions = logs.filter((log): log is SessionLog => log !== null);
-	if (sessions.length === 0) return null;
+	const raw = logs.filter((log): log is RawSessionLog => log !== null);
+	if (raw.length === 0) return null;
 
-	// 6. The root is what the newest session reported, or null when none did.
-	return { projectKey, projectRoot: findNewestStart({ sessions })?.projectRoot ?? null, sessions };
+	// 6. Judge every session and the unlinked presence in one liveness read.
+	const { sessions, unlinked } = await attachLiveness({ projectKey, logs: raw });
+
+	// 7. The root is what the newest session reported, or null when none did.
+	return { projectKey, projectRoot: findNewestStart({ sessions })?.projectRoot ?? null, sessions, unlinked };
 }

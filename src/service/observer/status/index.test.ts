@@ -2,16 +2,14 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, readdir, stat, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { BoardResult, ObserverEvent } from "@/types/index.js";
+import type { BoardResult, ObserverEvent, SessionLiveness } from "@/types/index.js";
 import countCheckboxes from "@/util/countCheckboxes/index.js";
 import scan from "@/util/scan/index.js";
-import buildRail from "./buildRail/index.js";
+import buildRails from "./buildRails/index.js";
 import buildStatus from "./index.js";
 
-vi.mock("@/util/isProcessRunning/index.js", () => ({ default: vi.fn(() => false) }));
-
-vi.mock("./buildRail/index.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("./buildRail/index.js")>();
+vi.mock("./buildRails/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./buildRails/index.js")>();
 	return { default: vi.fn(actual.default) };
 });
 
@@ -55,6 +53,24 @@ function makeEvent(
 	return { v: 1, ts: iso(MINUTE), sessionId: "s1", seq: 1, pid: 100, kind, ...fields, ...envelope } as ObserverEvent;
 }
 
+function makeLiveness(state: SessionLiveness["state"] = "working"): SessionLiveness {
+	return { state, lastActivityAt: iso(MINUTE), quietMinutes: 1, maybeStuck: false };
+}
+
+/** Builds the status for the temp project; every session in the events is `working` unless `liveness` says otherwise. */
+function run({
+	events,
+	archivedEvents = [],
+	liveness,
+}: {
+	events: ObserverEvent[];
+	archivedEvents?: ObserverEvent[];
+	liveness?: Record<string, SessionLiveness>;
+}) {
+	const given = liveness ?? Object.fromEntries(events.map((event) => [event.sessionId, makeLiveness()]));
+	return buildStatus({ projectRoot: root, events, archivedEvents, liveness: given, board: BOARD });
+}
+
 /** Every file's path, size and mtime under the root, for before/after comparison. */
 async function snapshot(dir: string, base = ""): Promise<string[]> {
 	const out: string[] = [];
@@ -83,7 +99,7 @@ describe("buildStatus", () => {
 	it("shows every file in the tree with its alignment or status and progress", async () => {
 		await writeFullProject();
 
-		const status = await buildStatus({ projectRoot: root, events: [], board: BOARD });
+		const status = await run({ events: [] });
 
 		const scanned = await scan(root);
 		const entries = status.tree.flatMap((node) => node.files);
@@ -100,7 +116,7 @@ describe("buildStatus", () => {
 		await writeFullProject("proposed");
 		const events = [makeEvent("phase_started", { phase: "build", agent: "aide-implementor", module: "src/a" })];
 
-		const status = await buildStatus({ projectRoot: root, events, board: BOARD });
+		const status = await run({ events });
 
 		expect(status.running).toEqual([]);
 		expect(status.history).toHaveLength(1);
@@ -111,21 +127,21 @@ describe("buildStatus", () => {
 		await writeFullProject("proposed");
 		const waiting = makeEvent("gate_waiting", { gate: "plan approval", file: "src/a/plan.aide" }, { seq: 1 });
 
-		const proposed = await buildStatus({ projectRoot: root, events: [waiting], board: BOARD });
+		const proposed = await run({ events: [waiting] });
 		expect(proposed.surfaced?.file).toBe("src/a/plan.aide");
 		expect(proposed.waiting).toHaveLength(1);
 
 		await writeAide("src/a/plan.aide", PLAN("approved"));
-		const approved = await buildStatus({ projectRoot: root, events: [waiting], board: BOARD });
+		const approved = await run({ events: [waiting] });
 		expect(approved.surfaced).toBeNull();
 
 		await writeAide("src/a/plan.aide", PLAN("proposed"));
 		const resolved = makeEvent("gate_resolved", { gate: "plan approval", file: "src/a/plan.aide" }, { seq: 2 });
-		const cleared = await buildStatus({ projectRoot: root, events: [waiting, resolved], board: BOARD });
+		const cleared = await run({ events: [waiting, resolved] });
 		expect(cleared.surfaced).toBeNull();
 
 		const missing = makeEvent("gate_waiting", { gate: "plan approval", file: "src/gone/plan.aide" });
-		const gone = await buildStatus({ projectRoot: root, events: [missing], board: BOARD });
+		const gone = await run({ events: [missing] });
 		expect(gone.surfaced).toBeNull();
 		expect(gone.problems).toEqual([]);
 	});
@@ -133,7 +149,7 @@ describe("buildStatus", () => {
 	it("matches each plan and todo progress to the shared checkbox counter", async () => {
 		await writeFullProject();
 
-		const status = await buildStatus({ projectRoot: root, events: [], board: BOARD });
+		const status = await run({ events: [] });
 
 		expect(status.workFiles).toHaveLength(2);
 		for (const entry of status.workFiles) {
@@ -148,7 +164,7 @@ describe("buildStatus", () => {
 			await writeAide("src/a/todo.aide", "---\nstatus: [oops\n---\n- [ ] fix\n");
 			const events = [makeEvent("prompt", { text: "hello" })];
 
-			const status = await buildStatus({ projectRoot: root, events, board: BOARD });
+			const status = await run({ events });
 
 			const entries = status.tree.flatMap((node) => node.files);
 			const malformed = entries.filter((entry) => entry.read.state === "malformed");
@@ -162,7 +178,7 @@ describe("buildStatus", () => {
 			await writeFullProject();
 			await rm(join(root, ".aide/session.aide"));
 
-			const status = await buildStatus({ projectRoot: root, events: [], board: BOARD });
+			const status = await run({ events: [] });
 
 			expect(status.sessionRecord).toEqual({ state: "missing" });
 			expect(status.tree.length).toBeGreaterThan(0);
@@ -171,7 +187,7 @@ describe("buildStatus", () => {
 		it("returns empty event parts and a full tree for no events", async () => {
 			await writeFullProject();
 
-			const status = await buildStatus({ projectRoot: root, events: [], board: BOARD });
+			const status = await run({ events: [] });
 
 			expect(status.sessions).toEqual([]);
 			expect(status.running).toEqual([]);
@@ -184,68 +200,81 @@ describe("buildStatus", () => {
 		it("passes an unavailable board through unchanged", async () => {
 			await writeFullProject();
 
-			const status = await buildStatus({ projectRoot: root, events: [], board: BOARD });
+			const status = await run({ events: [] });
 
 			expect(status.board).toBe(BOARD);
 			expect(status.generatedAt).toBe(new Date(NOW).toISOString());
 		});
 	});
 
-	describe("phase rail", () => {
-		it("builds the rail from the running module with finished phases and the build step", async () => {
+	describe("pipeline rails", () => {
+		it("builds one rail for a live session with finished phases, the running Build and its step", async () => {
 			await writeFullProject();
 			const events = [
-				makeEvent("phase_finished", { phase: "spec", agent: "a", module: "src/a" }, { seq: 1 }),
-				makeEvent("phase_finished", { phase: "plan", agent: "a", module: "src/a" }, { seq: 2 }),
-				makeEvent("phase_started", { phase: "build", agent: "aide-implementor", module: "src/a" }, { seq: 3 }),
+				makeEvent("pipeline_started", { pipeline: "p1", phase: "spec" }, { seq: 1 }),
+				makeEvent("phase_finished", { pipeline: "p1", phase: "spec", agent: "a", module: "src/a" }, { seq: 2 }),
+				makeEvent("phase_finished", { pipeline: "p1", phase: "plan", agent: "a", module: "src/a" }, { seq: 3 }),
+				makeEvent("phase_started", { pipeline: "p1", phase: "build", agent: "aide-implementor", module: "src/a" }, { seq: 4 }),
 			];
 
-			const status = await buildStatus({ projectRoot: root, events, board: BOARD });
+			const status = await run({ events });
 
-			expect(status.rail?.module).toBe("src/a");
-			expect(status.rail?.source).toBe("running");
-			const byPhase = Object.fromEntries((status.rail?.phases ?? []).map((phase) => [phase.phase, phase]));
+			expect(status.rails).toHaveLength(1);
+			const [rail] = status.rails;
+			expect(rail.sessionId).toBe("s1");
+			expect(rail.pipeline).toBe("p1");
+			expect(rail.pipelineState).toBe("running");
+			const byPhase = Object.fromEntries(rail.stages.map((stage) => [stage.phase, stage]));
 			expect(byPhase.spec?.state).toBe("done");
 			expect(byPhase.plan?.state).toBe("done");
 			expect(byPhase.build?.state).toBe("running");
 			expect(byPhase.build?.buildStep).toEqual({ reached: 2, total: 2 });
-			expect(byPhase.qa?.state).toBe("not-run");
+			expect(byPhase.qa?.state).toBe("pending");
 		});
 
-		it("builds the rail from the surfaced file when nothing runs", async () => {
-			await writeFullProject("proposed");
-			const events = [
-				makeEvent("phase_finished", { phase: "spec", agent: "a", module: "src/a" }, { seq: 1 }),
-				makeEvent("gate_waiting", { gate: "plan approval", file: "src/a/plan.aide" }, { seq: 2 }),
+		it("resumes the pipeline from an archived session's events", async () => {
+			await writeFullProject();
+			const archivedEvents = [
+				makeEvent("phase_finished", { pipeline: "p1", phase: "spec", agent: "a", module: "src/a" }, { sessionId: "old", seq: 1, ts: iso(120 * MINUTE) }),
 			];
+			const events = [makeEvent("pipeline_started", { pipeline: "p1", phase: "plan" }, { seq: 1 })];
 
-			const status = await buildStatus({ projectRoot: root, events, board: BOARD });
+			const status = await run({ events, archivedEvents });
 
-			expect(status.running).toEqual([]);
-			expect(status.rail?.source).toBe("surfaced");
-			expect(status.rail?.module).toBe("src/a");
-			expect(status.rail?.phases.filter((phase) => phase.state === "running")).toEqual([]);
+			expect(status.rails[0]?.stages.find((stage) => stage.phase === "spec")?.state).toBe("done");
+			expect(status.sessions.map((session) => session.sessionId)).toEqual(["s1"]);
+			expect(status.history).toHaveLength(1);
 		});
 
-		it("has no rail without events", async () => {
+		it("gives an ended session no rail", async () => {
+			await writeFullProject();
+			const events = [makeEvent("pipeline_started", { pipeline: "p1", phase: "spec" })];
+
+			const status = await run({ events, liveness: { s1: makeLiveness("ended") } });
+
+			expect(status.rails).toEqual([]);
+			expect(status.sessions[0]?.liveness.state).toBe("ended");
+		});
+
+		it("has no rails without events", async () => {
 			await writeFullProject();
 
-			const status = await buildStatus({ projectRoot: root, events: [], board: BOARD });
+			const status = await run({ events: [] });
 
-			expect(status.rail).toBeNull();
+			expect(status.rails).toEqual([]);
 		});
 
-		it("empties only the rail when buildRail throws", async () => {
+		it("empties only the rails when buildRails throws", async () => {
 			await writeFullProject("proposed");
 			const events = [makeEvent("gate_waiting", { gate: "plan approval", file: "src/a/plan.aide" })];
-			const baseline = await buildStatus({ projectRoot: root, events, board: BOARD });
-			vi.mocked(buildRail).mockImplementationOnce(() => {
+			const baseline = await run({ events });
+			vi.mocked(buildRails).mockImplementationOnce(() => {
 				throw new Error("rail broke");
 			});
 
-			const status = await buildStatus({ projectRoot: root, events, board: BOARD });
+			const status = await run({ events });
 
-			expect(status.rail).toBeNull();
+			expect(status.rails).toEqual([]);
 			expect(status.problems).toEqual([{ part: "rail", message: "rail broke" }]);
 			expect(status.tree).toEqual(baseline.tree);
 			expect(status.sessions).toEqual(baseline.sessions);
@@ -264,7 +293,7 @@ describe("buildStatus", () => {
 				makeEvent("commit", { sha: "abcdef1234" }, { seq: 3 }),
 			];
 
-			const status = await buildStatus({ projectRoot: root, events, board: BOARD });
+			const status = await run({ events });
 
 			expect(status.history).toHaveLength(events.length);
 			expect(status.waiting).toEqual([]);
@@ -275,9 +304,9 @@ describe("buildStatus", () => {
 			await writeFullProject();
 			const events = [makeEvent("phase_started", { phase: "build", agent: "aide-implementor", module: "src/a" })];
 
-			const status = await buildStatus({ projectRoot: root, events, board: BOARD });
+			const status = await run({ events });
 
-			expect(status.rail?.phases.filter((phase) => phase.state === "done")).toEqual([]);
+			expect(status.rails[0]?.stages.filter((stage) => stage.state === "done")).toEqual([]);
 		});
 	});
 
@@ -286,7 +315,7 @@ describe("buildStatus", () => {
 		const events = [makeEvent("gate_waiting", { gate: "plan approval", file: "src/a/plan.aide" })];
 		const before = await snapshot(root);
 
-		await buildStatus({ projectRoot: root, events, board: BOARD });
+		await run({ events });
 
 		expect(await snapshot(root)).toEqual(before);
 	});

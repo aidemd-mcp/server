@@ -6,6 +6,8 @@ import paddedSession from "@/observer/seedFixtures/scenarios/shared/paddedSessio
 
 
 const WAITING_MODULE = "src/pages/docs/score";
+const WAITING_TASK = { slug: "aide-score-docs-page", title: "Docs page for aide_score" };
+const CRAWLER_TASK = { slug: "crawl-delay-robots", title: "Respect crawl-delay from robots.txt" };
 const GATE_APPROVE = "Approve plan.aide for src/pages/docs/score (9 steps).";
 
 /**
@@ -32,14 +34,15 @@ export default function home(): FixtureScenario[] {
 				sessions: [
 					paddedSession({
 						pid: "live",
+						presence: { state: "waiting", minutesAgo: 6 },
 						startAgoMin: 24 + 12 / 60,
 						events: 31,
-						task: { slug: "aide-score-docs-page", title: "Docs page for aide_score" },
+						task: WAITING_TASK,
 						workEvents: [
-							{ offsetMin: 10, kind: "phase_started", phase: "plan", agent: "aide-architect", module: WAITING_MODULE },
-							{ offsetMin: 6.05, kind: "phase_finished", phase: "plan", agent: "aide-architect", module: WAITING_MODULE },
+							{ offsetMin: 10, kind: "phase_started", pipeline: WAITING_TASK.slug, phase: "plan", agent: "aide-architect", module: WAITING_MODULE },
+							{ offsetMin: 6.05, kind: "phase_finished", pipeline: WAITING_TASK.slug, phase: "plan", agent: "aide-architect", module: WAITING_MODULE },
 							{ offsetMin: 6.03, kind: "file_written", path: `${WAITING_MODULE}/plan.aide`, action: "created" },
-							{ offsetMin: 6, kind: "gate_waiting", gate: GATE_APPROVE, file: `${WAITING_MODULE}/plan.aide` },
+							{ offsetMin: 6, kind: "gate_waiting", pipeline: WAITING_TASK.slug, gate: GATE_APPROVE, file: `${WAITING_MODULE}/plan.aide` },
 						],
 					}),
 				],
@@ -55,11 +58,12 @@ export default function home(): FixtureScenario[] {
 				sessions: [
 					paddedSession({
 						pid: "live",
+						presence: { state: "working", minutesAgo: 1 },
 						startAgoMin: 46,
 						events: 77,
-						task: { slug: "crawl-delay-robots", title: "Respect crawl-delay from robots.txt" },
+						task: CRAWLER_TASK,
 						workEvents: [
-							{ offsetMin: 2 + 3 / 60, kind: "phase_started", phase: "qa", agent: "aide-qa", module: "src/crawl/robots" },
+							{ offsetMin: 2 + 3 / 60, kind: "phase_started", pipeline: CRAWLER_TASK.slug, phase: "qa", agent: "aide-qa", module: "src/crawl/robots" },
 							{ offsetMin: 1, kind: "file_written", path: "src/crawl/robots/index.ts", action: "updated" },
 						],
 					}),
@@ -84,6 +88,7 @@ export default function home(): FixtureScenario[] {
 				sessions: [
 					paddedSession({
 						pid: "live",
+						presence: { state: "working", minutesAgo: 3 * 60 },
 						startAgoMin: 3 * 60 + 38 + 11 / 60,
 						durationSec: 38 * 60 + 11,
 						events: 64,

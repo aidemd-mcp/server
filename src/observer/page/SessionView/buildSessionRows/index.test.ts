@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionListing } from "@/observer/types/index.js";
 import type { ObserverEvent, SessionSummary } from "@/types/index.js";
 import buildSessionRows from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 function summary({ sessionId, startedAt, liveness }: { sessionId: string; startedAt: string; liveness: SessionSummary["liveness"] }): SessionSummary {
 	return { sessionId, startedAt, lastEventAt: startedAt, eventCount: 3, pid: 1, liveness, reported: null };
@@ -12,29 +13,29 @@ function taskEvent({ sessionId, seq, slug, title }: { sessionId: string; seq: nu
 }
 
 describe("buildSessionRows", () => {
-	it("builds rows from the status summaries, newest first, with the three liveness states", () => {
+	it("builds rows from the status summaries, newest first, with the liveness each carries", () => {
 		const rows = buildSessionRows({
 			summaries: [
-				summary({ sessionId: "old", startedAt: "2026-01-01T08:00:00.000Z", liveness: "ended" }),
-				summary({ sessionId: "new", startedAt: "2026-01-01T09:00:00.000Z", liveness: "idle" }),
+				summary({ sessionId: "old", startedAt: "2026-01-01T08:00:00.000Z", liveness: makeLiveness({ state: "ended" }) }),
+				summary({ sessionId: "new", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness({ minutesQuiet: 20 }) }),
 			],
 			held: [],
 		});
-		expect(rows.map((row) => [row.sessionId, row.liveness, row.eventCount])).toEqual([
-			["new", "idle", 3],
-			["old", "ended", 3],
+		expect(rows.map((row) => [row.sessionId, row.liveness.state, row.liveness.maybeStuck, row.eventCount])).toEqual([
+			["new", "working", true, 3],
+			["old", "ended", false, 3],
 		]);
 	});
 
-	it("builds rows from the listings when no status is ready: live is live, else ended", () => {
+	it("builds rows from the listings when no status is ready: each row carries the listing's liveness", () => {
 		const listings: SessionListing[] = [
-			{ sessionId: "a", startedAt: "2026-01-01T08:00:00.000Z", metadata: null, eventCount: 2, lastEventAt: "2026-01-01T08:05:00.000Z", live: false },
-			{ sessionId: "b", startedAt: "2026-01-01T09:00:00.000Z", metadata: null, eventCount: 1, lastEventAt: "2026-01-01T09:00:00.000Z", live: true },
-			{ sessionId: "empty", startedAt: null, metadata: null, eventCount: 0, lastEventAt: null, live: false },
+			{ sessionId: "a", startedAt: "2026-01-01T08:00:00.000Z", metadata: null, eventCount: 2, lastEventAt: "2026-01-01T08:05:00.000Z", liveness: makeLiveness({ state: "ended" }) },
+			{ sessionId: "b", startedAt: "2026-01-01T09:00:00.000Z", metadata: null, eventCount: 1, lastEventAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness() },
+			{ sessionId: "empty", startedAt: null, metadata: null, eventCount: 0, lastEventAt: null, liveness: makeLiveness({ state: "ended" }) },
 		];
 		const rows = buildSessionRows({ listings, held: [] });
-		expect(rows.map((row) => [row.sessionId, row.liveness])).toEqual([
-			["b", "live"],
+		expect(rows.map((row) => [row.sessionId, row.liveness.state])).toEqual([
+			["b", "working"],
 			["a", "ended"],
 		]);
 	});
@@ -42,7 +43,7 @@ describe("buildSessionRows", () => {
 	it("prefers summaries over listings and yields nothing without either", () => {
 		expect(buildSessionRows({ held: [] })).toEqual([]);
 		const rows = buildSessionRows({
-			summaries: [summary({ sessionId: "s", startedAt: "2026-01-01T09:00:00.000Z", liveness: "live" })],
+			summaries: [summary({ sessionId: "s", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness() })],
 			listings: [],
 			held: [],
 		});
@@ -52,9 +53,9 @@ describe("buildSessionRows", () => {
 	it("takes the task from the newest task event: its title, else its slug, else null", () => {
 		const rows = buildSessionRows({
 			summaries: [
-				summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: "ended" }),
-				summary({ sessionId: "s2", startedAt: "2026-01-01T08:00:00.000Z", liveness: "ended" }),
-				summary({ sessionId: "s3", startedAt: "2026-01-01T07:00:00.000Z", liveness: "ended" }),
+				summary({ sessionId: "s1", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness({ state: "ended" }) }),
+				summary({ sessionId: "s2", startedAt: "2026-01-01T08:00:00.000Z", liveness: makeLiveness({ state: "ended" }) }),
+				summary({ sessionId: "s3", startedAt: "2026-01-01T07:00:00.000Z", liveness: makeLiveness({ state: "ended" }) }),
 			],
 			held: [
 				{ sessionId: "s1", events: [taskEvent({ sessionId: "s1", seq: 1, slug: "first", title: "First" }), taskEvent({ sessionId: "s1", seq: 4, slug: "second", title: "Second" })] },
@@ -68,9 +69,9 @@ describe("buildSessionRows", () => {
 	it("labels live and idle rows S1, S2 in start order only when there are two or more", () => {
 		const two = buildSessionRows({
 			summaries: [
-				summary({ sessionId: "b", startedAt: "2026-01-01T10:00:00.000Z", liveness: "live" }),
-				summary({ sessionId: "a", startedAt: "2026-01-01T09:00:00.000Z", liveness: "idle" }),
-				summary({ sessionId: "z", startedAt: "2026-01-01T08:00:00.000Z", liveness: "ended" }),
+				summary({ sessionId: "b", startedAt: "2026-01-01T10:00:00.000Z", liveness: makeLiveness() }),
+				summary({ sessionId: "a", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness({ minutesQuiet: 20 }) }),
+				summary({ sessionId: "z", startedAt: "2026-01-01T08:00:00.000Z", liveness: makeLiveness({ state: "ended" }) }),
 			],
 			held: [],
 		});
@@ -82,8 +83,8 @@ describe("buildSessionRows", () => {
 
 		const one = buildSessionRows({
 			summaries: [
-				summary({ sessionId: "a", startedAt: "2026-01-01T09:00:00.000Z", liveness: "live" }),
-				summary({ sessionId: "z", startedAt: "2026-01-01T08:00:00.000Z", liveness: "ended" }),
+				summary({ sessionId: "a", startedAt: "2026-01-01T09:00:00.000Z", liveness: makeLiveness() }),
+				summary({ sessionId: "z", startedAt: "2026-01-01T08:00:00.000Z", liveness: makeLiveness({ state: "ended" }) }),
 			],
 			held: [],
 		});

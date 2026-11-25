@@ -65,6 +65,18 @@ export default function labelEvent({
 				target: { kind: "task", slug: event.slug },
 			};
 		}
+		case "pipeline_started":
+			return {
+				kind: "pipeline",
+				label: `Pipeline ${event.pipeline} started at ${PHASE_LABELS[event.phase]}`,
+				mono: null,
+				meta: null,
+				target: eventItem,
+			};
+		case "pipeline_finished":
+			return { kind: "pipeline", label: `Pipeline ${event.pipeline} ${event.result}`, mono: null, meta: null, target: eventItem };
+		case "phase_skipped":
+			return { kind: "skip", label: `${PHASE_LABELS[event.phase]} skipped`, mono: null, meta: event.reason, target: eventItem };
 		case "phase_started": {
 			const round =
 				event.phase === "fix"

@@ -1,14 +1,15 @@
 ---
 scope: src/service/observer/status
 alignment: unreviewed
-description: "Builds everything the observer page shows from the project's files, recorded events and board: every AIDE file in the tree, running work, the file awaiting the user, sessions and history."
+description: "Builds what the observer page shows from the project's files, recorded events, session liveness and board: the AIDE file tree, the live pipeline's rail, the waiting file, sessions and history."
 intent: >
-  Turns the project's files, the recorded events and the board, exactly as
-  given, into the full picture the observer page shows: every AIDE file in
-  the intent tree with its alignment or status and progress, the sessions and
-  their liveness, what is running now, the file awaiting the user's
-  confirmation, and the history. The files decide current state; events only
-  add who, when and history. When a waiting event names a file, that file is
+  Turns the project's files, the recorded events, each session's liveness
+  and the board, exactly as given, into the full picture the observer page
+  shows: every AIDE file in the intent tree with its alignment or status
+  and progress, the sessions, the live session's pipeline rail, what is
+  running now, the file awaiting the user's confirmation, and the history.
+  The files decide current state; events add who, when, history and each
+  pipeline's stages; liveness is never re-judged. A waiting event's file is
   surfaced as if the user had opened it; when the file is gone, there is
   nothing to surface.
 outcomes:
@@ -16,13 +17,56 @@ outcomes:
     - The tree always shows every AIDE file in the project, including specs, briefs, plans, todos and the session record, each with its alignment or status and checkbox progress, so any file can be opened.
     - The running work names its phase, module, agent and elapsed time, with the build step reached out of the plan's steps and the QA-to-Fix round. Phase and module come from what the orchestrator recorded, with the agent only a fallback.
     - When a waiting event names a file that still awaits the user's confirmation, that file is surfaced as if the user had opened it from the tree. A waiting item clears when its resolved event arrives or the file no longer awaits approval.
-    - Each session shows whether it is live, idle or ended. History lists only recorded events in the order they happened, each row showing its prompt's first line with the full prompt as detail.
+    - Each session shows the liveness it was given, unchanged. History lists only recorded events in the order they happened, each row showing its prompt's first line with the full prompt as detail.
+    - The live session shows one rail for its current pipeline, or the last it finished until it starts another or ends, each stage done, skipped, running or pending, with stages finished in that pipeline's kept earlier logs or passed by a later phase or resolved gate counted done. With no phase running and only file writes or commits latest, the rail says the session is working outside the pipeline.
     - A malformed spec, plan or todo, an absent board or a missing event empties only its own node or part, and everything else still shows in full.
   undesired:
-    - A status that contradicts the files, such as showing Build while the plan is still proposed or a file still waiting after it was approved.
-    - Current state taken from the event log, so a missed event leaves a stale phase or a wrong waiting file on screen.
+    - A status that contradicts the files, such as Build while the plan is still proposed or a file still waiting after it was approved, or takes current state from the event log so a missed event leaves a stale phase or a wrong waiting file on screen.
     - An AIDE file left out of the tree, or a waiting event for a file that no longer exists surfacing anything at all.
     - Progress counts that differ from cleanup's count of open items in the same file.
-    - History rows invented, guessed or reordered to fill a missed event.
+    - History rows or rail stages invented, guessed or reordered to fill a missed event, including a stage shown skipped without a skip report.
+    - A session's liveness re-judged here, a rail mixing in another pipeline or a deleted session's stages, or a phase still running after its pipeline's next phase, a commit or the session's end.
     - One malformed file or missing input breaking the whole status instead of only its own node.
 ---
+
+## Context
+
+Status is a pure builder: it receives a project's files, every kept session's events, each session's liveness and the board, and turns them into what the page shows. It has nothing of its own to fall back on, so every choice about which input wins is made here.
+
+The inputs disagree in predictable ways. Files are always current but say nothing about who or when. Reports say who and when but can be missing, late or from an earlier session. Liveness has already been judged by the recording side, and a second judgement here would let the page contradict the halt the agent just received. A pipeline's stages are spread across sessions, some ended or archived, and a stage the agent skipped looks exactly like one it forgot to report.
+
+## Strategy
+
+**Inputs as given; nothing judged twice.** Liveness, events and the board arrive judged and read; status never reads presence, logs or the board itself and never re-judges a session. One judgement means the page shows the same open session the start tool just halted on.
+
+**Files outrank events for current state.** A phase or a waiting gate is confirmed against the file it concerns: a plan still proposed cannot be in Build, and a waiting file is surfaced only while it still awaits approval. A file that no longer exists surfaces nothing, so a missed report costs a history row, never a wrong screen.
+
+**Stages fill from reports in a fixed order, and skipped needs a skip report.** A skip report makes a stage skipped; a finish in this or an earlier kept session of the same pipeline, a later phase starting, or its gate resolving makes it done; the current phase runs; the rest are pending. A gap is never read as a skip, because the agent's silence and its decision look the same.
+
+**A running phase ends at the next boundary.** A phase stops running at the next phase of its pipeline, a commit or its session's end, so a missed finish report cannot leave Build spinning for days. Only live sessions get a rail; an ended session's rail is hidden rather than drawn with a guessed close.
+
+**Which rail, and what hand work looks like.** The rail shows the session's current pipeline, else its last finished one until the next starts, and never mixes in another pipeline or a deleted session. With no phase running and only file writes or commits latest, it says the session is working outside the pipeline instead of showing a stale phase.
+
+**Counted the cleanup way; failures stay local.** Checkbox progress uses the same count cleanup uses to refuse, so the page and the refusal agree. A malformed file, absent board or missing event empties only its own node or part.
+
+## Good examples
+
+**A resumed pipeline.** Yesterday's ended session finished Spec through Plan for a task; today's session starts that pipeline at Build. The rail shows Spec through Plan done from the kept log, Build running, QA and Fix pending.
+
+**A missed finish.** Build was never reported finished, but the agent committed and started QA. Build reads done and QA running; no row claims Build finished at a guessed time.
+
+**Hand work.** Between pipelines the agent edits a doc and commits. The rail reads working outside the pipeline, not the last pipeline's QA still running.
+
+## Bad examples
+
+**A skip from a gap.** Research was never reported in a pipeline that started at Plan with no skip reports, and the rail paints Research skipped. The user reads a decision nobody made.
+
+**Liveness judged again.** Status applies its own quiet rule, shows the other session ended, and the user wonders why the agent halted on it.
+
+**Build forever.** No phase-finished report arrived and nothing ends a running phase at a commit, so the rail shows Build running through QA, the fix round and the next day.
+
+## References
+
+- User decisions on session-scoped rails, resuming from kept logs with deleted sessions forgotten, skip reports, boundaries that end a running phase, and working outside the pipeline, relayed by the orchestrator (2026-11-25) -- stage, boundary and rail-choice decisions
+- User answer that a just-ended session's rail is hidden, relayed by the orchestrator (2026-11-25) -- only live sessions get a rail
+- User decisions on files deciding state, the surfaced waiting file and checkbox counts matching cleanup, relayed by the orchestrator (2026-11-22) -- files-outrank-events and counting decisions

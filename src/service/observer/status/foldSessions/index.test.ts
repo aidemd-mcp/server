@@ -1,15 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-vi.mock("@/util/isProcessRunning/index.js", () => ({
-	default: vi.fn(),
-}));
-
-import isProcessRunning from "@/util/isProcessRunning/index.js";
-import type { ObserverEvent } from "@/types/index.js";
-import SESSION_IDLE_LIMIT_MS from "@/util/sessionIdleLimit/index.js";
+import { describe, it, expect } from "vitest";
+import type { ObserverEvent, SessionLiveness } from "@/types/index.js";
 import foldSessions from "./index.js";
-
-const mockIsProcessRunning = isProcessRunning as ReturnType<typeof vi.fn>;
 
 const NOW = Date.parse("2026-11-22T12:00:00.000Z");
 const MINUTE = 60 * 1000;
@@ -34,72 +25,62 @@ function makeEvent(
 	return { ...base, ...fields } as ObserverEvent;
 }
 
+function makeLiveness(overrides: Partial<SessionLiveness> = {}): SessionLiveness {
+	return { state: "working", lastActivityAt: iso(MINUTE), quietMinutes: 1, maybeStuck: false, ...overrides };
+}
+
 describe("foldSessions — liveness", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mockIsProcessRunning.mockReturnValue(false);
+	it.each<SessionLiveness>([
+		makeLiveness({ state: "working" }),
+		makeLiveness({ state: "waiting" }),
+		makeLiveness({ state: "ended", endedBy: "user" }),
+		makeLiveness({ state: "working", quietMinutes: 300, maybeStuck: true }),
+	])("passes the given liveness through unchanged (%o)", (given) => {
+		const events = [makeEvent({ kind: "prompt" }, { ts: iso(5 * 60 * MINUTE) })];
+
+		const [session] = foldSessions({ events, liveness: { s1: given } });
+
+		expect(session.liveness).toBe(given);
 	});
 
-	it("is live when the last event is 29 minutes old, even with a dead pid", () => {
-		const events = [makeEvent({ kind: "prompt" }, { ts: iso(29 * MINUTE) })];
+	it("never re-judges a session that has been idle for hours", () => {
+		const events = [makeEvent({ kind: "prompt" }, { ts: iso(6 * 60 * MINUTE), pid: 999999 })];
+		const given = makeLiveness({ state: "waiting" });
 
-		const [session] = foldSessions({ events, now: NOW });
+		const [session] = foldSessions({ events, liveness: { s1: given } });
 
-		expect(session.liveness).toBe("live");
+		expect(session.liveness.state).toBe("waiting");
 	});
 
-	it("is ended at exactly 30 minutes with a dead pid", () => {
-		const events = [makeEvent({ kind: "prompt" }, { ts: iso(SESSION_IDLE_LIMIT_MS) })];
-
-		const [session] = foldSessions({ events, now: NOW });
-
-		expect(session.liveness).toBe("ended");
-	});
-
-	it("is idle when 2 hours old and the pid is running", () => {
-		mockIsProcessRunning.mockReturnValue(true);
-		const events = [makeEvent({ kind: "prompt" }, { ts: iso(120 * MINUTE) })];
-
-		const [session] = foldSessions({ events, now: NOW });
-
-		expect(session.liveness).toBe("idle");
-	});
-
-	it("is ended when 2 hours old and the pid is dead", () => {
-		const events = [makeEvent({ kind: "prompt" }, { ts: iso(120 * MINUTE) })];
-
-		const [session] = foldSessions({ events, now: NOW });
-
-		expect(session.liveness).toBe("ended");
-	});
-
-	it("checks the pid of the highest-seq event", () => {
+	it("gives each session its own liveness", () => {
 		const events = [
-			makeEvent({ kind: "prompt" }, { seq: 2, pid: 222, ts: iso(120 * MINUTE) }),
-			makeEvent({ kind: "prompt" }, { seq: 1, pid: 111, ts: iso(180 * MINUTE) }),
+			makeEvent({ kind: "prompt" }, { sessionId: "a", ts: iso(10 * MINUTE) }),
+			makeEvent({ kind: "prompt" }, { sessionId: "b", ts: iso(2 * MINUTE) }),
+		];
+		const liveness = { a: makeLiveness({ state: "ended" }), b: makeLiveness({ state: "working" }) };
+
+		const sessions = foldSessions({ events, liveness });
+
+		expect(sessions.map((session) => [session.sessionId, session.liveness.state])).toEqual([
+			["b", "working"],
+			["a", "ended"],
+		]);
+	});
+
+	it("reports the pid of the highest-seq event", () => {
+		const events = [
+			makeEvent({ kind: "prompt" }, { seq: 2, pid: 222 }),
+			makeEvent({ kind: "prompt" }, { seq: 1, pid: 111 }),
 		];
 
-		const [session] = foldSessions({ events, now: NOW });
+		const [session] = foldSessions({ events, liveness: { s1: makeLiveness() } });
 
 		expect(session.pid).toBe(222);
-		expect(mockIsProcessRunning).toHaveBeenCalledWith(222);
-		expect(mockIsProcessRunning).not.toHaveBeenCalledWith(111);
-	});
-
-	it("does not probe the pid when the session is live", () => {
-		const events = [makeEvent({ kind: "prompt" }, { ts: iso(MINUTE) })];
-
-		foldSessions({ events, now: NOW });
-
-		expect(mockIsProcessRunning).not.toHaveBeenCalled();
 	});
 });
 
 describe("foldSessions — folding", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mockIsProcessRunning.mockReturnValue(false);
-	});
+	const liveness = { s1: makeLiveness() };
 
 	it("follows seq, not array order, for startedAt and lastEventAt", () => {
 		const events = [
@@ -108,7 +89,7 @@ describe("foldSessions — folding", () => {
 			makeEvent({ kind: "prompt" }, { seq: 2, ts: iso(5 * MINUTE) }),
 		];
 
-		const [session] = foldSessions({ events, now: NOW });
+		const [session] = foldSessions({ events, liveness });
 
 		expect(session.startedAt).toBe(iso(10 * MINUTE));
 		expect(session.lastEventAt).toBe(iso(1 * MINUTE));
@@ -118,7 +99,7 @@ describe("foldSessions — folding", () => {
 	it("reports null when there is no session_started event", () => {
 		const events = [makeEvent({ kind: "prompt" }, { ts: iso(MINUTE) })];
 
-		const [session] = foldSessions({ events, now: NOW });
+		const [session] = foldSessions({ events, liveness });
 
 		expect(session.reported).toBeNull();
 	});
@@ -131,7 +112,7 @@ describe("foldSessions — folding", () => {
 			),
 		];
 
-		const [session] = foldSessions({ events, now: NOW });
+		const [session] = foldSessions({ events, liveness });
 
 		expect(session.reported).toEqual({ projectRoot: "/p", kanbanTag: "tag" });
 		expect(session.reported).not.toHaveProperty("brainPath");
@@ -143,7 +124,7 @@ describe("foldSessions — folding", () => {
 			makeEvent({ kind: "session_started", projectRoot: "/first" }, { seq: 1, ts: iso(2 * MINUTE) }),
 		];
 
-		const [session] = foldSessions({ events, now: NOW });
+		const [session] = foldSessions({ events, liveness });
 
 		expect(session.reported).toEqual({ projectRoot: "/first" });
 	});
@@ -154,7 +135,7 @@ describe("foldSessions — folding", () => {
 			makeEvent({ kind: "prompt" }, { sessionId: "new", ts: iso(2 * MINUTE) }),
 		];
 
-		const sessions = foldSessions({ events, now: NOW });
+		const sessions = foldSessions({ events, liveness: { old: makeLiveness(), new: makeLiveness() } });
 
 		expect(sessions.map((session) => session.sessionId)).toEqual(["new", "old"]);
 	});
@@ -167,12 +148,15 @@ describe("foldSessions — folding", () => {
 			makeEvent({ kind: "prompt" }, { sessionId: "b", ts }),
 		];
 
-		const sessions = foldSessions({ events, now: NOW });
+		const sessions = foldSessions({
+			events,
+			liveness: { a: makeLiveness(), b: makeLiveness(), c: makeLiveness() },
+		});
 
 		expect(sessions.map((session) => session.sessionId)).toEqual(["c", "b", "a"]);
 	});
 
 	it("returns nothing for no events", () => {
-		expect(foldSessions({ events: [], now: NOW })).toEqual([]);
+		expect(foldSessions({ events: [], liveness: {} })).toEqual([]);
 	});
 });

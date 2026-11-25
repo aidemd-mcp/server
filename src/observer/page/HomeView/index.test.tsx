@@ -7,6 +7,7 @@ import ThemeContext from "@/observer/page/shared/ThemeContext/index.js";
 import type { StreamState } from "@/observer/page/types/index.js";
 import useObserverStream from "@/observer/page/useObserverStream/index.js";
 import HomeView from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 vi.mock("@/observer/page/useObserverStream/index.js", () => ({ default: vi.fn() }));
 
@@ -18,7 +19,7 @@ function project(projectKey: string, overrides: Partial<ProjectListing> = {}): P
 }
 
 function summary(sessionId: string, overrides: Partial<SessionSummary> = {}): SessionSummary {
-	return { sessionId, startedAt: stamp(60), lastEventAt: stamp(5), eventCount: 9, pid: 1, liveness: "ended", reported: null, ...overrides };
+	return { sessionId, startedAt: stamp(60), lastEventAt: stamp(5), eventCount: 9, pid: 1, liveness: makeLiveness({ state: "ended" }), reported: null, ...overrides };
 }
 
 function ready(projectKey: string, { sessions = [], waiting = [], working = [] }: { sessions?: SessionSummary[]; waiting?: WaitingFile[]; working?: RunningWork[] }): ProjectView {
@@ -32,7 +33,7 @@ function ready(projectKey: string, { sessions = [], waiting = [], working = [] }
 		running: working,
 		waiting,
 		surfaced: waiting[0] ?? null,
-		rail: null,
+		rails: [],
 		history: [],
 		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
 		problems: [],
@@ -97,7 +98,7 @@ describe("HomeView", () => {
 		const waiting: WaitingFile = { file: "src/a/plan.aide", folder: "src/a", kind: "plan", gate: "approve plan", sessionId: "s1", seq: 2, since: stamp(6) };
 		stream({
 			projects: [project("alpha-111111")],
-			views: { "alpha-111111": ready("alpha", { sessions: [summary("s1", { liveness: "live" })], waiting: [waiting] }) },
+			views: { "alpha-111111": ready("alpha", { sessions: [summary("s1", { liveness: makeLiveness() })], waiting: [waiting] }) },
 		});
 		const html = render();
 		expect(html).not.toContain("h-wait");

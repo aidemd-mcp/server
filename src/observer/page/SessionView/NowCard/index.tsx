@@ -19,6 +19,7 @@ export default function NowCard({ card }: { card: NowCardModel }) {
 				</div>
 				<h1 className="c-title">
 					<span>
+						{card.pipeline != null && `${card.pipeline} · `}
 						{card.title}
 						{card.titleMono !== null && <> <span className="mono">{card.titleMono}</span></>}
 					</span>

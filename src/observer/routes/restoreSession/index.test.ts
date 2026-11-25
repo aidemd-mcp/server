@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ObserverContext } from "../../types/index.js";
 
 vi.mock("@/service/observer/event/restore/index.js", () => ({ default: vi.fn() }));
-vi.mock("@/service/observer/event/shared/judgeLiveness/index.js", () => ({ default: vi.fn(() => false) }));
+vi.mock("@/service/observer/event/readLiveness/index.js", () => ({ default: vi.fn(async () => ({ sessions: {}, unlinked: [] })) }));
 
 import restoreSessionLog from "@/service/observer/event/restore/index.js";
 import restoreSession from "./index.js";

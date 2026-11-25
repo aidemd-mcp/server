@@ -24,7 +24,13 @@ export default function noEvents(): FixtureScenario {
 			files: { ...rootFiles, ".aide/session.aide": sessionRecord({ variant: "noEvents" }) },
 			board: { kanbanTag: KANBAN_TAG, tasks: boardTasks({ large: false }) },
 			reportRoot: true,
-			sessions: [{ pid: "live", events: timeline({ through: "none", lastAgoMin: lastEventAgoMin }) }],
+			sessions: [
+				{
+					pid: "live",
+					presence: { state: "working", minutesAgo: lastEventAgoMin },
+					events: timeline({ through: "none", lastAgoMin: lastEventAgoMin }),
+				},
+			],
 		},
 	};
 }

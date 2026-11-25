@@ -127,7 +127,7 @@ export default function SessionView({
 							<div className="av-main">
 								<div className="av-left">
 									<main id="main" className="av-primary">
-										<NowSection card={model.card} phases={model.phases} lanes={model.lanes} />
+										<NowSection card={model.card} phases={model.phases} lanes={model.lanes} rail={model.rail} />
 										<Tabs tabs={model.tabs} selected={tab} onPick={setTab} />
 										<TabPanel tab={tab} model={model} now={now} token={token} projectKey={projectKey} routeSessionId={sessionId} onOpen={openItem} />
 									</main>

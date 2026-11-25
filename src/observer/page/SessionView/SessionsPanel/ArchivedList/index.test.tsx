@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 vi.mock("@/observer/page/shared/useFetched/index.js", () => ({ default: vi.fn() }));
 
@@ -20,7 +21,7 @@ function listing(sessionId: string, hour: number) {
 		metadata: null,
 		eventCount: 3,
 		lastEventAt: new Date(2026, 10, 22, hour, 5, 0).toISOString(),
-		live: false,
+		liveness: makeLiveness({ state: "ended" }),
 	};
 }
 

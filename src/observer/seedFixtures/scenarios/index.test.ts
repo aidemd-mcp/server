@@ -113,13 +113,14 @@ describe("scenarios catalog", () => {
 		const last = (id: string, session = 0) => scenarioOf(id).project.sessions[session]!.events.at(-1)!;
 
 		expect(kinds("noEvents")).toEqual(["session_started", "prompt"]);
-		expect(last("building")).toMatchObject({ kind: "commit", sha: "414776f" });
+		expect(last("building")).toMatchObject({ kind: "phase_started", phase: "build" });
+		expect(kinds("building").at(-2)).toBe("commit");
 		expect(last("idle")).toMatchObject({ kind: "release", version: "v0.9.2" });
 		expect(last("twoSessions")).toMatchObject({ kind: "phase_started", phase: "plan" });
 		expect(last("twoSessions", 1)).toMatchObject({ kind: "phase_started", phase: "research", module: "src/tools/validate" });
 		expect(last("qaFixRound")).toMatchObject({ kind: "phase_started", phase: "fix" });
 		expect(kinds("qaFixRound").filter((kind) => kind === "qa_verdict")).toHaveLength(2);
-		expect(last("noRoot")).toMatchObject({ kind: "commit", sha: "414776f" });
+		expect(last("noRoot")).toMatchObject({ kind: "phase_started", phase: "build" });
 		expect(scenarioOf("building").project.sessions).toHaveLength(4);
 	});
 
@@ -156,7 +157,7 @@ describe("scenarios as the observer reads them", () => {
 			const log = projects.find((project) => project.projectKey === scenario.projectKey);
 			if (!log || log.projectRoot === null) continue;
 			const sessions = log.sessions.map(({ sessionId, events }) => ({ projectKey: log.projectKey, sessionId, events }));
-			statuses.set(scenario.id, await rebuildStatus({ projectRoot: log.projectRoot, sessions }));
+			statuses.set(scenario.id, await rebuildStatus({ projectKey: log.projectKey, projectRoot: log.projectRoot, sessions }));
 		}
 	}, SEED_TIMEOUT_MS);
 
@@ -178,7 +179,8 @@ describe("scenarios as the observer reads them", () => {
 
 		expect(status.running[0]).toMatchObject({ phase: "build", module: "src/tools/score", buildStep: { reached: 4, total: 9 } });
 		expect(status.waiting).toEqual([]);
-		expect(status.sessions.filter((session) => session.liveness === "live")).toHaveLength(1);
+		expect(status.sessions.filter((session) => session.liveness.state === "working")).toHaveLength(1);
+		expect(status.sessions.filter((session) => session.liveness.state === "ended")).toHaveLength(3);
 		expect(status.board.state).toBe("available");
 		expect(status.sessionRecord.state).toBe("present");
 		expect(status.board).toMatchObject({ state: "available", kanbanTag: "aidemd" });
@@ -191,10 +193,10 @@ describe("scenarios as the observer reads them", () => {
 		expect(status.waiting).toHaveLength(1);
 	});
 
-	it("reads idle as a session idle for over thirty minutes with no work running", () => {
+	it("reads idle as a working session quiet for over thirty minutes with no work running", () => {
 		const status = statuses.get("idle")!;
 
-		expect(status.sessions.some((session) => session.liveness === "idle")).toBe(true);
+		expect(status.sessions.some((session) => session.liveness.state === "working" && session.liveness.maybeStuck)).toBe(true);
 		expect(status.running).toEqual([]);
 		expect(status.waiting).toEqual([]);
 	});
@@ -202,9 +204,25 @@ describe("scenarios as the observer reads them", () => {
 	it("reads twoSessions as two live sessions, the newest running Research on src/tools/validate", () => {
 		const status = statuses.get("twoSessions")!;
 
-		expect(status.sessions.filter((session) => session.liveness === "live")).toHaveLength(2);
+		expect(status.sessions.filter((session) => session.liveness.state === "working")).toHaveLength(2);
 		expect(status.running[0]).toMatchObject({ phase: "research", module: "src/tools/validate" });
 		expect(status.running.map((work) => work.module).sort()).toEqual(["src/tools/score", "src/tools/validate"]);
+	});
+
+	it("shows the four states across the sessions: working, waiting, quiet and ended", () => {
+		const states = (id: string) => statuses.get(id)!.sessions.map((session) => session.liveness);
+
+		expect(states("building").filter((liveness) => liveness.state === "working" && !liveness.maybeStuck)).toHaveLength(1);
+		expect(states("waiting").filter((liveness) => liveness.state === "waiting")).toHaveLength(1);
+		expect(states("idle").filter((liveness) => liveness.state === "working" && liveness.maybeStuck)).toHaveLength(1);
+		expect(states("building").filter((liveness) => liveness.state === "ended" && liveness.endedBy === "user")).toHaveLength(3);
+		expect(states("noEvents")).toMatchObject([{ state: "working", maybeStuck: false }]);
+	});
+
+	it("reads qaFixRound with a skipped Research cell on the rail of its running pipeline", () => {
+		const [rail] = statuses.get("qaFixRound")!.rails;
+
+		expect(rail.stages.find((stage) => stage.phase === "research")).toMatchObject({ state: "skipped", reason: "routing skipped research" });
 	});
 
 	it("reads brainUnreachable with a board that cannot be located", () => {
@@ -315,7 +333,7 @@ describe("home sets as the observer reads them", () => {
 			const log = projects.find((project) => project.projectKey === scenario.projectKey);
 			if (!log || log.projectRoot === null) continue;
 			const sessions = log.sessions.map(({ sessionId, events }) => ({ projectKey: log.projectKey, sessionId, events }));
-			statuses.set(scenario.id, await rebuildStatus({ projectRoot: log.projectRoot, sessions }));
+			statuses.set(scenario.id, await rebuildStatus({ projectKey: log.projectKey, projectRoot: log.projectRoot, sessions }));
 		}
 	}, SEED_TIMEOUT_MS);
 
@@ -334,7 +352,7 @@ describe("home sets as the observer reads them", () => {
 		expect(statuses.get("aidemdSite")!.surfaced).toMatchObject({ file: "src/pages/docs/score/plan.aide", kind: "plan" });
 		expect(statuses.get("leadCrawler")!.running[0]).toMatchObject({ phase: "qa", module: "src/crawl/robots" });
 		expect(statuses.get("aidemdMcp")!.running[0]).toMatchObject({ phase: "build", buildStep: { reached: 4, total: 9 } });
-		expect(statuses.get("ledgerApi")!.sessions.some((session) => session.liveness === "idle")).toBe(true);
-		expect(statuses.get("docsPortal")!.sessions.every((session) => session.liveness === "ended")).toBe(true);
+		expect(statuses.get("ledgerApi")!.sessions.some((session) => session.liveness.state === "working" && session.liveness.maybeStuck)).toBe(true);
+		expect(statuses.get("docsPortal")!.sessions.every((session) => session.liveness.state === "ended")).toBe(true);
 	});
 });

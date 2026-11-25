@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import type { CleanupResult } from "@/types/index.js";
+import type { StartReply } from "@/tools/observer/start/types/index.js";
 
 // Registered request handlers keyed by their (mocked) schema object. A map, not
 // mock.calls, so afterEach(vi.clearAllMocks) cannot erase the capture.
@@ -94,6 +95,9 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import resolveRuntimePaths from "@/util/runtimePaths/resolve/index.js";
+import resolveSessionLog from "@/util/runtimePaths/resolveSessionLog/index.js";
+import getSession from "@/service/observer/event/record/session/index.js";
 import brainContract from "@/service/brainContract/index.js";
 import obsidianBrainAideTemplate from "@/service/install/provisionBrain/obsidianBrainAideTemplate/index.js";
 
@@ -439,6 +443,12 @@ describe("aide_upgrade registration", () => {
 		expect(inputSchema.properties.beforeHash.type).toBe("string");
 	});
 
+	it("offers the hooks category", async () => {
+		const { inputSchema } = await findTool("aide_upgrade");
+
+		expect(inputSchema.properties.category.enum).toContain("hooks");
+	});
+
 	it("describes the brain calls and no longer claims the config is never written", async () => {
 		const { description } = await findTool("aide_upgrade");
 
@@ -590,6 +600,14 @@ describe("aide_init registration", () => {
 		expect(Object.keys(inputSchema.properties)).toEqual(["framework", "path", "category"]);
 	});
 
+	it("offers the hooks category", async () => {
+		const { inputSchema } = (await findTool("aide_init")) as unknown as {
+			inputSchema: { properties: { category: { enum: string[] } } };
+		};
+
+		expect(inputSchema.properties.category.enum).toContain("hooks");
+	});
+
 	it("teaches brainSummary and none of the retired brain contract fields", async () => {
 		const { description } = await findTool("aide_init");
 
@@ -676,7 +694,6 @@ describe("aide_observer_start registration", () => {
 			{ outcome: "stuck", runningVersion: "0.14.0", ownVersion: "0.15.0", link: "L" },
 			"Observer not replaced: the running observer is version 0.14.0, older than this AIDE (0.15.0), and did not shut down; it is still serving at L",
 		],
-		[{ outcome: "not-started", reason: "port 24680 is busy" }, "Observer not started: port 24680 is busy"],
 	])("maps %j to its exact reply without isError", async (reply, text) => {
 		mockObserverStart.mockResolvedValue(reply);
 
@@ -686,8 +703,53 @@ describe("aide_observer_start registration", () => {
 		expect(result.isError).toBeUndefined();
 	});
 
+	it("passes the BLOCKED line through, with its reason", async () => {
+		mockObserverStart.mockResolvedValue({
+			outcome: "blocked",
+			reason: "No port could be bound: 24680 (in use), 24681 (not allowed)",
+		} satisfies StartReply);
+
+		const result = await callTool("aide_observer_start", {});
+
+		expect(result.content).toEqual([
+			{
+				type: "text",
+				text: "BLOCKED: the observer could not start, so nothing proceeds. No port could be bound: 24680 (in use), 24681 (not allowed)",
+			},
+		]);
+		expect(result.isError).toBeUndefined();
+	});
+
+	it("passes the multi-line HALT through: the stop sentence, one line per open session, the link", async () => {
+		const liveness = {
+			state: "working" as const,
+			lastActivityAt: "2026-11-25T11:20:00.000Z",
+			quietMinutes: 40,
+			maybeStuck: true,
+		};
+		mockObserverStart.mockResolvedValue({
+			outcome: "halt",
+			link: "http://127.0.0.1:24680/x?token=t",
+			open: [{ id: "20261125T090000000Z-aaaaaa", idKind: "session", liveness, pipeline: "feature-x", phase: "build" }],
+		} satisfies StartReply);
+
+		const result = await callTool("aide_observer_start", {});
+
+		expect(result.content).toEqual([
+			{
+				type: "text",
+				text: [
+					"HALT: another session of this project is open. Nothing proceeds until the user approves ending it with aide_observer_end_session, or closes this session.",
+					"- 20261125T090000000Z-aaaaaa · working · quiet 40 min, maybe stuck · last activity 2026-11-25T11:20:00.000Z · pipeline feature-x · phase build",
+					"Observer: http://127.0.0.1:24680/x?token=t",
+				].join("\n"),
+			},
+		]);
+		expect(result.isError).toBeUndefined();
+	});
+
 	it("passes the root and process.argv[1] as the entry script, and no port", async () => {
-		mockObserverStart.mockResolvedValue({ outcome: "not-started", reason: "x" });
+		mockObserverStart.mockResolvedValue({ outcome: "blocked", reason: "x" } satisfies StartReply);
 
 		await callTool("aide_observer_start", { port: 23456 });
 
@@ -727,6 +789,52 @@ describe("aide_observer_event registration", () => {
 		const result = await callTool("aide_observer_event", { kind: "nope" });
 
 		expect(result.content[0].text).toBe("not recorded: invalid event (kind: Invalid input)");
+		expect(result.isError).toBeUndefined();
+	});
+});
+
+describe("aide_observer_end_session registration", () => {
+	const OTHER = "20261125T090000000Z-bbbbbb";
+	let appData: string;
+
+	beforeEach(() => {
+		appData = mkdtempSync(join(tmpdir(), "aide-end-session-registration-"));
+		vi.stubEnv("LOCALAPPDATA", appData);
+		vi.stubEnv("XDG_STATE_HOME", appData);
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(appData, { recursive: true, force: true });
+	});
+
+	it("lists the tool with the required sessionId", async () => {
+		const { inputSchema } = (await findTool("aide_observer_end_session")) as unknown as {
+			inputSchema: { properties: { sessionId: { type: string } }; required: string[] };
+		};
+
+		expect(inputSchema.properties.sessionId.type).toBe("string");
+		expect(inputSchema.required).toEqual(["sessionId"]);
+	});
+
+	it("ends another session of this project and replies with the one line", async () => {
+		const { projectKey } = resolveRuntimePaths({ projectRoot: process.cwd() });
+		const log = resolveSessionLog({ projectKey, sessionId: OTHER });
+		mkdirSync(dirname(log), { recursive: true });
+		writeFileSync(log, '{"v":2}\n', "utf-8");
+
+		const result = await callTool("aide_observer_end_session", { sessionId: OTHER });
+
+		expect(result.content).toEqual([{ type: "text", text: `ended ${OTHER}` }]);
+		expect(result.isError).toBeUndefined();
+	});
+
+	it("refuses the server's own session", async () => {
+		const own = getSession().sessionId;
+
+		const result = await callTool("aide_observer_end_session", { sessionId: own });
+
+		expect(result.content).toEqual([{ type: "text", text: `refused: ${own} is this session` }]);
 		expect(result.isError).toBeUndefined();
 	});
 });

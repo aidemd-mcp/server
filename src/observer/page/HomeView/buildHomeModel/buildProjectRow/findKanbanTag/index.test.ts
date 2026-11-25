@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectView, SessionListing } from "@/observer/types/index.js";
 import findKanbanTag from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 function listing(sessionId: string, startedAt: string, kanbanTag?: string): SessionListing {
-	return { sessionId, startedAt, metadata: kanbanTag ? { kanbanTag } : null, eventCount: 1, lastEventAt: startedAt, live: false };
+	return { sessionId, startedAt, metadata: kanbanTag ? { kanbanTag } : null, eventCount: 1, lastEventAt: startedAt, liveness: makeLiveness({ state: "ended" }) };
 }
 
 describe("findKanbanTag", () => {

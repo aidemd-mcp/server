@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 import stripMarkup from "@/observer/page/__fixtures__/stripMarkup/index.js";
 import SessionRow from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 const NOW = new Date(2026, 10, 23, 15, 0, 0);
 
@@ -12,7 +13,7 @@ function makeRow(overrides: Partial<SessionRowModel> = {}): SessionRowModel {
 		startedAt: new Date(2026, 10, 22, 16, 40, 0).toISOString(),
 		lastEventAt: new Date(2026, 10, 22, 17, 28, 5).toISOString(),
 		eventCount: 97,
-		liveness: "ended",
+		liveness: makeLiveness({ state: "ended" }),
 		task: "Install writes .aide/intent.aide",
 		label: null,
 		...overrides,
@@ -59,17 +60,17 @@ describe("SessionRow", () => {
 		expect(text).not.toContain("1 events");
 	});
 
-	it("draws a live row with the live class, the Live badge and no Archive", () => {
-		const html = render({ row: makeRow({ liveness: "live" }) });
+	it("draws a working row with the live class, the Working badge and no Archive", () => {
+		const html = render({ row: makeRow({ liveness: makeLiveness({ now: NOW }) }) });
 		expect(html).toContain('class="av-srow live"');
-		expect(html).toContain('<span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Live</span>');
+		expect(html).toContain('<span class="av-badge run"><span class="ic i-run" aria-hidden="true"></span>Working</span>');
 		expect(html).not.toContain("Archive");
 	});
 
-	it("draws an idle row with the outline Idle badge and no Archive", () => {
-		const html = render({ row: makeRow({ liveness: "idle" }) });
+	it("draws a quiet working row as maybe stuck, with no live class and still no Archive", () => {
+		const html = render({ row: makeRow({ liveness: makeLiveness({ minutesQuiet: 20, now: NOW }) }) });
 		expect(html).toContain('class="av-srow"');
-		expect(html).toContain('<span class="av-badge outline"><span class="ic i-idle" aria-hidden="true"></span>Idle</span>');
+		expect(html).toContain('<span class="av-badge neutral"><span class="ic i-idle" aria-hidden="true"></span>Quiet 20 min · maybe stuck</span>');
 		expect(html).not.toContain("Archive");
 	});
 

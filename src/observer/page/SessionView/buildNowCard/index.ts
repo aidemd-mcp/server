@@ -13,7 +13,7 @@ import isFixRound from "./isFixRound/index.js";
  * The now card of a project with a status. The first state that holds wins: an open gate (the
  * focused session's, else any) is `wait`, the loudest; the focused session's running work (else the
  * first running) is `fix` for the Fix phase and from QA round 2, else `run`; nothing running after
- * real activity is `idle`; anything less is `empty`. Every field is reported data. `stepText` is the
+ * real activity is `idle` (worded `Working outside the pipeline` or `No phase running` when the session has a rail); anything less is `empty`. A run, fix or idle card carries the pipeline of its session's rail. Every field is reported data. `stepText` is the
  * running Build step's own words, read by the session view from the plan file once it loads.
  */
 export default function buildNowCard({
@@ -33,12 +33,13 @@ export default function buildNowCard({
 	if (waiting) return buildWait({ status, events, waiting, now });
 
 	const work = status.running.find((candidate) => candidate.sessionId === focus) ?? status.running[0];
-	if (work && isFixRound({ work })) return buildFix({ status, events, work, now });
+	const rail = status.rails.find((candidate) => candidate.sessionId === (work?.sessionId ?? focus)) ?? (focus === null ? status.rails[0] : undefined) ?? null;
+	if (work && isFixRound({ work })) return buildFix({ status, events, work, now, pipeline: rail?.pipeline ?? null });
 	if (work) {
 		const elapsed = formatRunningFor({ elapsedMs: work.elapsedMs, asOf: status.generatedAt, now });
-		return buildRun({ work, elapsed, stepText: stepText ?? null, now });
+		return buildRun({ work, elapsed, stepText: stepText ?? null, now, pipeline: rail?.pipeline ?? null });
 	}
 
-	if (hasActivity({ events })) return buildIdle({ events, projectRoot: status.projectRoot, now });
+	if (hasActivity({ events })) return buildIdle({ events, projectRoot: status.projectRoot, now, rail });
 	return buildEmpty({ events, focus, now });
 }

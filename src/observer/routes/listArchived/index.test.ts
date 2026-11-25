@@ -3,7 +3,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ObserverContext } from "../../types/index.js";
 
 vi.mock("@/service/observer/event/readArchive/index.js", () => ({ default: vi.fn() }));
-vi.mock("@/service/observer/event/shared/judgeLiveness/index.js", () => ({ default: vi.fn(() => true) }));
 
 import readArchive from "@/service/observer/event/readArchive/index.js";
 import listArchived from "./index.js";
@@ -11,6 +10,7 @@ import listArchived from "./index.js";
 const mockRead = readArchive as ReturnType<typeof vi.fn>;
 
 const KEY = "alpha-aaaaaa";
+const ENDED = { state: "ended", lastActivityAt: "2026-11-22T09:00:00.000Z", quietMinutes: 5, maybeStuck: false, endedBy: "user" };
 
 async function call(project = KEY): Promise<{ status: number; body: Record<string, unknown> }> {
 	const sent = { status: 0, body: "" };
@@ -27,7 +27,7 @@ async function call(project = KEY): Promise<{ status: number; body: Record<strin
 		res,
 		url: new URL(`http://127.0.0.1/api/projects/${project}/archive`),
 		params: { project },
-		ctx: { now: () => 1000 } as unknown as ObserverContext,
+		ctx: {} as unknown as ObserverContext,
 	});
 	return { status: sent.status, body: JSON.parse(sent.body) };
 }
@@ -42,14 +42,14 @@ describe("listArchived route", () => {
 		expect(mockRead).not.toHaveBeenCalled();
 	});
 
-	it("lists the archived sessions as rows that are never live", async () => {
+	it("lists the archived sessions as rows carrying the liveness readArchive judged", async () => {
 		mockRead.mockResolvedValue([
 			{
 				sessionId: "s1",
 				started: null,
-				events: [{ v: 1, ts: "2026-11-22T09:00:00.000Z", sessionId: "s1", seq: 1, pid: 1, kind: "release", version: "1.0.0" }],
+				events: [{ v: 2, ts: "2026-11-22T09:00:00.000Z", sessionId: "s1", seq: 1, pid: 1, kind: "release", version: "1.0.0" }],
 				skippedLines: 0,
-				live: false,
+				liveness: ENDED,
 				unreadable: false,
 			},
 		]);
@@ -67,7 +67,7 @@ describe("listArchived route", () => {
 						metadata: null,
 						eventCount: 1,
 						lastEventAt: "2026-11-22T09:00:00.000Z",
-						live: false,
+						liveness: ENDED,
 					},
 				],
 			},

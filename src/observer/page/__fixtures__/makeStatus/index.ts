@@ -13,7 +13,7 @@ export default function makeStatus(overrides: Partial<Status> = {}): Status {
 		running: [],
 		waiting: [],
 		surfaced: null,
-		rail: null,
+		rails: [],
 		history: [],
 		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
 		problems: [],

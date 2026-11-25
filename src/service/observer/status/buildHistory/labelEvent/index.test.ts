@@ -21,6 +21,10 @@ describe("labelEvent — one label per kind", () => {
 		["task picked without title", { kind: "task", slug: "fix-tree", action: "picked" }, "Task picked: fix-tree"],
 		["task moved", { kind: "task", slug: "fix-tree", title: "Fix the tree", action: "moved", column: "Done" }, "Task: Fix the tree → Done"],
 		["task moved without column", { kind: "task", slug: "fix-tree", action: "moved" }, "Task: fix-tree"],
+		["pipeline_started", { kind: "pipeline_started", pipeline: "observer-v3", phase: "build" }, "Pipeline observer-v3 started at Build"],
+		["pipeline_finished completed", { kind: "pipeline_finished", pipeline: "observer-v3", result: "completed" }, "Pipeline observer-v3 completed"],
+		["pipeline_finished abandoned", { kind: "pipeline_finished", pipeline: "observer-v3", result: "abandoned" }, "Pipeline observer-v3 abandoned"],
+		["phase_skipped", { kind: "phase_skipped", pipeline: "observer-v3", phase: "research", reason: "no new domain" }, "Research skipped"],
 		["phase_started", { kind: "phase_started", phase: "qa", agent: "aide-qa", module: "src/a" }, "QA · aide-qa · src/a"],
 		["phase_finished", { kind: "phase_finished", phase: "plan", agent: "aide-architect", module: "src/a" }, "Plan done"],
 		["phase_finished with result", { kind: "phase_finished", phase: "build", agent: "x", module: "src/a", result: "passed" }, "Build done · passed"],
@@ -82,6 +86,21 @@ describe("labelEvent — detail", () => {
 
 		expect(row.label).toBe("QA: 3 issues → todo.aide");
 		expect(row.detail).toEqual({ file: "src/a/todo.aide" });
+	});
+
+	it("carries a skipped phase's reason as detail", () => {
+		const row = labelEvent({
+			event: makeEvent({ kind: "phase_skipped", pipeline: "p", phase: "research", reason: "no new domain" }),
+		});
+
+		expect(row.detail).toEqual({ text: "no new domain" });
+	});
+
+	it("gives pipeline start and finish no detail", () => {
+		expect(labelEvent({ event: makeEvent({ kind: "pipeline_started", pipeline: "p", phase: "spec" }) }).detail).toBeUndefined();
+		expect(
+			labelEvent({ event: makeEvent({ kind: "pipeline_finished", pipeline: "p", result: "completed" }) }).detail,
+		).toBeUndefined();
 	});
 
 	it("lists the reported session fields that are present", () => {

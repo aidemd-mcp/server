@@ -8,16 +8,11 @@ vi.mock("node:os", async (importOriginal) => {
 	return { ...actual, homedir: vi.fn(() => actual.homedir()) };
 });
 
-vi.mock("@/util/isProcessRunning/index.js", () => ({
-	default: vi.fn(),
-}));
-
 import { homedir } from "node:os";
-import isProcessRunning from "@/util/isProcessRunning/index.js";
+import resolvePresenceFile from "@/util/runtimePaths/resolvePresenceFile/index.js";
 import readProject from "./index.js";
 
 const mockHomedir = vi.mocked(homedir);
-const mockIsProcessRunning = isProcessRunning as ReturnType<typeof vi.fn>;
 
 const KEY = "demo-abcdef";
 const FIRST = "20261122T090000000Z-aaaaaa";
@@ -55,9 +50,26 @@ async function writeSession(sessionId: string, content: string): Promise<void> {
 	await writeFile(path.join(eventsFolder, `${sessionId}.jsonl`), content, "utf-8");
 }
 
+/** A hook presence record under the project's presence folder, optionally linked to a session. */
+async function writePresence(claudeSessionId: string, sessionId: string | undefined, state: "waiting" | "ended"): Promise<void> {
+	const file = resolvePresenceFile({ projectKey: KEY, claudeSessionId });
+	await mkdir(path.dirname(file), { recursive: true });
+	await writeFile(
+		file,
+		JSON.stringify({
+			v: 1,
+			claudeSessionId,
+			sessionId,
+			state,
+			at: new Date(NOW - 60 * 1000).toISOString(),
+			hookEvent: state === "ended" ? "SessionEnd" : "Stop",
+		}),
+		"utf-8",
+	);
+}
+
 beforeEach(async () => {
 	vi.clearAllMocks();
-	mockIsProcessRunning.mockReturnValue(false);
 	vi.useFakeTimers({ toFake: ["Date"] });
 	vi.setSystemTime(NOW);
 	home = await mkdtemp(path.join(tmpdir(), "aide-readproject-home-"));
@@ -107,6 +119,27 @@ describe("readProject", () => {
 
 		expect(project?.projectRoot).toBeNull();
 		expect(project?.sessions).toHaveLength(2);
+	});
+
+	it("gives every session its liveness: a hookless session works, a Stop presence shows it waiting", async () => {
+		await writeSession(FIRST, toLines([makeEvent(FIRST)]));
+		await writeSession(SECOND, toLines([makeEvent(SECOND, { v: 2 })]));
+		await writePresence("c1111111", FIRST, "waiting");
+
+		const project = await readProject({ projectKey: KEY, eventsFolder });
+
+		expect(project?.sessions.map((session) => session.liveness.state)).toEqual(["waiting", "working"]);
+		expect(project?.unlinked).toEqual([]);
+	});
+
+	it("carries a presence linked to no session as unlinked, ended ones included", async () => {
+		await writeSession(FIRST, toLines([makeEvent(FIRST)]));
+		await writePresence("c2222222", undefined, "ended");
+
+		const project = await readProject({ projectKey: KEY, eventsFolder });
+
+		expect(project?.unlinked).toHaveLength(1);
+		expect(project?.unlinked[0]).toMatchObject({ claudeSessionId: "c2222222", liveness: { state: "ended", endedBy: "hook" } });
 	});
 
 	it("ignores non-session files and a folder named like a log", async () => {

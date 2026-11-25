@@ -70,6 +70,30 @@ describe("seedFixtures", () => {
 		});
 	});
 
+	it("writes each session's presence and ended mark, and every logged line passes the v2 schema", async () => {
+		vi.mocked(scenarios).mockReturnValue([
+			makeScenario({
+				sessions: [
+					{ pid: "live", presence: { state: "waiting", minutesAgo: 2 }, events: [{ offsetMin: 4, kind: "session_started" }] },
+					{ pid: "dead", ended: true, events: [{ offsetMin: 90, kind: "session_started" }, { offsetMin: 80, kind: "pipeline_started", pipeline: "a-task", phase: "spec" }] },
+					{ pid: "live", events: [{ offsetMin: 3, kind: "session_started" }] },
+				],
+			}),
+		]);
+		const appDataRoot = resolveRoot().root;
+
+		const [only] = (await seedFixtures({ appDataRoot, workDir, now: NOW, set: "sessions" })).scenarios;
+
+		const [waiting, ended, bare] = only.sessionIds;
+		expect(await readdir(join(appDataRoot, only.projectKey, "presence"))).toEqual([`fixture-${waiting}.json`]);
+		expect(await readdir(join(appDataRoot, only.projectKey, "ended"))).toEqual([`${ended}.json`]);
+		expect(bare).toBeDefined();
+		for (const sessionId of only.sessionIds) {
+			const log = await readFile(join(appDataRoot, only.projectKey, "events", `${sessionId}.jsonl`), "utf-8");
+			for (const line of log.trimEnd().split("\n")) expect(schema.parse(JSON.parse(line)).v).toBe(2);
+		}
+	});
+
 	it("leaves an uninstalled project's root empty and reports no root when reportRoot is false", async () => {
 		vi.mocked(scenarios).mockReturnValue([makeScenario({ installed: false, reportRoot: false, board: null })]);
 		const appDataRoot = resolveRoot().root;

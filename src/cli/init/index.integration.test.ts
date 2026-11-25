@@ -49,6 +49,7 @@ import { mcpEntry } from "@/service/install/wireMcp/index.js";
 import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
 import installGlobalPackage from "./ensureGlobalAide/installGlobalPackage/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
+import planHooksMerge from "@/service/install/shared/planHooksMerge/index.js";
 
 const mockCheckGlobalPackage = vi.mocked(checkGlobalPackage);
 const mockInstallGlobalPackage = vi.mocked(installGlobalPackage);
@@ -486,5 +487,53 @@ describe("7c-x — an existing aide entry survives init untouched", () => {
 
 		expect(await readFile(join(tempDir, ".mcp.json"), "utf-8")).toBe(raw);
 		expect(mockInstallGlobalPackage).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 7c-xi. Claude Code hooks — written only into a settings file init creates
+// ---------------------------------------------------------------------------
+
+const HOOKS_DEFERRED_LINE =
+	"Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category to add AIDE's entries to .claude/settings.json.";
+
+describe("7c-xi — Claude Code hooks", () => {
+	it("a fresh project gets .claude/settings.json holding exactly AIDE's hook entries and no deferred hooks line", async () => {
+		const { lines, write } = makeCapture();
+
+		await runInit(tempDir, write);
+
+		const written = await readFile(join(tempDir, ".claude", "settings.json"), "utf-8");
+		const expected = planHooksMerge({ text: null });
+		expect(expected.state).toBe("absent");
+		expect(written).toBe((expected as { merged: string }).merged);
+		expect(Object.keys(JSON.parse(written) as object)).toEqual(["hooks"]);
+		expect(lines.some((l) => l.startsWith("[created] .claude/settings.json"))).toBe(true);
+		expect(lines.join("\n")).not.toContain(HOOKS_DEFERRED_LINE);
+	});
+
+	it("an existing settings file without AIDE's entries stays byte-identical and the deferred line is printed", async () => {
+		const raw = '{\n\t// mine\n\t"permissions": { "allow": ["Bash(ls)"] }\n}\n';
+		await mkdir(join(tempDir, ".claude"), { recursive: true });
+		await writeFile(join(tempDir, ".claude", "settings.json"), raw, "utf-8");
+		const { lines, write } = makeCapture();
+
+		await runInit(tempDir, write);
+
+		expect(await readFile(join(tempDir, ".claude", "settings.json"), "utf-8")).toBe(raw);
+		expect(lines.some((l) => l.startsWith("[skipped-drift] .claude/settings.json"))).toBe(true);
+		expect(lines.join("\n")).toContain(HOOKS_DEFERRED_LINE);
+	});
+
+	it("a project already wired reports present and prints no deferred hooks line", async () => {
+		await runInit(tempDir, () => {});
+		const wired = await readFile(join(tempDir, ".claude", "settings.json"), "utf-8");
+		const { lines, write } = makeCapture();
+
+		await runInit(tempDir, write);
+
+		expect(await readFile(join(tempDir, ".claude", "settings.json"), "utf-8")).toBe(wired);
+		expect(lines).toContain("[exists] .claude/settings.json — already present");
+		expect(lines.join("\n")).not.toContain(HOOKS_DEFERRED_LINE);
 	});
 });

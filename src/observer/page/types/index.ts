@@ -9,10 +9,9 @@ import type {
 	AlignmentValue,
 	BoardColumnId,
 	BoardTask,
-	Liveness,
 	ObserverEvent,
-	PhaseRail,
 	RailPhase,
+	SessionLiveness,
 	SessionRecord,
 	Status,
 	WaitingFile,
@@ -47,9 +46,6 @@ export type SessionRoute = {
 
 /** What the address bar asks for; `invalid` is any address the page cannot serve, including one with no token. */
 export type PageRoute = HomeRoute | SessionRoute | { kind: "invalid" };
-
-/** The part of the observer's rail the page draws from: the module and its phases, with nothing running. */
-export type IdleRail = Pick<PhaseRail, "module" | "sessionId" | "phases">;
 
 /** What `buildHref` writes a page link from: Home, or a session with its optional tab and detail. */
 export type HrefTarget = { token: string } & (
@@ -87,7 +83,7 @@ export type SessionRowDescription = {
 	task: string | null;
 	ended: boolean;
 	live: boolean;
-	badge: { className: "run" | "outline" | "neutral"; icon: IconName; word: "Live" | "Idle" | "Ended" };
+	badge: { className: "run" | "wait" | "neutral"; icon: IconName; word: string };
 };
 
 /** Where a fetch stands: still loading, the data, or the observer's message. */
@@ -299,18 +295,28 @@ export type BoardModel =
 /** Where a rail cell stands; `todo` is a phase no event has reported (the handoff's dashed cell). */
 export type RailCellState = "todo" | "run" | "wait" | "done" | "fail";
 
-/** One of the rail's nine cells, every field already worded; `loop` is the `round <r>` badge on a running Fix, else null. */
-export type RailCell = { name: string; state: RailCellState; meta: string; loop: string | null };
+/**
+ * One of the rail's nine cells, every field already worded; `loop` is the `round <r>` badge on a running Fix, else null.
+ * `skipped` is present only when the stage was skipped; the cell keeps the `todo` look and its meta reads `Skipped · <reason>`.
+ */
+export type RailCell = { name: string; state: RailCellState; meta: string; loop: string | null; skipped?: true };
 
 /** One side lane (Structure, Align, Refactor, Cleanup), worded the same way. */
 export type LaneCell = {
 	name: "Structure" | "Align" | "Refactor" | "Cleanup";
 	state: "todo" | "run" | "done" | "fail";
 	meta: string;
+	/** Present only when the lane's stage was skipped; the lane keeps the `todo` look and its meta reads `Skipped · <reason>`. */
+	skipped?: true;
 };
 
-/** The phase rail as the page draws it: nine cells, four lanes and the module they describe (null when no event names one). */
-export type RailView = { phases: RailCell[]; lanes: LaneCell[]; module: string | null };
+/**
+ * The phase rail as the page draws it: nine cells, four lanes and the module they describe (null when no
+ * event names one), named by its pipeline (null for a session that reported none). `outside` is the
+ * rail's own "working outside the pipeline" report; `hidden` is set when status holds no rail for the
+ * session (an ended session has none, brief #86) and nothing is drawn.
+ */
+export type RailView = { phases: RailCell[]; lanes: LaneCell[]; module: string | null; pipeline: string | null; outside: boolean; hidden: boolean };
 
 /** What a cell says about itself before it is given its name. */
 export type RailCellDescription = Omit<RailCell, "name">;
@@ -318,18 +324,16 @@ export type RailCellDescription = Omit<RailCell, "name">;
 /** The nine cells of the rail, in order: the phases that run on the main line plus Plan approval and Done, which no phase names. */
 export type RailSlot = "spec" | "research" | "synthesize" | "plan" | "approval" | "build" | "qa" | "fix" | "done";
 
-/** What every cell is read from: the rail's phases for one module, the events of the rail's session that name it, and the clock. */
+/** What every cell is read from: the rail's stages, the events of the rail's pipeline and the clock. */
 export type RailContext = {
-	phases: RailPhase[];
-	/** The rail's module, project-relative (`.` for the root). */
-	module: string;
+	stages: RailPhase[];
+	/** The module the pipeline's newest module-naming event reports, project-relative (`.` for the root); null when none names one. */
+	module: string | null;
 	sessionId: string;
 	projectRoot: string;
 	status: Status | null;
-	/** Every event of the rail's session, oldest first. */
-	sessionEvents: ObserverEvent[];
-	/** The events of `sessionEvents` that name `module`. */
-	moduleEvents: ObserverEvent[];
+	/** Every held event whose `pipeline` is the rail's, oldest first; for a rail with no pipeline, the rail session's events that name none. */
+	pipelineEvents: ObserverEvent[];
 	now: Date;
 };
 
@@ -352,6 +356,8 @@ export type NowCardModel = {
 	timeLabel: string | null;
 	steps: NowCardSteps | null;
 	hint: string | null;
+	/** The pipeline the card's session works in, printed before the title (`<pipeline> · Build`); null or absent when its rail names none or the card has no rail. */
+	pipeline?: string | null;
 };
 
 /** The tone of a badge in the page's own words: the handoff's `av-badge` modifiers. */
@@ -432,7 +438,8 @@ export type SessionRowModel = {
 	startedAt: string;
 	lastEventAt: string | null;
 	eventCount: number;
-	liveness: Liveness;
+	/** The session's liveness exactly as the observer judged it; the page only counts the quiet minutes forward (`describeLiveness`). */
+	liveness: SessionLiveness;
 	task: string | null;
 	/** The slug of the session's newest task, for linking to the task note; null with none. */
 	taskSlug?: string | null;
@@ -496,6 +503,12 @@ export type LiveRowModel = {
 	project: string;
 	start: string;
 	badge: { word: string; className: "run" | "wait" | "neutral"; icon: IconName };
+	/** What it is doing now: the running phase (with the Build step), `Working outside the pipeline` or `No phase running`; null while a gate is open, where the module and elapsed say it. */
+	phase: string | null;
+	/** The pipeline of the session's rail; null when its rail names none or it has no rail. */
+	pipeline: string | null;
+	/** Whether the session's rail says it works outside the pipeline. */
+	outside: boolean;
 	module: string | null;
 	agent: string | null;
 	elapsed: string | null;
@@ -546,6 +559,8 @@ export type HistoryKind =
 	| "prompt"
 	| "task"
 	| "phase"
+	| "pipeline"
+	| "skip"
 	| "done"
 	| "wait"
 	| "approve"
@@ -648,6 +663,8 @@ export type SessionModel = {
 	card: NowCardModel;
 	phases: RailCell[];
 	lanes: LaneCell[];
+	/** What the rail says about itself beyond its cells: its pipeline, whether the session works outside it, whether nothing is drawn. */
+	rail: Pick<RailView, "pipeline" | "outside" | "hidden">;
 	tree: TreePanelModel;
 	/** Null for a project that never reported its folder. */
 	plans: PlanRowModel[] | null;

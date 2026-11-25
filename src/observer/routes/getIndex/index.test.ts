@@ -31,13 +31,13 @@ describe("getIndex", () => {
 		expect(body.data.version).toBe("1.2.3");
 	});
 
-	it("lists the sixteen routes with a purpose each, the per-project ones under /api/projects", async () => {
+	it("lists the seventeen routes with a purpose each, the per-project ones under /api/projects", async () => {
 		const { input, sent } = makeInput({ ready: true });
 
 		await getIndex(input);
 
 		const { routes } = JSON.parse(sent.body).data as { routes: { method: string; path: string; purpose: string }[] };
-		expect(routes).toHaveLength(16);
+		expect(routes).toHaveLength(17);
 		expect(routes.every((route) => route.purpose.length > 0)).toBe(true);
 		const listed = routes.map((route) => `${route.method} ${route.path}`);
 		expect(listed).toContain("POST /api/events");

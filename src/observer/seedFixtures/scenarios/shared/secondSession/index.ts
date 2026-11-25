@@ -12,6 +12,7 @@ export default function secondSession(): FixtureSession {
 
 	return {
 		pid: "live",
+		presence: { state: "working", minutesAgo: ago(112) },
 		events: [
 			{ offsetMin: ago(232), kind: "session_started" },
 			{
@@ -21,9 +22,10 @@ export default function secondSession(): FixtureSession {
 				action: "picked",
 				column: "In Progress",
 			},
-			{ offsetMin: ago(214), kind: "phase_started", phase: "spec", agent: "aide-spec-writer", module: "src/tools/validate" },
-			{ offsetMin: ago(114), kind: "phase_finished", phase: "spec", agent: "aide-spec-writer", module: "src/tools/validate" },
-			{ offsetMin: ago(112), kind: "phase_started", phase: "research", agent: "aide-domain-expert", module: "src/tools/validate" },
+			{ offsetMin: ago(220), kind: "pipeline_started", pipeline: handoffTasks.validate.slug, phase: "spec" },
+			{ offsetMin: ago(214), kind: "phase_started", pipeline: handoffTasks.validate.slug, phase: "spec", agent: "aide-spec-writer", module: "src/tools/validate" },
+			{ offsetMin: ago(114), kind: "phase_finished", pipeline: handoffTasks.validate.slug, phase: "spec", agent: "aide-spec-writer", module: "src/tools/validate" },
+			{ offsetMin: ago(112), kind: "phase_started", pipeline: handoffTasks.validate.slug, phase: "research", agent: "aide-domain-expert", module: "src/tools/validate" },
 		],
 	};
 }

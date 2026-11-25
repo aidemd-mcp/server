@@ -62,8 +62,8 @@ export default function buildHomeModel({ state, now, token }: { state: StreamSta
 				: null;
 		const view = state.views[project.projectKey];
 		const events = state.held.filter((session) => session.projectKey === project.projectKey).flatMap((session) => session.events);
-		project.rail =
-			picked === null ? null : buildRailView({ status: view?.state === "ready" ? view.status : null, events, focus: picked.session.sessionId, now }).phases;
+		const railView = picked === null ? null : buildRailView({ status: view?.state === "ready" ? view.status : null, events, focus: picked.session.sessionId, now });
+		project.rail = railView === null || railView.hidden ? null : railView.phases;
 	}
 
 	return {
@@ -71,7 +71,7 @@ export default function buildHomeModel({ state, now, token }: { state: StreamSta
 			projects.length === 0
 				? "On this machine (127.0.0.1)"
 				: `${projects.length} ${projects.length === 1 ? "project" : "projects"} · ${liveRows.length} live ${liveRows.length === 1 ? "session" : "sessions"} · on this machine (127.0.0.1)`,
-		conn: state.connection === "reconnecting" ? "recon" : live.some(({ session }) => session.liveness === "live") ? "live" : "idle",
+		conn: state.connection === "reconnecting" ? "recon" : live.some(({ session }) => session.liveness.state !== "ended" && !session.liveness.maybeStuck) ? "live" : "idle",
 		empty: state.projects !== null && projects.length === 0,
 		filterable: projects.length > FILTER_THRESHOLD,
 		waits: waits.map(({ project, waiting }) =>

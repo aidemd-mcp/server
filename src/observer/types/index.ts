@@ -1,13 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { ObserverEvent, ProjectLog, Status } from "@/types/index.js";
+import type { ObserverEvent, ProjectLog, SessionLiveness, Status } from "@/types/index.js";
 
 /** Envelope of every JSON body the observer sends: data on success, an error otherwise, never both. */
 export type ApiResponse<T> =
 	| { data: T; error?: never }
 	| { data?: never; error: { message: string; details?: string } };
 
-/** The observer found running: where it listens, the token it answers to, its process and the version of the code running. */
-export type RunningObserver = { address: string; token: string; pid: number; version: string };
+/** The observer found running: where it listens, the port that address names, the token it answers to, its process and the version of the code running. */
+export type RunningObserver = { address: string; port: number; token: string; pid: number; version: string };
 
 /**
  * What takeOver answers: no observer ran, an older one was replaced, a same-or-newer (or
@@ -75,7 +75,7 @@ export type ObserverContext = {
 	statusPusher: { push(projectKey: string): void };
 	/** Stops the observer; the shutdown route calls it once its response has finished. */
 	shutdown: () => void;
-	/** Epoch milliseconds, the unit judgeLiveness takes. */
+	/** Epoch milliseconds, the unit readLiveness takes. */
 	now: () => number;
 };
 
@@ -98,7 +98,8 @@ export type SessionListing = {
 	metadata: { projectRoot?: string; kanbanTag?: string; brainPath?: string } | null;
 	eventCount: number;
 	lastEventAt: string | null;
-	live: boolean;
+	/** The recording side's judgement (event's readLiveness): working, waiting or ended, with how long it has been quiet. */
+	liveness: SessionLiveness;
 };
 
 /** One port value parsed by the shared rule: the number, or why it is unusable. */

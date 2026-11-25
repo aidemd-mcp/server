@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import stripMarkup from "@/observer/page/__fixtures__/stripMarkup/index.js";
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 import NotInstalled from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 const NOW = new Date();
 const session: SessionRowModel = {
@@ -10,7 +11,7 @@ const session: SessionRowModel = {
 	startedAt: new Date(NOW.getTime() - 3 * 60_000).toISOString(),
 	lastEventAt: NOW.toISOString(),
 	eventCount: 2,
-	liveness: "live",
+	liveness: makeLiveness(),
 	task: null,
 	label: null,
 };

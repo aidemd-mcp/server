@@ -5,10 +5,10 @@ import findWaited from "./index.js";
 type Resolved = Extract<ObserverEvent, { kind: "gate_resolved" }>;
 
 function waiting({ seq, ts, file = "m/plan.aide", sessionId = "s1" }: { seq: number; ts: string; file?: string; sessionId?: string }): ObserverEvent {
-	return { v: 1, ts, sessionId, pid: 1, seq, kind: "gate_waiting", gate: "approve", file };
+	return { v: 1, ts, sessionId, pid: 1, seq, kind: "gate_waiting", pipeline: "p1", gate: "approve", file };
 }
 
-const RESOLVED: Resolved = { v: 1, ts: "2026-01-01T10:00:00.000Z", sessionId: "s1", pid: 1, seq: 9, kind: "gate_resolved", gate: "approve", file: "m/plan.aide" };
+const RESOLVED: Resolved = { v: 1, ts: "2026-01-01T10:00:00.000Z", sessionId: "s1", pid: 1, seq: 9, kind: "gate_resolved", pipeline: "p1", gate: "approve", file: "m/plan.aide" };
 const sameFile = (file: string): boolean => file === "m/plan.aide";
 
 describe("findWaited", () => {

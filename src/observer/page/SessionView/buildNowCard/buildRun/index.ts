@@ -13,11 +13,14 @@ export default function buildRun({
 	elapsed,
 	stepText,
 	now,
+	pipeline = null,
 }: {
 	work: Pick<RunningWork, "phase" | "agent" | "module" | "startedAt" | "buildStep">;
 	elapsed: string;
 	stepText: string | null;
 	now: Date;
+	/** The pipeline of the running session's rail, when it names one. */
+	pipeline?: string | null;
 }): NowCardModel {
 	const step = work.phase === "build" ? work.buildStep : undefined;
 	return {
@@ -35,5 +38,6 @@ export default function buildRun({
 		timeLabel: `elapsed · started ${formatClock({ iso: work.startedAt, now }).clock}`,
 		steps: step ? { total: step.total, done: step.reached - 1, running: 1, head: `Step ${step.reached} of ${step.total}`, text: stepText } : null,
 		hint: null,
+		pipeline,
 	};
 }

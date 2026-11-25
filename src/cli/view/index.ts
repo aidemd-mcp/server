@@ -5,6 +5,7 @@ import describeError from "@/util/describeError/index.js";
 import readPackageVersion from "@/util/readPackageVersion/index.js";
 import awaitShutdown from "./awaitShutdown/index.js";
 import buildLink from "./buildLink/index.js";
+import formatPortNote from "./formatPortNote/index.js";
 import formatUsage from "./formatUsage/index.js";
 import parseViewArgs from "./parseViewArgs/index.js";
 
@@ -18,15 +19,18 @@ const BRAIN_NOTE =
 /**
  * The `view` command: serves the one per-user observer in the foreground until Ctrl+C or until a
  * newer AIDE asks it to shut down. Recipe: parse the arguments (help and invalid input exit 2
- * without starting anything); choose the port (`--port`, else `AIDE_OBSERVER_PORT`, else the
- * default; an invalid value exits 1 naming it); start the observer, scoping `--brain` to this
- * project only; then report by outcome. `kept` prints the running observer's link (plus a note when
- * `--brain` was given, since a kept observer keeps its own setting) and exits 0; `stuck` (an older
- * observer that did not shut down) names both versions and the old observer's link and exits 1;
- * `not-started` (a busy port) prints the reason and exits 1; `started` prints the link, serves
- * until a signal or the observer's own `stopped`, and exits 0. Every link opens the newest session
- * of the project this command ran from, else the home view. Never calls `process.exit`; the
- * dispatcher owns the exit. Writes nothing to the project.
+ * without starting anything); choose the port (`--port`, else `AIDE_OBSERVER_PORT`, else the first
+ * port of the list; an invalid value exits 1 naming it), which is only the first port tried: the
+ * observer walks on through 24680 to 24689 when it is not free (brief #73); start the observer,
+ * scoping `--brain` to this project only; then report by outcome. `kept` prints the running
+ * observer's link (plus a note when `--brain` was given, since a kept observer keeps its own
+ * setting) and exits 0; `stuck` (an older observer that did not shut down) names both versions and
+ * the old observer's link and exits 1; `not-started` (no port on the list could be bound, naming
+ * every port tried, or the start threw) prints the reason and exits 1; `started` prints the link,
+ * serves until a signal or the observer's own `stopped`, and exits 0. `kept` and `started` also
+ * print the port note when the observer is not on the port asked for. Every link opens the newest
+ * session of the project this command ran from, else the home view. Never calls `process.exit`;
+ * the dispatcher owns the exit. Writes nothing to the project.
  */
 export default async function view({ args, projectRoot }: { args: string[]; projectRoot: string }): Promise<number> {
 	// 1. Parse the arguments.
@@ -57,7 +61,7 @@ export default async function view({ args, projectRoot }: { args: string[]; proj
 		return EXIT_NOT_STARTED;
 	}
 
-	// 4. Not started (busy port): nothing was written.
+	// 4. Not started (no port on the list could be bound): nothing was written.
 	if (started.outcome === "not-started") {
 		process.stderr.write(`${buildObserverMessage({ kind: "not-started", reason: started.reason })}\n`);
 		return EXIT_NOT_STARTED;
@@ -74,9 +78,13 @@ export default async function view({ args, projectRoot }: { args: string[]; proj
 		return EXIT_NOT_STARTED;
 	}
 
+	// The observer's port may differ from the one asked for; say so, whatever the cause.
+	const portNote = formatPortNote({ requested: choice.port, actual: started.observer.port });
+
 	// 6. An observer already answers: report its link and leave it alone.
 	if (started.outcome === "kept") {
 		process.stdout.write(`${buildObserverMessage({ kind: "already-running", link })}\n`);
+		if (portNote !== null) process.stdout.write(`${portNote}\n`);
 		if (brainOverride !== undefined) process.stdout.write(BRAIN_NOTE);
 		return EXIT_OK;
 	}
@@ -91,6 +99,7 @@ export default async function view({ args, projectRoot }: { args: string[]; proj
 
 	// 8. Serve until a signal or the observer's own shutdown, then report.
 	process.stdout.write(`${buildObserverMessage({ kind: "started", link, note: "Ctrl+C to stop" })}\n`);
+	if (portNote !== null) process.stdout.write(`${portNote}\n`);
 	await awaitShutdown({ stop: started.stop, stopped: started.stopped });
 	process.stdout.write("Observer stopped\n");
 	return EXIT_OK;

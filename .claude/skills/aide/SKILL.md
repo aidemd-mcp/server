@@ -21,7 +21,7 @@ description: >
 
 Conversational entry point for the full AIDE pipeline. Gathers context from the user, then drives each phase by delegating to specialized agents — spinning up fresh context for every stage and handing off via files.
 
-This skill is the source of truth for the orchestrator. The `/aide` slash command (in `.claude/commands/aide.md`) is a thin signpost that routes to this skill — the prose lives here so the methodology, boot sequence, and constraints surface together with the skill's frontmatter description in the available-skills listing.
+This skill is the source of truth for the orchestrator. The `/aide` slash command (in `.claude/commands/aide.md`) is a thin router that invokes the `aide-observer` skill and then this one; everything about the observer, including reporting each action, lives in `aide-observer`. The orchestrator prose lives here so the methodology, boot sequence, and constraints surface together with the skill's frontmatter description in the available-skills listing.
 
 ---
 
@@ -147,17 +147,7 @@ Report the open tasks and any drift to the user in a few lines, and propose the 
 
 If the kanban skill or the brain tools are unreachable, say so and continue — never invent the board's contents.
 
-### Step 6 — Open the observer session
-
-The observer is a local read-only view where the user watches the pipeline. The pipeline never depends on it: every call in this step is best effort, and a failure is mentioned to the user once and never stops boot. Skip the whole step if the `aide_observer_event` tool is not available.
-
-1. **Report the session start.** Call `aide_observer_event` with `kind: "session_started"` and what you know: `projectRoot` (the project's absolute path), `kanbanTag` (the `Kanban project tag:` line), and `brainPath` — the brain's folder on disk, when the brain is stored as plain folders (for example, the vault path its launcher opens). Leave out anything you don't know; never guess a path.
-2. **Report the user's request.** Call `aide_observer_event` with `kind: "prompt"` and the user's message in full.
-3. **Start the observer,** unless the instructions file says `Observer: off`. Call `aide_observer_start` (no arguments; one observer serves every project on this machine) and give the user the link it returns, which opens this session's view. If it says the port is busy, the port setting is invalid, or an older observer was not replaced, tell the user once and carry on.
-
-Restart rule: unless the instructions file says `Observer: off`, when an `aide_observer_event` reply says the observer is not running, call `aide_observer_start` once. Try again only after a later report gets through and a new run of failures begins.
-
-**Only after Step 6** may you act on the user's request, consult the sections below, and decide what to do.
+**Only after Step 5** may you act on the user's request, consult the sections below, and decide what to do.
 
 **Why this matters:** You are an orchestrator for a methodology you don't inherently know. Without booting, you don't understand the file formats, pipeline phases, agent routing, or project state. Skipping boot means guessing.
 
@@ -333,32 +323,11 @@ Every handoff is an UPDATE. Supply the change description (what happened) and se
 
 Never hold a handoff back for content you don't have yet. Write what you have now; an empty section stays empty until there is something true to put in it. The skill never refuses for missing content.
 
-## Reporting to the observer
-
-Report each action through `aide_observer_event` as it happens, so the user can follow the pipeline in the observer. Reporting is best effort: never retry a report, never wait on one, and never stop or change the pipeline because of one. When a reply says `recorded; observer not running` and the instructions file does not say `Observer: off`, call `aide_observer_start` once; if that fails, tell the user once and carry on.
-
-| When | Report |
-|---|---|
-| The user sends a message | `prompt` with the message in full |
-| The session takes up a task — at boot or later, including one already In Progress that nothing moves | `task` with its slug, `picked`, and the column it is in |
-| A task is moved on the board | `task` with its slug, `moved`, and the column it moved to |
-| Before you delegate to a pipeline agent | `phase_started` with the phase, the agent's name and the module path |
-| When it returns | `phase_finished` with the same phase, agent and module, a short result and summary |
-| You pause for the user's approval of a file (structure tree, spec, plan) | `gate_waiting` with the gate and the path of the file awaiting approval |
-| The user answers | `gate_resolved` with the same gate and file, and the resolution |
-| An implementor checks off a plan step | `plan_step_checked` with the module, the step and the plan's step count |
-| QA returns | `qa_verdict` with the module, `passed` or `issues`, and the open count |
-| You write or edit a file yourself (session record, prose) | `file_written` with its path, `created` or `updated` |
-| A commit or release lands | `commit` with the sha and message, or `release` with the version |
-| Something fails | `error` with the message, and the agent and module when known |
-
-Phases: spec, research, synthesize, structure, plan, build, qa, fix, align, refactor, cleanup. The module is the folder the phase works on, written as a project-relative path.
-
 ## Board tracking — the kanban skill
 
 Every piece of pipeline work is tracked on a task. Board tracking never gates `session.aide`: work that has no task yet — or that the user doesn't track on the board — is still recorded there. Board bookkeeping is a job the orchestrator runs itself (like interviewing and relaying) — through the `kanban` skill's operations, never by editing the board another way. You hold each operation's approval gates with the user; the `kanban-maintainer` agent does the file work and returns what changed.
 
-- **Start.** When a feature pipeline starts or resumes, tie it to an open task from the Step 5 list, or create one with the kanban skill's create operation. Report it to the observer as `task` with action `picked` and its column as soon as the session takes it up — even when it is already In Progress and nothing moves. Then move it to In Progress with the move operation if it is not there yet, and report that move as `moved`.
+- **Start.** When a feature pipeline starts or resumes, tie it to an open task from the Step 5 list, or create one with the kanban skill's create operation. Then move it to In Progress with the move operation if it is not there yet.
 - **Transitions.** At every transition that triggers `aide-handoff`, stash progress into the task with the stash operation, and hand the task link to the handoff (see "What you owe the skill").
 - **New work.** Follow-up work that surfaces mid-pipeline goes into `session.aide`'s follow-ups; anything large enough to schedule also becomes a task (ask the user first), and its slug goes next to it.
 - **Close.** At Completion, after the maintainer cleans up, move the task to In Review with the complete operation, or to Done once the user confirms the feature is closed.

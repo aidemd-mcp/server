@@ -24,9 +24,40 @@ describe("formatReply", () => {
 		);
 	});
 
-	it("formats not-started", () => {
-		expect(formatReply({ outcome: "not-started", reason: "port 24680 is busy" })).toBe(
-			"Observer not started: port 24680 is busy",
+	it("formats blocked as the BLOCKED line", () => {
+		expect(formatReply({ outcome: "blocked", reason: "No port could be bound: 24680 (in use), 24681 (not allowed)" })).toBe(
+			"BLOCKED: the observer could not start, so nothing proceeds. No port could be bound: 24680 (in use), 24681 (not allowed)",
 		);
+	});
+
+	it("formats the three-part HALT: the stop sentence, one line per open session, the link", () => {
+		const liveness = {
+			state: "working" as const,
+			lastActivityAt: "2026-11-25T11:20:00.000Z",
+			quietMinutes: 40,
+			maybeStuck: true,
+		};
+
+		const text = formatReply({
+			outcome: "halt",
+			link: "http://127.0.0.1:24680/x?token=t",
+			open: [
+				{ id: "20261125T090000000Z-aaaaaa", idKind: "session", liveness, pipeline: "feature-x", phase: "build" },
+				{
+					id: "abc",
+					idKind: "claude",
+					liveness: { ...liveness, state: "waiting", quietMinutes: 0, maybeStuck: false },
+					pipeline: null,
+					phase: null,
+				},
+			],
+		});
+
+		expect(text.split("\n")).toEqual([
+			"HALT: another session of this project is open. Nothing proceeds until the user approves ending it with aide_observer_end_session, or closes this session.",
+			"- 20261125T090000000Z-aaaaaa · working · quiet 40 min, maybe stuck · last activity 2026-11-25T11:20:00.000Z · pipeline feature-x · phase build",
+			"- claude:abc · waiting on the user · active · last activity 2026-11-25T11:20:00.000Z · pipeline none · phase none",
+			"Observer: http://127.0.0.1:24680/x?token=t",
+		]);
 	});
 });

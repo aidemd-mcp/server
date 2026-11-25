@@ -46,5 +46,5 @@ export default async function restoreSession({ res, params, ctx }: RouteInput): 
 
 	for (const event of result.session.events) ctx.store.accept({ event, projectKey });
 	sendJson({ res, status: 200, body: { data: { restored: id } } });
-	announceSessions({ ctx, projectKey });
+	await announceSessions({ ctx, projectKey });
 }

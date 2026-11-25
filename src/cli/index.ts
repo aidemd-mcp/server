@@ -3,8 +3,13 @@ import isMainModule from "./isMainModule/index.js";
 /**
  * Dispatch a terminal command. `args` is `process.argv.slice(2)`.
  *
- * Returns true when `args[0]` named a command (init, sync, view) and it ran;
- * false otherwise, in which case the caller starts the MCP server.
+ * Returns true when `args[0]` named a command (init, sync, view, hook) and it
+ * ran; false otherwise, in which case the caller starts the MCP server.
+ *
+ * `hook` is the one command called by Claude Code hooks, not by a person: it
+ * prints nothing and always exits 0, whatever happened inside. The process
+ * exits as soon as the hook settles, so a keep-alive socket left by its ping
+ * can never hold the process open.
  *
  * Each table entry lazy-loads only its own module with a dynamic import, so
  * running one command never loads another command or the MCP server. This
@@ -20,7 +25,7 @@ import isMainModule from "./isMainModule/index.js";
  */
 export default async function runCli(args: string[]): Promise<boolean> {
 	// Lookup table: command name -> loader that imports and runs that command only
-	const COMMANDS: Record<"init" | "sync" | "view", () => Promise<void>> = {
+	const COMMANDS: Record<"init" | "sync" | "view" | "hook", () => Promise<void>> = {
 		init: async () => {
 			await (await import("./init/index.js")).runInitCli();
 		},
@@ -33,6 +38,13 @@ export default async function runCli(args: string[]): Promise<boolean> {
 				projectRoot: process.cwd(),
 			});
 			process.exit(code);
+		},
+		hook: async () => {
+			try {
+				await (await import("./hook/index.js")).default();
+			} finally {
+				process.exit(0);
+			}
 		},
 	};
 

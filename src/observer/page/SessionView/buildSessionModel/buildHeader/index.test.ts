@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 import buildHeader from "./index.js";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 
 const NOW = new Date("2026-01-01T10:00:00.000Z");
 const START = "2026-01-01T09:02:00.000Z";
@@ -8,7 +9,7 @@ const clockOf = (iso: string) => {
 	const at = new Date(iso);
 	return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 };
-const row = { sessionId: "s1", startedAt: START, lastEventAt: START, eventCount: 1, liveness: "live", task: null, label: null } as SessionRowModel;
+const row = { sessionId: "s1", startedAt: START, lastEventAt: START, eventCount: 1, liveness: makeLiveness(), task: null, label: null } as SessionRowModel;
 const base = { route: { token: "tok", sessionId: "s1" }, name: "app", sessions: [row], firstEventAt: null, rootPath: "/work/app", kanbanTag: "app", switcher: [], now: NOW };
 
 describe("buildHeader", () => {

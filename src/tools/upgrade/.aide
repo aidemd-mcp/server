@@ -6,32 +6,32 @@ intent: >
   aide_upgrade closes the gap that aide_init's never-overwrite stance
   leaves open. When canonical doctrine evolves, host projects drift
   silently because init refuses to clobber existing files. Upgrade is the
-  controlled, interactive complement: it surfaces drift the agent walks
-  the user through per category, and applies only what the user confirms.
-  The flow is consent-first by design — the user sees what would change
-  before anything is written. A category is the unit of confirmation,
-  except in the user-owned brain config, where each outdated section is
-  its own decision.
+  controlled, interactive complement: it surfaces drift the agent walks the
+  user through per category, and applies only what the user confirms. The
+  flow is consent-first by design — the user sees what would change before
+  anything is written. A category is the unit of confirmation, except in
+  the user-owned brain config, where each outdated section is its own
+  decision.
 outcomes:
   desired:
-    - Drift detection runs read-only and groups results by methodology category, so the agent can present each category to the user as a discrete decision.
-    - Application happens only on per-category user confirmation, and a confirmed category is applied as a unit so no mixed-version artifacts result. The brain config's outdated sections and legacy launcher are the exception, each applied only on its own shown change and confirmation.
+    - Drift detection runs read-only and groups results by methodology category, and each category is applied only on its own user confirmation, as a unit so no mixed-version artifacts result. The brain config's outdated sections and legacy launcher are the exception, each applied only on its own shown change and confirmation.
     - The tool is the executor for files it owns, so the agent never sees canonical content for those categories and cannot hallucinate it; the agent's role is consent-gathering and surfacing results.
     - Files outside the methodology surface are invisible to the tool. User code and user-authored intent specs are never read, compared, or written.
     - The brain category reports missing required sections, sections whose text is a known outdated template version, and a legacy launcher as distinct kinds of drift, leaving custom launchers and customized sections unflagged. On the user's yes it inserts every missing section byte-identical from the latest bundled template when the brain integration is the template's, otherwise naming the sections the user must adapt, and it applies one confirmed migration at a time, refusing if that section's bytes changed at all since its diff was shown.
     - The MCP step judges the aide entry against the global form, so an entry launched through the package runner is drift. On the user's yes, and only once the package is installed globally, the tool rewrites it to the bare global command, keeping every other byte of the MCP config unchanged.
+    - For a Claude Code project, the hooks category reports AIDE hook entries missing from the project's Claude settings and, on the user's yes, merges in only those, every other byte of the settings unchanged.
   undesired:
-    - An apply path that fires without per-category user confirmation, or that treats the whole upgrade as one all-or-nothing decision. Either silently destroys customizations the user would have kept.
+    - An apply path that fires without per-category user confirmation or treats the whole upgrade as one all-or-nothing decision, or a drift-detection pass that changes anything on the host's disk.
     - The tool returning canonical file content to the agent for the agent to write itself, or returning more brain template text than the one section a migration decision needs. Either bypasses the tool-as-executor contract and floods the agent with bytes it has no judgment to apply.
-    - A drift-detection pass that mutates the host's disk. Comparison must be observably read-only; any side effect during detection is a regression.
     - The tool reading, comparing, or writing files outside the methodology surface — user code, user intent specs, or any artifact aide_init did not install.
     - A brain write that rewrites, reorders or reformats any existing section, the launcher wiring or a customization beyond the one confirmed change, applies a migration over a section whose bytes changed after its diff was shown, leaves mixed line endings in the file, or inserts template text into a config for any other integration. Folding stale sections or a legacy launcher into the missing-section report, or flagging a custom launcher or customized section as legacy, is equally a regression.
     - An upgrade that switches an entry to the global form before its package is installed globally, or reports a correctly wired global entry as drift. Returning the rewritten entry for the agent to write by hand, or writing a path specific to one machine, is equally a regression.
+    - A hooks merge without the user's yes, one that adds an AIDE entry twice, or one that changes, reorders or reformats any settings entry AIDE did not add.
 ---
 
 ## Context
 
-Init never overwrites, so canonical doctrine drifts away from what a host installed. Upgrade closes the gap, and it touches two kinds of host artifact that need different handling. Methodology files belong to the package: the running server's copy is the correct one, so the only question is whether to take it. The aide server entry is judged against the global launch, AIDE's canonical form, so a launch through the package runner is drift. A pinned project reaches a server that can switch it only by first moving its pin, and an old server cannot know newer releases, so that move is judged against a target version the caller names. The brain config belongs to the user: it holds wiring and customizations no canonical copy knows about, and it drifts in three separate ways — sections the contract now requires but the file lacks, shipped sections whose text is an old template version, and a launcher in a legacy shape.
+Init never overwrites, so canonical doctrine drifts away from what a host installed. Upgrade closes the gap, and it touches three kinds of host artifact that need different handling, the third being AIDE's own hook entries in the user's Claude settings, which upgrade may add while leaving every other entry as the user wrote it. Methodology files belong to the package: the running server's copy is the correct one, so the only question is whether to take it. The aide server entry is judged against the global launch, AIDE's canonical form, so a launch through the package runner is drift. A pinned project reaches a server that can switch it only by first moving its pin, and an old server cannot know newer releases, so that move is judged against a target version the caller names. The brain config belongs to the user: it holds wiring and customizations no canonical copy knows about, and it drifts in three separate ways — sections the contract now requires but the file lacks, shipped sections whose text is an old template version, and a launcher in a legacy shape.
 
 Three parties are involved and each can do only part of the work. The tool holds its own version's canonical bytes and can write host files. The agent can talk to the user but cannot be trusted to reproduce canonical text it was handed. The user is the only one who can approve a change to anything they own. Under the source tree's rule, only install, sync and a consent-gated upgrade may write host files, so the brain config's repairs have to come through here, gated by consent.
 

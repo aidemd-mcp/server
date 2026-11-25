@@ -3,11 +3,8 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-vi.mock("@/util/isProcessRunning/index.js", () => ({
-	default: vi.fn(() => false),
-}));
-
 import resolveArchivedLog from "@/util/runtimePaths/resolveArchivedLog/index.js";
+import resolveEndedMark from "@/util/runtimePaths/resolveEndedMark/index.js";
 import readArchive from "./index.js";
 
 const KEY = "alpha-3f9a2c";
@@ -48,7 +45,7 @@ afterEach(async () => {
 });
 
 describe("readArchive", () => {
-	it("lists the project's archived sessions oldest first, never live", async () => {
+	it("lists the project's archived sessions oldest first", async () => {
 		await archive(SESSION_B);
 		await archive(SESSION_A);
 
@@ -56,6 +53,23 @@ describe("readArchive", () => {
 
 		expect(sessions.map((session) => session.sessionId)).toEqual([SESSION_A, SESSION_B]);
 		expect(sessions.every((session) => !session.unreadable)).toBe(true);
+	});
+
+	it("carries each session's liveness: an ended mark reads ended, a markless log reads working", async () => {
+		await archive(SESSION_A);
+		await archive(SESSION_B);
+		const mark = resolveEndedMark({ projectKey: KEY, id: SESSION_A });
+		await mkdir(path.dirname(mark), { recursive: true });
+		await writeFile(
+			mark,
+			JSON.stringify({ v: 1, sessionId: SESSION_A, endedAt: "2026-11-22T09:30:00.000Z", endedBy: "user" }),
+			"utf-8",
+		);
+
+		const sessions = await readArchive({ projectKey: KEY });
+
+		expect(sessions.map((session) => session.liveness.state)).toEqual(["ended", "working"]);
+		expect(sessions[0]!.liveness.endedBy).toBe("user");
 	});
 
 	it("skips files that are not safe session logs", async () => {

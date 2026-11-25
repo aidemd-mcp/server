@@ -67,6 +67,10 @@ const EMPTY: NowCardModel = {
 };
 
 describe("NowCard", () => {
+	it("prints the pipeline before the phase in the title", () => {
+		expect(stripMarkup(renderToStaticMarkup(<NowCard card={{ ...BASE, pipeline: "feature-x" }} />))).toContain("feature-x · Build");
+	});
+
 	it.each([
 		["run", BASE, "ic lg i-run"],
 		["wait", WAIT, "ic lg i-wait"],

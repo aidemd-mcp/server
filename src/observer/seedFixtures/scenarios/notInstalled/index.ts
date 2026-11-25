@@ -12,7 +12,13 @@ export default function notInstalled(): FixtureScenario {
 			files: {},
 			board: null,
 			reportRoot: true,
-			sessions: [{ pid: "live", events: [{ offsetMin: lastEventAgoMin, kind: "session_started" }] }],
+			sessions: [
+				{
+					pid: "live",
+					presence: { state: "working", minutesAgo: lastEventAgoMin },
+					events: [{ offsetMin: lastEventAgoMin, kind: "session_started" }],
+				},
+			],
 		},
 	};
 }

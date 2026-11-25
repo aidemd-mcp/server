@@ -4,7 +4,7 @@ import type { ProjectFolder } from "../types/index.js";
 import pickPathModule from "../shared/pickPathModule/index.js";
 import resolveAppDataRoot from "../shared/resolveAppDataRoot/index.js";
 import isProjectKey from "../isProjectKey/index.js";
-import { EVENTS_FOLDER } from "../shared/runtimeNames/index.js";
+import { ENDED_FOLDER, EVENTS_FOLDER, PRESENCE_FOLDER } from "../shared/runtimeNames/index.js";
 
 /**
  * List every project folder under the app-data root, sorted by key. Reads only:
@@ -26,6 +26,8 @@ export default async function listProjectFolders(): Promise<ProjectFolder[]> {
 		.map((entry) => ({
 			projectKey: entry.name,
 			eventsFolder: pathModule.join(root, entry.name, EVENTS_FOLDER),
+			presenceFolder: pathModule.join(root, entry.name, PRESENCE_FOLDER),
+			endedFolder: pathModule.join(root, entry.name, ENDED_FOLDER),
 		}))
 		.sort((a, b) => (a.projectKey < b.projectKey ? -1 : a.projectKey > b.projectKey ? 1 : 0));
 }

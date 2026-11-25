@@ -46,8 +46,9 @@ async function listenAsOldObserver({ status, version }: { status: number; versio
 		});
 	});
 	await new Promise<void>((done) => server!.listen(0, "127.0.0.1", done));
-	const address = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
-	return { address, token: "t".repeat(64), pid: 4242, version };
+	const { port } = server!.address() as AddressInfo;
+	const address = `http://127.0.0.1:${port}`;
+	return { address, port, token: "t".repeat(64), pid: 4242, version };
 }
 
 describe("takeOver", () => {

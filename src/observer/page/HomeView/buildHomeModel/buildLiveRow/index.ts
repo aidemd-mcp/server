@@ -1,6 +1,7 @@
 import PHASE_LABELS from "@/service/observer/status/shared/phaseLabels/index.js";
 import type { RunningWork, Status } from "@/types/index.js";
 import buildHref from "@/observer/page/route/buildHref/index.js";
+import describeLiveness from "@/observer/page/shared/describeLiveness/index.js";
 import formatAgo from "@/observer/page/shared/formatAgo/index.js";
 import formatClock from "@/observer/page/shared/formatClock/index.js";
 import formatSpan from "@/observer/page/shared/formatSpan/index.js";
@@ -15,9 +16,12 @@ function describePhase({ running }: { running: RunningWork }): string {
 }
 
 /**
- * One live-sessions row. A gate open in the session wins (the wait badge and the span it has waited);
- * else the phase it is running (with the Build step and the time it has run); else `No phase running`.
- * Module and agent come only from what the status reports and are left out when it reports none.
+ * One live-sessions row. The badge is the session's liveness (`describeLiveness`: Working, Waiting
+ * on you, or Quiet N min · maybe stuck). Beside it, a gate open in the session wins (its module and
+ * the span it has waited); else the phase it is running (with the Build step and the time it has
+ * run); else `Working outside the pipeline` when the session's rail says so, else `No phase running`. The
+ * row carries the rail's pipeline beside the phase. Module and agent come only from what the status reports and are
+ * left out when it reports none.
  */
 export default function buildLiveRow({
 	token,
@@ -37,7 +41,12 @@ export default function buildLiveRow({
 		.filter((work) => work.sessionId === session.sessionId)
 		.sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0))[0];
 
+	const rail = status?.rails.find((candidate) => candidate.sessionId === session.sessionId) ?? null;
+	const { word, className, icon } = describeLiveness({ liveness: session.liveness, now });
 	const base = {
+		pipeline: rail?.pipeline ?? null,
+		outside: rail?.outside ?? false,
+		badge: { word, className, icon },
 		key: `${project.projectKey}:${session.sessionId}`,
 		project: project.name,
 		start: formatClock({ iso: session.startedAt, now }).clock,
@@ -47,7 +56,7 @@ export default function buildLiveRow({
 	if (waiting !== undefined) {
 		return {
 			...base,
-			badge: { word: "Waiting on you", className: "wait", icon: "wait" },
+			phase: null,
 			module: moduleLabel({ folder: waiting.folder, projectName: project.name }),
 			agent: null,
 			elapsed: formatAgo({ iso: waiting.since, now }),
@@ -56,11 +65,11 @@ export default function buildLiveRow({
 	if (running !== undefined) {
 		return {
 			...base,
-			badge: { word: describePhase({ running }), className: "run", icon: "run" },
+			phase: describePhase({ running }),
 			module: moduleLabel({ folder: running.module, projectName: project.name }),
 			agent: running.agent,
 			elapsed: formatSpan((now.getTime() - new Date(running.startedAt).getTime()) / 1000),
 		};
 	}
-	return { ...base, badge: { word: "No phase running", className: "neutral", icon: "idle" }, module: null, agent: null, elapsed: null };
+	return { ...base, phase: base.outside ? "Working outside the pipeline" : "No phase running", module: null, agent: null, elapsed: null };
 }

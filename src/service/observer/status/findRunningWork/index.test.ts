@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { ObserverEvent } from "@/types/index.js";
-import type { Liveness, ModuleNode, SessionSummary, TreeFileEntry } from "../types/index.js";
+import type { ObserverEvent, SessionLiveness } from "@/types/index.js";
+import type { ModuleNode, SessionSummary, TreeFileEntry } from "../types/index.js";
 import findRunningWork from "./index.js";
 
 const PROJECT_ROOT = process.platform === "win32" ? "C:\\proj" : "/proj";
@@ -19,14 +19,14 @@ function makeEvent(
 	return { v: 1, ts: iso(0), sessionId: "s1", seq: 1, pid: 100, kind, ...fields, ...envelope } as ObserverEvent;
 }
 
-function makeSession(sessionId: string, liveness: Liveness = "live"): SessionSummary {
+function makeSession(sessionId: string, state: SessionLiveness["state"] = "working"): SessionSummary {
 	return {
 		sessionId,
 		startedAt: iso(60 * MINUTE),
 		lastEventAt: iso(MINUTE),
 		eventCount: 1,
 		pid: 100,
-		liveness,
+		liveness: { state, lastActivityAt: iso(MINUTE), quietMinutes: 1, maybeStuck: false },
 		reported: null,
 	};
 }
@@ -125,10 +125,17 @@ describe("findRunningWork — open phase", () => {
 		expect(run(events, [makeSession("s1", "ended")])).toEqual([]);
 	});
 
-	it("reports an idle session's open phase", () => {
+	it("reports a waiting session's open phase", () => {
 		const events = [started("plan", "src/a", { seq: 1 })];
 
-		expect(run(events, [makeSession("s1", "idle")])).toHaveLength(1);
+		expect(run(events, [makeSession("s1", "waiting")])).toHaveLength(1);
+	});
+
+	it("closes the open phase at a later commit", () => {
+		const events = [started("build", "src/a", { seq: 1 }), makeEvent("commit", { sha: "abcdef1" }, { seq: 2 })];
+		const nodes = [makeNode("src/a", [makePlan("src/a")])];
+
+		expect(run(events, [makeSession("s1")], nodes)).toEqual([]);
 	});
 
 	it("takes the latest start when the same session started a phase twice", () => {
@@ -282,5 +289,51 @@ describe("findRunningWork — QA and Fix rounds", () => {
 		const events = [started("plan", "src/a", { seq: 1 })];
 
 		expect(run(events, [makeSession("s1")])[0].qaFixRound).toBeUndefined();
+	});
+});
+
+describe("findRunningWork — pipeline scope", () => {
+	it("reads the open phase of the session's current pipeline", () => {
+		const events = [
+			makeEvent("pipeline_started", { pipeline: "p1", phase: "spec" }, { seq: 1 }),
+			makeEvent("phase_started", { pipeline: "p1", phase: "plan", agent: "a", module: "src/a" }, { seq: 2 }),
+		];
+
+		const [work] = run(events, [makeSession("s1")]);
+
+		expect(work.phase).toBe("plan");
+	});
+
+	it("does not close a phase with a phase_finished of another pipeline", () => {
+		const events = [
+			makeEvent("pipeline_started", { pipeline: "p1", phase: "spec" }, { seq: 1 }),
+			makeEvent("phase_started", { pipeline: "p1", phase: "plan", agent: "a", module: "src/a" }, { seq: 2 }),
+			makeEvent("phase_finished", { pipeline: "p2", phase: "plan", agent: "a", module: "src/a" }, { seq: 3 }),
+		];
+
+		expect(run(events, [makeSession("s1")])).toHaveLength(1);
+	});
+
+	it("runs nothing once the current pipeline finished", () => {
+		const events = [
+			makeEvent("pipeline_started", { pipeline: "p1", phase: "spec" }, { seq: 1 }),
+			makeEvent("phase_started", { pipeline: "p1", phase: "plan", agent: "a", module: "src/a" }, { seq: 2 }),
+			makeEvent("pipeline_finished", { pipeline: "p1", result: "completed" }, { seq: 3 }),
+		];
+
+		expect(run(events, [makeSession("s1")])).toEqual([]);
+	});
+
+	it("counts only verdicts of the same pipeline for the QA round", () => {
+		const events = [
+			makeEvent("qa_verdict", { pipeline: "p0", module: "src/a", verdict: "issues" }, { seq: 1 }),
+			makeEvent("pipeline_started", { pipeline: "p1", phase: "qa" }, { seq: 2 }),
+			makeEvent("qa_verdict", { pipeline: "p1", module: "src/a", verdict: "issues" }, { seq: 3 }),
+			makeEvent("phase_started", { pipeline: "p1", phase: "qa", agent: "a", module: "src/a" }, { seq: 4 }),
+		];
+
+		const [work] = run(events, [makeSession("s1")]);
+
+		expect(work.qaFixRound).toBe(2);
 	});
 });

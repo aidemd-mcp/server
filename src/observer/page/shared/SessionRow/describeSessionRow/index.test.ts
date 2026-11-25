@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import makeLiveness from "@/observer/page/__fixtures__/makeLiveness/index.js";
 import type { SessionRowModel } from "@/observer/page/types/index.js";
 import describeSessionRow from "./index.js";
 
@@ -10,7 +11,7 @@ function makeRow(overrides: Partial<SessionRowModel> = {}): SessionRowModel {
 		startedAt: new Date(2026, 10, 23, 14, 2, 0).toISOString(),
 		lastEventAt: new Date(2026, 10, 23, 14, 31, 40).toISOString(),
 		eventCount: 42,
-		liveness: "live",
+		liveness: makeLiveness({ now: NOW }),
 		task: "aide_score ranks misaligned specs",
 		label: null,
 		...overrides,
@@ -37,11 +38,12 @@ describe("describeSessionRow", () => {
 	});
 
 	it.each([
-		["live", { className: "run", icon: "run", word: "Live" }, true, false],
-		["idle", { className: "outline", icon: "idle", word: "Idle" }, false, false],
-		["ended", { className: "neutral", icon: "power", word: "Ended" }, false, true],
-	] as const)("%s liveness gets its badge, live and ended flags", (liveness, badge, live, ended) => {
-		const description = describeSessionRow({ row: makeRow({ liveness }), now: NOW });
+		["working", 1, { className: "run", icon: "run", word: "Working" }, true, false],
+		["waiting", 1, { className: "wait", icon: "wait", word: "Waiting on you" }, true, false],
+		["working", 20, { className: "neutral", icon: "idle", word: "Quiet 20 min · maybe stuck" }, false, false],
+		["ended", 90, { className: "neutral", icon: "power", word: "Ended" }, false, true],
+	] as const)("%s, %i min quiet gets its badge, live and ended flags", (state, minutesQuiet, badge, live, ended) => {
+		const description = describeSessionRow({ row: makeRow({ liveness: makeLiveness({ state, minutesQuiet, now: NOW }) }), now: NOW });
 		expect(description.badge).toEqual(badge);
 		expect(description.live).toBe(live);
 		expect(description.ended).toBe(ended);

@@ -8,6 +8,18 @@ describe("observerRecord schema", () => {
 		expect(schema.safeParse(VALID).success).toBe(true);
 	});
 
+	it("accepts a record with a port and keeps it", () => {
+		const result = schema.safeParse({ ...VALID, port: 4317 });
+		expect(result.success).toBe(true);
+		expect(result.data?.port).toBe(4317);
+	});
+
+	it("accepts a record without a port (an older observer wrote it)", () => {
+		const result = schema.safeParse(VALID);
+		expect(result.success).toBe(true);
+		expect(result.data?.port).toBeUndefined();
+	});
+
 	it("accepts a record with a version and keeps it", () => {
 		const result = schema.safeParse({ ...VALID, version: "0.15.0" });
 		expect(result.success).toBe(true);
@@ -22,6 +34,9 @@ describe("observerRecord schema", () => {
 		["pid 0", { ...VALID, pid: 0 }],
 		["no version", (({ version: _version, ...rest }) => rest)(VALID)],
 		["an empty version", { ...VALID, version: "" }],
+		["port 0", { ...VALID, port: 0 }],
+		["port 65536", { ...VALID, port: 65536 }],
+		["a fractional port", { ...VALID, port: 4317.5 }],
 		["an extra key", { ...VALID, extra: true }],
 	])("rejects %s", (_name, value) => {
 		expect(schema.safeParse(value).success).toBe(false);
