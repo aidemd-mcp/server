@@ -58,6 +58,9 @@ export default async function resolveConfinedPath({
 	// 2. Lexical containment: `relative` yields an absolute path when the target is on another drive.
 	const lexical = resolve(projectRoot, requested);
 	if (isOutside(relative(projectRoot, lexical))) return { kind: "refused" };
+	// A backslash is a separator only on Windows; read it as one everywhere too, so `..\x` is
+	// refused on every platform rather than treated as an odd file name elsewhere.
+	if (isOutside(relative(projectRoot, resolve(projectRoot, requested.replace(/\\/g, "/"))))) return { kind: "refused" };
 
 	// 3. Real-path containment: catches symlinks and junctions pointing out of the root.
 	const realRoot = await realpath(projectRoot);

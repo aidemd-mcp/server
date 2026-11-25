@@ -6,6 +6,11 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-24
+
+### Fixed
+- The observer's file route refuses a path that climbs out of the project with backslashes (`..\x`) on every platform, not only on Windows. 0.16.0 never reached npm because this check failed its release build; 0.16.1 ships everything listed under 0.16.0.
+
 ## [0.16.0] - 2026-11-24
 
 ### Added
