@@ -473,6 +473,15 @@ function readPresence(claudeId) {
 const tagOf = (text) => /\[observer-session ([A-Za-z0-9][A-Za-z0-9._-]*)\]/.exec(text)?.[1] ?? null;
 const linkOf = (text) => /(http:\/\/127\.0\.0\.1:\d+\/\S+)/.exec(text)?.[1] ?? null;
 const portOf = (link) => Number(new URL(link).port);
+/** The `outdated` array from an aide_info reply, or null when it has none. */
+const outdatedOf = (text) => {
+	const m = /"outdated"\s*:\s*(\[[^\]]*\])/.exec(text);
+	try {
+		return m ? JSON.parse(m[1]) : null;
+	} catch {
+		return null;
+	}
+};
 
 // ---------------------------------------------------------------------------
 // Headless Claude helpers
@@ -720,6 +729,22 @@ await check("4.merge", "existing settings.json left byte-identical + /aide:upgra
 	assert(/\[skipped-drift\] \.claude\/settings\.json/.test(r.stdout), "no [skipped-drift] line for .claude/settings.json");
 	return `byte-identical; deferred line present; log ${join(ROOT, "init-existing.txt")}`;
 });
+await check("4.boot", "aide_info lists `hooks` in outdated when the hooks were deferred", ["4.merge"], async () => {
+	// The /aide boot offers /aide:upgrade only when `outdated` is non-empty, so a
+	// project whose hooks were deferred must see `hooks` there.
+	const client = new McpClient("boot-hooks", join(ROOT, "rc-project-settings"));
+	try {
+		await client.start();
+		const info = await client.call("aide_info", {}, 90_000);
+		writeFileSync(join(LOGS, "aide_info-hooks-deferred.txt"), info.text);
+		const outdated = outdatedOf(info.text);
+		assert(outdated, `no outdated array in aide_info; see ${join(LOGS, "aide_info-hooks-deferred.txt")}`);
+		assert(outdated.includes("hooks"), `outdated is ${JSON.stringify(outdated)}, expected it to include "hooks"`);
+		return `outdated ${JSON.stringify(outdated)}`;
+	} finally {
+		await client.stop();
+	}
+});
 await check("4.malformed", "malformed settings.json -> [skipped-malformed]", ["2.resolve"], async () => {
 	const dir = join(ROOT, "rc-project-malformed");
 	seedProject(dir);
@@ -792,6 +817,8 @@ await check("6s.session", "session_started -> link -> start returns link on a no
 	const info = await client.call("aide_info", {}, 90_000);
 	writeFileSync(join(LOGS, "aide_info-project.txt"), info.text);
 	assert(/"status"\s*:\s*"ok"/.test(info.text), `aide_info brain status not ok; see ${join(LOGS, "aide_info-project.txt")}`);
+	const outdated = outdatedOf(info.text);
+	assert(outdated && !outdated.includes("hooks"), `freshly initialised project reports outdated ${JSON.stringify(outdated)}; hooks should be current`);
 	const started = await client.call("aide_observer_event", { kind: "session_started", projectRoot: PROJECT, kanbanTag: "release-check" });
 	const obsId = tagOf(started.text);
 	assert(obsId, `session_started reply has no session tag: ${started.text}`);
