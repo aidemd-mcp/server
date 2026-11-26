@@ -158,6 +158,10 @@ The tasks on the board this work touches, in work order; the full record of the 
 
 - `observer-board-missing-when-agent-omits-brain-folder` (aidemd-mcp board, In Review) — the observer finds the board from the brain config's `kanban` field (decision #99); built and verified, released in 0.18.0.
 - `observer-board-reader-command-for-any-brain` (aidemd-mcp board, Backlog, p2) — `source: command`: a script printing AIDE's board format, read from the project's own config, never relayed by the agent (decision #99).
+- `observer-test-projects-get-unique-names-and-cleanup` (aidemd-mcp board, Backlog, p1) — test-created observer projects get unique names like aidemd-mcp-test-1 and are cleaned up after the run.
+- `observer-warns-on-duplicate-project-name` (aidemd-mcp board, Backlog, p1) — aide_observer_event warns when a project name is already listed at another path; the observer drops projects whose folder was deleted.
+- `observer-project-list-shows-path` (aidemd-mcp board, Backlog, p2) — the project list shows each project's path.
+- `observer-project-row-labels` (aidemd-mcp board, Backlog, p2) — label task and phase in the project row, drop the duplicate slug, pad and label the line under the stepper and make it agree with the stepper.
 - `aide-boot-misses-missing-hooks` (aidemd-mcp board, Done) — boot misses projects without the hooks; fixed through aide_info's `outdated` `hooks` key (decision #98); released in 0.17.1.
 - `aide-boot-validates-claude-settings-and-guides-repair` (aidemd-mcp board, Backlog, p2) — broken `.claude/settings.json` comes back from aide_info as its own finding with line/column; the main agent repairs it by hand only after the user confirms, then reruns the tool, which re-validates and adds AIDE's hooks on the user's yes; validation covers only JSONC parse + AIDE's own hook entries.
 - `aidemd-dev-hooks-observer-docs-and-seo-aeo` (aidemd-dev board, Backlog, p1) — lives on the site's own `aidemd-dev` board, not this one: research pass on target queries, hooks docs section, observer page, SEO/AEO. Its research pass now also covers GitHub repo optimization and whether to rename the generic `server` GitHub repo / `@aidemd-mcp/server` npm package (decided from the research).
@@ -446,10 +450,11 @@ The tasks on the board this work touches, in work order; the full record of the 
 - Every .aide file and every frontmatter field/section is reachable from the tree.
 - Path-confinement checks must treat a backslash as a separator on every platform; tests run on Linux CI, so a Windows-only pass is not a pass.
 - The release-check harness judges the real observer by the port its record names, not 24680 (the real one may sit anywhere in the port list).
+- A Claude Code session's aide MCP server keeps running the code it started with: after `npm i -g` of a new version, `aide_info` in that same session reports the new serverVersion (read from disk) while running old code. Judge new-version behavior from a fresh process or a new session.
 
 ## Where this cycle stopped (CRITICAL READING)
 
-0.18.0 is released and the site is synced. Next: (a) run `/aide:brain config` in this repo and in aidemd.dev to fill the new `kanban.path` field (the site's aide_info reports brainMigration staleSections [config]); it needs the user's per-change consent, so it is not run headless. Until then the observer shows the board as not set up for those projects. (b) The user decides whether to move task observer-board-missing-when-agent-omits-brain-folder from In Review to Done. (c) Seven stray test observer folders in %USERPROFILE%\.aidemd (aidemd-mcp-4b7f8b, 5157be, 54bcc4, 8c1fe2, c8a654, e3438d, fd02f2; c47f6b is the real one) await the user's yes to delete.
+0.18.0 is released and the site is synced. Next: (a) This repo's brain config took the 0.18.0 config section and declares `kanban: { source: folder, path: D:\Code\Me\my-brain\kanban }` (commit pushed 2026-11-26); aidemd.dev still needs `/aide:brain config` run in a session in its own folder. (b) The user decides whether to move observer-board-missing-when-agent-omits-brain-folder from In Review to Done. (c) On 2026-11-26 the 7 test-made aidemd-mcp observer projects were deleted on the user's yes, the 3 stale aidemd-mcp sessions from 2026-11-25 were ended, and the observer was restarted on 0.18.0 at port 24681 (it had briefly come up on 24680; the user wants 24681). Four new tasks were logged (see Kanban); none started.
 
 Standing approach for observer page UI changes: hand-driven targeted edits by the main agent, no pipeline, quick; update tests afterwards; CHANGELOG bullets under [Unreleased]; verify in the browser against the fixture observer (`npm run observer:fixtures -- --port 24799 --set sessions`, never port 24680).
 
