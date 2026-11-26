@@ -4,6 +4,9 @@ mcpServerConfig:
   command: mcpvault
   args:
     - 'D:\Code\Me\my-brain'
+kanban:
+  source: folder
+  path: D:\Code\Me\my-brain\kanban
 ---
 
 <!-- aide-orientation-start -->
@@ -29,6 +32,8 @@ absolute path to the user's Obsidian vault, to be placed at the last entry of
 `mcpServerConfig.args` in `brain.aide`. YAML null at that position is the
 unwired-state signal — it means the brain path has not yet been filled in.
 
+The frontmatter also carries the board location the observer reads to show this project's kanban board: `kanban.source` is `folder` and `kanban.path` is the absolute path of the vault's `kanban` folder. YAML null at `kanban.path` means it has not been filled in yet. The brain works without it; only the observer's board needs it.
+
 Argument shape (Obsidian only): `/aide:brain config [<absolute-path>]`.
 
 This flow has two paths that NEVER overlap in the same session: WIRING and
@@ -44,6 +49,7 @@ run AFTER the wiring restart.
    list. Quote the literal value you observe — either YAML null (an empty entry,
    written as a bare dash with no value) or a string. **Do not proceed without
    quoting it.** YAML null means un-wired; any string value means already wired.
+   Also quote `kanban.path`, or say that the frontmatter has no `kanban` field.
 
 2. Decide which flow runs:
    - `$ARGUMENTS` non-empty → **WIRING** flow. Use `$ARGUMENTS` as the target
@@ -55,11 +61,14 @@ run AFTER the wiring restart.
    - `$ARGUMENTS` empty AND last entry is a string path → **SEEDING** flow.
      The brain is already wired; skip Steps 3 and 4 entirely and jump to Step 5.
      Before seeding, if the launcher runs through `npx` (directly or after `cmd /c`), offer with `AskUserQuestion` to switch it to the global command, saying that npx launches time out at session start. On yes, install the package globally (`npm i -g @bitbonsai/mcpvault` via Bash); if the install exits non-zero, say so and continue to seeding unchanged. Then preview and apply `aide_upgrade({ category: "brain", brainChange: "launcher" })` (never edit the launcher by hand), run Step 4 (sync) and stop as the WIRING flow does. On no, continue to seeding unchanged.
+     Also before seeding, if the frontmatter has no `kanban` field or `kanban.path` is YAML null, offer once with `AskUserQuestion` to fill in the board location so the observer can show this project's kanban board. Suggest the vault path you quoted in Step 1 joined with `kanban` (using that path's own separator), plus a "Different location" entry and a "Not now" entry. On a location, write the field as Step 3 describes, re-read the frontmatter to confirm `kanban.path` is that absolute path, and continue to seeding; no sync is needed, because the field is not part of the brain's launcher. On "Not now", continue to seeding unchanged.
 
 ### WIRING flow — Steps 3, 4 (then STOP at end of 4)
 
 3. Edit `brain.aide` — replace the null at the last entry of `mcpServerConfig.args`
    with the absolute path.
+
+   In the same edit, fill the board location from that same path: set `kanban.path` to the vault path joined with `kanban`, using the path's own separator (for `D:\Vaults\brain` that is `D:\Vaults\brain\kanban`), written unquoted. If the frontmatter has no `kanban` field, add it right after the `mcpServerConfig` block as `kanban:` with the indented lines `source: folder` and `path: <vault path>` + separator + `kanban`. Fill it only from the vault path the user gave for this wiring; never guess it from anything else. Then re-read the frontmatter and confirm `kanban.path` is that absolute path.
 
    Then check how this config launches the brain. If the launched program is `mcpvault` (the file name of `mcpServerConfig.command`, or of the entry after `/c` when the command is `cmd`, with or without a directory path or a `.cmd` / `.exe` extension), the brain launches from a global install. In that case, run `npm ls -g @bitbonsai/mcpvault --depth=0` via Bash. If the package is not listed, tell the user you are installing it and run `npm i -g @bitbonsai/mcpvault` via Bash. If the install exits non-zero, say so plainly and STOP without running sync: a launcher whose command is not installed cannot start. If the launcher runs through `npx` instead, offer the switch to the global command as described in step 2 before running sync. A global launcher given by absolute path is valid; never rewrite it for being a path.
 
