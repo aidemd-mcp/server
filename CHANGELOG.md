@@ -6,6 +6,10 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Fixed
+
+- `/aide` boot now notices a project that is missing the Claude Code hooks, or has an older form of them, and offers `/aide:upgrade`. Before, `aide_info` judged only the version-tracked files, so a project upgraded to 0.17.0 was told it was up to date and never got the hooks the observer uses to tell whether a session is alive. `aide_info`'s `outdated` list now carries a `hooks` entry in that case, judged exactly as `aide_upgrade` judges it, even in a project with no `.aide/versions.json`.
+
 ## [0.17.0] - 2026-11-25
 
 ### Added

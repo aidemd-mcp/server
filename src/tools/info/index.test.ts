@@ -13,6 +13,9 @@ vi.mock("node:fs");
 vi.mock("@/tools/upgrade/buildVersionsMeta/index.js");
 vi.mock("@/service/buildBrainState/index.js");
 vi.mock("./resolveBehind/index.js", () => ({ default: vi.fn(async () => null) }));
+vi.mock("./resolveOutdated/detectStaleHooks/index.js", () => ({
+	default: vi.fn(async () => false),
+}));
 vi.mock("@/service/install/provisionBrain/index.js", () => ({
 	readBrainMigrationNotice: vi.fn(async () => null),
 }));
@@ -21,12 +24,14 @@ import { readFileSync } from "node:fs";
 import readVersionsManifest, { type VersionsMap } from "@/tools/upgrade/buildVersionsMeta/index.js";
 import buildBrainState from "@/service/buildBrainState/index.js";
 import resolveBehind from "./resolveBehind/index.js";
+import detectStaleHooks from "./resolveOutdated/detectStaleHooks/index.js";
 import { readBrainMigrationNotice } from "@/service/install/provisionBrain/index.js";
 import info, { InfoInput } from "./index.js";
 import type { BrainState, BehindNotice, BrainMigrationNotice } from "@/types/index.js";
 
 const mockReadBrainMigrationNotice = readBrainMigrationNotice as ReturnType<typeof vi.fn>;
 const mockResolveBehind = resolveBehind as ReturnType<typeof vi.fn>;
+const mockDetectStaleHooks = detectStaleHooks as ReturnType<typeof vi.fn>;
 const mockReadFileSync = readFileSync as ReturnType<typeof vi.fn>;
 const mockReadVersionsManifest = readVersionsManifest as ReturnType<typeof vi.fn>;
 const mockBuildBrainState = buildBrainState as ReturnType<typeof vi.fn>;
@@ -92,6 +97,8 @@ beforeEach(() => {
 	mockBuildBrainState.mockResolvedValue(BRAIN_OK);
 	// Default: no behind notice, and the network is never touched.
 	mockResolveBehind.mockResolvedValue(null);
+	// Default: hooks current, and the real filesystem is never read.
+	mockDetectStaleHooks.mockResolvedValue(false);
 	// Default: nothing to migrate.
 	mockReadBrainMigrationNotice.mockResolvedValue(null);
 });
@@ -172,6 +179,15 @@ describe("info — staleness reporting (3c)", () => {
 		expect(result.outdated).toContain("docs/aide-spec");
 		expect(result.outdated).toContain("commands/aide/spec");
 		expect(result.outdated).toHaveLength(2);
+	});
+
+	it("appends hooks to outdated when versions.json is current and the hooks check reports stale", async () => {
+		mockDetectStaleHooks.mockResolvedValue(true);
+
+		const result = await info("/project/root");
+
+		expect(result.outdated).toEqual(["hooks"]);
+		expect(mockDetectStaleHooks).toHaveBeenCalledWith("/project/root");
 	});
 
 	it("returns 'unknown' for serverVersion when package.json readFileSync throws", async () => {

@@ -1,14 +1,14 @@
 ---
 scope: src/tools/info
 alignment: unreviewed
-description: "Boot-time reporter that tells the orchestrator, in one read-only pass, whether the server is behind its latest release, whether installed AIDE files lag the running version, and the brain's state."
+description: "Read-only boot-time reporter telling the orchestrator whether the server is behind its latest release, whether installed AIDE files or Claude Code hooks lag the running version, and the brain's state."
 intent: >
   The passive reporter the orchestrator calls at boot. It returns
   structurally different findings as independent fields so the orchestrator
   applies a different policy to each: whether the server the project runs
   is behind the latest published version, with a short incentive to
-  upgrade; whether the project's installed AIDE files lag the version it
-  runs; and the brain's configuration state. It composes no messages,
+  upgrade; whether the project's installed AIDE files or Claude Code hooks lag
+  the version it runs; and the brain's configuration state. It composes no messages,
   mutates nothing, and resolves every pre-init, misconfiguration or offline
   condition to a structured state, never a thrown error, so a first-ever or
   offline boot completes cleanly.
@@ -16,16 +16,16 @@ outcomes:
   desired:
     - Returns the version notice, artifact staleness, brain-precondition state and any brain migration notice each as its own independent top-level field, so the orchestrator can branch on each without scanning the others.
     - Gives a version notice whenever the server is behind its latest published version, whether it runs from the global install or a pin in the project's configuration, saying which kind of launch it is so the orchestrator offers the matching remedy. The notice says how many published versions behind it is and carries a few short highlights of what those versions added or fixed, brief enough to read at a glance.
-    - Judges installed AIDE files only against the version the project runs, the pinned version for a pinned project, never against the latest published one. This lets the orchestrator upgrade the server first and the files after.
+    - Judges installed AIDE files, and the Claude Code hooks when the project's framework uses them, only against the version the project runs, the pinned version for a pinned project, never the latest published one, so the orchestrator upgrades the server first and the files after. Hooks missing or differing from what that version installs count as stale by the same judgement the upgrade applies, even in a project with no record of its installed versions.
     - Treats the version notice, artifact staleness and an outdated brain launcher or section text as soft notices the orchestrator may advise on while the pipeline still runs. Any non-ok brain state is a hard gate that halts the orchestrator until the user runs the visible remediation command.
     - Forwards the upstream brain detector's result unchanged, so its closed status vocabulary is the only one this tool surfaces. No status is added for launcher paths, legacy launchers, outdated section text, or renames of retired states.
-    - Resolves every pre-init, misconfiguration and offline condition to a structured state, never a thrown error. A version check that is offline or fails stays silent.
+    - Resolves every pre-init, misconfiguration and offline condition to a structured state, never a thrown error. A version check that is offline or fails, or a hooks check that cannot be made, stays silent.
   undesired:
     - Throwing or erroring on a cold project whose brain configuration and wiring were never written, or when the published version cannot be checked. First-ever and offline boots must complete cleanly.
-    - Returning a pre-formatted message instead of structured state. Message composition belongs to the orchestrator, which tailors wording to the user's session.
-    - Folding the version notice, artifact staleness and brain state into a single verdict, sentinel or shared list, or gating the pipeline on any soft notice. Their severities differ and the orchestrator branches on each separately.
+    - Returning a pre-formatted message, or folding the version notice, artifact staleness and brain state into one verdict, sentinel or shared list. The orchestrator owns the wording and branches on each finding separately, gating only on brain state.
     - Auto-repairing drift, syncing the host's wiring, upgrading anything, or otherwise mutating a file the user owns. The reporter is read-only; remediation flows through the user's visible command boundary.
     - Reporting installed files as outdated merely because a newer version is published when they match the version the project runs. Equally wrong is a pinned project behind latest told nothing.
+    - A project whose Claude Code hooks are missing or drifted told it is up to date, including one with no record of its installed versions, or boot and the upgrade disagreeing on whether the hooks need applying. Equally wrong is flagging hooks for a project whose framework has none.
     - A version notice that floods the user with the full changelog or every entry of every skipped version. It is a short incentive to upgrade, not a release history.
 ---
 

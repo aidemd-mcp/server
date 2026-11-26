@@ -876,7 +876,11 @@ export type BrainDraftResult =
 export interface InfoResult {
 	/** The npm package version of the installed aide MCP server. */
 	serverVersion: string;
-	/** Artifact keys whose sourceCommit differs between local and canonical. */
+	/**
+	 * Artifact keys whose sourceCommit differs between local and canonical,
+	 * plus `hooks` when the project's Claude Code hooks are missing or differ
+	 * from what the running version installs (judged as the upgrade judges them).
+	 */
 	outdated: string[];
 	/**
 	 * A soft notice, independent of `outdated`. It is null when not applicable

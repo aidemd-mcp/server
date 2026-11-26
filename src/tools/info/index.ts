@@ -1,11 +1,9 @@
 import { z } from "zod";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import readPackageVersion from "@/util/readPackageVersion/index.js";
-import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import buildBrainState from "@/service/buildBrainState/index.js";
 import { readBrainMigrationNotice } from "@/service/install/provisionBrain/index.js";
 import resolveBehind from "./resolveBehind/index.js";
+import resolveOutdated from "./resolveOutdated/index.js";
 import type { InfoResult } from "@/types/index.js";
 
 export const InfoInput = z.object({});
@@ -20,7 +18,10 @@ export const InfoInput = z.object({});
  *   artifacts against the canonical manifest shipped with this npm package.
  *   Soft notification — the pipeline can continue even when artifacts are
  *   stale. Missing `.aide/versions.json` (pre-version-tracking install)
- *   collapses silently to an empty `outdated` array.
+ *   contributes no file keys. `outdated` also carries the key `hooks` when
+ *   the Claude Code hooks are missing or differ from what this version
+ *   installs (the same check `aide_upgrade` runs), judged even when
+ *   `.aide/versions.json` is missing and silent when the check fails.
  *
  * - `behind`: staleness of the running server against the latest published
  *   version, for any launch the project's aide entry uses (global or npx).
@@ -61,34 +62,4 @@ export default async function info(root: string): Promise<InfoResult> {
 
 	// Step 6 — compose the independent fields into the unified result.
 	return { serverVersion, outdated, behind, brain, brainMigration };
-}
-
-/**
- * Compute the list of stale artifact keys by comparing the host's local
- * `.aide/versions.json` against the canonical manifest bundled in this
- * package. Returns an empty array silently when the local file is missing
- * (old install predating version tracking).
- */
-async function resolveOutdated(root: string): Promise<string[]> {
-	let localVersions: Record<string, { sourceCommit: string }> | null = null;
-	try {
-		const localPath = join(root, ".aide", "versions.json");
-		const raw = readFileSync(localPath, "utf-8");
-		localVersions = JSON.parse(raw) as Record<string, { sourceCommit: string }>;
-	} catch {
-		// Missing or unreadable — old install, skip silently
-		return [];
-	}
-
-	const canonical = readVersionsManifest();
-	const outdated: string[] = [];
-
-	for (const key of Object.keys(canonical)) {
-		const local = localVersions[key];
-		if (!local || local.sourceCommit !== canonical[key].sourceCommit) {
-			outdated.push(key);
-		}
-	}
-
-	return outdated;
 }
