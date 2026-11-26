@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-26
+
 ### Added
 
 - The brain config (`.aide/config/brain.aide`) takes an optional `kanban` field telling the observer where the project's kanban boards live on disk: `source: folder` and an absolute `path` to the kanban folder, with each project's board at `<path>/<kanban tag>`. The bundled template ships it with an empty `path`, and `/aide:brain config` fills it from the vault path during wiring. Brains that don't store their board as plain folders leave it out.
