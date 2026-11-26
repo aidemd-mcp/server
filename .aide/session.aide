@@ -153,7 +153,8 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
 - `aide-boot-misses-missing-hooks` (aidemd-mcp board, Done) — boot misses projects without the hooks; fixed through aide_info's `outdated` `hooks` key (decision #98); released in 0.17.1.
-- `aidemd-dev-hooks-observer-docs-and-seo-aeo` (aidemd-dev board, Backlog, p1) — lives on the site's own `aidemd-dev` board, not this one: research pass on target queries, hooks docs section, observer page, SEO/AEO.
+- `aide-boot-validates-claude-settings-and-guides-repair` (aidemd-mcp board, Backlog, p2) — broken `.claude/settings.json` comes back from aide_info as its own finding with line/column; the main agent repairs it by hand only after the user confirms, then reruns the tool, which re-validates and adds AIDE's hooks on the user's yes; validation covers only JSONC parse + AIDE's own hook entries.
+- `aidemd-dev-hooks-observer-docs-and-seo-aeo` (aidemd-dev board, Backlog, p1) — lives on the site's own `aidemd-dev` board, not this one: research pass on target queries, hooks docs section, observer page, SEO/AEO. Its research pass now also covers GitHub repo optimization and whether to rename the generic `server` GitHub repo / `@aidemd-mcp/server` npm package (decided from the research).
 - `restructure-aidemd-dev-landing-page` (aidemd-dev board, Backlog, P1) — moved from the aidemd-mcp board to the site's `aidemd-dev` board, alongside `aidemd-dev-hooks-observer-docs-and-seo-aeo`.
 - `aide-per-user-files-land-in-a-packaged-apps-appdata` (Done, p1, bug): per-user AIDE files on Windows land in the Claude desktop app's private AppData; moving to %USERPROFILE%\.aidemd with a one-time history move (decision #96). Created 2026-11-25 with the user's OK; released in 0.17.0; moved to Done 2026-11-25.
 - `aide-observer-skill-with-serve-and-record-settings` (Done, p2, change): builds decision #85 (with #86). A dedicated aide-observer skill; /aide command routes to it, then to aide. Its serve/record settings were dropped by decision #88 (the slug stays). In this pass, started 2026-11-25. Built in the observer pass; moved to In Review with the user's yes, 2026-11-25; released in 0.17.0; moved to Done 2026-11-25.
@@ -446,7 +447,7 @@ Standing approach for observer page UI changes: hand-driven targeted edits by th
 
 ### What the next agent must do
 
-1. Nothing pending from 0.17.1. Open idea from the user: validate `.claude/settings.json` against a schema and, when invalid, have boot (aide_info) return something telling the agent to repair it, instead of only re-offering /aide:upgrade — not yet a task; confirm with the user before creating one.
+1. Nothing in flight. The settings.json idea is now task `aide-boot-validates-claude-settings-and-guides-repair` (aidemd-mcp, Backlog, p2): broken `.claude/settings.json` comes back from aide_info as its own finding with line/column; the main agent repairs it by hand only after the user confirms, then reruns the tool, which re-validates and adds AIDE's hooks on the user's yes; validation covers only JSONC parse + AIDE's own hook entries. Next work is the user's pick.
 2. The backlog task `observer-home-shows-a-kanban-board-that-fits-the-page` (p3).
 3. Open gap, not fixed yet: aide_info reports `bin/aide-tree` outdated on the aidemd.dev site, but aide_upgrade has no category that writes the `.aide/bin/aide-tree.mjs` launcher (only init/sync install it, via src/service/install/installAideTree). Old launchers still work.
 4. Open user decisions:
@@ -641,4 +642,3 @@ session.aide is rewritten, never deleted (decision 18).
 
 - Should a [migration] entry also detect a project root holding an `intent.aide/` folder with no `.aide/` (the old rename bug's footprint) and offer to rename it back? No AIDE tool renames a folder today, so the CHANGELOG currently tells users to rename it by hand.
 - Should a [migration] entry tell /aide:upgrade to find host plan.aide files with no intent spec beside them and offer to write the spec (per file, with the user)?
-- Whether to build schema validation + repair instructions for a malformed `.claude/settings.json` (user's idea, hedged).
