@@ -3,7 +3,8 @@ name: release-check
 description: >
   Pre-release end-to-end test for this repo (@aidemd-mcp/server) only. Packs
   the build exactly as it would publish, installs it into a throwaway project
-  under a temp npm prefix, and checks `aidemd-mcp init`, the hooks merge, the
+  under a temp npm prefix, and checks `aidemd-mcp init`, an upgrade of a
+  project set up by the previous release, the hooks merge, the
   hook command, the observer (port list, HALT, end-session, page) and headless
   `/aide` sessions — isolated from the real global install, the real observer
   and the real per-user app data. Run it before every publish, when the user
@@ -36,6 +37,7 @@ The harness is `run.mjs` beside this file. What it relies on, and why, is in `NO
 - **Observer, simulated agent (no login needed):** drives the packed server over MCP stdio — start binds a port other than the real observer's, the session links, a fake open Claude session causes a HALT naming it, `aide_observer_end_session` ends it (and refuses the caller's own session), the next start passes; the page and JSON API answer with liveness states and refuse a missing token.
 - **Headless `/aide` sessions:** real `claude -p` runs in the test project, loading only its own MCP servers and settings: one plain boot, then a HALT against an open session, then an approved end. These need a signed-in Claude CLI; when it is not signed in they SKIP — say so plainly, never as a pass.
 - **One-time move (Windows):** a packed server with a fake home and a fake `%LOCALAPPDATA%` moves seeded history from the old `%LOCALAPPDATA%\aidemd` into `%USERPROFILE%\.aidemd` byte for byte, deletes the old observer record and token, and changes nothing on a second start.
+- **Upgrade from the previous release:** the latest published version (or `AIDE_RC_PREVIOUS=<x.y.z>`) is installed into its own temp prefix and sets up a project with its own `init`; the packed server then runs the `/aide:upgrade` path on it — `aide_info` and the `aide_upgrade` summary find the drift, every package-owned category is applied (mcp, brain and ide are left to the interactive flow) — and afterwards nothing is outdated, every reference page is byte-identical to the shipped one, and the user's own files (a spec, code, `package.json`, the brain config, the session record) are unchanged. Offline, it SKIPs.
 - **Your setup untouched:** the real global install, the real observer's record and port, and both real per-user folders (`AIDEMD_HOME` or `%USERPROFILE%\.aidemd`, and the old `%LOCALAPPDATA%\aidemd`) are snapshotted before and after and must match. If port 24680 is listening but no observer record can be read, the check fails rather than passing blind.
 
 ## Rules

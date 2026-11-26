@@ -1147,6 +1147,134 @@ await check("10.move", "Windows: start moves %LOCALAPPDATA%\\aidemd into <home>\
 	}
 });
 
+// 11. Upgrade from the previous release --------------------------------------
+// A project set up by the version users have today (the latest published one, or
+// AIDE_RC_PREVIOUS) is upgraded by the packed build, the way /aide:upgrade does it:
+// aide_info flags what is behind, the aide_upgrade summary lists the drift, every
+// package-owned category is applied, and afterwards nothing is outdated, the new
+// files arrive byte-identical and the user's own files are untouched. The previous
+// version lives in its own temp prefix; it never sees the packed one.
+console.log("\n[11] upgrade from the previous release");
+const PREV_PREFIX = join(ROOT, "prev-prefix");
+const PREV_BIN = IS_WIN ? PREV_PREFIX : join(PREV_PREFIX, "bin");
+const PREV_PKG_DIR = IS_WIN ? join(PREV_PREFIX, "node_modules", ...PKG.split("/")) : join(PREV_PREFIX, "lib", "node_modules", ...PKG.split("/"));
+const PREV_ENV = withPath(
+	{ ...ISO_ENV, npm_config_prefix: PREV_PREFIX, NPM_CONFIG_PREFIX: PREV_PREFIX },
+	[PREV_BIN, getPath(BASE_ENV)].join(IS_WIN ? ";" : ":"),
+);
+const UP_PROJECT = join(ROOT, "rc-project-upgrade");
+// Categories /aide:upgrade settles with the user rather than by a plain apply.
+const INTERACTIVE_CATEGORIES = new Set(["mcp", "brain", "ide"]);
+const upgradeSummary = async (client) => {
+	const r = await client.call("aide_upgrade", {}, 120_000);
+	assert(!r.isError, `aide_upgrade summary errored: ${r.text.slice(0, 300)}`);
+	return JSON.parse(r.text);
+};
+const drifted = (cat) => cat.files.filter((f) => f.status === "differs" || f.status === "missing");
+
+await check("11.prev", "previous release installed into its own temp prefix", [], async () => {
+	const wanted = process.env.AIDE_RC_PREVIOUS?.trim();
+	let prev = wanted;
+	if (!prev) {
+		const view = await run("npm", ["view", PKG, "version"], { cwd: ROOT, env: BASE_ENV, label: "npm-view-prev" });
+		if (view.code !== 0) throw skip(`npm view ${PKG} failed (offline?): ${view.stderr.trim().slice(0, 120)}`);
+		prev = view.stdout.trim();
+	}
+	mkdirSync(PREV_PREFIX, { recursive: true });
+	const r = await run("npm", ["install", "-g", `${PKG}@${prev}`, "--prefix", PREV_PREFIX], { cwd: ROOT, env: BASE_ENV, timeout: 600_000, label: "install-prev" });
+	assert(r.code === 0, `npm install ${PKG}@${prev} exited ${r.code}; see ${r.log}`);
+	const installed = readJson(join(PREV_PKG_DIR, "package.json")).version;
+	assert(installed === prev, `installed ${installed}, wanted ${prev}`);
+	state.prevVersion = prev;
+	return `${PKG}@${prev} in ${PREV_PKG_DIR} (packed is ${packedVersion}${prev === packedVersion ? "; same number, the packed content is newer" : ""})`;
+});
+await check("11.prev-init", "previous release's init sets up a project", ["11.prev"], async () => {
+	seedProject(UP_PROJECT);
+	// A user's own files the upgrade must never touch.
+	mkdirSync(join(UP_PROJECT, "src", "feature"), { recursive: true });
+	writeFileSync(join(UP_PROJECT, "src", "feature", ".aide"), "---\nscope: src/feature\nalignment: unreviewed\ndescription: A user-authored spec.\n---\n");
+	writeFileSync(join(UP_PROJECT, "src", "feature", "index.ts"), "export default function feature() {}\n");
+	const r = await run(join(PREV_BIN, IS_WIN ? "aidemd-mcp.cmd" : "aidemd-mcp"), ["init", "--brain", "obsidian"], { cwd: UP_PROJECT, env: PREV_ENV, label: "init-prev", timeout: 180_000 });
+	writeFileSync(join(ROOT, "init-prev.txt"), r.stdout + r.stderr);
+	assert(r.code === 0, `previous init exited ${r.code}; see ${join(ROOT, "init-prev.txt")}`);
+	state.userFilesBefore = {
+		"package.json": sha(readFileSync(join(UP_PROJECT, "package.json"), "utf8")),
+		"src/feature/.aide": sha(readFileSync(join(UP_PROJECT, "src", "feature", ".aide"), "utf8")),
+		"src/feature/index.ts": sha(readFileSync(join(UP_PROJECT, "src", "feature", "index.ts"), "utf8")),
+		".aide/config/brain.aide": sha(readFileSync(join(UP_PROJECT, ".aide", "config", "brain.aide"), "utf8")),
+		".aide/session.aide": sha(readFileSync(join(UP_PROJECT, ".aide", "session.aide"), "utf8")),
+	};
+	return `v${state.prevVersion} init exit 0; log ${join(ROOT, "init-prev.txt")}`;
+});
+await check("11.detect", "packed aide_info and aide_upgrade see the previous project as behind", ["11.prev-init", "2.resolve"], async () => {
+	const client = new McpClient("upgrade-detect", UP_PROJECT);
+	try {
+		await client.start();
+		const info = await client.call("aide_info", {}, 90_000);
+		writeFileSync(join(LOGS, "aide_info-upgrade-before.txt"), info.text);
+		const outdated = outdatedOf(info.text);
+		assert(outdated, `no outdated array; see ${join(LOGS, "aide_info-upgrade-before.txt")}`);
+		const summary = await upgradeSummary(client);
+		writeFileSync(join(LOGS, "aide_upgrade-summary-before.json"), JSON.stringify(summary, null, 2));
+		const reference = summary.categories.find((c) => c.category === "reference");
+		const shipped = listFilesUnder(join(REPO, ".aide", "reference")).filter((f) => f.endsWith(".md")).map((f) => relative(join(REPO, ".aide", "reference"), f));
+		if (reference) assert(reference.files.length === shipped.length, `reference lists ${reference.files.length} pages, the package ships ${shipped.length}`);
+		state.toApply = summary.categories.filter((c) => !INTERACTIVE_CATEGORIES.has(c.category) && drifted(c).length > 0).map((c) => c.category);
+		const behind = summary.categories.filter((c) => drifted(c).length > 0).map((c) => `${c.category}:${drifted(c).length}`);
+		return `outdated ${outdated.length} key(s); drifted ${behind.join(", ") || "none"}; will apply ${state.toApply.join(", ") || "nothing"}`;
+	} finally {
+		await client.stop();
+	}
+});
+await check("11.apply", "every package-owned category applies cleanly", ["11.detect"], async () => {
+	const client = new McpClient("upgrade-apply", UP_PROJECT);
+	const applied = [];
+	try {
+		await client.start();
+		for (const category of state.toApply) {
+			const r = await client.call("aide_upgrade", { category }, 120_000);
+			writeFileSync(join(LOGS, `aide_upgrade-apply-${category}.txt`), r.text);
+			assert(!r.isError, `${category} apply errored: ${r.text.slice(0, 300)}`);
+			const cat = JSON.parse(r.text).categories?.find((c) => c.category === category);
+			if (cat?.summary) {
+				assert(cat.summary.differs === 0 && cat.summary.missing === 0, `${category} left ${cat.summary.differs} differs / ${cat.summary.missing} missing after apply`);
+				applied.push(`${category} (+${cat.summary.created} ~${cat.summary.updated})`);
+			} else {
+				applied.push(category);
+			}
+		}
+		return applied.join(", ") || "nothing to apply";
+	} finally {
+		await client.stop();
+	}
+});
+await check("11.after", "after the upgrade nothing is behind, new files are byte-identical, user files untouched", ["11.apply"], async () => {
+	const client = new McpClient("upgrade-after", UP_PROJECT);
+	try {
+		await client.start();
+		const summary = await upgradeSummary(client);
+		writeFileSync(join(LOGS, "aide_upgrade-summary-after.json"), JSON.stringify(summary, null, 2));
+		const left = summary.categories.filter((c) => state.toApply.includes(c.category) && drifted(c).length > 0);
+		assert(left.length === 0, `still drifted after apply: ${left.map((c) => `${c.category}: ${drifted(c).map((f) => f.name).join(", ")}`).join("; ")}`);
+		const info = await client.call("aide_info", {}, 90_000);
+		writeFileSync(join(LOGS, "aide_info-upgrade-after.txt"), info.text);
+		const outdated = outdatedOf(info.text);
+		assert(outdated && outdated.length === 0, `aide_info still lists outdated ${JSON.stringify(outdated)}`);
+		// The reference set arrives byte-identical to what the package ships.
+		const shipped = listFilesUnder(join(REPO, ".aide", "reference")).filter((f) => f.endsWith(".md")).map((f) => relative(join(REPO, ".aide", "reference"), f));
+		for (const rel of shipped) {
+			const host = join(UP_PROJECT, ".aide", "reference", rel);
+			assert(existsSync(host), `reference page missing after upgrade: ${rel}`);
+			assert(readFileSync(host, "utf8") === readFileSync(join(REPO, ".aide", "reference", rel), "utf8"), `reference page differs after upgrade: ${rel}`);
+		}
+		const touched = Object.entries(state.userFilesBefore).filter(([rel, h]) => sha(readFileSync(join(UP_PROJECT, rel), "utf8")) !== h).map(([rel]) => rel);
+		assert(touched.length === 0, `upgrade changed user-owned files: ${touched.join(", ")}`);
+		return `0 outdated; ${shipped.length} reference pages byte-identical; ${Object.keys(state.userFilesBefore).length} user files unchanged`;
+	} finally {
+		await client.stop();
+	}
+});
+
 // ---------------------------------------------------------------------------
 // Teardown, real-setup comparison, report
 // ---------------------------------------------------------------------------
