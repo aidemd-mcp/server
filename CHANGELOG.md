@@ -6,6 +6,10 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Fixed
+
+- Five relative links in the shipped `/aide:fix`, `/aide:plan` and `/aide:qa` commands and the `aide` skill went one folder too shallow (`../../.aide/docs/…`), so they pointed at a `.claude/.aide/docs/…` that doesn't exist. They now resolve, and a test fails whenever a relative link in the shipped commands, agents, skills, methodology docs or reference pages points at a missing file.
+
 ## [0.19.0] - 2026-11-26
 
 ### Added

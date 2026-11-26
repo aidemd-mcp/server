@@ -2,7 +2,7 @@
 
 > **Agent:** This command is executed by the `aide-implementor` agent.
 
-Work one unchecked item from the `todo.aide` checklist. This is the implementor phase in fix mode — the same agent that runs `/aide:build`, invoked with a narrower scope and a stricter one-session-per-item protocol. See [todo.aide spec](../../.aide/docs/todo-aide.md) for the file format.
+Work one unchecked item from the `todo.aide` checklist. This is the implementor phase in fix mode — the same agent that runs `/aide:build`, invoked with a narrower scope and a stricter one-session-per-item protocol. See [todo.aide spec](../../../.aide/docs/todo-aide.md) for the file format.
 
 The fix loop is autonomous: the orchestrator triages the todo list and approves it itself; the user never reviews it. Items tagged `plan-gap` or `strategy-gap` reach you only after the architect has amended the plan, and `spec-gap` items go to the spec writer, not to you. If an item still needs a design decision the plan does not make, do not invent one — leave it unchecked and report it back.
 

@@ -516,7 +516,7 @@ Do NOT delete any of these files yourself — always delegate to the maintainer,
 | Mode | When to use | Agents |
 |---|---|---|
 | Default (no flag) | Code drifts from coding playbook conventions on a module that already works and passed QA | `aide-auditor` → `aide-implementor` → `aide-qa` |
-| `--specs` | `.aide` specs have grown bloated and violate the [Brevity Contract](../../.aide/docs/aide-spec.md#brevity-contract) | `aide-aligner` → `aide-spec-writer` and/or `aide-strategist` → `aide-aligner` |
+| `--specs` | `.aide` specs have grown bloated and violate the [Brevity Contract](../../../.aide/docs/aide-spec.md#brevity-contract) | `aide-aligner` → `aide-spec-writer` and/or `aide-strategist` → `aide-aligner` |
 
 **Detecting refactor intent:**
 

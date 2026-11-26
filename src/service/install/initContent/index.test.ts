@@ -572,3 +572,45 @@ describe("getMethodologyMarker", () => {
 	});
 });
 
+
+/** Every `.md` file under a shipped root, as an absolute path. */
+function collectShippedDocs(root: string): string[] {
+	if (!existsSync(root)) return [];
+	return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+		const full = join(root, entry.name);
+		if (entry.isDirectory()) return collectShippedDocs(full);
+		return entry.name.endsWith(".md") ? [full] : [];
+	});
+}
+
+describe("shipped docs' relative links", () => {
+	// The doc sets the package ships to host projects, which aidemd.dev also renders.
+	const shippedRoots = [
+		join(REPO_ROOT, ".claude", "commands"),
+		join(REPO_ROOT, ".claude", "agents"),
+		join(REPO_ROOT, ".claude", "skills"),
+		METHODOLOGY_ROOT,
+		join(REPO_ROOT, ".aide", "reference"),
+	];
+	// Install writes the root CHANGELOG.md into the host's doc hub as changelog.md,
+	// so a link to it resolves in every host project but not in this repo.
+	const installedOnly = new Map([[join(METHODOLOGY_ROOT, "changelog.md"), join(REPO_ROOT, "CHANGELOG.md")]]);
+
+	it("every relative link resolves to a file that exists", () => {
+		const broken: string[] = [];
+		for (const file of shippedRoots.flatMap(collectShippedDocs)) {
+			readFileSync(file, "utf8")
+				.split("\n")
+				.forEach((line, index) => {
+					for (const match of line.matchAll(/\]\(([^)\s]+)\)/g)) {
+						const href = match[1];
+						if (/^(https?:|mailto:|#)/.test(href)) continue;
+						const target = join(dirname(file), href.split("#")[0]);
+						const resolved = installedOnly.get(target) ?? target;
+						if (!existsSync(resolved)) broken.push(`${relative(REPO_ROOT, file).split(sep).join("/")}:${index + 1} -> ${href}`);
+					}
+				});
+		}
+		expect(broken, `broken relative links:\n${broken.join("\n")}`).toEqual([]);
+	});
+});

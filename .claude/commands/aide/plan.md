@@ -2,7 +2,7 @@
 
 > **Agent:** This command is executed by the `aide-architect` agent.
 
-Translate the intent spec into a step-by-step implementation plan. Output: `plan.aide` (the build recipe). The spec may be in one of two shapes: **Shape A** (synthesize ran — body sections filled, sibling `brief.aide` exists) or **Shape B** (synthesize skipped — frontmatter only, no `brief.aide`; the orchestrator's delegation prompt carries the user's implementation context as the architectural input). For Shape A, UPDATE `brief.aide` as planning surfaces new commitments. For Shape B, CREATE `brief.aide` only if planning surfaces commitments worth recording. See [plan.aide spec](../../.aide/docs/plan-aide.md) and [brief.aide spec](../../.aide/docs/brief-aide.md).
+Translate the intent spec into a step-by-step implementation plan. Output: `plan.aide` (the build recipe). The spec may be in one of two shapes: **Shape A** (synthesize ran — body sections filled, sibling `brief.aide` exists) or **Shape B** (synthesize skipped — frontmatter only, no `brief.aide`; the orchestrator's delegation prompt carries the user's implementation context as the architectural input). For Shape A, UPDATE `brief.aide` as planning surfaces new commitments. For Shape B, CREATE `brief.aide` only if planning surfaces commitments worth recording. See [plan.aide spec](../../../.aide/docs/plan-aide.md) and [brief.aide spec](../../../.aide/docs/brief-aide.md).
 
 ## Checklist
 
