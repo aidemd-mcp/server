@@ -75,6 +75,29 @@ describe("applyFiles", () => {
 		expect(result.canonicalContent).toBeUndefined();
 	});
 
+	// ── Reference: a missing page is written in its nested set folder ─────────
+	it("writes a reference page in its nested set folder", async () => {
+		const file = makeFile({
+			name: ".aide/reference/hooks/SessionEnd.md",
+			status: "missing",
+			category: "reference",
+			filePath: "/project/.aide/reference/hooks/SessionEnd.md",
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(mkdir)).toHaveBeenCalledWith(
+			"/project/.aide/reference/hooks",
+			{ recursive: true },
+		);
+		expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+			file.filePath,
+			"canonical content here",
+			"utf-8",
+		);
+		expect(result.status).toBe("created");
+		expect(result.canonicalContent).toBeUndefined();
+	});
+
 	// ── matches: remapped to unchanged in apply output ───────────────────────
 	it("remaps a matches file to status: unchanged with no disk write", async () => {
 		const file = makeFile({ status: "matches", canonicalContent: undefined });

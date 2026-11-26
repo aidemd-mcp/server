@@ -2,6 +2,7 @@ import {
 	listMethodologyDocs,
 	listAgents,
 	listSkills,
+	listReferencePages,
 	getCanonicalPath,
 } from "@/service/install/initContent/index.js";
 import { COMMANDS } from "@/service/install/scaffoldCommands/index.js";
@@ -25,6 +26,7 @@ export interface ArtifactEntry {
  * - `commands/*`    — slash commands (from COMMANDS)
  * - `agents/*`      — pipeline agent files (from listAgents)
  * - `skills/*`      — skill templates (from listSkills)
+ * - `reference/*`   — tool and hook reference pages (from listReferencePages)
  * - `bin/*`         — binary helpers
  * - `extensions/*`  — IDE extensions
  */
@@ -60,6 +62,14 @@ export default function enumerateArtifacts(): ArtifactEntry[] {
 		entries.push({
 			slug: skill.canonical,
 			repoPath: getCanonicalPath(skill.canonical),
+		});
+	}
+
+	for (const page of listReferencePages()) {
+		// page.canonical already carries the category prefix (e.g. "reference/tools/aide_info")
+		entries.push({
+			slug: page.canonical,
+			repoPath: getCanonicalPath(page.canonical),
 		});
 	}
 

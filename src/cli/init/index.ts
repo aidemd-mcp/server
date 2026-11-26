@@ -12,6 +12,7 @@ import installAgents from "@/service/install/installAgents/index.js";
 import installSkills from "@/service/install/installSkills/index.js";
 import installAideTree from "@/service/install/installAideTree/index.js";
 import installHooks from "@/service/install/installHooks/index.js";
+import installReference from "@/service/install/reference/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import applySteps from "@/service/install/applySteps/index.js";
 import { planBrainCategory } from "@/service/install/index.js";
@@ -118,7 +119,9 @@ function deferredCategories(hooksFollowUp: "merge" | "malformed" | null): readon
  *    `.claude/settings.json`: written only when that file does not exist
  *    (`would-create`); an existing file without the entries is
  *    `would-overwrite`, left untouched and named in the deferred list as a
- *    `/aide:upgrade` follow-up.
+ *    `/aide:upgrade` follow-up. `installReference` plans the tool and hook
+ *    reference pages under `.aide/reference/`, a category of its own, applied
+ *    on would-create like the others.
  *
  * 5. **Partition** by status: `toApply` (`would-create` only — enforces
  *    skip-on-exists), `skipped` (`would-overwrite` | `would-skip`).
@@ -208,6 +211,7 @@ export async function runInit(
 	// would-create / would-overwrite / would-skip / exists status.
 	const methodologyStep = await writeMethodology(join(cwd, config.configPath), config.docHubDir);
 	const docSteps = await installMethodologyDocs(join(cwd, config.docHubDir), config.docHubDir);
+	const referenceSteps = await installReference({ projectRoot: cwd, docHubDir: config.docHubDir });
 	const commandSteps = await scaffoldCommands(join(cwd, config.commandDir));
 	const agentSteps = await installAgents(join(cwd, config.agentDir));
 	const skillSteps = await installSkills(join(cwd, config.skillDir));
@@ -232,12 +236,13 @@ export async function runInit(
 	};
 
 	// Flatten all planning steps into a single ordered list. Order mirrors the
-	// MCP tool's orchestrator: methodology pointer, docs, versions, commands,
-	// agents, skills, aide-tree, hooks, readme.
+	// MCP tool's orchestrator: methodology pointer, docs, versions, reference,
+	// commands, agents, skills, aide-tree, hooks, readme.
 	const plannedSteps: InitStep[] = [
 		methodologyStep,
 		...docSteps,
 		versionsStep,
+		...referenceSteps,
 		...commandSteps,
 		...agentSteps,
 		...skillSteps,
@@ -455,7 +460,8 @@ export async function runInitCli(): Promise<void> {
 				`  First, the aide MCP server globally (npm i -g ${aidePackage.name}) when it is\n` +
 				"  not installed yet; if that install fails, nothing is written and init exits 1.\n" +
 				"  Then the complete methodology layer into the current project: the methodology\n" +
-				"  pointer stub, the methodology doc set under .aide/docs/, every pipeline\n" +
+				"  pointer stub, the methodology doc set under .aide/docs/, the tool and hook\n" +
+				"  reference under .aide/reference/, every pipeline\n" +
 				"  slash command under .claude/commands/aide/, every pipeline agent definition\n" +
 				"  under .claude/agents/aide/, the kanban-maintainer board agent under\n" +
 				"  .claude/agents/kanban/, every skill template under .claude/skills/, the\n" +

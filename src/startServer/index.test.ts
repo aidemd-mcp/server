@@ -95,6 +95,8 @@ vi.mock("@/tools/observer/start/index.js", async (importOriginal) => {
 // Import the function under test after mocks are declared, then start the server once so `handlers` is populated.
 import startServer from "./index.js";
 import { BrainInput } from "@/tools/brain/index.js";
+import { InitInput } from "@/service/install/index.js";
+import { UpgradeInput } from "@/tools/upgrade/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -471,6 +473,18 @@ describe("aide_upgrade registration", () => {
 		expect(inputSchema.properties.category.enum).toContain("hooks");
 	});
 
+	it("offers the reference category", async () => {
+		const { inputSchema } = await findTool("aide_upgrade");
+
+		expect(inputSchema.properties.category.enum).toContain("reference");
+	});
+
+	it("advertises exactly the categories UpgradeInput accepts, in order", async () => {
+		const { inputSchema } = await findTool("aide_upgrade");
+
+		expect(inputSchema.properties.category.enum).toEqual(UpgradeInput.innerType().shape.category.unwrap().options);
+	});
+
 	it("describes the brain calls and no longer claims the config is never written", async () => {
 		const { description } = await findTool("aide_upgrade");
 
@@ -628,6 +642,22 @@ describe("aide_init registration", () => {
 		};
 
 		expect(inputSchema.properties.category.enum).toContain("hooks");
+	});
+
+	it("offers the reference category", async () => {
+		const { inputSchema } = (await findTool("aide_init")) as unknown as {
+			inputSchema: { properties: { category: { enum: string[] } } };
+		};
+
+		expect(inputSchema.properties.category.enum).toContain("reference");
+	});
+
+	it("advertises exactly the categories InitInput accepts, in order", async () => {
+		const { inputSchema } = (await findTool("aide_init")) as unknown as {
+			inputSchema: { properties: { category: { enum: string[] } } };
+		};
+
+		expect(inputSchema.properties.category.enum).toEqual(InitInput.shape.category.unwrap().options);
 	});
 
 	it("teaches brainSummary and none of the retired brain contract fields", async () => {

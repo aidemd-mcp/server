@@ -18,8 +18,9 @@ const METHODOLOGY_MARKER = "<!-- aide-methodology -->";
  * never find the canonical files. src/ and dist/ are siblings under the repo
  * root at the same depth, so the same four-hop walk reaches the root whether
  * this file runs from src/tools/init/initContent/ or dist/tools/init/initContent/.
- * Canonical content lives under two subtrees of the repo root — `.aide/docs/`
- * for methodology and `.claude/commands/aide/` for slash command templates —
+ * Canonical content lives under three subtrees of the repo root — `.aide/docs/`
+ * for methodology, `.aide/reference/` for the tool and hook reference pages,
+ * and `.claude/commands/aide/` for slash command templates —
  * so DOC_PATHS values carry the subtree prefix and we resolve from the root.
  * The changelog is the one exception: it is read from the repo root itself
  * (`CHANGELOG.md`), which the same four-hop walk reaches from `src/` and from
@@ -82,6 +83,27 @@ const DOC_PATHS = {
 	"skills/aide-brain-author": ".claude/skills/aide-brain-author/SKILL.md",
 	"skills/aide-observer": ".claude/skills/aide-observer/SKILL.md",
 	"bin/aide-tree": ".aide/bin/aide-tree.mjs",
+	"reference/tools/index": ".aide/reference/tools/index.md",
+	"reference/tools/aide_info": ".aide/reference/tools/aide_info.md",
+	"reference/tools/aide_discover": ".aide/reference/tools/aide_discover.md",
+	"reference/tools/aide_read": ".aide/reference/tools/aide_read.md",
+	"reference/tools/aide_inspect": ".aide/reference/tools/aide_inspect.md",
+	"reference/tools/aide_validate": ".aide/reference/tools/aide_validate.md",
+	"reference/tools/aide_scaffold": ".aide/reference/tools/aide_scaffold.md",
+	"reference/tools/aide_frontmatter": ".aide/reference/tools/aide_frontmatter.md",
+	"reference/tools/aide_cleanup": ".aide/reference/tools/aide_cleanup.md",
+	"reference/tools/aide_brain": ".aide/reference/tools/aide_brain.md",
+	"reference/tools/aide_init": ".aide/reference/tools/aide_init.md",
+	"reference/tools/aide_upgrade": ".aide/reference/tools/aide_upgrade.md",
+	"reference/tools/aide_observer_start": ".aide/reference/tools/aide_observer_start.md",
+	"reference/tools/aide_observer_event": ".aide/reference/tools/aide_observer_event.md",
+	"reference/tools/aide_observer_end_session": ".aide/reference/tools/aide_observer_end_session.md",
+	"reference/hooks/index": ".aide/reference/hooks/index.md",
+	"reference/hooks/SessionStart": ".aide/reference/hooks/SessionStart.md",
+	"reference/hooks/UserPromptSubmit": ".aide/reference/hooks/UserPromptSubmit.md",
+	"reference/hooks/PostToolUse": ".aide/reference/hooks/PostToolUse.md",
+	"reference/hooks/Stop": ".aide/reference/hooks/Stop.md",
+	"reference/hooks/SessionEnd": ".aide/reference/hooks/SessionEnd.md",
 } as const;
 
 export type CanonicalDocName = keyof typeof DOC_PATHS;
@@ -142,6 +164,16 @@ export interface SkillDocEntry {
 }
 
 /**
+ * An entry in the reference-page enumeration. Consumers iterate this list to
+ * install the reference into the host's reference folder. `hostPath` carries
+ * the set folder (`tools` or `hooks`), so the sets are never flattened.
+ */
+export interface ReferencePageEntry {
+	readonly canonical: CanonicalDocName;
+	readonly hostPath: string;
+}
+
+/**
  * The canonical list of agent files that ship into the host's agent
  * directory: the pipeline agents in phase order, then the kanban board agent.
  */
@@ -172,6 +204,35 @@ const SKILL_DOCS: readonly SkillDocEntry[] = [
 	{ canonical: "skills/kanban", hostPath: "kanban/SKILL.md" },
 	{ canonical: "skills/aide-brain-author", hostPath: "aide-brain-author/SKILL.md" },
 	{ canonical: "skills/aide-observer", hostPath: "aide-observer/SKILL.md" },
+];
+
+/**
+ * The hand-kept roster of shipped reference pages, each set's table of
+ * contents first. A new tool or hook event appends here, and the parity test
+ * in `index.test.ts` fails until it does.
+ */
+const REFERENCE_PAGES: readonly ReferencePageEntry[] = [
+	{ canonical: "reference/tools/index", hostPath: "tools/index.md" },
+	{ canonical: "reference/tools/aide_info", hostPath: "tools/aide_info.md" },
+	{ canonical: "reference/tools/aide_discover", hostPath: "tools/aide_discover.md" },
+	{ canonical: "reference/tools/aide_read", hostPath: "tools/aide_read.md" },
+	{ canonical: "reference/tools/aide_inspect", hostPath: "tools/aide_inspect.md" },
+	{ canonical: "reference/tools/aide_validate", hostPath: "tools/aide_validate.md" },
+	{ canonical: "reference/tools/aide_scaffold", hostPath: "tools/aide_scaffold.md" },
+	{ canonical: "reference/tools/aide_frontmatter", hostPath: "tools/aide_frontmatter.md" },
+	{ canonical: "reference/tools/aide_cleanup", hostPath: "tools/aide_cleanup.md" },
+	{ canonical: "reference/tools/aide_brain", hostPath: "tools/aide_brain.md" },
+	{ canonical: "reference/tools/aide_init", hostPath: "tools/aide_init.md" },
+	{ canonical: "reference/tools/aide_upgrade", hostPath: "tools/aide_upgrade.md" },
+	{ canonical: "reference/tools/aide_observer_start", hostPath: "tools/aide_observer_start.md" },
+	{ canonical: "reference/tools/aide_observer_event", hostPath: "tools/aide_observer_event.md" },
+	{ canonical: "reference/tools/aide_observer_end_session", hostPath: "tools/aide_observer_end_session.md" },
+	{ canonical: "reference/hooks/index", hostPath: "hooks/index.md" },
+	{ canonical: "reference/hooks/SessionStart", hostPath: "hooks/SessionStart.md" },
+	{ canonical: "reference/hooks/UserPromptSubmit", hostPath: "hooks/UserPromptSubmit.md" },
+	{ canonical: "reference/hooks/PostToolUse", hostPath: "hooks/PostToolUse.md" },
+	{ canonical: "reference/hooks/Stop", hostPath: "hooks/Stop.md" },
+	{ canonical: "reference/hooks/SessionEnd", hostPath: "hooks/SessionEnd.md" },
 ];
 
 /** Per-process cache. Populated from disk reads in this process only — never
@@ -247,4 +308,12 @@ export function listAgents(): readonly AgentDocEntry[] {
  */
 export function listSkills(): readonly SkillDocEntry[] {
 	return SKILL_DOCS;
+}
+
+/**
+ * Return the canonical enumeration of reference pages (tools and hooks);
+ * consumers iterate the returned list rather than keeping their own roster.
+ */
+export function listReferencePages(): readonly ReferencePageEntry[] {
+	return REFERENCE_PAGES;
 }

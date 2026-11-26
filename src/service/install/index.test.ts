@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, access, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import init, { InitInput, planBrainCategory } from "./index.js";
 import { mcpEntry } from "./wireMcp/index.js";
 import aidePackage from "./shared/aidePackage/index.js";
 import applySteps from "./applySteps/index.js";
 import { composeStub } from "./writeMethodology/index.js";
+import { listReferencePages, readCanonicalDoc } from "./initContent/index.js";
 import obsidianBrainAideTemplate from "./provisionBrain/obsidianBrainAideTemplate/index.js";
 import scaffold from "@/tools/scaffold/index.js";
 import brainContract from "@/service/brainContract/index.js";
@@ -142,7 +143,7 @@ describe("init — structured JSON result", () => {
 	it("fresh project: every step has a category", async () => {
 		const result = await init(tempDir);
 
-		const validCategories = new Set(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme", "hooks"]);
+		const validCategories = new Set(["framework", "methodology", "reference", "commands", "agents", "skills", "mcp", "brain", "ide", "readme", "hooks"]);
 		for (const step of result.steps) {
 			expect(validCategories.has(step.category)).toBe(true);
 		}
@@ -218,6 +219,31 @@ describe("init — structured JSON result", () => {
 
 		const versionsIndex = result.steps.findIndex((s) => s.name === "versions.json");
 		expect(result.steps[versionsIndex + 1]).toBe(session);
+	});
+
+	it("fresh project: reference category has one would-create step per shipped page", async () => {
+		const result = await init(tempDir);
+
+		const referenceSteps = stepsForCategory(result, "reference");
+		expect(referenceSteps).toHaveLength(listReferencePages().length);
+		const referenceDir = join(tempDir, ".aide", "reference") + sep;
+		for (const step of referenceSteps) {
+			expect(step.status).toBe("would-create");
+			expect(step.filePath.startsWith(referenceDir)).toBe(true);
+		}
+		const methodologyUnderReference = stepsForCategory(result, "methodology").filter((s) => s.filePath.startsWith(referenceDir));
+		expect(methodologyUnderReference).toHaveLength(0);
+	});
+
+	it("reference steps follow the methodology steps", async () => {
+		const result = await init(tempDir);
+
+		const categories = result.steps.map((s) => s.category);
+		const firstReference = categories.indexOf("reference");
+		const lastMethodology = categories.lastIndexOf("methodology");
+		const firstCommands = categories.indexOf("commands");
+		expect(firstReference).toBeGreaterThan(lastMethodology);
+		expect(firstReference).toBeLessThan(firstCommands);
 	});
 
 	it("fresh project: commands category includes aide:research", async () => {
@@ -421,6 +447,10 @@ describe("init — global aide entry", () => {
 		expect(steps.find((s) => s.name === "Brain config (brain.aide)")?.content).toBe(obsidianBrainAideTemplate());
 	});
 
+	it("InitInput accepts the reference category", () => {
+		expect(InitInput.parse({ category: "reference" }).category).toBe("reference");
+	});
+
 	it("InitInput has no aideMode or brainMode: a parsed value never carries them", () => {
 		const parsed = InitInput.parse({ aideMode: "global", brainMode: "local" });
 
@@ -610,6 +640,27 @@ describe("init — apply mode (category call)", () => {
 		}
 		// At least one step should be created (fresh project has no commands)
 		expect(applied.some((s) => s.status === "created")).toBe(true);
+	});
+
+	it("reference category: every page is written byte-identical in its set", async () => {
+		const result = await init(tempDir);
+		const referenceSteps = result.steps.filter((s) => s.category === "reference");
+		expect(referenceSteps.length).toBeGreaterThan(0);
+
+		const applied = await applySteps(referenceSteps);
+
+		const entries = listReferencePages();
+		expect(applied).toHaveLength(entries.length);
+		for (const [index, step] of applied.entries()) {
+			expect(step.status).toBe("created");
+			expect(step).not.toHaveProperty("content");
+			expect(await readFile(step.filePath, "utf-8")).toBe(readCanonicalDoc(entries[index].canonical));
+		}
+
+		const second = await init(tempDir);
+		for (const step of stepsForCategory(second, "reference")) {
+			expect(step.status).toBe("exists");
+		}
 	});
 
 	it("brain category: brain.aide scaffold step is created after apply", async () => {

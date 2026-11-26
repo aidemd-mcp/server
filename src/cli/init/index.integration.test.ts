@@ -50,6 +50,7 @@ import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/inde
 import installGlobalPackage from "./ensureGlobalAide/installGlobalPackage/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
 import planHooksMerge from "@/service/install/shared/planHooksMerge/index.js";
+import { listReferencePages, readCanonicalDoc } from "@/service/install/initContent/index.js";
 
 const mockCheckGlobalPackage = vi.mocked(checkGlobalPackage);
 const mockInstallGlobalPackage = vi.mocked(installGlobalPackage);
@@ -128,6 +129,13 @@ describe("7c-i — cold install happy path, default integration (no options arg)
 		const sessionRecord = await readFile(join(tempDir, ".aide", "session.aide"), "utf-8");
 		expect(sessionRecord).toBe(sessionTemplate);
 		expect(lines).toContain("[created] .aide/session.aide — empty session record");
+
+		// Every shipped reference page lands byte-identical and is logged as created.
+		for (const entry of listReferencePages()) {
+			const page = await readFile(join(tempDir, ".aide", "reference", entry.hostPath), "utf-8");
+			expect(page).toBe(readCanonicalDoc(entry.canonical));
+			expect(lines.some((l) => l.startsWith(`[created] .aide/reference/${entry.hostPath}`))).toBe(true);
+		}
 	});
 });
 
@@ -261,6 +269,12 @@ describe("7c-iv — idempotent re-run: second runInit changes nothing", () => {
 		// The filled session record is byte-identical and reported as already present.
 		expect(await readFile(sessionPath, "utf-8")).toBe(filledSession);
 		expect(lines).toContain("[exists] .aide/session.aide — already present");
+
+		// Reference pages are reported as already present; none is re-created.
+		for (const entry of listReferencePages()) {
+			expect(lines.some((l) => l.startsWith(`[exists] .aide/reference/${entry.hostPath}`))).toBe(true);
+			expect(lines.some((l) => l.startsWith(`[created] .aide/reference/${entry.hostPath}`))).toBe(false);
+		}
 
 		// brain.aide bytes must be unchanged.
 		const brainAideAfter = await readFile(join(tempDir, ".aide", "config", "brain.aide"), "utf-8");

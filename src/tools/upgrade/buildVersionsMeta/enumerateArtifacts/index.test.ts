@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 
+import { getCanonicalPath, listReferencePages } from "@/service/install/initContent/index.js";
+
 import enumerateArtifacts from "./index.js";
 
 describe("enumerateArtifacts", () => {
@@ -13,6 +15,7 @@ describe("enumerateArtifacts", () => {
 		expect(slugs.some((s) => s.startsWith("skills/"))).toBe(true);
 		expect(slugs.some((s) => s.startsWith("bin/"))).toBe(true);
 		expect(slugs.some((s) => s.startsWith("extensions/"))).toBe(true);
+		expect(slugs.some((s) => s.startsWith("reference/"))).toBe(true);
 	});
 
 	it("every entry has non-empty slug and repoPath strings", () => {
@@ -62,6 +65,16 @@ describe("enumerateArtifacts", () => {
 		}
 	});
 
+	it("includes every reference page under its canonical slug", () => {
+		const entries = enumerateArtifacts();
+
+		for (const page of listReferencePages()) {
+			expect(entries).toContainEqual({ slug: page.canonical, repoPath: getCanonicalPath(page.canonical) });
+		}
+		expect(entries).toContainEqual({ slug: "reference/tools/index", repoPath: ".aide/reference/tools/index.md" });
+		expect(entries).toContainEqual({ slug: "reference/hooks/index", repoPath: ".aide/reference/hooks/index.md" });
+	});
+
 	// The session record is user-owned state created by aide_scaffold; an artifact
 	// entry would let aide_upgrade report it as drifted and offer an overwrite.
 	it("never enumerates the project's session record as an artifact", () => {
@@ -80,7 +93,7 @@ describe("enumerateArtifacts", () => {
 
 	it("each slug starts with its category prefix", () => {
 		const entries = enumerateArtifacts();
-		const validPrefixes = ["docs/", "commands/", "agents/", "skills/", "bin/", "extensions/"];
+		const validPrefixes = ["docs/", "commands/", "agents/", "skills/", "bin/", "extensions/", "reference/"];
 
 		for (const entry of entries) {
 			const hasValidPrefix = validPrefixes.some((prefix) => entry.slug.startsWith(prefix));

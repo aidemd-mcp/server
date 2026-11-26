@@ -221,11 +221,14 @@ export type McpPinMove = { from: string | null; to: string };
 /**
  * The category of a single init step. The calling agent uses this
  * discriminant to walk through categories with the user. `hooks` merges AIDE's
- * own Claude Code hook entries into `.claude/settings.json`.
+ * own Claude Code hook entries into `.claude/settings.json`. `reference`
+ * installs the tool and hook reference pages under `.aide/reference/`, a
+ * category of its own, apart from the methodology docs.
  */
 export type InitCategory =
 	| "framework"
 	| "methodology"
+	| "reference"
 	| "commands"
 	| "agents"
 	| "skills"
@@ -503,12 +506,15 @@ export interface InitResult {
  * Per-category group names for upgrade results.
  * The agent presents results grouped by category and lets the user confirm
  * or decline each category independently. `hooks` merges AIDE's own Claude Code
- * hook entries into `.claude/settings.json`.
+ * hook entries into `.claude/settings.json`. `reference` upgrades the tool and
+ * hook reference pages under `.aide/reference/`, a category of its own, apart
+ * from the methodology docs.
  */
 export type UpgradeCategory =
 	| "pointer-stub"
 	| "methodology-docs"
 	| "version-metadata"
+	| "reference"
 	| "commands"
 	| "agents"
 	| "skills"

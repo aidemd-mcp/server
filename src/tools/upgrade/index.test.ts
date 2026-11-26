@@ -27,6 +27,7 @@ vi.mock("./buildVersionsMeta/index.js");
 vi.mock("./checkMcpConfig/index.js");
 vi.mock("./checkIdeConfig/index.js");
 vi.mock("./checkHooksConfig/index.js");
+vi.mock("./checkReference/index.js");
 vi.mock("@/service/install/scaffoldReadme/index.js");
 // Only the default export (file IO) is mocked; parseBrainAideFromString stays real because
 // readBrainMigrationNotice parses the bundled template with it.
@@ -43,6 +44,7 @@ import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import { checkZedConfig, checkVscodeExtension } from "./checkIdeConfig/index.js";
 import checkHooksConfig from "./checkHooksConfig/index.js";
+import checkReference from "./checkReference/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import parseBrainAide from "@/service/parseBrainAide/index.js";
 import upgrade, { UpgradeInput } from "./index.js";
@@ -147,6 +149,14 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 			category: "hooks",
 		},
 	]);
+	vi.mocked(checkReference).mockResolvedValue([
+		{
+			name: ".aide/reference/tools/index.md",
+			filePath: join(tempDir, ".aide", "reference", "tools", "index.md"),
+			status: "matches",
+			category: "reference",
+		},
+	]);
 }
 
 // Helper: find a category result by name
@@ -164,7 +174,7 @@ describe("upgrade", () => {
 		const result = await upgrade(tempDir);
 
 		expect(result.framework).toBe("claude");
-		expect(result.categories).toHaveLength(11);
+		expect(result.categories).toHaveLength(12);
 
 		for (const cat of result.categories) {
 			expect(cat.summary.differs).toBe(0);
@@ -266,6 +276,7 @@ describe("upgrade", () => {
 		expect(categories).toContain("pointer-stub");
 		expect(categories).toContain("methodology-docs");
 		expect(categories).toContain("version-metadata");
+		expect(categories).toContain("reference");
 		expect(categories).toContain("commands");
 		expect(categories).toContain("agents");
 		expect(categories).toContain("skills");
@@ -762,6 +773,50 @@ describe("upgrade — targetVersion forwarding", () => {
 		await upgrade(tempDir);
 
 		expect(vi.mocked(checkMcpConfig)).toHaveBeenCalledWith(join(tempDir, ".mcp.json"), undefined);
+	});
+});
+
+describe("upgrade — reference category", () => {
+	it("reference sits right after version-metadata and is called with the project root and doc hub", async () => {
+		wireDefaultMocks();
+
+		const result = await upgrade(tempDir);
+
+		const order = result.categories.map((c) => c.category);
+		expect(order[order.indexOf("version-metadata") + 1]).toBe("reference");
+		expect(vi.mocked(checkReference)).toHaveBeenCalledWith({ projectRoot: tempDir, docHubDir: ".aide/docs" });
+	});
+
+	it("reference drift is its own category, apart from methodology-docs", async () => {
+		wireDefaultMocks();
+		const referenceRoot = join(tempDir, ".aide", "reference");
+		vi.mocked(checkReference).mockResolvedValue([
+			{
+				name: ".aide/reference/tools/index.md",
+				filePath: join(referenceRoot, "tools", "index.md"),
+				status: "differs",
+				category: "reference",
+				canonicalContent: "canonical content",
+			},
+			{
+				name: ".aide/reference/hooks/SessionEnd.md",
+				filePath: join(referenceRoot, "hooks", "SessionEnd.md"),
+				status: "missing",
+				category: "reference",
+				canonicalContent: "canonical content",
+			},
+		]);
+
+		const result = await upgrade(tempDir);
+
+		const referenceCat = findCategory(result, "reference")!;
+		expect(referenceCat.summary).toMatchObject({ total: 2, differs: 1, missing: 1 });
+		expect(referenceCat.files.map((f) => f.name)).toEqual([
+			".aide/reference/tools/index.md",
+			".aide/reference/hooks/SessionEnd.md",
+		]);
+		const docsCat = findCategory(result, "methodology-docs")!;
+		expect(docsCat.files.some((f) => f.filePath.startsWith(referenceRoot))).toBe(false);
 	});
 });
 

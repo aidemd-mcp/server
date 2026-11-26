@@ -16,6 +16,7 @@ import wireMcp from "./wireMcp/index.js";
 import provisionBrain from "./provisionBrain/index.js";
 import scaffoldReadme from "./scaffoldReadme/index.js";
 import planSessionRecord from "./planSessionRecord/index.js";
+import installReference from "./reference/index.js";
 import compareBytes from "./shared/compareBytes/index.js";
 
 /**
@@ -58,7 +59,7 @@ export async function planBrainCategory(
 export const InitInput = z.object({
 	framework: z.enum(["claude", "cursor", "windsurf", "copilot"]).optional().describe("Force a specific framework instead of auto-detecting"),
 	path: z.string().optional().describe("Custom project root path (defaults to server working directory)"),
-	category: z.enum(["framework", "methodology", "commands", "agents", "skills", "mcp", "brain", "ide", "readme", "hooks"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
+	category: z.enum(["framework", "methodology", "reference", "commands", "agents", "skills", "mcp", "brain", "ide", "readme", "hooks"]).optional().describe("When provided, write all would-create files to disk and return a manifest. When omitted, return all steps as a metadata-only summary (no content fields)."),
 });
 
 /**
@@ -89,7 +90,7 @@ export default async function init(
 	const brainHints = await resolveBrainHints(projectRoot);
 
 	// Collect planning steps from each helper. Order follows the spec's category
-	// list: methodology (pointer, docs, versions.json, session record), commands,
+	// list: methodology (pointer, docs, versions.json, session record), reference (the tool and hook pages, a category of its own), commands,
 	// agents, skills, mcp, brain, ide, hooks (Claude Code only), then the readme. The session record step is content-free: it
 	// carries an instruction for the agent to call aide_scaffold, never file bytes.
 	const docSteps = await installMethodologyDocs(join(projectRoot, config.docHubDir), config.docHubDir);
@@ -124,6 +125,7 @@ export default async function init(
 	};
 
 	const sessionStep = await planSessionRecord(projectRoot);
+	const referenceSteps = await installReference({ projectRoot, docHubDir: config.docHubDir });
 
 	const zedStep = await configureZed(projectRoot);
 	const hookSteps = await installHooks({ projectRoot, framework: config.framework });
@@ -134,6 +136,7 @@ export default async function init(
 		...docSteps,
 		versionsStep,
 		sessionStep,
+		...referenceSteps,
 		...commandSteps,
 		...agentSteps,
 		...skillSteps,

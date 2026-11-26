@@ -1,0 +1,26 @@
+---
+scope: src/startServer
+alignment: unreviewed
+description: Runs the AIDE MCP server for one project, advertising every aide tool with what agents may pass and handing each call to the tool that does the work.
+intent: >
+  This is the doorway agents walk through to reach AIDE. It starts the server
+  for a project, tells the connecting agent which tools exist, when and how to
+  call each one and which choices each accepts, then hands every call to the
+  right tool and returns that tool's answer as the reply. Success means an agent
+  can use every capability the package offers from the advertisement alone, and
+  every call lands where it was meant with what the agent sent. It loads only
+  when the server runs, so the package's terminal commands stay fast.
+outcomes:
+  desired:
+    - Every tool the package offers is advertised, each with a description that teaches an agent when to call it and what it gets back.
+    - The choices each tool advertises, such as its category or type lists, match exactly what the tool accepts, with none missing and none extra.
+    - Each call reaches the tool it names with the agent's arguments unchanged, and that tool's answer, refusals included, comes back as the reply.
+    - The server identifies itself to the connecting agent with the package's own name and version.
+    - The package's terminal commands run without loading the server or any tool.
+  undesired:
+    - A tool or a choice the package accepts is missing from the advertisement, so agents never learn they can use it.
+    - The advertisement offers a tool or a choice that the tool then refuses.
+    - A call is routed to the wrong tool, or its arguments are dropped, renamed or altered on the way.
+    - A tool's refusal reaches the agent looking like a success, so the agent carries on as if the work was done.
+    - A terminal command is slowed because it pulls in the server and every tool it advertises.
+---

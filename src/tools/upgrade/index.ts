@@ -20,6 +20,7 @@ import readVersionsManifest from "./buildVersionsMeta/index.js";
 import checkBrainConfig from "./checkBrainConfig/index.js";
 import checkMcpConfig from "./checkMcpConfig/index.js";
 import checkHooksConfig from "./checkHooksConfig/index.js";
+import checkReference from "./checkReference/index.js";
 import { checkZedConfig } from "./checkIdeConfig/index.js";
 
 const brainChangeTargets: BrainChangeTarget[] = [...brainContract.map(({ marker }) => marker), "launcher"];
@@ -35,7 +36,7 @@ export const UpgradeInput = z.object({
 		.optional()
 		.describe("Custom project root path (defaults to server working directory)"),
 	category: z
-		.enum(["pointer-stub", "methodology-docs", "version-metadata", "commands", "agents", "skills", "mcp", "ide", "readme", "brain", "hooks"])
+		.enum(["pointer-stub", "methodology-docs", "version-metadata", "reference", "commands", "agents", "skills", "mcp", "ide", "readme", "brain", "hooks"])
 		.optional()
 		.describe("When provided, applies that category. For package-owned categories the call writes all differs/missing files to disk and returns a manifest (no canonicalContent). For `brain` it inserts missing sections (no `brainChange`), previews one change (`brainChange` alone), or applies it (`brainChange` + `beforeHash`); it never rewrites an existing section outside an applied change. When omitted, return all categories as metadata-only summaries (no canonicalContent fields)."),
 	brainChange: z
@@ -153,6 +154,9 @@ export default async function upgrade(
 		},
 	];
 
+	// ── c2. Tool and hook reference ──────────────────────────────────────────
+	const referenceResults = await checkReference({ projectRoot, docHubDir: config.docHubDir });
+
 	// ── d. Commands ──────────────────────────────────────────────────────────
 	const commandResults: UpgradeFileResult[] = [];
 	for (const cmd of COMMANDS) {
@@ -234,6 +238,7 @@ export default async function upgrade(
 		buildCategoryResult("pointer-stub", [stubResult]),
 		buildCategoryResult("methodology-docs", docResults),
 		buildCategoryResult("version-metadata", versionResults),
+		buildCategoryResult("reference", referenceResults),
 		buildCategoryResult("commands", commandResults),
 		buildCategoryResult("agents", agentResults),
 		buildCategoryResult("skills", skillResults),

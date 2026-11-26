@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, renameSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync, readFileSync, renameSync } from "node:fs";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import brainContract from "../../brainContract/index.js";
@@ -8,6 +8,7 @@ import {
 	getMethodologyMarker,
 	listAgents,
 	listMethodologyDocs,
+	listReferencePages,
 	listSkills,
 	readCanonicalDoc,
 } from "./index.js";
@@ -481,6 +482,58 @@ describe("aide-observer skill", () => {
 
 	it("declares frontmatter name aide-observer", () => {
 		expect(readCanonicalDoc("skills/aide-observer")).toMatch(/^---\r?\nname: aide-observer\r?\n/);
+	});
+});
+
+/** Every `.md` file under `dir`, walked recursively, as repo-relative forward-slash paths. */
+function collectMarkdownPaths(dir: string): string[] {
+	return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+		const full = join(dir, entry.name);
+		if (entry.isDirectory()) return collectMarkdownPaths(full);
+		if (!entry.name.endsWith(".md")) return [];
+		return [relative(REPO_ROOT, full).split(sep).join("/")];
+	});
+}
+
+describe("listReferencePages", () => {
+	const REFERENCE_ROOT = join(REPO_ROOT, ".aide", "reference");
+	const shipped = collectMarkdownPaths(REFERENCE_ROOT);
+	const entries = listReferencePages();
+	const listedPaths = entries.map((e) => getCanonicalPath(e.canonical));
+
+	it("lists every shipped reference page", () => {
+		for (const path of shipped) {
+			expect(listedPaths, `${path} is shipped but has no entry in listReferencePages()`).toContain(path);
+		}
+	});
+
+	it("ships every listed page", () => {
+		for (const entry of entries) {
+			expect(shipped, `${entry.canonical} is listed but its page is not shipped`).toContain(getCanonicalPath(entry.canonical));
+		}
+	});
+
+	it("hostPath is the canonical path under the reference folder", () => {
+		for (const entry of entries) {
+			expect(`.aide/reference/${entry.hostPath}`).toBe(getCanonicalPath(entry.canonical));
+			expect(entry.hostPath.startsWith("tools/") || entry.hostPath.startsWith("hooks/")).toBe(true);
+		}
+	});
+
+	it("each set has its table of contents", () => {
+		const hostPaths = entries.map((e) => e.hostPath);
+		expect(hostPaths).toContain("tools/index.md");
+		expect(hostPaths).toContain("hooks/index.md");
+	});
+
+	it.each(entries.map((entry) => [entry.canonical, entry] as const))("returns %s verbatim", (_canonical, entry) => {
+		const onDisk = readFileSync(join(REPO_ROOT, getCanonicalPath(entry.canonical)), "utf-8");
+		expect(readCanonicalDoc(entry.canonical)).toBe(onDisk);
+	});
+
+	it("canonical names are unique", () => {
+		const names = entries.map((e) => e.canonical);
+		expect(new Set(names).size).toBe(names.length);
 	});
 });
 

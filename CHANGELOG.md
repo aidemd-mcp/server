@@ -6,6 +6,15 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Added
+
+- A tool and hook reference ships with the package and installs into every project at `.aide/reference/`: `tools/` has one page per MCP tool and `hooks/` one page per Claude Code hook event AIDE listens to, each with an `index.md` table of contents. Every page has `name` and `description` frontmatter and one heading, so a docs site can render it. `aide_init` and `aide_upgrade` handle it as its own `reference` category, separate from the methodology docs (in the init wizard right after methodology), and `versions.json` tracks each page, so `aide_info` reports stale pages.
+
+### Changed
+
+- The `aide-architect` and `aide-auditor` agents treat the coding playbook as winning over the code around the work: a rule broken by neighbouring modules is still the rule. New code follows it, and the architect lists the existing violations as **Convention drift found** instead of copying them for consistency. Only a convention the project itself declares, in its instructions file or its linter or formatter config, overrides a playbook entry.
+- On a HALT, the `aide-observer` skill now checks each open session's real state before telling the user about it: it finds the session's Claude session id (from the HALT line or the project's presence records) and checks with the host whether that session is still running, then reports it as running, closed without reporting its end, or not verifiable. A HALT alone is no longer reported as a session that is still active.
+
 ## [0.18.0] - 2026-11-26
 
 ### Added

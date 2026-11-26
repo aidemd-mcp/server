@@ -5,6 +5,5 @@ coverage/
 .mcp.json
 *.tsbuildinfo
 *.stackdump
-.aide/tools.md
 .aide/versions.json
 qa-artifacts/

@@ -1,0 +1,26 @@
+---
+scope: src/service/install/reference
+alignment: unreviewed
+description: "Plans the tool and hook reference scaffold — every shipped reference page copied byte-faithfully into the host's reference folder as its own step."
+intent: >
+  Plans the host-side install of the AIDE reference: one
+  page per server tool and per hook event AIDE listens to, each set with
+  its table of contents. Every page lands as its own step, byte-identical
+  to what the package ships and kept in its own set, so host projects and
+  the docs site read exactly the shipped reference. The page list comes
+  from its single owner, never pinned here. Drift is reported per page,
+  and the reference stays a category apart from the methodology docs.
+outcomes:
+  desired:
+    - Every reference page the package ships is planned as its own step, byte-faithful with its source and kept in its set (tools or hooks). The installed reference reads exactly as shipped, with no rewriting or composition at install time.
+    - The page list is read from the single owner of the canonical content set. This layer iterates whatever comes back rather than authoring or pinning the roster locally.
+    - A page already present and identical is left alone; a drifted page surfaces as its own would-overwrite step. The consumer decides per page, and no page's status is rolled into a sibling's.
+    - A single unreadable page fails its own step and leaves every other page's step intact.
+    - The reference installs as a category of its own, apart from the methodology doc set, so either can be applied or skipped without touching the other.
+  undesired:
+    - A shipped page missing from the plan, or a planned page the package does not ship. The installed reference must match the shipped one page for page.
+    - A page's content altered, its set flattened into a single folder, or an existing page overwritten without being reported first.
+    - Pinning the reference roster inside this layer by list, count or filename. The roster belongs to its owner and grows as tools and hook events are added.
+    - One page's read failure failing the whole category, or several pages folded into one step or one confirmation.
+    - Reference pages planned under the methodology doc category, mixing the two sets in one plan or one install folder.
+---

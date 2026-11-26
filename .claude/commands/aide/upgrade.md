@@ -67,6 +67,8 @@ Then move to the NEXT drifted category. Present it the same way with `AskUserQue
 
 **pointer-stub:** The tool splices the canonical stub within marker boundaries, preserving user content outside the markers. This is handled by the tool during apply — just report the result.
 
+**reference:** The tool and hook reference pages under `.aide/reference/` are their own category, separate from `methodology-docs`. Ask about them on their own; one yes writes every missing or changed page. Apply `version-metadata` too, or `aide_info` keeps listing the pages as outdated.
+
 **mcp:** The manifest includes `prescription` data. Read the existing MCP config, show what would change, and call `AskUserQuestion`:
 
 ```

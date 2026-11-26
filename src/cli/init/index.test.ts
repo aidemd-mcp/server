@@ -50,6 +50,9 @@ vi.mock("@/service/install/installAideTree/index.js", () => ({
 vi.mock("@/service/install/installHooks/index.js", () => ({
 	default: vi.fn(),
 }));
+vi.mock("@/service/install/reference/index.js", () => ({
+	default: vi.fn(),
+}));
 vi.mock("@/service/install/scaffoldReadme/index.js", () => ({
 	default: vi.fn(),
 }));
@@ -87,6 +90,7 @@ import installAgents from "@/service/install/installAgents/index.js";
 import installSkills from "@/service/install/installSkills/index.js";
 import installAideTree from "@/service/install/installAideTree/index.js";
 import installHooks from "@/service/install/installHooks/index.js";
+import installReference from "@/service/install/reference/index.js";
 import scaffoldReadme from "@/service/install/scaffoldReadme/index.js";
 import applySteps from "@/service/install/applySteps/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
@@ -107,6 +111,7 @@ const mockInstallAgents = vi.mocked(installAgents);
 const mockInstallSkills = vi.mocked(installSkills);
 const mockInstallAideTree = vi.mocked(installAideTree);
 const mockInstallHooks = vi.mocked(installHooks);
+const mockInstallReference = vi.mocked(installReference);
 const mockScaffoldReadme = vi.mocked(scaffoldReadme);
 const mockApplySteps = vi.mocked(applySteps);
 const mockReadVersionsManifest = vi.mocked(readVersionsManifest);
@@ -212,6 +217,7 @@ beforeEach(() => {
 	mockInstallSkills.mockResolvedValue([]);
 	mockInstallAideTree.mockResolvedValue([]);
 	mockInstallHooks.mockResolvedValue([]);
+	mockInstallReference.mockResolvedValue([]);
 	mockScaffoldReadme.mockResolvedValue(
 		makeStep({ filePath: `${CWD}/README.md`, name: "README.md", category: "readme" }),
 	);
@@ -232,6 +238,7 @@ describe("cold-start happy path — every step is would-create", () => {
 	const agentStep = makeStep({ filePath: `${CWD}/.claude/agents/aide/aide-architect.md`, name: "aide-architect.md", category: "agents" });
 	const skillStep = makeStep({ filePath: `${CWD}/.claude/skills/study-playbook/SKILL.md`, name: "study-playbook/SKILL.md", category: "skills" });
 	const aideTreeStep = makeStep({ filePath: `${CWD}/.aide/bin/aide-tree.mjs`, name: "aide-tree.mjs", category: "methodology" });
+	const referenceStep = makeStep({ filePath: `${CWD}/.aide/reference/tools/index.md`, name: ".aide/reference/tools/index.md", category: "reference" });
 	const readmeStep = makeStep({ filePath: `${CWD}/README.md`, name: "README.md", category: "readme" });
 
 	beforeEach(() => {
@@ -245,6 +252,7 @@ describe("cold-start happy path — every step is would-create", () => {
 		mockInstallAgents.mockResolvedValue([agentStep]);
 		mockInstallSkills.mockResolvedValue([skillStep]);
 		mockInstallAideTree.mockResolvedValue([aideTreeStep]);
+		mockInstallReference.mockResolvedValue([referenceStep]);
 		mockScaffoldReadme.mockResolvedValue(readmeStep);
 		mockCompareBytes.mockResolvedValue("would-create");
 	});
@@ -275,6 +283,26 @@ describe("cold-start happy path — every step is would-create", () => {
 		// All planning steps are would-create, so all should reach applySteps
 		expect(allCallArgs.length).toBeGreaterThanOrEqual(5);
 		expect(allCallArgs.every((s: InitStep) => s.status === "would-create")).toBe(true);
+	});
+
+	it("reference steps follow the versions step in applySteps input", async () => {
+		await runInit(CWD, () => {});
+
+		const applied: InitStep[] = mockApplySteps.mock.calls.flatMap(([steps]) => steps);
+		const paths = applied.map((s) => s.filePath);
+		const docIdx = paths.indexOf(docStep.filePath);
+		const referenceIdx = paths.indexOf(referenceStep.filePath);
+		const commandIdx = paths.indexOf(commandStep.filePath);
+		expect(docIdx).toBeGreaterThanOrEqual(0);
+		expect(referenceIdx).toBeGreaterThan(docIdx);
+		expect(referenceIdx).toBeLessThan(commandIdx);
+	});
+
+	it("plans the reference with the project root and doc hub", async () => {
+		await runInit(CWD, () => {});
+
+		expect(mockInstallReference).toHaveBeenCalledTimes(1);
+		expect(mockInstallReference).toHaveBeenCalledWith({ projectRoot: CWD, docHubDir: ".aide/docs" });
 	});
 
 	it("renderWarning receives skipped:[], failed:[], and the two deferred categories", async () => {
@@ -637,6 +665,10 @@ describe("invocation ordering", () => {
 			order.push("installAideTree");
 			return [];
 		});
+		mockInstallReference.mockImplementation(async () => {
+			order.push("installReference");
+			return [];
+		});
 		mockScaffoldReadme.mockImplementation(async () => {
 			order.push("scaffoldReadme");
 			return makeStep({ filePath: `${CWD}/README.md`, name: "README.md", category: "readme" });
@@ -668,6 +700,7 @@ describe("invocation ordering", () => {
 			"installAgents",
 			"installSkills",
 			"installAideTree",
+			"installReference",
 			"scaffoldReadme",
 			"renderWarning",
 		]) {

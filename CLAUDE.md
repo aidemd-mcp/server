@@ -77,6 +77,17 @@ Write the entry so it is safe to apply twice: a file already on the new form mus
 
 Never hand-edit the site's files from this repo's session and never copy files from this repo's local build — the files come from the published package through the site's own `aide` tools. The site's checkout location and the exact command live in the maintainer's private notes, not here.
 
+## Reference Docs Stay in Sync With the Code
+
+`.aide/reference/` documents what the package exposes, one page per item, and aidemd.dev builds docs pages from it:
+
+- `.aide/reference/tools/` — one `<tool_name>.md` per MCP tool, with `index.md` as the table of contents.
+- `.aide/reference/hooks/` — one `<EventName>.md` per Claude Code hook event AIDE listens to, with `index.md` as the table of contents. These describe what each hook does, not how it is installed.
+
+**Whenever you change a tool or a hook, update its reference page in the same piece of work, unprompted.** That covers a tool's name, description, parameters, return values or guarantees (the registrations live in `src/startServer/index.ts`), and a hook's event list, the state it records or what it does to the observer (`src/cli/hook/`). A new tool or hook gets a new page and a row in its `index.md`; a removed one loses both. A change that lands without its reference page is not done.
+
+Every page has the same shape, so the site can render it: frontmatter with `name` and a one-sentence `description`, then a single `# <name>` heading (the site takes the title from it), then the page's sections. Tool pages use **When to call it**, **Parameters**, **What it returns** and **Guarantees**; hook pages use **When Claude Code sends it**, **What AIDE records** and **Effect on the observer**.
+
 ## Fixes Go in Canonical Docs, Not Memory
 
 This project ships agent definitions (`.claude/agents/`), command prompts (`.claude/commands/`), and methodology docs (`.aide/docs/`) that get installed into other projects. When you discover a behavioral fix, pattern, or constraint that should apply to all agents or all projects using AIDE:
