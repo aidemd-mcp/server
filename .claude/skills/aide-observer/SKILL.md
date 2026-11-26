@@ -38,12 +38,16 @@ Run these in order, one call at a time, before the `aide` skill's boot:
 
 A HALT reply names each open session of the project: its observer id (or `claude:<id>` for a Claude session that never reported), whether it is working or waiting on the user, how long it has been quiet ("maybe stuck" past 15 minutes), its last activity, and its pipeline and phase.
 
+A HALT is the observer's view, not proof that the session is still running: a session closed while its end hook was cut short stays "open" forever. Check each one before you tell the user anything about it.
+
 1. Stop all other work. Do not run the `aide` skill's boot or touch any file.
-2. Tell the user, in plain words, which session holds the project and what it was doing. Say that it may be stuck or may simply never have reported finishing.
-3. Ask the user what to do: end that session, or close this one. Never decide for them, and never end a session because it looks quiet.
-4. Only on the user's clear yes, call `aide_observer_end_session` with the id the HALT named: an observer id as written, or, for a `claude:<id>` line, the id without the `claude:` prefix. Ending only marks the session ended; it deletes nothing. It refuses your own session.
-5. If it replies `not ended (<reason>)`, the mark could not be written: tell the user the reason, the HALT still stands, and try again only if the user says so.
-6. After `ended` or `already ended`, call `aide_observer_start` again and handle its reply as in step 4 of the session start. A second HALT names whatever is still open.
+2. **Find each session's Claude session id.** A `claude:<id>` line already names it. For an observer id, read the project's presence records: the `*.json` files in the `presence` folder of the project's runtime folder, whose name is the `p/<key>` part of the observer link (under `$AIDEMD_HOME` when it is set, else `~/.aidemd` on Windows, `~/Library/Application Support/aidemd` on macOS, `$XDG_STATE_HOME/aidemd` or `~/.local/state/aidemd` elsewhere). The record whose `sessionId` is the observer id gives `claudeSessionId`, its last hook (`hookEvent`, `at`) and its `transcriptPath`. Only read these files; never edit or delete them.
+3. **Check whether that Claude session is really running,** with whatever the host gives you. In the Claude desktop app, list the sessions including archived ones and find the one in this project's folder whose last activity matches the presence `at`: `isRunning` and `isArchived` give its real state. In a terminal, look for a running `claude` process for this project and at when the transcript was last written. If nothing you can reach answers it, say you could not verify it, and never claim it is running.
+4. Tell the user, in plain words, which session holds the project, what it was doing, its Claude session id, and what the check found: still running (and where), closed without reporting its end, or not verifiable.
+5. Ask the user what to do: end that session, or close this one. Never decide for them, and never end a session because it looks quiet. A session the check found closed is safe to end; say so.
+6. Only on the user's clear yes, call `aide_observer_end_session` with the id the HALT named: an observer id as written, or, for a `claude:<id>` line, the id without the `claude:` prefix. Ending only marks the session ended; it deletes nothing. It refuses your own session.
+7. If it replies `not ended (<reason>)`, the mark could not be written: tell the user the reason, the HALT still stands, and try again only if the user says so.
+8. After `ended` or `already ended`, call `aide_observer_start` again and handle its reply as in step 4 of the session start. A second HALT names whatever is still open.
 
 If the user chooses to close this session, stop and say so.
 

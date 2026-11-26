@@ -7,8 +7,8 @@ intent: >
   and tell at a glance which pipeline and phase are running, on which
   module, by which agent, for how long, and whether it is waiting on them.
   The observer is mandatory and the single source of truth for a project's
-  agent sessions: at most one is live, judged from hook presence and
-  activity, never ended automatically. Current state comes from the
+  agent sessions: at most one is live, judged from hook presence, activity
+  and the transcript's closing record, never marked ended automatically. Current state comes from the
   project's own files; history and pipelines come from best-effort records
   kept per user outside the project, resuming across sessions; the board is
   optional.
@@ -18,14 +18,14 @@ outcomes:
     - Apart from the session start (starting the observer and the one-live-session check) and an observer found down that cannot be restarted, the pipeline behaves identically whether events are recorded, fail, are skipped or miss a running observer, and an unavailable board or missing event empties only its own part of the view. Event records live outside the host project.
     - History lists what happened in the order it happened, each row showing the first line of its prompt and its detail the full prompt.
     - Every project's live and past sessions can be listed in one place and each reviewed, and removing one deletes only that session's record, never anything in the project.
-    - At most one agent session per project is live; a new session that finds another live is halted until the user approves ending it, and ending only marks it ended. Each session shows as working, waiting on the user, quiet and maybe stuck, or ended, and none is ever ended automatically.
+    - At most one agent session per project is live; a new session that finds another live is halted until the user approves ending it, and ending only marks it ended. Each session shows as working, waiting on the user, quiet and maybe stuck, or ended, one whose transcript ends in its closing record shown as closed without reporting its end, and none is ever marked ended automatically.
     - A pipeline is one feature flow from the stage it starts at to completion or abandonment, shown within the live session that runs it. Stages it finished in earlier sessions show as done when a later session resumes it.
   undesired:
     - A cycle that stalls, fails or behaves differently because recording an event failed or a report missed the observer, one that carries on while the observer is down and cannot be restarted, or a second session of a project running on while another is live.
     - Event records appearing in the host repo, removing a past session touching any project file, or ending a session deleting anything.
     - A status that contradicts its project's files or draws on another project's, such as Build while the plan is still proposed, or takes current state from the event log so a missed event leaves a stale phase or a wrong file awaiting approval on screen.
     - History or a pipeline's stages that invent or reorder what happened, including a guessed row filling a missed event or a stage shown skipped that no report skipped.
-    - A quiet session ended automatically, or a session shown live or ended from anything but its hook presence, ended mark and newest activity.
+    - A quiet session ended automatically, or a session shown live or ended from anything but its hook presence, ended mark, newest activity and its transcript's last record.
     - An unavailable board or event log that breaks the whole status instead of only its own part.
 ---
 

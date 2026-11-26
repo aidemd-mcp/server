@@ -3,30 +3,30 @@ scope: src/service/observer/event
 alignment: unreviewed
 description: "Session records for the observer: each session's reported actions, presence and ended mark kept outside the project, read back in order, judged live or not, and deleted on request."
 intent: >
-  Gives the observer the record of every agent session. Each reported
-  action is stamped with its time, session and order and names its
-  pipeline, written first to the session's own log in per-user storage
-  outside the project, then handed to a running observer if any. Hook
-  presence and ended marks sit beside each log, never in it. It judges each
-  session working, waiting, quiet and maybe stuck, or ended, never ending
+  Gives the observer the record of every agent session. Each reported action
+  is stamped with its time, session and order, written first to the
+  session's own log in per-user storage outside the project, then to a
+  running observer if any. Hook presence and ended marks sit beside each
+  log, never in it. It judges each session working, waiting, quiet and maybe
+  stuck, or ended, even one closed without reporting its end, never ending
   one itself. Recording can never fail or stall the pipeline. Sessions read
   back in true order, older logs included, and one ended session can be
   deleted alone.
 outcomes:
   desired:
     - Every reported action lands in its session's own log, which has a single writer and lives in per-user storage outside the host project, before any attempt to reach the observer, and recording returns promptly without error whatever fails. The reply says whether the observer received it, so the agent knows when it is not running.
-    - Every phase, gate, plan-step and QA report names its pipeline. A pipeline's start with its starting phase, its finish as completed or abandoned, and every skipped phase with its reason are recorded as reports of their own.
+    - Every phase, gate, plan-step and QA report names its pipeline, and a pipeline's start with its starting phase, its finish as completed or abandoned, and every skipped phase with its reason are reports of their own. A session's first event is its session-started report, holding exactly the project root, kanban tag and brain folder the agent reported, never inferred or filled in, and read back with the session.
     - A hook-reported start, prompt or tool call makes a session working, the agent stopping makes it waiting on the user, and its end or an ended mark makes it ended; after 15 minutes with neither it is quiet and maybe stuck, never ended. Last activity is the newest of the hook time, the transcript's last write and the newest reported event, and a host without hooks falls back to reported events.
     - Reading lists every project that has recorded sessions, each with the project root its newest session reported, and returns every recorded session of a project with its valid events in the order they happened, including each full prompt and logs that name no pipeline. A malformed line is skipped, never fatal.
     - Ending a session marks it ended and deletes nothing, and deleting removes only the chosen ended session's record, never a live one.
-    - A session's first event is the session-started report the agent makes at session start, carrying the project root, kanban tag and brain folder when there is one. It holds exactly what the agent reported, never inferred or filled in, and reading returns it with the session.
+    - A session that never reported its end but whose Claude transcript ends in the closing record counts as ended, no longer open and no longer halting others, shown as closed without reporting its end, and judging it writes nothing. Only the last record counts, so a resumed session that writes on after a closing record is live again.
   undesired:
     - An event missing from history because the observer was off or unreachable, or a pipeline step that waits on, fails from or behaves differently because of recording, including recording an ordinary action that starts the observer or anything else.
     - Two writers interleaving lines in one session's log, including presence or ended marks written into it, a session's events read back out of order, or any record written inside the host repo.
     - Session metadata the agent never reported appearing in the log, or a second session start recorded when a stopped observer is brought back mid-session.
     - One malformed line, or a log written before pipelines were named, making a whole session unreadable or hiding the sessions after it.
-    - A delete that removes more than the chosen session, touches any project file or removes a live session, or an end that deletes anything.
-    - A quiet session ended automatically, or liveness judged from anything but hook presence, ended marks and last activity, so a session waiting on the user reads as ended or a closed one as working.
+    - A delete that removes more than the chosen session, touches any project file or removes a live session, an end that deletes anything, or judging liveness that writes or deletes any record.
+    - A live, waiting or merely quiet session judged ended, a resumed one kept ended by an earlier closing record, or liveness judged from anything but hook presence, ended marks, last activity and the transcript's last record. A missing, unreadable or unrecognised transcript that ends a session or makes reading fail, rather than leaving the judgement as it would be without it.
 ---
 
 ## Context
