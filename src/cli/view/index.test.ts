@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/observer/index.js", () => ({ default: vi.fn() }));
@@ -15,8 +15,8 @@ const LINK = "http://127.0.0.1:24680/p/p-ab12/s/s1?token=abc123";
 const projectRoot = resolve("/project/root");
 const observer = { address: "http://127.0.0.1:24680", port: 24680, token: "abc123", pid: 4242, version: "0.16.0" };
 const otherPortObserver = { ...observer, address: "http://127.0.0.1:24683", port: 24683 };
-const BRAIN_NOTE =
-	"Note: --brain applies only when this command starts the observer; the running observer keeps its own setting.\n";
+const KANBAN_NOTE =
+	"Note: --kanban (or --brain) applies only when this command starts the observer; the running observer keeps its own setting.\n";
 const PORT_NOTE = "Port 24680 was not used; the observer is on port 24683.\n";
 
 describe("view", () => {
@@ -97,22 +97,40 @@ describe("view", () => {
 		});
 	});
 
-	describe("brain override", () => {
+	describe("kanban override", () => {
 		beforeEach(() => {
 			startObserverMock.mockResolvedValue({ outcome: "kept", observer });
 		});
 
-		it("passes brainOverride for this project only with --brain", async () => {
-			await view({ args: ["--brain", "../brain"], projectRoot });
+		it("passes kanbanOverride for this project only with --kanban", async () => {
+			await view({ args: ["--kanban", "../kanban"], projectRoot });
 			expect(startObserverMock).toHaveBeenCalledWith({
 				port: 24680,
-				brainOverride: { projectRoot, brainPath: resolve(projectRoot, "../brain") },
+				kanbanOverride: { projectRoot, kanbanPath: resolve(projectRoot, "../kanban") },
 			});
+			expect(stderr).toBe("");
 		});
 
-		it("passes no brainOverride without --brain", async () => {
+		it("passes the <path>/kanban folder with --brain and writes the deprecation line to stderr", async () => {
+			await view({ args: ["--brain", "../brain"], projectRoot });
+			const kanbanPath = join(resolve(projectRoot, "../brain"), "kanban");
+			expect(startObserverMock).toHaveBeenCalledWith({
+				port: 24680,
+				kanbanOverride: { projectRoot, kanbanPath },
+			});
+			expect(stderr).toBe(`Note: --brain is deprecated; it now means --kanban ${kanbanPath}. Use --kanban instead.\n`);
+		});
+
+		it("exits 2 without starting when both flags are given", async () => {
+			await expect(view({ args: ["--kanban", "a", "--brain", "b"], projectRoot })).resolves.toBe(2);
+			expect(stderr).toContain("Error: --kanban and --brain cannot be used together.");
+			expect(startObserverMock).not.toHaveBeenCalled();
+		});
+
+		it("passes no kanbanOverride without either flag", async () => {
 			await view({ args: [], projectRoot });
-			expect(startObserverMock.mock.calls[0]![0]).not.toHaveProperty("brainOverride");
+			expect(startObserverMock.mock.calls[0]![0]).not.toHaveProperty("kanbanOverride");
+			expect(stderr).toBe("");
 		});
 	});
 
@@ -124,21 +142,21 @@ describe("view", () => {
 			expect(buildLinkMock).toHaveBeenCalledWith({ observer, projectRoot });
 		});
 
-		it("adds a note when --brain was given", async () => {
+		it("adds a note when --kanban was given", async () => {
 			startObserverMock.mockResolvedValue({ outcome: "kept", observer });
-			await expect(view({ args: ["--brain", "../brain"], projectRoot })).resolves.toBe(0);
+			await expect(view({ args: ["--kanban", "../kanban"], projectRoot })).resolves.toBe(0);
 			expect(stdout).toBe(
 				`Observer already running at ${LINK}\n` +
-					"Note: --brain applies only when this command starts the observer; the running observer keeps its own setting.\n",
+					KANBAN_NOTE,
 			);
 		});
 	});
 
 	describe("port note", () => {
-		it("kept on another port: prints the note after the link line and before the --brain note", async () => {
+		it("kept on another port: prints the note after the link line and before the --kanban note", async () => {
 			startObserverMock.mockResolvedValue({ outcome: "kept", observer: otherPortObserver });
-			await expect(view({ args: ["--brain", "../brain"], projectRoot })).resolves.toBe(0);
-			expect(stdout).toBe(`Observer already running at ${LINK}\n${PORT_NOTE}${BRAIN_NOTE}`);
+			await expect(view({ args: ["--kanban", "../kanban"], projectRoot })).resolves.toBe(0);
+			expect(stdout).toBe(`Observer already running at ${LINK}\n${PORT_NOTE}${KANBAN_NOTE}`);
 		});
 
 		it("kept on the port asked for: prints no note", async () => {

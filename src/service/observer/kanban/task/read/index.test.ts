@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import readTask from "./index.js";
-import { BOARD_HINT } from "@/service/observer/kanban/shared/locateBoard/index.js";
+import boardHints from "@/service/observer/kanban/shared/boardHints/index.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -14,6 +14,25 @@ const TAG = "my-project";
 
 let brain: string;
 let project: string;
+
+/** Writes the project's brain config with its kanban field pointing at the temp brain's kanban folder. */
+async function writeBrainConfig(): Promise<void> {
+	await mkdir(join(project, ".aide", "config"), { recursive: true });
+	await writeFile(
+		join(project, ".aide", "config", "brain.aide"),
+		`---
+name: test
+mcpServerConfig:
+  command: mcpvault
+  args:
+    - "x"
+kanban:
+  source: folder
+  path: ${JSON.stringify(join(brain, "kanban"))}
+---
+`,
+	);
+}
 
 /** Writes a task note into the temp brain's board and returns its path. */
 async function writeTask({
@@ -34,9 +53,9 @@ async function writeTask({
 	return path;
 }
 
-/** The location a session would report for the temp brain. */
+/** The location a session would report: its kanban tag only. */
 function reportedFor(kanbanTag: string = TAG) {
-	return { brainPath: brain, kanbanTag };
+	return { kanbanTag };
 }
 
 /** Every path under a folder with its size and mtime, for before/after comparison. */
@@ -55,6 +74,7 @@ beforeEach(async () => {
 	brain = await mkdtemp(join(tmpdir(), "task-brain-"));
 	project = await mkdtemp(join(tmpdir(), "task-project-"));
 	await mkdir(join(brain, "kanban", TAG), { recursive: true });
+	await writeBrainConfig();
 	vi.mocked(readFile).mockClear();
 });
 
@@ -103,7 +123,10 @@ describe("task/read", () => {
 			const result = await readTask({ reported: reportedFor(), projectRoot: project, slug });
 			expect(result.state).toBe("refused");
 			const boardFolder = join(brain, "kanban", TAG);
+			// The project's brain config is the one file read outside the board: it says where the board is.
+			const configPath = join(project, ".aide", "config", "brain.aide");
 			for (const [path] of vi.mocked(readFile).mock.calls) {
+				if (String(path) === configPath) continue;
 				expect(String(path).startsWith(boardFolder)).toBe(true);
 			}
 		},
@@ -136,9 +159,30 @@ describe("task/read", () => {
 		expect(result).toEqual({ state: "not-found", slug: "shared-slug" });
 	});
 
-	it("answers unavailable when no location was reported", async () => {
-		const result = await readTask({ reported: null, projectRoot: project, slug: "fix-it" });
-		expect(result).toMatchObject({ state: "unavailable", reason: "no-brain-path", hint: BOARD_HINT });
+	it("answers unavailable when the project has no brain config", async () => {
+		const bare = await mkdtemp(join(tmpdir(), "task-bare-"));
+		try {
+			const result = await readTask({ reported: null, projectRoot: bare, slug: "fix-it" });
+			expect(result).toMatchObject({
+				state: "unavailable",
+				reason: "no-brain-config",
+				hint: boardHints["no-brain-config"],
+			});
+		} finally {
+			await rm(bare, { recursive: true, force: true });
+		}
+	});
+
+	it("reads the task through the kanban folder override with no brain config", async () => {
+		await writeTask({ column: "todo", slug: "fix-it" });
+		await rm(join(project, ".aide", "config"), { recursive: true, force: true });
+		const result = await readTask({
+			reported: reportedFor(),
+			kanbanOverride: join(brain, "kanban"),
+			projectRoot: project,
+			slug: "fix-it",
+		});
+		expect(result).toMatchObject({ state: "found", slug: "fix-it", column: "todo" });
 	});
 
 	it("never writes: the brain and project are identical before and after", async () => {

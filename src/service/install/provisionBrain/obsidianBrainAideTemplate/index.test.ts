@@ -761,6 +761,16 @@ describe("parsed frontmatter contains exactly the new flat fields", () => {
 		expect(args[args.length - 1]).toBeNull();
 	});
 
+	it("kanban is declared as a folder source with the path unfilled", async () => {
+		const content = await getTemplate();
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+
+		expect(result.kanban).toEqual({ state: "declared", source: "folder", path: null });
+	});
+
 	it("result has no connector, rootPath, entryFile, or tools keys on the ok variant", async () => {
 		const content = await getTemplate();
 		const result = parseBrainAideFromString(content);
@@ -943,6 +953,7 @@ describe("schema does not include intent-spec or deprecated fields", () => {
 
 		expect(frontmatterBlock).toMatch(/^name:/m);
 		expect(frontmatterBlock).toMatch(/^mcpServerConfig:/m);
+		expect(frontmatterBlock).toMatch(/^kanban:/m);
 	});
 
 	it("frontmatter block does not contain intent-spec fields", async () => {
@@ -1411,5 +1422,22 @@ describe("config section prose for the brain launch mode", () => {
 		const proseVersions = [...result.config.matchAll(/@bitbonsai\/mcpvault@(\d+\.\d+\.\d+)/g)].map((match) => match[1]);
 		const olderThan = [...result.config.matchAll(/older than `(\d+\.\d+\.\d+)`/g)].map((match) => match[1]);
 		for (const version of [...proseVersions, ...olderThan]) expect(version).toBe(MCPVAULT_VERSION);
+	});
+});
+
+describe("config section fills the board location", () => {
+	it("names kanban.path, the one-time offer, the decline entry and the fill-source rule", async () => {
+		const result = parseOk(await getTemplate());
+
+		expect(result.config).toContain("kanban.path");
+		expect(result.config).toContain("AskUserQuestion");
+		expect(result.config).toContain("Not now");
+		expect(result.config).toContain("Fill it only from the vault path the user gave");
+	});
+
+	it("the template still parses ok under the real parser with the section intact", async () => {
+		const content = await getTemplate();
+
+		expect(parseBrainAideFromString(content).kind).toBe("ok");
 	});
 });

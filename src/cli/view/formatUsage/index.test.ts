@@ -8,7 +8,8 @@ describe("formatUsage", () => {
 	it("names the command, the flags and the global launcher", () => {
 		expect(usage).toContain("view [--port <n>]");
 		expect(usage).toContain("AIDE_OBSERVER_PORT");
-		expect(usage).toContain("--brain <path>");
+		expect(usage).toContain("--kanban <path>");
+		expect(usage).toContain("--brain <path> is deprecated and means --kanban <path>/kanban.");
 		expect(usage).toContain("aidemd-mcp view");
 	});
 

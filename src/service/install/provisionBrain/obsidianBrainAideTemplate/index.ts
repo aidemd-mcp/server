@@ -60,9 +60,10 @@ export const MCPVAULT_COMMAND = "mcpvault";
  *     here, and each section parses to `"\n\n" + seed + "\n"`.
  *
  * Load-bearing constraints:
- * - Frontmatter is exactly `name` + `mcpServerConfig` — minimum schema is the
- *   maximum schema. The parser rejects any additional top-level field as
- *   `malformed-frontmatter`.
+ * - Frontmatter is `name`, `mcpServerConfig` and the optional board location `kanban`
+ *   (`source: folder`, `path` left as YAML null — the unwired signal — until the `config`
+ *   flow fills it with the vault's kanban folder; observer brief commitment 112).
+ *   Non-folder backends omit `kanban`. Never derive it from the launcher's arguments in code.
  * - The launcher is the global `mcpvault` command on every platform: `command: mcpvault`,
  *   `args` parses to `[null]`. No platform branching and no launch mode. The path slot in
  *   `mcpServerConfig.args` is a bare-dash YAML null line: no quoted empty string, no
@@ -83,11 +84,13 @@ export const MCPVAULT_COMMAND = "mcpvault";
  */
 export default function obsidianBrainAideTemplate(): string {
 	const mcpServerConfig = `mcpServerConfig:\n  command: ${MCPVAULT_COMMAND}\n  args:\n    -`;
+	const kanban = `kanban:\n  source: folder\n  path:`;
 
 	return (
 		`---\n` +
 		`name: obsidian\n` +
 		`${mcpServerConfig}\n` +
+		`${kanban}\n` +
 		`---\n` +
 		`\n` +
 		`<!-- aide-orientation-start -->\n` +
@@ -113,6 +116,8 @@ export default function obsidianBrainAideTemplate(): string {
 		`\`mcpServerConfig.args\` in \`brain.aide\`. YAML null at that position is the\n` +
 		`unwired-state signal — it means the brain path has not yet been filled in.\n` +
 		`\n` +
+		`The frontmatter also carries the board location the observer reads to show this project's kanban board: \`kanban.source\` is \`folder\` and \`kanban.path\` is the absolute path of the vault's \`kanban\` folder. YAML null at \`kanban.path\` means it has not been filled in yet. The brain works without it; only the observer's board needs it.\n` +
+		`\n` +
 		`Argument shape (Obsidian only): \`/aide:brain config [<absolute-path>]\`.\n` +
 		`\n` +
 		`This flow has two paths that NEVER overlap in the same session: WIRING and\n` +
@@ -128,6 +133,7 @@ export default function obsidianBrainAideTemplate(): string {
 		`   list. Quote the literal value you observe — either YAML null (an empty entry,\n` +
 		`   written as a bare dash with no value) or a string. **Do not proceed without\n` +
 		`   quoting it.** YAML null means un-wired; any string value means already wired.\n` +
+		`   Also quote \`kanban.path\`, or say that the frontmatter has no \`kanban\` field.\n` +
 		`\n` +
 		`2. Decide which flow runs:\n` +
 		`   - \`$ARGUMENTS\` non-empty → **WIRING** flow. Use \`$ARGUMENTS\` as the target\n` +
@@ -139,11 +145,14 @@ export default function obsidianBrainAideTemplate(): string {
 		`   - \`$ARGUMENTS\` empty AND last entry is a string path → **SEEDING** flow.\n` +
 		`     The brain is already wired; skip Steps 3 and 4 entirely and jump to Step 5.\n` +
 		`     Before seeding, if the launcher runs through \`npx\` (directly or after \`cmd /c\`), offer with \`AskUserQuestion\` to switch it to the global command, saying that npx launches time out at session start. On yes, install the package globally (\`npm i -g @bitbonsai/mcpvault\` via Bash); if the install exits non-zero, say so and continue to seeding unchanged. Then preview and apply \`aide_upgrade({ category: "brain", brainChange: "launcher" })\` (never edit the launcher by hand), run Step 4 (sync) and stop as the WIRING flow does. On no, continue to seeding unchanged.\n` +
+		`     Also before seeding, if the frontmatter has no \`kanban\` field or \`kanban.path\` is YAML null, offer once with \`AskUserQuestion\` to fill in the board location so the observer can show this project's kanban board. Suggest the vault path you quoted in Step 1 joined with \`kanban\` (using that path's own separator), plus a "Different location" entry and a "Not now" entry. On a location, write the field as Step 3 describes, re-read the frontmatter to confirm \`kanban.path\` is that absolute path, and continue to seeding; no sync is needed, because the field is not part of the brain's launcher. On "Not now", continue to seeding unchanged.\n` +
 		`\n` +
 		`### WIRING flow — Steps 3, 4 (then STOP at end of 4)\n` +
 		`\n` +
 		`3. Edit \`brain.aide\` — replace the null at the last entry of \`mcpServerConfig.args\`\n` +
 		`   with the absolute path.\n` +
+		`\n` +
+		`   In the same edit, fill the board location from that same path: set \`kanban.path\` to the vault path joined with \`kanban\`, using the path's own separator (for \`D:\\Vaults\\brain\` that is \`D:\\Vaults\\brain\\kanban\`), written unquoted. If the frontmatter has no \`kanban\` field, add it right after the \`mcpServerConfig\` block as \`kanban:\` with the indented lines \`source: folder\` and \`path: <vault path>\` + separator + \`kanban\`. Fill it only from the vault path the user gave for this wiring; never guess it from anything else. Then re-read the frontmatter and confirm \`kanban.path\` is that absolute path.\n` +
 		`\n` +
 		`   Then check how this config launches the brain. If the launched program is \`mcpvault\` (the file name of \`mcpServerConfig.command\`, or of the entry after \`/c\` when the command is \`cmd\`, with or without a directory path or a \`.cmd\` / \`.exe\` extension), the brain launches from a global install. In that case, run \`npm ls -g @bitbonsai/mcpvault --depth=0\` via Bash. If the package is not listed, tell the user you are installing it and run \`npm i -g @bitbonsai/mcpvault\` via Bash. If the install exits non-zero, say so plainly and STOP without running sync: a launcher whose command is not installed cannot start. If the launcher runs through \`npx\` instead, offer the switch to the global command as described in step 2 before running sync. A global launcher given by absolute path is valid; never rewrite it for being a path.\n` +
 		`\n` +

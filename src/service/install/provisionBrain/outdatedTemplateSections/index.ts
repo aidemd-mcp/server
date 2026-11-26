@@ -67,6 +67,10 @@ const outdatedTemplateSections: Partial<Record<BrainSectionMarker, readonly Outd
 			fingerprint: "52ce53ec34950de0ecb168f7b3cbd5975b081a27f9fe0ace45c3a2831d860e96",
 			seenIn: "v0.14.0 and earlier (npx fallback and pin offers)",
 		},
+		{
+			fingerprint: "c9f83160559ff1bbdc850fa9f4090a15a10d4344f348e9d4c5b1fd3d7b9ebf6b",
+			seenIn: "v0.15.0–v0.17.1 (10d12c5)",
+		},
 	],
 	"update-playbook": [
 		{

@@ -20,7 +20,7 @@ const SPEC = "---\nalignment: aligned\nintent: x\n---\n";
 const PLAN = (status: string) =>
 	`---\nstatus: ${status}\nintent: x\n---\n## Plan\n### 1. A\n- [x] a\n### 2. B\n- [ ] b\n`;
 const SESSION = "---\nintent: work\n---\n## Where this cycle stopped\n";
-const BOARD: BoardResult = { state: "unavailable", reason: "no-brain-path", detail: "none", hint: "set it" };
+const BOARD: BoardResult = { state: "unavailable", reason: "no-brain-config", detail: "none", hint: "set it" };
 
 let root: string;
 

@@ -21,13 +21,12 @@ const STARTED = {
 	pid: 1,
 	kind: "session_started",
 	projectRoot: "/project",
-	brainPath: "/reported/brain",
 	kanbanTag: "tag",
 };
 
 const HELD: Record<string, unknown[]> = {
 	[KEY]: [{ projectKey: KEY, sessionId: "a", events: [STARTED] }],
-	[OTHER_KEY]: [{ projectKey: OTHER_KEY, sessionId: "b", events: [{ ...STARTED, sessionId: "b", projectRoot: "/other", brainPath: "/other/brain" }] }],
+	[OTHER_KEY]: [{ projectKey: OTHER_KEY, sessionId: "b", events: [{ ...STARTED, sessionId: "b", projectRoot: "/other" }] }],
 	[NO_ROOT_KEY]: [{ projectKey: NO_ROOT_KEY, sessionId: "g", events: [{ ...STARTED, sessionId: "g", projectRoot: undefined }] }],
 };
 
@@ -45,7 +44,7 @@ async function call({ project = KEY, overrideFor = KEY }: { project?: string; ov
 		},
 	} as unknown as ServerResponse;
 	const ctx = {
-		brainOverride: { projectKey: overrideFor, brainPath: "/override" },
+		kanbanOverride: { projectKey: overrideFor, kanbanPath: "/override" },
 		store: { sessions: ({ projectKey }: { projectKey?: string } = {}) => (projectKey === undefined ? [] : (HELD[projectKey] ?? [])) },
 	} as unknown as ObserverContext;
 	await getTask({
@@ -69,21 +68,21 @@ describe("getTask", () => {
 		await call();
 
 		expect(mockRead).toHaveBeenCalledWith({
-			reported: { brainPath: "/reported/brain", kanbanTag: "tag" },
-			brainOverride: "/override",
+			reported: { kanbanTag: "tag" },
+			kanbanOverride: "/override",
 			projectRoot: "/project",
 			slug: "my-task",
 		});
 	});
 
-	it("applies the --brain override only to the project it names", async () => {
+	it("applies the kanban override only to the project it names", async () => {
 		mockRead.mockResolvedValue({ state: "not-found", slug: "my-task" });
 
 		await call({ project: OTHER_KEY, overrideFor: KEY });
 
 		expect(mockRead).toHaveBeenCalledWith({
-			reported: { brainPath: "/other/brain", kanbanTag: "tag" },
-			brainOverride: undefined,
+			reported: { kanbanTag: "tag" },
+			kanbanOverride: undefined,
 			projectRoot: "/other",
 			slug: "my-task",
 		});
@@ -105,9 +104,9 @@ describe("getTask", () => {
 	});
 
 	it("answers 404 with the reason and the hint when the board is unavailable", async () => {
-		mockRead.mockResolvedValue({ state: "unavailable", reason: "no-brain-path", detail: "d", hint: "do this" });
+		mockRead.mockResolvedValue({ state: "unavailable", reason: "no-brain-config", detail: "d", hint: "do this" });
 
-		expect(await call()).toEqual({ status: 404, body: { error: { message: "no-brain-path", details: "do this" } } });
+		expect(await call()).toEqual({ status: 404, body: { error: { message: "no-brain-config", details: "do this" } } });
 	});
 
 	it("answers 404 naming the slug when it is not on the board", async () => {

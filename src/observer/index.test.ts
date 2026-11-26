@@ -197,7 +197,7 @@ describe("startObserver lifecycle", () => {
 		cleanups.push(() => void rm(otherRoot, { recursive: true, force: true }));
 
 		const spare = await freePort();
-		const second = await startObserver({ port: spare, brainOverride: { projectRoot: otherRoot, brainPath: otherRoot } });
+		const second = await startObserver({ port: spare, kanbanOverride: { projectRoot: otherRoot, kanbanPath: otherRoot } });
 		expect(second).toEqual({ outcome: "kept", observer: first.observer });
 		await expect(fetch(`http://127.0.0.1:${spare}/`)).rejects.toThrow();
 	});
@@ -923,6 +923,25 @@ describe("startObserver project views", () => {
 
 	type Status = { state: string; projectKey: string; detail?: string; status?: { sessions: { sessionId: string }[]; tree: unknown } };
 
+	/** Writes a frontmatter-only brain config whose kanban field names the folder (JSON-quoted so Windows backslashes survive YAML). */
+	async function writeKanbanConfig({ projectRoot: root, kanbanFolder }: { projectRoot: string; kanbanFolder: string }): Promise<void> {
+		await mkdir(join(root, ".aide", "config"), { recursive: true });
+		const frontmatter = [
+			"---",
+			"name: test",
+			"mcpServerConfig:",
+			"  command: mcpvault",
+			"  args:",
+			'    - "unused"',
+			"kanban:",
+			"  source: folder",
+			`  path: ${JSON.stringify(kanbanFolder)}`,
+			"---",
+			"",
+		];
+		await writeFile(join(root, ".aide", "config", "brain.aide"), frontmatter.join("\n"));
+	}
+
 	async function readStatus({ port, token, key }: { port: number; token: string; key: string }): Promise<Status> {
 		const reply = await send({ port, path: `/api/projects/${key}/status`, token });
 		expect(reply.status).toBe(200);
@@ -998,7 +1017,7 @@ describe("startObserver project views", () => {
 		}
 	});
 
-	it("applies the --brain override to its own project only", async () => {
+	it("applies the kanban override to its own project only", async () => {
 		const brains = await mkdtemp(join(tmpdir(), "aide-observer-brains-"));
 		try {
 			const note = async ({ brain, slug }: { brain: string; slug: string }) => {
@@ -1009,15 +1028,17 @@ describe("startObserver project views", () => {
 			await note({ brain: brainA, slug: "a-own" });
 			await note({ brain: brainB, slug: "b-own" });
 			await note({ brain: override, slug: "override-task" });
+			await writeKanbanConfig({ projectRoot: rootA, kanbanFolder: join(brainA, "kanban") });
+			await writeKanbanConfig({ projectRoot: rootB, kanbanFolder: join(brainB, "kanban") });
 			// Newer than the session_started the beforeEach seeded, so these two are each project's newest.
 			const LATER = "2026-06-01T00:00:00.000Z";
 			const sessionA2 = "20260101T000001Z-a2a2a2";
 			const sessionB2 = "20260101T000001Z-b2b2b2";
-			await seedSession({ sessionId: sessionA2, root: rootA, events: [makeStartedEvent({ sessionId: sessionA2, root: rootA, brainPath: brainA, kanbanTag: "board", ts: LATER })] });
-			await seedSession({ sessionId: sessionB2, root: rootB, events: [makeStartedEvent({ sessionId: sessionB2, root: rootB, brainPath: brainB, kanbanTag: "board", ts: LATER })] });
+			await seedSession({ sessionId: sessionA2, root: rootA, events: [makeStartedEvent({ sessionId: sessionA2, root: rootA, kanbanTag: "board", ts: LATER })] });
+			await seedSession({ sessionId: sessionB2, root: rootB, events: [makeStartedEvent({ sessionId: sessionB2, root: rootB, kanbanTag: "board", ts: LATER })] });
 
 			const port = await freePort();
-			const result = await startObserver({ port, brainOverride: { projectRoot: rootA, brainPath: override } });
+			const result = await startObserver({ port, kanbanOverride: { projectRoot: rootA, kanbanPath: join(override, "kanban") } });
 			if ("stop" in result) stops.push(result.stop);
 			if (result.outcome !== "started") throw new Error("expected a start");
 			const token = tokenOf(urlOf(result));
@@ -1030,6 +1051,25 @@ describe("startObserver project views", () => {
 		} finally {
 			await rm(brains, { recursive: true, force: true });
 		}
+	});
+
+	it("serves the board as available from the brain config when the newest session reported no brain folder", async () => {
+		const kanban = join(sandbox, "brain", "kanban");
+		await mkdir(join(kanban, "board", "todo"), { recursive: true });
+		await writeFile(join(kanban, "board", "todo", "a-task.md"), "# a-task\n");
+		await writeKanbanConfig({ projectRoot: rootA, kanbanFolder: kanban });
+		const newest = "20260101T000001Z-a3a3a3";
+		await seedSession({
+			sessionId: newest,
+			root: rootA,
+			events: [makeStartedEvent({ sessionId: newest, root: rootA, kanbanTag: "board", ts: "2026-06-01T00:00:00.000Z" })],
+		});
+		const { port, token } = await startRunning();
+
+		const status = await readStatus({ port, token, key: keyA });
+
+		expect((status.status as unknown as { board: { state: string } }).board.state).toBe("available");
+		expect((await send({ port, path: `/api/projects/${keyA}/task/a-task`, token })).status).toBe(200);
 	});
 
 	it("archives a past session of its own project, lists it as archived, restores it, and deletes it only once archived", async () => {

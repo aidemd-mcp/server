@@ -8,7 +8,7 @@ vi.mock("@/service/observer/event/readArchive/index.js", () => ({ default: vi.fn
 import readArchive from "@/service/observer/event/readArchive/index.js";
 import readLiveness from "@/service/observer/event/readLiveness/index.js";
 import readBoard from "@/service/observer/kanban/board/read/index.js";
-import { BOARD_HINT } from "@/service/observer/kanban/shared/locateBoard/index.js";
+import boardHints from "@/service/observer/kanban/shared/boardHints/index.js";
 import buildStatus from "@/service/observer/status/index.js";
 import type { ObserverEvent } from "@/types/index.js";
 import type { HeldSession } from "../types/index.js";
@@ -20,15 +20,15 @@ const mockReadLiveness = readLiveness as ReturnType<typeof vi.fn>;
 const mockReadArchive = readArchive as ReturnType<typeof vi.fn>;
 const KEY = "p-aaaaaa";
 
-function makeStarted({ sessionId, ts, brainPath, kanbanTag }: { sessionId: string; ts: string; brainPath: string; kanbanTag: string }): ObserverEvent {
-	return { v: 1, ts, sessionId, seq: 1, pid: 1, kind: "session_started", brainPath, kanbanTag };
+function makeStarted({ sessionId, ts, kanbanTag }: { sessionId: string; ts: string; kanbanTag: string }): ObserverEvent {
+	return { v: 1, ts, sessionId, seq: 1, pid: 1, kind: "session_started", kanbanTag };
 }
 
 function makePrompt({ sessionId, seq }: { sessionId: string; seq: number }): ObserverEvent {
 	return { v: 1, ts: `2026-03-01T00:00:0${seq}.000Z`, sessionId, seq, pid: 1, kind: "prompt", text: `p${seq}` };
 }
 
-const unavailableBoard = { state: "unavailable", reason: "no-brain-path", detail: "none", hint: BOARD_HINT };
+const unavailableBoard = { state: "unavailable", reason: "no-brain-config", detail: "none", hint: boardHints["no-brain-config"] };
 
 describe("rebuildStatus", () => {
 	beforeEach(() => {
@@ -39,17 +39,17 @@ describe("rebuildStatus", () => {
 		mockReadArchive.mockResolvedValue([]);
 	});
 
-	it("reads the board from the newest session's location with the brain override", async () => {
+	it("reads the board from the newest session's location with the kanban override", async () => {
 		const sessions: HeldSession[] = [
-			{ projectKey: "p-aaaaaa", sessionId: "old", events: [makeStarted({ sessionId: "old", ts: "2026-01-01T00:00:00.000Z", brainPath: "/old", kanbanTag: "old" })] },
-			{ projectKey: "p-aaaaaa", sessionId: "new", events: [makeStarted({ sessionId: "new", ts: "2026-02-01T00:00:00.000Z", brainPath: "/new", kanbanTag: "new" })] },
+			{ projectKey: "p-aaaaaa", sessionId: "old", events: [makeStarted({ sessionId: "old", ts: "2026-01-01T00:00:00.000Z", kanbanTag: "old" })] },
+			{ projectKey: "p-aaaaaa", sessionId: "new", events: [makeStarted({ sessionId: "new", ts: "2026-02-01T00:00:00.000Z", kanbanTag: "new" })] },
 		];
 
-		await rebuildStatus({ projectKey: KEY, projectRoot: "/project", sessions, brainOverride: "/override" });
+		await rebuildStatus({ projectKey: KEY, projectRoot: "/project", sessions, kanbanOverride: "/override" });
 
 		expect(mockReadBoard).toHaveBeenCalledWith({
-			reported: { brainPath: "/new", kanbanTag: "new" },
-			brainOverride: "/override",
+			reported: { kanbanTag: "new" },
+			kanbanOverride: "/override",
 			projectRoot: "/project",
 		});
 	});
@@ -87,7 +87,7 @@ describe("rebuildStatus", () => {
 			events: [],
 			archivedEvents: [],
 			liveness: {},
-			board: { state: "unavailable", reason: "board-read-failed", detail: "board read failed: disk gone", hint: BOARD_HINT },
+			board: { state: "unavailable", reason: "board-read-failed", detail: "board read failed: disk gone", hint: boardHints["board-read-failed"] },
 		});
 	});
 

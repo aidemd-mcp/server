@@ -66,7 +66,7 @@ This bumps `package.json`, syncs `server.json`, commits (e.g. `0.3.16: fix scori
 - **Migrate:** what the new form is, and which tool writes it (never a hand edit where an AIDE tool owns the field).
 - **Confirm:** `once, as a batch` for mechanical changes, or `per file` when the right value needs the user's judgment. Name the evidence the upgrader should offer (checkboxes, git history).
 
-Write the entry so it is safe to apply twice: a file already on the new form must not match `Detect`. A release with a format change and no `[migration]` entry is not shippable, because projects that upgrade would be left on the old form with nothing telling the upgrader to fix it.
+Write the entry so it is safe to apply twice: a file already on the new form must not match `Detect`. Check `Detect` against a correctly migrated file of every kind the change covers, including one that leaves an optional field out on purpose (for example a brain config for a backend the field does not apply to). A release with a format change and no `[migration]` entry is not shippable, because projects that upgrade would be left on the old form with nothing telling the upgrader to fix it.
 
 **After every publish, keep the aidemd.dev site in sync — the agent does this every time, unprompted.** The publish always comes first and must succeed. Then:
 

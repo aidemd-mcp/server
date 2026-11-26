@@ -11,8 +11,8 @@ import timeline from "@/observer/seedFixtures/scenarios/shared/timeline/index.js
  * The project of handoff scenario `s-building` (live, Build step 4 of 9), which `s-two-live`, `s-board-error`
  * and `s-large` start from: the handoff's modules with `src/tools/score`'s plan approved and 3 of 9 steps
  * checked, its board, one live session whose history ends on the commit of step 3, and the three ended
- * sessions. `large` adds the extra modules and tasks; `brain: "missing"` reports a brain folder that does
- * not exist.
+ * sessions. `large` adds the extra modules and tasks; `brain: "missing"` points the board at a kanban folder that
+ * does not exist.
  */
 export default function buildingProject({
 	large,

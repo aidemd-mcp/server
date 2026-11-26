@@ -17,11 +17,31 @@ beforeEach(async () => {
 	project = join(root, "project");
 	await mkdir(join(brain, "kanban", TAG), { recursive: true });
 	await mkdir(join(project, ".aide"), { recursive: true });
+	await writeBrainConfig();
 });
 
 afterEach(async () => {
 	await rm(root, { recursive: true, force: true });
 });
+
+/** Writes the project's brain config with its kanban field pointing at the temp brain's kanban folder. */
+async function writeBrainConfig(): Promise<void> {
+	await mkdir(join(project, ".aide", "config"), { recursive: true });
+	await writeFile(
+		join(project, ".aide", "config", "brain.aide"),
+		`---
+name: test
+mcpServerConfig:
+  command: mcpvault
+  args:
+    - "x"
+kanban:
+  source: folder
+  path: ${JSON.stringify(join(brain, "kanban"))}
+---
+`,
+	);
+}
 
 /** Writes one task note into a column of a project's board in the temp brain. */
 async function writeTask({
@@ -64,9 +84,9 @@ async function snapshot(folder: string): Promise<string[]> {
 	return lines;
 }
 
-/** Reads the board with the temp brain reported under the demo tag. */
+/** Reads the board with the demo tag reported; the board's folder comes from the project's brain config. */
 function readBoard() {
-	return read({ reported: { brainPath: brain, kanbanTag: TAG }, projectRoot: project });
+	return read({ reported: { kanbanTag: TAG }, projectRoot: project });
 }
 
 describe("board read", () => {
@@ -179,18 +199,38 @@ describe("board read", () => {
 		expect(board.columns[1].tasks.map((task) => task.slug)).toEqual(["top-p0", "new-p1", "old-p1", "a-p2", "b-p2"]);
 	});
 
-	it("answers no-brain-path and attempts nothing else when nothing was reported", async () => {
+	it("answers no-brain-config for a project with no brain config, even when nothing was reported", async () => {
 		await writeTask({ column: "todo", slug: "some-task" });
+		const bare = await mkdtemp(join(tmpdir(), "kanban-board-bare-"));
 
-		const result = await read({ reported: null, projectRoot: project });
+		try {
+			const result = await read({ reported: null, projectRoot: bare });
 
-		expect(result).toMatchObject({ state: "unavailable", reason: "no-brain-path" });
+			expect(result).toMatchObject({ state: "unavailable", reason: "no-brain-config" });
+		} finally {
+			await rm(bare, { recursive: true, force: true });
+		}
 	});
 
-	it("uses the override folder but still the reported tag", async () => {
+	it("reads the board from the brain config when the session reported no brain folder at all", async () => {
 		await writeTask({ column: "todo", slug: "some-task" });
 
-		const result = await read({ reported: { kanbanTag: TAG }, brainOverride: brain, projectRoot: project });
+		const result = await read({ reported: { kanbanTag: TAG }, projectRoot: project });
+
+		if (result.state !== "available") throw new Error("expected an available board");
+		expect(result.boardFolder).toBe(join(brain, "kanban", TAG));
+		expect(result.columns[1].tasks.map((task) => task.slug)).toEqual(["some-task"]);
+	});
+
+	it("uses the override kanban folder but still the reported tag", async () => {
+		await writeTask({ column: "todo", slug: "some-task" });
+		await rm(join(project, ".aide", "config"), { recursive: true, force: true });
+
+		const result = await read({
+			reported: { kanbanTag: TAG },
+			kanbanOverride: join(brain, "kanban"),
+			projectRoot: project,
+		});
 
 		if (result.state !== "available") throw new Error("expected an available board");
 		expect(result.boardFolder).toBe(join(brain, "kanban", TAG));

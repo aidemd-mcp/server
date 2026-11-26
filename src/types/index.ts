@@ -1060,6 +1060,28 @@ export type BrainAideConfig = {
 };
 
 /**
+ * The brain config's optional board location as `parseBrainAide` read it from the
+ * frontmatter (observer brief commitment 112), consumed by the observer's board reader.
+ */
+export type BrainKanbanField =
+	| {
+			/** The `kanban` field is present and well-formed. */
+			state: "declared";
+			/** The board's source kind; only the brain's kanban folder is supported. */
+			source: "folder";
+			/** Absolute path of the brain's kanban folder, or YAML null while unwired (the typed unwired-slot signal, never a string sentinel). */
+			path: string | null;
+	  }
+	| {
+			/** The `kanban` field is present but faulty. */
+			state: "malformed";
+			/** The faulty key. */
+			field: "kanban" | "kanban.source" | "kanban.path";
+			/** What is wrong, in words that follow the field name. */
+			fault: string;
+	  };
+
+/**
  * Tagged-result union returned by `parseBrainAide` and `parseBrainAideFromString`.
  * The discriminant is `kind`. Consumers narrow on `kind` to handle each outcome.
  * The required sections, their order and their marker names come from
@@ -1071,7 +1093,8 @@ export type BrainAideConfig = {
  *   `mcpServerConfig` are the flattened frontmatter fields sitting as siblings of
  *   the section fields. Each section field carries the verbatim bytes between its
  *   opening marker and matching closing marker, with no substitution. Bytes
- *   outside any marker pair are silently ignored.
+ *   outside any marker pair are silently ignored. The optional `kanban` field
+ *   (`BrainKanbanField`) carries the frontmatter's board location when present.
  *
  * - `"missing"` - `.aide/config/brain.aide` does not exist at the given root
  *   (ENOENT only).
@@ -1095,7 +1118,8 @@ export type BrainAideConfig = {
  *   order. The present sections' bytes are carried verbatim in `present`
  *   (absent ones are left out of the record), and `name` and `mcpServerConfig`
  *   are carried exactly as on `"ok"`, so an old-shape file can still be checked
- *   for stale sections and a legacy launcher.
+ *   for stale sections and a legacy launcher. The optional `kanban` field is
+ *   carried exactly as on `"ok"`.
  */
 export type ParseBrainAideResult =
 	| ({
@@ -1104,6 +1128,8 @@ export type ParseBrainAideResult =
 			name: string;
 			/** MCP server configuration from brain.aide frontmatter, with args that may contain `${name}` placeholders. */
 			mcpServerConfig: BrainAideMcpServerConfig;
+			/** The frontmatter's optional board location; the key is absent when the frontmatter has no `kanban` field. A malformed field is reported here and never changes `kind`. */
+			kanban?: BrainKanbanField;
 	  } & Record<BrainSectionField, string>)
 	| { kind: "missing" }
 	| { kind: "unreadable"; reason: string }
@@ -1116,6 +1142,8 @@ export type ParseBrainAideResult =
 			name: string;
 			/** MCP server configuration from brain.aide frontmatter, carried exactly as on `"ok"`. */
 			mcpServerConfig: BrainAideMcpServerConfig;
+			/** The frontmatter's optional board location; the key is absent when the frontmatter has no `kanban` field. A malformed field is reported here and never changes `kind`. */
+			kanban?: BrainKanbanField;
 			/** Verbatim bytes between the markers of every section that is present; absent sections are left out. */
 			present: Partial<Record<BrainSectionField, string>>;
 	  };

@@ -15,7 +15,7 @@ export default function makeStatus(overrides: Partial<Status> = {}): Status {
 		surfaced: null,
 		rails: [],
 		history: [],
-		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
+		board: { state: "unavailable", reason: "no-kanban-field", detail: "", hint: "" },
 		problems: [],
 		...overrides,
 	};

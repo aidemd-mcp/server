@@ -1,13 +1,13 @@
 import readTask from "@/service/observer/kanban/task/read/index.js";
 import findProject from "../../shared/findProject/index.js";
-import pickBrainOverride from "../../shared/pickBrainOverride/index.js";
+import pickKanbanOverride from "../../shared/pickKanbanOverride/index.js";
 import pickReportedLocation from "../../shared/pickReportedLocation/index.js";
 import sendJson from "../../shared/sendJson/index.js";
 import type { RouteInput } from "../../types/index.js";
 
 /**
- * GET /api/projects/:project/task/<slug> — one kanban task from the board that project's newest
- * session reported (or the --brain override when it names this project). A project whose sessions
+ * GET /api/projects/:project/task/<slug> — one kanban task from the board its brain config locates
+ * (or the --kanban override when it names this project). A project whose sessions
  * never reported a root has no board to read: 404 with the reason.
  */
 export default async function getTask({ res, params, ctx }: RouteInput): Promise<void> {
@@ -29,7 +29,7 @@ export default async function getTask({ res, params, ctx }: RouteInput): Promise
 	const reported = pickReportedLocation({ sessions: project.sessions });
 	const task = await readTask({
 		reported,
-		brainOverride: pickBrainOverride({ ctx, projectKey: project.projectKey }),
+		kanbanOverride: pickKanbanOverride({ ctx, projectKey: project.projectKey }),
 		projectRoot: project.projectRoot,
 		slug,
 	});

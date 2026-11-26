@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import type { BrainAideConfig, ParseBrainAideResult } from "@/types/index.js";
 import extractMarkerSections from "./extractMarkerSections/index.js";
+import parseKanbanField from "./parseKanbanField/index.js";
 
 /** Human wording for the common read-failure codes; any other code falls back to the error's own message. */
 const READ_ERROR_LABELS: Record<string, string> = {
@@ -87,6 +88,11 @@ export function interpolateArgs(config: BrainAideConfig): (string | null)[] {
  *    validated frontmatter (`name`, `mcpServerConfig`) and `present`, the verbatim bytes of
  *    every section that is there, so migration detection can judge an old-shape config
  *    without a second reader.
+ * 4. Step 4d — optional `kanban` field, parsed by `parseKanbanField` once the launcher
+ *    fields and the deprecated-field check have passed, and reported beside the config
+ *    on the `ok` and `missing-sections` results. It never fails the parse: a malformed
+ *    field rides along as a `malformed` value naming the field and fault, and a config
+ *    without the key carries no `kanban` key at all.
  */
 export function parseBrainAideFromString(content: string): ParseBrainAideResult {
 	// Step 2: Split on first `---\n` opening fence.
@@ -169,6 +175,12 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		},
 	};
 
+	// Step 4d: The optional `kanban` field is judged for shape only and reported beside the config.
+	// A malformed field never fails the parse; the key is left out entirely when the frontmatter has none.
+	const kanban = Object.prototype.hasOwnProperty.call(fm, "kanban")
+		? { kanban: parseKanbanField({ value: fm["kanban"] }) }
+		: {};
+
 	// Step 5: Extract the contract's required body sections via the contract-driven marker walker.
 	const extraction = extractMarkerSections(body);
 	if (extraction.kind === "malformed-body") return extraction;
@@ -179,6 +191,7 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 			name: parsedFrontmatter.name,
 			mcpServerConfig: parsedFrontmatter.mcpServerConfig,
 			present: extraction.present,
+			...kanban,
 		};
 	}
 
@@ -189,6 +202,7 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
 		name: parsedFrontmatter.name,
 		mcpServerConfig: parsedFrontmatter.mcpServerConfig,
 		...sections,
+		...kanban,
 	};
 }
 
@@ -200,7 +214,8 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
  * - `"ok"` — file found, frontmatter parsed, all required fields valid, and every section
  *   of the published brain contract located via its paired HTML-comment markers. Each
  *   section is returned verbatim — byte-identical between its opening marker and its
- *   matching closing marker — as its own field.
+ *   matching closing marker — as its own field. When the frontmatter has a `kanban` key,
+ *   the result also carries the optional `kanban` field (declared, unwired or malformed).
  * - `"missing"` — file does not exist (ENOENT only). Remediation: run `/aide` and
  *   complete the brain wiring interview.
  * - `"unreadable"` — file exists but could not be read (EACCES, EISDIR, any non-ENOENT
@@ -218,7 +233,8 @@ export function parseBrainAideFromString(content: string): ParseBrainAideResult 
  *   section in contract order. `name` and `mcpServerConfig` carry the validated frontmatter
  *   and `present` holds the verbatim bytes of every section that is there (absent sections
  *   have no key). The reader never defaults or fills in a missing section; repair is by
- *   insertion through the brain configuration command.
+ *   insertion through the brain configuration command. It carries the optional `kanban`
+ *   field the same way `"ok"` does.
  *
  * Load-bearing invariants:
  * - Never throws — all failure modes return a tagged result.

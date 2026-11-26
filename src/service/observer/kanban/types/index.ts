@@ -1,10 +1,8 @@
 /** The on-disk column folder names of a project's board (brain kanban guide, `kanban/kanban.md`). */
 export type BoardColumnId = "backlog" | "todo" | "in-progress" | "in-review" | "done";
 
-/** What the newest session reported about where its board lives. Either field may be missing. */
+/** What the newest session reported that the board needs: its kanban tag. Missing when not reported. */
 export interface ReportedLocation {
-	/** Absolute path of the brain folder the session reported. */
-	brainPath?: string;
 	/** The project's kanban tag the session reported. */
 	kanbanTag?: string;
 }
@@ -13,21 +11,34 @@ export interface ReportedLocation {
 export interface BoardUnavailable {
 	state: "unavailable";
 	/**
-	 * Why the board is unavailable. The first four name the locating step that
-	 * failed and are the only reasons this module returns. `board-read-failed` is
-	 * set by a caller whose call to `board/read` threw (it violates this module's
-	 * never-throw contract), with the error in `detail`, so the page never shows
-	 * a folder as missing when the read itself broke.
+	 * Why the board is unavailable. Each reason names the locating step that
+	 * failed (observer brief commitment 110):
+	 * - `no-brain-config`: the project has no `.aide/config/brain.aide` (`parseBrainAide` kind `missing`).
+	 * - `brain-config-unreadable`: the config cannot be read (kind `unreadable`, `malformed-frontmatter` or `malformed-body`).
+	 * - `no-kanban-field`: the config declares no `kanban` field, or its `kanban.path` is not filled in yet.
+	 * - `kanban-field-malformed`: the `kanban` field is present but faulty (other than its source).
+	 * - `unsupported-source`: `kanban.source` names a board kind other than `folder`.
+	 * - `kanban-folder-missing`: the kanban folder is not an absolute path or is not a folder that exists.
+	 * - `no-kanban-tag`: no session has reported a kanban tag.
+	 * - `board-folder-missing`: the tag is not a single folder name, or its folder inside the kanban folder is missing.
+	 *
+	 * `board-read-failed` is set by a caller whose call to `board/read` threw (it
+	 * violates this module's never-throw contract), with the error in `detail`, so
+	 * the page never shows a folder as missing when the read itself broke.
 	 */
 	reason:
-		| "no-brain-path"
 		| "no-kanban-tag"
-		| "brain-path-missing"
 		| "board-folder-missing"
-		| "board-read-failed";
+		| "board-read-failed"
+		| "no-brain-config"
+		| "brain-config-unreadable"
+		| "no-kanban-field"
+		| "kanban-field-malformed"
+		| "unsupported-source"
+		| "kanban-folder-missing";
 	/** Names the path or value that was checked. */
 	detail: string;
-	/** What the user can do about it; always the `BOARD_HINT` text. */
+	/** What the user can do about it: the reason's text from `shared/boardHints`. */
 	hint: string;
 }
 

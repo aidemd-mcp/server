@@ -8,7 +8,7 @@ import deadPid from "@/observer/seedFixtures/deadPid/index.js";
 import type { FixtureSession } from "@/observer/seedFixtures/types/index.js";
 
 /** What the project reports in its sessions' `session_started`; a field left out is not reported. */
-type Reported = { projectRoot?: string; kanbanTag?: string; brainPath?: string };
+type Reported = { projectRoot?: string; kanbanTag?: string };
 
 /**
  * Writes one fixture session as a JSONL event log in the project's runtime events folder and returns
@@ -17,7 +17,7 @@ type Reported = { projectRoot?: string; kanbanTag?: string; brainPath?: string }
  * against the stored-event schema; a line that fails, an offset order that runs forwards in time, or a
  * first event that is not `session_started` throws before anything is written. The session id is the
  * oldest event's time plus six random hex characters, so ids sort by age. `reported` fills the first
- * event's root, tag and brain folder where the event does not carry its own.
+ * event's root and tag where the event does not carry its own.
  */
 export default async function writeSessionLog({
 	projectRoot,

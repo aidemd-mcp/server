@@ -131,7 +131,7 @@ Get the backend's config prose, then execute it verbatim:
 
 Call `aide_brain({ kind: "config" })`. On every status that reaches this step (`ok`, `no-mcp-entry`, `mcp-drift`) it returns `found: true` with that section of `.aide/config/brain.aide` verbatim in `instructions`. If it returns `found: false`, show its `instructions` to the user and STOP.
 
-Forward `$ARGUMENTS` opaquely to that prose — this command does not parse it. The prose owns everything from here: what `$ARGUMENTS` means for this backend, asking the user for the brain location (`AskUserQuestion` plus `aide_info.brain.hints` when appropriate), landing the resolved value into the YAML-null slot, running sync via the Bash command recovered from `.mcp.json["mcpServers"]["aide"]`, seeding each seed section in the published contract (skip-on-exists), and emitting the restart message.
+Forward `$ARGUMENTS` opaquely to that prose — this command does not parse it. The prose owns everything from here: what `$ARGUMENTS` means for this backend, asking the user for the brain location (`AskUserQuestion` plus `aide_info.brain.hints` when appropriate), landing the resolved value into the YAML-null slot and the board location (`kanban.path`, which the observer reads to show the kanban board), running sync via the Bash command recovered from `.mcp.json["mcpServers"]["aide"]`, seeding each seed section in the published contract (skip-on-exists), and emitting the restart message.
 
 The prose also owns the brain launcher before sync runs: the brain's global-install check and its install. Do not check or install the brain package yourself.
 

@@ -83,8 +83,8 @@ describe("writeSessionLog", () => {
 		expect(older.sessionId < newer.sessionId).toBe(true);
 	});
 
-	it("fills the first event's root, tag and brain folder, and lets the event's own values win", async () => {
-		const reported = { projectRoot, kanbanTag: "aidemd-mcp", brainPath: join(base, "brain") };
+	it("fills the first event's root and tag, and lets the event's own values win", async () => {
+		const reported = { projectRoot, kanbanTag: "aidemd-mcp" };
 		const own = makeSession({ events: [{ offsetMin: 3, kind: "session_started", kanbanTag: "own-tag" }] });
 
 		const filled = await writeSessionLog({ projectRoot, session: makeSession(), now: NOW, reported });

@@ -22,9 +22,9 @@ const HELD: HeldSession[] = [
 	{ projectKey: C, sessionId: "c", events: [makeStarted({ sessionId: "c" })] },
 ];
 
-function makeContext(brainOverride?: { projectKey: string; brainPath: string }): ObserverContext {
+function makeContext(kanbanOverride?: { projectKey: string; kanbanPath: string }): ObserverContext {
 	return {
-		brainOverride,
+		kanbanOverride,
 		store: { sessions: ({ projectKey }: { projectKey?: string } = {}) => HELD.filter((session) => session.projectKey === projectKey) },
 	} as unknown as ObserverContext;
 }
@@ -44,7 +44,7 @@ describe("buildProjectView", () => {
 		const view = await buildProjectView({ ctx: makeContext(), projectKey: A });
 
 		expect(view).toEqual({ state: "ready", projectKey: A, status: { marker: "status" } });
-		expect(mockRebuild).toHaveBeenCalledWith({ projectKey: A, projectRoot: "/a", sessions: [HELD[0]], brainOverride: undefined });
+		expect(mockRebuild).toHaveBeenCalledWith({ projectKey: A, projectRoot: "/a", sessions: [HELD[0]], kanbanOverride: undefined });
 	});
 
 	it("answers no-project-root without building a status for a project that reported no root", async () => {
@@ -59,13 +59,13 @@ describe("buildProjectView", () => {
 	});
 
 	it("passes the --brain override to the project it names and to no other", async () => {
-		const ctx = makeContext({ projectKey: A, brainPath: "/override" });
+		const ctx = makeContext({ projectKey: A, kanbanPath: "/override" });
 
 		await buildProjectView({ ctx, projectKey: A });
 		await buildProjectView({ ctx, projectKey: B });
 
-		expect(mockRebuild).toHaveBeenNthCalledWith(1, expect.objectContaining({ projectRoot: "/a", brainOverride: "/override" }));
-		expect(mockRebuild).toHaveBeenNthCalledWith(2, expect.objectContaining({ projectRoot: "/b", brainOverride: undefined }));
+		expect(mockRebuild).toHaveBeenNthCalledWith(1, expect.objectContaining({ projectRoot: "/a", kanbanOverride: "/override" }));
+		expect(mockRebuild).toHaveBeenNthCalledWith(2, expect.objectContaining({ projectRoot: "/b", kanbanOverride: undefined }));
 	});
 
 	it("lets a throw from the status builder propagate", async () => {

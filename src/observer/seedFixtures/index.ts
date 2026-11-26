@@ -3,6 +3,7 @@ import { join } from "node:path";
 import resolveRoot from "@/util/runtimePaths/resolveRoot/index.js";
 import scenarios from "./scenarios/index.js";
 import writeBoard from "./writeBoard/index.js";
+import writeBrainConfig from "./writeBrainConfig/index.js";
 import writeProjectFiles from "./writeProjectFiles/index.js";
 import writePresence from "./writePresence/index.js";
 import writeSessionLog from "./writeSessionLog/index.js";
@@ -10,8 +11,9 @@ import type { FixtureSet, SeededFixtures } from "./types/index.js";
 
 /**
  * Seeds every fixture scenario of the given set for the QA observer: per scenario a project folder under
- * `<workDir>/<id>/`, its files when installed, its board under `<workDir>/<id>/brain` (or a brain
- * folder that is never created), and one event log per session in the app-data root, plus the presence file and ended mark of each session that has them. Writes only
+ * `<workDir>/<id>/`, its files when installed, its board under `<workDir>/<id>/brain/kanban` (or a
+ * kanban folder that is never created) with the project's brain config declaring that folder, and one event
+ * log per session in the app-data root, plus the presence file and ended mark of each session that has them. Writes only
  * under `workDir` and the app-data root the caller put in the environment, and throws before writing
  * anything when that root is not `appDataRoot`, so a mis-set environment can never seed the user's own
  * folder. Never starts an observer.
@@ -42,14 +44,17 @@ export default async function seedFixtures({
 		await mkdir(projectRoot, { recursive: true });
 		if (project.installed) await writeProjectFiles({ projectRoot, files: project.files });
 
-		// A missing-brain board reports a brain folder that is never created.
-		if (project.board !== null && "tasks" in project.board) {
-			await writeBoard({ brainPath, kanbanTag: project.board.kanbanTag, tasks: project.board.tasks });
+		// The project's brain config declares where its board lives; a missing-brain board's config points at a kanban folder that is never created.
+		if (project.board !== null) {
+			await writeBrainConfig({ projectRoot, brainPath, kanbanFolder: join(brainPath, "kanban") });
+			if ("tasks" in project.board) {
+				await writeBoard({ brainPath, kanbanTag: project.board.kanbanTag, tasks: project.board.tasks });
+			}
 		}
 
 		const reported = {
 			...(project.reportRoot ? { projectRoot } : {}),
-			...(project.board !== null ? { kanbanTag: project.board.kanbanTag, brainPath } : {}),
+			...(project.board !== null ? { kanbanTag: project.board.kanbanTag } : {}),
 		};
 
 		const written = await Promise.all(

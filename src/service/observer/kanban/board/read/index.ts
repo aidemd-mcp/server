@@ -8,19 +8,20 @@ import type { BoardResult, ReportedLocation } from "@/service/observer/kanban/ty
  * Reads the project's kanban board for the observer: the five columns in order, each task with its
  * title, slug, priority, type and tags, marked when the session record names it and marked
  * unreadable when its note cannot be parsed. Answers `unavailable` (reason and hint) when the board
- * cannot be located. Never throws; never writes.
+ * cannot be located: its folder comes from the kanban field of the project's brain config (or
+ * `kanbanOverride`, the kanban folder the user gave), its tag from the reported location. Never throws; never writes.
  */
 export default async function read({
 	reported,
-	brainOverride,
+	kanbanOverride,
 	projectRoot,
 }: {
 	reported: ReportedLocation | null;
-	brainOverride?: string;
+	kanbanOverride?: string;
 	projectRoot: string;
 }): Promise<BoardResult> {
-	// 1. Locate the board from what the session reported and the user's override; stop when it is missing.
-	const located = await locateBoard({ reported, brainOverride });
+	// 1. Locate the board from the project's brain config and the user's override; stop when it is missing.
+	const located = await locateBoard({ projectRoot, reported, kanbanOverride });
 	if (located.state === "unavailable") return located;
 
 	// 2. The session record's Kanban section says which tasks the session touched.

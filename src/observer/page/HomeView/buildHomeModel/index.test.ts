@@ -55,7 +55,7 @@ function ready({
 		surfaced: waiting[0] ?? null,
 		rails,
 		history: [],
-		board: { state: "unavailable", reason: "no-brain-path", detail: "", hint: "" },
+		board: { state: "unavailable", reason: "no-kanban-field", detail: "", hint: "" },
 		problems: [],
 	};
 	return { state: "ready", projectKey, status };

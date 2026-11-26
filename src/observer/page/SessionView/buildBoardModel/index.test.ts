@@ -103,7 +103,7 @@ describe("buildBoardModel", () => {
 	});
 
 	it.each([
-		["brain-path-missing", "/brain is not a folder that exists"],
+		["kanban-folder-missing", "/brain/kanban is not a folder that exists"],
 		["board-read-failed", "board read failed: EACCES"],
 	] as const)("calls %s the board's error notice, with the detail and the time of the last read", (reason, detail) => {
 		const model = buildBoardModel({ view: unavailableView({ reason, detail, hint: "a hint" }), events: [], focus: "s1" });
@@ -111,13 +111,17 @@ describe("buildBoardModel", () => {
 			kind: "unavailable",
 			tone: "err",
 			heading: "Board can't load right now",
-			text: `The brain folder isn't reachable (${detail}). Everything else on this page is live.`,
+			text: `The kanban folder isn't reachable (${detail}). Everything else on this page is live.`,
 			meta: "Read again on every new event and page load · last try 14:31:02",
 		});
 	});
 
 	it.each([
-		["no-brain-path", "no session has reported a brain folder", "No session has reported a brain folder."],
+		["no-brain-config", "the project has no brain config", "The project has no brain config."],
+		["brain-config-unreadable", "the brain config could not be read", "The brain config could not be read."],
+		["no-kanban-field", "the brain config declares no kanban field", "The brain config declares no kanban field."],
+		["kanban-field-malformed", "the kanban field is not a folder path", "The kanban field is not a folder path."],
+		["unsupported-source", "the kanban source is not a folder", "The kanban source is not a folder."],
 		["no-kanban-tag", "no session has reported a kanban tag", "No session has reported a kanban tag."],
 		["board-folder-missing", "/brain/kanban/proj is not a folder that exists", "/brain/kanban/proj is not a folder that exists."],
 	] as const)("calls %s calm, saying the observer's detail and hint", (reason, detail, sentence) => {
@@ -131,7 +135,7 @@ describe("buildBoardModel", () => {
 			kind: "unavailable",
 			tone: "calm",
 			heading: "Board unavailable",
-			text: "This project hasn't reported its folder or brain folder, so its kanban board can't be found. Tasks the agent picked still show in History.",
+			text: "This project hasn't reported its folder, so its kanban board can't be found. Tasks the agent picked still show in History.",
 			meta: null,
 		});
 	});

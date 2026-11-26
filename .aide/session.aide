@@ -1,6 +1,6 @@
 ---
 intent: >
-  0.17.1 released (boot offers the upgrade when the Claude Code hooks are missing); next work is the user's pick.
+  Observer finds the kanban board from the brain config's `kanban` field (task observer-board-missing-when-agent-omits-brain-folder); built and verified, unreleased.
 ---
 
 # AIDE SESSION
@@ -10,9 +10,11 @@ snapshot of the current architectural intent and the anti-regression
 invariants every build phase must hold. It is NOT historical commentary —
 superseded design decisions are cut, not annotated.
 
-## State summary (set 2026-11-25, 0.17.1 released)
+## State summary (set 2026-11-26, kanban field built, unreleased)
 
-2026-11-25 (latest): 0.17.1 released — npm + MCP Registry green (commit ce98c8b, tag v0.17.1). Release check 25/25 including the new 4.boot check and headless /aide; hook speed budget passed. Global install 0.17.1. aidemd.dev synced via headless /aide (site commit 6a912ba), deploy green.
+2026-11-26 (latest): The observer now finds a project's board from an optional `kanban` field in its brain config (`kanban: { source: folder, path: <absolute kanban folder> }`, board = <path>/<tag>) instead of the brain folder the agent reports. Built through 7 plans (types, parseBrainAide, provisionBrain, observer/kanban, observer/page, observer, cli), QA PASS (one changelog [migration] Detect fix), full suite 6917 passed, release check 25/25 incl. a new board assertion. Unreleased in [Unreleased].
+
+2026-11-25 (earlier): 0.17.1 released — npm + MCP Registry green (commit ce98c8b, tag v0.17.1). Release check 25/25 including the new 4.boot check and headless /aide; hook speed budget passed. Global install 0.17.1. aidemd.dev synced via headless /aide (site commit 6a912ba), deploy green.
 
 2026-11-25 (earlier): 0.17.0 released and the site synced, including its hooks. The boot hooks fix is built and QA-passed, committed and moving to In Review; unreleased (changelog [Unreleased]).
 
@@ -152,6 +154,8 @@ Final status model (user, 2026-10-25): specs carry `alignment` (unreviewed | ali
 
 The tasks on the board this work touches, in work order; the full record of the work lives in this file.
 
+- `observer-board-missing-when-agent-omits-brain-folder` (aidemd-mcp board, In Review) — the observer finds the board from the brain config's `kanban` field (decision #99); built and verified, unreleased.
+- `observer-board-reader-command-for-any-brain` (aidemd-mcp board, Backlog, p2) — `source: command`: a script printing AIDE's board format, read from the project's own config, never relayed by the agent (decision #99).
 - `aide-boot-misses-missing-hooks` (aidemd-mcp board, Done) — boot misses projects without the hooks; fixed through aide_info's `outdated` `hooks` key (decision #98); released in 0.17.1.
 - `aide-boot-validates-claude-settings-and-guides-repair` (aidemd-mcp board, Backlog, p2) — broken `.claude/settings.json` comes back from aide_info as its own finding with line/column; the main agent repairs it by hand only after the user confirms, then reruns the tool, which re-validates and adds AIDE's hooks on the user's yes; validation covers only JSONC parse + AIDE's own hook entries.
 - `aidemd-dev-hooks-observer-docs-and-seo-aeo` (aidemd-dev board, Backlog, p1) — lives on the site's own `aidemd-dev` board, not this one: research pass on target queries, hooks docs section, observer page, SEO/AEO. Its research pass now also covers GitHub repo optimization and whether to rename the generic `server` GitHub repo / `@aidemd-mcp/server` npm package (decided from the research).
@@ -400,6 +404,7 @@ The tasks on the board this work touches, in work order; the full record of the 
 96. **AIDE's per-user files move out of packaged-app redirection on Windows (user, 2026-11-25).** On Windows the per-user root becomes %USERPROFILE%\.aidemd (not redirected for MSIX packages like the Claude desktop app); macOS and Linux keep their folders. On first start the new version moves once any session history it can see from the old location into the new folder and drops the old observer record (a desktop-app process sees the app's redirected copy, a terminal process the real one, so each carries over its own). Ships with a [migration] entry. Tracked by task `aide-per-user-files-land-in-a-packaged-apps-appdata` (In Progress, p1, bug).
 97. **Hook budget raised (user, 2026-11-25).** Paired-median overhead ≤ 175 ms for a quiet call and ≤ 200 ms for a refreshing call (was 150/180), every run < 1 000 ms, until `make-the-claude-code-hook-start-faster` lands; recorded under brief #103.
 98. **Boot staleness covers the hooks (2026-11-25).** aide_info's `outdated` adds a `hooks` key when the upgrade's own hooks check (detectFramework + checkHooksConfig) reports anything but `matches`, even without `.aide/versions.json`; silent on failure; never for frameworks without hooks. Malformed settings count as stale (re-offered each boot until fixed) — plan Decision, user may revisit.
+99. **The observer's board location is declared, not reported.** Optional brain.aide frontmatter field `kanban` (`source: folder` + absolute `path`), read through parseBrainAide; absent = valid (board unavailable with a /aide:brain config hint), malformed = reported alongside, never halts boot; empty path = unwired. The template ships it unwired and the config prose fills it from the vault path. Code never derives it from launcher args. A frontmatter field (not a body section) because the observer is code and template sections are fingerprinted. Non-folder backends omit it; `source: command` (a script printing AIDE's board format, read from the project's own config, never relayed by the agent) is task observer-board-reader-command-for-any-brain. `view --kanban` overrides; `--brain` is a deprecated alias for <p>/kanban. session_started brainPath is accepted but no longer locates the board.
 
 ## Anti-regression invariants future build phases must hold
 
@@ -438,16 +443,17 @@ The tasks on the board this work touches, in work order; the full record of the 
 - Home's project order never reshuffles on load; it starts from the remembered order and re-sorts at most every 2s.
 - Every .aide file and every frontmatter field/section is reachable from the tree.
 - Path-confinement checks must treat a backslash as a separator on every platform; tests run on Linux CI, so a Windows-only pass is not a pass.
+- The release-check harness judges the real observer by the port its record names, not 24680 (the real one may sit anywhere in the port list).
 
 ## Where this cycle stopped (CRITICAL READING)
 
-0.17.1 released and the site synced; nothing in flight. Next is the user's pick.
+Board-location fix built, QA passed, release check 25/25, committing. Not released. After release, the site and this repo's brain configs get the field through /aide:brain config (the [migration] entry routes there). Stray test folders in %USERPROFILE%\.aidemd (7 aidemd-mcp-* from 2026-11-25 08:16–08:36 test runs) still await the user's yes to delete.
 
 Standing approach for observer page UI changes: hand-driven targeted edits by the main agent, no pipeline, quick; update tests afterwards; CHANGELOG bullets under [Unreleased]; verify in the browser against the fixture observer (`npm run observer:fixtures -- --port 24799 --set sessions`, never port 24680).
 
 ### What the next agent must do
 
-1. Nothing in flight. The settings.json idea is now task `aide-boot-validates-claude-settings-and-guides-repair` (aidemd-mcp, Backlog, p2): broken `.claude/settings.json` comes back from aide_info as its own finding with line/column; the main agent repairs it by hand only after the user confirms, then reruns the tool, which re-validates and adds AIDE's hooks on the user's yes; validation covers only JSONC parse + AIDE's own hook entries. Next work is the user's pick.
+1. The settings.json idea is now task `aide-boot-validates-claude-settings-and-guides-repair` (aidemd-mcp, Backlog, p2): broken `.claude/settings.json` comes back from aide_info as its own finding with line/column; the main agent repairs it by hand only after the user confirms, then reruns the tool, which re-validates and adds AIDE's hooks on the user's yes; validation covers only JSONC parse + AIDE's own hook entries. Next work is the user's pick.
 2. The backlog task `observer-home-shows-a-kanban-board-that-fits-the-page` (p3).
 3. Open gap, not fixed yet: aide_info reports `bin/aide-tree` outdated on the aidemd.dev site, but aide_upgrade has no category that writes the `.aide/bin/aide-tree.mjs` launcher (only init/sync install it, via src/service/install/installAideTree). Old launchers still work.
 4. Open user decisions:
@@ -457,6 +463,7 @@ Standing approach for observer page UI changes: hand-driven targeted edits by th
 
 ### What's already done and validated
 
+- Board-location fix built and verified (see latest state summary); retro at brain process/retro/2026-11-25-aidemd-kanban-field-observer-board.md; CLAUDE.md changelog rule now says to test Detect against correctly-migrated files of every kind, including ones omitting an optional field on purpose.
 - 2026-11-25, 0.17.1 shipped the boot hooks fix (decision #98). The release-check harness gained check 4.boot (aide_info lists `hooks` when init deferred them) and asserts a fresh project's outdated has no `hooks`. `restructure-aidemd-dev-landing-page` moved to the aidemd-dev board (Backlog).
 - 2026-11-25, 0.17.0 released. The profile-folder probe was confirmed by the agent itself: a script launched outside the desktop app via explorer.exe read a file the app had written to %USERPROFILE% (and saw no observer record under the real %LOCALAPPDATA%), so %USERPROFILE%\.aidemd is shared by desktop-app and terminal sessions; probe files deleted; the technique is recorded in the release check's NOTES.md. The stale page test "lifts phone touch targets…" was fixed (the two .av-resize ::before rules are the grip pill's length, added to the allow-list). The AppData fix was committed as 2459ee9. Full gate before release: tsc clean, vitest 6 812 passed, 4 skipped, 0 failed. Released 0.17.0 with the user's go-ahead: release commit cf4fa46, tag v0.17.0; Publish workflow green (tests, npm, MCP Registry, GitHub Release); npm serves 0.17.0. Global install updated to @aidemd-mcp/server@0.17.0. aidemd.dev synced headless (site commit 2eaa6b2: methodology-docs index + changelog, version-metadata, commands aide.md, agents aide-architect + aide-upgrader, skills aide + new aide-observer; pointer-stub/ide/readme matched; mcp/hooks/brain not applied; the site's drift summary lists the hooks category as missing for .claude/settings.json — left for the user to decide; brainMigration null). The site deploy failed once on a Google Fonts fetch in next/font (unrelated to the sync), re-run succeeded (run 45724429913). Board: moved to Done — aide-observer-skill-with-serve-and-record-settings, observer-phase-rail-blank-or-stale-when-reports-missing, aide-warns-when-another-live-session-is-in-project, observer-judges-session-liveness-from-hooks-and-process, aide-per-user-files-land-in-a-packaged-apps-appdata, phone-touch-target-style-test-fails-after-resize-grips, observer-file-drawer-renders-plan-markdown-wrong, observer-report-task-resumed-in-progress-at-boot; In Progress and In Review are empty.
 - 2026-11-25, aidemd.dev took the 0.17.0 Claude Code hooks through a headless /aide run in its own checkout (site commit c33645e, deploy green). aidemd.dev now has its own kanban board, tag `aidemd-dev` (recorded in the site's CLAUDE.md, site commit e887ceb); task `aidemd-dev-hooks-observer-docs-and-seo-aeo` (p1, Backlog) covers a research pass on target queries (seed: 'open source agentic sdlc framework'), a hooks docs section, an observer page, and SEO/AEO.
@@ -642,3 +649,4 @@ session.aide is rewritten, never deleted (decision 18).
 
 - Should a [migration] entry also detect a project root holding an `intent.aide/` folder with no `.aide/` (the old rename bug's footprint) and offer to rename it back? No AIDE tool renames a folder today, so the CHANGELOG currently tells users to rename it by hand.
 - Should a [migration] entry tell /aide:upgrade to find host plan.aide files with no intent spec beside them and offer to write the spec (per file, with the user)?
+- Delete the 7 stray test observer folders in %USERPROFILE%\.aidemd? (awaiting user)

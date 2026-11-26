@@ -35,7 +35,7 @@ The user runs agent sessions in several projects at once, mostly inside subagent
 
 Four facts shape the design. The pipeline's current state already lives in the project's files, which record their own status and progress; anything derived elsewhere can only disagree. What the files lack (who ran a phase, when, from which prompt, in what order, for which pipeline) exists only as the agent reports it, and reports are best effort. An agent cannot report its own crash or closed terminal, but Claude Code runs hooks by itself, apart from the aide server, at every session start, prompt, tool call, stop and session end; other hosts have none. And the project's repo must stay clean of anything the observer keeps.
 
-A session waiting an hour on the user still holds the project; a session that exited does not. Judging that from report age once counted an exited session live for half an hour. The board lives in a brain whose backend and layout vary, so its location cannot be learned by interpreting configuration.
+A session waiting an hour on the user still holds the project; a session that exited does not. Judging that from report age once counted an exited session live for half an hour. The board lives in a brain whose backend and layout vary, so its location cannot be guessed from the launcher or the backend; the project's brain config declares it.
 
 ## Strategy
 
@@ -51,7 +51,7 @@ A session waiting an hour on the user still holds the project; a session that ex
 
 **Pipelines are reported explicitly; rails resume from kept logs.** A pipeline is one feature flow from its starting stage to completion or abandonment, named by its board task when it has one. The agent reports its start, finish and every skipped phase with the reason, and every phase, gate, step and QA report names it, since a rail cannot tell a skip from a missed report. The live session shows one rail for its current pipeline; resuming it marks done what earlier sessions' kept logs finished.
 
-**Files decide state; the parts meet only in the observer.** Status is rebuilt on every event and page load from the project's files, session logs, each session's liveness and the board, all handed to it: files decide current state, events add who, when, history and stages, and liveness is never re-judged. The observer never interprets project configuration; the board is found from the newest session-start report. Records, board and status never depend on each other, so a failure empties only its own part.
+**Files decide state; the parts meet only in the observer.** Status is rebuilt on every event and page load from the project's files, session logs, each session's liveness and the board, all handed to it: files decide current state, events add who, when, history and stages, and liveness is never re-judged. The observer never guesses the board's location; the board is the kanban folder the project's brain config declares, read through the one brain-config reader, under the kanban tag from the newest session-start report. Records, board and status never depend on each other, so a failure empties only its own part.
 
 ## Good examples
 
@@ -76,3 +76,4 @@ A session waiting an hour on the user still holds the project; a session that ex
 - Exited session counted live by the report-age rule, observed by the user and relayed by the orchestrator (2026-11-24) -- why liveness comes from hooks, never from report age
 - User decision on one observer per user per machine, relayed by the orchestrator (2026-11-23) -- decision 1: a running observer is reused and the reply links to the calling session's view
 - User decisions on record-then-notify, files deciding state and the board's location, relayed by the orchestrator (2026-11-22) -- decisions 5 and 7
+- User decision on the board's location declared in the brain config's kanban field, relayed by the orchestrator (2026-11-25) -- supersedes the board-location part of the 2026-11-22 entry; only the kanban tag comes from the session-start report

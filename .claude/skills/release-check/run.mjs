@@ -407,12 +407,15 @@ function realBaseline() {
 		try {
 			const text = readFileSync(file, "utf8");
 			let pid = null;
+			let port = null;
 			try {
-				pid = JSON.parse(text).pid;
+				const rec = JSON.parse(text);
+				pid = rec.pid;
+				port = rec.address ? Number(new URL(rec.address).port) : null;
 			} catch {
 				/* not JSON */
 			}
-			observer = { file, mtime: statSync(file).mtime.toISOString(), sha: sha(text).slice(0, 16), pid };
+			observer = { file, mtime: statSync(file).mtime.toISOString(), sha: sha(text).slice(0, 16), pid, port };
 		} catch {
 			/* missing or unreadable */
 		}
@@ -427,18 +430,22 @@ function realBaseline() {
 	// The record the real observer is judged by: the new root's, else the legacy root's.
 	const source = roots.new.observer ? "new" : roots.legacy?.observer ? "legacy" : null;
 	const observer = source ? roots[source].observer : null;
+	// The real observer may sit on any port of its list (24680 is only the first), so judge the
+	// port its own record names; with no readable record, fall back to the first port.
+	const realPort = observer?.port ?? REAL_PORT;
 	let listenPid = null;
 	const net = IS_WIN
 		? spawnSync("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8", windowsHide: true }).stdout ?? ""
 		: "";
 	for (const line of net.split(/\r?\n/)) {
-		if (line.includes(`127.0.0.1:${REAL_PORT} `) && line.includes("LISTENING")) listenPid = Number(line.trim().split(/\s+/).pop());
+		if (line.includes(`127.0.0.1:${realPort} `) && line.includes("LISTENING")) listenPid = Number(line.trim().split(/\s+/).pop());
 	}
 	return {
 		npmLs: (npmLs.stdout ?? "").trim(),
 		observer,
 		observerSource: source,
 		listenPid,
+		realPort,
 		roots,
 	};
 }
@@ -565,10 +572,10 @@ const t0 = Date.now();
 const realBefore = realBaseline();
 writeFileSync(join(ROOT, "real-baseline-before.json"), JSON.stringify(realBefore, null, 2));
 console.log(
-	`real baseline: observer pid ${realBefore.observer?.pid ?? "none"} (record ${realBefore.observer?.file ?? `none in ${REAL_ROOTS.map(([, r]) => r).join(" or ")}`}, ${realBefore.observerSource ?? "no"} root), port ${REAL_PORT} listener pid ${realBefore.listenPid ?? "none"}`,
+	`real baseline: observer pid ${realBefore.observer?.pid ?? "none"} (record ${realBefore.observer?.file ?? `none in ${REAL_ROOTS.map(([, r]) => r).join(" or ")}`}, ${realBefore.observerSource ?? "no"} root), port ${realBefore.realPort} listener pid ${realBefore.listenPid ?? "none"}`,
 );
 if (realBefore.listenPid && !realBefore.observer) {
-	console.log(`  WARNING: port ${REAL_PORT} is listening but the real observer record was not readable; check 9.real will FAIL.`);
+	console.log(`  WARNING: port ${realBefore.realPort} is listening but the real observer record was not readable; check 9.real will FAIL.`);
 }
 
 let packedVersion = null;
@@ -670,7 +677,25 @@ await check("3.wire", "brain wired to temp vault + sync + kanban tag", ["3.init"
 	assert(slot !== -1, "no YAML null slot under mcpServerConfig.args");
 	const cr = lines[slot].endsWith("\r") ? "\r" : "";
 	lines[slot] = lines[slot].replace(/-\s*\r?$/, `- ${JSON.stringify(VAULT)}${cr}`);
+	// The board is read from the kanban field's path (the vault path joined with "kanban"),
+	// exactly what /aide:brain config fills; sessions report no brain folder.
+	const kanbanAt = lines.findIndex((l) => /^kanban:\s*\r?$/.test(l));
+	assert(kanbanAt !== -1, "no kanban field in the scaffolded brain.aide");
+	let pathAt = -1;
+	for (let i = kanbanAt + 1; i < lines.length && /^\s+\S/.test(lines[i]); i++) {
+		if (/^\s+path:/.test(lines[i])) {
+			pathAt = i;
+			break;
+		}
+	}
+	assert(pathAt !== -1, "no kanban field in the scaffolded brain.aide");
+	const pathCr = lines[pathAt].endsWith("\r") ? "\r" : "";
+	lines[pathAt] = `  path: ${JSON.stringify(join(VAULT, "kanban"))}${pathCr}`;
 	writeFileSync(brainAide, lines.join("\n"));
+	// One task on the board the harness's observer must show (inside the temp ROOT only).
+	const backlog = join(VAULT, "kanban", "release-check", "backlog");
+	mkdirSync(backlog, { recursive: true });
+	writeFileSync(join(backlog, "release-check-task.md"), "---\npriority: p2\n---\n# Release check task\n");
 	const r = await run("aidemd-mcp", ["sync"], { cwd: PROJECT, label: "sync" });
 	assert(r.code === 0, `sync exited ${r.code}: ${r.stdout}${r.stderr}`);
 	const claudeMd = join(PROJECT, "CLAUDE.md");
@@ -803,7 +828,7 @@ await check("5.hook", "aidemd-mcp hook: silent, exit 0, presence only in the tem
 // aide-observer skill tells an agent to, with the hook calls Claude Code would
 // make. Deterministic; runs whether or not `claude -p` is available.
 console.log("\n[6s] simulated agent session (MCP stdio + hooks)");
-await check("6s.session", "session_started -> link -> start returns link on a non-24680 port, no HALT", ["3.wire", "5.hook"], async () => {
+await check("6s.session", "session_started -> link -> start returns link on a port other than the real observer's, no HALT", ["3.wire", "5.hook"], async () => {
 	const claudeId = randomUUID();
 	state.sim1 = { claudeId };
 	await runHook(hookInput(claudeId, "SessionStart", { source: "startup" }), "sim1-SessionStart");
@@ -839,7 +864,7 @@ await check("6s.session", "session_started -> link -> start returns link on a no
 	assert(/^Observer (already )?running at /.test(start.text), `unexpected start reply: ${start.text}`);
 	const link = linkOf(start.text);
 	assert(link, `no link in start reply: ${start.text}`);
-	assert(portOf(link) !== REAL_PORT, `observer link is on ${REAL_PORT} (the real observer's port): ${link}`);
+	assert(!(realBefore.listenPid && portOf(link) === realBefore.realPort), `observer link is on ${realBefore.realPort} (the real observer's port): ${link}`);
 	state.link = link;
 	assert(existsSync(observerFile), `no observer record at ${observerFile}`);
 	const rec = readJson(observerFile);
@@ -875,9 +900,20 @@ await check("8.page", "GET link + JSON API: 200 and liveness states", ["6s.sessi
 	assert(states.every((s) => ["working", "waiting", "ended"].includes(s)), `unexpected liveness states: ${states.join(",")}`);
 	const own = rows.find((s) => s.sessionId === state.sim1.obsId || s.id === state.sim1.obsId);
 	assert(own, `own session ${state.sim1.obsId} not listed`);
+	// The session in 6s.session reports only projectRoot and kanbanTag (no brain folder), which is
+	// the case the board must still work in: it reads from the kanban field of the brain config.
+	const statusRes = await fetch(`${url.origin}/api/projects/${encodeURIComponent(PROJECT_KEY)}/status`, { headers });
+	const statusBody = await statusRes.json();
+	writeFileSync(join(LOGS, "api-status.json"), JSON.stringify(statusBody, null, 2));
+	assert(statusRes.status === 200, `/api/projects/:key/status -> ${statusRes.status}`);
+	const board = statusBody.data?.status?.board;
+	const boardWhy = board?.state === "unavailable" ? `${board.reason}: ${board.detail}` : `board ${JSON.stringify(board)?.slice(0, 200)}`;
+	assert(board?.state === "available", `board not available (${boardWhy}); see ${join(LOGS, "api-status.json")}`);
+	const boardTasks = (board.columns ?? []).flatMap((c) => c.tasks ?? []);
+	assert(boardTasks.some((t) => t.slug === "release-check-task"), `board lacks task release-check-task; has ${boardTasks.map((t) => t.slug).join(",") || "none"}`);
 	const noToken = await fetch(`${url.origin}/api/projects`);
 	assert(noToken.status === 401 || noToken.status === 403, `/api/projects without token -> ${noToken.status}`);
-	return `page 200 (${html.length} bytes); ${rows.length} sessions [${states.join(", ")}]; no-token -> ${noToken.status}`;
+	return `page 200 (${html.length} bytes); ${rows.length} sessions [${states.join(", ")}]; board available with ${boardTasks.length} task(s); no-token -> ${noToken.status}`;
 });
 
 await check("6s.end", "sim session ends via Stop + SessionEnd hooks", ["6s.session"], async () => {
@@ -959,7 +995,7 @@ await check("6h.preflight", "claude -p works with AIDEMD_HOME set", ["3.wire"], 
 	return `pong in ${r.ms} ms (session ${j.session_id})`;
 });
 
-await check("6h.run1", "claude -p /aide: observer first, link on non-24680, no HALT, presence linked", ["6h.preflight", "7s.end"], async () => {
+await check("6h.run1", "claude -p /aide: observer first, link off the real observer's port, no HALT, presence linked", ["6h.preflight", "7s.end"], async () => {
 	const r = await runClaude("/aide", "run1");
 	state.run1 = r;
 	assert(!r.timedOut, `timed out after ${HEADLESS_TIMEOUT_MS} ms; transcript ${r.transcriptPath}`);
@@ -972,7 +1008,7 @@ await check("6h.run1", "claude -p /aide: observer first, link on non-24680, no H
 	assert(startCall, "aide_observer_start never called");
 	assert(startCall.result && !/^HALT:|^BLOCKED:/.test(startCall.result), `start replied: ${startCall.result?.split("\n")[0]}`);
 	const link = linkOf(startCall.result);
-	assert(link && portOf(link) !== REAL_PORT, `start link ${link} is missing or on ${REAL_PORT}`);
+	assert(link && !(realBefore.listenPid && portOf(link) === realBefore.realPort), `start link ${link} is missing or on the real observer's port ${realBefore.realPort}`);
 	const firstStartIdx = aideCalls.indexOf(startCall);
 	const before = aideCalls.slice(0, firstStartIdx).map((t) => short(t.name));
 	assert(before.every((n) => n === "aide_observer_event"), `calls before observer start: ${before.join(", ")}`);
@@ -1103,7 +1139,7 @@ await check("10.move", "Windows: start moves %LOCALAPPDATA%\\aidemd into <home>\
 			try {
 				const { pid, address } = readJson(rec);
 				const port = Number(new URL(address).port);
-				if (pid !== realBefore.observer?.pid && pid !== realBefore.listenPid && port !== REAL_PORT) killTree(pid);
+				if (pid !== realBefore.observer?.pid && pid !== realBefore.listenPid && !(realBefore.listenPid && port === realBefore.realPort)) killTree(pid);
 			} catch {
 				/* unreadable record: nothing to stop */
 			}
@@ -1121,7 +1157,7 @@ let stoppedObserver = "no observer record in the temp AIDE root";
 if (existsSync(observerFile)) {
 	const rec = readJson(observerFile);
 	const port = Number(new URL(rec.address).port);
-	if (rec.pid === realBefore.observer?.pid || rec.pid === realBefore.listenPid || port === REAL_PORT) {
+	if (rec.pid === realBefore.observer?.pid || rec.pid === realBefore.listenPid || (realBefore.listenPid && port === realBefore.realPort)) {
 		stoppedObserver = `NOT stopping pid ${rec.pid}: it matches the real observer (${rec.address})`;
 	} else {
 		killTree(rec.pid);
@@ -1141,14 +1177,14 @@ await check("9.real", "real global install, real observer and real app data unto
 	for (const [when, snap] of [["before", realBefore], ["after", realAfter]]) {
 		assert(
 			!(snap.listenPid && !snap.observer),
-			`cannot verify the real observer (${when}): port ${REAL_PORT} is listening (pid ${snap.listenPid}) but no record was readable at ${looked}. ` +
+			`cannot verify the real observer (${when}): port ${snap.realPort} is listening (pid ${snap.listenPid}) but no record was readable at ${looked}. ` +
 				`Likely cause: an observer started inside the Claude desktop app by an AIDE version from before AIDEMD_HOME keeps its record in the app's private AppData ` +
 				`(the MSIX package redirects %LOCALAPPDATA% writes into Packages\\Claude_<id>\\LocalCache\\Local), which a standalone terminal cannot see. ` +
 				`Run the check from inside the app, or restart that observer after upgrading.`,
 		);
 	}
 	assert(realAfter.npmLs === realBefore.npmLs, `npm ls -g changed:\n${realBefore.npmLs}\n->\n${realAfter.npmLs}`);
-	assert(realAfter.listenPid === realBefore.listenPid, `port ${REAL_PORT} listener pid ${realBefore.listenPid} -> ${realAfter.listenPid}`);
+	assert(realAfter.listenPid === realBefore.listenPid, `port ${realBefore.realPort} listener pid ${realBefore.listenPid} -> ${realAfter.listenPid}`);
 	const notes = [];
 	for (const [name] of REAL_ROOTS) {
 		const b = realBefore.roots[name];
@@ -1158,7 +1194,7 @@ await check("9.real", "real global install, real observer and real app data unto
 		assert(!existsSync(join(a.dir, PROJECT_KEY)), `test key folder ${PROJECT_KEY} in the real ${name} root ${a.dir}`);
 		notes.push(`${name} ${a.dir}: observer.json ${a.observer ? `mtime ${a.observer.mtime} sha ${a.observer.sha} pid ${a.observer.pid}` : "absent"}, no test folders`);
 	}
-	return `npm ls -g: ${realAfter.npmLs.split(/\r?\n/).pop().trim()}; record judged from the ${realAfter.observerSource ?? "(none)"} root; ${REAL_PORT} pid ${realAfter.listenPid}\n${notes.join("\n")}`;
+	return `npm ls -g: ${realAfter.npmLs.split(/\r?\n/).pop().trim()}; record judged from the ${realAfter.observerSource ?? "(none)"} root; port ${realAfter.realPort} pid ${realAfter.listenPid}\n${notes.join("\n")}`;
 });
 
 const totalMs = Date.now() - t0;

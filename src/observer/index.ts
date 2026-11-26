@@ -29,17 +29,17 @@ import writeRecord from "./writeRecord/index.js";
  * record, which names the bound port, is published while posts are held; and only then is every project's history replayed, merged with the
  * held posts and opened to reads and the stream. The record is published before the replay because
  * an event recorded mid-replay either sits in a file the replay reads or arrives as a post; the
- * `(sessionId, seq)` dedupe keeps one copy of it. `brainOverride` scopes the `--brain` path to the
+ * `(sessionId, seq)` dedupe keeps one copy of it. `kanbanOverride` scopes the `--kanban` folder to the
  * project of the folder the view command ran from. Installs no signal handler and never calls
  * `process.exit`; the caller owns the process lifecycle and calls `stop()`.
  */
 export default async function startObserver({
 	port,
-	brainOverride,
+	kanbanOverride,
 }: {
 	/** The preferred port: the first one tried; the rest of the list follows when it is busy. */
 	port: number;
-	brainOverride?: { projectRoot: string; brainPath: string };
+	kanbanOverride?: { projectRoot: string; kanbanPath: string };
 }): Promise<StartResult> {
 	// 1. A port outside 1-65535 is a caller bug, not a start failure.
 	const checked = parsePort({ value: String(port), source: "Observer port", shown: String(port) });
@@ -70,10 +70,10 @@ export default async function startObserver({
 		port,
 		token,
 		version,
-		...(brainOverride !== undefined && {
-			brainOverride: {
-				projectKey: resolve({ projectRoot: brainOverride.projectRoot }).projectKey,
-				brainPath: brainOverride.brainPath,
+		...(kanbanOverride !== undefined && {
+			kanbanOverride: {
+				projectKey: resolve({ projectRoot: kanbanOverride.projectRoot }).projectKey,
+				kanbanPath: kanbanOverride.kanbanPath,
 			},
 		}),
 		store,

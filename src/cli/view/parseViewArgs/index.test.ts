@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import parseViewArgs from "./index.js";
 
@@ -9,25 +9,33 @@ describe("parseViewArgs", () => {
 		expect(parseViewArgs({ args: ["--port", "41234"], cwd })).toEqual({ kind: "run", port: 41234 });
 	});
 
-	it("resolves a relative brain against cwd and keeps an absolute one", () => {
-		expect(parseViewArgs({ args: ["--port", "41234", "--brain", "../brain"], cwd })).toEqual({
+	it("resolves a relative --kanban against cwd and keeps an absolute one", () => {
+		expect(parseViewArgs({ args: ["--port", "41234", "--kanban", "../kanban"], cwd })).toEqual({
 			kind: "run",
 			port: 41234,
-			brainPath: resolve(cwd, "../brain"),
+			kanbanPath: resolve(cwd, "../kanban"),
 		});
-		const absolute = resolve("/elsewhere/brain");
-		expect(parseViewArgs({ args: ["--brain", absolute, "--port", "1"], cwd })).toEqual({
+		const absolute = resolve("/elsewhere/kanban");
+		expect(parseViewArgs({ args: ["--kanban", absolute, "--port", "1"], cwd })).toEqual({
 			kind: "run",
 			port: 1,
-			brainPath: absolute,
+			kanbanPath: absolute,
+		});
+	});
+
+	it("treats --brain as a deprecated alias for <path>/kanban", () => {
+		expect(parseViewArgs({ args: ["--brain", "brains/main"], cwd })).toEqual({
+			kind: "run",
+			kanbanPath: join(resolve(cwd, "brains/main"), "kanban"),
+			deprecatedBrain: true,
 		});
 	});
 
 	it("treats --port as optional: absent means a run with no port", () => {
 		expect(parseViewArgs({ args: [], cwd })).toEqual({ kind: "run" });
-		expect(parseViewArgs({ args: ["--brain", "b"], cwd })).toEqual({
+		expect(parseViewArgs({ args: ["--kanban", "k"], cwd })).toEqual({
 			kind: "run",
-			brainPath: resolve(cwd, "b"),
+			kanbanPath: resolve(cwd, "k"),
 		});
 	});
 
@@ -52,11 +60,19 @@ describe("parseViewArgs", () => {
 		expect(parseViewArgs({ args: ["--port", "65535"], cwd })).toEqual({ kind: "run", port: 65535 });
 	});
 
-	it("rejects a duplicate --port and a duplicate --brain", () => {
-		expect(parseViewArgs({ args: ["--port", "1", "--port", "2"], cwd })).toMatchObject({ kind: "invalid" });
-		expect(parseViewArgs({ args: ["--port", "1", "--brain", "a", "--brain", "b"], cwd })).toMatchObject({
-			kind: "invalid",
-		});
+	it.each([
+		[["--port", "1", "--port", "2"], "--port was given more than once."],
+		[["--kanban", "a", "--kanban", "b"], "--kanban was given more than once."],
+		[["--brain", "a", "--brain", "b"], "--brain was given more than once."],
+		[["--kanban", "a", "--brain", "b"], "--kanban and --brain cannot be used together."],
+		[["--brain", "a", "--kanban", "b"], "--kanban and --brain cannot be used together."],
+	])("rejects %j", (args, message) => {
+		expect(parseViewArgs({ args, cwd })).toEqual({ kind: "invalid", message });
+	});
+
+	it("rejects --kanban and --brain with no value", () => {
+		expect(parseViewArgs({ args: ["--kanban"], cwd })).toEqual({ kind: "invalid", message: "--kanban needs a value." });
+		expect(parseViewArgs({ args: ["--brain"], cwd })).toEqual({ kind: "invalid", message: "--brain needs a value." });
 	});
 
 	it("rejects an unknown flag and a stray positional, naming it", () => {

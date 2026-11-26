@@ -43,10 +43,10 @@ describe("pickReportedLocation", () => {
 			}),
 		];
 
-		expect(pickReportedLocation({ sessions })).toEqual({ brainPath: "/new", kanbanTag: "new-tag" });
+		expect(pickReportedLocation({ sessions })).toEqual({ kanbanTag: "new-tag" });
 	});
 
-	it("never fills a missing brainPath from an older session", () => {
+	it("never fills a missing kanbanTag from an older session", () => {
 		const sessions = [
 			makeSession({
 				sessionId: "old",
@@ -54,14 +54,14 @@ describe("pickReportedLocation", () => {
 			}),
 			makeSession({
 				sessionId: "new",
-				events: [makeStarted({ sessionId: "new", ts: "2026-02-01T00:00:00.000Z", kanbanTag: "new-tag" })],
+				events: [makeStarted({ sessionId: "new", ts: "2026-02-01T00:00:00.000Z", brainPath: "/new" })],
 			}),
 		];
 
 		const result = pickReportedLocation({ sessions });
 
-		expect(result).toEqual({ kanbanTag: "new-tag" });
-		expect(result).not.toHaveProperty("brainPath");
+		expect(result).toEqual({});
+		expect(result).not.toHaveProperty("kanbanTag");
 	});
 
 	it("returns an empty location when the newest session_started reported nothing", () => {

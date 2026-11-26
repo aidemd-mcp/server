@@ -26,7 +26,7 @@ export default function buildBoardModel({ view, events, focus }: { view: Project
 			kind: "unavailable",
 			tone: "calm",
 			heading: "Board unavailable",
-			text: "This project hasn't reported its folder or brain folder, so its kanban board can't be found. Tasks the agent picked still show in History.",
+			text: "This project hasn't reported its folder, so its kanban board can't be found. Tasks the agent picked still show in History.",
 			meta: null,
 		};
 	}

@@ -13,8 +13,8 @@ const EXIT_OK = 0;
 const EXIT_NOT_STARTED = 1;
 const EXIT_USAGE = 2;
 
-const BRAIN_NOTE =
-	"Note: --brain applies only when this command starts the observer; the running observer keeps its own setting.\n";
+const KANBAN_NOTE =
+	"Note: --kanban (or --brain) applies only when this command starts the observer; the running observer keeps its own setting.\n";
 
 /**
  * The `view` command: serves the one per-user observer in the foreground until Ctrl+C or until a
@@ -22,9 +22,10 @@ const BRAIN_NOTE =
  * without starting anything); choose the port (`--port`, else `AIDE_OBSERVER_PORT`, else the first
  * port of the list; an invalid value exits 1 naming it), which is only the first port tried: the
  * observer walks on through 24680 to 24689 when it is not free (brief #73); start the observer,
- * scoping `--brain` to this project only; then report by outcome. `kept` prints the running
- * observer's link (plus a note when `--brain` was given, since a kept observer keeps its own
- * setting) and exits 0; `stuck` (an older observer that did not shut down) names both versions and
+ * scoping `--kanban` to this project only (the deprecated `--brain <path>` means `--kanban
+ * <path>/kanban` and writes a deprecation line to stderr); then report by outcome. `kept` prints the
+ * running observer's link (plus a note when either flag was given, since a kept observer keeps its
+ * own setting) and exits 0; `stuck` (an older observer that did not shut down) names both versions and
  * the old observer's link and exits 1; `not-started` (no port on the list could be bound, naming
  * every port tried, or the start threw) prints the reason and exits 1; `started` prints the link,
  * serves until a signal or the observer's own `stopped`, and exits 0. `kept` and `started` also
@@ -43,6 +44,11 @@ export default async function view({ args, projectRoot }: { args: string[]; proj
 		process.stderr.write(`Error: ${parsed.message}\n${formatUsage()}`);
 		return EXIT_USAGE;
 	}
+	if (parsed.deprecatedBrain) {
+		process.stderr.write(
+			`Note: --brain is deprecated; it now means --kanban ${parsed.kanbanPath}. Use --kanban instead.\n`,
+		);
+	}
 
 	// 2. Choose the port; an unusable value refuses the start by name.
 	const choice = resolvePort({ flagPort: parsed.port });
@@ -51,11 +57,11 @@ export default async function view({ args, projectRoot }: { args: string[]; proj
 		return EXIT_NOT_STARTED;
 	}
 
-	// 3. Start the observer; a throw is a start failure like a busy port. `--brain` is for this project only.
-	const brainOverride = parsed.brainPath === undefined ? undefined : { projectRoot, brainPath: parsed.brainPath };
+	// 3. Start the observer; a throw is a start failure like a busy port. `--kanban` is for this project only.
+	const kanbanOverride = parsed.kanbanPath === undefined ? undefined : { projectRoot, kanbanPath: parsed.kanbanPath };
 	let started: Awaited<ReturnType<typeof startObserver>>;
 	try {
-		started = await startObserver({ port: choice.port, ...(brainOverride !== undefined && { brainOverride }) });
+		started = await startObserver({ port: choice.port, ...(kanbanOverride !== undefined && { kanbanOverride }) });
 	} catch (error: unknown) {
 		process.stderr.write(`${buildObserverMessage({ kind: "not-started", reason: describeError({ error }) })}\n`);
 		return EXIT_NOT_STARTED;
@@ -85,7 +91,7 @@ export default async function view({ args, projectRoot }: { args: string[]; proj
 	if (started.outcome === "kept") {
 		process.stdout.write(`${buildObserverMessage({ kind: "already-running", link })}\n`);
 		if (portNote !== null) process.stdout.write(`${portNote}\n`);
-		if (brainOverride !== undefined) process.stdout.write(BRAIN_NOTE);
+		if (kanbanOverride !== undefined) process.stdout.write(KANBAN_NOTE);
 		return EXIT_OK;
 	}
 

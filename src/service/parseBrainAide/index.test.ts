@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import parseBrainAide, { parseBrainAideFromString, interpolateArgs } from "./index.js";
@@ -1492,5 +1492,100 @@ describe("CRLF frontmatter", () => {
 		expect(result.kind).toBe("ok");
 		if (result.kind !== "ok") return;
 		expect(result.name).toBe("brain");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Optional kanban field — parsed beside the config, never failing it.
+// ---------------------------------------------------------------------------
+
+describe("optional kanban field", () => {
+	const absolutePath = resolve(tmpdir(), "brain", "kanban");
+
+	/** Frontmatter extra lines declaring a `kanban` mapping with the given source and path lines. */
+	function kanbanLines(...fieldLines: string[]): string[] {
+		return ["kanban:", ...fieldLines.map((line) => `  ${line}`)];
+	}
+
+	it("a config with no kanban key parses ok and carries no kanban key at all", () => {
+		const result = parseBrainAideFromString(makeContent());
+
+		expect(result.kind).toBe("ok");
+		expect(Object.prototype.hasOwnProperty.call(result, "kanban")).toBe(false);
+	});
+
+	it("a declared absolute path is reported as declared with the path verbatim", () => {
+		const result = parseBrainAideFromString(makeContent({ extraLines: kanbanLines("source: folder", `path: ${absolutePath}`) }));
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		expect(result.kanban).toEqual({ state: "declared", source: "folder", path: absolutePath });
+	});
+
+	it("a path with no value is declared and unwired, not malformed", () => {
+		const result = parseBrainAideFromString(makeContent({ extraLines: kanbanLines("source: folder", "path:") }));
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		expect(result.kanban).toEqual({ state: "declared", source: "folder", path: null });
+	});
+
+	it("a Windows-style unquoted path round-trips as the exact string (malformed on POSIX)", () => {
+		const windowsPath = String.raw`D:\Code\brain\kanban`;
+		const result = parseBrainAideFromString(makeContent({ extraLines: kanbanLines("source: folder", `path: ${windowsPath}`) }));
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		if (process.platform === "win32") {
+			expect(result.kanban).toEqual({ state: "declared", source: "folder", path: windowsPath });
+			return;
+		}
+		expect(result.kanban).toMatchObject({ state: "malformed", field: "kanban.path" });
+	});
+
+	it("an unsupported source is reported on kanban.source and the config stays ok", () => {
+		const result = parseBrainAideFromString(makeContent({ extraLines: kanbanLines("source: command", `path: ${absolutePath}`) }));
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		expect(result.kanban).toMatchObject({ state: "malformed", field: "kanban.source" });
+	});
+
+	it("a relative path is reported on kanban.path and the config stays ok", () => {
+		const result = parseBrainAideFromString(makeContent({ extraLines: kanbanLines("source: folder", "path: relative/kanban") }));
+
+		expect(result.kind).toBe("ok");
+		if (result.kind !== "ok") return;
+		expect(result.kanban).toMatchObject({ state: "malformed", field: "kanban.path" });
+	});
+
+	it("a declared kanban field rides on a missing-sections result", () => {
+		const result = parseBrainAideFromString(
+			makeContent({ omit: [contractMarkers[0]!], extraLines: kanbanLines("source: folder", `path: ${absolutePath}`) }),
+		);
+
+		expect(result.kind).toBe("missing-sections");
+		if (result.kind !== "missing-sections") return;
+		expect(result.kanban).toEqual({ state: "declared", source: "folder", path: absolutePath });
+	});
+
+	it("a missing required launcher field wins: malformed-frontmatter carries no kanban key", () => {
+		const content = makeContent({ extraLines: kanbanLines("source: folder", `path: ${absolutePath}`) }).replace("name: my-brain\n", "");
+		const result = parseBrainAideFromString(content);
+
+		expect(result.kind).toBe("malformed-frontmatter");
+		expect(Object.prototype.hasOwnProperty.call(result, "kanban")).toBe(false);
+	});
+
+	it("CRLF line endings yield the same kanban value as LF", () => {
+		const lf = makeContent({ extraLines: kanbanLines("source: folder", `path: ${absolutePath}`) });
+		const lfResult = parseBrainAideFromString(lf);
+		const crlfResult = parseBrainAideFromString(lf.replace(/\n/g, "\r\n"));
+
+		expect(lfResult.kind).toBe("ok");
+		expect(crlfResult.kind).toBe("ok");
+		if (lfResult.kind !== "ok" || crlfResult.kind !== "ok") return;
+		expect(crlfResult.kanban).toEqual({ state: "declared", source: "folder", path: absolutePath });
+		expect(crlfResult.kanban).toEqual(lfResult.kanban);
 	});
 });

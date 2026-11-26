@@ -61,15 +61,16 @@ export type StreamHub = {
 
 /**
  * Everything a route handler may touch; built once per observer by startObserver. The observer has
- * no project root of its own: each project's root comes from its newest session. `brainOverride`
- * is the `--brain` path and applies to the one project it names.
+ * no project root of its own: each project's root comes from its newest session. `kanbanOverride`
+ * is the `--kanban` folder (or the deprecated `--brain` folder's `kanban`), applied to the one
+ * project it names (brief commitment #111).
  */
 export type ObserverContext = {
 	port: number;
 	token: string;
 	/** The running AIDE package version; the shutdown request compares the caller's version against it. */
 	version: string;
-	brainOverride?: { projectKey: string; brainPath: string };
+	kanbanOverride?: { projectKey: string; kanbanPath: string };
 	store: EventStore;
 	hub: StreamHub;
 	statusPusher: { push(projectKey: string): void };

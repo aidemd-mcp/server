@@ -15,6 +15,9 @@ mcpServerConfig:
     - "-y"
     - "@bitbonsai/mcpvault@0.16.0"
     -
+kanban:
+  source: folder
+  path:
 ---
 
 <!-- aide-<marker>-start -->
@@ -28,13 +31,19 @@ mcpServerConfig:
 
 ### Frontmatter fields
 
-The schema is the minimum that still has real runtime consumers. Both fields are required.
+The schema is the minimum that still has real runtime consumers. `name` and `mcpServerConfig` are required; `kanban` is optional.
 
 - **`name`** — `string`. A human-readable label for the wired brain (e.g. `"obsidian"`, `"notion"`, `"company-wiki"`). The user reads it; the agent narrates it back in conversation ("I am connected to your `obsidian` brain"); the package never branches on its value. Two hosts may use the same `name` with structurally different launchers and that is fine — `name` is descriptive metadata, not a dispatch key.
 
 - **`mcpServerConfig`** — `object`. The MCP server configuration that wires the brain into the host's toolchain. Sync writes this object byte-for-byte into `.mcp.json` under the fixed `brain` key. Its shape mirrors what `.mcp.json` expects under `mcpServers["brain"]` so sync passes it through without reshaping.
   - **`command`** — `string`. The executable to launch (e.g. `"npx"`, `"node"`, `"uvx"`).
   - **`args`** — `(string | null)[]`. Arguments passed to `command`. Every element is either a fully-formed argument string OR YAML null. A YAML null at any index is the explicit unwired-slot signal — the user must fill that slot via `/aide:brain config` before sync will write the brain entry into `.mcp.json`. The default scaffold's bundled `obsidianBrainAideTemplate()` emits YAML null at `args[3]` (or the platform-equivalent path slot); the config section is the only place that documents which arg index means what for that backend. The package never introspects which slot is which. There is no literal-string placeholder — `<BRAIN_PATH>`, `<API_TOKEN>`, magic UUIDs, and any other in-band sentinel design have been retired in favor of structural YAML null.
+
+- **`kanban`** — `object`, optional. Where code (the observer) reads the project's kanban boards, so the observer never depends on an agent reporting a brain folder. Agents keep reaching the board through the brain's own MCP tools and the kanban seed sections; this field is for code only.
+  - **`source`** — `"folder"`, the only source today: the board is Markdown task notes in plain folders on disk, one folder per project with one subfolder per column. Other backends (Notion, Jira and the like) leave the whole field out; a command-based source for them is planned.
+  - **`path`** — absolute path to the kanban folder. A project's board is `<path>/<kanban tag>`, with the tag taken from the project's `Kanban project tag:` line. Empty (YAML null) means unwired: the bundled template ships it empty and `/aide:brain config` fills it during wiring (for Obsidian, the vault path plus `kanban`). The package never derives it from the launcher's arguments.
+
+  A missing `kanban` field leaves the config valid and only means the observer cannot show a board. A malformed one (an unknown `source`, a relative path) is reported next to the otherwise parsed config and never fails it or halts boot.
 
 That is the complete schema. There are no other top-level fields. A `connector`, `rootPath`, `entryFile`, or `tools` field — all of which a prior schema required — is rejected by the parser as `malformed-frontmatter`. Each retired field was validation theater: it existed for the parser to check, with no code path that consumed its value at runtime.
 

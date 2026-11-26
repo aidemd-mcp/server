@@ -227,7 +227,7 @@ describe("scenarios as the observer reads them", () => {
 	it("reads brainUnreachable with a board that cannot be located", () => {
 		const status = statuses.get("brainUnreachable")!;
 
-		expect(status.board).toMatchObject({ state: "unavailable", reason: "brain-path-missing" });
+		expect(status.board).toMatchObject({ state: "unavailable", reason: "kanban-folder-missing" });
 	});
 
 	it("reads qaFixRound as Fix round 2", () => {

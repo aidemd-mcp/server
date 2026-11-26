@@ -1,26 +1,14 @@
 import { isAbsolute, join } from "node:path";
 import { stat } from "node:fs/promises";
 import type { BoardUnavailable, ReportedLocation } from "@/service/observer/kanban/types/index.js";
-
-/** The folder inside the brain that holds every project's board. */
-const KANBAN_FOLDER = "kanban";
-
-/** What the user can do about any unavailable board: tell the observer which brain folder to use. */
-export const BOARD_HINT = "The board comes from the kanban tag and brain folder the agent reports at session start (the instructions file's `Kanban project tag:` line and the brain's folder). To override the brain folder, stop the running observer and start it from the project's folder with: aidemd-mcp view --brain <path>";
+import boardUnavailable from "../boardUnavailable/index.js";
+import readKanbanFolder from "./readKanbanFolder/index.js";
 
 /** A single safe folder or file-name segment: no separators, no leading dot, bounded length. */
 export const SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 
 /** Where the board was found: its folder and the kanban tag it belongs to. */
 type LocatedBoard = { state: "located"; boardFolder: string; kanbanTag: string };
-
-/** Builds the unavailable answer, always carrying the shared hint. */
-function unavailable({
-	reason,
-	detail,
-}: Pick<BoardUnavailable, "reason" | "detail">): BoardUnavailable {
-	return { state: "unavailable", reason, detail, hint: BOARD_HINT };
-}
 
 /** True when the path exists and is a directory; any fs error counts as no. */
 async function isDirectory(path: string): Promise<boolean> {
@@ -32,60 +20,71 @@ async function isDirectory(path: string): Promise<boolean> {
 }
 
 /**
- * Locates the project's board folder from what the newest session reported
- * (brain path and kanban tag) and the user's `--brain` override. The override
- * replaces the brain folder only; the tag always comes from the session.
- * Reads nothing but folder metadata, never throws: every failure is an
- * unavailable result naming what was checked.
+ * Locates the project's board folder: the kanban folder comes from the kanban
+ * field of the project's brain config at the project root, the tag comes from
+ * what the newest session reported, and the board is the tag's folder inside the
+ * kanban folder. `kanbanOverride` replaces the kanban folder for this project
+ * only (the brain config is then not read at all); the tag always comes from the
+ * session. Never reads the launcher or a brain folder a session reported, reads
+ * nothing but the config and folder metadata, and never throws: every failure is
+ * an unavailable result naming what was checked.
  */
 export default async function locateBoard({
+	projectRoot,
 	reported,
-	brainOverride,
+	kanbanOverride,
 }: {
+	projectRoot: string;
 	reported: ReportedLocation | null;
-	brainOverride?: string;
+	kanbanOverride?: string;
 }): Promise<LocatedBoard | BoardUnavailable> {
-	const brainPath = brainOverride ? brainOverride : reported?.brainPath;
-	if (!brainPath) {
-		return unavailable({
-			reason: "no-brain-path",
-			detail: "no session has reported a brain folder",
-		});
+	// 1. The kanban folder: the user's override, else the project's brain config.
+	let kanbanFolder: string;
+	if (kanbanOverride) {
+		kanbanFolder = kanbanOverride;
+	} else {
+		const configured = await readKanbanFolder({ projectRoot });
+		if (configured.state === "unavailable") return configured;
+		kanbanFolder = configured.kanbanFolder;
 	}
 
+	// 2. The tag the newest session reported.
 	const kanbanTag = reported?.kanbanTag;
 	if (!kanbanTag) {
-		return unavailable({
+		return boardUnavailable({
 			reason: "no-kanban-tag",
 			detail: "no session has reported a kanban tag",
 		});
 	}
 
-	if (!isAbsolute(brainPath)) {
-		return unavailable({
-			reason: "brain-path-missing",
-			detail: `${brainPath} is not an absolute path`,
+	// 3. The kanban folder must be an absolute path to a folder that exists.
+	const origin = kanbanOverride ? " (the kanban folder the view command was given)" : "";
+	if (!isAbsolute(kanbanFolder)) {
+		return boardUnavailable({
+			reason: "kanban-folder-missing",
+			detail: `${kanbanFolder} is not an absolute path${origin}`,
 		});
 	}
 
-	if (!(await isDirectory(brainPath))) {
-		return unavailable({
-			reason: "brain-path-missing",
-			detail: `${brainPath} is not a folder that exists`,
+	if (!(await isDirectory(kanbanFolder))) {
+		return boardUnavailable({
+			reason: "kanban-folder-missing",
+			detail: `${kanbanFolder} is not a folder that exists${origin}`,
 		});
 	}
 
-	// The tag becomes a folder name, so it must be one plain segment that cannot climb out of kanban/.
+	// 4. The tag becomes a folder name, so it must be one plain segment that cannot climb out of the kanban folder.
 	if (!SEGMENT_PATTERN.test(kanbanTag) || kanbanTag.includes("..")) {
-		return unavailable({
+		return boardUnavailable({
 			reason: "board-folder-missing",
 			detail: `${kanbanTag} is not a single folder name`,
 		});
 	}
 
-	const boardFolder = join(brainPath, KANBAN_FOLDER, kanbanTag);
+	// 5. The board is the tag's folder inside the kanban folder.
+	const boardFolder = join(kanbanFolder, kanbanTag);
 	if (!(await isDirectory(boardFolder))) {
-		return unavailable({
+		return boardUnavailable({
 			reason: "board-folder-missing",
 			detail: `${boardFolder} is not a folder that exists`,
 		});

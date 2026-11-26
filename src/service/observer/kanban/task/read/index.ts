@@ -7,24 +7,24 @@ import findTaskFile from "@/service/observer/kanban/task/read/findTaskFile/index
 import type { ReportedLocation, TaskReadResult } from "@/service/observer/kanban/types/index.js";
 
 /**
- * Reads one task's full note from this project's board folder: locates the board from the reported
- * brain path and kanban tag (or the user's override), finds the slug's note confined to that board,
+ * Reads one task's full note from this project's board folder: locates the board from the project's
+ * brain config and the reported kanban tag (or the user's kanban folder override), finds the slug's note confined to that board,
  * and returns its text exactly as stored with the parsed task. Unavailable, not-found and refused
  * are results, not throws. Never writes.
  */
 export default async function read({
 	reported,
-	brainOverride,
+	kanbanOverride,
 	projectRoot,
 	slug,
 }: {
 	reported: ReportedLocation | null;
-	brainOverride?: string;
+	kanbanOverride?: string;
 	projectRoot: string;
 	slug: string;
 }): Promise<TaskReadResult> {
-	// 1. Locate the board; a board that cannot be found is the answer as is.
-	const board = await locateBoard({ reported, brainOverride });
+	// 1. Locate the board from the project's brain config and the user's override; a board that cannot be found is the answer as is.
+	const board = await locateBoard({ projectRoot, reported, kanbanOverride });
 	if (board.state === "unavailable") return board;
 
 	// 2. Find the slug's note inside the board.

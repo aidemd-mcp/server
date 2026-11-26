@@ -6,6 +6,23 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Added
+
+- The brain config (`.aide/config/brain.aide`) takes an optional `kanban` field telling the observer where the project's kanban boards live on disk: `source: folder` and an absolute `path` to the kanban folder, with each project's board at `<path>/<kanban tag>`. The bundled template ships it with an empty `path`, and `/aide:brain config` fills it from the vault path during wiring. Brains that don't store their board as plain folders leave it out.
+- `aidemd-mcp view --kanban <path>` overrides the kanban folder for the project it is run from.
+- [migration] Brain configs declare where the observer reads the kanban board.
+  - Detect: `.aide/config/brain.aide` launches the bundled Obsidian brain (`mcpvault`) and its frontmatter has no `kanban:` field, or `kanban.path` is empty. A config for any other backend never matches: it leaves the field out on purpose.
+  - Migrate: run `/aide:brain config`. Accept its offer to bring the outdated `config` section up to date first (the new wording carries the board-location step), then accept its offer to fill `kanban.path` (the vault path plus `kanban`), which it writes on the user's yes. Never write the field by hand.
+  - Confirm: per file. Offer the suggested folder and let the user pick another one or "Not now".
+
+### Changed
+
+- The observer finds a project's board from the `kanban` field of the project's own brain config instead of from the brain folder the agent reports at session start, so the board shows up whether or not the agent knew the brain's location. When it can't show the board, it says why: no `kanban` field (run `/aide:brain config`), an unreadable brain config, a source it can't read, or a missing folder. `session_started` no longer needs a `brainPath`.
+
+### Deprecated
+
+- `aidemd-mcp view --brain <path>` still works as `--kanban <path>/kanban`, and prints a deprecation notice.
+
 ## [0.17.1] - 2026-11-25
 
 ### Fixed

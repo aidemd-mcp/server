@@ -2,7 +2,9 @@ import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import readBoard from "@/service/observer/kanban/board/read/index.js";
 import { schema } from "@/service/observer/event/shared/schema/index.js";
+import parseBrainAide from "@/service/parseBrainAide/index.js";
 import resolveRoot from "@/util/runtimePaths/resolveRoot/index.js";
 import seedFixtures from "./index.js";
 import scenarios from "./scenarios/index.js";
@@ -44,7 +46,7 @@ function makeScenario(overrides: Partial<FixtureScenario["project"]> = {}): Fixt
 }
 
 describe("seedFixtures", () => {
-	it("writes one project folder with its files, its board and one session log", async () => {
+	it("writes one project folder with its files, its board, its brain config and one session log", async () => {
 		vi.mocked(scenarios).mockReturnValue([makeScenario()]);
 		const appDataRoot = resolveRoot().root;
 
@@ -61,12 +63,12 @@ describe("seedFixtures", () => {
 
 		const log = await readFile(join(appDataRoot, only.projectKey, "events", `${only.sessionIds[0]}.jsonl`), "utf-8");
 		const [started] = log.trimEnd().split("\n").map((line) => schema.parse(JSON.parse(line)));
-		expect(started).toMatchObject({
-			kind: "session_started",
-			projectRoot: only.projectRoot,
-			kanbanTag: "aidemd-mcp",
-			brainPath: join(workDir, "building", "brain"),
-		});
+		expect(started).toMatchObject({ kind: "session_started", projectRoot: only.projectRoot, kanbanTag: "aidemd-mcp" });
+		expect(started).not.toHaveProperty("brainPath");
+
+		const config = await parseBrainAide(only.projectRoot);
+		expect(config).toMatchObject({ kanban: { state: "declared", path: join(workDir, "building", "brain", "kanban") } });
+		expect(await readBoard({ reported: { kanbanTag: "aidemd-mcp" }, projectRoot: only.projectRoot })).toMatchObject({ state: "available" });
 	});
 
 	it("writes each session's presence and ended mark, and every logged line passes the v2 schema", async () => {
@@ -107,15 +109,18 @@ describe("seedFixtures", () => {
 		expect(started).not.toHaveProperty("kanbanTag");
 	});
 
-	it("reports a brain folder it never creates for a missing-brain board", async () => {
+	it("writes the brain config but never the brain folder for a missing-brain board", async () => {
 		vi.mocked(scenarios).mockReturnValue([makeScenario({ board: { kanbanTag: "aidemd-mcp", missingBrain: true } })]);
 		const appDataRoot = resolveRoot().root;
 
 		const [only] = (await seedFixtures({ appDataRoot, workDir, now: NOW, set: "sessions" })).scenarios;
 
 		await expect(stat(join(workDir, "building", "brain"))).rejects.toThrow();
-		const log = await readFile(join(appDataRoot, only.projectKey, "events", `${only.sessionIds[0]}.jsonl`), "utf-8");
-		expect(JSON.parse(log.split("\n")[0])).toMatchObject({ brainPath: join(workDir, "building", "brain") });
+		expect((await stat(join(only.projectRoot, ".aide", "config", "brain.aide"))).isFile()).toBe(true);
+		expect(await readBoard({ reported: { kanbanTag: "aidemd-mcp" }, projectRoot: only.projectRoot })).toMatchObject({
+			state: "unavailable",
+			reason: "kanban-folder-missing",
+		});
 	});
 
 	it("refuses to seed when the environment resolves a different app-data root, writing nothing", async () => {

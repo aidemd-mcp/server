@@ -72,7 +72,8 @@ Call `aide_brain({ source: "template", kind: "launcher" })`. Show the user the `
 - `mcpServerConfig`: `command` and `args` that start the backend's MCP server. Leave YAML `null` at the one `args` slot the brain's location fills; `/aide:brain config` fills it during wiring.
   - The command is the backend's bare command name from a global install, never an absolute path and never a package runner such as npx, whose launches time out at session start. Run the backend's global-install check (for an npm package, `npm ls -g <package> --depth=0`). If it is missing, run the install (for an npm package, `npm i -g <package>`).
   - **On a failed install,** tell the user plainly and stop before writing the draft: a launcher whose command is not installed cannot start.
-- Add no other frontmatter field. The parser rejects extra fields.
+- `kanban` (optional): include it only when the backend stores its kanban board as Markdown task notes in plain folders on disk, one folder per project with a subfolder per column. Then write `source: folder` and leave `path` as YAML `null`; `/aide:brain config` fills it with the absolute kanban folder during wiring. Any other backend (Notion, Jira, a wiki API) leaves `kanban` out: the observer then shows no board for it, which is expected.
+- Add no other frontmatter field. Nothing reads one, and the parser rejects the retired ones.
 
 Write the draft file with the frontmatter between its two `---` fences.
 
