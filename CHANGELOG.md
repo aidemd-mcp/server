@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-26
+
 ### Added
 
 - A tool and hook reference ships with the package and installs into every project at `.aide/reference/`: `tools/` has one page per MCP tool and `hooks/` one page per Claude Code hook event AIDE listens to, each with an `index.md` table of contents. Every page has `name` and `description` frontmatter and one heading, so a docs site can render it. `aide_init` and `aide_upgrade` handle it as its own `reference` category, separate from the methodology docs (in the init wizard right after methodology), and `versions.json` tracks each page, so `aide_info` reports stale pages.
