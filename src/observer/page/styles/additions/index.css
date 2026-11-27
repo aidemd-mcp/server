@@ -195,6 +195,9 @@ body{margin:0}
 .av .md-check.on .box{background:var(--done);border-color:var(--done)}
 .av .md-check.on{color:var(--text-2)}
 .av .md-body li:has(> .md-check){list-style:none;margin-left:-18px}
+/* The checkbox item's text is one flex child, so it wraps as one run; what is nested under the item lines up with that text, not the box. */
+.av .md-check .t{min-width:0}
+.av .md-body li:has(> .md-check)>:not(.md-check){margin-left:22px}
 .av .md-check .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .av .av-node .n-main.leaf{cursor:default}
 /* "More below" cue in Details: a fade over the bottom edge and a small pill that scrolls down; gone at the end. */

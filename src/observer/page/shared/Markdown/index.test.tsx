@@ -41,9 +41,9 @@ describe("Markdown", () => {
 
 	it("draws [ ] and [x] items as checkboxes, saying Open or Done in words for screen readers", () => {
 		const html = renderToStaticMarkup(<Markdown markdown={"- [ ] write it\n- [x] ship **it**\n- [X] also done\n- plain"} />);
-		expect(html).toContain('<li><span class="md-check"><span class="box" aria-hidden="true"></span><span class="sr">Open: </span>write it</span></li>');
-		expect(html).toContain('<li><span class="md-check on"><span class="box" aria-hidden="true"></span><span class="sr">Done: </span>ship <b>it</b></span></li>');
-		expect(html).toContain('<span class="md-check on"><span class="box" aria-hidden="true"></span><span class="sr">Done: </span>also done</span>');
+		expect(html).toContain('<li><span class="md-check"><span class="box" aria-hidden="true"></span><span class="sr">Open: </span><span class="t">write it</span></span></li>');
+		expect(html).toContain('<li><span class="md-check on"><span class="box" aria-hidden="true"></span><span class="sr">Done: </span><span class="t">ship <b>it</b></span></span></li>');
+		expect(html).toContain('<span class="md-check on"><span class="box" aria-hidden="true"></span><span class="sr">Done: </span><span class="t">also done</span></span>');
 		expect(html).toContain("<li>plain</li>");
 	});
 
@@ -60,10 +60,10 @@ describe("Markdown", () => {
 	it("draws a nested list and a later paragraph inside their item, after the item's checkbox", () => {
 		const html = renderToStaticMarkup(<Markdown markdown={"- [ ] Create it:\n  - one\n    - deeper\n  Then `this`.\n- [x] Done"} />);
 		expect(html).toBe(
-			'<ul><li><span class="md-check"><span class="box" aria-hidden="true"></span><span class="sr">Open: </span>Create it:</span>' +
+			'<ul><li><span class="md-check"><span class="box" aria-hidden="true"></span><span class="sr">Open: </span><span class="t">Create it:</span></span>' +
 				"<ul><li>one<ul><li>deeper</li></ul></li></ul>" +
 				'<p>Then <code class="mono">this</code>.</p></li>' +
-				'<li><span class="md-check on"><span class="box" aria-hidden="true"></span><span class="sr">Done: </span>Done</span></li></ul>',
+				'<li><span class="md-check on"><span class="box" aria-hidden="true"></span><span class="sr">Done: </span><span class="t">Done</span></span></li></ul>',
 		);
 	});
 

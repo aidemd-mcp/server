@@ -6,6 +6,10 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Fixed
+
+- In the observer's Details pane, a checkbox step's text wraps as one line of text again instead of breaking apart at each code span (`Cre` / `ate`), and the sub-bullets and paragraphs nested under a checkbox step line up with its text, not with the box.
+
 ## [0.20.1] - 2026-11-27
 
 ### Fixed

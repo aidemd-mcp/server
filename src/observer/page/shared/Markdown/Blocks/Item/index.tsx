@@ -11,7 +11,9 @@ export default function Item({ text }: { text: string }) {
 		<span className={done ? "md-check on" : "md-check"}>
 			<span className="box" aria-hidden="true" />
 			<span className="sr">{done ? "Done: " : "Open: "}</span>
-			<Inline text={box[2] ?? ""} />
+			<span className="t">
+				<Inline text={box[2] ?? ""} />
+			</span>
 		</span>
 	);
 }
