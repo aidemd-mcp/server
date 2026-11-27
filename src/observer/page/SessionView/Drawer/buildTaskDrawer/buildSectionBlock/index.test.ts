@@ -31,6 +31,11 @@ describe("buildSectionBlock", () => {
 		expect(buildSectionBlock({ heading: "Plans", content })).toEqual({ heading: "Plans", icon: "doc", badge: null, type: "md", markdown: content });
 	});
 
+	it("renders a section holding a nested list as markdown, so the nesting is kept", () => {
+		const content = "- step\n  - sub";
+		expect(buildSectionBlock({ heading: "Steps", content })).toEqual({ heading: "Steps", icon: "doc", badge: null, type: "md", markdown: content });
+	});
+
 	it("is null for a section with no text", () => {
 		expect(buildSectionBlock({ heading: "Empty", content: " \n" })).toBeNull();
 	});

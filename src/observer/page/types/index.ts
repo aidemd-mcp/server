@@ -59,13 +59,16 @@ export type Theme = "dark" | "light";
 /** What `ThemeRoot` hands every screen below it: the current theme and the toggle. */
 export type ThemeContextValue = { theme: Theme; toggle(): void };
 
-/** One block of the page's small markdown: a paragraph, or a bulleted or numbered list of item texts. */
+/** One block of the page's small markdown: a paragraph, a bulleted or numbered list, a fenced code block, a heading or a pipe table. */
 export type MarkdownBlock =
 	| { type: "p"; text: string }
-	| { type: "ul" | "ol"; items: string[] }
+	| { type: "ul" | "ol"; items: MarkdownListItem[] }
 	| { type: "code"; text: string }
 	| { type: "h"; level: number; text: string }
 	| { type: "table"; head: string[]; align: TableAlign[]; rows: string[][] };
+
+/** One list item: its first paragraph's text (a `[ ]` / `[x]` marker kept) and the blocks indented under it — nested lists, later paragraphs, code. */
+export type MarkdownListItem = { text: string; blocks: MarkdownBlock[] };
 
 /** Which way a resize handle's drag or arrow key makes its area bigger: a handle on an area's left edge grows it to the left. */
 export type ResizeGrow = "left" | "right" | "up" | "down";

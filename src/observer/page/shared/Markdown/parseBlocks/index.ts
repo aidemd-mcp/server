@@ -1,16 +1,21 @@
 import type { MarkdownBlock } from "@/observer/page/types/index.js";
+import collectItemBody from "./collectItemBody/index.js";
+import measureIndent from "./measureIndent/index.js";
 import readTableAlign from "./readTableAlign/index.js";
 import splitTableRow from "./splitTableRow/index.js";
 
-const BULLET = /^\s*[-*+]\s+(.*)$/;
-const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
+/** A list item's line: the whole marker prefix, the whitespace before the marker, then the item's text. */
+const BULLET = /^((\s*)[-*+]\s+)(.*)$/;
+const NUMBERED = /^((\s*)\d+[.)]\s+)(.*)$/;
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const FENCE = /^\s*```/;
 
 /**
  * Splits markdown into paragraphs, bulleted or numbered lists, headings, fenced code blocks and GFM
- * pipe tables. A blank line ends a block; an indented line under a list item continues that item;
- * consecutive prose lines join into one paragraph; a fenced block keeps its lines exactly. A table is
+ * pipe tables. A blank line ends a block; lines indented under a list item belong to that item and are
+ * read as markdown of their own, so items nest and an item can hold later paragraphs and code (a blank
+ * line stays inside the item when the next line is indented under it); consecutive prose lines join
+ * into one paragraph; a fenced block keeps its lines exactly. A table is
  * a header row followed by a delimiter row with the same number of cells; its body runs until a blank
  * line or a line with no pipe, each row padded or cut to the header's width. HTML stays plain text,
  * never interpreted.
@@ -73,15 +78,24 @@ export default function parseBlocks(markdown: string): MarkdownBlock[] {
 				close();
 				open = { type, items: [] };
 			}
-			open.items.push((item[1] ?? "").trim());
+			// The item's own lines and everything indented under it are markdown of their own: its first
+			// paragraph is the item's text, the rest (nested lists, later paragraphs, code) sits under it.
+			const { body, end } = collectItemBody({
+				lines,
+				start: index + 1,
+				markerIndent: measureIndent(item[2] ?? ""),
+				contentIndent: measureIndent((item[1] ?? "").replace(/\S/g, " ")),
+			});
+			const inner = parseBlocks([item[3] ?? "", ...body].join("\n"));
+			const [first, ...rest] = inner;
+			open.items.push(first?.type === "p" ? { text: first.text, blocks: rest } : { text: "", blocks: inner });
+			index = end - 1;
 			continue;
 		}
 		if (open === null) {
 			open = { type: "p", text: line.trim() };
 		} else if (open.type === "p") {
 			open.text = `${open.text} ${line.trim()}`;
-		} else if ((open.type === "ul" || open.type === "ol") && /^\s/.test(line) && open.items.length > 0) {
-			open.items[open.items.length - 1] += ` ${line.trim()}`;
 		} else {
 			close();
 			open = { type: "p", text: line.trim() };

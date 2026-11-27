@@ -37,6 +37,7 @@ export default function renderPlan({ module, plan }: { module: FixtureModule; pl
 		`${module.path}/`,
 		"├── .aide                 intent spec",
 		"├── index.ts              orchestrator: run(input) => Result (existing)",
+		"│                         first call: weigh → rank, kept for the rest of the run",
 		"├── types/index.ts        shared types for this module (new)",
 		"├── weigh/index.ts        weigh(node) => number (new)",
 		"└── rank/index.ts         rank(nodes) => Node[] (new)   ← ranks every node by weight, then by open todo count, then by path, so the output order is stable across runs",
@@ -52,7 +53,11 @@ export default function renderPlan({ module, plan }: { module: FixtureModule; pl
 		"## Decisions",
 		"",
 		"- Weights live in one table so QA can golden-test them.",
-		"- Ties break by open todo count, then path, so output is stable.",
+		"- Ties break by open todo count, then path, so output is stable:",
+		"  - open todo count, highest first;",
+		"    - a module with no todo counts as zero;",
+		"  - then the path, A to Z.",
+		"  This order is the golden test's only input.",
 		"- `rank` takes `Node[]` and never mutates it; see `src/tools/score/rank/index.ts`.",
 	].join("\n");
 	return [

@@ -10,6 +10,10 @@ describe("listItems", () => {
 		expect(listItems("Round 1 missed\nties.")).toEqual(["Round 1 missed ties."]);
 	});
 
+	it("takes a nested item after its parent, in reading order", () => {
+		expect(listItems("- one\n  - one a\n- two")).toEqual(["one", "one a", "two"]);
+	});
+
 	it("is empty for blank text", () => {
 		expect(listItems("  \n")).toEqual([]);
 	});

@@ -180,8 +180,9 @@ body{margin:0}
 .av .md-body .md-h{margin-top:6px;font-weight:700;color:var(--text)}
 .av .md-body .md-h.l3{font-size:var(--fs-14)}
 .av .md-body .md-h.l4{font-size:var(--fs-13);color:var(--text-2)}
-/* Nothing in Details scrolls sideways: a tall code block's own sideways scrollbar would sit out of sight at its bottom edge. Long lines wrap instead; short lines keep their alignment. */
-.av .md-code{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);font-size:var(--fs-13);line-height:1.5}
+/* A code block never wraps, so trees and columns keep their alignment; one too wide scrolls on its own. Its height is capped so its sideways scrollbar stays in view. */
+.av .md-code{margin:0;white-space:pre;overflow:auto;max-height:60vh;font-family:var(--mono);font-size:var(--fs-13);line-height:1.5}
+.av .md-body li>*+*{margin-top:4px}
 .av .md-body p,.av .md-body li,.av .av-drawer-b .av-pre{overflow-wrap:anywhere}
 .av .md-body code{font-size:.92em;padding:1px 5px;border-radius:4px;background:var(--bg);border:1px solid var(--border);overflow-wrap:break-word}
 /* A table keeps whole words in its cells; one too wide for the pane scrolls on its own (tables are short, so its scrollbar stays in view). */
@@ -193,7 +194,7 @@ body{margin:0}
 .av .md-check .box{flex:none;width:14px;height:14px;border:1.5px solid var(--border-strong);border-radius:3px;transform:translateY(2px)}
 .av .md-check.on .box{background:var(--done);border-color:var(--done)}
 .av .md-check.on{color:var(--text-2)}
-.av .md-body li:has(.md-check){list-style:none;margin-left:-18px}
+.av .md-body li:has(> .md-check){list-style:none;margin-left:-18px}
 .av .md-check .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .av .av-node .n-main.leaf{cursor:default}
 /* "More below" cue in Details: a fade over the bottom edge and a small pill that scrolls down; gone at the end. */

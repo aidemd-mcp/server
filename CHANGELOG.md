@@ -6,6 +6,10 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Fixed
+
+- The observer's Details pane and task notes now draw nested lists nested. A sub-bullet sits under its item, not beside it, and a line indented under an item after its sub-list stays in that item, not glued onto the last sub-bullet. Code blocks no longer wrap, so a plan's Project Structure tree keeps its columns; a block too wide for the pane scrolls sideways on its own, with its height capped so the scrollbar stays in view.
+
 ## [0.20.0] - 2026-11-26
 
 ### Changed

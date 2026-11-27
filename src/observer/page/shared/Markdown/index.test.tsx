@@ -57,6 +57,16 @@ describe("Markdown", () => {
 		expect(html).not.toContain("md-check");
 	});
 
+	it("draws a nested list and a later paragraph inside their item, after the item's checkbox", () => {
+		const html = renderToStaticMarkup(<Markdown markdown={"- [ ] Create it:\n  - one\n    - deeper\n  Then `this`.\n- [x] Done"} />);
+		expect(html).toBe(
+			'<ul><li><span class="md-check"><span class="box" aria-hidden="true"></span><span class="sr">Open: </span>Create it:</span>' +
+				"<ul><li>one<ul><li>deeper</li></ul></li></ul>" +
+				'<p>Then <code class="mono">this</code>.</p></li>' +
+				'<li><span class="md-check on"><span class="box" aria-hidden="true"></span><span class="sr">Done: </span>Done</span></li></ul>',
+		);
+	});
+
 	it("draws a pipe table in its own wrapper, with column alignment and inline markdown in cells", () => {
 		const html = renderToStaticMarkup(<Markdown markdown={"| Name | Steps |\n|---|--:|\n| `rank` | **2** |"} />);
 		expect(html).toBe(
