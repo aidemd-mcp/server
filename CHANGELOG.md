@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-26
+
 ### Changed
 
 - AIDE's Claude Code hooks now live only in each machine's uncommitted `.claude/settings.local.json`, never in the shared `.claude/settings.json`, so no machine-specific path is ever committed and each developer's own `/aide` boot installs theirs. Each hook runs this machine's installed server directly (`node "<install>/dist/index.js" hook`) instead of the npm command shim, which cost about half a second per call under Git Bash on Windows, and the session-end hook gets a 10-second budget so closing or archiving a session no longer cuts it off before it records the end. `aide_init` and `/aide:upgrade` write the local file, remove AIDE's old entries from the shared file (every other entry stays byte-identical), and add `.claude/settings.local.json` to `.gitignore` when git doesn't already ignore it. A malformed settings file stops the hooks category with nothing written; without a global install it reports the install command first. `aidemd-mcp init` applies the hooks as one unit, or leaves them for `/aide:upgrade` when any file would be changed rather than created.
