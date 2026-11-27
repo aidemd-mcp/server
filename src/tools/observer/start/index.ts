@@ -7,10 +7,9 @@ import getSession from "@/service/observer/event/record/session/index.js";
 import readPackageVersion from "@/util/readPackageVersion/index.js";
 import resolve from "@/util/runtimePaths/resolve/index.js";
 import describeError from "@/util/describeError/index.js";
-import type { StartReply } from "./types/index.js";
+import type { LinkReply, StartReply } from "./types/index.js";
 import walkPorts from "./walkPorts/index.js";
-import awaitOwnLink from "./awaitOwnLink/index.js";
-import findOpenSessions from "./findOpenSessions/index.js";
+import checkProject from "./checkProject/index.js";
 import launchObserver from "./launchObserver/index.js";
 import moveLegacyHistory from "./moveLegacyHistory/index.js";
 import awaitObserver from "./awaitObserver/index.js";
@@ -27,10 +26,13 @@ export const ObserverStartInput = z.object({});
  * is reported stuck with both versions, both without any port walk. Otherwise the port list is
  * pre-walked with `tryBind` and the observer is spawned on the first bindable port; when none
  * binds the reply is blocked, naming every port and why. Once the observer answers (started,
- * running or stuck) the HALT check runs: the caller's own presence gets a moment to link, then any
- * other open session of the project, judged from disk, turns the reply into a halt that still
- * carries the link (brief commitments #69, #82, #91). Never throws: any failure, a failed HALT
- * check included, becomes a blocked reply, because nothing may proceed unobserved. The start first
+ * running or stuck) `checkProject` runs (brief commitments #69, #82, #91, #125): the project's
+ * other conversations closed without a report are marked, then the reply is a hard stop
+ * (`stopped`: this session was ended on the user's approval, or a newer session has worked the
+ * project since), a halt (another conversation is open; it still carries the link), a reopen
+ * (`reopened`, or `reopen-failed` when the ended marks cannot be cleared) or the link reply
+ * unchanged. Never throws: any failure, a failed start check included, becomes a blocked reply,
+ * because nothing may proceed unobserved. The start first
  * carries the caller's old-folder history into the per-user root (brief commitment #107), best
  * effort: it never blocks and never changes the reply.
  */
@@ -53,14 +55,10 @@ export default async function start({
 				view: { projectKey, sessionId },
 			});
 
-		// The HALT check: wait for the caller's own link, then list the project's other open sessions.
+		// The start check (checkProject) runs once the observer answers.
 		const projectKey = resolve({ projectRoot: root }).projectKey;
 		const sessionId = getSession().sessionId;
-		const checkHalt = async (reply: Exclude<StartReply, { outcome: "halt" | "blocked" }>): Promise<StartReply> => {
-			await awaitOwnLink({ projectKey, sessionId });
-			const open = await findOpenSessions({ projectRoot: root, callerSessionId: sessionId });
-			return open.length > 0 ? { outcome: "halt", link: reply.link, open } : reply;
-		};
+		const checkHalt = (reply: LinkReply): Promise<StartReply> => checkProject({ projectRoot: root, sessionId, reply });
 
 		// Single instance: a running observer of any project is kept, an older one is replaced.
 		const ownVersion = readPackageVersion();

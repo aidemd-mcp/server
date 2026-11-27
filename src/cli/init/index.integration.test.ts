@@ -34,6 +34,9 @@ const { mockExit } = vi.hoisted(() => {
 vi.mock("@/service/install/shared/checkGlobalPackage/index.js", () => ({
 	default: vi.fn(),
 }));
+vi.mock("@/service/install/shared/planHooks/locateEntry/index.js", () => ({
+	default: vi.fn(),
+}));
 vi.mock("./ensureGlobalAide/installGlobalPackage/index.js", () => ({
 	default: vi.fn(() => {
 		throw new Error("installGlobalPackage must not run in this test");
@@ -49,11 +52,16 @@ import { mcpEntry } from "@/service/install/wireMcp/index.js";
 import checkGlobalPackage from "@/service/install/shared/checkGlobalPackage/index.js";
 import installGlobalPackage from "./ensureGlobalAide/installGlobalPackage/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
-import planHooksMerge from "@/service/install/shared/planHooksMerge/index.js";
+import mergeLocal from "@/service/install/shared/planHooks/mergeLocal/index.js";
+import locateEntry from "@/service/install/shared/planHooks/locateEntry/index.js";
 import { listReferencePages, readCanonicalDoc } from "@/service/install/initContent/index.js";
 
 const mockCheckGlobalPackage = vi.mocked(checkGlobalPackage);
 const mockInstallGlobalPackage = vi.mocked(installGlobalPackage);
+const mockLocateEntry = vi.mocked(locateEntry);
+
+/** A fixed absolute, forward-slash entry point: the machine's real global install is never consulted. */
+const ENTRY = "/global/node_modules/@aidemd-mcp/server/dist/index.js";
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -69,6 +77,9 @@ beforeEach(async () => {
 	mockCheckGlobalPackage.mockReset();
 	mockCheckGlobalPackage.mockResolvedValue(true);
 	mockInstallGlobalPackage.mockClear();
+	// Default: this machine's global entry point is located, so the hooks plan a local create.
+	mockLocateEntry.mockReset();
+	mockLocateEntry.mockResolvedValue(ENTRY);
 });
 
 afterEach(async () => {
@@ -505,29 +516,40 @@ describe("7c-x — an existing aide entry survives init untouched", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7c-xi. Claude Code hooks — written only into a settings file init creates
+// 7c-xi. Claude Code hooks — the category is written only as a unit of plain creates
 // ---------------------------------------------------------------------------
 
-const HOOKS_DEFERRED_LINE =
-	"Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category to add AIDE's entries to .claude/settings.json.";
+const HOOKS_MERGE_LINE_START = "Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category:";
+const HOOKS_GLOBAL_LINE_START = "Claude Code hooks — the aide server is not installed globally";
 
 describe("7c-xi — Claude Code hooks", () => {
-	it("a fresh project gets .claude/settings.json holding exactly AIDE's hook entries and no deferred hooks line", async () => {
+	it("a fresh project gets .claude/settings.local.json holding AIDE's hooks, no shared settings file and no hooks line", async () => {
 		const { lines, write } = makeCapture();
 
 		await runInit(tempDir, write);
 
-		const written = await readFile(join(tempDir, ".claude", "settings.json"), "utf-8");
-		const expected = planHooksMerge({ text: null });
+		const written = await readFile(join(tempDir, ".claude", "settings.local.json"), "utf-8");
+		const expected = mergeLocal({ text: null, entry: ENTRY });
 		expect(expected.state).toBe("absent");
 		expect(written).toBe((expected as { merged: string }).merged);
-		expect(Object.keys(JSON.parse(written) as object)).toEqual(["hooks"]);
-		expect(lines.some((l) => l.startsWith("[created] .claude/settings.json"))).toBe(true);
-		expect(lines.join("\n")).not.toContain(HOOKS_DEFERRED_LINE);
+		expect(written).toContain(JSON.stringify(`node "${ENTRY}" hook`));
+		const settings = JSON.parse(written) as { hooks: { SessionEnd: { hooks: { timeout: number }[] }[] } };
+		expect(settings.hooks.SessionEnd[0].hooks[0].timeout).toBe(10);
+		await expect(stat(join(tempDir, ".claude", "settings.json"))).rejects.toThrow();
+		expect(lines.some((l) => l.startsWith("[created] .claude/settings.local.json"))).toBe(true);
+		expect(lines.join("\n")).not.toContain("Claude Code hooks —");
 	});
 
-	it("an existing settings file without AIDE's entries stays byte-identical and the deferred line is printed", async () => {
-		const raw = '{\n\t// mine\n\t"permissions": { "allow": ["Bash(ls)"] }\n}\n';
+	it("a shared settings file holding today's aidemd-mcp hook entries stays byte-identical, nothing local is written and the merge line is printed", async () => {
+		const raw =
+			JSON.stringify(
+				{
+					permissions: { allow: ["Bash(ls)"] },
+					hooks: { SessionStart: [{ hooks: [{ type: "command", command: "aidemd-mcp hook SessionStart" }] }] },
+				},
+				null,
+				2,
+			) + "\n";
 		await mkdir(join(tempDir, ".claude"), { recursive: true });
 		await writeFile(join(tempDir, ".claude", "settings.json"), raw, "utf-8");
 		const { lines, write } = makeCapture();
@@ -535,19 +557,33 @@ describe("7c-xi — Claude Code hooks", () => {
 		await runInit(tempDir, write);
 
 		expect(await readFile(join(tempDir, ".claude", "settings.json"), "utf-8")).toBe(raw);
-		expect(lines.some((l) => l.startsWith("[skipped-drift] .claude/settings.json"))).toBe(true);
-		expect(lines.join("\n")).toContain(HOOKS_DEFERRED_LINE);
+		await expect(stat(join(tempDir, ".claude", "settings.local.json"))).rejects.toThrow();
+		expect(lines.some((l) => l.startsWith("[deferred] .claude/settings.local.json"))).toBe(true);
+		expect(lines.join("\n")).toContain(HOOKS_MERGE_LINE_START);
 	});
 
-	it("a project already wired reports present and prints no deferred hooks line", async () => {
+	it("a project already wired reports present and prints no hooks line", async () => {
 		await runInit(tempDir, () => {});
-		const wired = await readFile(join(tempDir, ".claude", "settings.json"), "utf-8");
+		const wired = await readFile(join(tempDir, ".claude", "settings.local.json"), "utf-8");
 		const { lines, write } = makeCapture();
 
 		await runInit(tempDir, write);
 
-		expect(await readFile(join(tempDir, ".claude", "settings.json"), "utf-8")).toBe(wired);
-		expect(lines).toContain("[exists] .claude/settings.json — already present");
-		expect(lines.join("\n")).not.toContain(HOOKS_DEFERRED_LINE);
+		expect(await readFile(join(tempDir, ".claude", "settings.local.json"), "utf-8")).toBe(wired);
+		expect(lines).toContain("[exists] .claude/settings.local.json — already present");
+		expect(lines.join("\n")).not.toContain("Claude Code hooks —");
+	});
+
+	it("without a located global entry nothing is written and the install line is printed", async () => {
+		mockLocateEntry.mockResolvedValue(null);
+		const { lines, write } = makeCapture();
+
+		await runInit(tempDir, write);
+
+		await expect(stat(join(tempDir, ".claude", "settings.local.json"))).rejects.toThrow();
+		await expect(stat(join(tempDir, ".claude", "settings.json"))).rejects.toThrow();
+		expect(lines).toContain("[deferred] .claude/settings.local.json — needs the global install — not written");
+		expect(lines.join("\n")).toContain(HOOKS_GLOBAL_LINE_START);
+		expect(lines.join("\n")).toContain(`Run ${aidePackage.installCommand}`);
 	});
 });

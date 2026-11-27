@@ -3,6 +3,7 @@ import type {
 	SessionStartedEvent,
 } from "@/service/observer/event/shared/schema/index.js";
 import type { Presence } from "@/service/observer/event/shared/presenceRecord/index.js";
+import type { EndedMark } from "@/service/observer/event/shared/endedMark/index.js";
 
 /** What `record` reports back; it never throws, so every outcome is a value. */
 export type RecordOutcome = {
@@ -10,12 +11,17 @@ export type RecordOutcome = {
 	 * What happened to the log line. `invalid`: the input failed `inputSchema`,
 	 * nothing written or posted. `repeat-session-start`: a second
 	 * `session_started` in this process, nothing written or posted.
-	 * `session-ended`: this session has an ended mark, nothing written or
-	 * posted. `write-failed`: the append failed. `written`: the line is on disk.
+	 * `write-failed`: the append failed. `written`: the line is on disk.
 	 */
-	logged: "written" | "write-failed" | "invalid" | "repeat-session-start" | "session-ended";
+	logged: "written" | "write-failed" | "invalid" | "repeat-session-start";
 	/** True only when the running observer answered 2xx. */
 	delivered: boolean;
+	/**
+	 * True when the calling session's conversation carries an ended mark of any
+	 * kind; the tool then tells the agent to run the start check. Recording never
+	 * reopens (brief commitments #121, #135). Always false for `invalid`.
+	 */
+	previouslyEnded: boolean;
 	/** The id of the session this process records, on every outcome. */
 	sessionId: string;
 	/** The Zod issue summary (`invalid`) or the fs error code or message (`write-failed`). */
@@ -32,9 +38,36 @@ export type SessionLiveness = {
 	quietMinutes: number;
 	/** True on a session that is not ended when it has been quiet longer than `SESSION_QUIET_LIMIT_MS`. */
 	maybeStuck: boolean;
-	/** Who ended the session; present only when `state` is `ended`. */
-	endedBy?: "hook" | "user";
+	/** Who ended the session: `hook`, `user` or `transcript`; present only when `state` is `ended`. */
+	endedBy?: EndedMark["endedBy"];
 };
+
+/** One conversation as the event module groups it: its observer session ids and its Claude session ids, each ascending (brief commitments #132, #133). */
+export type ConversationRef = {
+	sessionIds: string[];
+	claudeSessionIds: string[];
+};
+
+/** A conversation with the presence records that tie it together; event-internal. */
+export type Conversation = ConversationRef & {
+	presences: Presence[];
+};
+
+/** What `findConversation` reports for the start check's caller (brief commitments #129, #134). */
+export type CallerConversation = ConversationRef & {
+	/** The mark that decides the conversation's end, or null when none of its ids carries one. */
+	mark: EndedMark | null;
+	/** The conversation's start for the newer test, epoch ms: the greatest earlier session's start, else the caller's own; null when its id does not parse. */
+	startedAt: number | null;
+	/** True when another session of the project started after `startedAt`; computed only when `mark` is not null, else false. */
+	newer: boolean;
+};
+
+/** What `markClosed` reports back: the transcript mark was written (keyed by `id`) or the conversation already carries a mark. */
+export type MarkClosedOutcome = { outcome: "written"; id: string } | { outcome: "exists" };
+
+/** What `reopen` reports back: the ended marks cleared (a count, 0 when there were none), or the first removal failure. */
+export type ReopenOutcome = { outcome: "reopened"; cleared: number } | { outcome: "failed"; detail: string };
 
 /** A hook presence that never linked to an observer session, with its liveness. */
 export type UnlinkedPresence = {

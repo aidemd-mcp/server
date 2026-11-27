@@ -4,6 +4,7 @@ import path from "node:path";
 import writeMcpEntry from "./writeMcpEntry/index.js";
 import renderWarning from "./renderWarning/index.js";
 import ensureGlobalAide from "./ensureGlobalAide/index.js";
+import reportHooks from "./reportHooks/index.js";
 import type { InstallResult } from "./types/index.js";
 import writeMethodology from "@/service/install/writeMethodology/index.js";
 import installMethodologyDocs from "@/service/install/installMethodologyDocs/index.js";
@@ -22,7 +23,7 @@ import detectFramework from "@/service/install/detectFramework/index.js";
 import readVersionsManifest from "@/tools/upgrade/buildVersionsMeta/index.js";
 import compareBytes from "@/service/install/shared/compareBytes/index.js";
 import aidePackage from "@/service/install/shared/aidePackage/index.js";
-import type { InitStep, FrameworkConfig } from "@/types/index.js";
+import type { InitStep, FrameworkConfig, HooksFollowUp } from "@/types/index.js";
 
 /**
  * Registered brain integrations. Today only "obsidian" is valid. Future
@@ -48,6 +49,18 @@ const FORBIDDEN_BRAIN_FLAGS = [
 	"--brain-name",
 ] as const;
 
+/** The one hooks line of the warning block, naming what to run for the follow-up `reportHooks` returned. */
+function describeHooksFollowUp(followUp: HooksFollowUp): string {
+	switch (followUp.kind) {
+		case "merge":
+			return "Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category: it installs AIDE's hooks for this machine in .claude/settings.local.json, removes AIDE's old entries from .claude/settings.json and adds .claude/settings.local.json to .gitignore where needed.";
+		case "malformed":
+			return `Claude Code hooks — ${followUp.files.join(" and ")} is not valid JSON, so no hooks were written. Fix it, then open Claude Code and run /aide:upgrade and confirm the hooks category.`;
+		case "global-install":
+			return `Claude Code hooks — the aide server is not installed globally, so no hooks were written. Run ${followUp.installCommand}, then open Claude Code and run /aide:upgrade and confirm the hooks category.`;
+	}
+}
+
 /**
  * Returns the list of deferred-category descriptions to pass to `renderWarning`.
  * Each string is self-contained guidance that names the per-category follow-up
@@ -67,30 +80,23 @@ const FORBIDDEN_BRAIN_FLAGS = [
  * IDE configuration always defers — cli/init never guesses, defaults, or scans
  * the filesystem for IDE choice. Re-run with `--ide <choice>` to resolve.
  *
- * Claude Code hooks defer in two cases, each naming `/aide:upgrade`: the
- * `"merge"` case, when `.claude/settings.json` already exists without AIDE's
- * entries (cli/init writes the hooks only into a settings file it creates, so
- * merging waits for the consent-gated upgrade); and the `"malformed"` case,
- * when the file cannot be parsed (the user fixes it first, then upgrade plans
- * the merge).
+ * Claude Code hooks are one unit: the category is written only when every step
+ * is a plain create (AIDE's entries into a new `.claude/settings.local.json`),
+ * and otherwise nothing in it is written and one line names what to run first.
+ * `merge`: some step would overwrite a file (an existing local settings file,
+ * AIDE's old entries in `.claude/settings.json`, an existing `.gitignore`
+ * missing the line), which waits for the consent-gated `/aide:upgrade`.
+ * `malformed`: a settings file cannot be parsed, so the user fixes it first.
+ * `global-install`: the aide server is not installed globally, so the hooks have
+ * nothing to run.
  *
- * @param hooksFollowUp - `"merge"` when the hooks step is `would-overwrite`,
- *   `"malformed"` when it is a `would-skip` with `configMalformed`, else `null`.
+ * @param followUp - What `reportHooks` says the hooks category still owes, or `null`.
  */
-function deferredCategories(hooksFollowUp: "merge" | "malformed" | null): readonly string[] {
+function deferredCategories(followUp: HooksFollowUp | null): readonly string[] {
 	return [
 		"Brain wiring — open Claude Code and run /aide; on the first run, /aide:brain config will fill the unwired slot in .aide/config/brain.aide, derive the brain MCP entry through cli/sync, and seed the brain's entry-point artifacts into your brain.",
 		`IDE configuration — re-run: ${aidePackage.command} init --ide <choice>`,
-		...(hooksFollowUp === "merge"
-			? [
-					"Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category to add AIDE's entries to .claude/settings.json.",
-				]
-			: []),
-		...(hooksFollowUp === "malformed"
-			? [
-					"Claude Code hooks — .claude/settings.json is not valid JSON, so AIDE's hook entries were not added. Fix the file, then open Claude Code and run /aide:upgrade and confirm the hooks category.",
-				]
-			: []),
+		...(followUp ? [describeHooksFollowUp(followUp)] : []),
 	];
 }
 
@@ -115,16 +121,18 @@ function deferredCategories(hooksFollowUp: "merge" | "malformed" | null): readon
  *    Claude-only; passing `"claude"` skips the detection walk.
  *
  * 4. **Planning helpers** collect `InitStep[]`. These planners never write
- *    to disk. `installHooks` plans AIDE's Claude Code hook entries in
- *    `.claude/settings.json`: written only when that file does not exist
- *    (`would-create`); an existing file without the entries is
- *    `would-overwrite`, left untouched and named in the deferred list as a
- *    `/aide:upgrade` follow-up. `installReference` plans the tool and hook
+ *    to disk. `installHooks` plans AIDE's Claude Code hooks as one category
+ *    (the local settings file, the shared-file strip, the `.gitignore` line);
+ *    `reportHooks` applies it only when every step is a plain create, and
+ *    otherwise holds the whole category back with one `/aide:upgrade`, fix-the-file
+ *    or global-install follow-up in the deferred list. `installReference` plans the tool and hook
  *    reference pages under `.aide/reference/`, a category of its own, applied
  *    on would-create like the others.
  *
  * 5. **Partition** by status: `toApply` (`would-create` only — enforces
- *    skip-on-exists), `skipped` (`would-overwrite` | `would-skip`).
+ *    skip-on-exists), `skipped` (`would-overwrite` | `would-skip`). The hooks
+ *    steps are not partitioned here; `reportHooks` decides them as a unit and its
+ *    results are logged where the hooks steps sit in the step order.
  *
  * 6. **`applySteps(toApply)`** writes only the `would-create` steps.
  *
@@ -141,8 +149,7 @@ function deferredCategories(hooksFollowUp: "merge" | "malformed" | null): readon
  * 9. **Warning block** — `renderWarning` receives every `skipped-drift` and
  *    `skipped-missing-canonical` and `skipped-malformed` result, an empty
  *    `failed` array, and the `deferredCategories()` array (brain wiring and IDE,
- *    plus the hooks line when the settings file exists without AIDE's entries
- *    or cannot be parsed).
+ *    plus the hooks line when `reportHooks` held the category back).
  *
  * **Exit-code contract:** returns `0` unconditionally. The only non-zero exit
  * path is the top-level IIFE's `catch` block.
@@ -235,10 +242,14 @@ export async function runInit(
 		...(versionsBytesResult !== "would-skip" ? { content: versionsJson } : {}),
 	};
 
-	// Flatten all planning steps into a single ordered list. Order mirrors the
+	// The hooks category is decided as a unit (all plain creates, or nothing written).
+	const hooks = reportHooks({ steps: hooksSteps, cwd });
+
+	// Flatten the generic planning steps into ordered lists. Order mirrors the
 	// MCP tool's orchestrator: methodology pointer, docs, versions, reference,
-	// commands, agents, skills, aide-tree, hooks, readme.
-	const plannedSteps: InitStep[] = [
+	// commands, agents, skills, aide-tree, hooks, readme. The hooks steps sit
+	// between the two lists and never enter the partition below.
+	const stepsBeforeHooks: InitStep[] = [
 		methodologyStep,
 		...docSteps,
 		versionsStep,
@@ -247,15 +258,19 @@ export async function runInit(
 		...agentSteps,
 		...skillSteps,
 		...aideTreeSteps,
-		...hooksSteps,
-		readmeStep,
 	];
+	const stepsAfterHooks: InitStep[] = [readmeStep];
 
 	// Step 5 — Partition by status. The CLI may only write `would-create` steps
 	// (skip-on-exists is the sole safe branch — there is no user to consent to
 	// an overwrite). `would-overwrite` and `would-skip` steps are never applied;
-	// they surface in the warning instead.
-	const toApply = plannedSteps.filter((s) => s.status === "would-create");
+	// they surface in the warning instead. The hooks steps skip this partition:
+	// reportHooks applies them all or none.
+	const toApply = [
+		...stepsBeforeHooks.filter((s) => s.status === "would-create"),
+		...hooks.toApply,
+		...stepsAfterHooks.filter((s) => s.status === "would-create"),
+	];
 
 	// Step 6 — Apply only the would-create steps. applySteps returns the same
 	// steps with status flipped to "created" (for writes that succeeded).
@@ -263,7 +278,7 @@ export async function runInit(
 
 	// Step 6b — Session record. The CLI has no agent to follow the step's
 	// instruction, so it runs the same scaffold function the instruction names;
-	// the placeholder lives only in scaffold. The step stays out of plannedSteps
+	// the placeholder lives only in scaffold. The step stays out of the planned step lists
 	// because applySteps would pass it through unwritten and the loop below
 	// would log a false [created].
 	const sessionResult: InstallResult = await (async () => {
@@ -275,47 +290,21 @@ export async function runInit(
 	})();
 
 	// Step 7 — Build the per-file log input. Brain.aide result is first
-	// (always present), MCP result is second, then every planned step in order.
-	const results: InstallResult[] = [brainScaffoldResult, mcpResult];
-
-	for (const step of plannedSteps) {
+	// (always present), MCP result is second, then every planned step in order
+	// with the hooks results at the position the hooks steps held.
+	const toResult = (step: InitStep): InstallResult => {
 		const displayPath = path.relative(cwd, step.filePath).split(path.sep).join("/");
 
-		if (step.status === "would-create") {
-			results.push({ status: "created", displayPath, message: step.name });
-			continue;
-		}
-
-		if (step.status === "exists") {
-			results.push({ status: "exists", displayPath, message: "already present" });
-			continue;
-		}
-
+		if (step.status === "would-create") return { status: "created", displayPath, message: step.name };
+		if (step.status === "exists") return { status: "exists", displayPath, message: "already present" };
 		if (step.status === "would-overwrite") {
-			results.push({
-				status: "skipped-drift",
-				displayPath,
-				message: "drifted from canonical — not overwritten",
-			});
-			continue;
+			return { status: "skipped-drift", displayPath, message: "drifted from canonical — not overwritten" };
 		}
-
 		if (step.status === "would-skip" && step.configMalformed === true) {
-			results.push({
-				status: "skipped-malformed",
-				displayPath,
-				message: "not valid JSON — left unchanged",
-			});
-			continue;
+			return { status: "skipped-malformed", displayPath, message: "not valid JSON — left unchanged" };
 		}
-
 		if (step.status === "would-skip") {
-			results.push({
-				status: "skipped-missing-canonical",
-				displayPath,
-				message: "canonical content unavailable",
-			});
-			continue;
+			return { status: "skipped-missing-canonical", displayPath, message: "canonical content unavailable" };
 		}
 
 		// "overwritten" must not appear on the CLI path — the filter above ensures
@@ -324,10 +313,17 @@ export async function runInit(
 		throw new Error(
 			`Unexpected step status "${step.status}" for ${step.filePath} — the would-create filter is broken.`,
 		);
-	}
+	};
 
 	// The session record result is last among the per-file lines.
-	results.push(sessionResult);
+	const results: InstallResult[] = [
+		brainScaffoldResult,
+		mcpResult,
+		...stepsBeforeHooks.map(toResult),
+		...hooks.results,
+		...stepsAfterHooks.map(toResult),
+		sessionResult,
+	];
 
 	// Step 8 — Print the per-file log: one line per artifact in collected order.
 	for (const r of results) write(`[${r.status}] ${r.displayPath} — ${r.message}`);
@@ -344,19 +340,12 @@ export async function runInit(
 	const warningFailed: InstallResult[] = [];
 
 	// Step 10 — Render and write the warning block. Brain wiring and IDE
-	// configuration are always deferred; the hooks line joins them when the
-	// settings file exists without AIDE's entries (a would-overwrite step: merge
-	// follow-up) or cannot be parsed (a would-skip step with configMalformed:
-	// fix-the-file follow-up).
-	const hooksFollowUp: "merge" | "malformed" | null = hooksSteps.some((s) => s.status === "would-overwrite")
-		? "merge"
-		: hooksSteps.some((s) => s.status === "would-skip" && s.configMalformed === true)
-			? "malformed"
-			: null;
+	// configuration are always deferred; the hooks line joins them when
+	// reportHooks held the category back (merge, fix-the-file or global-install).
 	const warning = renderWarning({
 		skipped: warningSkipped,
 		failed: warningFailed,
-		deferredCategories: deferredCategories(hooksFollowUp),
+		deferredCategories: deferredCategories(hooks.followUp),
 	});
 
 	if (warning) {
@@ -470,9 +459,10 @@ export async function runInitCli(): Promise<void> {
 				"  brain.aide template selected by --brain at .aide/config/brain.aide (with\n" +
 				"  YAML null at the unwired slot), and the empty session record at\n" +
 				"  .aide/session.aide (from the same scaffold the aide_scaffold tool uses).\n" +
-				"  For a Claude Code project it also writes AIDE's hook entries into a new\n" +
-				"  .claude/settings.json; an existing settings file is left as it is, and\n" +
-				"  /aide:upgrade merges the hooks into it with your consent.\n" +
+				"  For a Claude Code project it also writes AIDE's hooks into a new\n" +
+				"  .claude/settings.local.json; when that needs any change to an existing file,\n" +
+				"  nothing in the hooks category is written and /aide:upgrade applies it with\n" +
+				"  your consent.\n" +
 				"  Never overwrites existing files.\n\n" +
 				"What it does NOT do:\n" +
 				"  Never writes a .mcp.json brain entry (sync owns that, after the null slot\n" +

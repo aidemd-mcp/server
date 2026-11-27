@@ -4,28 +4,28 @@ alignment: unreviewed
 description: "Data side of the mandatory observer: records each project's session events and presence outside it, lists every project's sessions, reads the board, and builds status from files, events and board."
 intent: >
   Lets the user see every project's sessions in one place, then open one
-  and tell at a glance which pipeline and phase are running, on which
-  module, by which agent, for how long, and whether it is waiting on them.
-  The observer is mandatory and the single source of truth for a project's
-  agent sessions: at most one is live, judged from hook presence, activity
-  and the transcript's closing record, never marked ended automatically. Current state comes from the
-  project's own files; history and pipelines come from best-effort records
-  kept per user outside the project, resuming across sessions; the board is
-  optional.
+  and tell at a glance which pipeline and phase run, on which module, by
+  which agent, for how long, and whether it waits on them. The observer is
+  mandatory and the single source of truth for a project's sessions: at
+  most one is live, judged from hooks, activity and the
+  transcript's closing record, and an ended session reporting again may
+  reopen. Current state comes from the project's files; history and
+  pipelines from best-effort records kept per user outside the project,
+  resuming across sessions; the board is optional.
 outcomes:
   desired:
     - At a glance the status names the live session's pipeline, its running phase, module and agent, how long it has run and whether it is waiting on the user, with the waiting file shown. Current state is read from that project's own files.
-    - Apart from the session start (starting the observer and the one-live-session check) and an observer found down that cannot be restarted, the pipeline behaves identically whether events are recorded, fail, are skipped or miss a running observer, and an unavailable board or missing event empties only its own part of the view. Event records live outside the host project.
+    - Apart from the session start and a reopening (starting the observer and the one-live-session check) and an observer found down that cannot be restarted, the pipeline behaves identically whether events are recorded, fail, are skipped or miss a running observer, and an unavailable board or missing event empties only its own part of the view. Event records live outside the host project.
     - History lists what happened in the order it happened, each row showing the first line of its prompt and its detail the full prompt.
     - Every project's live and past sessions can be listed in one place and each reviewed, and removing one deletes only that session's record, never anything in the project.
-    - At most one agent session per project is live; a new session that finds another live is halted until the user approves ending it, and ending only marks it ended. Each session shows as working, waiting on the user, quiet and maybe stuck, or ended, one whose transcript ends in its closing record shown as closed without reporting its end, and none is ever marked ended automatically.
+    - At most one agent session per project is live, each shown as working, waiting on the user, quiet and maybe stuck, or ended, and none is ever ended for going quiet; a new session that finds another live is halted until the user approves ending it. An end by its hook, that approval or its transcript's closing record only marks a session ended, and one that reports again is told it was ended; through the start check it reopens only as the project's most recent session with no other open, otherwise it stays ended and is told a newer session has worked the project since.
     - A pipeline is one feature flow from the stage it starts at to completion or abandonment, shown within the live session that runs it. Stages it finished in earlier sessions show as done when a later session resumes it.
   undesired:
     - A cycle that stalls, fails or behaves differently because recording an event failed or a report missed the observer, one that carries on while the observer is down and cannot be restarted, or a second session of a project running on while another is live.
     - Event records appearing in the host repo, removing a past session touching any project file, or ending a session deleting anything.
     - A status that contradicts its project's files or draws on another project's, such as Build while the plan is still proposed, or takes current state from the event log so a missed event leaves a stale phase or a wrong file awaiting approval on screen.
     - History or a pipeline's stages that invent or reorder what happened, including a guessed row filling a missed event or a stage shown skipped that no report skipped.
-    - A quiet session ended automatically, or a session shown live or ended from anything but its hook presence, ended mark, newest activity and its transcript's last record.
+    - A session ended for going quiet, a session reopened while a newer one of the project exists, the most recent ended session refused a reopen when no other is open, or a session shown live or ended from anything but its hook presence, ended mark, newest activity and its transcript's last record.
     - An unavailable board or event log that breaks the whole status instead of only its own part.
 ---
 
@@ -33,47 +33,50 @@ outcomes:
 
 The user runs agent sessions in several projects at once, mostly inside subagents the terminal barely shows. They need one trustworthy place that says, per project, which session is working, in which pipeline and phase, and whether it waits on them, and that replays what past sessions did. Two agent sessions in one project overwrite each other's specs, plans and commits, so the same place must keep them from running together.
 
-Four facts shape the design. The pipeline's current state already lives in the project's files, which record their own status and progress; anything derived elsewhere can only disagree. What the files lack (who ran a phase, when, from which prompt, in what order, for which pipeline) exists only as the agent reports it, and reports are best effort. An agent cannot report its own crash or closed terminal, but Claude Code runs hooks by itself, apart from the aide server, at every session start, prompt, tool call, stop and session end; other hosts have none. And the project's repo must stay clean of anything the observer keeps.
+Four facts shape the design. The pipeline's current state already lives in the project's files, which record their own status and progress; anything derived elsewhere can only disagree. What the files lack (who ran a phase, when, from which prompt, in what order, for which pipeline) exists only as the agent reports it, and reports are best effort. An agent cannot report its own crash or closed terminal, but Claude Code runs hooks at every session start, prompt, tool call, stop and session end; other hosts have none. And the project's repo must stay clean of anything the observer keeps.
 
-A session waiting an hour on the user still holds the project; a session that exited does not. Judging that from report age once counted an exited session live for half an hour. The board lives in a brain whose backend and layout vary, so its location cannot be guessed from the launcher or the backend; the project's brain config declares it.
+A session waiting an hour on the user still holds the project; one that exited does not, yet its end hook can be killed before it writes, as archiving a desktop session showed. The host does close a finished conversation's transcript with a record of its own. And an ended conversation can be resumed, but only the project's latest session knows its current state; an older one coming back after a newer session worked carries a stale picture.
 
 ## Strategy
 
-**Session start is the one gate.** The agent first reports the session start, whose reply names its observer session, then calls start. Start reuses the machine's one observer or launches it, trying the user's port, then a short fixed list in order, and records the port taken so tools and links find it. If no port works, the agent tells the user and nothing proceeds: a session the observer cannot see breaks its single-source promise.
+**The observer is reached at session start and one restart only.** The agent first reports the session start, whose reply names its observer session, then calls start, which reuses the machine's one observer or launches it on the user's port, then a short fixed list in order, recording the port taken. Every later report lands first in its session's log outside the project, then is posted. A missed post never blocks but prompts one restart; no port, at start or restart, blocks, since an unseen session breaks the single-source promise.
 
-**One live session per project, decided from stored presence.** Start then checks presence and ended marks on disk, not an observer that may have replayed nothing, for any other open session in the project, whether or not it ever reported its start, since it can edit files all the same. If one is found, start halts naming that session, its state, last activity, pipeline and phase. Nothing proceeds until the user approves ending it, only a mark and never the caller's own, or closes this session.
+**One live session per project, decided at start from disk.** Start judges the project's other sessions from presence, ended marks and transcripts, never from an observer that may have replayed nothing, counting one that never reported its start. If one is open, start halts naming it, its state, last activity, pipeline and phase, until the user approves ending it, never the caller's own, or closes this session. One it finds closed by its transcript it marks ended, so a later resume meets the reopen rule rather than slipping back in.
 
-**Presence comes from the host, not the agent.** Claude Code's hooks mark a session working on start, prompt and tool call, waiting when the agent stops, and ended when the session ends. Each call writes presence first, keyed by the host's session and joined to the observer session when the hook on the session-start report reads its reply, keeps the transcript's location, then pings a running observer, never failing the agent. Hosts without hooks fall back to reported events.
+**Presence comes from the host, not the agent.** Claude Code's hooks mark a session working on start, prompt and tool call, waiting when the agent stops, and ended when it ends. Each call writes presence first, joined to the observer session by the start report's reply and keeping the transcript's location, then the ended mark, then pings a running observer, never failing the agent. The end hook may still be killed unwritten; hosts without hooks fall back to reported events.
 
-**Liveness is judged, never acted on.** An ended mark means ended; otherwise the last hook state holds, and last activity is the newest of the hook's time, the transcript's last write and the newest report. Past 15 quiet minutes it reads quiet and maybe stuck, never ended: a session waiting on the user still holds the project, and only its end hook or the user's approval releases it. Process ids are never consulted; they say nothing about whether the agent holds its work.
+**Liveness is judged read-only, in a fixed order.** An ended mark, then an end hook, means ended. Failing both, a transcript whose last record is the host's closing record means closed without reporting its end, but only when that record names the presence's own conversation; a resume writes past it and reads live again. Otherwise the last hook state holds, quiet and maybe stuck past 15 minutes, never ended. A missing or unrecognised transcript changes nothing; a crash leaves no record, so only the user's approval releases it.
 
-**Record first, then notify; a down observer gets one restart.** Every report lands in its session's own log outside the project, presence and ended marks kept beside it so the log has one writer, then is posted to a running observer. A missed post never blocks by itself but prompts one restart; a restart that finds no port blocks mid-session too. A report for an ended session is refused, so a released session cannot write on as if it held the project.
+**Ends are reversible, for the most recent session only.** A session is the user's conversation, recognised again when resumed in a fresh process. A report from an ended one is recorded and told it was previously ended and to run the start check; a report alone reopens nothing. The check clears the mark only when no session of the project started later and none is open. A newer session, or an end by another's approval, is a hard stop: that conversation's picture is stale, so the user continues in a new one.
 
 **Pipelines are reported explicitly; rails resume from kept logs.** A pipeline is one feature flow from its starting stage to completion or abandonment, named by its board task when it has one. The agent reports its start, finish and every skipped phase with the reason, and every phase, gate, step and QA report names it, since a rail cannot tell a skip from a missed report. The live session shows one rail for its current pipeline; resuming it marks done what earlier sessions' kept logs finished.
 
-**Files decide state; the parts meet only in the observer.** Status is rebuilt on every event and page load from the project's files, session logs, each session's liveness and the board, all handed to it: files decide current state, events add who, when, history and stages, and liveness is never re-judged. The observer never guesses the board's location; the board is the kanban folder the project's brain config declares, read through the one brain-config reader, under the kanban tag from the newest session-start report. Records, board and status never depend on each other, so a failure empties only its own part.
+**Files decide state; the parts meet only in the observer.** Status is rebuilt on every event and page load from the project's files, session logs, each session's liveness and the board, all handed to it: files decide current state, events add who, when, history and stages, and liveness is never re-judged. The board is the kanban folder the project's brain config declares, read through the one brain-config reader, under the kanban tag from the newest session-start report. Records, board and status never depend on each other, so a failure empties only its own part.
 
 ## Good examples
 
-**A crashed session found by the next one.** A build session's terminal crashes mid-step and no end hook fires; forty minutes later it reads quiet and maybe stuck. A new session reports its start and calls start, which halts naming that session, its pipeline and the Build phase. The user approves ending it; it is marked ended with its log kept, and the new session resumes the pipeline with Spec through Plan already done on its rail.
+**Archived, then resumed too late.** The user archives a session waiting on them; its end hook is cut off, but its transcript ends in the closing record for that conversation. The next session's start judges it closed, marks it ended and proceeds with no halt. Days later the user resumes the archived conversation: its report is recorded and flagged, its start check finds the newer session and hard-stops, and the user carries on in a new session.
 
-**Observer killed mid-session.** A report misses the observer. The agent restarts it once; the first port is now held by another program, so it takes the next on the list and records it. The new observer replays every log, the missed report included, and the next link leads to the new port.
+**Reopened as the most recent.** A session reaches the plan gate and the user exits; the end hook marks it ended. Next morning they resume it, no other session having started since. Its first report is recorded with "previously ended"; the start check finds none newer and none open, clears the mark, and the session shows working, its history running across the end in order.
 
-**An open session that never reported.** The user has a plain Claude session open in the project, waiting on them since the morning, that never ran the pipeline. A new pipeline session halts naming it by its host session id as waiting, quiet and maybe stuck, rather than letting two sessions edit one project.
+**A crashed session found by the next one.** A build session's terminal crashes mid-step: no end hook fires and no closing record is written, so forty minutes later it reads quiet and maybe stuck. A new session's start halts naming it, its pipeline and the Build phase. The user approves ending it; it is marked ended with its log kept, and the new session resumes the pipeline with Spec through Plan already done on its rail.
 
 ## Bad examples
 
-**Liveness from report age.** A session that exited still counts as live because its last report is recent, blocking the next session; or one waiting on the user past the limit is judged ended and a second session is let in over its unapproved plan.
+**Liveness from the wrong signal.** A session that exited counts as live because its last report is recent; one waiting on the user an hour is judged ended because its transcript has gone quiet; or a just-restarted observer that has replayed nothing lets a second session in while presence on disk shows the first working.
 
-**Halt from a fresh observer's memory.** The observer was just restarted and has replayed nothing, so start sees no live session and lets a second session proceed while presence on disk shows the first one working.
+**A stale conversation slips back in.** A session judged closed from its transcript is left unmarked while a newer one builds and ends. The old conversation is resumed in a fresh process, reports as if it were new, finds nothing open and plans from a picture the newer session's commits have changed; or its reports are refused and it works on unobserved.
 
 **Running unobserved.** The observer dies and the restart finds every port busy; the agent shrugs because reports are best effort and builds on, so the user's one source of truth shows a stale session while work lands in the project.
 
 ## References
 
-- User decisions on the mandatory observer, one live session per project, hook presence and liveness, the halt and ending a session, pipelines with skip reports and session-scoped rails, relayed by the orchestrator (2026-11-25) -- Strategy decisions 2 through 6
-- User decisions on the port list, no port as a blocker, the 15-minute quiet limit and a down observer that cannot be restarted blocking mid-session, relayed by the orchestrator (2026-11-25) -- decisions 1, 4 and 5
+- User decisions on the mandatory observer, one live session per project, hook presence and liveness, the halt and ending a session, pipelines with skip reports and session-scoped rails, relayed by the orchestrator (2026-11-25) -- Strategy decisions 2, 3, 4 and 6
+- User decisions on the port list, no port as a blocker, the 15-minute quiet limit and a down observer that cannot be restarted blocking mid-session, relayed by the orchestrator (2026-11-25) -- decisions 1 and 4
 - Exited session counted live by the report-age rule, observed by the user and relayed by the orchestrator (2026-11-24) -- why liveness comes from hooks, never from report age
 - User decision on one observer per user per machine, relayed by the orchestrator (2026-11-23) -- decision 1: a running observer is reused and the reply links to the calling session's view
-- User decisions on record-then-notify, files deciding state and the board's location, relayed by the orchestrator (2026-11-22) -- decisions 5 and 7
+- User decisions on record-then-notify, files deciding state and the board's location, relayed by the orchestrator (2026-11-22) -- decisions 1 and 7
 - User decision on the board's location declared in the brain config's kanban field, relayed by the orchestrator (2026-11-25) -- supersedes the board-location part of the 2026-11-22 entry; only the kanban tag comes from the session-start report
+- User-approved design for a session whose end hook was killed (the transcript's last record as a read-only backstop, only the last record counting, failing safe on an unrecognised transcript, crashes still needing approval), with the measured Windows hook times, relayed by the orchestrator (2026-11-26) -- decision 4, the first and third good examples
+- User decisions that ends are not permanent (a report from an ended session is recorded and told to run the start check), that only the project's most recent session reopens, newer meaning a later session start, that a session ended by another's approval never reopens, and that a closing record counts only for its own conversation; plus hooks moving to per-machine settings with a direct command and a 10-second end timeout, relayed by the orchestrator (2026-11-26) -- decisions 2, 4 and 5, the first two good examples and the second bad example
+- kanban/aidemd-mcp/in-progress/observer-session-stays-open-when-session-end-hook-is-killed -- the archive repro: the end hook killed before writing, presence left waiting, every later session halted

@@ -5,12 +5,12 @@ import isProjectKey from "@/util/runtimePaths/isProjectKey/index.js";
 import resolvePresenceFile from "@/util/runtimePaths/resolvePresenceFile/index.js";
 import isSessionId from "@/util/runtimePaths/shared/isSessionId/index.js";
 import { RECORD_EXTENSION } from "@/util/runtimePaths/shared/runtimeNames/index.js";
-import { schema, type Presence } from "@/service/observer/event/shared/presenceRecord/index.js";
+import { parse, type Presence } from "@/service/observer/event/shared/presenceRecord/index.js";
 
 /**
  * Lists one project's hook presence records. A key that is not a project key
  * and a missing presence folder answer `[]`. A file is kept only when its stem
- * is a safe session id, it parses against the presence schema and its own
+ * is a safe session id, it fits the presence shape and its own
  * `claudeSessionId` equals the stem; an unreadable, malformed or mis-named
  * file is skipped. Never writes and never creates the folder.
  */
@@ -40,8 +40,8 @@ export default async function readPresence({ projectKey }: { projectKey: string 
 			if (content === null) return null;
 			const json = parseJson(content);
 			if (json === undefined) return null;
-			const parsed = schema.safeParse(json);
-			return parsed.success && parsed.data.claudeSessionId === stem ? parsed.data : null;
+			const parsed = parse(json);
+			return parsed !== null && parsed.claudeSessionId === stem ? parsed : null;
 		}),
 	);
 

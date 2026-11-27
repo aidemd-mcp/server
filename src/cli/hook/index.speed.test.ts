@@ -212,6 +212,25 @@ describe.skipIf(process.env.AIDE_MEASURE_HOOK !== "1")("hook speed budget (brief
 		).toEqual([]);
 	}, 60_000);
 
+	it("resolves nothing under node_modules/zod when the built hook is imported (brief commitment #150)", async () => {
+		const printed = await captureChild([
+			"--input-type=module",
+			"-e",
+			`import { registerHooks } from "node:module";` +
+				`registerHooks({ resolve(specifier, context, nextResolve) {` +
+				`const result = nextResolve(specifier, context);` +
+				`if (result.url.includes("/node_modules/zod/")) console.log(result.url);` +
+				`return result; } });` +
+				`await import(${JSON.stringify(pathToFileURL(HOOK_MODULE).href)});`,
+		]);
+		const resolved = printed.split("\n").filter((line) => line.includes("/node_modules/zod/"));
+
+		expect(
+			resolved,
+			"importing dist/cli/hook/index.js resolved zod: the hook path is zod-free (brief #150); find the new import (including one the build or tsc-alias added) and hand-write the contract instead",
+		).toEqual([]);
+	}, 60_000);
+
 	it("keeps the median overhead over a paired bare node start within budget", async () => {
 		const stoppedSeedAt = await seed();
 		const stoppedQuiet = await runPhase({

@@ -10,7 +10,9 @@ const MINUTE_MS = 60 * 1000;
  * activity and `now`, so an open page keeps counting between frames; the state is never
  * re-derived, it is exactly what the recording side judged (brief #76, #101). A session that is
  * not ended and has been quiet longer than `SESSION_QUIET_LIMIT_MS` reads `Quiet <N> min · maybe
- * stuck`; an ended one never does.
+ * stuck`; an ended one never does. An ended session the observer judged closed from its transcript
+ * (`endedBy: "transcript"`, its end hook never reported) reads `Closed without reporting its end`;
+ * every other ended session reads `Ended` (brief #115).
  */
 export default function describeLiveness({
 	liveness,
@@ -19,7 +21,10 @@ export default function describeLiveness({
 	liveness: SessionLiveness;
 	now: Date;
 }): { word: string; className: "run" | "wait" | "neutral"; icon: IconName; stuck: boolean } {
-	if (liveness.state === "ended") return { word: "Ended", className: "neutral", icon: "power", stuck: false };
+	if (liveness.state === "ended") {
+		const word = liveness.endedBy === "transcript" ? "Closed without reporting its end" : "Ended";
+		return { word, className: "neutral", icon: "power", stuck: false };
+	}
 	const quietMs = liveness.lastActivityAt === null ? 0 : Math.max(0, now.getTime() - new Date(liveness.lastActivityAt).getTime());
 	if (quietMs > SESSION_QUIET_LIMIT_MS) {
 		return { word: `Quiet ${Math.floor(quietMs / MINUTE_MS)} min · maybe stuck`, className: "neutral", icon: "idle", stuck: true };

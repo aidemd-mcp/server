@@ -6,9 +6,13 @@ import checkHooksConfig from "@/tools/upgrade/checkHooksConfig/index.js";
  * point the user at the upgrade. Boot must agree with `aide_upgrade` on what
  * counts as stale, so the judgement is the upgrade's own: the same framework
  * auto-detection (no override, as when the upgrade runs without a framework)
- * and the same `checkHooksConfig`. Any result that is not `matches` (`missing`,
- * `differs`, `malformed`) is stale; a framework with no hooks yields no results
- * and is never flagged.
+ * and the same `checkHooksConfig`. Any result that is not `matches` is stale, which
+ * covers every drift kind the upgrade reports: AIDE entries left in the shared
+ * `.claude/settings.json`, a local `.claude/settings.local.json` that is missing, old,
+ * stale or lacks the session-end timeout, a `.gitignore` without the local-file line,
+ * a settings file that cannot be parsed, and no global install of the aide server.
+ * A `tip` (git tracks the local file) rides on a `matches` result and is never stale
+ * on its own. A framework with no hooks yields no results and is never flagged.
  *
  * Never rejects: boot is read-only reporting and a check that cannot be made
  * must stay silent rather than break it, so any failure resolves to false.

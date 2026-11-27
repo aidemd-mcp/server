@@ -36,6 +36,18 @@ describe("shouldRefresh", () => {
 			makePresence({ transcriptPath: "/t/a.jsonl", sessionId: OBSERVER, at: atPlus(1_000) }),
 			true,
 		],
+		[
+			"an earlier link added",
+			existing,
+			{ ...existing, earlierSessionIds: ["20261124T100000000Z-aaa111"], at: atPlus(1_000) },
+			true,
+		],
+		[
+			"the same earlier links",
+			{ ...existing, earlierSessionIds: ["20261124T100000000Z-aaa111"] },
+			{ ...existing, earlierSessionIds: ["20261124T100000000Z-aaa111"], at: atPlus(1_000) },
+			false,
+		],
 		["transcript path changed", existing, { ...existing, transcriptPath: "/t/b.jsonl", at: atPlus(1_000) }, true],
 		[
 			"transcript path filled while a newer record was kept",

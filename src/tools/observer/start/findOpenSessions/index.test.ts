@@ -91,13 +91,13 @@ afterEach(async () => {
 
 describe("findOpenSessions", () => {
 	it("answers nothing for a project with no files", async () => {
-		expect(await findOpenSessions({ projectRoot: project, callerSessionId: CALLER })).toEqual([]);
+		expect(await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } })).toEqual([]);
 	});
 
 	it("names another session with its pipeline and open phase", async () => {
 		await writeLog(FIRST, pipelineEvents(FIRST, 1));
 
-		const open = await findOpenSessions({ projectRoot: project, callerSessionId: CALLER });
+		const open = await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } });
 
 		expect(open).toHaveLength(1);
 		expect(open[0]).toMatchObject({
@@ -113,7 +113,7 @@ describe("findOpenSessions", () => {
 		await writeLog(FIRST, pipelineEvents(FIRST, 1));
 		await writePresence("claude-first", { sessionId: FIRST, state: "waiting", at: at(0) });
 
-		const [open] = await findOpenSessions({ projectRoot: project, callerSessionId: CALLER });
+		const [open] = await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } });
 
 		expect(open.liveness.state).toBe("waiting");
 	});
@@ -122,7 +122,7 @@ describe("findOpenSessions", () => {
 		await writeLog(FIRST, pipelineEvents(FIRST, 40));
 		await writeLog(SECOND, [{ v: 1, ts: at(40), sessionId: SECOND, seq: 1, pid: 4242, kind: "session_started" }]);
 
-		const open = await findOpenSessions({ projectRoot: project, callerSessionId: CALLER });
+		const open = await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } });
 
 		expect(open.map((session) => session.id)).toEqual([FIRST, SECOND]);
 		for (const session of open) {
@@ -136,14 +136,14 @@ describe("findOpenSessions", () => {
 		await writeMark(FIRST, "sessionId");
 		await writeLog(CALLER, pipelineEvents(CALLER, 0));
 
-		expect(await findOpenSessions({ projectRoot: project, callerSessionId: CALLER })).toEqual([]);
+		expect(await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } })).toEqual([]);
 	});
 
 	it("names an unlinked open presence by its Claude id, after the sessions, with no pipeline or phase", async () => {
 		await writeLog(FIRST, pipelineEvents(FIRST, 1));
 		await writePresence("claude-lonely", { state: "waiting" });
 
-		const open = await findOpenSessions({ projectRoot: project, callerSessionId: CALLER });
+		const open = await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } });
 
 		expect(open.map((session) => [session.id, session.idKind])).toEqual([
 			[FIRST, "session"],
@@ -155,7 +155,7 @@ describe("findOpenSessions", () => {
 	it("counts an unlinked presence even when the project has no log at all", async () => {
 		await writePresence("claude-lonely", {});
 
-		const open = await findOpenSessions({ projectRoot: project, callerSessionId: CALLER });
+		const open = await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } });
 
 		expect(open.map((session) => session.id)).toEqual(["claude-lonely"]);
 	});
@@ -165,13 +165,52 @@ describe("findOpenSessions", () => {
 		await writePresence("claude-marked", {});
 		await writeMark("claude-marked", "claudeSessionId");
 
-		expect(await findOpenSessions({ projectRoot: project, callerSessionId: CALLER })).toEqual([]);
+		expect(await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } })).toEqual([]);
 	});
 
 	it("does not count presence linked to the caller's own session", async () => {
 		await writeLog(CALLER, pipelineEvents(CALLER, 0));
 		await writePresence("claude-own", { sessionId: CALLER });
 
-		expect(await findOpenSessions({ projectRoot: project, callerSessionId: CALLER })).toEqual([]);
+		expect(await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } })).toEqual([]);
+	});
+
+	it("counts a resumed conversation once, by its newest observer session", async () => {
+		await writeLog(FIRST, pipelineEvents(FIRST, 1));
+		await writeLog(SECOND, pipelineEvents(SECOND, 1));
+		await writePresence("claude-resumed", { sessionId: SECOND, earlierSessionIds: [FIRST] });
+
+		const open = await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } });
+
+		expect(open.map((session) => [session.id, session.idKind])).toEqual([[SECOND, "session"]]);
+	});
+
+	it("never lists the caller's own earlier session or its Claude presence", async () => {
+		await writeLog(FIRST, pipelineEvents(FIRST, 1));
+		await writeLog(CALLER, pipelineEvents(CALLER, 0));
+		await writePresence("claude-own", { sessionId: CALLER, earlierSessionIds: [FIRST] });
+		await writePresence("claude-own-unlinked", {});
+
+		const open = await findOpenSessions({
+			projectRoot: project,
+			caller: { sessionIds: [FIRST, CALLER], claudeSessionIds: ["claude-own", "claude-own-unlinked"] },
+		});
+
+		expect(open).toEqual([]);
+	});
+
+	it("does not list a session closed from its transcript", async () => {
+		const transcript = path.join(project, "closed.jsonl");
+		await writeFile(
+			transcript,
+			[JSON.stringify({ type: "user" }), JSON.stringify({ type: "cost-state", sessionId: "claude-closed" })].join("\n") + "\n",
+			"utf-8",
+		);
+		await writeLog(FIRST, pipelineEvents(FIRST, 1));
+		await writePresence("claude-closed", { sessionId: FIRST, transcriptPath: transcript });
+
+		expect(
+			await findOpenSessions({ projectRoot: project, caller: { sessionIds: [CALLER], claudeSessionIds: [] } }),
+		).toEqual([]);
 	});
 });

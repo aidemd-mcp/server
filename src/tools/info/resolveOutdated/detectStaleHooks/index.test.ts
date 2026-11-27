@@ -34,6 +34,42 @@ describe("detectStaleHooks", () => {
 		expect(await detectStaleHooks(root)).toBe(true);
 	});
 
+	it("returns true when the local file matches but AIDE hooks are left in the shared settings", async () => {
+		mockCheckHooksConfig.mockResolvedValue([
+			makeResult("matches"),
+			{ ...makeResult("differs"), filePath: "/project/root/.claude/settings.json" },
+		]);
+
+		expect(await detectStaleHooks(root)).toBe(true);
+	});
+
+	it("returns true when the local file matches but .gitignore lacks the local-file line", async () => {
+		mockCheckHooksConfig.mockResolvedValue([
+			makeResult("matches"),
+			{ ...makeResult("missing"), filePath: "/project/root/.gitignore" },
+		]);
+
+		expect(await detectStaleHooks(root)).toBe(true);
+	});
+
+	it("returns true when the only result is a missing global install", async () => {
+		mockCheckHooksConfig.mockResolvedValue([
+			{
+				...makeResult("missing"),
+				globalPackage: { installCommand: "npm i -g @aidemd-mcp/server" },
+				instructions: "The aide server is not installed globally.",
+			},
+		]);
+
+		expect(await detectStaleHooks(root)).toBe(true);
+	});
+
+	it("returns false when the local file matches and carries a tracked-file tip", async () => {
+		mockCheckHooksConfig.mockResolvedValue([{ ...makeResult("matches"), tip: "settings.local.json is tracked by git" }]);
+
+		expect(await detectStaleHooks(root)).toBe(false);
+	});
+
 	it("returns false when the hooks match", async () => {
 		expect(await detectStaleHooks(root)).toBe(false);
 	});

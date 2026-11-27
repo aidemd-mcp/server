@@ -27,6 +27,14 @@ vi.mock("@/service/install/shared/checkGlobalPackage/index.js", () => ({
 	default: vi.fn(async () => true),
 }));
 
+// aide_init's summary runs the hooks planner; keep it from spawning npm or git.
+vi.mock("@/service/install/shared/planHooks/locateEntry/index.js", () => ({
+	default: vi.fn(async () => "/global/@aidemd-mcp/server/dist/index.js"),
+}));
+vi.mock("@/service/install/shared/planHooks/ignoreLocal/index.js", () => ({
+	default: vi.fn(async () => null),
+}));
+
 // Mock MCP SDK modules to prevent real server instantiation.
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
 	Server: vi.fn().mockImplementation((info: { name: string; version: string }) => {

@@ -7,11 +7,13 @@ import type { SessionLiveness } from "@/service/observer/event/types/index.js";
 const MINUTE_MS = 60 * 1000;
 
 /**
- * The one liveness rule (brief commitments #76, #94, #96), pure. In order: an
- * ended mark ends the session (with its `endedBy`); else a presence in state
- * `ended` ends it (`endedBy: "hook"`); else the presence's last state stands;
+ * The one liveness rule (brief commitments #76, #94, #96, #115), pure. In
+ * order: an ended mark ends the session (with its `endedBy`); else a presence
+ * in state `ended` ends it (`endedBy: "hook"`); else a presence whose
+ * transcript ends in the session's own closing record (`transcriptClosed`)
+ * ends it (`endedBy: "transcript"`); else the presence's last state stands;
  * else, with no presence at all, the session is `working` whatever its schema
- * version. Nothing ends a session by itself: quiet time only sets
+ * version (`transcriptClosed` is only consulted when a presence exists). Nothing ends a session by itself: quiet time only sets
  * `maybeStuck`, once `now` is more than `SESSION_QUIET_LIMIT_MS` past the
  * newest of the presence time, the transcript's last write and the newest
  * event time. No pid, no heartbeat.
@@ -21,12 +23,14 @@ export default function judgeLiveness({
 	presence,
 	endedMark,
 	transcriptActivityAt,
+	transcriptClosed,
 	now,
 }: {
 	events: ObserverEvent[];
 	presence: Presence | null;
 	endedMark: EndedMark | null;
 	transcriptActivityAt: string | null;
+	transcriptClosed: boolean;
 	now: number;
 }): SessionLiveness {
 	// 1. The newest of the three activity sources, kept as the ISO string it came as.
@@ -42,12 +46,15 @@ export default function judgeLiveness({
 	const quietMs = newest === null ? 0 : Math.max(0, now - newest.time);
 	const quietMinutes = Math.floor(quietMs / MINUTE_MS);
 
-	// 2. The state, in the brief's order: mark, then presence, then working.
+	// 2. The state, in the brief's order: mark, presence ended, transcript, presence state, working.
 	if (endedMark !== null) {
 		return { state: "ended", lastActivityAt, quietMinutes, maybeStuck: false, endedBy: endedMark.endedBy };
 	}
 	if (presence?.state === "ended") {
 		return { state: "ended", lastActivityAt, quietMinutes, maybeStuck: false, endedBy: "hook" };
+	}
+	if (presence !== null && transcriptClosed) {
+		return { state: "ended", lastActivityAt, quietMinutes, maybeStuck: false, endedBy: "transcript" };
 	}
 
 	return {

@@ -30,6 +30,42 @@ describe("formatReply", () => {
 		);
 	});
 
+	it.each([
+		["started", { outcome: "started" as const, link: "L" }, "Observer running at L"],
+		["running", { outcome: "running" as const, link: "L" }, "Observer already running at L"],
+		[
+			"stuck",
+			{ outcome: "stuck" as const, runningVersion: "0.14.0", ownVersion: "0.15.0", link: "L" },
+			"Observer not replaced: the running observer is version 0.14.0, older than this AIDE (0.15.0), and did not shut down; it is still serving at L",
+		],
+	])("formats reopened over a %s link reply: the REOPENED line, then the link reply", (_name, reply, second) => {
+		expect(formatReply({ outcome: "reopened", reply }).split("\n")).toEqual([
+			"REOPENED: this session was ended earlier and is open again; carry on.",
+			second,
+		]);
+	});
+
+	it("formats stopped for a newer session: the STOPPED line, then the link", () => {
+		expect(formatReply({ outcome: "stopped", reason: "newer", link: "L" }).split("\n")).toEqual([
+			"STOPPED: this session was ended and a newer session has worked this project since, so it cannot reopen. Nothing proceeds; the user continues in a new session.",
+			"Observer: L",
+		]);
+	});
+
+	it("formats stopped on the user's approval: the STOPPED line, then the link", () => {
+		expect(formatReply({ outcome: "stopped", reason: "user", link: "L" }).split("\n")).toEqual([
+			"STOPPED: this session was ended on the user's approval from another session, so it cannot reopen. Nothing proceeds; the user continues in a new session.",
+			"Observer: L",
+		]);
+	});
+
+	it("formats reopen-failed as a BLOCKED line with the detail, then the link", () => {
+		expect(formatReply({ outcome: "reopen-failed", detail: "Could not write the log.", link: "L" }).split("\n")).toEqual([
+			"BLOCKED: this session was ended earlier and could not be reopened, so nothing proceeds. Could not write the log.",
+			"Observer: L",
+		]);
+	});
+
 	it("formats the three-part HALT: the stop sentence, one line per open session, the link", () => {
 		const liveness = {
 			state: "working" as const,

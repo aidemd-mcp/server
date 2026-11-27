@@ -26,7 +26,7 @@ The tool uses a **two-call pattern**. The first call (no `category`) returns a l
 
 Call `aide_upgrade` with no arguments. The response is JSON with `framework` and `categories`. Each category has `files` (metadata only — no `canonicalContent`) and a `summary` with counts.
 
-If all categories have `differs: 0` and `missing: 0`, skip to **Project files** below — the project's own files can still be on an older format even when the package files are current.
+If all categories have `differs: 0` and `missing: 0`, and no file in any category has `status: "malformed"`, skip to **Project files** below — the project's own files can still be on an older format even when the package files are current.
 
 Otherwise, proceed to walk through drifted categories one at a time.
 
@@ -34,7 +34,7 @@ Otherwise, proceed to walk through drifted categories one at a time.
 
 ### Step 2–N: Walk through drifted categories one at a time
 
-For each category where `differs > 0` or `missing > 0` (or, for the `brain` category specifically, any file's `status` is `"malformed"` — which doesn't increment `missing`), present ONLY that category:
+For each category where `differs > 0` or `missing > 0`, or where any file's `status` is `"malformed"` (which doesn't increment `missing`; this happens in the `brain` and `hooks` categories), present ONLY that category:
 
 - Name the category
 - List which files differ or are missing (use `~` for differs, `+` for missing)
@@ -120,6 +120,12 @@ On confirmation, read the config, merge the prescription, write with the Write t
   ```
 
 On "Yes," invoke `Skill(skill="aide:brain", args="config")`. On "Skip," move to the next category.
+
+**hooks:** AIDE's Claude Code hooks live only in each machine's uncommitted `.claude/settings.local.json`, calling this machine's installed server directly. The category can report up to three files: the local settings file, the shared `.claude/settings.json` (when it still holds AIDE's old entries, which the apply removes; every other entry stays), and `.gitignore` (when git doesn't yet ignore the local file). Before asking, check the results:
+- **A file with `status: "malformed"`:** the category writes nothing. Tell the user which file can't be parsed, quoting its `instructions`, and that the hooks stay out of date until it's fixed. Don't offer to apply.
+- **A `missing` result with `globalPackage` and `instructions` (no content):** AIDE isn't installed globally on this machine, so there is no server to point the hooks at. Tell the user, run the install command the `instructions` name via Bash only on their yes, then call `aide_upgrade` with no category again.
+- **A result with a `tip`:** mention it once (for example, the local settings file is tracked by git and needs `git rm --cached .claude/settings.local.json`); it is never a reason to hold the apply.
+Otherwise ask once for the whole category; one apply writes all its files.
 
 **ide:** Use `AskUserQuestion` with multiSelect. VS Code steps return an `instructions` field — execute it if confirmed. Zed is written by the tool directly.
 

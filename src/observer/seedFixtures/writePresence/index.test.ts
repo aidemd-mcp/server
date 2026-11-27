@@ -2,8 +2,8 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { schema as endedMarkSchema } from "@/service/observer/event/shared/endedMark/index.js";
-import { schema as presenceSchema } from "@/service/observer/event/shared/presenceRecord/index.js";
+import { parse as parseEndedMark } from "@/service/observer/event/shared/endedMark/index.js";
+import { parse as parsePresence } from "@/service/observer/event/shared/presenceRecord/index.js";
 import create from "@/util/runtimePaths/create/index.js";
 import resolveEndedMark from "@/util/runtimePaths/resolveEndedMark/index.js";
 import resolvePresenceFile from "@/util/runtimePaths/resolvePresenceFile/index.js";
@@ -50,7 +50,7 @@ describe("writePresence", () => {
 
 		const projectKey = await projectKeyOf();
 		const file = resolvePresenceFile({ projectKey, claudeSessionId: `fixture-${SESSION_ID}` });
-		const presence = presenceSchema.parse(JSON.parse(await readFile(file, "utf-8")));
+		const presence = parsePresence(JSON.parse(await readFile(file, "utf-8")));
 		expect(presence).toMatchObject({
 			claudeSessionId: `fixture-${SESSION_ID}`,
 			sessionId: SESSION_ID,
@@ -82,7 +82,7 @@ describe("writePresence", () => {
 		await writePresence({ projectRoot, session: makeSession({ ended: true }), sessionId: SESSION_ID, now: NOW });
 
 		const projectKey = await projectKeyOf();
-		const mark = endedMarkSchema.parse(JSON.parse(await readFile(resolveEndedMark({ projectKey, id: SESSION_ID }), "utf-8")));
+		const mark = parseEndedMark(JSON.parse(await readFile(resolveEndedMark({ projectKey, id: SESSION_ID }), "utf-8")));
 		expect(mark).toEqual({ v: 1, sessionId: SESSION_ID, endedAt: "2026-11-23T11:48:00.000Z", endedBy: "user" });
 	});
 

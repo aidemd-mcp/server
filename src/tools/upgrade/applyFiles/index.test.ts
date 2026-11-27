@@ -365,4 +365,59 @@ describe("applyFiles", () => {
 		expect(results[2].status).toBe("created");
 		expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(2);
 	});
+
+	// ── Hooks category: stop states pass through, writable results are written ──
+	it("passes a hooks missing result without content through unwritten, keeping instructions and globalPackage", async () => {
+		const globalPackage = { name: "@aidemd-mcp/server", installed: false as const, installCommand: "npm i -g @aidemd-mcp/server" };
+		const file = makeFile({
+			name: "Claude Code hooks (.claude/settings.local.json)",
+			filePath: "/project/.claude/settings.local.json",
+			status: "missing",
+			category: "hooks",
+			canonicalContent: undefined,
+			globalPackage,
+			instructions: "Run npm i -g @aidemd-mcp/server via Bash, then apply the hooks category again.",
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+		expect(result.status).toBe("missing");
+		expect(result.globalPackage).toEqual(globalPackage);
+		expect(result.instructions).toBe("Run npm i -g @aidemd-mcp/server via Bash, then apply the hooks category again.");
+	});
+
+	it("passes a hooks malformed result through unwritten", async () => {
+		const file = makeFile({
+			filePath: "/project/.claude/settings.json",
+			status: "malformed",
+			category: "hooks",
+			canonicalContent: undefined,
+			instructions: "`.claude/settings.json` cannot be parsed (ValueExpected at offset 3).",
+		});
+		const [result] = await applyFiles([file]);
+
+		expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+		expect(result.status).toBe("malformed");
+		expect(result.instructions).toBe("`.claude/settings.json` cannot be parsed (ValueExpected at offset 3).");
+	});
+
+	it("writes the local file, the shared file and .gitignore in one call", async () => {
+		const results = await applyFiles([
+			makeFile({ filePath: "/project/.claude/settings.local.json", status: "missing", category: "hooks", canonicalContent: "LOCAL" }),
+			makeFile({ filePath: "/project/.claude/settings.json", status: "differs", category: "hooks", canonicalContent: "STRIPPED" }),
+			makeFile({ filePath: "/project/.gitignore", status: "differs", category: "hooks", canonicalContent: "IGNORE" }),
+		]);
+
+		expect(results.map((r) => r.status)).toEqual(["created", "updated", "updated"]);
+		expect(results.every((r) => r.canonicalContent === undefined)).toBe(true);
+		const written = vi.mocked(writeFile).mock.calls.map(([path, content]) => [path, content]);
+		expect(written).toEqual(
+			expect.arrayContaining([
+				["/project/.claude/settings.local.json", "LOCAL"],
+				["/project/.claude/settings.json", "STRIPPED"],
+				["/project/.gitignore", "IGNORE"],
+			]),
+		);
+		expect(written).toHaveLength(3);
+	});
 });

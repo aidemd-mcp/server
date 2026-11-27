@@ -46,7 +46,7 @@ function makeMark(overrides: Partial<EndedMark> = {}): EndedMark {
 	};
 }
 
-const NONE = { events: [], presence: null, endedMark: null, transcriptActivityAt: null, now: NOW };
+const NONE = { events: [], presence: null, endedMark: null, transcriptActivityAt: null, transcriptClosed: false, now: NOW };
 
 describe("judgeLiveness: state", () => {
 	it.each([
@@ -64,6 +64,36 @@ describe("judgeLiveness: state", () => {
 			name: "a SessionEnd presence is ended by the hook",
 			input: { ...NONE, presence: makePresence({ state: "ended", hookEvent: "SessionEnd" }) },
 			expected: { state: "ended", endedBy: "hook" },
+		},
+		{
+			name: "a closed transcript ends a working presence as transcript",
+			input: { ...NONE, presence: makePresence({ state: "working" }), transcriptClosed: true },
+			expected: { state: "ended", endedBy: "transcript" },
+		},
+		{
+			name: "a closed transcript ends a waiting presence as transcript",
+			input: { ...NONE, presence: makePresence({ state: "waiting", hookEvent: "Stop" }), transcriptClosed: true },
+			expected: { state: "ended", endedBy: "transcript" },
+		},
+		{
+			name: "an ended mark beats a closed transcript",
+			input: {
+				...NONE,
+				presence: makePresence({ state: "working" }),
+				endedMark: makeMark({ endedBy: "user" }),
+				transcriptClosed: true,
+			},
+			expected: { state: "ended", endedBy: "user" },
+		},
+		{
+			name: "a SessionEnd presence beats a closed transcript",
+			input: { ...NONE, presence: makePresence({ state: "ended", hookEvent: "SessionEnd" }), transcriptClosed: true },
+			expected: { state: "ended", endedBy: "hook" },
+		},
+		{
+			name: "a closed transcript with no presence leaves the session working",
+			input: { ...NONE, transcriptClosed: true },
+			expected: { state: "working", endedBy: undefined },
 		},
 		{
 			name: "a Stop presence is waiting",
@@ -95,6 +125,16 @@ describe("judgeLiveness: state", () => {
 
 		expect(liveness.state).toBe(expected.state);
 		expect(liveness.endedBy).toBe(expected.endedBy);
+	});
+
+	it("is never maybe stuck when ended from the transcript, however old", () => {
+		const liveness = judgeLiveness({
+			...NONE,
+			presence: makePresence({ at: msBefore(SESSION_QUIET_LIMIT_MS * 3) }),
+			transcriptClosed: true,
+		});
+
+		expect(liveness).toMatchObject({ state: "ended", endedBy: "transcript", maybeStuck: false });
 	});
 
 	it("omits endedBy from a session that is not ended", () => {
@@ -179,6 +219,7 @@ describe("judgeLiveness: last activity", () => {
 			presence: makePresence({ at: presence }),
 			endedMark: null,
 			transcriptActivityAt: transcript,
+			transcriptClosed: false,
 			now: NOW,
 		});
 

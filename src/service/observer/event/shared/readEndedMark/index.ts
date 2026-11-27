@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import parseJson from "@/service/observer/event/shared/readObserverRecord/parseJson/index.js";
 import resolveEndedMark from "@/util/runtimePaths/resolveEndedMark/index.js";
-import { schema, type EndedMark } from "@/service/observer/event/shared/endedMark/index.js";
+import { parse, type EndedMark } from "@/service/observer/event/shared/endedMark/index.js";
 
 /**
  * Reads one ended mark. A missing, unreadable or malformed file, and an id or
@@ -27,6 +27,5 @@ export default async function readEndedMark({
 	const json = parseJson(content);
 	if (json === undefined) return null;
 
-	const parsed = schema.safeParse(json);
-	return parsed.success ? parsed.data : null;
+	return parse(json);
 }

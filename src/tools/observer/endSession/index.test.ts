@@ -109,15 +109,16 @@ describe("endSession tool", () => {
 		expect(await markExists(CLAUDE_OWN)).toBe(false);
 	});
 
-	it("makes the ended session's later events answer refused: session ended", async () => {
+	it("records the ended session's later reports and flags them as previously ended", async () => {
 		// The recorder in this process records for getSession(); ending that session (as another
-		// caller would) is what the refusal path keys on.
+		// caller would) is what the flag keys on.
 		const own = getSession().sessionId;
 		await writeAt(resolveSessionLog({ projectKey, sessionId: own }), LOG_CONTENT);
 		await endSessionService({ projectRoot, id: own, bySessionId: OTHER });
 
 		const outcome = await record({ projectRoot, input: { kind: "release", version: "1.0.0" } });
 
-		expect(outcome.logged).toBe("session-ended");
+		expect(outcome.logged).toBe("written");
+		expect(outcome.previouslyEnded).toBe(true);
 	});
 });

@@ -104,6 +104,15 @@ describe("touchPresence", () => {
 		expect(await readStored()).toMatchObject({ sessionId: OBSERVER, hookEvent: "PostToolUse" });
 	});
 
+	it("keeps both observer ids when a second process's tagged reply links the same Claude session", async () => {
+		const later = "20261125T110000000Z-fff999";
+		await touchPresence(makeInput({ linkSessionId: OBSERVER }));
+
+		await touchPresence(makeInput({ at: "2026-11-25T10:00:20.000Z", linkSessionId: later }));
+
+		expect(await readStored()).toMatchObject({ sessionId: later, earlierSessionIds: [OBSERVER] });
+	});
+
 	it("keeps the transcript path when a later input lacks it", async () => {
 		await touchPresence(makeInput({ transcriptPath: "/t/a.jsonl" }));
 

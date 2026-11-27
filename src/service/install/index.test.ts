@@ -17,6 +17,10 @@ import type { InitResult, InitStep } from "@/types/index.js";
 vi.mock("./shared/checkGlobalPackage/index.js", () => ({ default: vi.fn(async () => false) }));
 import checkGlobalPackage from "./shared/checkGlobalPackage/index.js";
 
+// installHooks runs for real here; keep its planner from spawning npm or git.
+vi.mock("./shared/planHooks/locateEntry/index.js", () => ({ default: vi.fn(async () => "/global/@aidemd-mcp/server/dist/index.js") }));
+vi.mock("./shared/planHooks/ignoreLocal/index.js", () => ({ default: vi.fn(async () => null) }));
+
 const mockCheckGlobalPackage = checkGlobalPackage as ReturnType<typeof vi.fn>;
 const INSTALL_INSTRUCTION =
 	"The aide server is not installed globally. Run `npm i -g @aidemd-mcp/server` via Bash before merging this prescription. If the install fails, tell the user and do not merge the entry.";

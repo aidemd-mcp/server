@@ -709,14 +709,20 @@ await check("3.assert", ".mcp.json, hooks and observer skill installed", ["3.ini
 	const mcp = readJson(join(PROJECT, ".mcp.json"));
 	assert(mcp.mcpServers?.aide?.command === "aidemd-mcp", `aide entry: ${JSON.stringify(mcp.mcpServers?.aide)}`);
 	assert(mcp.mcpServers?.brain, "no brain entry in .mcp.json (wiring step failed?)");
-	const settings = readJson(join(PROJECT, ".claude", "settings.json"));
+	// Hooks live only in the per-machine local file, running the installed entry directly with node.
+	assert(!existsSync(join(PROJECT, ".claude", "settings.json")), ".claude/settings.json was written (hooks belong in settings.local.json)");
+	const settings = readJson(join(PROJECT, ".claude", "settings.local.json"));
+	const command = `node "${join(PKG_DIR, "dist", "index.js").split(sep).join("/")}" hook`;
 	const events = ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "SessionEnd"];
-	const wired = events.filter((ev) =>
-		(settings.hooks?.[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => h.type === "command" && h.command.trim() === "aidemd-mcp hook")),
-	);
-	assert(wired.length === 5, `hook events wired: ${wired.join(", ")}`);
+	const aideHooks = (ev) => (settings.hooks?.[ev] ?? []).flatMap((g) => g.hooks ?? []).filter((h) => h.type === "command" && h.command.endsWith(" hook"));
+	const wired = events.filter((ev) => aideHooks(ev).length === 1 && aideHooks(ev)[0].command === command);
+	assert(wired.length === 5, `hook events wired with ${command}: ${wired.join(", ")}; got ${JSON.stringify(settings.hooks)}`);
+	assert(aideHooks("SessionEnd")[0].timeout === 10, `SessionEnd timeout is ${aideHooks("SessionEnd")[0].timeout}, expected 10`);
+	// Kept out of git: the project's .gitignore lists it, unless git already ignored it (e.g. a global excludes file).
+	const ignored = spawnSync("git", ["check-ignore", "--no-index", "-q", "--", ".claude/settings.local.json"], { cwd: PROJECT, windowsHide: true }).status === 0;
+	assert(ignored, ".claude/settings.local.json is not ignored by git");
 	assert(existsSync(join(PROJECT, ".claude", "skills", "aide-observer", "SKILL.md")), "aide-observer skill missing");
-	return `aide=${JSON.stringify(mcp.mcpServers.aide)}; brain=${mcp.mcpServers.brain.command}; hooks: ${wired.join(", ")}`;
+	return `aide=${JSON.stringify(mcp.mcpServers.aide)}; brain=${mcp.mcpServers.brain.command}; hooks (local, node, SessionEnd 10 s): ${wired.join(", ")}`;
 });
 await check("3.idempotent", "init run twice changes nothing", ["3.wire"], async () => {
 	const before = snapshot(PROJECT);
@@ -731,7 +737,7 @@ await check("3.idempotent", "init run twice changes nothing", ["3.wire"], async 
 
 // 4. Existing settings files ---------------------------------------------------
 console.log("\n[4] init against existing settings files");
-await check("4.merge", "existing settings.json left byte-identical + /aide:upgrade deferred", ["2.resolve"], async () => {
+await check("4.merge", "user's own settings.json left byte-identical; hooks land in settings.local.json", ["2.resolve"], async () => {
 	const dir = join(ROOT, "rc-project-settings");
 	seedProject(dir);
 	mkdirSync(join(dir, ".claude"), { recursive: true });
@@ -750,14 +756,23 @@ await check("4.merge", "existing settings.json left byte-identical + /aide:upgra
 	assert(r.code === 0, `init exited ${r.code}`);
 	const after = readFileSync(join(dir, ".claude", "settings.json"), "utf8");
 	assert(after === original, "settings.json bytes changed");
-	assert(/run \/aide:upgrade, then confirm the hooks category/.test(r.stdout), "no /aide:upgrade hooks deferred line");
-	assert(/\[skipped-drift\] \.claude\/settings\.json/.test(r.stdout), "no [skipped-drift] line for .claude/settings.json");
-	return `byte-identical; deferred line present; log ${join(ROOT, "init-existing.txt")}`;
+	assert(existsSync(join(dir, ".claude", "settings.local.json")), "no .claude/settings.local.json written");
+	return `settings.json byte-identical; settings.local.json written; log ${join(ROOT, "init-existing.txt")}`;
 });
-await check("4.boot", "aide_info lists `hooks` in outdated when the hooks were deferred", ["4.merge"], async () => {
+await check("4.boot", "old AIDE hooks in settings.json: init defers to /aide:upgrade and aide_info lists `hooks`", ["2.resolve"], async () => {
 	// The /aide boot offers /aide:upgrade only when `outdated` is non-empty, so a
 	// project whose hooks were deferred must see `hooks` there.
-	const client = new McpClient("boot-hooks", join(ROOT, "rc-project-settings"));
+	const dir = join(ROOT, "rc-project-old-hooks");
+	seedProject(dir);
+	mkdirSync(join(dir, ".claude"), { recursive: true });
+	const old = JSON.stringify({ model: "sonnet", hooks: { Stop: [{ hooks: [{ type: "command", command: "aidemd-mcp hook" }] }] } }, null, 2) + "\n";
+	writeFileSync(join(dir, ".claude", "settings.json"), old);
+	const r = await run("aidemd-mcp", ["init", "--brain", "obsidian"], { cwd: dir, label: "init-old-hooks", timeout: 180_000 });
+	writeFileSync(join(ROOT, "init-old-hooks.txt"), r.stdout + r.stderr);
+	assert(r.code === 0, `init exited ${r.code}`);
+	assert(readFileSync(join(dir, ".claude", "settings.json"), "utf8") === old, "init changed the shared settings.json (it should defer to /aide:upgrade)");
+	assert(/run \/aide:upgrade, then confirm the hooks category/.test(r.stdout), "no /aide:upgrade hooks follow-up line");
+	const client = new McpClient("boot-hooks", dir);
 	try {
 		await client.start();
 		const info = await client.call("aide_info", {}, 90_000);
@@ -780,7 +795,7 @@ await check("4.malformed", "malformed settings.json -> [skipped-malformed]", ["2
 	writeFileSync(join(ROOT, "init-malformed.txt"), r.stdout + r.stderr);
 	assert(r.code === 0, `init exited ${r.code}`);
 	assert(readFileSync(join(dir, ".claude", "settings.json"), "utf8") === original, "malformed settings.json was changed");
-	assert(/\[skipped-malformed\] \.claude\/settings\.json/.test(r.stdout), "no [skipped-malformed] line");
+	assert(/\[skipped-malformed\][^\n]*settings\.json/.test(r.stdout), "no [skipped-malformed] line for .claude/settings.json");
 	assert(/settings\.json is not valid JSON/.test(r.stdout), "no malformed-hooks deferred line");
 	return `left unchanged; [skipped-malformed] reported; log ${join(ROOT, "init-malformed.txt")}`;
 });
@@ -1267,6 +1282,12 @@ await check("11.after", "after the upgrade nothing is behind, new files are byte
 			assert(existsSync(host), `reference page missing after upgrade: ${rel}`);
 			assert(readFileSync(host, "utf8") === readFileSync(join(REPO, ".aide", "reference", rel), "utf8"), `reference page differs after upgrade: ${rel}`);
 		}
+		// The previous release wrote AIDE's hooks into the shared file; the upgrade moves them to the local file.
+		const sharedPath = join(UP_PROJECT, ".claude", "settings.json");
+		const localPath = join(UP_PROJECT, ".claude", "settings.local.json");
+		const shared = existsSync(sharedPath) ? readFileSync(sharedPath, "utf8") : "";
+		assert(!/aidemd-mcp hook|@aidemd-mcp\/server/.test(shared), ".claude/settings.json still holds AIDE hooks after the upgrade");
+		assert(existsSync(localPath) && /"SessionEnd"/.test(readFileSync(localPath, "utf8")), "no AIDE hooks in .claude/settings.local.json after the upgrade");
 		const touched = Object.entries(state.userFilesBefore).filter(([rel, h]) => sha(readFileSync(join(UP_PROJECT, rel), "utf8")) !== h).map(([rel]) => rel);
 		assert(touched.length === 0, `upgrade changed user-owned files: ${touched.join(", ")}`);
 		return `0 outdated; ${shipped.length} reference pages byte-identical; ${Object.keys(state.userFilesBefore).length} user files unchanged`;

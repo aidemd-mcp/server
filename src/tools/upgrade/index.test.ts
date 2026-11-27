@@ -144,7 +144,7 @@ function wireDefaultMocks(config: FrameworkConfig = CLAUDE_CONFIG) {
 	vi.mocked(checkHooksConfig).mockResolvedValue([
 		{
 			name: "Claude Code hooks",
-			filePath: join(tempDir, ".claude", "settings.json"),
+			filePath: join(tempDir, ".claude", "settings.local.json"),
 			status: "matches",
 			category: "hooks",
 		},
@@ -826,7 +826,7 @@ describe("upgrade — hooks category", () => {
 		vi.mocked(checkHooksConfig).mockResolvedValue([
 			{
 				name: "Claude Code hooks",
-				filePath: join(tempDir, ".claude", "settings.json"),
+				filePath: join(tempDir, ".claude", "settings.local.json"),
 				status: "differs",
 				category: "hooks",
 				canonicalContent: "merged",

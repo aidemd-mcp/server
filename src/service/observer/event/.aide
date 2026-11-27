@@ -1,72 +1,80 @@
 ---
 scope: src/service/observer/event
 alignment: unreviewed
-description: "Session records for the observer: each session's reported actions, presence and ended mark kept outside the project, read back in order, judged live or not, and deleted on request."
+description: "Session records for the observer: each session's reported actions, presence and ended mark kept outside the project, read back in order, judged live or not, reopened, and deleted on request."
 intent: >
   Gives the observer the record of every agent session. Each reported action
   is stamped with its time, session and order, written first to the
   session's own log in per-user storage outside the project, then to a
   running observer if any. Hook presence and ended marks sit beside each
   log, never in it. It judges each session working, waiting, quiet and maybe
-  stuck, or ended, even one closed without reporting its end, never ending
-  one itself. Recording can never fail or stall the pipeline. Sessions read
-  back in true order, older logs included, and one ended session can be
-  deleted alone.
+  stuck, or ended, never ending one itself; clearing an ended mark reopens a
+  session. Recording never fails or stalls the pipeline. Sessions read back
+  in true order, older logs included, and one ended session can be deleted
+  alone.
 outcomes:
   desired:
     - Every reported action lands in its session's own log, which has a single writer and lives in per-user storage outside the host project, before any attempt to reach the observer, and recording returns promptly without error whatever fails. The reply says whether the observer received it, so the agent knows when it is not running.
     - Every phase, gate, plan-step and QA report names its pipeline, and a pipeline's start with its starting phase, its finish as completed or abandoned, and every skipped phase with its reason are reports of their own. A session's first event is its session-started report, holding exactly the project root, kanban tag and brain folder the agent reported, never inferred or filled in, and read back with the session.
     - A hook-reported start, prompt or tool call makes a session working, the agent stopping makes it waiting on the user, and its end or an ended mark makes it ended; after 15 minutes with neither it is quiet and maybe stuck, never ended. Last activity is the newest of the hook time, the transcript's last write and the newest reported event, and a host without hooks falls back to reported events.
     - Reading lists every project that has recorded sessions, each with the project root its newest session reported, and returns every recorded session of a project with its valid events in the order they happened, including each full prompt and logs that name no pipeline. A malformed line is skipped, never fatal.
-    - Ending a session marks it ended and deletes nothing, and deleting removes only the chosen ended session's record, never a live one.
-    - A session that never reported its end but whose Claude transcript ends in the closing record counts as ended, no longer open and no longer halting others, shown as closed without reporting its end, and judging it writes nothing. Only the last record counts, so a resumed session that writes on after a closing record is live again.
+    - Ending a session marks it ended and deletes nothing: a later report from it is recorded and its reply says it was previously ended so the agent runs the start check. Only for the project's most recent session, told apart by whether any session of the project started after it, does reopening clear the mark so it reads as working again with its history across the end and the reopen in true order; deleting removes only the chosen ended session's record, never a live one.
+    - A session that never reported its end but whose Claude transcript ends in the closing record counts as ended, no longer open and no longer halting others, shown as closed without reporting its end, and judging it writes nothing, though it may then be given a real ended mark. Only the last record counts, so a resumed session that writes on after a closing record is live again.
   undesired:
     - An event missing from history because the observer was off or unreachable, or a pipeline step that waits on, fails from or behaves differently because of recording, including recording an ordinary action that starts the observer or anything else.
-    - Two writers interleaving lines in one session's log, including presence or ended marks written into it, a session's events read back out of order, or any record written inside the host repo.
+    - Two writers interleaving lines in one session's log, including presence or ended marks written into it, a session's events read back out of order or lost across an end and a reopen, or any record written inside the host repo. One malformed line, or a log written before pipelines were named, making a whole session unreadable or hiding the sessions after it.
     - Session metadata the agent never reported appearing in the log, or a second session start recorded when a stopped observer is brought back mid-session.
-    - One malformed line, or a log written before pipelines were named, making a whole session unreadable or hiding the sessions after it.
-    - A delete that removes more than the chosen session, touches any project file or removes a live session, an end that deletes anything, or judging liveness that writes or deletes any record.
+    - A report from an ended session refused, or recorded without telling the agent it was previously ended, a reopened session still refused or shown ended, or an ended session reopened by a report alone, while another session of the project is open, or after a newer session of the project started.
+    - A delete that removes more than the chosen session, touches any project file or removes a live session, an end or a reopen that deletes anything, or judging liveness that writes or deletes any record.
     - A live, waiting or merely quiet session judged ended, a resumed one kept ended by an earlier closing record, or liveness judged from anything but hook presence, ended marks, last activity and the transcript's last record. A missing, unreadable or unrecognised transcript that ends a session or makes reading fail, rather than leaving the judgement as it would be without it.
 ---
 
 ## Context
 
-The session records sit under every reporter and every reader. The session's own server appends the agent's reports; Claude Code's hook processes fire on every prompt and tool call, sometimes several at once; another session's end request may mark this one ended. The observer, the start tool's halt check, the home list and the delete control all read the same records back and ask the same question of them: is this session still open?
+The session records sit under every reporter and every reader. The session's own server appends the agent's reports; Claude Code's hook processes fire on every prompt and tool call, sometimes several at once; another session's start or end request may mark this one ended, and only a start check may clear that. The observer, the start check, the home list and the delete control all read the same records back and ask the same questions: is this session still open, and did any session of the project start after it?
 
-Two identities meet here. Claude Code names a session by its own id; the agent's reports name the observer session. Until something joins them, a hook's presence belongs to a session no report names. Logs also outlive the format: sessions recorded before pipelines were named must still read in full.
+Two identities meet here, and they do not line up one to one. Claude Code names the conversation and keeps that name when the user resumes it, even in a fresh process after exit or archive; each new process opens a new observer session, so one conversation can span several observer sessions, while a clear inside one process gives one observer session several Claude names. A join that replaces the previous one forgets the session the conversation continues. Logs also outlive the format: sessions recorded before pipelines were named must still read in full.
+
+The records can also lie by omission. The end hook may be killed before it writes, leaving presence waiting and no mark for a session that no longer exists. Claude Code's own transcript is the one witness left: it closes with a record of its own, appends again on resume, and its format is undocumented and can run to tens of megabytes.
 
 ## Strategy
 
-**One writer per file, three kinds of file.** The report log is appended only by its session's server; presence is replaced whole by each hook call, the newest hook time winning a race; an ended mark is written once. Keeping presence and marks out of the log means a hook firing mid-append can never split a line, and reading presence never parses a log.
+**One writer per file, three kinds of file.** The report log is appended only by its session's server; presence is replaced whole by each hook call, the newest hook time winning; an ended mark is created once, says whether the end hook, the user's approval or the transcript ended the session, and is removed only by a reopen or a delete. Keeping presence and marks out of the log means a hook firing mid-append can never split a line.
 
 **The recorder stamps; one strict schema checks everywhere.** Time, session and order are stamped by the recorder, never supplied by the agent, and the same schema validates at append, at read and at the observer's intake. A line that fails is skipped alone. A line from before pipelines were named is valid and belongs to no pipeline: a missing name is history, not corruption.
 
-**Refuse after the end, before anything is written.** Recording checks the session's ended mark first; once ended, nothing is appended and nothing is posted. Otherwise it appends, then posts with every failure swallowed, and the reply names the session and says whether the observer received it, which is all the agent needs to decide on a restart.
+**Record, then flag; never refuse.** Recording appends, then posts with every failure swallowed. When the session's conversation carries an ended mark of any kind, the reply says it was previously ended and to run the start check, so a stale conversation learns before it acts; a report alone clears nothing. An unreadable mark counts as none. In a fresh process the first report lands before the hook joins it to its conversation, so the flag rides on the next.
 
-**Join the two identities through the session-start reply.** The reply to the session-start report names the observer session in a form the hook can read, and the hook that fires after that call stores it in the host session's presence. Unjoined presence stays under the host's id and still reads as an open session, so a session that never reported is never invisible.
+**The conversation is the identity; joins are added, never replaced.** Every report's reply names the observer session in a form the hook can read, and the hook stores it in the host session's presence. A resumed conversation keeps its Claude name but gets a new observer session, so the join adds it beside the earlier ones: everything ever joined is one conversation, and the session it continues stays findable. Unjoined presence still reads as an open session.
 
-**One liveness rule, asked by every reader.** The ended mark wins, then presence's last state, then, with no presence at all, the reported events. Last activity also counts the transcript's last write, because one long step writes the transcript while no hook fires. The halt check, home list and delete refusal all call this one rule, so the page and the controls never disagree.
+**One liveness rule, judged per conversation.** In order: an ended mark on any session of the conversation, then presence ended, then a transcript whose last record is the closing record for the same Claude session, then presence's last state, and with no presence the reported events. A conversation counts once, by its newest observer session, never as a second open session against itself. The halt check, home list and delete refusal all ask this one rule, and it writes nothing.
 
-**Delete is narrow; ending deletes nothing.** Deleting removes one ended session's log, presence and mark and nothing else; a log that cannot be read cannot be judged, so it is refused. Ending writes a mark and keeps every record, so a resumed pipeline can still count what that session finished.
+**The transcript only ever ends, from its own last record.** Only the final record counts, and only when it is the closing record of the conversation presence names, so a resume that writes on revives an unmarked session. A missing, unreadable or unrecognised transcript leaves the judgement exactly as it would be without it and never fails a read; quiet alone never ends anything. Reading only the transcript's end keeps it cheap enough for every judgement.
+
+**Reopen, "newer" and delete each answer for the whole conversation.** Reopen removes the conversation's ended marks and nothing else, only when the start check asks; history before the end, while ended and after the reopen reads in one true order. "Newer" compares conversations, never one conversation's own processes, so a fresh process never makes a conversation newer than itself. Delete removes one ended session's log and mark, keeps presence another session still joins, and refuses a session whose conversation is live.
 
 ## Good examples
 
+**Resumed in a fresh process, still the most recent.** The user exits at the plan gate and the end hook marks the session ended. Next morning they resume the conversation; the new process opens a new observer session, which the hook joins beside the earlier one. The next report is recorded and flagged previously ended; the start check finds no newer conversation, the mark is removed, and history runs across the end and the reopen in order.
+
+**Archived without its end.** The user archives a session waiting on them; its end hook dies unwritten, so presence still says waiting and no mark exists. Its transcript's last record is the closing record for that same conversation, so every reader judges it closed without reporting its end, and judging writes nothing.
+
 **Two hooks at once.** Two tool calls finish together and both hook processes replace the session's presence; the later hook time wins, and the report log is untouched.
-
-**An old log.** A session recorded before pipelines were named reads with every event, belonging to no pipeline; one truncated line in it is skipped and the events after it still show.
-
-**A report after the end.** The user ended a stuck session from a new one. The stuck session wakes and reports a build step; the report is refused, nothing is appended, and its rail does not move.
 
 ## Bad examples
 
-**Presence appended to the log.** The hook writes presence as lines into the report log; a hook firing during an append leaves a half line, and the session silently loses an event.
+**A join that forgets.** The hook overwrites presence's link with the resumed process's new observer session. The earlier session's mark is out of reach, so the conversation is never told it was ended, and the earlier session, left with no presence, reads quiet and maybe stuck and halts its own continuation.
 
-**Two liveness rules.** The home list judges from presence while the delete control still uses report age, so a session shown ended cannot be deleted, or one shown open is.
+**An old closing record outlives a resume.** The judgement finds a closing record anywhere in the transcript, or one naming another conversation, so a resumed session building again still reads ended and a second session starts beside it.
 
-**Old logs rejected.** A line without a pipeline name is treated as malformed, and a month of history disappears from every project.
+**A report that refuses or reopens.** A report from an ended session is dropped, leaving a hole in its history; or recording clears the mark itself, so a conversation a newer session has since overtaken slips back in on a stale picture.
 
 ## References
 
-- User decisions on hook presence, liveness from presence, ended marks and last activity, ending a session, refusing reports once ended, and pipelines with v1 logs still replaying, relayed by the orchestrator (2026-11-25) -- every decision
+- User decisions on hook presence, liveness from presence, ended marks and last activity, ending a session, and pipelines with v1 logs still replaying, relayed by the orchestrator (2026-11-25) -- decisions 1, 2 and 5
 - User answer that any open Claude session in the project halts a new one, reported or not, relayed by the orchestrator (2026-11-25) -- unjoined presence still reads as an open session
-- User decisions on record-then-notify, the single-writer log and the strict shared schema, relayed by the orchestrator (2026-11-22) -- the first three decisions
+- User decisions on record-then-notify, the single-writer log and the strict shared schema, relayed by the orchestrator (2026-11-22) -- decisions 1 to 3
+- User-approved design for a session whose end hook was killed (the transcript's last record as a read-only backstop, only the last record counting, failing safe), with real transcripts checked for the closing and resumed shapes, relayed by the orchestrator (2026-11-26) -- decisions 5 and 6, the second good example and the second bad example
+- User decisions that ends are reversible (a report from an ended session is recorded and told to run the start check), that only the project's most recent session reopens, newer meaning a later session start, and that a closing record counts only for its own conversation, relayed by the orchestrator (2026-11-26) -- decisions 3, 5, 6 and 7, the first good example and the third bad example
+- Resume test run by the orchestrator: a desktop un-archive resumed one Claude session under a new observer session, the hook's link overwrote the earlier one, and the transcript kept one Claude session id across resumes (2026-11-26) -- the second Context paragraph, decisions 3, 4 and 7 and the first bad example
+- kanban/aidemd-mcp/in-progress/observer-session-stays-open-when-session-end-hook-is-killed -- the archive repro behind the third Context paragraph: end hook killed, presence left waiting, every later session halted

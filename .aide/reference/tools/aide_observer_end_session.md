@@ -24,8 +24,8 @@ One line:
 | Reply | Meaning |
 |---|---|
 | `ended <id>` | Marked ended. Call `aide_observer_start` again. |
-| `already ended <id>` | It was already ended. Call `aide_observer_start` again. |
-| `refused: <id> is this session` | It never ends the caller's own session. |
+| `already ended <id>` | It was already ended, or its transcript shows it closed (it gets a transcript mark). Call `aide_observer_start` again. |
+| `refused: <id> is this session` | It never ends the caller's own session, nor an earlier session of the caller's own conversation. |
 | `refused: no session <id> in this project` | No such session here. |
 | `refused: invalid session id` | The id is malformed. |
 | `not ended (<reason>)` | The mark could not be written. |
@@ -33,4 +33,4 @@ One line:
 ## Guarantees
 
 - Ending only writes a mark: no log, presence record or project file is deleted.
-- The ended session's later reports are refused.
+- An end approved from another session is final for that conversation: if it is resumed later, its reports are recorded and flagged, and start answers `STOPPED`.

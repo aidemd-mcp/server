@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -40,8 +40,8 @@ function archivedPath(sessionId: string): string {
 	return resolveArchivedLog({ projectKey: keyOfProject(), sessionId });
 }
 
-/** A presence record for a Claude session, linked to an observer session or not. */
-async function writePresence(claudeSessionId: string, sessionId?: string): Promise<string> {
+/** A presence record for a Claude session, linked to an observer session (and earlier ones) or not. */
+async function writePresence(claudeSessionId: string, sessionId?: string, earlierSessionIds?: string[]): Promise<string> {
 	const file = resolvePresenceFile({ projectKey: keyOfProject(), claudeSessionId });
 	await mkdir(path.dirname(file), { recursive: true });
 	await writeFile(
@@ -50,6 +50,7 @@ async function writePresence(claudeSessionId: string, sessionId?: string): Promi
 			v: 1,
 			claudeSessionId,
 			sessionId,
+			earlierSessionIds,
 			state: "ended",
 			at: "2026-11-22T09:00:00.000Z",
 			hookEvent: "SessionEnd",
@@ -115,6 +116,25 @@ describe("deleteSession", () => {
 		expect(existsSync(otherMark)).toBe(true);
 		expect(existsSync(otherLinked)).toBe(true);
 		expect(existsSync(unlinked)).toBe(true);
+	});
+
+	it("keeps a presence that links the deleted session and another session that still has a log", async () => {
+		await writeAt(archivedPath(SESSION_A));
+		await writeAt(archivedPath(SESSION_B));
+		const shared = await writePresence("c1111111", SESSION_B, [SESSION_A]);
+		const before = await readFile(shared, "utf-8");
+
+		expect(await deleteSession({ projectKey: keyOfProject(), sessionId: SESSION_A })).toEqual({ outcome: "deleted" });
+		expect(existsSync(shared)).toBe(true);
+		expect(await readFile(shared, "utf-8")).toBe(before);
+	});
+
+	it("removes a presence that links the deleted session and another whose log is already gone", async () => {
+		await writeAt(archivedPath(SESSION_A));
+		const shared = await writePresence("c1111111", SESSION_B, [SESSION_A]);
+
+		expect(await deleteSession({ projectKey: keyOfProject(), sessionId: SESSION_A })).toEqual({ outcome: "deleted" });
+		expect(existsSync(shared)).toBe(false);
 	});
 
 	it("deletes a session that has no ended mark or presence without complaint", async () => {

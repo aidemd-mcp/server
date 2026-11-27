@@ -12,7 +12,7 @@ describe("event", () => {
 	});
 
 	it("passes the input through untouched with projectRoot set to root", async () => {
-		mockRecord.mockResolvedValue({ logged: "written", delivered: true });
+		mockRecord.mockResolvedValue({ logged: "written", delivered: true, previouslyEnded: false });
 		const input = { kind: "release", version: "1.2.3", extra: "kept as is" };
 
 		await event({ root: "/project", input });
@@ -23,10 +23,30 @@ describe("event", () => {
 	});
 
 	it("replies with formatReply's line for the outcome", async () => {
-		mockRecord.mockResolvedValue({ logged: "written", delivered: false, sessionId: "2026-11-25T10-00-00Z-ab12" });
+		mockRecord.mockResolvedValue({
+			logged: "written",
+			delivered: false,
+			previouslyEnded: false,
+			sessionId: "2026-11-25T10-00-00Z-ab12",
+		});
 
 		const reply = await event({ root: "/project", input: {} });
 
 		expect(reply).toBe("recorded; observer not running [observer-session 2026-11-25T10-00-00Z-ab12]");
+	});
+
+	it("appends the previously-ended clause when the outcome carries the flag", async () => {
+		mockRecord.mockResolvedValue({
+			logged: "written",
+			delivered: true,
+			previouslyEnded: true,
+			sessionId: "2026-11-25T10-00-00Z-ab12",
+		});
+
+		const reply = await event({ root: "/project", input: {} });
+
+		expect(reply).toBe(
+			"recorded; previously ended: run aide_observer_start before anything else [observer-session 2026-11-25T10-00-00Z-ab12]",
+		);
 	});
 });

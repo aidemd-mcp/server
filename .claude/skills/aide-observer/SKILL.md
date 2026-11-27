@@ -30,15 +30,17 @@ Run these in order, one call at a time, before the `aide` skill's boot:
 4. **Start the observer.** Call `aide_observer_start` (no arguments). Its reply starts with one of:
    - `Observer running at <link>` or `Observer already running at <link>` — keep the link and go on.
    - `Observer not replaced: …` — an older observer is still serving; keep the link it names and go on.
+   - `REOPENED: …` — this conversation had ended earlier (it was closed, archived or ended) and nothing newer has worked the project since, so it is open again. Tell the user in one line that the session was reopened, keep the link on the next line and go on.
    - `HALT: …` — another session of this project is open. **Hard stop.** See "HALT" below.
-   - `BLOCKED: …` — the observer could not start on any port. **Hard stop.** Tell the user the reason as given (it names every port tried) and stop. Nothing proceeds until the user fixes it and starts a new session.
+   - `STOPPED: …` — this conversation had ended and cannot reopen: either a newer session has worked the project since, or another session ended it with the user's approval. **Hard stop, and no approval lifts it.** Tell the user, in plain words, which of the two it is, that nothing proceeds here, and that they should continue in a new session. Do not offer to end any session and do not call `aide_observer_start` again.
+   - `BLOCKED: …` — the observer could not start on any port (it names every port tried), or this ended conversation could not be reopened (it gives the reason). **Hard stop.** Tell the user the reason as given and stop. Nothing proceeds until the user fixes it and starts a new session.
 5. **Give the user the link** once the `aide` skill's boot sequence is complete, in one line.
 
 ## HALT
 
 A HALT reply names each open session of the project: its observer id (or `claude:<id>` for a Claude session that never reported), whether it is working or waiting on the user, how long it has been quiet ("maybe stuck" past 15 minutes), its last activity, and its pipeline and phase.
 
-A HALT is the observer's view, not proof that the session is still running: a session closed while its end hook was cut short stays "open" forever. Check each one before you tell the user anything about it.
+A HALT is the observer's view, not proof that the session is still running. A session whose transcript shows it closed no longer halts anyone, but a crash or force-kill leaves no such record, so a session can still look open after it is gone. Check each one before you tell the user anything about it.
 
 1. Stop all other work. Do not run the `aide` skill's boot or touch any file.
 2. **Find each session's Claude session id.** A `claude:<id>` line already names it. For an observer id, read the project's presence records: the `*.json` files in the `presence` folder of the project's runtime folder, whose name is the `p/<key>` part of the observer link (under `$AIDEMD_HOME` when it is set, else `~/.aidemd` on Windows, `~/Library/Application Support/aidemd` on macOS, `$XDG_STATE_HOME/aidemd` or `~/.local/state/aidemd` elsewhere). The record whose `sessionId` is the observer id gives `claudeSessionId`, its last hook (`hookEvent`, `at`) and its `transcriptPath`. Only read these files; never edit or delete them.
@@ -85,7 +87,7 @@ A report always lands in the session's own record first; a reply of `recorded; o
 - If that restart replies `BLOCKED: …`, stop: tell the user the reason and that nothing proceeds unobserved. Do not try again on your own.
 - Never retry a report, never wait on one, and never stop because one report missed a running observer.
 
-A reply of `refused: session ended` means another session ended this one with the user's approval. Stop all work and tell the user.
+A reply that ends `; previously ended: run aide_observer_start before anything else` means this conversation had ended (it was closed or archived and has now been resumed). The report was still recorded. Call `aide_observer_start` before anything else and act on its reply as in step 4 of the session start: `REOPENED` carries on, `HALT` and `STOPPED` stop.
 
 ## Not observing a session
 

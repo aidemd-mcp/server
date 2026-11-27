@@ -147,6 +147,28 @@ describe("archiveSession", () => {
 		expect(existsSync(target)).toBe(true);
 	});
 
+	it("refuses an earlier session of a conversation whose newest session is still working", async () => {
+		const target = await writeSession(SESSION_A, 2 * HOUR);
+		await writeSession(SESSION_B, 60 * 1000);
+		await create({ projectRoot: project });
+		await writeFile(
+			resolvePresenceFile({ projectKey: keyOfProject(), claudeSessionId: "claude-resumed" }),
+			JSON.stringify({
+				v: 1,
+				claudeSessionId: "claude-resumed",
+				sessionId: SESSION_B,
+				earlierSessionIds: [SESSION_A],
+				state: "working",
+				at: new Date(NOW - 60 * 1000).toISOString(),
+				hookEvent: "PostToolUse",
+			}),
+			"utf-8",
+		);
+
+		expect(await archiveSession({ projectKey: keyOfProject(), sessionId: SESSION_A })).toEqual({ outcome: "live" });
+		expect(existsSync(target)).toBe(true);
+	});
+
 	it("refuses an unreadable log and moves nothing", async () => {
 		const { eventsFolder } = resolve({ projectRoot: project });
 		await mkdir(eventsFolder, { recursive: true });

@@ -17,6 +17,8 @@ The session's presence becomes **working**, with the time, so a long stretch of 
 
 When the tool was `aide_observer_event`, its reply ends with `[observer-session <id>]`. The hook reads that id and records it with the presence. From then on the observer knows which Claude Code session is behind that observer session, so it can tell whether the session is still alive and end it when Claude Code reports the end.
 
+A resumed conversation keeps its Claude session id but arrives in a new process under a new observer session. The hook adds the new link and keeps the earlier ones, so the observer sees one conversation across both.
+
 ## Effect on the observer
 
 The session stays "working" while the agent uses tools, and its quiet time resets with each call.

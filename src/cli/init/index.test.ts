@@ -1390,26 +1390,40 @@ describe("6d-xi — regression guard: cli/init does not import obsidianBrainAide
 });
 
 // ---------------------------------------------------------------------------
-// Hooks step — planned with the project root and framework, written only when
-// would-create, deferred to /aide:upgrade when the settings file needs a merge
+// Hooks step — planned with the project root and framework, applied only as a
+// unit: every step a plain create, otherwise nothing and one follow-up line
 // ---------------------------------------------------------------------------
 describe("hooks step", () => {
-	const SETTINGS_PATH = `${CWD}/.claude/settings.json`;
-	const HOOKS_DEFERRED =
-		"Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category to add AIDE's entries to .claude/settings.json.";
+	const LOCAL_PATH = `${CWD}/.claude/settings.local.json`;
+	const PROJECT_PATH = `${CWD}/.claude/settings.json`;
 
-	const HOOKS_MALFORMED_DEFERRED =
-		"Claude Code hooks — .claude/settings.json is not valid JSON, so AIDE's hook entries were not added. Fix the file, then open Claude Code and run /aide:upgrade and confirm the hooks category.";
+	const HOOKS_MERGE_LINE =
+		"Claude Code hooks — open Claude Code and run /aide:upgrade, then confirm the hooks category: it installs AIDE's hooks for this machine in .claude/settings.local.json, removes AIDE's old entries from .claude/settings.json and adds .claude/settings.local.json to .gitignore where needed.";
+	const HOOKS_MALFORMED_LINE =
+		"Claude Code hooks — .claude/settings.local.json is not valid JSON, so no hooks were written. Fix it, then open Claude Code and run /aide:upgrade and confirm the hooks category.";
+	const HOOKS_GLOBAL_LINE =
+		"Claude Code hooks — the aide server is not installed globally, so no hooks were written. Run npm i -g @aidemd-mcp/server, then open Claude Code and run /aide:upgrade and confirm the hooks category.";
 
 	function makeHooksStep(status: InitStep["status"], overrides: Partial<InitStep> = {}): InitStep {
 		return {
-			name: "Claude Code hooks (.claude/settings.json)",
+			name: "Claude Code hooks (.claude/settings.local.json)",
 			status,
 			category: "hooks",
-			filePath: SETTINGS_PATH,
+			filePath: LOCAL_PATH,
 			...(status === "would-create" || status === "would-overwrite" ? { content: "{}" } : {}),
 			...overrides,
 		};
+	}
+
+	function makeProjectStripStep(): InitStep {
+		return makeHooksStep("would-overwrite", {
+			name: "AIDE hooks removed from shared settings (.claude/settings.json)",
+			filePath: PROJECT_PATH,
+		});
+	}
+
+	function appliedPaths(): string[] {
+		return mockApplySteps.mock.calls.flatMap(([steps]) => steps).map((s) => s.filePath);
 	}
 
 	it("plans the hooks with the project root and the detected framework", async () => {
@@ -1418,30 +1432,46 @@ describe("hooks step", () => {
 		expect(mockInstallHooks).toHaveBeenCalledWith({ projectRoot: CWD, framework: "claude" });
 	});
 
-	it("would-create: the step reaches applySteps and logs [created]; no deferred hooks line", async () => {
+	it("would-create local: the step reaches applySteps and logs [created]; no deferred hooks line", async () => {
 		mockInstallHooks.mockResolvedValue([makeHooksStep("would-create")]);
 		const lines: string[] = [];
 
 		await runInit(CWD, (l) => lines.push(l));
 
-		const applied: InitStep[] = mockApplySteps.mock.calls.flatMap(([steps]) => steps);
-		expect(applied.map((s) => s.filePath)).toContain(SETTINGS_PATH);
-		expect(lines).toContain("[created] .claude/settings.json — Claude Code hooks (.claude/settings.json)");
+		expect(appliedPaths()).toContain(LOCAL_PATH);
+		expect(lines).toContain(
+			"[created] .claude/settings.local.json — Claude Code hooks (.claude/settings.local.json)",
+		);
 		expect(mockRenderWarning).toHaveBeenCalledWith({ skipped: [], failed: [], deferredCategories: DEFERRED_CATEGORIES });
 	});
 
-	it("would-overwrite: never applied, logged skipped-drift, and the deferred list gains the hooks line", async () => {
-		mockInstallHooks.mockResolvedValue([makeHooksStep("would-overwrite")]);
+	it("logs the hooks results between the aide tree and the readme", async () => {
+		mockInstallAideTree.mockResolvedValue([
+			makeStep({ filePath: `${CWD}/.aide/bin/aide-tree.mjs`, name: "aide-tree launcher", category: "methodology" }),
+		]);
+		mockInstallHooks.mockResolvedValue([makeHooksStep("would-create")]);
 		const lines: string[] = [];
 
 		await runInit(CWD, (l) => lines.push(l));
 
-		const applied: InitStep[] = mockApplySteps.mock.calls.flatMap(([steps]) => steps);
-		expect(applied.map((s) => s.filePath)).not.toContain(SETTINGS_PATH);
-		expect(lines).toContain("[skipped-drift] .claude/settings.json — drifted from canonical — not overwritten");
+		const at = (prefix: string) => lines.findIndex((l) => l.startsWith(prefix));
+		expect(at("[created] .aide/bin/aide-tree.mjs")).toBeLessThan(at("[created] .claude/settings.local.json"));
+		expect(at("[created] .claude/settings.local.json")).toBeLessThan(at("[created] README.md"));
+	});
+
+	it("local create + project strip: nothing applied, both logged [deferred], merge line printed", async () => {
+		mockInstallHooks.mockResolvedValue([makeHooksStep("would-create"), makeProjectStripStep()]);
+		const lines: string[] = [];
+
+		await runInit(CWD, (l) => lines.push(l));
+
+		expect(appliedPaths()).not.toContain(LOCAL_PATH);
+		expect(appliedPaths()).not.toContain(PROJECT_PATH);
+		expect(lines).toContain("[deferred] .claude/settings.local.json — waits for /aide:upgrade — hooks category");
+		expect(lines).toContain("[deferred] .claude/settings.json — waits for /aide:upgrade — hooks category");
 		const call = mockRenderWarning.mock.calls[0][0];
-		expect(call.deferredCategories).toEqual([...DEFERRED_CATEGORIES, HOOKS_DEFERRED]);
-		expect(call.skipped.map((r) => r.displayPath)).toEqual([".claude/settings.json"]);
+		expect(call.deferredCategories).toEqual([...DEFERRED_CATEGORIES, HOOKS_MERGE_LINE]);
+		expect(call.skipped).toEqual([]);
 	});
 
 	it("exists: reports present and adds no deferred line", async () => {
@@ -1450,36 +1480,40 @@ describe("hooks step", () => {
 
 		await runInit(CWD, (l) => lines.push(l));
 
-		expect(lines).toContain("[exists] .claude/settings.json — already present");
+		expect(lines).toContain("[exists] .claude/settings.local.json — already present");
 		expect(mockRenderWarning).toHaveBeenCalledWith({ skipped: [], failed: [], deferredCategories: DEFERRED_CATEGORIES });
 	});
 
-	it("would-skip (malformed settings): never applied, logged skipped-malformed, warning names the file and the follow-up", async () => {
+	it("malformed settings: never applied, logged [skipped-malformed], the line names the file", async () => {
 		mockInstallHooks.mockResolvedValue([makeHooksStep("would-skip", { configMalformed: true })]);
 		const lines: string[] = [];
 
 		await runInit(CWD, (l) => lines.push(l));
 
-		const applied: InitStep[] = mockApplySteps.mock.calls.flatMap(([steps]) => steps);
-		expect(applied.map((s) => s.filePath)).not.toContain(SETTINGS_PATH);
-		expect(lines).toContain("[skipped-malformed] .claude/settings.json — not valid JSON — left unchanged");
+		expect(appliedPaths()).not.toContain(LOCAL_PATH);
+		expect(lines).toContain("[skipped-malformed] .claude/settings.local.json — not valid JSON — left unchanged");
 		const call = mockRenderWarning.mock.calls[0][0];
 		expect(call.skipped).toEqual([
-			{ status: "skipped-malformed", displayPath: ".claude/settings.json", message: "not valid JSON — left unchanged" },
+			{ status: "skipped-malformed", displayPath: ".claude/settings.local.json", message: "not valid JSON — left unchanged" },
 		]);
-		expect(call.deferredCategories).toEqual([...DEFERRED_CATEGORIES, HOOKS_MALFORMED_DEFERRED]);
+		expect(call.deferredCategories).toEqual([...DEFERRED_CATEGORIES, HOOKS_MALFORMED_LINE]);
 	});
 
-	it("would-skip without configMalformed: still skipped-missing-canonical and adds no hooks deferred line", async () => {
-		mockInstallHooks.mockResolvedValue([makeHooksStep("would-skip")]);
+	it("no global install: nothing applied, logged [deferred], the install line is printed", async () => {
+		mockInstallHooks.mockResolvedValue([
+			makeHooksStep("would-skip", {
+				globalPackage: { name: "@aidemd-mcp/server", installed: false, installCommand: "npm i -g @aidemd-mcp/server" },
+			}),
+		]);
 		const lines: string[] = [];
 
 		await runInit(CWD, (l) => lines.push(l));
 
-		expect(lines).toContain("[skipped-missing-canonical] .claude/settings.json — canonical content unavailable");
+		expect(appliedPaths()).not.toContain(LOCAL_PATH);
+		expect(lines).toContain("[deferred] .claude/settings.local.json — needs the global install — not written");
 		const call = mockRenderWarning.mock.calls[0][0];
-		expect(call.skipped.map((r) => r.status)).toEqual(["skipped-missing-canonical"]);
-		expect(call.deferredCategories).toEqual(DEFERRED_CATEGORIES);
+		expect(call.deferredCategories).toEqual([...DEFERRED_CATEGORIES, HOOKS_GLOBAL_LINE]);
+		expect(call.skipped).toEqual([]);
 	});
 
 	it("a non-Claude framework plans no hooks step and prints no hooks line", async () => {
@@ -1489,7 +1523,7 @@ describe("hooks step", () => {
 		await runInit(CWD, (l) => lines.push(l));
 
 		expect(mockInstallHooks).toHaveBeenCalledWith({ projectRoot: CWD, framework: "cursor" });
-		expect(lines.some((l) => l.includes(".claude/settings.json"))).toBe(false);
+		expect(lines.some((l) => l.includes(".claude/settings"))).toBe(false);
 		expect(mockRenderWarning).toHaveBeenCalledWith({ skipped: [], failed: [], deferredCategories: DEFERRED_CATEGORIES });
 	});
 });

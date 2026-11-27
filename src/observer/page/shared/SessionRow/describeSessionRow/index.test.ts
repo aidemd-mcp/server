@@ -37,6 +37,14 @@ describe("describeSessionRow", () => {
 		expect(describeSessionRow({ row: makeRow({ startedAt, lastEventAt: startedAt }), now: NOW }).startLabel).toBe("Yesterday 16:40");
 	});
 
+	it("keeps a transcript-closed session ended and not live, under its own word", () => {
+		const liveness = { ...makeLiveness({ state: "ended", minutesQuiet: 90, now: NOW }), endedBy: "transcript" as const };
+		const description = describeSessionRow({ row: makeRow({ liveness }), now: NOW });
+		expect(description.badge).toEqual({ className: "neutral", icon: "power", word: "Closed without reporting its end" });
+		expect(description.ended).toBe(true);
+		expect(description.live).toBe(false);
+	});
+
 	it.each([
 		["working", 1, { className: "run", icon: "run", word: "Working" }, true, false],
 		["waiting", 1, { className: "wait", icon: "wait", word: "Waiting on you" }, true, false],

@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+	LABEL_MAX,
+	PATH_MAX,
+	PROMPT_MAX,
+	TEXT_MAX,
+} from "@/service/observer/event/shared/limits/index.js";
 import { SESSION_ID_PATTERN } from "@/util/runtimePaths/shared/isSessionId/index.js";
 
 /**
@@ -14,19 +20,14 @@ import { SESSION_ID_PATTERN } from "@/util/runtimePaths/shared/isSessionId/index
  * corruption: `schema` still reads them, so a v1 `phase_started` without a
  * `pipeline` is valid, a v2 one is not, and the three new kinds exist only in
  * v2. New events are always stamped with `SCHEMA_VERSION`.
+ *
+ * The field length limits (`LABEL_MAX`, `PATH_MAX`, `TEXT_MAX`, `PROMPT_MAX`)
+ * live in `../limits`, which imports no zod, so the contracts the hook reaches
+ * can use them without loading this file.
  */
 
 /** Version stamped on every new event; bump when the stored shape changes. */
 export const SCHEMA_VERSION = 2;
-
-/** Longest accepted label: names, slugs, agent, module, gate, column, result, version. */
-export const LABEL_MAX = 200;
-/** Longest accepted path. */
-export const PATH_MAX = 1024;
-/** Longest accepted summary or message. */
-export const TEXT_MAX = 4000;
-/** Longest accepted prompt text. */
-export const PROMPT_MAX = 100_000;
 
 const label = z.string().min(1).max(LABEL_MAX);
 const path = z.string().min(1).max(PATH_MAX);

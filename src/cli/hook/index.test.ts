@@ -138,6 +138,25 @@ describe("hook", () => {
 		expect(existsSync(resolveEndedMark({ projectKey, id: OBSERVER }))).toBe(false);
 	});
 
+	it("keeps the earlier observer link when a resumed Claude session relinks to a later observer session", async () => {
+		const LATER = "20261125T110000000Z-def456";
+		const taggedReplyFor = (id: string): Record<string, unknown> => ({
+			content: [{ type: "text", text: `{"logged":"written"}\n[observer-session ${id}]` }],
+		});
+
+		await run(
+			makeInput({ hook_event_name: "PostToolUse", tool_name: OBSERVER_TOOL, tool_response: taggedReplyFor(OBSERVER) }),
+		);
+		await run(makeInput({ hook_event_name: "SessionStart", source: "resume" }), "2026-11-25T10:30:00.000Z");
+		await run(
+			makeInput({ hook_event_name: "PostToolUse", tool_name: OBSERVER_TOOL, tool_response: taggedReplyFor(LATER) }),
+			"2026-11-25T11:00:10.000Z",
+		);
+
+		expect(await readStored()).toMatchObject({ sessionId: LATER, earlierSessionIds: [OBSERVER] });
+		expect(await readdir(projectRoot)).toEqual([]);
+	});
+
 	it("writes nothing under the project root", async () => {
 		await run(makeInput({ hook_event_name: "Stop" }));
 
@@ -217,6 +236,9 @@ describe("hook import graph (brief commitment #103)", () => {
 	// A static ESM import of an http builtin builds its ESM namespace, which loads undici and worker_threads.
 	const HTTP_BUILTIN = /^(?:node:)?https?$/;
 
+	// `zod` itself or any `zod/...` subpath: zod costs about 30-50 ms of every hook run (brief commitment #150).
+	const ZOD_SPECIFIER = /^zod(?:\/|$)/;
+
 	// A call of the global client: `fetch(` not preceded by `.`, a word character or `$`.
 	const GLOBAL_FETCH = /(?<![.\w$])fetch\s*\(/;
 
@@ -229,11 +251,13 @@ describe("hook import graph (brief commitment #103)", () => {
 		forbidden: string[];
 		fetchCalls: string[];
 		httpImports: string[];
+		zodImports: string[];
 	} {
 		const files = new Set<string>();
 		const forbidden: string[] = [];
 		const fetchCalls: string[] = [];
 		const httpImports: string[] = [];
+		const zodImports: string[] = [];
 		const queue = [entry];
 		while (queue.length > 0) {
 			const file = queue.pop() as string;
@@ -244,12 +268,13 @@ describe("hook import graph (brief commitment #103)", () => {
 			for (const match of source.matchAll(SPECIFIER)) {
 				const specifier = match[1] ?? match[2] ?? match[3];
 				if (isForbidden(specifier)) forbidden.push(`${path.relative(SRC, file)} -> ${specifier}`);
+				if (ZOD_SPECIFIER.test(specifier)) zodImports.push(`${path.relative(SRC, file)} -> ${specifier}`);
 				if (HTTP_BUILTIN.test(specifier)) httpImports.push(`${path.relative(SRC, file)} -> ${specifier}`);
 				const next = resolveSource(specifier, file);
 				if (next !== null) queue.push(next);
 			}
 		}
-		return { files, forbidden, fetchCalls, httpImports };
+		return { files, forbidden, fetchCalls, httpImports, zodImports };
 	}
 
 	it("never reaches the MCP SDK, ink, react, yaml, the tools, the observer page or the status and kanban services", () => {
@@ -276,6 +301,19 @@ describe("hook import graph (brief commitment #103)", () => {
 		expect(
 			httpImports,
 			"static import of node:http/node:https on the hook path: its ESM namespace loads undici and worker_threads on every hook run; use createRequire(import.meta.url)",
+		).toEqual([]);
+	});
+
+	it("never has a runtime import of zod: the hook path is zod-free (brief commitment #150)", () => {
+		const { files, zodImports } = walk(path.join(SRC, "cli/hook/index.ts"));
+
+		// A walk that found nothing would pass vacuously.
+		const reached = [...files].map((file) => path.relative(SRC, file).replace(/\\/g, "/"));
+		expect(reached).toContain("service/observer/event/touchPresence/index.ts");
+		expect(reached).toContain("service/observer/event/shared/presenceRecord/index.ts");
+		expect(
+			zodImports,
+			"runtime import of zod on the hook path (brief #150: the hook path is zod-free; only `import type` from zod is allowed, and nothing on the path needs it): hand-write the contract instead",
 		).toEqual([]);
 	});
 });

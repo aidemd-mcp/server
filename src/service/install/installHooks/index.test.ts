@@ -1,80 +1,158 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import installHooks from "./index.js";
-import init, { InitInput } from "../index.js";
-import applySteps from "../applySteps/index.js";
-import planHooksMerge from "../shared/planHooksMerge/index.js";
-import type { FrameworkType } from "@/types/index.js";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { FrameworkType, HooksCategoryPlan } from "@/types/index.js";
 
+vi.mock("../shared/planHooks/index.js", () => ({ default: vi.fn() }));
 vi.mock("../shared/checkGlobalPackage/index.js", () => ({ default: vi.fn(async () => false) }));
 
-const STEP_NAME = "Claude Code hooks (.claude/settings.json)";
+import installHooks from "./index.js";
+import planHooks from "../shared/planHooks/index.js";
+import init, { InitInput } from "../index.js";
 
-let tempDir: string;
-let settingsPath: string;
+const mockPlanHooks = planHooks as ReturnType<typeof vi.fn>;
 
-beforeEach(async () => {
-	tempDir = await mkdtemp(join(tmpdir(), "aide-hooks-"));
-	settingsPath = join(tempDir, ".claude", "settings.json");
-});
+const LOCAL_NAME = "Claude Code hooks (.claude/settings.local.json)";
+const PROJECT_NAME = "AIDE hooks removed from shared settings (.claude/settings.json)";
+const GITIGNORE_NAME = ".gitignore entry for .claude/settings.local.json";
 
-afterEach(async () => {
-	await rm(tempDir, { recursive: true, force: true });
-});
+const ROOT = "/proj";
+const LOCAL_PATH = "/proj/.claude/settings.local.json";
+const PROJECT_PATH = "/proj/.claude/settings.json";
+const GITIGNORE_PATH = "/proj/.gitignore";
 
-async function writeSettings(text: string): Promise<void> {
-	await mkdir(join(tempDir, ".claude"), { recursive: true });
-	await writeFile(settingsPath, text, "utf-8");
+function plan(value: HooksCategoryPlan): void {
+	mockPlanHooks.mockResolvedValue(value);
 }
 
+beforeEach(() => {
+	vi.clearAllMocks();
+});
+
 describe("installHooks", () => {
-	it.each<FrameworkType>(["cursor", "windsurf", "copilot"])("returns no step for the %s framework", async (framework) => {
-		expect(await installHooks({ projectRoot: tempDir, framework })).toEqual([]);
+	it.each<FrameworkType>(["cursor", "windsurf", "copilot"])("returns no step for %s and never calls planHooks", async (framework) => {
+		expect(await installHooks({ projectRoot: ROOT, framework })).toEqual([]);
+		expect(mockPlanHooks).not.toHaveBeenCalled();
 	});
 
-	it("plans would-create with the merged content when no settings file exists", async () => {
-		const [step, ...rest] = await installHooks({ projectRoot: tempDir, framework: "claude" });
+	it("passes the project root to planHooks", async () => {
+		plan({ state: "planned", files: [{ file: "local", filePath: LOCAL_PATH, change: "none", tracked: false }] });
 
-		expect(rest).toEqual([]);
-		expect(step).toMatchObject({ name: STEP_NAME, status: "would-create", category: "hooks", filePath: settingsPath });
-		expect(step.content).toBe((planHooksMerge({ text: null }) as { merged: string }).merged);
+		await installHooks({ projectRoot: ROOT, framework: "claude" });
+
+		expect(mockPlanHooks).toHaveBeenCalledWith({ projectRoot: ROOT });
 	});
 
-	it("plans would-overwrite with the merged content when entries are missing", async () => {
-		const existing = '{\n  "model": "opus"\n}\n';
-		await writeSettings(existing);
+	it("maps no-global-install to one would-skip step with the install-first instructions", async () => {
+		const globalPackage = { name: "@aidemd-mcp/server", installed: false as const, installCommand: "npm i -g @aidemd-mcp/server" };
+		plan({ state: "no-global-install", filePath: LOCAL_PATH, globalPackage });
 
-		const [step] = await installHooks({ projectRoot: tempDir, framework: "claude" });
+		const steps = await installHooks({ projectRoot: ROOT, framework: "claude" });
 
-		expect(step).toMatchObject({ name: STEP_NAME, status: "would-overwrite", category: "hooks", filePath: settingsPath });
-		expect(step.content).toBe((planHooksMerge({ text: existing }) as { merged: string }).merged);
+		expect(steps).toEqual([
+			{
+				name: LOCAL_NAME,
+				status: "would-skip",
+				category: "hooks",
+				filePath: LOCAL_PATH,
+				globalPackage,
+				instructions:
+					"The aide server is not installed globally, so AIDE's hooks have nothing to run and none were planned. Run `npm i -g @aidemd-mcp/server` via Bash, then apply the hooks category again. If the install fails, tell the user and write no hooks.",
+			},
+		]);
 	});
 
-	it("plans exists, with no content, when every entry is present", async () => {
-		const merged = (planHooksMerge({ text: null }) as { merged: string }).merged;
-		await writeSettings(merged);
+	it("maps a malformed file to one would-skip step under that file's name", async () => {
+		plan({ state: "malformed", files: [{ file: "project", filePath: PROJECT_PATH, reason: "ValueExpected at offset 3" }] });
 
-		const [step] = await installHooks({ projectRoot: tempDir, framework: "claude" });
+		const steps = await installHooks({ projectRoot: ROOT, framework: "claude" });
 
-		expect(step).toMatchObject({ name: STEP_NAME, status: "exists", category: "hooks", filePath: settingsPath });
-		expect(step.content).toBeUndefined();
+		expect(steps).toEqual([
+			{
+				name: PROJECT_NAME,
+				status: "would-skip",
+				category: "hooks",
+				filePath: PROJECT_PATH,
+				configMalformed: true,
+				instructions:
+					"`.claude/settings.json` cannot be parsed (ValueExpected at offset 3), so nothing in the hooks category was written. Fix the file, then apply the hooks category again.",
+			},
+		]);
 	});
 
-	it("plans would-skip with configMalformed when the file cannot be parsed", async () => {
-		await writeSettings("{ not json");
+	it("maps two malformed files to two steps, local first", async () => {
+		plan({
+			state: "malformed",
+			files: [
+				{ file: "local", filePath: LOCAL_PATH, reason: "the root is not a JSON object" },
+				{ file: "project", filePath: PROJECT_PATH, reason: '"hooks" is not an object' },
+			],
+		});
 
-		const [step] = await installHooks({ projectRoot: tempDir, framework: "claude" });
+		const steps = await installHooks({ projectRoot: ROOT, framework: "claude" });
 
-		expect(step).toMatchObject({ name: STEP_NAME, status: "would-skip", category: "hooks", configMalformed: true });
-		expect(step.content).toBeUndefined();
+		expect(steps.map((s) => [s.name, s.status, s.configMalformed])).toEqual([
+			[LOCAL_NAME, "would-skip", true],
+			[PROJECT_NAME, "would-skip", true],
+		]);
+		expect(steps[0].instructions).toBe(
+			"`.claude/settings.local.json` cannot be parsed (the root is not a JSON object), so nothing in the hooks category was written. Fix the file, then apply the hooks category again.",
+		);
 	});
 
-	it("never writes the settings file itself", async () => {
-		await installHooks({ projectRoot: tempDir, framework: "claude" });
+	it("maps a local create to would-create with content", async () => {
+		plan({ state: "planned", files: [{ file: "local", filePath: LOCAL_PATH, change: "create", content: "{}\n", tracked: false }] });
 
-		await expect(readFile(settingsPath, "utf-8")).rejects.toThrow();
+		expect(await installHooks({ projectRoot: ROOT, framework: "claude" })).toEqual([
+			{ name: LOCAL_NAME, status: "would-create", category: "hooks", filePath: LOCAL_PATH, content: "{}\n" },
+		]);
+	});
+
+	it("maps a local update to would-overwrite with content", async () => {
+		plan({ state: "planned", files: [{ file: "local", filePath: LOCAL_PATH, change: "update", content: "{\n}\n", tracked: true }] });
+
+		expect(await installHooks({ projectRoot: ROOT, framework: "claude" })).toEqual([
+			{ name: LOCAL_NAME, status: "would-overwrite", category: "hooks", filePath: LOCAL_PATH, content: "{\n}\n" },
+		]);
+	});
+
+	it("maps a local none to exists with no content", async () => {
+		plan({ state: "planned", files: [{ file: "local", filePath: LOCAL_PATH, change: "none", tracked: false }] });
+
+		const [step] = await installHooks({ projectRoot: ROOT, framework: "claude" });
+
+		expect(step).toEqual({ name: LOCAL_NAME, status: "exists", category: "hooks", filePath: LOCAL_PATH });
+	});
+
+	it("maps local, project and gitignore files in order, all in the hooks category", async () => {
+		plan({
+			state: "planned",
+			files: [
+				{ file: "local", filePath: LOCAL_PATH, change: "create", content: "L", tracked: false },
+				{ file: "project", filePath: PROJECT_PATH, change: "update", content: "P" },
+				{ file: "gitignore", filePath: GITIGNORE_PATH, change: "create", content: "G" },
+			],
+		});
+
+		const steps = await installHooks({ projectRoot: ROOT, framework: "claude" });
+
+		expect(steps.map((s) => [s.name, s.status, s.filePath, s.content, s.category])).toEqual([
+			[LOCAL_NAME, "would-create", LOCAL_PATH, "L", "hooks"],
+			[PROJECT_NAME, "would-overwrite", PROJECT_PATH, "P", "hooks"],
+			[GITIGNORE_NAME, "would-create", GITIGNORE_PATH, "G", "hooks"],
+		]);
+	});
+
+	it("maps a gitignore update to would-overwrite", async () => {
+		plan({
+			state: "planned",
+			files: [
+				{ file: "local", filePath: LOCAL_PATH, change: "none", tracked: false },
+				{ file: "gitignore", filePath: GITIGNORE_PATH, change: "update", content: "node_modules\n.claude/settings.local.json\n" },
+			],
+		});
+
+		const [, gitignore] = await installHooks({ projectRoot: ROOT, framework: "claude" });
+
+		expect(gitignore).toMatchObject({ name: GITIGNORE_NAME, status: "would-overwrite", filePath: GITIGNORE_PATH });
 	});
 });
 
@@ -84,43 +162,12 @@ describe("init hooks category", () => {
 	});
 
 	it("places the hooks step after the Zed step and before the readme step", async () => {
-		const result = await init(tempDir, "claude");
+		plan({ state: "planned", files: [{ file: "local", filePath: LOCAL_PATH, change: "none", tracked: false }] });
+
+		const result = await init(ROOT, "claude");
 
 		const names = result.steps.map((s) => s.name);
-		expect(names.indexOf(STEP_NAME)).toBe(names.indexOf("Zed config") + 1);
-		expect(result.steps[names.indexOf(STEP_NAME) + 1].category).toBe("readme");
-	});
-
-	it("writes the merged file through applySteps and a re-run reports exists", async () => {
-		const first = await init(tempDir, "claude");
-		const hookSteps = first.steps.filter((s) => s.category === "hooks");
-		expect(hookSteps).toHaveLength(1);
-		expect(hookSteps[0].status).toBe("would-create");
-
-		await applySteps(hookSteps);
-
-		const second = await init(tempDir, "claude");
-		expect(second.steps.filter((s) => s.category === "hooks").map((s) => s.status)).toEqual(["exists"]);
-	});
-
-	it("keeps a user's other hook and every other key byte-for-byte", async () => {
-		const userHook = '{ "type": "command", "command": "echo mine" }';
-		const original = `{\n\t"model": "opus",\n\t"hooks": {\n\t\t"Stop": [\n\t\t\t{ "hooks": [${userHook}] }\n\t\t]\n\t}\n}\n`;
-		await writeSettings(original);
-
-		const result = await init(tempDir, "claude");
-		const [step] = result.steps.filter((s) => s.category === "hooks");
-		expect(step.status).toBe("would-overwrite");
-		await applySteps([step]);
-
-		const written = await readFile(settingsPath, "utf-8");
-		const parsed = JSON.parse(written);
-		expect(parsed.model).toBe("opus");
-		expect(parsed.hooks.Stop[0]).toEqual({ hooks: [{ type: "command", command: "echo mine" }] });
-		expect(written).toContain(`\t\t\t{ "hooks": [${userHook}] }`);
-		expect(written.startsWith('{\n\t"model": "opus",\n\t"hooks": {\n\t\t"Stop": [\n')).toBe(true);
-
-		const again = await init(tempDir, "claude");
-		expect(again.steps.filter((s) => s.category === "hooks").map((s) => s.status)).toEqual(["exists"]);
+		expect(names.indexOf(LOCAL_NAME)).toBe(names.indexOf("Zed config") + 1);
+		expect(result.steps[names.indexOf(LOCAL_NAME) + 1].category).toBe("readme");
 	});
 });

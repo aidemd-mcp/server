@@ -44,7 +44,7 @@ One line ending with `[observer-session <id>]`, this session's id:
 |---|---|
 | `recorded` | Written to the log and shown live. |
 | `recorded; observer not running` | Written to the log only. Call `aide_observer_start` once. |
-| `refused: session ended` | Another session ended this one with the user's approval. Stop and tell the user. |
+| any of the above `; previously ended: run aide_observer_start before anything else` | This conversation had ended (closed, archived or ended, then resumed). The report was still recorded. Call `aide_observer_start` next and act on its `REOPENED`, `HALT` or `STOPPED` reply. |
 
 ## Guarantees
 

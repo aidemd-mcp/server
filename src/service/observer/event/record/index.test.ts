@@ -15,6 +15,8 @@ import { homedir } from "node:os";
 import resolve from "@/util/runtimePaths/resolve/index.js";
 import create from "@/util/runtimePaths/create/index.js";
 import writeEndedMark from "@/service/observer/event/shared/writeEndedMark/index.js";
+import resolveEndedMark from "@/util/runtimePaths/resolveEndedMark/index.js";
+import resolvePresenceFile from "@/util/runtimePaths/resolvePresenceFile/index.js";
 import resolveRoot from "@/util/runtimePaths/resolveRoot/index.js";
 import resolveEventLog from "@/util/runtimePaths/resolveEventLog/index.js";
 import { schema } from "@/service/observer/event/shared/schema/index.js";
@@ -88,7 +90,7 @@ describe("record", () => {
 	it("writes the event and reports delivered false when no observer runs", async () => {
 		const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
-		expect(outcome).toEqual({ logged: "written", delivered: false, sessionId: getSession().sessionId });
+		expect(outcome).toEqual({ logged: "written", delivered: false, sessionId: getSession().sessionId, previouslyEnded: false });
 		expect(await readLines()).toHaveLength(1);
 		expect(received).toEqual([]);
 	});
@@ -102,7 +104,7 @@ describe("record", () => {
 
 		const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
-		expect(outcome).toEqual({ logged: "written", delivered: true, sessionId: getSession().sessionId });
+		expect(outcome).toEqual({ logged: "written", delivered: true, sessionId: getSession().sessionId, previouslyEnded: false });
 		expect(linesAtRequest).toHaveLength(1);
 		expect(received).toEqual(linesAtRequest);
 	});
@@ -116,7 +118,7 @@ describe("record", () => {
 		const started = Date.now();
 		const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
-		expect(outcome).toEqual({ logged: "written", delivered: false, sessionId: getSession().sessionId });
+		expect(outcome).toEqual({ logged: "written", delivered: false, sessionId: getSession().sessionId, previouslyEnded: false });
 		expect(Date.now() - started).toBeLessThan(1000);
 	});
 
@@ -146,6 +148,7 @@ describe("record", () => {
 
 		expect(outcome.logged).toBe("invalid");
 		expect(outcome.delivered).toBe(false);
+		expect(outcome.previouslyEnded).toBe(false);
 		expect(outcome.detail).toBeTruthy();
 		expect(received).toEqual([]);
 		const paths = resolve({ projectRoot: project });
@@ -178,6 +181,7 @@ describe("record", () => {
 			logged: "repeat-session-start",
 			delivered: false,
 			sessionId: getSession().sessionId,
+			previouslyEnded: false,
 		});
 		expect(next.logged).toBe("written");
 		const events = (await readLines()).map((line) => JSON.parse(line) as ObserverEvent);
@@ -208,41 +212,105 @@ describe("record", () => {
 	});
 
 	describe("after the session is ended", () => {
-		async function endThisSession(): Promise<void> {
+		const EARLIER = "20200101T000000000Z-aaaaaa";
+
+		async function markConversation({ id, endedBy }: { id: string; endedBy: "hook" | "user" }): Promise<string> {
 			const paths = await create({ projectRoot: project });
 			await writeEndedMark({
 				projectKey: paths.projectKey,
-				mark: { v: 1, sessionId: getSession().sessionId, endedAt: new Date().toISOString(), endedBy: "user" },
+				mark: { v: 1, sessionId: id, endedAt: new Date().toISOString(), endedBy },
 			});
+			return paths.projectKey;
 		}
 
-		it("refuses with session-ended, appends nothing and posts nothing", async () => {
+		it("appends and posts the event and flags previouslyEnded", async () => {
 			await writeObserverRecord();
-			await endThisSession();
+			await markConversation({ id: getSession().sessionId, endedBy: "user" });
 
 			const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
-			expect(outcome).toEqual({ logged: "session-ended", delivered: false, sessionId: getSession().sessionId });
-			expect(received).toEqual([]);
-			const paths = resolve({ projectRoot: project });
-			await expect(readdir(paths.eventsFolder)).resolves.toEqual([]);
+			expect(outcome).toEqual({
+				logged: "written",
+				delivered: true,
+				sessionId: getSession().sessionId,
+				previouslyEnded: true,
+			});
+			expect(await readLines()).toHaveLength(1);
+			expect(received).toHaveLength(1);
 		});
 
-		it("does not claim the session start when a session_started is refused", async () => {
-			await endThisSession();
+		it("flags a mark on an earlier observer session of the same Claude session", async () => {
+			const projectKey = await markConversation({ id: EARLIER, endedBy: "hook" });
+			const presenceFile = resolvePresenceFile({ projectKey, claudeSessionId: "claude-1" });
+			await mkdir(path.dirname(presenceFile), { recursive: true });
+			await writeFile(
+				presenceFile,
+				JSON.stringify({
+					v: 1,
+					claudeSessionId: "claude-1",
+					sessionId: getSession().sessionId,
+					earlierSessionIds: [EARLIER],
+					state: "working",
+					at: new Date().toISOString(),
+					hookEvent: "PostToolUse",
+				}),
+			);
 
-			const refused = await record({ projectRoot: project, input: { kind: "session_started" } });
+			const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
 
-			expect(refused.logged).toBe("session-ended");
-			expect(getSession().startedRecorded).toBe(false);
+			expect(outcome.logged).toBe("written");
+			expect(outcome.previouslyEnded).toBe(true);
 		});
 
-		it("still reports invalid for a bad input, naming the session", async () => {
-			await endThisSession();
+		it("records a session_started and claims the start", async () => {
+			await markConversation({ id: getSession().sessionId, endedBy: "hook" });
+
+			const outcome = await record({ projectRoot: project, input: { kind: "session_started" } });
+
+			expect(outcome.logged).toBe("written");
+			expect(outcome.previouslyEnded).toBe(true);
+			expect(getSession().startedRecorded).toBe(true);
+		});
+
+		it("flags a repeat session_started too", async () => {
+			await markConversation({ id: getSession().sessionId, endedBy: "hook" });
+			await record({ projectRoot: project, input: { kind: "session_started" } });
+
+			const repeat = await record({ projectRoot: project, input: { kind: "session_started" } });
+
+			expect(repeat).toEqual({
+				logged: "repeat-session-start",
+				delivered: false,
+				sessionId: getSession().sessionId,
+				previouslyEnded: true,
+			});
+		});
+
+		it("reports previouslyEnded false when there is no mark", async () => {
+			const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
+
+			expect(outcome.previouslyEnded).toBe(false);
+		});
+
+		it("counts an unreadable mark as no mark", async () => {
+			const paths = await create({ projectRoot: project });
+			const markFile = resolveEndedMark({ projectKey: paths.projectKey, id: getSession().sessionId });
+			await mkdir(path.dirname(markFile), { recursive: true });
+			await writeFile(markFile, "{ not json");
+
+			const outcome = await record({ projectRoot: project, input: { kind: "release", version: "1.0.0" } });
+
+			expect(outcome.logged).toBe("written");
+			expect(outcome.previouslyEnded).toBe(false);
+		});
+
+		it("still reports invalid for a bad input, naming the session and not flagging", async () => {
+			await markConversation({ id: getSession().sessionId, endedBy: "user" });
 
 			const outcome = await record({ projectRoot: project, input: { kind: "nope" } });
 
 			expect(outcome.logged).toBe("invalid");
+			expect(outcome.previouslyEnded).toBe(false);
 			expect(outcome.sessionId).toBe(getSession().sessionId);
 		});
 	});

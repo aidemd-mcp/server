@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import parseJson from "@/service/observer/event/shared/readObserverRecord/parseJson/index.js";
 import isProcessRunning from "@/util/isProcessRunning/index.js";
-import { schema, type ObserverRecord } from "@/service/observer/event/shared/observerRecord/index.js";
+import { parse, type ObserverRecord } from "@/service/observer/event/shared/observerRecord/index.js";
 
 /**
  * The one reader of `observer.json` in the code base: `record/postToObserver`,
@@ -21,11 +21,11 @@ export default async function readObserverRecord({
 	const json = parseJson(content);
 	if (json === undefined) return null;
 
-	const parsed = schema.safeParse(json);
-	if (!parsed.success) return null;
+	const record = parse(json);
+	if (record === null) return null;
 
 	// A record left behind by a crashed observer must not count as running.
-	if (!isProcessRunning(parsed.data.pid)) return null;
+	if (!isProcessRunning(record.pid)) return null;
 
-	return parsed.data;
+	return record;
 }

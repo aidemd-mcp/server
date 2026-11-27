@@ -32,6 +32,21 @@ describe("describeLiveness", () => {
 		});
 	});
 
+	it("reads an ended session closed from its transcript as Closed without reporting its end", () => {
+		const liveness = { ...makeLiveness({ state: "ended", minutesQuiet: 600, now: NOW }), endedBy: "transcript" as const };
+		expect(describeLiveness({ liveness, now: NOW })).toEqual({
+			word: "Closed without reporting its end",
+			className: "neutral",
+			icon: "power",
+			stuck: false,
+		});
+	});
+
+	it.each(["hook", "user"] as const)("reads a session ended by %s as Ended", (endedBy) => {
+		const liveness = { ...makeLiveness({ state: "ended", minutesQuiet: 600, now: NOW }), endedBy };
+		expect(describeLiveness({ liveness, now: NOW }).word).toBe("Ended");
+	});
+
 	it.each(["working", "waiting"] as const)("reads a %s session 20 minutes quiet as maybe stuck", (state) => {
 		expect(describeLiveness({ liveness: makeLiveness({ state, minutesQuiet: 20, now: NOW }), now: NOW })).toEqual({
 			word: "Quiet 20 min · maybe stuck",

@@ -1,14 +1,21 @@
 import type { Presence } from "@/service/observer/event/shared/presenceRecord/index.js";
 import type { TouchPresenceInput } from "@/service/observer/event/types/index.js";
 
+/** The most earlier links a presence keeps; the schema caps `earlierSessionIds` at the same number. */
+const EARLIER_SESSION_IDS_MAX = 100;
+
 /**
  * Merge one hook call into a Claude session's presence record (brief
- * commitment #72). Pure. The newest `at` wins: when the existing record is
- * newer, its `state`, `at` and `hookEvent` stay, and only a missing link or a
- * missing transcript path is filled from the call. Otherwise the call's state
- * and time win, the link and the transcript path of the call replace the old
- * ones when it carries them, and the old ones are kept when it does not.
- * Absent fields are omitted, never `undefined`.
+ * commitments #72, #126, #132). Pure. The newest `at` wins for `state`, `at`
+ * and `hookEvent`: when the existing record is newer they stay, and only a
+ * missing transcript path is filled from the call; otherwise the call's state
+ * and time win and its transcript path replaces the old one when it carries
+ * one. Links are added, never replaced: the link set is the union of the
+ * existing `sessionId`, its `earlierSessionIds` and the call's link, whichever
+ * record is newer. `sessionId` is the greatest id of the set (session ids sort
+ * chronologically, brief #20) and the rest go to `earlierSessionIds` ascending,
+ * capped at the newest 100, so two hooks racing never lose a link. Absent
+ * fields are omitted, never `undefined`.
  */
 export default function mergePresence({
 	existing,
@@ -17,24 +24,37 @@ export default function mergePresence({
 	existing: Presence | null;
 	next: TouchPresenceInput;
 }): Presence {
+	const links = [
+		...new Set([
+			...(existing?.sessionId !== undefined ? [existing.sessionId] : []),
+			...(existing?.earlierSessionIds ?? []),
+			...(next.linkSessionId !== undefined ? [next.linkSessionId] : []),
+		]),
+	].sort();
+	const sessionId = links.pop();
+	const earlierSessionIds = links.slice(-EARLIER_SESSION_IDS_MAX);
+	const linkFields = {
+		...(sessionId !== undefined ? { sessionId } : {}),
+		...(earlierSessionIds.length > 0 ? { earlierSessionIds } : {}),
+	};
+
 	const existingIsNewer = existing !== null && Date.parse(existing.at) > Date.parse(next.at);
 
 	if (existingIsNewer) {
-		const sessionId = existing.sessionId ?? next.linkSessionId;
+		const { sessionId: _sessionId, earlierSessionIds: _earlier, ...rest } = existing;
 		const transcriptPath = existing.transcriptPath ?? next.transcriptPath;
 		return {
-			...existing,
-			...(sessionId !== undefined ? { sessionId } : {}),
+			...rest,
+			...linkFields,
 			...(transcriptPath !== undefined ? { transcriptPath } : {}),
 		};
 	}
 
-	const sessionId = next.linkSessionId ?? existing?.sessionId;
 	const transcriptPath = next.transcriptPath ?? existing?.transcriptPath;
 	return {
 		v: 1,
 		claudeSessionId: next.claudeSessionId,
-		...(sessionId !== undefined ? { sessionId } : {}),
+		...linkFields,
 		state: next.state,
 		at: next.at,
 		hookEvent: next.hookEvent,

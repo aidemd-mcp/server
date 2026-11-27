@@ -1,6 +1,7 @@
 import type { BrainSectionContractEntry, BrainSectionField, BrainSectionMarker } from "@/service/brainContract/index.js";
 
 import type { AlignmentValue, WorkStatus } from "@/tools/frontmatter/types/index.js";
+import type { HookEventName } from "@/service/observer/event/types/index.js";
 
 export type { BrainSectionContractEntry, BrainSectionField, BrainSectionMarker } from "@/service/brainContract/index.js";
 export type { GovernedKind, GovernedField, AlignmentValue, WorkStatus } from "@/tools/frontmatter/types/index.js";
@@ -8,7 +9,7 @@ export type { ObserverEventInput, ObserverEvent, SessionStartedEvent } from "@/s
 export type { ObserverRecord } from "@/service/observer/event/shared/observerRecord/index.js";
 export type { EndedMark } from "@/service/observer/event/shared/endedMark/index.js";
 export type { Presence } from "@/service/observer/event/shared/presenceRecord/index.js";
-export type { RecordOutcome, SessionLog, DeleteOutcome, ProjectLog, SessionLiveness, UnlinkedPresence, LivenessReport, RawSessionLog, HookEventName, TouchPresenceInput, TouchOutcome, EndSessionOutcome } from "@/service/observer/event/types/index.js";
+export type { RecordOutcome, SessionLog, DeleteOutcome, ProjectLog, SessionLiveness, UnlinkedPresence, LivenessReport, RawSessionLog, HookEventName, TouchPresenceInput, TouchOutcome, EndSessionOutcome, ConversationRef, CallerConversation, MarkClosedOutcome, ReopenOutcome } from "@/service/observer/event/types/index.js";
 export type { BoardColumnId, ReportedLocation, BoardUnavailable, BoardTask, BoardColumn, Board, BoardResult, TaskReadResult } from "@/service/observer/kanban/types/index.js";
 export type { Phase, StatusInput, FileProgress, TreeFileEntry, TreeFileKind, ModuleNode, WorkFileEntry, SessionRecord, SessionSummary, RunningWork, WaitingFile, RailPhaseState, RailPhase, PipelineRail, HistoryRow, StatusPart, StatusProblem, Status } from "@/service/observer/status/types/index.js";
 
@@ -219,11 +220,117 @@ export interface McpPrescription {
 export type McpPinMove = { from: string | null; to: string };
 
 /**
+ * One matcher group of a Claude Code `hooks.<event>` array. `timeout` is in
+ * seconds. Produced by install's `mergeLocal/aideHookEntries`; consumed by
+ * `mergeLocal` and `stripProject` when they read and write hook entries.
+ */
+export type HookMatcherGroup = {
+	matcher?: string;
+	hooks: { type: "command"; command: string; timeout?: number }[];
+};
+
+/**
+ * The three files the hooks category may touch: `.claude/settings.local.json`
+ * (`local`), `.claude/settings.json` (`project`) and `.gitignore` (`gitignore`).
+ * Consumed by `HooksFilePlan` and `HooksCategoryPlan`.
+ */
+export type HooksSettingsFile = "local" | "project" | "gitignore";
+
+/**
+ * The plan for one file of the hooks category. `filePath` is absolute. `content`
+ * is present only on `create` and `update` and is the whole new file. `tracked`
+ * is present only on the `local` entry: whether git tracks that file. Produced by
+ * install's `planHooks`; consumed by `installHooks` and `checkHooksConfig`.
+ */
+export type HooksFilePlan = {
+	file: HooksSettingsFile;
+	filePath: string;
+	change: "create" | "update" | "none";
+	content?: string;
+	tracked?: boolean;
+};
+
+/**
+ * The hooks category's plan, discriminated on `state`. `no-global-install`:
+ * the package is not installed globally, `filePath` is the local settings file
+ * and nothing was read. `malformed`: every malformed settings file, local first,
+ * and nothing is planned. `planned`: the local file always, then the project
+ * file, then `.gitignore`, the last two only when they change. Produced by
+ * install's `shared/planHooks`, the one planner for install (`installHooks`),
+ * upgrade (`checkHooksConfig`) and, through upgrade, `aide_info`.
+ */
+export type HooksCategoryPlan =
+	| { state: "no-global-install"; filePath: string; globalPackage: GlobalPackageStatus }
+	| { state: "malformed"; files: { file: Exclude<HooksSettingsFile, "gitignore">; filePath: string; reason: string }[] }
+	| { state: "planned"; files: HooksFilePlan[] };
+
+/**
+ * The local settings file's merge plan, discriminated on `state`. `merged` is
+ * the whole new file text; the events of `outdated` are those with no current
+ * AIDE hook. Produced by install's `mergeLocal`; consumed by `planHooks`.
+ */
+export type LocalHooksPlan =
+	| { state: "absent"; merged: string }
+	| { state: "complete" }
+	| { state: "outdated"; events: HookEventName[]; merged: string }
+	| { state: "malformed"; reason: string };
+
+/**
+ * The shared settings file's strip plan, discriminated on `state`. `events` is
+ * `string[]`, not `HookEventName[]`, because AIDE hooks are found and stripped
+ * under any `hooks` key the user's file holds; `stripped` is the whole new file
+ * text. Produced by install's `stripProject`; consumed by `planHooks`.
+ */
+export type ProjectHooksPlan =
+	| { state: "absent" }
+	| { state: "clean" }
+	| { state: "holds"; events: string[]; stripped: string }
+	| { state: "malformed"; reason: string };
+
+/**
+ * Whether git ignores and tracks one path. Produced by `ignoreLocal/inspectGit`,
+ * which returns `null` (not this type) outside a work tree; consumed by
+ * `ignoreLocal` inside `planHooks`.
+ */
+export type GitPathStatus = { ignored: boolean; tracked: boolean };
+
+/**
+ * The `.gitignore` plan for the local settings file. `edit` is null when git
+ * already ignores that file; `content` is the whole new `.gitignore`. Produced
+ * by `ignoreLocal`; consumed by `planHooks`.
+ */
+export type LocalIgnorePlan = {
+	tracked: boolean;
+	edit: { change: Exclude<HooksFilePlan["change"], "none">; content: string } | null;
+};
+
+/**
+ * A settings file parsed for the hooks planner. `hooks` is `{}` when the key is
+ * absent; `reason` is the message the malformed states carry. Produced by
+ * `planHooks/shared/parseSettings`; consumed by `mergeLocal` and `stripProject`.
+ */
+export type ParsedHooksSettings =
+	| { ok: true; settings: Record<string, unknown>; hooks: Record<string, unknown> }
+	| { ok: false; reason: string };
+
+/**
+ * What `aide init` still owes the user for the hooks category. `files` are the
+ * malformed files' paths as `src/cli/init` prints them. Produced by `src/cli/init`
+ * from the hooks init steps; consumed by its deferred-categories message.
+ */
+export type HooksFollowUp =
+	| { kind: "merge" }
+	| { kind: "malformed"; files: string[] }
+	| { kind: "global-install"; installCommand: GlobalPackageStatus["installCommand"] };
+
+/**
  * The category of a single init step. The calling agent uses this
- * discriminant to walk through categories with the user. `hooks` merges AIDE's
- * own Claude Code hook entries into `.claude/settings.json`. `reference`
- * installs the tool and hook reference pages under `.aide/reference/`, a
- * category of its own, apart from the methodology docs.
+ * discriminant to walk through categories with the user. `hooks` writes AIDE's
+ * own Claude Code hook entries to `.claude/settings.local.json`, removes AIDE's
+ * entries from the shared `.claude/settings.json`, and adds
+ * `.claude/settings.local.json` to `.gitignore` when git does not ignore it.
+ * `reference` installs the tool and hook reference pages under
+ * `.aide/reference/`, a category of its own, apart from the methodology docs.
  */
 export type InitCategory =
 	| "framework"
@@ -291,7 +398,8 @@ export interface InitStep {
 	configMalformed?: boolean;
 	/**
 	 * Present on every would-create aide MCP step (the entry is always the
-	 * global command); never on `exists`.
+	 * global command); never on `exists`. Also present on the hooks `would-skip`
+	 * step when the package is not installed globally (`installed` false).
 	 */
 	globalPackage?: GlobalPackageStatus;
 	/**
@@ -306,6 +414,10 @@ export interface InitStep {
 	 * is not installed globally: it tells the agent to run the install via Bash
 	 * before merging the prescription, and not to merge if the install fails.
 	 * Absent on that step when the package is installed.
+	 * Also present on the hooks `would-skip` step when the package is not
+	 * installed globally (install first, then apply the hooks category again),
+	 * and on each hooks `would-skip` step for a malformed settings file (the stop
+	 * naming the file and reason).
 	 */
 	instructions?: string;
 	/**
@@ -505,8 +617,10 @@ export interface InitResult {
 /**
  * Per-category group names for upgrade results.
  * The agent presents results grouped by category and lets the user confirm
- * or decline each category independently. `hooks` merges AIDE's own Claude Code
- * hook entries into `.claude/settings.json`. `reference` upgrades the tool and
+ * or decline each category independently. `hooks` writes AIDE's own Claude Code
+ * hook entries to `.claude/settings.local.json`, removes AIDE's entries from the
+ * shared `.claude/settings.json`, and adds `.claude/settings.local.json` to
+ * `.gitignore` when git does not ignore it. `reference` upgrades the tool and
  * hook reference pages under `.aide/reference/`, a category of its own, apart
  * from the methodology docs.
  */
@@ -531,8 +645,10 @@ export type UpgradeCategory =
  * `"unchanged"` are execution outcomes returned by applyFiles after the tool
  * has written (or confirmed) files during a category call — parallel to
  * init's `"created"` status. `"unchanged"` means the file already matched
- * canonical and no write was needed. `"malformed"` is used only for MCP
- * config that cannot be parsed as JSON.
+ * canonical and no write was needed. `"malformed"` marks a config file that
+ * cannot be parsed: the MCP config, the IDE config, the brain config, or a
+ * hooks settings file (`.claude/settings.local.json` or `.claude/settings.json`,
+ * which then stops the whole hooks category).
  */
 export type UpgradeFileStatus = "matches" | "differs" | "missing" | "malformed" | "updated" | "created" | "unchanged";
 
@@ -542,6 +658,8 @@ export type UpgradeFileStatus = "matches" | "differs" | "missing" | "malformed" 
  * the agent should write. For `mcp` category files, `prescription` carries
  * the server entry to merge, `globalPackage` reports the global install beside
  * it, and `globalSwitch` reports an npx entry's switch to the global command.
+ * A `hooks` result can carry `globalPackage`, `instructions` and `tip` (see the
+ * fields).
  */
 export interface UpgradeFileResult {
 	/** Human-readable label for this file (e.g. filename or display name). */
@@ -584,12 +702,15 @@ export interface UpgradeFileResult {
 	 * Present only on the `mcp` result beside a `prescription` for a missing
 	 * config or absent aide entry, so the agent installs the package before
 	 * merging the entry. When `installed` is false the same result carries the
-	 * install-first `instructions`.
+	 * install-first `instructions`. Also present on the `hooks` local result when
+	 * the package is not installed globally (`installed` false, status `missing`,
+	 * no `canonicalContent`), with the install-first `instructions`.
 	 */
 	globalPackage?: GlobalPackageStatus;
 	/**
 	 * An informational note on a file result. It is neither drift nor a
-	 * prescription, and it never changes the summary counts.
+	 * prescription, and it never changes the summary counts. Set on the `hooks`
+	 * local result when git tracks `.claude/settings.local.json`.
 	 */
 	tip?: string;
 	/**
@@ -602,7 +723,11 @@ export interface UpgradeFileResult {
 	 * - the reason a switch to the global command was refused;
 	 * - on the mcp `missing` result, or the absent-entry `differs` result, the
 	 *   instruction to install the package first when it is not installed
-	 *   globally.
+	 *   globally;
+	 * - on the hooks local result, the instruction to install the package
+	 *   globally first, when it is not installed;
+	 * - on each `malformed` hooks result, the stop naming the file and the parse
+	 *   reason.
 	 */
 	instructions?: string;
 	/**

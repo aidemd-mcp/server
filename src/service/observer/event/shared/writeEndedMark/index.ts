@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import resolveEndedMark from "@/util/runtimePaths/resolveEndedMark/index.js";
-import { schema, type EndedMark } from "@/service/observer/event/shared/endedMark/index.js";
+import { parse, type EndedMark } from "@/service/observer/event/shared/endedMark/index.js";
 
 /**
  * Writes one ended mark with an exclusive create, so a mark is written once
@@ -16,7 +16,8 @@ export default async function writeEndedMark({
 	projectKey: string;
 	mark: EndedMark;
 }): Promise<"written" | "exists"> {
-	const valid = schema.parse(mark);
+	const valid = parse(mark);
+	if (valid === null) throw new Error("ended mark does not fit the schema");
 	const id = (valid.sessionId ?? valid.claudeSessionId) as string;
 	const file = resolveEndedMark({ projectKey, id });
 

@@ -6,6 +6,18 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+### Changed
+
+- AIDE's Claude Code hooks now live only in each machine's uncommitted `.claude/settings.local.json`, never in the shared `.claude/settings.json`, so no machine-specific path is ever committed and each developer's own `/aide` boot installs theirs. Each hook runs this machine's installed server directly (`node "<install>/dist/index.js" hook`) instead of the npm command shim, which cost about half a second per call under Git Bash on Windows, and the session-end hook gets a 10-second budget so closing or archiving a session no longer cuts it off before it records the end. `aide_init` and `/aide:upgrade` write the local file, remove AIDE's old entries from the shared file (every other entry stays byte-identical), and add `.claude/settings.local.json` to `.gitignore` when git doesn't already ignore it. A malformed settings file stops the hooks category with nothing written; without a global install it reports the install command first. `aidemd-mcp init` applies the hooks as one unit, or leaves them for `/aide:upgrade` when any file would be changed rather than created.
+- A session whose end hook never ran is no longer stuck open: when its Claude transcript ends in Claude Code's closing record for that session, the observer counts it as closed without reporting its end. It no longer halts the next session, the page shows it as "Closed without reporting its end", and the next start marks it ended.
+- Ended sessions can be resumed. A conversation is recognized by its Claude session id across processes, so a resumed conversation keeps its earlier sessions. Its next report is recorded and flagged `; previously ended: run aide_observer_start before anything else`; `aide_observer_start` then answers `REOPENED` when it is still the project's most recent session and nothing else is open, `HALT` when another session is open, or `STOPPED` (a hard stop, continue in a new session) when a newer session has worked the project since or another session ended it with the user's approval. Reports from ended sessions are no longer refused: `refused: session ended` is gone.
+- The Claude Code hook starts faster: it no longer loads `zod`. The hook's input and the presence, ended-mark and observer records it reads are checked by small built-in validators with the same rules, and a test fails if anything the hook loads imports `zod` again. Each hook call costs about 105–135 ms over bare Node, down from about 195–225 ms.
+- `aide_observer_end_session` on a session whose transcript shows it closed records it as closed by its transcript and answers `already ended`; it also refuses an earlier session of the caller's own conversation.
+- [migration] AIDE's Claude Code hooks move from `.claude/settings.json` to `.claude/settings.local.json`.
+  - Detect: `.claude/settings.json` holds an AIDE hook command (`aidemd-mcp hook`, an `npx … @aidemd-mcp/server … hook` form, or `node "…/@aidemd-mcp/server/…" hook`) under any hook event, or `aide_info` lists `hooks` in `outdated`. A project whose shared file holds only the user's own hooks does not match.
+  - Migrate: run `/aide:upgrade` and apply the `hooks` category. The tool writes the local file, removes only AIDE's entries from the shared file and adds the `.gitignore` line; never edit the settings by hand. If the local file is already tracked by git, tell the user to run `git rm --cached .claude/settings.local.json`.
+  - Confirm: once, as a batch.
+
 ## [0.19.1] - 2026-11-26
 
 ### Fixed

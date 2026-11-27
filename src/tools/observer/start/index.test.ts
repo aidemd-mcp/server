@@ -357,6 +357,22 @@ describe("start", () => {
 			expect(await start(input)).toMatchObject({ outcome: "halt", open: [{ id: OTHER }] });
 		});
 
+		it("reopens an ended caller conversation, answering REOPENED: before the link", async () => {
+			mockTakeOver.mockResolvedValue({ outcome: "none" });
+			const EARLIER = "20261125T070000000Z-earlie";
+			await writeOtherSession(EARLIER, { minutesAgo: 120 });
+			await writePresence("claude-own", { sessionId: getSession().sessionId, earlierSessionIds: [EARLIER] });
+			const { projectKey } = resolve({ projectRoot: root });
+			const mark = resolveEndedMark({ projectKey, id: EARLIER });
+			await mkdir(path.dirname(mark), { recursive: true });
+			await writeFile(mark, JSON.stringify({ v: 1, sessionId: EARLIER, endedAt: new Date().toISOString(), endedBy: "hook" }));
+
+			const reply = await start(input);
+
+			expect(reply).toEqual({ outcome: "reopened", reply: { outcome: "started", link: viewLink() } });
+			expect(formatReply(reply).split("\n")[0]).toMatch(/^REOPENED: /);
+		});
+
 		it("is blocked, not passed, when the check itself fails", async () => {
 			mockTakeOver.mockResolvedValue({ outcome: "none" });
 			const { projectKey } = resolve({ projectRoot: root });

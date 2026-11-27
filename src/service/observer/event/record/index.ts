@@ -1,17 +1,18 @@
 import { inputSchema, SCHEMA_VERSION } from "@/service/observer/event/shared/schema/index.js";
 import type { ObserverEvent } from "@/service/observer/event/shared/schema/index.js";
 import type { RecordOutcome } from "@/service/observer/event/types/index.js";
-import resolve from "@/util/runtimePaths/resolve/index.js";
-import readEndedMark from "@/service/observer/event/shared/readEndedMark/index.js";
 import getSession from "@/service/observer/event/record/session/index.js";
+import readPreviouslyEnded from "@/service/observer/event/record/readPreviouslyEnded/index.js";
 import appendLine from "@/service/observer/event/record/appendLine/index.js";
 import postToObserver from "@/service/observer/event/record/postToObserver/index.js";
 
 /**
- * Record one pipeline event: validate it, refuse it when this session has
- * been ended, stamp it, append it to this session's log outside the project,
- * then tell a running observer. Every outcome names the session id, so the
- * tool can tag its reply (brief #90).
+ * Record one pipeline event: validate it, stamp it, append it to this session's
+ * log outside the project, then tell a running observer. An ended session is
+ * not refused: the event is recorded and the outcome carries `previouslyEnded`
+ * (the caller's conversation holds an ended mark) so the tool can tell the agent
+ * to run the start check; recording never reopens (brief #121, #135). Every
+ * outcome names the session id, so the tool can tag its reply (brief #90).
  *
  * It never throws: recording must never fail or slow the pipeline, so every
  * outcome is a value. The log comes first: the line is on disk before the
@@ -37,25 +38,18 @@ export default async function record({
 		const detail = parsed.error.issues
 			.map((issue) => `${issue.path.join(".")}: ${issue.message}`)
 			.join("; ");
-		return { logged: "invalid", delivered: false, sessionId, detail };
+		return { logged: "invalid", delivered: false, sessionId, previouslyEnded: false, detail };
 	}
 	const event = parsed.data;
 
-	// 3. Refuse after the end. An ended session records nothing; the check runs
-	// before the `session_started` claim so a refused start claims nothing. A
-	// failed mark read counts as no mark: recording must not stall.
-	let mark: Awaited<ReturnType<typeof readEndedMark>> = null;
-	try {
-		mark = await readEndedMark({ projectKey: resolve({ projectRoot }).projectKey, id: sessionId });
-	} catch {
-		mark = null;
-	}
-	if (mark) return { logged: "session-ended", delivered: false, sessionId };
+	// 3. Start the previously-ended read now; it runs beside the append and is
+	// awaited only when the outcome is built, so it never delays a recording.
+	const previouslyEnded = readPreviouslyEnded({ projectRoot, sessionId });
 
 	// 4. One `session_started` per process; claim it before any further await
 	// so two concurrent calls cannot both pass.
 	if (event.kind === "session_started") {
-		if (session.startedRecorded) return { logged: "repeat-session-start", delivered: false, sessionId };
+		if (session.startedRecorded) return { logged: "repeat-session-start", delivered: false, sessionId, previouslyEnded: await previouslyEnded };
 		session.startedRecorded = true;
 	}
 
@@ -77,6 +71,6 @@ export default async function record({
 	const delivered = await postToObserver({ projectRoot, event: stamped });
 
 	// 8. Report.
-	if (appended.written) return { logged: "written", delivered, sessionId };
-	return { logged: "write-failed", delivered, sessionId, detail: appended.detail };
+	if (appended.written) return { logged: "written", delivered, sessionId, previouslyEnded: await previouslyEnded };
+	return { logged: "write-failed", delivered, sessionId, previouslyEnded: await previouslyEnded, detail: appended.detail };
 }

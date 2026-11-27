@@ -11,6 +11,7 @@ import endSession from "./index.js";
 
 const CALLER = "20261125T100000000Z-aaaaaa";
 const OTHER = "20261125T090000000Z-bbbbbb";
+const EARLIER = "20261125T080000000Z-dddddd";
 const ARCHIVED = "20261124T090000000Z-cccccc";
 const CLAUDE_CALLER = "claude-caller";
 const CLAUDE_OTHER = "claude-other";
@@ -32,7 +33,11 @@ async function writeLog(sessionId: string): Promise<string> {
 	return file;
 }
 
-async function writePresence(claudeSessionId: string, sessionId?: string): Promise<string> {
+async function writePresence(
+	claudeSessionId: string,
+	sessionId?: string,
+	extra: Record<string, unknown> = {},
+): Promise<string> {
 	const file = resolvePresenceFile({ projectKey, claudeSessionId });
 	await writeAt(
 		file,
@@ -43,6 +48,7 @@ async function writePresence(claudeSessionId: string, sessionId?: string): Promi
 			state: "waiting",
 			at: "2026-11-25T10:00:00.000Z",
 			hookEvent: "Stop",
+			...extra,
 		}),
 	);
 	return file;
@@ -93,6 +99,12 @@ describe("endSession refusals", () => {
 		expect(await end(CLAUDE_CALLER)).toEqual({ outcome: "own-session", id: CLAUDE_CALLER });
 		expect(await markExists(CLAUDE_CALLER)).toBe(false);
 		expect(await markExists(CALLER)).toBe(false);
+	});
+
+	it("refuses an earlier observer session of the caller's own conversation", async () => {
+		await writePresence(CLAUDE_CALLER, CALLER, { earlierSessionIds: [EARLIER] });
+		expect(await end(EARLIER)).toEqual({ outcome: "own-session", id: EARLIER });
+		expect(await markExists(EARLIER)).toBe(false);
 	});
 
 	it("answers unknown for an id no log or presence of this project carries", async () => {
@@ -162,5 +174,33 @@ describe("endSession writes the mark", () => {
 
 		expect(await readMark(OTHER)).toMatchObject({ sessionId: OTHER, endedBy: "user" });
 		expect(await markExists(CLAUDE_OTHER)).toBe(false);
+	});
+
+	it("marks a target judged closed from its transcript with a transcript mark and answers already-ended", async () => {
+		const transcript = path.join(appData, "closed.jsonl");
+		await writeAt(transcript, `{"type":"user"}\n{"type":"cost-state","sessionId":"${CLAUDE_OTHER}"}\n`);
+		await writeLog(OTHER);
+		await writePresence(CLAUDE_OTHER, OTHER, { transcriptPath: transcript });
+
+		expect(await end(OTHER)).toEqual({ outcome: "already-ended", id: OTHER });
+
+		expect(await readMark(OTHER)).toMatchObject({
+			v: 1,
+			sessionId: OTHER,
+			endedBy: "transcript",
+			bySessionId: CALLER,
+		});
+	});
+
+	it("answers already-ended and writes nothing when an earlier session of the target carries a hook mark", async () => {
+		await writeLog(OTHER);
+		await writePresence(CLAUDE_OTHER, OTHER, { earlierSessionIds: [EARLIER] });
+		await writeAt(
+			resolveEndedMark({ projectKey, id: EARLIER }),
+			JSON.stringify({ v: 1, sessionId: EARLIER, endedAt: "2026-11-25T08:30:00.000Z", endedBy: "hook" }),
+		);
+
+		expect(await end(OTHER)).toEqual({ outcome: "already-ended", id: OTHER });
+		expect(await markExists(OTHER)).toBe(false);
 	});
 });

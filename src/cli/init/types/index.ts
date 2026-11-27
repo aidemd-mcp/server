@@ -13,6 +13,10 @@
  * - `"skipped-malformed"` — planner returned `would-skip` with `configMalformed`
  *   (an existing config file cannot be parsed). The file is left byte-identical
  *   and never sent to `applySteps`. Surfaces in the warning's skipped list.
+ * - `"deferred"` — a planned write held back because its category cannot finish
+ *   here (a hooks step that waits for `/aide:upgrade`, or for the global install).
+ *   The file is untouched and never sent to `applySteps`; the category's follow-up
+ *   line in the warning names what to run. Not in `renderWarning`'s skipped list.
  * - `"failed"` — reserved; not produced on the planner path. Kept because
  *   `renderWarning` and the orchestrator already branch on it — removing it
  *   widens the diff unnecessarily.
@@ -23,6 +27,7 @@ export type InstallStatus =
     | "skipped-drift"
     | "skipped-missing-canonical"
     | "skipped-malformed"
+    | "deferred"
     | "failed";
 
 /**
@@ -39,6 +44,7 @@ export type InstallStatus =
  * - For `skipped-drift`: a reason like `"drifted from canonical — not overwritten"`.
  * - For `skipped-missing-canonical`: the reason string from the failed canonical read.
  * - For `skipped-malformed`: `"not valid JSON — left unchanged"`.
+ * - For `deferred`: why it waits, e.g. `"waits for /aide:upgrade — hooks category"`.
  * - For `failed`: the error message from the caught exception.
  */
 export type InstallResult = {

@@ -3,7 +3,7 @@ import create from "@/util/runtimePaths/create/index.js";
 import resolvePresenceFile from "@/util/runtimePaths/resolvePresenceFile/index.js";
 import parseJson from "@/service/observer/event/shared/readObserverRecord/parseJson/index.js";
 import writeEndedMark from "@/service/observer/event/shared/writeEndedMark/index.js";
-import { schema, type Presence } from "@/service/observer/event/shared/presenceRecord/index.js";
+import { parse, type Presence } from "@/service/observer/event/shared/presenceRecord/index.js";
 import type { TouchOutcome, TouchPresenceInput } from "@/service/observer/event/types/index.js";
 import mergePresence from "./mergePresence/index.js";
 import writePresence from "./writePresence/index.js";
@@ -77,6 +77,5 @@ async function readExisting(path: string): Promise<Presence | null> {
 	if (content === null) return null;
 	const json = parseJson(content);
 	if (json === undefined) return null;
-	const parsed = schema.safeParse(json);
-	return parsed.success ? parsed.data : null;
+	return parse(json);
 }

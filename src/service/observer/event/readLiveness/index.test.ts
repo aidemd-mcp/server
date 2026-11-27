@@ -143,4 +143,53 @@ describe("readLiveness", () => {
 
 		expect(report.sessions[SESSION_A]).toMatchObject({ state: "working", lastActivityAt: null });
 	});
+
+	it("reads the earlier and the current session of one live conversation as working", async () => {
+		await putPresence("claude-aaaa", { sessionId: SESSION_B, earlierSessionIds: [SESSION_A] });
+
+		const report = await readLiveness({ projectKey: KEY, sessions: ask(SESSION_A, SESSION_B), now: NOW });
+
+		expect(report.sessions[SESSION_A]).toMatchObject({ state: "working", quietMinutes: 10 });
+		expect(report.sessions[SESSION_B]).toMatchObject({ state: "working", quietMinutes: 10 });
+		expect(report.unlinked).toEqual([]);
+	});
+
+	it("reads both sessions of a conversation as ended, with the mark's endedBy, after a mark on the earlier one only", async () => {
+		await putPresence("claude-aaaa", { sessionId: SESSION_B, earlierSessionIds: [SESSION_A] });
+		await putMark(SESSION_A, { sessionId: SESSION_A, endedBy: "hook" });
+
+		const report = await readLiveness({ projectKey: KEY, sessions: ask(SESSION_A, SESSION_B), now: NOW });
+
+		expect(report.sessions[SESSION_A]).toMatchObject({ state: "ended", endedBy: "hook" });
+		expect(report.sessions[SESSION_B]).toMatchObject({ state: "ended", endedBy: "hook" });
+	});
+
+	it("lets a user mark on the earlier session decide over a hook mark on the current one", async () => {
+		await putPresence("claude-aaaa", { sessionId: SESSION_B, earlierSessionIds: [SESSION_A] });
+		await putMark(SESSION_A, { sessionId: SESSION_A, endedBy: "user", endedAt: "2026-11-25T11:00:00.000Z" });
+		await putMark(SESSION_B, { sessionId: SESSION_B, endedBy: "hook", endedAt: "2026-11-25T11:30:00.000Z" });
+
+		const report = await readLiveness({ projectKey: KEY, sessions: ask(SESSION_A, SESSION_B), now: NOW });
+
+		expect(report.sessions[SESSION_A]).toMatchObject({ state: "ended", endedBy: "user" });
+		expect(report.sessions[SESSION_B]).toMatchObject({ state: "ended", endedBy: "user" });
+	});
+
+	it("keeps a conversation with no observer session out of the asked sessions and judges it once", async () => {
+		await putPresence("claude-aaaa", { sessionId: SESSION_A });
+		await putPresence("claude-open");
+
+		const report = await readLiveness({ projectKey: KEY, sessions: ask(SESSION_A), now: NOW });
+
+		expect(report.unlinked.map((entry) => entry.claudeSessionId)).toEqual(["claude-open"]);
+	});
+
+	it("judges a session with no presence from its own events beside a conversation it is not part of", async () => {
+		await putPresence("claude-aaaa", { sessionId: SESSION_A });
+		const events = [makeEvent(SESSION_B, "2026-11-25T11:00:00.000Z")];
+
+		const report = await readLiveness({ projectKey: KEY, sessions: [{ sessionId: SESSION_B, events }], now: NOW });
+
+		expect(report.sessions[SESSION_B]).toMatchObject({ state: "working", quietMinutes: 60 });
+	});
 });

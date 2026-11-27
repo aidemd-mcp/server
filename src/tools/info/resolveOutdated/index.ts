@@ -7,7 +7,8 @@ import detectStaleHooks from "./detectStaleHooks/index.js";
  * when the project's Claude Code hooks are missing or drifted.
  *
  * `hooks` is an upgrade category key, not a versions.json key — the hooks live
- * in `.claude/settings.json`, which the manifest does not track. It is checked
+ * in `.claude/settings.local.json`, which the manifest does not track, and AIDE
+ * entries left in the shared `.claude/settings.json` count as stale too. It is checked
  * even when `.aide/versions.json` is missing, because a project without the
  * manifest is exactly the one most likely to lack the hooks. Never rejects:
  * the hooks check swallows its own failures.
