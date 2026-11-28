@@ -202,9 +202,8 @@ function discoverContent(): Section[] {
 // ── Cover page constants ────────────────────────────────────────────────────
 
 const COVER_TITLE = "The AIDE Methodology Specification v1.0";
-const COVER_AUTHOR = "Jacob Carpenter";
-const COVER_ENTITY = "TetsuKodai Group LLC";
-const COVER_COPYRIGHT = "© 2026 TetsuKodai Group LLC. All rights reserved.";
+const COVER_ENTITY = "Lowmeadow LLC";
+const COVER_COPYRIGHT = "© 2026 Lowmeadow LLC. All rights reserved.";
 const COVER_DATE = "April 12, 2026";
 
 // ── HTML rendering ──────────────────────────────────────────────────────────
@@ -227,7 +226,6 @@ function buildCoverHtml(): string {
 	return `
 <section class="cover">
   <h1>${COVER_TITLE}</h1>
-  <p class="author">${COVER_AUTHOR}</p>
   <p class="entity">${COVER_ENTITY}</p>
   <p class="copyright">${COVER_COPYRIGHT}</p>
   <p class="date">Date of First Publication: ${COVER_DATE}</p>
@@ -424,7 +422,7 @@ ${bodyHtml}
 const OUTPUT_DIR = join(PROJECT_ROOT, "dist");
 const OUTPUT_PATH = join(OUTPUT_DIR, "aide-methodology.pdf");
 
-const FOOTER_TEMPLATE = `<div style="font-size: 9px; width: 100%; display: flex; justify-content: space-between; padding: 0 40px;"><span>© 2026 TetsuKodai Group LLC. All rights reserved.</span><span>Page <span class="pageNumber"></span></span></div>`;
+const FOOTER_TEMPLATE = `<div style="font-size: 9px; width: 100%; display: flex; justify-content: space-between; padding: 0 40px;"><span>${COVER_COPYRIGHT}</span><span>Page <span class="pageNumber"></span></span></div>`;
 
 /**
  * Renders page 1 of the HTML document as a PDF buffer with no header or footer.
