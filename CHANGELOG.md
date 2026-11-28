@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.20.3] - 2026-11-27
+
 ### Changed
 
 - The package's author and copyright holder are now Lowmeadow LLC, and the `@aidemd-mcp` npm scope is published from the `aidemd` account. The license is still MIT, and how you install the package is unchanged.
