@@ -271,7 +271,7 @@ Relations (user, 2026-11-27): observer-terminal-in-the-bottom-drawer ↔ remote-
 - `observer-read-tools-for-sessions-and-pipelines` (aidemd-mcp board, Backlog, p2, feature) — read-only observer tools for agents: list projects, list sessions, pipeline status. Created 2026-11-26 with the user's yes.
 - `make-the-claude-code-hook-start-faster` (aidemd-mcp, Done, p3, change; shipped 0.20.0; moved to Done 2026-11-27 with the user's yes) — zod off the hook path; built and QA-passed 2026-11-26.
 - `observer-halts-a-session-on-its-own-conversation` (aidemd-mcp board, Backlog, p2, bug) — after an aide MCP server reconnect, aide_observer_start HALTs on the conversation's own earlier observer id; link by the Claude session id the hook records, and have the observer skill send session_started again after a reconnect. Created 2026-11-27 with the user's OK.
-- `move-aidemd-mcp-npm-package-to-lowmeadow-llc` (aidemd-mcp board, In Progress, p0) — done and released in 0.20.3 (npm author Lowmeadow LLC, sole maintainer `aidemd`, GitHub org membership private); awaiting the user's OK to move to In Review.
+- `move-aidemd-mcp-npm-package-to-lowmeadow-llc` (aidemd-mcp board, In Review, p0) — done and released in 0.20.3 (npm author Lowmeadow LLC, sole maintainer `aidemd`, GitHub org membership private); moved to In Review with the user's yes, 2026-11-28.
 - `kanban-roadmap-an-ordered-timeline-linking-each-task` (aidemd-mcp board, Backlog, p1, feature) — each board gets a roadmap note holding the work order and a timeline (phases or target dates, to settle), linking every task and its relations; replaces a per-task rank field; the kanban skill keeps it in sync; ships in the bundled brain template, so it starts in this repo with a [migration] entry; first content is the 2026-11-27 work order above. Created 2026-11-27 with the user's OK; not yet placed in the work order.
 - `ses-inbound-forwarding-for-security-aidemd-dev` (aidemd-dev board, Backlog, p2) — security@aidemd.dev forwarding was set up from this repo on 2026-11-28 (shared Showfold forwarder); what's left there is adding `Contact: mailto:security@aidemd.dev` to the site's security.txt, which is the site's work.
 
@@ -528,7 +528,7 @@ Standing approach for observer page UI changes: hand-driven targeted edits by th
 
 ### What the next agent must do
 
-1. Task move-aidemd-mcp-npm-package-to-lowmeadow-llc: all steps done and released in 0.20.3 (npm author Lowmeadow LLC, sole maintainer `aidemd`). Ask the user to move it to In Review.
+1. Task move-aidemd-mcp-npm-package-to-lowmeadow-llc is In Review (done, released in 0.20.3). Next in the work order that nothing blocks: github-npm-and-mcp-registry-discovery-metadata (p0, Backlog) — ask the user before starting it. In Progress is empty.
 2. The private legal task is PARKED (Todo); resume only when the user picks it up. Details: brain `projects/aidemd/legal/session-legal-record.md`.
 3. The settings.json idea is now task `aide-boot-validates-claude-settings-and-guides-repair` (aidemd-mcp, Backlog, p2): broken `.claude/settings.json` comes back from aide_info as its own finding with line/column; the main agent repairs it by hand only after the user confirms, then reruns the tool, which re-validates and adds AIDE's hooks on the user's yes; validation covers only JSONC parse + AIDE's own hook entries. Next work is the user's pick.
 4. The backlog task `observer-home-shows-a-kanban-board-that-fits-the-page` (p3).
