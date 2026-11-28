@@ -6,6 +6,8 @@ Bullets that change an AIDE file format start with `[migration]` and carry `Dete
 
 ## [Unreleased]
 
+## [0.20.4] - 2026-11-28
+
 ### Changed
 
 - The package now describes itself as an open-source agentic SDLC framework for intent-driven, spec-driven development, with an MCP toolkit, on npm and in the MCP Registry, and the README opens with what the framework holds: the methodology, skills, subagents, the MCP toolkit, the `brain.aide` plugin interface and the observer. npm links to https://aidemd.dev, gains the `mcp-server`, `agentic-sdlc`, `spec-driven-development` and `intent-driven-development` keywords, and the registry entry now carries a title, the website and the `npx` runtime hint.

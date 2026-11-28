@@ -1,6 +1,6 @@
 {
 	"name": "@aidemd-mcp/server",
-	"version": "0.20.3",
+	"version": "0.20.4",
 	"mcpName": "io.github.aidemd-mcp/server",
 	"description": "Open-source agentic SDLC framework for intent-driven, spec-driven development, with an MCP toolkit",
 	"homepage": "https://aidemd.dev",

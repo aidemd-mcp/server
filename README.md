@@ -38,7 +38,7 @@ New to the ideas behind it? Read about [intent-driven engineering](https://aidem
 Run the installer from your project's root:
 
 ```bash
-npx -y @aidemd-mcp/server@0.20.3 init
+npx -y @aidemd-mcp/server@0.20.4 init
 ```
 
 This command:
