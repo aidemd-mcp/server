@@ -1,0 +1,28 @@
+---
+scope: scripts/buildReadme
+alignment: unreviewed
+description: Generates the README's tools section from the per-tool reference pages, so the README always lists every tool the server offers and CI fails when the committed copy drifts.
+intent: >
+  The README's tools section is written from the project's per-tool reference
+  pages, never by hand, so it cannot fall behind the tools the server offers.
+  Each tool appears with the one-sentence description its page
+  gives and a link to its page on aidemd.dev, in the tools index's grouped
+  order. Only that section is replaced; the rest of the README is never touched.
+  A check in the CI test suite fails whenever the committed section
+  differs from what would be generated now. Regeneration is a developer command,
+  kept out of the build so a stale copy cannot hide from CI.
+outcomes:
+  desired:
+    - Every tool with a reference page appears in the README's tools section exactly once, in the tools index order, with the description its page gives word for word.
+    - Every tool's link opens that tool's own page on aidemd.dev.
+    - Every byte of the README outside the generated section, line endings included, is identical after a run, and a second run changes nothing.
+    - CI fails whenever the committed tools section differs from what the generator would write now, so a new, renamed or removed tool cannot leave the README behind.
+    - A missing or doubled section marker stops the run with a clear error that names the problem.
+  undesired:
+    - A tool missing from the section or listed twice, or the section still listing a tool that no longer has a reference page.
+    - A description paraphrased, shortened or truncated instead of taken as the tool's page gives it.
+    - A link that points at a page that does not exist on aidemd.dev.
+    - Edits leaking outside the generated section, such as reflowed text, changed line endings or touched headings.
+    - The drift check passing only because something, such as the build, regenerated the README before it ran.
+    - A missing or doubled marker handled by guessing where the section is and writing there, instead of stopping.
+---

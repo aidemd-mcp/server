@@ -1,5 +1,5 @@
 ---
-scope: scripts/export-pdf
+scope: scripts/exportPdf
 alignment: unreviewed
 description: PDF export script that consolidates the full AIDE methodology into a single document for copyright registration
 intent: >

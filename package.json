@@ -2,7 +2,8 @@
 	"name": "@aidemd-mcp/server",
 	"version": "0.20.3",
 	"mcpName": "io.github.aidemd-mcp/server",
-	"description": "MCP server that teaches any agent the AIDE methodology through tool descriptions and progressive disclosure tooling",
+	"description": "Open-source agentic SDLC framework for intent-driven, spec-driven development, with an MCP toolkit",
+	"homepage": "https://aidemd.dev",
 	"type": "module",
 	"bin": {
 		"aidemd-mcp": "dist/index.js",
@@ -13,12 +14,13 @@
 		"clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
 		"build": "npm run clean && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && npm run build:page && npm run build:versions",
 		"build:page": "tsx scripts/buildPage/index.ts",
+		"build:readme": "tsx scripts/buildReadme/index.ts",
 		"observer:fixtures": "tsx scripts/seedObserver/index.ts",
 		"build:versions": "tsx scripts/build-versions.ts",
 		"prepublishOnly": "npm run build",
 		"dev": "tsc --watch",
 		"test": "vitest run",
-		"export-pdf": "tsx scripts/export-pdf.ts",
+		"export-pdf": "tsx scripts/exportPdf/index.ts",
 		"tree": "tsx src/cli/tree/index.tsx",
 		"publish:all": "node scripts/publish.mjs"
 	},
@@ -27,7 +29,11 @@
 		"aide",
 		"progressive-disclosure",
 		"ai-agents",
-		"spec-documents"
+		"spec-documents",
+		"mcp-server",
+		"agentic-sdlc",
+		"spec-driven-development",
+		"intent-driven-development"
 	],
 	"author": "Lowmeadow LLC",
 	"repository": {

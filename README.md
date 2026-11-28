@@ -2,29 +2,34 @@
 [![CI](https://github.com/aidemd-mcp/server/actions/workflows/ci.yml/badge.svg)](https://github.com/aidemd-mcp/server/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![server MCP server](https://glama.ai/mcp/servers/aidemd-mcp/server/badges/score.svg)](https://glama.ai/mcp/servers/aidemd-mcp/server)
+[![aidemd-mcp/server MCP server](https://glama.ai/mcp/servers/aidemd-mcp/server/badges/score.svg)](https://glama.ai/mcp/servers/aidemd-mcp/server)
 [![npm downloads](https://img.shields.io/npm/dm/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
 [![TypeScript](https://img.shields.io/badge/TypeScript-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Discord](https://img.shields.io/discord/1496212051377262692?label=Discord&logo=discord)](https://discord.gg/N4NqMXuvTR)
 
 # @aidemd-mcp/server
 
-MCP server that brings intent-driven development to any AI-powered IDE.
-Manage `.aide` spec files that live next to your code — the domain context
-that architects plan from, implementors build from, and QA validates against.
+Open-source agentic SDLC framework for intent-driven, spec-driven development.
+AIDE (aidemd) gives AI coding agents a production-grade software methodology
+to follow, with skills, subagents and an MCP server whose tools work with a
+cascading intent tree of `.aide` spec files. `brain.aide` is a
+backend-agnostic plugin interface that connects your AIDE projects to a
+central task board and coding playbook, so every agent follows your team's
+conventions. It ships with an observer to manage running sessions and prevent
+collisions between them.
 
 Learn more at [aidemd.dev](https://aidemd.dev).
 
 ## Features
 
-- **Project-wide spec discovery** with a progressive disclosure tree that surfaces intent, research, and QA specs at every level of your codebase
-- **One-command project bootstrap** via `aide_init` — wires methodology docs, pipeline commands, and this MCP server into your project in a single guided flow
-- **Automatic naming convention enforcement** — `aide_scaffold` handles the `.aide` / `intent.aide` rename rules so you never create conflicting specs
-- **Guarded pipeline cleanup** via `aide_cleanup` — removes a closed module's plan, todo and brief only when every checkbox is checked, and refuses with the exact open items otherwise
-- **Health-check validation** via `aide_validate` — detects orphaned specs, missing descriptions, broken links, and naming conflicts before they cause drift
-- **Code introspection** via `aide_inspect` — returns JSDoc, signatures, and kind for named symbols without opening files, giving agents Tier 2 progressive disclosure for code
-- **Upgrade drift detection** via `aide_upgrade` — compares your project's AIDE methodology artifacts against canonical versions and writes updates per-category
-- **Runtime brain entry-point** via `aide_brain` — on-demand tool that returns ready-to-execute prose telling the agent which MCP tools to call and how to reach whatever brain backend is wired, without the agent knowing which backend it is
+- **[Methodology docs](https://aidemd.dev/docs/)** — the AIDE methodology installed into your project, so every agent works from the same rules for specs, plans, QA and the intent tree
+- **[Skills and subagents for each phase](https://aidemd.dev/learn/claude-code-subagents-pipeline/)** — `/aide` drives spec → research → synthesize → plan → build → QA → fix, handing each phase to its own specialized agent with a fresh context
+- **[MCP toolkit](https://aidemd.dev/docs/tools/)** — tools that let agents map, read, scaffold and validate the cascading intent tree of `.aide` spec files and keep every file in its canonical format
+- **[The brain](https://aidemd.dev/brain/)** — `brain.aide` connects your projects to a central task board and coding playbook on the backend you choose, so agents follow your team's conventions
+- **[The observer](https://aidemd.dev/observer/)** — a local page showing every project's live sessions and pipeline progress, allowing one open session per project so sessions never collide
+- **[Claude Code hooks](https://aidemd.dev/docs/hooks/)** — report each session's activity and end to the observer, so it always knows which sessions are really running
+
+New to the ideas behind it? Read about [intent-driven engineering](https://aidemd.dev/learn/intent-driven-engineering/), [spec-driven vs intent-driven development](https://aidemd.dev/learn/spec-driven-vs-intent-driven-development/), [spec-kit alternatives](https://aidemd.dev/learn/spec-kit-alternatives/), [MCP servers for development workflow](https://aidemd.dev/learn/mcp-server-for-development-workflow/) and [AIDE as an open-source agentic SDLC framework](https://aidemd.dev/learn/open-source-agentic-sdlc-framework/).
 
 ## Installation
 
@@ -179,108 +184,22 @@ After `npm i -g @aidemd-mcp/server`:
 
 ## Tools
 
-### aide_discover
-
-Scan the project for `.aide` spec files and return a progressive disclosure tree map showing each spec's type, location, and summary. A plan or todo list carries its status inline, e.g. `[plan: approved]`, and a reviewed spec its alignment.
-
-**Inputs:**
-
-- `path` (string, optional): Subdirectory to drill into. When provided, the response opens with the ancestor chain — the cascading intent lineage from root to target, each ancestor showing its description and alignment status — followed by the detailed subtree with summaries and warnings. When omitted, returns a shallow project-wide map (locations and types only).
-
-### aide_read
-
-Read an `.aide` spec file with full context, returning the file content, its classified type (intent/research/plan/todo), related specs in the same directory, and links found in the content.
-
-**Inputs:**
-
-- `path` (string, required): Path to the `.aide` file to read.
-
-### aide_scaffold
-
-Create new `.aide` spec files with automatic naming convention enforcement. Handles the rename rules: intent specs are `.aide` by default but become `intent.aide` when `research.aide` exists in the same folder; creating a `research.aide` auto-renames any existing `.aide` to `intent.aide`.
-
-**Inputs:**
-
-- `directory` (string, required): Directory where the `.aide` file(s) will be created.
-- `type` (string, required): Type of file to create. One of: `intent`, `research`, `both`, `todo`, `plan`, `session`. `session` always writes the project's session record at `.aide/session.aide`, whatever `directory` says.
-
-It never overwrites: a file that already exists is skipped and reported. New intent specs start `alignment: unreviewed`; new plans and todo lists start `status: proposed`.
-
-### aide_cleanup
-
-Remove a closed module's pipeline ephemerals — `brief.aide`, `todo.aide` and `plan.aide` — and nothing else. The preconditions are enforced in code. Each file it would remove must record a closed status: `completed` (and every checkbox really checked) or `abandoned`; a file from before statuses existed passes when every checkbox is checked. Anything still `proposed` or `approved` is refused. A `brief.aide` is removed only together with its plan, and an abandoned plan takes its brief with it. Where there is no `plan.aide`, a closed `todo.aide` is removed on its own. A refusal removes nothing and names each unchecked item with its file and line. It never touches intent specs, code or `.aide/session.aide`, and it refuses paths outside the project. Cross-platform with no shell, so cleanup needs no `rm` permission — allow the tool by name.
-
-**Inputs:**
-
-- `path` (string, required): Module folder that holds the ephemerals, relative to the project root.
-- `dryRun` (boolean, optional): Report what would be removed, or what blocks removal, without removing anything. For inspection only — the real call is already safe.
-
-### aide_frontmatter
-
-Read or change one governed frontmatter value of an AIDE file, leaving every other byte as it was. Intent specs carry `alignment` (`unreviewed`, `aligned`, `misaligned`). Plans, briefs and todo lists carry `status`, moving `proposed` → `approved` → `completed`, or to `abandoned`; `completed` and `abandoned` are final, `completed` needs every item checked, and a revised `approved` file drops back to `proposed`. The tool enforces the allowed moves and refuses the session record, research specs, non-AIDE files and paths outside the project. It never decides when a value changes — the aligner, QA, the user's approval or a discard do.
-
-**Inputs:**
-
-- `path` (string, required): The AIDE file, relative to the project root.
-- `field` (string, optional): `alignment` or `status`. Omit with `value` to read.
-- `value` (string, optional): The new value.
-
-### aide_inspect
-
-Return the JSDoc block, signature, and kind for a named function, method, class, interface, or type alias in the workspace — Tier 2 progressive disclosure for code. Agents can understand a symbol's contract without opening the file.
-
-**Inputs:**
-
-- `name` (string, required): Symbol name to look up.
-- `file` (string, optional): Restrict search to a single file (relative to project root).
-
-### aide_validate
-
-Run a health check on `.aide` spec files in the project. Detects orphaned specs, missing specs, naming conflicts (`.aide` and `intent.aide` in the same folder), broken links, orphaned research files, missing frontmatter descriptions, unparsable frontmatter, and intent specs whose `alignment` is missing or not a known value.
-
-**Inputs:**
-
-- `path` (string, optional): Subdirectory to validate. Defaults to the entire project when omitted.
-
-### aide_info
-
-Boot-time precondition reporter. Returns two independent fields the orchestrator branches on separately: `outdated` (an array of stale AIDE artifact keys, comparing the project's `versions.json` against the shipped manifest), and `brain` (a `{ status, name?, hints }` object reporting whether the project's `brain.aide` config is wired into `.mcp.json`). `brain.status` is a closed five-status union: `ok | no-brain-aide | brain-aide-invalid | no-mcp-entry | mcp-drift`, derived by comparing `.aide/config/brain.aide` against `.mcp.json` — no disk path validation. `brain-aide-invalid` means the file is present but unusable and carries a `fault`: either `missing-sections` (naming the required sections that are absent) or `malformed` (with a reason, which also covers a file that cannot be read). `name` is the user-declared label from `brain.aide`; it is absent on `no-brain-aide` and `brain-aide-invalid`. `/aide:brain config` is the recovery for both `no-brain-aide` and `brain-aide-invalid`. `hints` is an array of candidate vault locations the orchestrator can surface during recovery.
-
-**Inputs:**
-
-(none)
-
-### aide_brain
-
-On-demand brain entry-point tool. Call this when you need to reach the brain mid-task — do NOT call it on every `/aide` boot. Boot-time brain precondition state is already reported by `aide_info.brain.status`; firing `aide_brain` at boot duplicates that work unnecessarily.
-
-Returns `{ status, instructions }` — exactly two fields. No `backend`, no `connector`, no `name`. `status` mirrors `aide_info.brain.status` (`ok | no-brain-aide | brain-aide-invalid | no-mcp-entry | mcp-drift`). `instructions` is always non-empty: on `ok` it is the verbatim body of the selected section (`orientation` or `config`, per the optional `kind` input) from the user's `.aide/config/brain.aide` (no server substitution); on the failure states it carries remediation prose. `no-brain-aide` and `brain-aide-invalid` both route to `/aide:brain config`; `brain-aide-invalid` is composed from the detector's `fault` — either the missing required sections, named, or the malformed reason (including a file that is present but unreadable, which is never reported as absent). `no-mcp-entry` and `mcp-drift` tell the user to run sync with the launcher their `aide` entry uses (`aidemd-mcp sync` or `npx -y @aidemd-mcp/server@<version> sync`).
-
-**Inputs:**
-
-(none)
-
-### aide_init
-
-Bootstrap the AIDE development environment into a project using a guided one-at-a-time wizard. On the first call (no `category`), returns a summary of every step with status and detected framework. On subsequent calls (with `category`), writes all pending files for that category to disk and returns a manifest.
-
-**Inputs:**
-
-- `framework` (string, optional): Force a specific framework instead of auto-detecting. One of: `claude`, `cursor`, `windsurf`, `copilot`.
-- `path` (string, optional): Custom project root path. Defaults to the server working directory.
-- `category` (string, optional): Write all `would-create` files for this category and return a manifest. One of: `framework`, `methodology`, `commands`, `agents`, `skills`, `mcp`, `brain`, `ide`, `readme`. Omit on the first call to get a metadata-only summary.
-
-The aide MCP entry always launches the global command `aidemd-mcp`. A would-create aide entry carries `globalPackage`; when it is not installed, the agent runs its `installCommand` before merging the entry.
-
-### aide_upgrade
-
-Compare the AIDE methodology artifacts in this project against canonical versions and return a structured diff grouped by category. On the first call (no `category`), returns a lightweight summary of every category with drift status. On subsequent calls (with `category`), writes all diffed or missing files for that category to disk and returns a manifest.
-
-**Inputs:**
-
-- `framework` (string, optional): Force a specific framework instead of auto-detecting. One of: `claude`, `cursor`, `windsurf`, `copilot`.
-- `path` (string, optional): Custom project root path. Defaults to the server working directory.
-- `category` (string, optional): Write all drifted or missing files for this category and return a manifest. One of: `pointer-stub`, `methodology-docs`, `version-metadata`, `commands`, `agents`, `skills`, `mcp`, `ide`, `readme`. Omit on the first call to get a metadata-only summary.
+<!-- aide-tools:start -->
+- [`aide_info`](https://aidemd.dev/docs/tools/aide_info/) — Boot-time report telling the orchestrator whether the server is behind, whether the project's AIDE files or hooks are out of date, and whether the brain is wired.
+- [`aide_discover`](https://aidemd.dev/docs/tools/aide_discover/) — Maps where the project's .aide specs live, or gives one module's ancestor chain and subtree, so agents read intent before code.
+- [`aide_read`](https://aidemd.dev/docs/tools/aide_read/) — Reads one .aide file and returns its content with its type, the other specs in its folder and the links it contains.
+- [`aide_inspect`](https://aidemd.dev/docs/tools/aide_inspect/) — Returns a code symbol's documentation, signature and kind without opening the whole source file.
+- [`aide_validate`](https://aidemd.dev/docs/tools/aide_validate/) — Health check for the spec layout, reporting orphaned or missing specs, plans with no spec, naming conflicts, broken links and frontmatter problems.
+- [`aide_scaffold`](https://aidemd.dev/docs/tools/aide_scaffold/) — Creates a blank AIDE working file under its canonical name, from intent specs to plans, todo lists and the session record, never over an existing file.
+- [`aide_frontmatter`](https://aidemd.dev/docs/tools/aide_frontmatter/) — Reads or moves a governed frontmatter value, a spec's alignment or a plan, todo or brief's status, leaving every other byte of the file untouched.
+- [`aide_cleanup`](https://aidemd.dev/docs/tools/aide_cleanup/) — Removes a closed module's pipeline files (plan.aide, todo.aide, brief.aide), refusing while any of them is still open.
+- [`aide_brain`](https://aidemd.dev/docs/tools/aide_brain/) — Read-only entry point to the brain config, returning one section of the host's config or the bundled template, the section contract, or a structural check of a draft config.
+- [`aide_init`](https://aidemd.dev/docs/tools/aide_init/) — Installs AIDE into a project one category at a time, writing new files itself and asking before anything is overwritten.
+- [`aide_upgrade`](https://aidemd.dev/docs/tools/aide_upgrade/) — Finds where the project's AIDE files have drifted from the version it runs and applies, one category at a time, only what the user confirms.
+- [`aide_observer_start`](https://aidemd.dev/docs/tools/aide_observer_start/) — Starts the observer, or reuses the running one, and halts the session if another session of the same project is open.
+- [`aide_observer_event`](https://aidemd.dev/docs/tools/aide_observer_event/) — Reports one action of the session to the observer, recorded first in the session's own log outside the project and then shown live.
+- [`aide_observer_end_session`](https://aidemd.dev/docs/tools/aide_observer_end_session/) — Ends another open session of the project after the user approves, so a HALT can be cleared.
+<!-- aide-tools:end -->
 
 ## Getting Started
 

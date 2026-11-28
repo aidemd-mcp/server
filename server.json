@@ -1,7 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.aidemd-mcp/server",
-  "description": "MCP server that teaches any AI agent the AIDE methodology via progressive disclosure",
+  "title": "AIDE",
+  "description": "Open-source agentic SDLC framework for intent-driven, spec-driven development, with an MCP toolkit",
+  "websiteUrl": "https://aidemd.dev",
   "repository": {
     "url": "https://github.com/aidemd-mcp/server",
     "source": "github"
@@ -12,6 +14,7 @@
       "registryType": "npm",
       "identifier": "@aidemd-mcp/server",
       "version": "0.20.3",
+      "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
       }

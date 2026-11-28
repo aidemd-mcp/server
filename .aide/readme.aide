@@ -5,14 +5,13 @@ description: >
   Spec for the @aidemd-mcp/server README — the primary conversion surface
   on GitHub and npm that must turn visitors into installed users.
 intent: >
-  The README is the single document that serves both GitHub repository
-  visitors and npm package page visitors. Its job is to convert a developer
-  who has heard of AIDE or stumbled on the package into an active user who
-  has the MCP server running in their IDE within five minutes. It must
-  communicate what the server does, how to install it in every supported
-  client, and what tools it provides — in that order, with no friction
-  that sends the visitor elsewhere for answers. The README is not a
-  methodology tutorial or a marketing page; it is a self-contained
+  The README serves both GitHub repository visitors and npm package page
+  visitors. Its job is to convert a developer who lands on the package into
+  an active user who has the MCP server running in their IDE within five
+  minutes. It must communicate what AIDE is as a framework, how to install
+  it in every supported client, and what tools it provides — in that order,
+  with no friction that sends the visitor elsewhere to get installed. It is
+  not a methodology tutorial or a marketing page but a self-contained
   installation guide with enough context to justify the install.
 outcomes:
   desired:
@@ -21,39 +20,42 @@ outcomes:
       block for their specific client, with the correct JSON root key and the
       correct config file path — no translation from another client's example
       required.
-    - The tools section documents every tool with full parameter lists in
-      the canonical MCP README format (H3 per tool, imperative description,
-      bulleted Inputs with name/type/optional markers), so a developer
-      evaluating the server knows exactly what capabilities they get before
-      installing.
-    - A developer who has never heard of AIDE understands what the server
-      does and why it matters within the first two sentences — the title
-      line and description paragraph carry the pitch, not a separate
-      "What is AIDE?" explainer section.
+    - The tools section lists every tool the server registers, each with its
+      one-sentence description and a link to that tool's full reference page
+      on aidemd.dev. The list is generated from those reference pages, so it
+      cannot fall behind the server as tools are added, renamed or removed.
+    - A developer who has never heard of AIDE learns from the opening
+      paragraph, with no separate explainer section, that AIDE is an
+      open-source agentic SDLC framework for intent-driven development, not
+      a single MCP server. The features list names the framework's parts,
+      each linking to its aidemd.dev page instead of repeating the tools
+      list, and a short line points to the aidemd.dev Learn pages.
     - The README renders correctly on both GitHub and the npm package page,
       avoiding constructs that break on npm (details/summary for critical
       content, relative links, hover-only interactions).
     - A post-install "what happens next" block gives the developer a
       concrete first action to take inside their agent, closing the gap
       between install and first value.
-    - Every client's section offers the same two launch modes, each with a
-      one-line when-to-pick — a global install recommended for a personal
-      machine, and a local launch pinned to an exact version for shared repos
-      and cloud/CI. A developer on any client sees the same choice framed the
-      same way.
+    - "Every client's section shows the same global-install launch, framed
+      the same way: a one-time `npm i -g @aidemd-mcp/server`, then the bare
+      `aidemd-mcp` command. No client's section offers a launch the others
+      omit."
   undesired:
     - "A config block that shows one client's format and expects users of
       other clients to translate — the #1 documented friction source in
       MCP server READMEs (mcp-readme-conventions research)."
-    - A tool list without parameter documentation, forcing the developer
-      to install the server just to discover what inputs each tool accepts.
-    - A README that teaches the full AIDE methodology instead of focusing
-      on what the MCP server does and how to install it. The methodology
-      docs are delivered by aide_init; the README's job is to get the user
-      to that point, not to replace it.
+    - A tools list that omits a tool the server registers, gives a
+      description that disagrees with that tool's reference page, or links
+      to a page that does not exist. Any of these tells an evaluating
+      developer the README cannot be trusted about what they are installing.
+    - "A README that misframes AIDE: teaching the full methodology instead
+      of getting the developer installed, or describing AIDE as only an MCP
+      server when it is a framework of methodology, skills, subagents, tools,
+      brain and observer. The methodology docs arrive after install; the
+      README's job is to get the user there and show them the whole framework."
     - Content hidden inside details/summary tags that renders on GitHub
       but is invisible or broken on the npm package page.
-    - A config block that launches through a floating `@latest` tag or an
+    - A config block that launches through `npx` with a floating `@latest` tag or an
       unpinned package name, so the running version shifts underneath the
       user and destabilizes their setup. Equally wrong is one client's
       section offering a launch mode or pin the other clients' sections omit.
@@ -71,7 +73,7 @@ package page after finding `@aidemd-mcp/server` in search results or a
 link — they see the README rendered by npm's markdown engine, which
 supports less than GitHub (no collapsible details for critical content, no
 relative links, degraded callout styling). Both audiences need the same
-core information: what the server does, how to install it in their specific
+core information: what AIDE is, how to install it in their specific
 client, and what tools it provides. Neither audience wants a methodology
 tutorial — that is what `aide_init` delivers after the install.
 
@@ -85,78 +87,76 @@ installations get "command not found" errors that are never explained in
 most MCP server READMEs. These are the documented friction points the
 README must address head-on.
 
-The server currently ships a small set of tools (`aide_discover`,
-`aide_read`, `aide_scaffold`, `aide_validate`, `aide_inspect`,
-`aide_info`, `aide_init`, `aide_upgrade`, `aide_brain`) plus the
-`plan.aide` and `todo.aide` file types. The roster is small enough that
-full parameter documentation is feasible and preferred over a summary
-list — every parameter can be documented without the README becoming
-unwieldy. This is the recommendation from the tool documentation
-research for servers with a small tool surface.
+The tool roster changes between releases, and every tool already has a
+full reference page on aidemd.dev — parameters, returns, guarantees —
+kept current with the code. A tools list maintained by hand inside the
+README drifts from that roster within a few releases. The top of the
+page also carries more weight than the rest: answer engines and skimming
+visitors take their idea of what AIDE is from the opening, so an opening
+that names one component as the whole defines the project wrongly
+everywhere it is quoted.
 
 ## Strategy
 
-**Lead with a one-line description that names the value, not the
-mechanism.** The H1 title is the package name; the line immediately below
-it says what the server does for the developer, not how it works
-internally. The current README opens with "MCP server that teaches any
-agent the AIDE methodology" — this is close but should be tightened to
-name the outcome (intent-driven specs next to code) rather than the
-mechanism (teaching). The description must work as the npm package
-subtitle, which is the only text a developer sees in search results
-before clicking through (npm badge research).
+**Open with a plain definition of the framework, not a pitch for one
+package.** The H1 stays the package name; the first paragraph says what
+AIDE is — an open-source agentic SDLC framework for intent-driven,
+spec-driven development — and names its parts: skills, subagents, the MCP
+toolkit, the brain interface, the observer. ChatGPT draws 44% of its
+citations from the first 30% of a page, and for a repo that is the README
+opening (github-repo-discoverability research). Calling AIDE an MCP server
+there teaches every engine the wrong category.
 
 **Badges signal legitimacy and version currency.** Place npm version and
 MIT license badges immediately below the H1, before the description. Add
 npm weekly downloads once the package has meaningful traction. Skip CI/build
 badges — no MCP server README in the research corpus uses them, and the
-audience does not expect them. A Smithery registry badge is worth adding
-once the package is listed there, as it is a recognized quality signal in
-the MCP ecosystem (mcp-readme-npm-badges research).
+audience does not expect them (mcp-readme-npm-badges research). Keep the
+Glama score badge: the largest awesome-MCP list merges a listing only with
+a Glama backlink (mcp-directories research).
 
-**Use a brief features bullet list, not a "What is AIDE?" section.** The
-current README has a "What is AIDE?" section with a file-type table that
-front-loads methodology detail before the install instructions. This
-violates the canonical MCP README section order, which puts features
-(brief) before installation (detailed). Replace the explainer with a
-three-to-five-bullet feature list that names capabilities from the user's
-perspective: project-wide spec discovery, one-command bootstrap, naming
-convention enforcement, health-check validation, upgrade drift detection.
-The file-type table belongs in the methodology docs that `aide_init`
-installs, not in the README (mcp-readme-conventions research, section
-order finding).
+**Name the framework's parts in the features list, each linking its
+aidemd.dev page.** No "What is AIDE?" section: the opening already defines
+it, and an explainer pushes the install block down (mcp-readme-conventions
+research, section order finding). One bullet per part — methodology docs,
+skills and subagents for each phase, spec scaffolding, the MCP toolkit, the
+brain interface, the observer — then one line pointing to the Learn pages.
+Features never restate the tools list, which has its own section (user
+decision 2026-11-28).
 
 **Show a separate config block per client, not one block with a
 footnote.** Use Pattern A from the conventions research: one H3 per
 client under the Installation H2, each with its own copy-pasteable JSON
 block showing the correct root key, the correct config file path, and
-the same two launch modes. The clients to cover are Claude Code (CLI
+the same global launch. The clients to cover are Claude Code (CLI
 command and .mcp.json), Claude Desktop (Mac and Windows paths), Cursor,
 VS Code / Copilot (noting the `"servers"` root key difference), and
 Windsurf. This is the largest section of the README and the most visited
 — every character must be copy-pasteable without modification
 (mcp-readme-config-blocks research, multi-client presentation finding).
 
-**Offer two launch modes in every client section, both version-stable.**
-Recommend a one-time global install (`npm i -g @aidemd-mcp/server`, then
-the bare `aidemd-mcp` command) for a personal machine, and a local launch
-pinned to an exact version (`npx -y @aidemd-mcp/server@<version>`) for
-shared repos and cloud/CI, each with a one-line when-to-pick. Never use
-`@latest`: a floating tag shifts the running version underneath the user
-and destabilizes their setup (user decision 2026-10-09, overriding the
-config-blocks research's `@latest` recommendation).
+**Launch from a global install in every client section, framed the same
+way.** Each section shows a one-time `npm i -g @aidemd-mcp/server`, then
+the bare `aidemd-mcp` command, and nothing else. The installed version
+stays put until the user upgrades it, and the client starts the server
+without an npx fetch at session start, which can overrun the 30-second
+MCP connect timeout on Windows. No section offers an npx launch, floating
+or pinned (user decision 2026-10-27, overriding the config-blocks
+research's `npx @latest` recommendation).
 
-**Include the `-y` flag in npx args.** All official MCP server READMEs
-use `npx -y` to auto-confirm the package install prompt. Omitting `-y`
-causes npx to hang waiting for confirmation in non-interactive contexts
-like Claude Desktop's process spawner, which is a silent install failure
+**Include the `-y` flag in the one npx command the README keeps.** The
+one-shot installer still runs through npx, pinned to the released
+version. All official MCP server READMEs use `npx -y` to auto-confirm the
+package install prompt; without it npx waits for a confirmation that a
+scripted or non-interactive shell never answers, a silent install failure
 (mcp-readme-conventions research).
 
 **Add a PATH troubleshooting callout in the Claude Desktop section.**
 Claude Desktop does not inherit the terminal PATH — users with
-nvm/Homebrew Node hit "command not found: npx" and silently churn. A
-blockquote callout (which degrades to a plain blockquote on npm — acceptable)
-naming the problem and the fix (use `which npx` to find the absolute path)
+nvm/Homebrew Node can find the globally installed `aidemd-mcp` "command
+not found" and silently churn. A blockquote callout (which degrades to a
+plain blockquote on npm — acceptable) naming the problem and the fix (use
+`which aidemd-mcp` to find the absolute path)
 addresses the single most common MCP install failure
 (mcp-readme-config-blocks research, PATH problem finding; install-cta-mechanics
 research, friction map finding).
@@ -166,21 +166,19 @@ a full quit-and-reopen for config changes to take effect. This is the #2
 documented failure mode. A one-line note in the Claude Desktop section
 prevents it (mcp-readme-config-blocks research, reload requirement finding).
 
-**Document every tool with full parameters in the canonical format.** Use
-H3 per tool inside a Tools H2. Each tool gets an imperative one-sentence
-description and an Inputs bullet list with backtick name, (type, optional)
-markers, and a description. The tool roster is well within the feasibility
-threshold for full documentation. Group by lifecycle phase if it helps
-scanning: discover and read (navigation), scaffold and validate
-(authoring), init and upgrade (project setup). Include the `plan.aide`
-file type in the tool documentation for `aide_scaffold` since it was added
-after the current README was written (mcp-readme-tool-documentation
-research, canonical format finding).
+**Generate the tools list from the reference pages; never write it by
+hand.** Each entry is one line: the tool's name linking its aidemd.dev
+reference page, and the one-sentence description that page gives, in the
+reference index's order. Parameters live on those pages, maintained with
+the code; the README is the index to them, not a second copy. Because the
+list is built from the same pages, a new, renamed or removed tool cannot
+leave the README behind (user decision 2026-11-28, superseding the
+tool-documentation research's full-parameter recommendation).
 
 **Add a post-install "try it" block.** After the Tools section, include a
 short block that tells the developer what to do after installing: "Run
 `aide_init` in your agent to bootstrap the AIDE methodology into your
-project, then try `/aide` to start the pipeline." This closes the
+project, then try `/aide` to start the first phase." This closes the
 install-to-value gap that silently loses users in dev-tool landings
 (install-cta-mechanics research, post-install hand-off finding).
 
@@ -202,46 +200,36 @@ research, npm rendering finding).
 
 ## Good examples
 
-A strong opening that names the value:
+An opening that defines the framework and names its parts:
 
 > # @aidemd-mcp/server
 >
 > [![npm version](https://img.shields.io/npm/v/@aidemd-mcp/server.svg)](https://www.npmjs.com/package/@aidemd-mcp/server)
 > [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 >
-> MCP server that brings intent-driven development to any AI-powered IDE.
-> Manage `.aide` spec files that live next to your code — the domain context
-> that architects plan from, implementors build from, and QA validates against.
+> Open-source agentic SDLC framework for intent-driven, spec-driven
+> development. AIDE (aidemd) gives AI coding agents a production-grade
+> software methodology to follow, with skills, subagents and an MCP server
+> whose tools work with a cascading intent tree of `.aide` spec files.
+> `brain.aide` is a backend-agnostic plugin interface that connects your
+> AIDE projects to a central task board and coding playbook, so every agent
+> follows your team's conventions. It ships with an observer to manage
+> running sessions and prevent collisions between them.
 
 A per-client config block that eliminates translation friction:
 
 > ### Claude Code
 >
-> **Global** — recommended on your own machine. Install once:
+> Install once, then add the server:
 >
 > ```bash
 > npm i -g @aidemd-mcp/server
 > claude mcp add aide aidemd-mcp
 > ```
 >
-> **Local, pinned** — for shared repos and cloud/CI. Add to your
-> project's `.mcp.json`:
->
-> ```json
-> {
->   "mcpServers": {
->     "aide": {
->       "command": "npx",
->       "args": ["-y", "@aidemd-mcp/server@<version>"]
->     }
->   }
-> }
-> ```
->
 > ### VS Code / Copilot
 >
-> **Global** — recommended on your own machine. After
-> `npm i -g @aidemd-mcp/server`, add to `.vscode/mcp.json`:
+> After `npm i -g @aidemd-mcp/server`, add to `.vscode/mcp.json`:
 >
 > ```json
 > {
@@ -252,32 +240,17 @@ A per-client config block that eliminates translation friction:
 >   }
 > }
 > ```
->
-> **Local, pinned** — for shared repos and cloud/CI:
->
-> ```json
-> {
->   "servers": {
->     "aide": {
->       "command": "npx",
->       "args": ["-y", "@aidemd-mcp/server@<version>"]
->     }
->   }
-> }
-> ```
 
-A tool documented in the canonical format:
+Tools entries generated from their reference pages, each linking out:
 
-> ### aide_discover
+> ## Tools
 >
-> Scan the project for `.aide` spec files and return a progressive disclosure
-> tree map showing each spec's type, location, and summary.
->
-> **Inputs:**
-> - `path` (string, optional): Subdirectory to drill into. When provided,
->   opens with the ancestor chain — the cascading intent lineage from root
->   to target — followed by the detailed subtree. When omitted, returns a
->   project-wide map.
+> - [`aide_discover`](https://aidemd.dev/docs/tools/aide_discover/) — Maps
+>   where the project's .aide specs live, or gives one module's ancestor
+>   chain and subtree, so agents read intent before code.
+> - [`aide_validate`](https://aidemd.dev/docs/tools/aide_validate/) — Health
+>   check for the spec layout, reporting orphaned or missing specs, plans
+>   with no spec, naming conflicts, broken links and frontmatter problems.
 
 A post-install block that bridges install to first value:
 
@@ -308,7 +281,10 @@ A README that opens with a methodology explainer before the install block:
 The visitor wanted to install, not to study. The methodology detail
 belongs in the docs that `aide_init` delivers, not in the README that
 must convince the visitor to install. By the time they reach the config
-block, they have either scrolled past or left.
+block, they have either scrolled past or left. The opposite misframe is
+as wrong: "MCP server that brings intent-driven development to any
+AI-powered IDE" is short, but it names one part of the framework as the
+whole, and every answer engine that quotes it repeats the error.
 
 A single config block labeled "Add to your MCP client config" with the
 `mcpServers` root key and no per-client guidance:
@@ -330,17 +306,17 @@ load. The user assumes the package is broken and moves on. Meanwhile, the
 `-y` flag is missing, so Claude Desktop users get a hung npx prompt they
 never see. Two silent failures from one config block.
 
-A tool list without parameters:
+A hand-written tools section, tidy and plausible:
 
-> - **aide_discover** — Scans for .aide files
-> - **aide_scaffold** — Creates new .aide files
-> - **aide_validate** — Validates .aide files
+> ### aide_scaffold
+>
+> Create a new `.aide` file. **Inputs:** `directory` (string), `type`
+> (intent, research, plan or todo).
 
-The developer evaluating this server cannot tell what inputs each tool
-accepts, whether paths are required or optional, or what the `type`
-enum values are for scaffold. They must install the server and call the
-tools to find out. A developer comparing this against another MCP server
-that documents its parameters fully will choose the documented one.
+The server registers more tools than the section lists, and the `type`
+values shown are a release out of date. Nothing fails when it drifts; an
+evaluating developer who finds a tool in their client that the README never
+mentioned stops trusting the rest of the page.
 
 A README that uses `<details>` tags to collapse the per-client config
 blocks:
@@ -358,7 +334,10 @@ inaccessible on one of the two primary surfaces the README serves.
 ## References
 
 - `research/mcp-readme/mcp-readme-conventions` -- Canonical section order (title, badges, features, install, tools, dev, license) and the Pattern A multi-client presentation finding that drives the per-client config block strategy.
-- `research/mcp-readme/mcp-readme-config-blocks` -- The `mcpServers` vs `"servers"` root key difference, PATH troubleshooting requirement for Claude Desktop, and the restart-after-config-change requirement. Its `@latest` version-pinning recommendation is superseded by the user's 2026-10-09 decision (global install plus exact-version local pin, no `@latest`).
-- `research/mcp-readme/mcp-readme-tool-documentation` -- The canonical tool documentation format (H3 per tool, imperative description, bulleted Inputs), the full-documentation recommendation for servers with fewer than 10 tools, and the tool annotations pattern.
+- `research/mcp-readme/mcp-readme-config-blocks` -- The `mcpServers` vs `"servers"` root key difference, PATH troubleshooting requirement for Claude Desktop, and the restart-after-config-change requirement. Its `npx @latest` launch recommendation is superseded by the user's 2026-10-27 decision (session decision #56, released 0.15.0): global install only, launched by the bare `aidemd-mcp` command, no npx launch.
+- `research/mcp-readme/mcp-readme-tool-documentation` -- The one-sentence tool description convention. Its full-parameter recommendation for small servers is superseded by the user's 2026-11-28 decision (generated one-line list linking each tool's reference page).
+- `research/seo-aeo/2026-11-25-github-repo-discoverability` -- README first paragraph as the plain category definition; ChatGPT draws 44% of citations from the first 30% of a page, which for a repo is the README opening.
+- `research/seo-aeo/2026-11-28-mcp-directories-and-awesome-lists` -- The punkpeye awesome-MCP list requires a Glama backlink to merge a listing (keep the Glama badge); Smithery was acquired and its proxy shut down 2026-10-31, so no Smithery badge.
+- User decisions, relayed by the orchestrator 2026-11-28 -- Generated tools list over hand-written; AIDE framed as a framework of methodology, skills, subagents, MCP toolkit, brain interface and observer; the verbatim opening paragraph; features linking aidemd.dev pages and the Learn pages; pipeline steps called phases.
 - `research/mcp-readme/mcp-readme-npm-badges` -- Badge placement convention (below H1, before description), recommended badge stack (version + license minimum), npm rendering constraints (no details/summary, absolute URLs required, callout degradation acceptable).
 - `research/aidemd-dev/install-cta-mechanics` -- The MCP install friction map (config location confusion, reload requirement, PATH inheritance failure, cross-client ambiguity), the post-install "try it" block pattern from Stripe/shadcn precedent, and the v1 scope note confirming Claude Code as primary target.
